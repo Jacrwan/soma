@@ -651,7 +651,6 @@
   align-items: flex-start;
   gap: var(--space-sm);
   padding: 4px var(--space-sm) 4px 24px;
-  cursor: pointer;
   border-radius: 4px;
 }
 
@@ -670,6 +669,7 @@
   margin-top: 2px;
   width: 12px;
   text-align: center;
+  cursor: pointer;
 }
 
 .todoItemDone .todoCheck {
@@ -685,6 +685,7 @@
   font-size: 13px;
   line-height: 1.4;
   display: block;
+  cursor: pointer;
 }
 
 .todoItemDone .todoText {
@@ -720,6 +721,123 @@
 
 .todoAddInput::placeholder {
   color: var(--text-muted);
+}
+
+/* ── Unified subject+todo list ─────────────────────────────────────────── */
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-bottom: var(--space-xs);
+}
+
+.subjectGroup {
+  margin-bottom: 2px;
+}
+
+.subjectGroupHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px var(--space-sm);
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.subjectGroupHeader:hover {
+  background: var(--bg-secondary);
+}
+
+.subjectGroupHeader:hover .editIcon {
+  opacity: 1;
+}
+
+.dotBtn {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.1s;
+}
+
+.dotBtn:hover {
+  transform: scale(1.35);
+}
+
+.subjectArrow {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.todoBadge {
+  font-size: 10px;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  border-radius: 8px;
+  padding: 1px 5px;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.todoItemWrap {
+  /* wrapper for todo + inline popover */
+}
+
+.todoPopover {
+  margin: 2px 8px 4px 24px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  animation: popoverIn 150ms ease;
+}
+
+.popoverText {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-xs);
+  line-height: 1.4;
+}
+
+.popoverActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.popoverStart {
+  padding: 4px 12px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.popoverStart:hover {
+  background: var(--accent-hover);
+}
+
+.popoverDismiss {
+  background: none;
+  border: none;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.popoverDismiss:hover {
+  color: var(--text-secondary);
 }
 
 /* ── Empty states ──────────────────────────────────────────────────────── */

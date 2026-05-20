@@ -24,10 +24,11 @@ interface Props {
   onClose: () => void;
   onSessionSaved: (updatedSubjects: Subject[], updatedBlocks: TimeBlock[]) => void;
   onLiveBlockUpdate?: (block: TimeBlock) => void;
+  initialTask?: string;
 }
 
-export default function TimerOverlay({ subject, onClose, onSessionSaved, onLiveBlockUpdate }: Props) {
-  const [task, setTask] = useState('');
+export default function TimerOverlay({ subject, onClose, onSessionSaved, onLiveBlockUpdate, initialTask }: Props) {
+  const [task, setTask] = useState(initialTask ?? '');
   const [step, setStep] = useState<'input' | 'running'>('input');
   const { elapsed, isRunning, isPaused, startTime, start, pause, resume, stop } = useTimer();
   const liveBlockRef = useRef<TimeBlock | null>(null);

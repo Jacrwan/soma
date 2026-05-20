@@ -117,11 +117,13 @@ export default function DayView() {
   });
   const [addingToGroup, setAddingToGroup] = useState<string | null>(null);
   const [newTodoText, setNewTodoText] = useState('');
-  const [subjectsOpen, setSubjectsOpen] = useState(() => window.innerWidth > 768);
+  const [todoPopoverId, setTodoPopoverId] = useState<string | null>(null);
+  const [initialTimerTask, setInitialTimerTask] = useState('');
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [addSubjectForm, setAddSubjectForm] = useState<AddSubjectForm>({ name: '', color: COLORS[0] });
   const [editSubject, setEditSubject] = useState<SubjectEditState | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const todoPopoverRef = useRef<HTMLDivElement>(null);
   const touchStartXRef = useRef(0);
   const wheelCooldownRef = useRef(false);
 
@@ -150,6 +152,17 @@ export default function DayView() {
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [popover]);
+
+  useEffect(() => {
+    if (!todoPopoverId) return;
+    const onDown = (e: MouseEvent) => {
+      if (todoPopoverRef.current && !todoPopoverRef.current.contains(e.target as Node)) {
+        setTodoPopoverId(null);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [todoPopoverId]);
 
   const slots = Array.from({ length: TOTAL_SLOTS }, (_, i) => {
     const minutes = START_HOUR * 60 + i * 30;
@@ -288,6 +301,12 @@ export default function DayView() {
     setTodos(updated);
     setNewTodoText('');
     setAddingToGroup(null);
+  }
+
+  function openTimerFromTodo(subject: Subject, task: string) {
+    setTodoPopoverId(null);
+    setInitialTimerTask(task);
+    setTimerSubject(subject);
   }
 
   function handleDateBarWheel(e: React.WheelEvent) {
@@ -486,76 +505,148 @@ export default function DayView() {
 
       {/* ── Right panel ── */}
       <div className={styles.right}>
-        <div className={styles.subjectHeader}>
-          <button
-            className={styles.subjectHeaderToggle}
-            onClick={() => setSubjectsOpen(o => !o)}
-          >
-            <span className={styles.subjectHeaderTitle}>Subjects</span>
-            <span className={styles.subjectCaret}>{subjectsOpen ? '▲' : '▾'}</span>
-          </button>
+        <div className={styles.panelHeader}>
           <button
             className={styles.addSubjectBtn}
             onClick={() => { setShowAddSubject(true); setEditSubject(null); }}
+            title="Add subject"
           >+</button>
         </div>
 
-        {subjectsOpen && activeSubjects.length === 0 && (
+        {activeSubjects.length === 0 && (
           <div className={styles.emptySubjects}>Add a subject to get started.</div>
         )}
 
-        {subjectsOpen && activeSubjects.map(subject => (
-          <div
-            key={subject.id}
-            className={`${styles.subjectRow}${timerSubject?.id === subject.id ? ` ${styles.highlighted}` : ''}`}
-            onClick={() => {
-              if (editSubject?.id === subject.id) return;
-              setTimerSubject(subject);
-            }}
-          >
-            {editSubject?.id === subject.id ? (
-              <div className={styles.editSubjectForm} onClick={e => e.stopPropagation()}>
-                <input
-                  value={editSubject.name}
-                  autoFocus
-                  onChange={e => setEditSubject(s => s && { ...s, name: e.target.value })}
-                  onKeyDown={e => { if (e.key === 'Enter') saveEditSubject(); if (e.key === 'Escape') setEditSubject(null); }}
+        {activeSubjects.map(subject => {
+          const groupTodos = todos.filter(t => t.subjectId === subject.id);
+          const isCollapsed = collapsedGroups.has(subject.id);
+          const isAdding = addingToGroup === subject.id;
+          const showBody = !isCollapsed || isAdding;
+          const pending = groupTodos.filter(t => !t.done).length;
+          const isEditing = editSubject?.id === subject.id;
+
+          return (
+            <div key={subject.id} className={styles.subjectGroup}>
+              <div
+                className={styles.subjectGroupHeader}
+                onClick={() => { if (!isEditing) toggleGroup(subject.id); }}
+              >
+                <button
+                  className={styles.dotBtn}
+                  style={{ background: subject.color }}
+                  onClick={e => {
+                    e.stopPropagation();
+                    if (isEditing) return;
+                    setInitialTimerTask('');
+                    setTimerSubject(subject);
+                  }}
+                  title={`Start timer for ${subject.name}`}
                 />
-                <div className={styles.colorPicker}>
-                  {COLORS.map(c => (
-                    <button
-                      key={c}
-                      className={`${styles.colorCircle}${editSubject.color === c ? ` ${styles.colorCircleSelected}` : ''}`}
-                      style={{ background: c }}
-                      onClick={() => setEditSubject(s => s && { ...s, color: c })}
-                    />
-                  ))}
-                </div>
-                <div className={styles.btnRow}>
-                  <button className={`${styles.btn} ${styles.btnAccent}`} onClick={saveEditSubject}>Save</button>
-                  <button className={styles.btn} onClick={() => archiveSubject(subject.id)}>Archive</button>
-                  <button className={`${styles.btn} ${styles.btnDanger}`} onClick={() => deleteSubject(subject.id)}>Delete</button>
-                  <button className={styles.btn} onClick={() => setEditSubject(null)}>Cancel</button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <SubjectDot color={subject.color} size={12} />
                 <span className={styles.subjectName}>{subject.name}</span>
                 <span className={styles.subjectTime}>{fmtSecs(subject.totalTimeToday)}</span>
+                {groupTodos.length > 0 && (
+                  <span className={styles.todoBadge}>{pending}/{groupTodos.length}</span>
+                )}
+                <button
+                  className={styles.todoGroupAdd}
+                  onClick={e => { e.stopPropagation(); startAdding(subject.id); }}
+                  title="Add todo"
+                >+</button>
                 <button
                   className={styles.editIcon}
                   onClick={e => {
                     e.stopPropagation();
-                    setEditSubject({ id: subject.id, name: subject.name, color: subject.color });
+                    if (isEditing) setEditSubject(null);
+                    else setEditSubject({ id: subject.id, name: subject.name, color: subject.color });
                   }}
                 >✎</button>
-              </>
-            )}
-          </div>
-        ))}
+                {!isEditing && (
+                  <span className={styles.subjectArrow}>{isCollapsed ? '▾' : '▴'}</span>
+                )}
+              </div>
 
-        {subjectsOpen && archivedSubjects.length > 0 && (
+              {isEditing && (
+                <div className={styles.editSubjectForm} onClick={e => e.stopPropagation()}>
+                  <input
+                    value={editSubject!.name}
+                    autoFocus
+                    onChange={e => setEditSubject(s => s && { ...s, name: e.target.value })}
+                    onKeyDown={e => { if (e.key === 'Enter') saveEditSubject(); if (e.key === 'Escape') setEditSubject(null); }}
+                  />
+                  <div className={styles.colorPicker}>
+                    {COLORS.map(c => (
+                      <button
+                        key={c}
+                        className={`${styles.colorCircle}${editSubject!.color === c ? ` ${styles.colorCircleSelected}` : ''}`}
+                        style={{ background: c }}
+                        onClick={() => setEditSubject(s => s && { ...s, color: c })}
+                      />
+                    ))}
+                  </div>
+                  <div className={styles.btnRow}>
+                    <button className={`${styles.btn} ${styles.btnAccent}`} onClick={saveEditSubject}>Save</button>
+                    <button className={styles.btn} onClick={() => archiveSubject(subject.id)}>Archive</button>
+                    <button className={`${styles.btn} ${styles.btnDanger}`} onClick={() => deleteSubject(subject.id)}>Delete</button>
+                    <button className={styles.btn} onClick={() => setEditSubject(null)}>Cancel</button>
+                  </div>
+                </div>
+              )}
+
+              {!isEditing && showBody && (
+                <div className={styles.todoGroupBody}>
+                  {groupTodos.map(todo => (
+                    <div key={todo.id} className={styles.todoItemWrap}>
+                      <div className={`${styles.todoItem}${todo.done ? ` ${styles.todoItemDone}` : ''}`}>
+                        <span className={styles.todoCheck} onClick={() => toggleTodo(todo.id)}>
+                          {todo.done ? '✓' : '○'}
+                        </span>
+                        <div className={styles.todoContent}>
+                          <span
+                            className={styles.todoText}
+                            onClick={() => setTodoPopoverId(prev => prev === todo.id ? null : todo.id)}
+                          >{todo.text}</span>
+                          {todo.dueDate && <div className={styles.todoDueDate}>{todo.dueDate}</div>}
+                        </div>
+                      </div>
+                      {todoPopoverId === todo.id && (
+                        <div className={styles.todoPopover} ref={todoPopoverRef}>
+                          <div className={styles.popoverText}>{todo.text}</div>
+                          <div className={styles.popoverActions}>
+                            <button
+                              className={styles.popoverStart}
+                              onClick={() => openTimerFromTodo(subject, todo.text)}
+                            >Start</button>
+                            <button
+                              className={styles.popoverDismiss}
+                              onClick={() => setTodoPopoverId(null)}
+                            >Dismiss</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {isAdding && (
+                    <div className={styles.todoAddRow}>
+                      <input
+                        className={styles.todoAddInput}
+                        placeholder="New todo…"
+                        value={newTodoText}
+                        autoFocus
+                        onChange={e => setNewTodoText(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') addTodo(subject.id);
+                          if (e.key === 'Escape') setAddingToGroup(null);
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {archivedSubjects.length > 0 && (
           <div className={styles.archivedSection}>
             <button
               className={styles.archivedToggle}
@@ -576,132 +667,89 @@ export default function DayView() {
           </div>
         )}
 
-        <div className={styles.todosSection}>
-          <span className={styles.todosSectionTitle}>Todos</span>
-
-          {activeSubjects.map(subject => {
-            const groupTodos = todos.filter(t => t.subjectId === subject.id);
-            const isCollapsed = collapsedGroups.has(subject.id);
-            const isAdding = addingToGroup === subject.id;
-            const showBody = !isCollapsed || isAdding;
-            const pending = groupTodos.filter(t => !t.done).length;
-
-            return (
-              <div key={subject.id} className={styles.todoGroup}>
-                <div className={styles.todoGroupHeader} onClick={() => toggleGroup(subject.id)}>
-                  <span className={styles.todoGroupBar} style={{ background: subject.color }} />
-                  <span className={styles.todoGroupName}>{subject.name}</span>
-                  {groupTodos.length > 0 && (
-                    <span className={styles.todoGroupCount}>{pending}/{groupTodos.length}</span>
-                  )}
-                  <button
-                    className={styles.todoGroupAdd}
-                    onClick={e => { e.stopPropagation(); startAdding(subject.id); }}
-                    title="Add todo"
-                  >+</button>
-                </div>
-                {showBody && (
-                  <div className={styles.todoGroupBody}>
-                    {groupTodos.map(todo => (
-                      <div
-                        key={todo.id}
-                        className={`${styles.todoItem}${todo.done ? ` ${styles.todoItemDone}` : ''}`}
-                        onClick={() => toggleTodo(todo.id)}
-                      >
-                        <span className={styles.todoCheck}>{todo.done ? '✓' : '○'}</span>
+        {(() => {
+          const unassigned = todos.filter(t => !t.subjectId);
+          const isAdding = addingToGroup === 'unassigned';
+          if (unassigned.length === 0 && !isAdding) return null;
+          const isCollapsed = collapsedGroups.has('unassigned');
+          const showBody = !isCollapsed || isAdding;
+          const pending = unassigned.filter(t => !t.done).length;
+          return (
+            <div className={styles.subjectGroup}>
+              <div
+                className={styles.subjectGroupHeader}
+                onClick={() => toggleGroup('unassigned')}
+              >
+                <span className={styles.subjectName}>Unassigned</span>
+                {unassigned.length > 0 && (
+                  <span className={styles.todoBadge}>{pending}/{unassigned.length}</span>
+                )}
+                <button
+                  className={styles.todoGroupAdd}
+                  onClick={e => { e.stopPropagation(); startAdding('unassigned'); }}
+                  title="Add todo"
+                >+</button>
+                <span className={styles.subjectArrow}>{isCollapsed ? '▾' : '▴'}</span>
+              </div>
+              {showBody && (
+                <div className={styles.todoGroupBody}>
+                  {unassigned.map(todo => (
+                    <div key={todo.id} className={styles.todoItemWrap}>
+                      <div className={`${styles.todoItem}${todo.done ? ` ${styles.todoItemDone}` : ''}`}>
+                        <span className={styles.todoCheck} onClick={() => toggleTodo(todo.id)}>
+                          {todo.done ? '✓' : '○'}
+                        </span>
                         <div className={styles.todoContent}>
-                          <span className={styles.todoText}>{todo.text}</span>
+                          <span
+                            className={styles.todoText}
+                            onClick={() => setTodoPopoverId(prev => prev === todo.id ? null : todo.id)}
+                          >{todo.text}</span>
                           {todo.dueDate && <div className={styles.todoDueDate}>{todo.dueDate}</div>}
                         </div>
                       </div>
-                    ))}
-                    {isAdding && (
-                      <div className={styles.todoAddRow}>
-                        <input
-                          className={styles.todoAddInput}
-                          placeholder="New todo…"
-                          value={newTodoText}
-                          autoFocus
-                          onChange={e => setNewTodoText(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') addTodo(subject.id);
-                            if (e.key === 'Escape') setAddingToGroup(null);
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-
-          {(() => {
-            const unassigned = todos.filter(t => !t.subjectId);
-            const isAdding = addingToGroup === 'unassigned';
-            if (unassigned.length === 0 && !isAdding) return null;
-            const isCollapsed = collapsedGroups.has('unassigned');
-            const showBody = !isCollapsed || isAdding;
-            const pending = unassigned.filter(t => !t.done).length;
-            return (
-              <div className={styles.todoGroup}>
-                <div className={styles.todoGroupHeader} onClick={() => toggleGroup('unassigned')}>
-                  <span className={styles.todoGroupBar} style={{ background: 'var(--text-muted)' }} />
-                  <span className={styles.todoGroupName}>Unassigned</span>
-                  {unassigned.length > 0 && (
-                    <span className={styles.todoGroupCount}>{pending}/{unassigned.length}</span>
-                  )}
-                  <button
-                    className={styles.todoGroupAdd}
-                    onClick={e => { e.stopPropagation(); startAdding('unassigned'); }}
-                    title="Add todo"
-                  >+</button>
-                </div>
-                {showBody && (
-                  <div className={styles.todoGroupBody}>
-                    {unassigned.map(todo => (
-                      <div
-                        key={todo.id}
-                        className={`${styles.todoItem}${todo.done ? ` ${styles.todoItemDone}` : ''}`}
-                        onClick={() => toggleTodo(todo.id)}
-                      >
-                        <span className={styles.todoCheck}>{todo.done ? '✓' : '○'}</span>
-                        <div className={styles.todoContent}>
-                          <span className={styles.todoText}>{todo.text}</span>
-                          {todo.dueDate && <div className={styles.todoDueDate}>{todo.dueDate}</div>}
+                      {todoPopoverId === todo.id && (
+                        <div className={styles.todoPopover} ref={todoPopoverRef}>
+                          <div className={styles.popoverText}>{todo.text}</div>
+                          <div className={styles.popoverActions}>
+                            <button
+                              className={styles.popoverDismiss}
+                              onClick={() => setTodoPopoverId(null)}
+                            >Dismiss</button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                    {isAdding && (
-                      <div className={styles.todoAddRow}>
-                        <input
-                          className={styles.todoAddInput}
-                          placeholder="New todo…"
-                          value={newTodoText}
-                          autoFocus
-                          onChange={e => setNewTodoText(e.target.value)}
-                          onKeyDown={e => {
-                            if (e.key === 'Enter') addTodo(undefined);
-                            if (e.key === 'Escape') setAddingToGroup(null);
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-        </div>
+                      )}
+                    </div>
+                  ))}
+                  {isAdding && (
+                    <div className={styles.todoAddRow}>
+                      <input
+                        className={styles.todoAddInput}
+                        placeholder="New todo…"
+                        value={newTodoText}
+                        autoFocus
+                        onChange={e => setNewTodoText(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') addTodo(undefined);
+                          if (e.key === 'Escape') setAddingToGroup(null);
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* ── Timer Overlay ── */}
       {timerSubject && (
         <TimerOverlay
           subject={timerSubject}
-          onClose={() => setTimerSubject(null)}
+          onClose={() => { setTimerSubject(null); setInitialTimerTask(''); }}
           onSessionSaved={handleSessionSaved}
           onLiveBlockUpdate={handleLiveBlockUpdate}
+          initialTask={initialTimerTask}
         />
       )}
 
