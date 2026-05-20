@@ -8,7 +8,8 @@ app.use(cors());
 app.use(express.json());
 
 app.post('/api/chat', async (req, res) => {
-  const { messages, systemPrompt } = req.body;
+  const { messages, systemPrompt, model } = req.body;
+  const resolvedModel = 'claude-haiku-4-5-20251001';
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -18,7 +19,7 @@ app.post('/api/chat', async (req, res) => {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: resolvedModel,
         max_tokens: 4096,
         system: systemPrompt,
         messages,

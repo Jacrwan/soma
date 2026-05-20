@@ -283,7 +283,9 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     try {
       const systemPrompt = buildSystemPrompt();
       const apiMessages = next.map(m => ({ role: m.role, content: m.content }));
-      const response = await sendMessage(apiMessages, systemPrompt);
+      const planningKeywords = ['schedule', 'study plan', 'plan my day', 'generate'];
+      const needsSonnet = planningKeywords.some(kw => text.toLowerCase().includes(kw));
+      const response = await sendMessage(apiMessages, systemPrompt, needsSonnet ? 'sonnet' : undefined);
       const scheduleBlocks = parseScheduleBlocks(response) ?? undefined;
       const todos = parseTodos(response) ?? undefined;
       console.log('[todos] attached to message:', todos);

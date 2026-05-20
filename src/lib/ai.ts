@@ -1,11 +1,12 @@
 export async function sendMessage(
   messages: { role: 'user' | 'assistant'; content: string }[],
   systemPrompt: string,
+  model?: 'sonnet',
 ): Promise<string> {
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ messages, systemPrompt }),
+    body: JSON.stringify({ messages, systemPrompt, ...(model ? { model } : {}) }),
   });
   if (!res.ok) {
     const body = await res.text();
