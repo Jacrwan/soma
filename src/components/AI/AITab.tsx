@@ -44,6 +44,27 @@ function stripTags(content: string) {
     .trim();
 }
 
+function formatMessage(content: string): string {
+  return content
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\*\*(.+?)\*\*/gs, '<strong>$1</strong>');
+}
+
+const CHAT_KEY = 'soma_chat_history';
+
+function loadHistory(): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(CHAT_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveHistory(msgs: ChatMessage[]) {
+  localStorage.setItem(CHAT_KEY, JSON.stringify(msgs));
+}
+
 function parseScheduleBlocks(content: string): TimeBlock[] | null {
   const match = content.match(/<schedule>([\s\S]*?)<\/schedule>/);
   if (!match) return null;
@@ -189,7 +210,7 @@ function TodoCard({
 // ── Main component ───────────────────────────────────────────────────────
 
 export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => loadHistory());
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -198,6 +219,10 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
+
+  useEffect(() => {
+    saveHistory(messages);
+  }, [messages]);
 
   async function send() {
     const text = input.trim();
@@ -252,10 +277,16 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, todosDismissed: true } : m));
   }
 
+  function clearChat() {
+    setMessages([]);
+    localStorage.removeItem(CHAT_KEY);
+  }
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
         <span className={styles.headerTitle}>AI Scheduling</span>
+        <button className={styles.clearKeyBtn} onClick={clearChat}>Clear chat</button>
       </div>
 
       <div className={styles.messageList}>
@@ -269,9 +300,10 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
             key={msg.id}
             className={`${styles.messageRow} ${msg.role === 'user' ? styles.userRow : styles.assistantRow}`}
           >
-            <div className={`${styles.bubble} ${msg.role === 'user' ? styles.userBubble : styles.assistantBubble}`}>
-              {stripTags(msg.content)}
-            </div>
+            <div
+              className={`${styles.bubble} ${msg.role === 'user' ? styles.userBubble : styles.assistantBubble}`}
+              dangerouslySetInnerHTML={{ __html: formatMessage(stripTags(msg.content)) }}
+            />
             {msg.role === 'assistant' && msg.scheduleBlocks && !msg.scheduleDismissed && (
               <ScheduleCard
                 blocks={msg.scheduleBlocks}
