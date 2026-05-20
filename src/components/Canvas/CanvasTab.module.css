@@ -322,6 +322,28 @@
   border-color: var(--accent);
 }
 
+.externalLink {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+  padding: 0;
+  text-decoration: none;
+}
+
+.externalLink:hover {
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
 /* Done state */
 .done .assignmentName {
   color: var(--text-muted);

@@ -94,6 +94,7 @@ export async function getAnnouncements(
     title: a.title ?? '',
     message: a.message ? stripHtml(a.message) : '',
     postedAt: a.posted_at ?? '',
+    htmlUrl: a.html_url ?? '',
     courseId,
   }));
 }

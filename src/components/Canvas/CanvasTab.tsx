@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { storage } from '../../lib/storage';
-import { CanvasCourse, CanvasAssignment, CanvasAnnouncement } from '../../types';
+import { CanvasCourse, CanvasAssignment, CanvasAnnouncement, Subject } from '../../types';
 import { getCourses, getAssignments, getAnnouncements, getModules } from '../../lib/canvas';
 import styles from './CanvasTab.module.css';
 
@@ -20,6 +20,22 @@ function fmtPosted(iso: string) {
 }
 
 const CACHE_MAX_AGE = 30 * 60 * 1000;
+
+function syncCoursesToSubjects(courses: CanvasCourse[]) {
+  const existing = storage.getSubjects();
+  const existingNames = new Set(existing.map(s => s.name.toLowerCase()));
+  const newSubjects = courses
+    .filter(c => !existingNames.has(c.name.toLowerCase()))
+    .map((c, i) => ({
+      id: crypto.randomUUID(),
+      name: c.name,
+      color: COURSE_COLORS[(existing.length + i) % COURSE_COLORS.length] as Subject['color'],
+      totalTimeToday: 0,
+    }));
+  if (newSubjects.length > 0) {
+    storage.setSubjects([...existing, ...newSubjects]);
+  }
+}
 
 function fmtSynced(ts: number): string {
   const mins = Math.floor((Date.now() - ts) / 60_000);
@@ -58,7 +74,9 @@ export default function CanvasTab() {
     if (!isConnected) return;
     const ts = storage.getCacheTimestamp();
     if (ts && Date.now() - ts < CACHE_MAX_AGE) {
-      setCourses(storage.getCachedCourses());
+      const cachedCourses = storage.getCachedCourses();
+      setCourses(cachedCourses);
+      syncCoursesToSubjects(cachedCourses);
       setAssignments(storage.getCachedAssignments());
       setAnnouncements(storage.getCachedAnnouncements());
       setLastSynced(ts);
@@ -74,6 +92,7 @@ export default function CanvasTab() {
       const coursesData = await getCourses(tk, url);
       setCourses(coursesData);
       storage.setCachedCourses(coursesData);
+      syncCoursesToSubjects(coursesData);
       const [assignmentGroups, announcementGroups, moduleGroups] = await Promise.all([
         Promise.all(coursesData.map(c => getAssignments(tk, url, c))),
         Promise.all(coursesData.map(c => getAnnouncements(tk, url, c.id))),
@@ -274,15 +293,24 @@ export default function CanvasTab() {
                       </div>
                       <div className={styles.assignmentRight}>
                         <span className={styles.assignmentDue}>Due: {fmtDue(a.dueAt)}</span>
-                        <select
-                          className={styles.statusSelect}
-                          value={status}
-                          onChange={e => updateStatus(a.id, e.target.value)}
-                        >
-                          <option value="not_started">Not started</option>
-                          <option value="in_progress">In progress</option>
-                          <option value="done">Done</option>
-                        </select>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <select
+                            className={styles.statusSelect}
+                            value={status}
+                            onChange={e => updateStatus(a.id, e.target.value)}
+                          >
+                            <option value="not_started">Not started</option>
+                            <option value="in_progress">In progress</option>
+                            <option value="done">Done</option>
+                          </select>
+                          <a
+                            className={styles.externalLink}
+                            href={a.htmlUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Open in Canvas"
+                          >↗</a>
+                        </div>
                       </div>
                     </div>
                   );
@@ -313,9 +341,21 @@ export default function CanvasTab() {
                         >
                           <div className={styles.announcementTop}>
                             <span className={styles.announcementCourse}>{courseName}</span>
-                            <span className={styles.announcementDate}>
-                              {a.postedAt ? fmtPosted(a.postedAt) : ''}
-                            </span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <span className={styles.announcementDate}>
+                                {a.postedAt ? fmtPosted(a.postedAt) : ''}
+                              </span>
+                              {a.htmlUrl && (
+                                <a
+                                  className={styles.externalLink}
+                                  href={a.htmlUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title="Open in Canvas"
+                                  onClick={e => e.stopPropagation()}
+                                >↗</a>
+                              )}
+                            </div>
                           </div>
                           <span className={styles.announcementTitle}>{a.title}</span>
                           <span className={expanded ? styles.announcementBodyExpanded : styles.announcementBody}>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { storage } from '../../lib/storage';
+import { storage, inferSubjectId } from '../../lib/storage';
 import { Subject, TimeBlock, SubjectColor, Todo } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
 import TimerOverlay from '../Timer/TimerOverlay';
@@ -13,6 +13,35 @@ const COLORS: SubjectColor[] = [
   '#ef5350', '#42a5f5', '#66bb6a', '#ab47bc',
   '#ffa726', '#26c6da', '#ec407a', '#8d6e63',
 ];
+const DAY_ABBRS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+function getMondayOfWeek(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay();
+  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  return d;
+}
+
+function addDays(date: Date, n: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
+function isSameDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear()
+    && a.getMonth() === b.getMonth()
+    && a.getDate() === b.getDate();
+}
+
+function isOnDate(iso: string, date: Date): boolean {
+  return isSameDay(new Date(iso), date);
+}
+
+function dayKey(date: Date): string {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
 
 function minToTop(minutes: number) {
   return ((minutes - START_HOUR * 60) / 30) * SLOT_HEIGHT;
@@ -33,12 +62,6 @@ function fmtSecs(s: number) {
   return `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}`;
 }
 
-function isToday(iso: string) {
-  const d = new Date(iso), n = new Date();
-  return d.getFullYear() === n.getFullYear()
-    && d.getMonth() === n.getMonth()
-    && d.getDate() === n.getDate();
-}
 
 interface AddBlockForm {
   slotMinutes: number;
@@ -67,20 +90,43 @@ export default function DayView() {
   const [blocks, setBlocks] = useState<TimeBlock[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [currentMinutes, setCurrentMinutes] = useState(0);
+  const [selectedDate, setSelectedDate] = useState<Date>(() => {
+    const d = new Date(); d.setHours(0, 0, 0, 0); return d;
+  });
+  const [viewWeekStart, setViewWeekStart] = useState<Date>(() => getMondayOfWeek(new Date()));
   const [addForm, setAddForm] = useState<AddBlockForm | null>(null);
   const [popover, setPopover] = useState<PopoverState | null>(null);
   const [timerSubject, setTimerSubject] = useState<Subject | null>(null);
   const [showAddSubject, setShowAddSubject] = useState(false);
-  const [todos, setTodos] = useState<Todo[]>(() => storage.getTodos());
+  const [todos, setTodos] = useState<Todo[]>(() => {
+    const existing = storage.getTodos();
+    const subjects = storage.getSubjects();
+    const assignments = storage.getCachedAssignments();
+    const migrated = existing.map(t =>
+      t.subjectId ? t : { ...t, subjectId: inferSubjectId(t.text, subjects, assignments) },
+    );
+    if (migrated.some((t, i) => t.subjectId !== existing[i].subjectId)) {
+      storage.setTodos(migrated);
+    }
+    return migrated;
+  });
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+    const existing = storage.getTodos();
+    const withTodos = new Set(existing.map(t => t.subjectId ?? 'unassigned'));
+    return new Set(storage.getSubjects().filter(s => !withTodos.has(s.id)).map(s => s.id));
+  });
+  const [addingToGroup, setAddingToGroup] = useState<string | null>(null);
+  const [newTodoText, setNewTodoText] = useState('');
   const [subjectsOpen, setSubjectsOpen] = useState(() => window.innerWidth > 768);
+  const [archivedOpen, setArchivedOpen] = useState(false);
   const [addSubjectForm, setAddSubjectForm] = useState<AddSubjectForm>({ name: '', color: COLORS[0] });
   const [editSubject, setEditSubject] = useState<SubjectEditState | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const touchStartXRef = useRef(0);
+  const wheelCooldownRef = useRef(false);
 
   useEffect(() => {
-    setBlocks(storage.getTimeBlocks().filter(b => isToday(b.startTime)));
     setSubjects(storage.getSubjects());
-
     const tick = () => {
       const now = new Date();
       setCurrentMinutes(now.getHours() * 60 + now.getMinutes());
@@ -89,6 +135,10 @@ export default function DayView() {
     const id = setInterval(tick, 60_000);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    setBlocks(storage.getTimeBlocks().filter(b => isOnDate(b.startTime, selectedDate)));
+  }, [selectedDate]);
 
   useEffect(() => {
     if (!popover) return;
@@ -108,13 +158,14 @@ export default function DayView() {
     return { minutes, label: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}` };
   });
 
-  const showCurrentTime = currentMinutes >= START_HOUR * 60 && currentMinutes < END_HOUR * 60;
+  const isViewingToday = isSameDay(selectedDate, new Date());
+  const showCurrentTime = isViewingToday && currentMinutes >= START_HOUR * 60 && currentMinutes < END_HOUR * 60;
 
   function openAddForm(slotMinutes: number) {
     setPopover(null);
     setAddForm({
       slotMinutes,
-      subjectId: subjects[0]?.id ?? '',
+      subjectId: activeSubjects[0]?.id ?? '',
       task: '',
       durationMinutes: 60,
     });
@@ -124,9 +175,8 @@ export default function DayView() {
     if (!addForm) return;
     const subject = subjects.find(s => s.id === addForm.subjectId);
     if (!subject) return;
-    const now = new Date();
     const start = new Date(
-      now.getFullYear(), now.getMonth(), now.getDate(),
+      selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(),
       Math.floor(addForm.slotMinutes / 60), addForm.slotMinutes % 60,
     );
     const end = new Date(start.getTime() + addForm.durationMinutes * 60_000);
@@ -175,6 +225,19 @@ export default function DayView() {
     setEditSubject(null);
   }
 
+  function archiveSubject(id: string) {
+    const updated = subjects.map(s => s.id === id ? { ...s, archived: true } : s);
+    storage.setSubjects(updated);
+    setSubjects(updated);
+    setEditSubject(null);
+  }
+
+  function restoreSubject(id: string) {
+    const updated = subjects.map(s => s.id === id ? { ...s, archived: false } : s);
+    storage.setSubjects(updated);
+    setSubjects(updated);
+  }
+
   function deleteSubject(id: string) {
     const updated = subjects.filter(s => s.id !== id);
     storage.setSubjects(updated);
@@ -184,7 +247,7 @@ export default function DayView() {
 
   function handleSessionSaved(updatedSubjects: Subject[], updatedBlocks: TimeBlock[]) {
     setSubjects(updatedSubjects);
-    setBlocks(updatedBlocks);
+    setBlocks(updatedBlocks.filter(b => isOnDate(b.startTime, selectedDate)));
   }
 
   function handleLiveBlockUpdate(block: TimeBlock) {
@@ -202,9 +265,114 @@ export default function DayView() {
     setTodos(updated);
   }
 
+  function toggleGroup(groupId: string) {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      next.has(groupId) ? next.delete(groupId) : next.add(groupId);
+      return next;
+    });
+  }
+
+  function startAdding(groupId: string) {
+    setAddingToGroup(groupId);
+    setNewTodoText('');
+    setCollapsedGroups(prev => { const next = new Set(prev); next.delete(groupId); return next; });
+  }
+
+  function addTodo(subjectId: string | undefined) {
+    const text = newTodoText.trim();
+    if (!text) { setAddingToGroup(null); return; }
+    const newTodo: Todo = { id: crypto.randomUUID(), text, done: false, subjectId };
+    const updated = [...todos, newTodo];
+    storage.setTodos(updated);
+    setTodos(updated);
+    setNewTodoText('');
+    setAddingToGroup(null);
+  }
+
+  function handleDateBarWheel(e: React.WheelEvent) {
+    if (Math.abs(e.deltaX) < Math.abs(e.deltaY)) return;
+    if (wheelCooldownRef.current) return;
+    if (Math.abs(e.deltaX) < 30) return;
+    wheelCooldownRef.current = true;
+    setViewWeekStart(d => addDays(d, e.deltaX > 0 ? 7 : -7));
+    setTimeout(() => { wheelCooldownRef.current = false; }, 500);
+  }
+
+  function handleDateBarTouchStart(e: React.TouchEvent) {
+    touchStartXRef.current = e.touches[0].clientX;
+  }
+
+  function handleDateBarTouchEnd(e: React.TouchEvent) {
+    const diff = touchStartXRef.current - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 50) {
+      setViewWeekStart(d => addDays(d, diff > 0 ? 7 : -7));
+    }
+  }
+
+  const activeSubjects = subjects.filter(s => !s.archived);
+  const archivedSubjects = subjects.filter(s => s.archived);
+
+  function selectDate(date: Date) {
+    setSelectedDate(date);
+    setViewWeekStart(getMondayOfWeek(date));
+    setAddForm(null);
+    setPopover(null);
+  }
+
+  const isCurrentWeek = isSameDay(viewWeekStart, getMondayOfWeek(new Date()));
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(viewWeekStart, i));
+
+  const assignmentCountByDay = new Map<string, number>();
+  storage.getCachedAssignments().forEach(a => {
+    if (a.dueAt) {
+      const k = dayKey(new Date(a.dueAt));
+      assignmentCountByDay.set(k, (assignmentCountByDay.get(k) ?? 0) + 1);
+    }
+  });
+
   const gridHeight = TOTAL_SLOTS * SLOT_HEIGHT;
 
   return (
+    <div className={styles.wrapper}>
+      {/* ── Date bar ── */}
+      <div
+        className={styles.dateBar}
+        onWheel={handleDateBarWheel}
+        onTouchStart={handleDateBarTouchStart}
+        onTouchEnd={handleDateBarTouchEnd}
+      >
+        <div className={styles.weekNav}>
+          <button className={styles.weekArrow} onClick={() => setViewWeekStart(d => addDays(d, -7))}>←</button>
+          <button className={styles.weekArrow} onClick={() => setViewWeekStart(d => addDays(d, 7))}>→</button>
+          {!isCurrentWeek && (
+            <button className={styles.todayBtn} onClick={() => selectDate(new Date())}>Today</button>
+          )}
+        </div>
+        <div className={styles.daysRow}>
+          {weekDays.map((day, i) => {
+            const isToday = isSameDay(day, new Date());
+            const isSelected = isSameDay(day, selectedDate);
+            const count = assignmentCountByDay.get(dayKey(day)) ?? 0;
+            return (
+              <div
+                key={i}
+                className={[
+                  styles.dayCol,
+                  isSelected ? styles.dayColSelected : '',
+                  isToday && !isSelected ? styles.dayColToday : '',
+                ].filter(Boolean).join(' ')}
+                onClick={() => selectDate(day)}
+              >
+                <span className={styles.dayAbbr}>{DAY_ABBRS[i]}</span>
+                <span className={styles.dayNum}>{day.getDate()}</span>
+                {count > 0 && <span className={styles.dayBadge}>{count}</span>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
     <div className={styles.container}>
       {/* ── Left panel ── */}
       <div className={styles.left}>
@@ -266,7 +434,7 @@ export default function DayView() {
                 value={addForm.subjectId}
                 onChange={e => setAddForm(f => f && { ...f, subjectId: e.target.value })}
               >
-                {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                {activeSubjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
               <input
                 placeholder="Task"
@@ -332,11 +500,11 @@ export default function DayView() {
           >+</button>
         </div>
 
-        {subjectsOpen && subjects.length === 0 && (
+        {subjectsOpen && activeSubjects.length === 0 && (
           <div className={styles.emptySubjects}>Add a subject to get started.</div>
         )}
 
-        {subjectsOpen && subjects.map(subject => (
+        {subjectsOpen && activeSubjects.map(subject => (
           <div
             key={subject.id}
             className={`${styles.subjectRow}${timerSubject?.id === subject.id ? ` ${styles.highlighted}` : ''}`}
@@ -365,6 +533,7 @@ export default function DayView() {
                 </div>
                 <div className={styles.btnRow}>
                   <button className={`${styles.btn} ${styles.btnAccent}`} onClick={saveEditSubject}>Save</button>
+                  <button className={styles.btn} onClick={() => archiveSubject(subject.id)}>Archive</button>
                   <button className={`${styles.btn} ${styles.btnDanger}`} onClick={() => deleteSubject(subject.id)}>Delete</button>
                   <button className={styles.btn} onClick={() => setEditSubject(null)}>Cancel</button>
                 </div>
@@ -386,21 +555,144 @@ export default function DayView() {
           </div>
         ))}
 
-        {todos.length > 0 && (
-          <>
-            <div className={styles.todosHeader}>Todos</div>
-            {todos.map(todo => (
-              <div
-                key={todo.id}
-                className={`${styles.todoRow}${todo.done ? ` ${styles.todoDone}` : ''}`}
-                onClick={() => toggleTodo(todo.id)}
-              >
-                <span className={styles.todoCheck}>{todo.done ? '✓' : '○'}</span>
-                <span className={styles.todoText}>{todo.text}</span>
+        {subjectsOpen && archivedSubjects.length > 0 && (
+          <div className={styles.archivedSection}>
+            <button
+              className={styles.archivedToggle}
+              onClick={() => setArchivedOpen(o => !o)}
+            >
+              Archived ({archivedSubjects.length}) {archivedOpen ? '▲' : '▾'}
+            </button>
+            {archivedOpen && archivedSubjects.map(subject => (
+              <div key={subject.id} className={styles.archivedRow}>
+                <SubjectDot color={subject.color} size={12} />
+                <span className={styles.subjectName}>{subject.name}</span>
+                <button
+                  className={styles.restoreBtn}
+                  onClick={() => restoreSubject(subject.id)}
+                >Restore</button>
               </div>
             ))}
-          </>
+          </div>
         )}
+
+        <div className={styles.todosSection}>
+          <span className={styles.todosSectionTitle}>Todos</span>
+
+          {activeSubjects.map(subject => {
+            const groupTodos = todos.filter(t => t.subjectId === subject.id);
+            const isCollapsed = collapsedGroups.has(subject.id);
+            const isAdding = addingToGroup === subject.id;
+            const showBody = !isCollapsed || isAdding;
+            const pending = groupTodos.filter(t => !t.done).length;
+
+            return (
+              <div key={subject.id} className={styles.todoGroup}>
+                <div className={styles.todoGroupHeader} onClick={() => toggleGroup(subject.id)}>
+                  <span className={styles.todoGroupBar} style={{ background: subject.color }} />
+                  <span className={styles.todoGroupName}>{subject.name}</span>
+                  {groupTodos.length > 0 && (
+                    <span className={styles.todoGroupCount}>{pending}/{groupTodos.length}</span>
+                  )}
+                  <button
+                    className={styles.todoGroupAdd}
+                    onClick={e => { e.stopPropagation(); startAdding(subject.id); }}
+                    title="Add todo"
+                  >+</button>
+                </div>
+                {showBody && (
+                  <div className={styles.todoGroupBody}>
+                    {groupTodos.map(todo => (
+                      <div
+                        key={todo.id}
+                        className={`${styles.todoItem}${todo.done ? ` ${styles.todoItemDone}` : ''}`}
+                        onClick={() => toggleTodo(todo.id)}
+                      >
+                        <span className={styles.todoCheck}>{todo.done ? '✓' : '○'}</span>
+                        <div className={styles.todoContent}>
+                          <span className={styles.todoText}>{todo.text}</span>
+                          {todo.dueDate && <div className={styles.todoDueDate}>{todo.dueDate}</div>}
+                        </div>
+                      </div>
+                    ))}
+                    {isAdding && (
+                      <div className={styles.todoAddRow}>
+                        <input
+                          className={styles.todoAddInput}
+                          placeholder="New todo…"
+                          value={newTodoText}
+                          autoFocus
+                          onChange={e => setNewTodoText(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') addTodo(subject.id);
+                            if (e.key === 'Escape') setAddingToGroup(null);
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {(() => {
+            const unassigned = todos.filter(t => !t.subjectId);
+            const isAdding = addingToGroup === 'unassigned';
+            if (unassigned.length === 0 && !isAdding) return null;
+            const isCollapsed = collapsedGroups.has('unassigned');
+            const showBody = !isCollapsed || isAdding;
+            const pending = unassigned.filter(t => !t.done).length;
+            return (
+              <div className={styles.todoGroup}>
+                <div className={styles.todoGroupHeader} onClick={() => toggleGroup('unassigned')}>
+                  <span className={styles.todoGroupBar} style={{ background: 'var(--text-muted)' }} />
+                  <span className={styles.todoGroupName}>Unassigned</span>
+                  {unassigned.length > 0 && (
+                    <span className={styles.todoGroupCount}>{pending}/{unassigned.length}</span>
+                  )}
+                  <button
+                    className={styles.todoGroupAdd}
+                    onClick={e => { e.stopPropagation(); startAdding('unassigned'); }}
+                    title="Add todo"
+                  >+</button>
+                </div>
+                {showBody && (
+                  <div className={styles.todoGroupBody}>
+                    {unassigned.map(todo => (
+                      <div
+                        key={todo.id}
+                        className={`${styles.todoItem}${todo.done ? ` ${styles.todoItemDone}` : ''}`}
+                        onClick={() => toggleTodo(todo.id)}
+                      >
+                        <span className={styles.todoCheck}>{todo.done ? '✓' : '○'}</span>
+                        <div className={styles.todoContent}>
+                          <span className={styles.todoText}>{todo.text}</span>
+                          {todo.dueDate && <div className={styles.todoDueDate}>{todo.dueDate}</div>}
+                        </div>
+                      </div>
+                    ))}
+                    {isAdding && (
+                      <div className={styles.todoAddRow}>
+                        <input
+                          className={styles.todoAddInput}
+                          placeholder="New todo…"
+                          value={newTodoText}
+                          autoFocus
+                          onChange={e => setNewTodoText(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') addTodo(undefined);
+                            if (e.key === 'Escape') setAddingToGroup(null);
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </div>
       </div>
 
       {/* ── Timer Overlay ── */}
@@ -447,6 +739,7 @@ export default function DayView() {
           </div>
         </div>
       )}
+    </div>
     </div>
   );
 }

@@ -7,6 +7,7 @@ export interface Subject {
   name: string;
   color: SubjectColor;
   totalTimeToday: number; // seconds
+  archived?: boolean;
 }
 
 export interface TimeBlock {
@@ -51,6 +52,7 @@ export interface CanvasAnnouncement {
   title: string;
   message: string;
   postedAt: string;
+  htmlUrl: string;
   courseId: number;
 }
 
@@ -65,4 +67,6 @@ export interface Todo {
   id: string;
   text: string;
   done: boolean;
+  subjectId?: string;
+  dueDate?: string;
 }

@@ -25,6 +25,24 @@ const DEFAULT_SUBJECTS: Subject[] = [
   { id: '6', name: 'Other',    color: '#26c6da', totalTimeToday: 0 },
 ];
 
+export function inferSubjectId(
+  text: string,
+  subjects: Subject[],
+  assignments: CanvasAssignment[],
+): string | undefined {
+  const lower = text.toLowerCase();
+  for (const s of subjects) {
+    if (s.name.length > 1 && lower.includes(s.name.toLowerCase())) return s.id;
+  }
+  for (const a of assignments) {
+    if (a.courseName.length > 1 && lower.includes(a.courseName.toLowerCase())) {
+      const match = subjects.find(s => s.name.toLowerCase() === a.courseName.toLowerCase());
+      if (match) return match.id;
+    }
+  }
+  return undefined;
+}
+
 function get<T>(key: string, fallback: T): T {
   const raw = localStorage.getItem(key);
   if (!raw) return fallback;

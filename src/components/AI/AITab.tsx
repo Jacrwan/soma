@@ -83,8 +83,16 @@ function parseScheduleBlocks(content: string): TimeBlock[] | null {
 
 function parseTodos(content: string): string[] | null {
   const match = content.match(/<todos>([\s\S]*?)<\/todos>/);
+  console.log('[todos] raw tag match:', match ? match[1].trim() : 'NO MATCH');
   if (!match) return null;
-  try { return JSON.parse(match[1].trim()); } catch { return null; }
+  try {
+    const parsed = JSON.parse(match[1].trim());
+    console.log('[todos] parsed array:', parsed);
+    return parsed;
+  } catch (e) {
+    console.error('[todos] JSON.parse failed:', e);
+    return null;
+  }
 }
 
 function buildSystemPrompt(): string {
@@ -268,6 +276,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       const response = await sendMessage(apiMessages, systemPrompt);
       const scheduleBlocks = parseScheduleBlocks(response) ?? undefined;
       const todos = parseTodos(response) ?? undefined;
+      console.log('[todos] attached to message:', todos);
       setMessages(prev => [...prev, {
         id: crypto.randomUUID(),
         role: 'assistant',
@@ -297,10 +306,39 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, scheduleDismissed: true } : m));
   }
 
-  function acceptTodos(msgId: string, todoTexts: string[]) {
-    const newTodos: Todo[] = todoTexts.map(text => ({ id: crypto.randomUUID(), text, done: false }));
+  async function acceptTodos(msgId: string, todoTexts: string[]) {
+    console.log('[todos] acceptTodos called with:', todoTexts);
+    const subjects = storage.getSubjects().filter(s => !s.archived);
+    const subjectNames = subjects.map(s => s.name);
+
+    let subjectAssignments: string[] = todoTexts.map(() => 'Unassigned');
+    try {
+      const systemPrompt = 'You are a todo categorizer. Given a list of todos and a list of subjects, assign each todo to the most appropriate subject. Respond with only a JSON array of subject names in the same order as the todos, exactly matching one of the provided subject names or "Unassigned" if none fit.';
+      const userMessage = `Subjects: ${JSON.stringify(subjectNames)}.\nTodos:\n${todoTexts.map((t, i) => `${i + 1}. ${t}`).join('\n')}`;
+      const response = await sendMessage([{ role: 'user', content: userMessage }], systemPrompt);
+      console.log('[todos] categorization response:', response);
+      const parsed = JSON.parse(response.replace(/```json|```/g, '').trim());
+      if (Array.isArray(parsed) && parsed.length === todoTexts.length) {
+        subjectAssignments = parsed;
+      }
+    } catch (e) {
+      console.warn('[todos] categorization failed, leaving unassigned:', e);
+    }
+
+    const newTodos: Todo[] = todoTexts.map((text, i) => {
+      const assignedName = subjectAssignments[i];
+      const subject = subjects.find(s => s.name.toLowerCase() === assignedName?.toLowerCase());
+      return { id: crypto.randomUUID(), text, done: false, subjectId: subject?.id };
+    });
+
+    console.log('[todos] with subjectIds:', newTodos.map(t => ({
+      text: t.text,
+      subject: subjects.find(s => s.id === t.subjectId)?.name ?? 'Unassigned',
+    })));
     storage.setTodos(newTodos);
+    console.log('[todos] soma_todos in localStorage:', localStorage.getItem('soma_todos'));
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, todosDismissed: true } : m));
+    onSwitchToToday();
   }
 
   function dismissTodos(msgId: string) {
