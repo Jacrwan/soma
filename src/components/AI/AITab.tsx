@@ -291,8 +291,17 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
 
       <div className={styles.messageList}>
         {messages.length === 0 && (
-          <div className={styles.emptyHint}>
-            Start by describing what you need to accomplish today.
+          <div className={styles.emptyState}>
+            <div className={styles.emptyHint}>
+              Start by describing what you need to accomplish today.
+            </div>
+            <div className={styles.suggestions}>
+              {['Plan my day', 'What should I study first?', 'Generate a schedule for today'].map(s => (
+                <button key={s} className={styles.suggestionBtn} onClick={() => setInput(s)}>
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {messages.map(msg => (

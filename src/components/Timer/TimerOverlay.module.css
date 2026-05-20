@@ -23,6 +23,19 @@
   animation: fadeIn 200ms ease;
 }
 
+@media (max-width: 768px) {
+  .backdrop {
+    align-items: stretch;
+  }
+  .card {
+    border-radius: 0;
+    flex: 1;
+    justify-content: center;
+    min-height: 100vh;
+    padding-bottom: var(--space-lg);
+  }
+}
+
 .card {
   width: 100%;
   background: var(--bg);

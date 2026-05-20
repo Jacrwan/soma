@@ -72,6 +72,7 @@ export default function DayView() {
   const [timerSubject, setTimerSubject] = useState<Subject | null>(null);
   const [showAddSubject, setShowAddSubject] = useState(false);
   const [todos, setTodos] = useState<Todo[]>(() => storage.getTodos());
+  const [subjectsOpen, setSubjectsOpen] = useState(() => window.innerWidth > 768);
   const [addSubjectForm, setAddSubjectForm] = useState<AddSubjectForm>({ name: '', color: COLORS[0] });
   const [editSubject, setEditSubject] = useState<SubjectEditState | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -190,6 +191,11 @@ export default function DayView() {
     setBlocks(prev => prev.map(b => b.id === block.id ? block : b));
   }
 
+  useEffect(() => {
+    document.body.style.overflow = timerSubject ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [timerSubject]);
+
   function toggleTodo(id: string) {
     const updated = todos.map(t => t.id === id ? { ...t, done: !t.done } : t);
     storage.setTodos(updated);
@@ -202,6 +208,9 @@ export default function DayView() {
     <div className={styles.container}>
       {/* ── Left panel ── */}
       <div className={styles.left}>
+        {blocks.length === 0 && (
+          <div className={styles.emptyBlocks}>No blocks yet. Click a slot to add one.</div>
+        )}
         <div className={styles.gridWrapper} style={{ height: gridHeight }}>
 
           {slots.map(slot => (
@@ -310,14 +319,24 @@ export default function DayView() {
       {/* ── Right panel ── */}
       <div className={styles.right}>
         <div className={styles.subjectHeader}>
-          <span className={styles.subjectHeaderTitle}>Subjects</span>
+          <button
+            className={styles.subjectHeaderToggle}
+            onClick={() => setSubjectsOpen(o => !o)}
+          >
+            <span className={styles.subjectHeaderTitle}>Subjects</span>
+            <span className={styles.subjectCaret}>{subjectsOpen ? '▲' : '▾'}</span>
+          </button>
           <button
             className={styles.addSubjectBtn}
             onClick={() => { setShowAddSubject(true); setEditSubject(null); }}
           >+</button>
         </div>
 
-        {subjects.map(subject => (
+        {subjectsOpen && subjects.length === 0 && (
+          <div className={styles.emptySubjects}>Add a subject to get started.</div>
+        )}
+
+        {subjectsOpen && subjects.map(subject => (
           <div
             key={subject.id}
             className={`${styles.subjectRow}${timerSubject?.id === subject.id ? ` ${styles.highlighted}` : ''}`}

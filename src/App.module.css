@@ -25,3 +25,11 @@
 }
 
 .main { flex: 1; overflow: hidden; }
+
+@media (max-width: 768px) {
+  .nav button {
+    flex: 1;
+    padding: 12px 0;
+    text-align: center;
+  }
+}

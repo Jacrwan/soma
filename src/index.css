@@ -37,3 +37,7 @@ body {
 
 button { cursor: pointer; font-family: inherit; }
 input, textarea { font-family: inherit; }
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
