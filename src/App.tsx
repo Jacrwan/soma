@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import DayView from './components/DayView/DayView';
 import CanvasTab from './components/Canvas/CanvasTab';
+import AITab from './components/AI/AITab';
 import styles from './App.module.css';
 
 type Tab = 'today' | 'canvas' | 'ai';
@@ -18,7 +19,7 @@ export default function App() {
       <main className={styles.main}>
         {tab === 'today'  && <DayView />}
         {tab === 'canvas' && <CanvasTab />}
-        {tab === 'ai'     && <div>AI tab</div>}
+        {tab === 'ai'     && <AITab onSwitchToToday={() => setTab('today')} />}
       </main>
     </div>
   );

@@ -1,4 +1,4 @@
-import { Subject, TimeBlock, TimerSession } from '../types';
+import { Subject, TimeBlock, TimerSession, CanvasAssignment, Todo } from '../types';
 
 const KEYS = {
   subjects: 'soma_subjects',
@@ -7,6 +7,9 @@ const KEYS = {
   canvasToken: 'canvas_token',
   canvasBaseUrl: 'canvas_base_url',
   assignmentStatus: 'canvas_assignment_status',
+  cachedAssignments: 'soma_canvas_cache',
+  anthropicKey: 'anthropic_api_key',
+  todos: 'soma_todos',
 };
 
 const DEFAULT_SUBJECTS: Subject[] = [
@@ -46,4 +49,13 @@ export const storage = {
 
   getAssignmentStatus: (): Record<number, string> => get(KEYS.assignmentStatus, {}),
   setAssignmentStatus: (v: Record<number, string>) => set(KEYS.assignmentStatus, v),
+
+  getCachedAssignments: (): CanvasAssignment[] => get(KEYS.cachedAssignments, []),
+  setCachedAssignments: (v: CanvasAssignment[]) => set(KEYS.cachedAssignments, v),
+
+  getAnthropicKey: (): string => get(KEYS.anthropicKey, ''),
+  setAnthropicKey: (v: string) => set(KEYS.anthropicKey, v),
+
+  getTodos: (): Todo[] => get(KEYS.todos, []),
+  setTodos: (v: Todo[]) => set(KEYS.todos, v),
 };

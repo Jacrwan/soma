@@ -47,6 +47,7 @@ export default function CanvasTab() {
       const all = (await Promise.all(coursesData.map(c => getAssignments(tk, url, c)))).flat();
       all.sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime());
       setAssignments(all);
+      storage.setCachedAssignments(all);
     } catch {
       setError('Failed to load assignments. Check your token and URL.');
     } finally {

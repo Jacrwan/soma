@@ -1,1 +1,304 @@
-/* AITab styles — implemented in Phase 4 */
+/* ── Setup ─────────────────────────────────────────────────────────────── */
+
+.setupOverlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.setupCard {
+  width: 360px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.setupTitle {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.setupRow {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.setupInput {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.setupInput:focus {
+  border-color: var(--accent);
+}
+
+.setupBtn {
+  padding: 7px 14px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.setupBtn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.setupBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.setupHint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Chat layout ───────────────────────────────────────────────────────── */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px var(--space-md);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.headerTitle {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.clearKeyBtn {
+  background: none;
+  border: none;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.clearKeyBtn:hover {
+  color: var(--danger);
+}
+
+.messageList {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.emptyHint {
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+  margin-top: var(--space-xl);
+}
+
+/* ── Messages ──────────────────────────────────────────────────────────── */
+
+.messageRow {
+  display: flex;
+  flex-direction: column;
+  max-width: 75%;
+  gap: var(--space-sm);
+}
+
+.userRow {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.assistantRow {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+
+.bubble {
+  padding: 9px 13px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.userBubble {
+  background: var(--accent);
+  color: #fff;
+  border-bottom-right-radius: 3px;
+}
+
+.assistantBubble {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-bottom-left-radius: 3px;
+}
+
+.thinkingBubble {
+  color: var(--text-muted);
+  letter-spacing: 2px;
+}
+
+/* ── Schedule / Todo cards ─────────────────────────────────────────────── */
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  width: 340px;
+  max-width: 100%;
+}
+
+.cardHeader {
+  padding: 10px var(--space-md);
+  font-size: 13px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.cardBody {
+  padding: var(--space-sm) var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.scheduleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  font-size: 13px;
+}
+
+.scheduleTime {
+  width: 72px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.scheduleTask {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scheduleDur {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.todoRow {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.cardActions {
+  display: flex;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-top: 1px solid var(--border);
+}
+
+.cardBtn {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.cardBtn:hover {
+  background: var(--bg-secondary);
+}
+
+.cardBtnAccent {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.cardBtnAccent:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+/* ── Input row ─────────────────────────────────────────────────────────── */
+
+.inputRow {
+  display: flex;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.textInput {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.textInput:focus {
+  border-color: var(--accent);
+}
+
+.textInput:disabled {
+  background: var(--bg-secondary);
+}
+
+.sendBtn {
+  padding: 8px 16px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sendBtn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.sendBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -44,3 +44,9 @@ export interface CanvasCourse {
   name: string;
   courseCode: string;
 }
+
+export interface Todo {
+  id: string;
+  text: string;
+  done: boolean;
+}

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { storage } from '../../lib/storage';
-import { Subject, TimeBlock, SubjectColor } from '../../types';
+import { Subject, TimeBlock, SubjectColor, Todo } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
 import TimerOverlay from '../Timer/TimerOverlay';
 import styles from './DayView.module.css';
@@ -71,6 +71,7 @@ export default function DayView() {
   const [popover, setPopover] = useState<PopoverState | null>(null);
   const [timerSubject, setTimerSubject] = useState<Subject | null>(null);
   const [showAddSubject, setShowAddSubject] = useState(false);
+  const [todos, setTodos] = useState<Todo[]>(() => storage.getTodos());
   const [addSubjectForm, setAddSubjectForm] = useState<AddSubjectForm>({ name: '', color: COLORS[0] });
   const [editSubject, setEditSubject] = useState<SubjectEditState | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -187,6 +188,12 @@ export default function DayView() {
 
   function handleLiveBlockUpdate(block: TimeBlock) {
     setBlocks(prev => prev.map(b => b.id === block.id ? block : b));
+  }
+
+  function toggleTodo(id: string) {
+    const updated = todos.map(t => t.id === id ? { ...t, done: !t.done } : t);
+    storage.setTodos(updated);
+    setTodos(updated);
   }
 
   const gridHeight = TOTAL_SLOTS * SLOT_HEIGHT;
@@ -359,6 +366,22 @@ export default function DayView() {
             )}
           </div>
         ))}
+
+        {todos.length > 0 && (
+          <>
+            <div className={styles.todosHeader}>Todos</div>
+            {todos.map(todo => (
+              <div
+                key={todo.id}
+                className={`${styles.todoRow}${todo.done ? ` ${styles.todoDone}` : ''}`}
+                onClick={() => toggleTodo(todo.id)}
+              >
+                <span className={styles.todoCheck}>{todo.done ? '✓' : '○'}</span>
+                <span className={styles.todoText}>{todo.text}</span>
+              </div>
+            ))}
+          </>
+        )}
       </div>
 
       {/* ── Timer Overlay ── */}
