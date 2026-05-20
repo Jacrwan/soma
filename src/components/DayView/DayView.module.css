@@ -748,6 +748,111 @@
   color: var(--success);
 }
 
+/* ── Pin to schedule ────────────────────────────────────────────────────── */
+
+.pinBtn {
+  opacity: 0;
+  background: none;
+  border: none;
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 2px 3px;
+  cursor: pointer;
+  border-radius: 3px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: opacity 0.1s;
+}
+
+.todoItem:hover .pinBtn {
+  opacity: 1;
+}
+
+.pinBtn:hover {
+  color: var(--accent);
+  background: var(--bg-tertiary);
+}
+
+.pinPopover {
+  margin: 2px 8px 4px 16px;
+  padding: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  animation: popoverIn 150ms ease;
+}
+
+.pinFormRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.pinLabel {
+  width: 56px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.pinTimeSelects {
+  display: flex;
+  gap: 4px;
+}
+
+.pinSelect {
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.pinDurationInput {
+  width: 58px;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.pinDurationInput:focus {
+  border-color: var(--accent);
+}
+
+.pinDurationUnit {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.pinActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.pinCancel {
+  background: none;
+  border: none;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.pinCancel:hover {
+  color: var(--text-secondary);
+}
+
 .todoContent {
   flex: 1;
   min-width: 0;

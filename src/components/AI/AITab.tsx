@@ -308,6 +308,16 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   function acceptSchedule(msgId: string, blocks: TimeBlock[]) {
     const existing = storage.getTimeBlocks().filter(b => !isToday(b.startTime));
     storage.setTimeBlocks([...existing, ...blocks]);
+
+    const existingTodos = storage.getTodos();
+    const existingTexts = new Set(existingTodos.map(t => t.text));
+    const newTodos: Todo[] = blocks
+      .filter(b => b.task && !existingTexts.has(b.task))
+      .map(b => ({ id: crypto.randomUUID(), text: b.task, status: 'nothing' as const, subjectId: b.subjectId }));
+    if (newTodos.length > 0) {
+      storage.setTodos([...existingTodos, ...newTodos]);
+    }
+
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, scheduleDismissed: true } : m));
     onSwitchToToday();
   }

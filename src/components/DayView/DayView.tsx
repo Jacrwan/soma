@@ -122,6 +122,8 @@ export default function DayView() {
   const [newTodoText, setNewTodoText] = useState('');
   const [todoPopoverId, setTodoPopoverId] = useState<string | null>(null);
   const [statusPopoverId, setStatusPopoverId] = useState<string | null>(null);
+  const [pinPopoverId, setPinPopoverId] = useState<string | null>(null);
+  const [pinForm, setPinForm] = useState({ hour: 9, minute: 0, durationMinutes: 60 });
   const [initialTimerTask, setInitialTimerTask] = useState('');
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [addSubjectForm, setAddSubjectForm] = useState<AddSubjectForm>({ name: '', color: COLORS[0] });
@@ -129,6 +131,7 @@ export default function DayView() {
   const popoverRef = useRef<HTMLDivElement>(null);
   const todoPopoverRef = useRef<HTMLDivElement>(null);
   const statusPopoverRef = useRef<HTMLDivElement>(null);
+  const pinPopoverRef = useRef<HTMLDivElement>(null);
   const touchStartXRef = useRef(0);
   const wheelCooldownRef = useRef(false);
 
@@ -179,6 +182,17 @@ export default function DayView() {
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [statusPopoverId]);
+
+  useEffect(() => {
+    if (!pinPopoverId) return;
+    const onDown = (e: MouseEvent) => {
+      if (pinPopoverRef.current && !pinPopoverRef.current.contains(e.target as Node)) {
+        setPinPopoverId(null);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [pinPopoverId]);
 
   const slots = Array.from({ length: TOTAL_SLOTS }, (_, i) => {
     const minutes = START_HOUR * 60 + i * 30;
@@ -338,6 +352,36 @@ export default function DayView() {
     setTodoPopoverId(null);
     setInitialTimerTask(task);
     setTimerSubject(subject);
+  }
+
+  function pinTodo(todo: Todo) {
+    const start = new Date(
+      selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(),
+      pinForm.hour, pinForm.minute,
+    );
+    const end = new Date(start.getTime() + pinForm.durationMinutes * 60_000);
+    const block: TimeBlock = {
+      id: crypto.randomUUID(),
+      subjectId: todo.subjectId ?? '',
+      task: todo.text,
+      startTime: start.toISOString(),
+      endTime: end.toISOString(),
+      source: 'manual',
+    };
+    storage.setTimeBlocks([...storage.getTimeBlocks(), block]);
+    setBlocks(prev => [...prev, block]);
+    setPinPopoverId(null);
+  }
+
+  function openPinPopover(todoId: string) {
+    setStatusPopoverId(null);
+    setTodoPopoverId(null);
+    const now = new Date();
+    const h = now.getHours(), m = now.getMinutes();
+    const hour = isViewingToday ? Math.min(m >= 30 ? h + 1 : h, 23) : 9;
+    const minute = isViewingToday ? (m < 30 ? 30 : 0) : 0;
+    setPinForm({ hour, minute, durationMinutes: 60 });
+    setPinPopoverId(prev => prev === todoId ? null : todoId);
   }
 
   function handleDateBarWheel(e: React.WheelEvent) {
@@ -648,6 +692,11 @@ export default function DayView() {
                           >{todo.text}</span>
                           {todo.dueDate && <div className={styles.todoDueDate}>{todo.dueDate}</div>}
                         </div>
+                        <button
+                          className={styles.pinBtn}
+                          onClick={e => { e.stopPropagation(); openPinPopover(todo.id); }}
+                          title="Pin to schedule"
+                        >⊕</button>
                       </div>
                       {statusPopoverId === todo.id && (
                         <div className={styles.statusPopover} ref={statusPopoverRef}>
@@ -674,6 +723,50 @@ export default function DayView() {
                               className={styles.popoverDismiss}
                               onClick={() => setTodoPopoverId(null)}
                             >Dismiss</button>
+                          </div>
+                        </div>
+                      )}
+                      {pinPopoverId === todo.id && (
+                        <div className={styles.pinPopover} ref={pinPopoverRef}>
+                          <div className={styles.pinFormRow}>
+                            <label className={styles.pinLabel}>Start</label>
+                            <div className={styles.pinTimeSelects}>
+                              <select
+                                className={styles.pinSelect}
+                                value={pinForm.hour}
+                                onChange={e => setPinForm(f => ({ ...f, hour: Number(e.target.value) }))}
+                              >
+                                {Array.from({ length: 18 }, (_, i) => i + 6).map(h => {
+                                  const ampm = h >= 12 ? 'PM' : 'AM';
+                                  const label = `${h % 12 || 12} ${ampm}`;
+                                  return <option key={h} value={h}>{label}</option>;
+                                })}
+                              </select>
+                              <select
+                                className={styles.pinSelect}
+                                value={pinForm.minute}
+                                onChange={e => setPinForm(f => ({ ...f, minute: Number(e.target.value) }))}
+                              >
+                                <option value={0}>:00</option>
+                                <option value={30}>:30</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div className={styles.pinFormRow}>
+                            <label className={styles.pinLabel}>Duration</label>
+                            <input
+                              type="number"
+                              className={styles.pinDurationInput}
+                              value={pinForm.durationMinutes}
+                              min={15}
+                              step={15}
+                              onChange={e => setPinForm(f => ({ ...f, durationMinutes: Math.max(15, Number(e.target.value)) }))}
+                            />
+                            <span className={styles.pinDurationUnit}>min</span>
+                          </div>
+                          <div className={styles.pinActions}>
+                            <button className={`${styles.btn} ${styles.btnAccent}`} onClick={() => pinTodo(todo)}>Pin</button>
+                            <button className={styles.pinCancel} onClick={() => setPinPopoverId(null)}>Cancel</button>
                           </div>
                         </div>
                       )}
@@ -770,6 +863,11 @@ export default function DayView() {
                           >{todo.text}</span>
                           {todo.dueDate && <div className={styles.todoDueDate}>{todo.dueDate}</div>}
                         </div>
+                        <button
+                          className={styles.pinBtn}
+                          onClick={e => { e.stopPropagation(); openPinPopover(todo.id); }}
+                          title="Pin to schedule"
+                        >⊕</button>
                       </div>
                       {statusPopoverId === todo.id && (
                         <div className={styles.statusPopover} ref={statusPopoverRef}>
@@ -792,6 +890,50 @@ export default function DayView() {
                               className={styles.popoverDismiss}
                               onClick={() => setTodoPopoverId(null)}
                             >Dismiss</button>
+                          </div>
+                        </div>
+                      )}
+                      {pinPopoverId === todo.id && (
+                        <div className={styles.pinPopover} ref={pinPopoverRef}>
+                          <div className={styles.pinFormRow}>
+                            <label className={styles.pinLabel}>Start</label>
+                            <div className={styles.pinTimeSelects}>
+                              <select
+                                className={styles.pinSelect}
+                                value={pinForm.hour}
+                                onChange={e => setPinForm(f => ({ ...f, hour: Number(e.target.value) }))}
+                              >
+                                {Array.from({ length: 18 }, (_, i) => i + 6).map(h => {
+                                  const ampm = h >= 12 ? 'PM' : 'AM';
+                                  const label = `${h % 12 || 12} ${ampm}`;
+                                  return <option key={h} value={h}>{label}</option>;
+                                })}
+                              </select>
+                              <select
+                                className={styles.pinSelect}
+                                value={pinForm.minute}
+                                onChange={e => setPinForm(f => ({ ...f, minute: Number(e.target.value) }))}
+                              >
+                                <option value={0}>:00</option>
+                                <option value={30}>:30</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div className={styles.pinFormRow}>
+                            <label className={styles.pinLabel}>Duration</label>
+                            <input
+                              type="number"
+                              className={styles.pinDurationInput}
+                              value={pinForm.durationMinutes}
+                              min={15}
+                              step={15}
+                              onChange={e => setPinForm(f => ({ ...f, durationMinutes: Math.max(15, Number(e.target.value)) }))}
+                            />
+                            <span className={styles.pinDurationUnit}>min</span>
+                          </div>
+                          <div className={styles.pinActions}>
+                            <button className={`${styles.btn} ${styles.btnAccent}`} onClick={() => pinTodo(todo)}>Pin</button>
+                            <button className={styles.pinCancel} onClick={() => setPinPopoverId(null)}>Cancel</button>
                           </div>
                         </div>
                       )}
