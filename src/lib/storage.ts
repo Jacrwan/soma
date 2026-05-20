@@ -1,4 +1,4 @@
-import { Subject, TimeBlock, TimerSession, CanvasAssignment, CanvasAnnouncement, CanvasModule, CanvasCourse, Todo } from '../types';
+import { Subject, TimeBlock, TimerSession, CanvasAssignment, CanvasAnnouncement, CanvasModule, CanvasCourse, Todo, GoogleCalendarEvent } from '../types';
 
 const KEYS = {
   subjects: 'soma_subjects',
@@ -14,6 +14,10 @@ const KEYS = {
   cacheTimestamp: 'soma_canvas_cache_timestamp',
   anthropicKey: 'anthropic_api_key',
   todos: 'soma_todos',
+  googleToken: 'soma_google_token',
+  googleClientId: 'soma_google_client_id',
+  googleEvents: 'soma_google_events',
+  googleCacheTimestamp: 'soma_google_cache_timestamp',
 };
 
 const DEFAULT_SUBJECTS: Subject[] = [
@@ -92,4 +96,16 @@ export const storage = {
 
   getTodos: (): Todo[] => get(KEYS.todos, []),
   setTodos: (v: Todo[]) => set(KEYS.todos, v),
+
+  getGoogleToken: (): string => get(KEYS.googleToken, ''),
+  setGoogleToken: (v: string) => set(KEYS.googleToken, v),
+
+  getGoogleClientId: (): string => get(KEYS.googleClientId, ''),
+  setGoogleClientId: (v: string) => set(KEYS.googleClientId, v),
+
+  getCachedGoogleEvents: (): GoogleCalendarEvent[] => get(KEYS.googleEvents, []),
+  setCachedGoogleEvents: (v: GoogleCalendarEvent[]) => set(KEYS.googleEvents, v),
+
+  getGoogleCacheTimestamp: (): number | null => get<number | null>(KEYS.googleCacheTimestamp, null),
+  setGoogleCacheTimestamp: (v: number) => set(KEYS.googleCacheTimestamp, v),
 };

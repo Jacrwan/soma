@@ -96,12 +96,23 @@ function parseTodos(content: string): string[] | null {
 }
 
 
+function fmtTime12(iso: string): string {
+  const d = new Date(iso);
+  const h = d.getHours() % 12 || 12;
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const ampm = d.getHours() >= 12 ? 'PM' : 'AM';
+  return `${h}:${m} ${ampm}`;
+}
+
 function buildSystemPrompt(): string {
   const subjects = storage.getSubjects();
   const assignments = storage.getCachedAssignments();
   const announcements = storage.getCachedAnnouncements();
   const modules = storage.getCachedModules();
   const blocks = storage.getTimeBlocks().filter(b => isToday(b.startTime));
+  const gcalEvents = storage.getCachedGoogleEvents().filter(
+    e => !!e.start.dateTime && isToday(e.start.dateTime),
+  );
 
   const now = new Date();
 
@@ -115,7 +126,7 @@ function buildSystemPrompt(): string {
 
   const upcoming = assignments;
 
-  const assignmentStatus = storage.getAssignmentStatus();
+  const assignmentStatus = storage.getAssignmentStatus() as Record<string, string>;
   const statusLabel: Record<string, string> = {
     not_started: 'not started',
     in_progress: 'in progress',
@@ -143,6 +154,14 @@ function buildSystemPrompt(): string {
         return `- ${fmtBlockTime(b.startTime)}–${fmtBlockTime(b.endTime)}: ${subj?.name ?? 'Unknown'} — ${b.task}`;
       }).join('\n')
     : 'No blocks scheduled yet';
+
+  const gcalStr = gcalEvents.length > 0
+    ? gcalEvents.map(e => {
+        const start = fmtTime12(e.start.dateTime!);
+        const end = e.end.dateTime ? fmtTime12(e.end.dateTime) : start;
+        return `- ${e.summary ?? '(No title)'}: ${start} – ${end}`;
+      }).join('\n')
+    : '';
 
   const courseIds = [...new Set(upcoming.map(a => a.courseId))];
 
@@ -181,6 +200,7 @@ ${assignmentsStr}
 
 Current schedule:
 ${blocksStr}
+${gcalStr ? `\nExisting calendar events (read-only, do not schedule over these):\n${gcalStr}` : ''}
 ${announcementsStr ? `\nRecent course announcements:\n${announcementsStr}` : ''}
 ${modulesStr ? `\nCourse modules (structure):\n${modulesStr}` : ''}
 When the user asks you to generate a schedule or todo list, respond with:

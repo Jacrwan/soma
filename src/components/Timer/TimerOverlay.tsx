@@ -30,7 +30,7 @@ interface Props {
 export default function TimerOverlay({ subject, onClose, onSessionSaved, onLiveBlockUpdate, initialTask }: Props) {
   const [task, setTask] = useState(initialTask ?? '');
   const [step, setStep] = useState<'input' | 'running'>('input');
-  const { elapsed, isRunning, isPaused, startTime, start, pause, resume, stop } = useTimer();
+  const { elapsed, isRunning, isPaused, start, pause, resume, stop } = useTimer();
   const liveBlockRef = useRef<TimeBlock | null>(null);
   const startTimeRef = useRef<string | null>(null);
   const elapsedRef = useRef(0);

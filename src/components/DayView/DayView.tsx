@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { storage, inferSubjectId } from '../../lib/storage';
-import { Subject, TimeBlock, SubjectColor, Todo } from '../../types';
+import { Subject, TimeBlock, SubjectColor, Todo, GoogleCalendarEvent } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
 import TimerOverlay from '../Timer/TimerOverlay';
 import styles from './DayView.module.css';
@@ -128,6 +128,7 @@ export default function DayView() {
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [addSubjectForm, setAddSubjectForm] = useState<AddSubjectForm>({ name: '', color: COLORS[0] });
   const [editSubject, setEditSubject] = useState<SubjectEditState | null>(null);
+  const [gcalEvents, setGcalEvents] = useState<GoogleCalendarEvent[]>([]);
   const popoverRef = useRef<HTMLDivElement>(null);
   const todoPopoverRef = useRef<HTMLDivElement>(null);
   const statusPopoverRef = useRef<HTMLDivElement>(null);
@@ -148,6 +149,16 @@ export default function DayView() {
 
   useEffect(() => {
     setBlocks(storage.getTimeBlocks().filter(b => isOnDate(b.startTime, selectedDate)));
+  }, [selectedDate]);
+
+  useEffect(() => {
+    function loadGcal() {
+      const cached = storage.getCachedGoogleEvents();
+      setGcalEvents(cached.filter(e => !!e.start.dateTime && isOnDate(e.start.dateTime, selectedDate)));
+    }
+    loadGcal();
+    window.addEventListener('soma_gcal_updated', loadGcal);
+    return () => window.removeEventListener('soma_gcal_updated', loadGcal);
   }, [selectedDate]);
 
   useEffect(() => {
@@ -514,6 +525,28 @@ export default function DayView() {
               >
                 <span className={styles.blockSubject}>{subject?.name}</span>
                 <span className={styles.blockTask}>{block.task}</span>
+              </div>
+            );
+          })}
+
+          {gcalEvents.map(event => {
+            if (!event.start.dateTime) return null;
+            const start = new Date(event.start.dateTime);
+            const end = new Date(event.end.dateTime ?? event.start.dateTime);
+            const startMin = start.getHours() * 60 + start.getMinutes();
+            const durMin = Math.max((end.getTime() - start.getTime()) / 60_000, 30);
+            if (startMin < START_HOUR * 60 || startMin >= END_HOUR * 60) return null;
+            return (
+              <div
+                key={event.id}
+                className={styles.gcalBlock}
+                style={{
+                  top: minToTop(startMin),
+                  height: durToHeight(durMin),
+                }}
+              >
+                <span className={styles.gcalBadge}>G</span>
+                <span className={styles.gcalTitle}>{event.summary ?? '(No title)'}</span>
               </div>
             );
           })}
