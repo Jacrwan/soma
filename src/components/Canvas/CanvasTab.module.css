@@ -1,0 +1,340 @@
+/* ── Setup ─────────────────────────────────────────────────────────────── */
+
+.setupOverlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.setupCard {
+  width: 360px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.setupTitle {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.setupField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.setupLabel {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.setupInput {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--text-primary);
+  outline: none;
+  width: 100%;
+}
+
+.setupInput:focus {
+  border-color: var(--accent);
+}
+
+.setupBtn {
+  padding: 8px 16px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  align-self: flex-end;
+}
+
+.setupBtn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.setupBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.setupError {
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.setupHint {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-sm);
+}
+
+/* ── Main layout ───────────────────────────────────────────────────────── */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.topBar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px var(--space-md);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.disconnectLink {
+  background: none;
+  border: none;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+}
+
+.disconnectLink:hover {
+  color: var(--danger);
+}
+
+.layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Sidebar ───────────────────────────────────────────────────────────── */
+
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  padding: var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  overflow-y: auto;
+}
+
+.pill {
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: none;
+  background: var(--bg-secondary);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+}
+
+.pill:hover {
+  background: var(--bg-tertiary);
+}
+
+.pillActive {
+  background: var(--accent);
+  color: #fff;
+}
+
+.pillActive:hover {
+  background: var(--accent-hover);
+}
+
+/* ── Main content ──────────────────────────────────────────────────────── */
+
+.main {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-md);
+}
+
+.loading {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: var(--space-xl) 0;
+}
+
+.errorState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-xl) 0;
+  color: var(--danger);
+  font-size: 14px;
+}
+
+.retryBtn {
+  padding: 6px 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+
+.retryBtn:hover {
+  background: var(--bg-secondary);
+}
+
+.empty {
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: var(--space-lg) 0;
+}
+
+/* ── Assignment list ───────────────────────────────────────────────────── */
+
+.assignmentList {
+  display: flex;
+  flex-direction: column;
+}
+
+.assignmentRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.assignmentRow:last-child {
+  border-bottom: none;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: opacity 0.2s;
+}
+
+.assignmentInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.assignmentName {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.2s;
+}
+
+.assignmentCourse {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assignmentRight {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.assignmentDue {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.statusSelect {
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+}
+
+.statusSelect:focus {
+  border-color: var(--accent);
+}
+
+/* Done state */
+.done .assignmentName {
+  color: var(--text-muted);
+}
+
+.done .assignmentDue {
+  color: var(--bg-tertiary);
+}
+
+/* ── Study Plan ────────────────────────────────────────────────────────── */
+
+.studyPlan {
+  margin-top: var(--space-xl);
+}
+
+.studyPlanHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+.studyPlanTitle {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.studyPlanRule {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.studyPlanBody {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.generateBtn {
+  padding: 7px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.comingSoon {
+  font-size: 13px;
+  color: var(--text-muted);
+}

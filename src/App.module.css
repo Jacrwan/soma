@@ -1,0 +1,27 @@
+.app { display: flex; flex-direction: column; height: 100vh; }
+
+.nav {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+}
+
+.nav button {
+  padding: 14px 24px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: -1px;
+}
+
+.nav button:hover { color: var(--text-primary); }
+.nav button.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.main { flex: 1; overflow: hidden; }
