@@ -90,6 +90,8 @@ function parseTodos(content: string): string[] | null {
 function buildSystemPrompt(): string {
   const subjects = storage.getSubjects();
   const assignments = storage.getCachedAssignments();
+  const announcements = storage.getCachedAnnouncements();
+  const modules = storage.getCachedModules();
   const blocks = storage.getTimeBlocks().filter(b => isToday(b.startTime));
 
   const now = new Date();
@@ -112,7 +114,8 @@ function buildSystemPrompt(): string {
     ? upcoming.map(a => {
         const due = new Date(a.dueAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
         const status = a.status.replace('_', ' ');
-        return `- ${a.name} (${a.courseName}) due ${due} — ${status}`;
+        const desc = a.description ? `\n  Description: ${a.description.slice(0, 300)}` : '';
+        return `- ${a.name} (${a.courseName}) due ${due} — ${status}${desc}`;
       }).join('\n')
     : 'None';
 
@@ -123,18 +126,45 @@ function buildSystemPrompt(): string {
       }).join('\n')
     : 'No blocks scheduled yet';
 
+  const courseIds = [...new Set(upcoming.map(a => a.courseId))];
+
+  const announcementsStr = courseIds.length > 0
+    ? courseIds.map(cid => {
+        const courseAnn = announcements.filter(a => a.courseId === cid).slice(0, 5);
+        if (courseAnn.length === 0) return null;
+        const courseName = upcoming.find(a => a.courseId === cid)?.courseName ?? `Course ${cid}`;
+        const items = courseAnn.map(a =>
+          `  - ${a.title}: ${a.message.slice(0, 500)}`
+        ).join('\n');
+        return `${courseName}:\n${items}`;
+      }).filter(Boolean).join('\n\n')
+    : '';
+
+  const modulesStr = courseIds.length > 0
+    ? courseIds.map(cid => {
+        const courseMods = modules
+          .filter(m => m.courseId === cid)
+          .sort((a, b) => a.position - b.position);
+        if (courseMods.length === 0) return null;
+        const courseName = upcoming.find(a => a.courseId === cid)?.courseName ?? `Course ${cid}`;
+        const items = courseMods.map(m => `  - ${m.name}`).join('\n');
+        return `${courseName}:\n${items}`;
+      }).filter(Boolean).join('\n\n')
+    : '';
+
   return `You are Soma, a personal study assistant. Help the user plan their day.
 
 Today is ${date}.
 
 Their subjects: ${subjectsStr}
 
-Upcoming assignments:
+Upcoming assignments (next 14 days):
 ${assignmentsStr}
 
 Current schedule:
 ${blocksStr}
-
+${announcementsStr ? `\nRecent course announcements:\n${announcementsStr}` : ''}
+${modulesStr ? `\nCourse modules (structure):\n${modulesStr}` : ''}
 When the user asks you to generate a schedule or todo list, respond with:
 1. A friendly natural language explanation
 2. A JSON block wrapped in <schedule> tags containing an array of TimeBlock objects

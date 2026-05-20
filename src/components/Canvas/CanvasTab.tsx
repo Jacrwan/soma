@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { storage } from '../../lib/storage';
-import { CanvasCourse, CanvasAssignment } from '../../types';
-import { getCourses, getAssignments } from '../../lib/canvas';
+import { CanvasCourse, CanvasAssignment, CanvasAnnouncement } from '../../types';
+import { getCourses, getAssignments, getAnnouncements, getModules } from '../../lib/canvas';
 import styles from './CanvasTab.module.css';
 
 const COURSE_COLORS = [
@@ -15,6 +15,19 @@ function fmtDue(iso: string) {
   });
 }
 
+function fmtPosted(iso: string) {
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+const CACHE_MAX_AGE = 30 * 60 * 1000;
+
+function fmtSynced(ts: number): string {
+  const mins = Math.floor((Date.now() - ts) / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins === 1) return '1 min ago';
+  return `${mins} mins ago`;
+}
+
 export default function CanvasTab() {
   const [token, setToken] = useState(() => storage.getCanvasToken());
   const [baseUrl, setBaseUrl] = useState(() => storage.getCanvasBaseUrl());
@@ -23,34 +36,64 @@ export default function CanvasTab() {
   const [connectLoading, setConnectLoading] = useState(false);
   const [connectError, setConnectError] = useState('');
 
-  const [courses, setCourses] = useState<CanvasCourse[]>([]);
-  const [assignments, setAssignments] = useState<CanvasAssignment[]>([]);
+  const [courses, setCourses] = useState<CanvasCourse[]>(() => storage.getCachedCourses());
+  const [assignments, setAssignments] = useState<CanvasAssignment[]>(() => storage.getCachedAssignments());
+  const [announcements, setAnnouncements] = useState<CanvasAnnouncement[]>(
+    () => storage.getCachedAnnouncements(),
+  );
   const [assignmentStatus, setAssignmentStatus] = useState<Record<number, string>>(
     () => storage.getAssignmentStatus(),
   );
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
+  const [announcementsOpen, setAnnouncementsOpen] = useState(true);
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const [lastSynced, setLastSynced] = useState<number | null>(() => storage.getCacheTimestamp());
+  const [syncing, setSyncing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const isConnected = !!token && !!baseUrl;
 
   useEffect(() => {
-    if (isConnected) loadData(token, baseUrl);
+    if (!isConnected) return;
+    const ts = storage.getCacheTimestamp();
+    if (ts && Date.now() - ts < CACHE_MAX_AGE) {
+      setCourses(storage.getCachedCourses());
+      setAssignments(storage.getCachedAssignments());
+      setAnnouncements(storage.getCachedAnnouncements());
+      setLastSynced(ts);
+    } else {
+      loadData(token, baseUrl);
+    }
   }, []);
 
-  async function loadData(tk: string, url: string) {
-    setLoading(true);
+  async function loadData(tk: string, url: string, force = false) {
+    if (force) setSyncing(true); else setLoading(true);
     setError('');
     try {
       const coursesData = await getCourses(tk, url);
       setCourses(coursesData);
-      const all = (await Promise.all(coursesData.map(c => getAssignments(tk, url, c)))).flat();
+      storage.setCachedCourses(coursesData);
+      const [assignmentGroups, announcementGroups, moduleGroups] = await Promise.all([
+        Promise.all(coursesData.map(c => getAssignments(tk, url, c))),
+        Promise.all(coursesData.map(c => getAnnouncements(tk, url, c.id))),
+        Promise.all(coursesData.map(c => getModules(tk, url, c.id))),
+      ]);
+      const all = assignmentGroups.flat();
       all.sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime());
       setAssignments(all);
       storage.setCachedAssignments(all);
+      const flatAnnouncements = announcementGroups.flat();
+      storage.setCachedAnnouncements(flatAnnouncements);
+      setAnnouncements(flatAnnouncements);
+      storage.setCachedModules(moduleGroups.flat());
+      const now = Date.now();
+      storage.setCacheTimestamp(now);
+      setLastSynced(now);
     } catch {
-      setError('Failed to load assignments. Check your token and URL.');
+      setError('Failed to load. Check your token and URL.');
     } finally {
+      setSyncing(false);
       setLoading(false);
     }
   }
@@ -154,9 +197,32 @@ export default function CanvasTab() {
     ? assignments
     : assignments.filter(a => a.courseId === selectedCourseId);
 
+  const filteredAnnouncements = selectedCourseId === null
+    ? announcements
+    : announcements.filter(a => a.courseId === selectedCourseId);
+
+  function toggleExpanded(id: number) {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }
+
   return (
     <div className={styles.container}>
       <div className={styles.topBar}>
+        <div className={styles.syncRow}>
+          {lastSynced && (
+            <span className={styles.syncLabel}>Last synced: {fmtSynced(lastSynced)}</span>
+          )}
+          <button
+            className={styles.refreshBtn}
+            onClick={() => loadData(token, baseUrl, true)}
+            disabled={syncing || loading}
+            title="Refresh"
+          >{syncing ? '↻' : '↻'}</button>
+        </div>
         <button className={styles.disconnectLink} onClick={handleDisconnect}>Disconnect</button>
       </div>
 
@@ -178,7 +244,7 @@ export default function CanvasTab() {
 
         {/* ── Assignment area ── */}
         <div className={styles.main}>
-          {loading && <div className={styles.loading}>Loading assignments…</div>}
+          {loading && <div className={styles.loading}>Loading…</div>}
 
           {!loading && error && (
             <div className={styles.errorState}>
@@ -221,6 +287,45 @@ export default function CanvasTab() {
                     </div>
                   );
                 })}
+              </div>
+
+              <div className={styles.announcementsSection}>
+                <button
+                  className={styles.sectionHeader}
+                  onClick={() => setAnnouncementsOpen(o => !o)}
+                >
+                  <span className={styles.sectionTitle}>Announcements</span>
+                  <span className={styles.sectionRule} />
+                  <span className={styles.caret}>{announcementsOpen ? '▾' : '▸'}</span>
+                </button>
+                {announcementsOpen && (
+                  <div className={styles.announcementList}>
+                    {filteredAnnouncements.length === 0 ? (
+                      <div className={styles.announcementsEmpty}>No announcements.</div>
+                    ) : filteredAnnouncements.map(a => {
+                      const expanded = expandedIds.has(a.id);
+                      const courseName = courses.find(c => c.id === a.courseId)?.name ?? '';
+                      return (
+                        <div
+                          key={a.id}
+                          className={styles.announcementCard}
+                          onClick={() => toggleExpanded(a.id)}
+                        >
+                          <div className={styles.announcementTop}>
+                            <span className={styles.announcementCourse}>{courseName}</span>
+                            <span className={styles.announcementDate}>
+                              {a.postedAt ? fmtPosted(a.postedAt) : ''}
+                            </span>
+                          </div>
+                          <span className={styles.announcementTitle}>{a.title}</span>
+                          <span className={expanded ? styles.announcementBodyExpanded : styles.announcementBody}>
+                            {a.message}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className={styles.studyPlan}>

@@ -37,12 +37,28 @@ export interface CanvasAssignment {
   dueAt: string;
   htmlUrl: string;
   status: 'not_started' | 'in_progress' | 'done';
+  description?: string;
 }
 
 export interface CanvasCourse {
   id: number;
   name: string;
   courseCode: string;
+}
+
+export interface CanvasAnnouncement {
+  id: number;
+  title: string;
+  message: string;
+  postedAt: string;
+  courseId: number;
+}
+
+export interface CanvasModule {
+  id: number;
+  name: string;
+  position: number;
+  courseId: number;
 }
 
 export interface Todo {

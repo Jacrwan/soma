@@ -1,6 +1,17 @@
-import { CanvasCourse, CanvasAssignment } from '../types';
+import { CanvasCourse, CanvasAssignment, CanvasAnnouncement, CanvasModule } from '../types';
 
 const DEV_BASE = '/canvas-api';
+
+export function stripHtml(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function canvasFetch(token: string, baseUrl: string, path: string): Promise<any[]> {
@@ -65,5 +76,41 @@ export async function getAssignments(
       dueAt: a.due_at,
       htmlUrl: a.html_url,
       status: 'not_started' as const,
+      description: a.description ? stripHtml(a.description) : undefined,
     }));
+}
+
+export async function getAnnouncements(
+  token: string,
+  baseUrl: string,
+  courseId: number,
+): Promise<CanvasAnnouncement[]> {
+  const raw = await canvasFetch(
+    token, baseUrl,
+    `/api/v1/announcements?context_codes[]=course_${courseId}&per_page=10`,
+  );
+  return raw.map(a => ({
+    id: a.id,
+    title: a.title ?? '',
+    message: a.message ? stripHtml(a.message) : '',
+    postedAt: a.posted_at ?? '',
+    courseId,
+  }));
+}
+
+export async function getModules(
+  token: string,
+  baseUrl: string,
+  courseId: number,
+): Promise<CanvasModule[]> {
+  const raw = await canvasFetch(
+    token, baseUrl,
+    `/api/v1/courses/${courseId}/modules?per_page=50`,
+  );
+  return raw.map(m => ({
+    id: m.id,
+    name: m.name ?? '',
+    position: m.position ?? 0,
+    courseId,
+  }));
 }

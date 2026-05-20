@@ -1,4 +1,4 @@
-import { Subject, TimeBlock, TimerSession, CanvasAssignment, Todo } from '../types';
+import { Subject, TimeBlock, TimerSession, CanvasAssignment, CanvasAnnouncement, CanvasModule, CanvasCourse, Todo } from '../types';
 
 const KEYS = {
   subjects: 'soma_subjects',
@@ -7,7 +7,11 @@ const KEYS = {
   canvasToken: 'canvas_token',
   canvasBaseUrl: 'canvas_base_url',
   assignmentStatus: 'canvas_assignment_status',
+  cachedCourses: 'soma_cached_courses',
   cachedAssignments: 'soma_canvas_cache',
+  cachedAnnouncements: 'soma_cached_announcements',
+  cachedModules: 'soma_cached_modules',
+  cacheTimestamp: 'soma_canvas_cache_timestamp',
   anthropicKey: 'anthropic_api_key',
   todos: 'soma_todos',
 };
@@ -50,8 +54,20 @@ export const storage = {
   getAssignmentStatus: (): Record<number, string> => get(KEYS.assignmentStatus, {}),
   setAssignmentStatus: (v: Record<number, string>) => set(KEYS.assignmentStatus, v),
 
+  getCachedCourses: (): CanvasCourse[] => get(KEYS.cachedCourses, []),
+  setCachedCourses: (v: CanvasCourse[]) => set(KEYS.cachedCourses, v),
+
   getCachedAssignments: (): CanvasAssignment[] => get(KEYS.cachedAssignments, []),
   setCachedAssignments: (v: CanvasAssignment[]) => set(KEYS.cachedAssignments, v),
+
+  getCachedAnnouncements: (): CanvasAnnouncement[] => get(KEYS.cachedAnnouncements, []),
+  setCachedAnnouncements: (v: CanvasAnnouncement[]) => set(KEYS.cachedAnnouncements, v),
+
+  getCachedModules: (): CanvasModule[] => get(KEYS.cachedModules, []),
+  setCachedModules: (v: CanvasModule[]) => set(KEYS.cachedModules, v),
+
+  getCacheTimestamp: (): number | null => get<number | null>(KEYS.cacheTimestamp, null),
+  setCacheTimestamp: (v: number) => set(KEYS.cacheTimestamp, v),
 
   getAnthropicKey: (): string => get(KEYS.anthropicKey, ''),
   setAnthropicKey: (v: string) => set(KEYS.anthropicKey, v),
