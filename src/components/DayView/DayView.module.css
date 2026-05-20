@@ -662,17 +662,89 @@
   opacity: 0.45;
 }
 
-.todoCheck {
+/* Status button (replaces old checkbox) */
+.statusBtn {
   flex-shrink: 0;
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-top: 2px;
-  width: 12px;
-  text-align: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text-muted);
+  background: none;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+  padding: 0;
+  color: transparent;
+  font-size: 8px;
+  line-height: 1;
+  transition: border-color 0.1s;
 }
 
-.todoItemDone .todoCheck {
+.statusBtn:hover {
+  border-color: var(--text-secondary);
+}
+
+.statusBtnInProgress {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.statusBtnDone {
+  border-color: var(--success);
+  background: var(--success);
+  color: #fff;
+}
+
+/* Status popover */
+.statusPopover {
+  margin: 2px 8px 4px 16px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  padding: 4px;
+  animation: popoverIn 120ms ease;
+}
+
+.statusOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+}
+
+.statusOption:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.statusOptionActive {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.statusIcon {
+  width: 14px;
+  text-align: center;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.statusIconInProgress {
+  color: var(--accent);
+}
+
+.statusIconDone {
   color: var(--success);
 }
 

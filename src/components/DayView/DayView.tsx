@@ -102,10 +102,13 @@ export default function DayView() {
     const existing = storage.getTodos();
     const subjects = storage.getSubjects();
     const assignments = storage.getCachedAssignments();
-    const migrated = existing.map(t =>
-      t.subjectId ? t : { ...t, subjectId: inferSubjectId(t.text, subjects, assignments) },
-    );
-    if (migrated.some((t, i) => t.subjectId !== existing[i].subjectId)) {
+    const migrated = existing.map(t => {
+      const legacyDone = (t as unknown as { done?: boolean }).done;
+      const status: Todo['status'] = t.status ?? (legacyDone ? 'done' : 'nothing');
+      const subjectId = t.subjectId ?? inferSubjectId(t.text, subjects, assignments);
+      return { ...t, status, subjectId };
+    });
+    if (migrated.some((t, i) => t.status !== existing[i].status || t.subjectId !== existing[i].subjectId)) {
       storage.setTodos(migrated);
     }
     return migrated;
@@ -118,12 +121,14 @@ export default function DayView() {
   const [addingToGroup, setAddingToGroup] = useState<string | null>(null);
   const [newTodoText, setNewTodoText] = useState('');
   const [todoPopoverId, setTodoPopoverId] = useState<string | null>(null);
+  const [statusPopoverId, setStatusPopoverId] = useState<string | null>(null);
   const [initialTimerTask, setInitialTimerTask] = useState('');
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [addSubjectForm, setAddSubjectForm] = useState<AddSubjectForm>({ name: '', color: COLORS[0] });
   const [editSubject, setEditSubject] = useState<SubjectEditState | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const todoPopoverRef = useRef<HTMLDivElement>(null);
+  const statusPopoverRef = useRef<HTMLDivElement>(null);
   const touchStartXRef = useRef(0);
   const wheelCooldownRef = useRef(false);
 
@@ -163,6 +168,17 @@ export default function DayView() {
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [todoPopoverId]);
+
+  useEffect(() => {
+    if (!statusPopoverId) return;
+    const onDown = (e: MouseEvent) => {
+      if (statusPopoverRef.current && !statusPopoverRef.current.contains(e.target as Node)) {
+        setStatusPopoverId(null);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [statusPopoverId]);
 
   const slots = Array.from({ length: TOTAL_SLOTS }, (_, i) => {
     const minutes = START_HOUR * 60 + i * 30;
@@ -272,10 +288,25 @@ export default function DayView() {
     return () => { document.body.style.overflow = ''; };
   }, [timerSubject]);
 
-  function toggleTodo(id: string) {
-    const updated = todos.map(t => t.id === id ? { ...t, done: !t.done } : t);
+  function setTodoStatus(id: string, status: Todo['status']) {
+    const updated = todos.map(t => t.id === id ? { ...t, status } : t);
     storage.setTodos(updated);
     setTodos(updated);
+    setStatusPopoverId(null);
+
+    const todo = todos.find(t => t.id === id);
+    if (todo?.assignmentId !== undefined) {
+      const linked = updated.filter(t => t.assignmentId === todo.assignmentId);
+      let assignmentStatus: string;
+      if (linked.every(t => t.status === 'done')) {
+        assignmentStatus = 'done';
+      } else if (linked.some(t => t.status === 'in_progress' || t.status === 'done')) {
+        assignmentStatus = 'in_progress';
+      } else {
+        assignmentStatus = 'not_started';
+      }
+      storage.setAssignmentStatus({ ...storage.getAssignmentStatus(), [String(todo.assignmentId)]: assignmentStatus });
+    }
   }
 
   function toggleGroup(groupId: string) {
@@ -295,7 +326,7 @@ export default function DayView() {
   function addTodo(subjectId: string | undefined) {
     const text = newTodoText.trim();
     if (!text) { setAddingToGroup(null); return; }
-    const newTodo: Todo = { id: crypto.randomUUID(), text, done: false, subjectId };
+    const newTodo: Todo = { id: crypto.randomUUID(), text, status: 'nothing', subjectId };
     const updated = [...todos, newTodo];
     storage.setTodos(updated);
     setTodos(updated);
@@ -522,7 +553,7 @@ export default function DayView() {
           const isCollapsed = collapsedGroups.has(subject.id);
           const isAdding = addingToGroup === subject.id;
           const showBody = !isCollapsed || isAdding;
-          const pending = groupTodos.filter(t => !t.done).length;
+          const pending = groupTodos.filter(t => t.status !== 'done').length;
           const isEditing = editSubject?.id === subject.id;
 
           return (
@@ -596,18 +627,41 @@ export default function DayView() {
                 <div className={styles.todoGroupBody}>
                   {groupTodos.map(todo => (
                     <div key={todo.id} className={styles.todoItemWrap}>
-                      <div className={`${styles.todoItem}${todo.done ? ` ${styles.todoItemDone}` : ''}`}>
-                        <span className={styles.todoCheck} onClick={() => toggleTodo(todo.id)}>
-                          {todo.done ? '✓' : '○'}
-                        </span>
+                      <div className={`${styles.todoItem}${todo.status === 'done' ? ` ${styles.todoItemDone}` : ''}`}>
+                        <button
+                          className={[
+                            styles.statusBtn,
+                            todo.status === 'in_progress' ? styles.statusBtnInProgress : '',
+                            todo.status === 'done' ? styles.statusBtnDone : '',
+                          ].filter(Boolean).join(' ')}
+                          onClick={() => {
+                            setTodoPopoverId(null);
+                            setStatusPopoverId(prev => prev === todo.id ? null : todo.id);
+                          }}
+                        >
+                          {todo.status === 'in_progress' ? '△' : todo.status === 'done' ? '✓' : ''}
+                        </button>
                         <div className={styles.todoContent}>
                           <span
                             className={styles.todoText}
-                            onClick={() => setTodoPopoverId(prev => prev === todo.id ? null : todo.id)}
+                            onClick={() => { setStatusPopoverId(null); setTodoPopoverId(prev => prev === todo.id ? null : todo.id); }}
                           >{todo.text}</span>
                           {todo.dueDate && <div className={styles.todoDueDate}>{todo.dueDate}</div>}
                         </div>
                       </div>
+                      {statusPopoverId === todo.id && (
+                        <div className={styles.statusPopover} ref={statusPopoverRef}>
+                          <button className={`${styles.statusOption}${todo.status === 'nothing' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'nothing')}>
+                            <span className={styles.statusIcon}>○</span> Nothing
+                          </button>
+                          <button className={`${styles.statusOption}${todo.status === 'in_progress' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'in_progress')}>
+                            <span className={`${styles.statusIcon} ${styles.statusIconInProgress}`}>△</span> In Progress
+                          </button>
+                          <button className={`${styles.statusOption}${todo.status === 'done' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'done')}>
+                            <span className={`${styles.statusIcon} ${styles.statusIconDone}`}>✓</span> Done
+                          </button>
+                        </div>
+                      )}
                       {todoPopoverId === todo.id && (
                         <div className={styles.todoPopover} ref={todoPopoverRef}>
                           <div className={styles.popoverText}>{todo.text}</div>
@@ -673,7 +727,7 @@ export default function DayView() {
           if (unassigned.length === 0 && !isAdding) return null;
           const isCollapsed = collapsedGroups.has('unassigned');
           const showBody = !isCollapsed || isAdding;
-          const pending = unassigned.filter(t => !t.done).length;
+          const pending = unassigned.filter(t => t.status !== 'done').length;
           return (
             <div className={styles.subjectGroup}>
               <div
@@ -695,18 +749,41 @@ export default function DayView() {
                 <div className={styles.todoGroupBody}>
                   {unassigned.map(todo => (
                     <div key={todo.id} className={styles.todoItemWrap}>
-                      <div className={`${styles.todoItem}${todo.done ? ` ${styles.todoItemDone}` : ''}`}>
-                        <span className={styles.todoCheck} onClick={() => toggleTodo(todo.id)}>
-                          {todo.done ? '✓' : '○'}
-                        </span>
+                      <div className={`${styles.todoItem}${todo.status === 'done' ? ` ${styles.todoItemDone}` : ''}`}>
+                        <button
+                          className={[
+                            styles.statusBtn,
+                            todo.status === 'in_progress' ? styles.statusBtnInProgress : '',
+                            todo.status === 'done' ? styles.statusBtnDone : '',
+                          ].filter(Boolean).join(' ')}
+                          onClick={() => {
+                            setTodoPopoverId(null);
+                            setStatusPopoverId(prev => prev === todo.id ? null : todo.id);
+                          }}
+                        >
+                          {todo.status === 'in_progress' ? '△' : todo.status === 'done' ? '✓' : ''}
+                        </button>
                         <div className={styles.todoContent}>
                           <span
                             className={styles.todoText}
-                            onClick={() => setTodoPopoverId(prev => prev === todo.id ? null : todo.id)}
+                            onClick={() => { setStatusPopoverId(null); setTodoPopoverId(prev => prev === todo.id ? null : todo.id); }}
                           >{todo.text}</span>
                           {todo.dueDate && <div className={styles.todoDueDate}>{todo.dueDate}</div>}
                         </div>
                       </div>
+                      {statusPopoverId === todo.id && (
+                        <div className={styles.statusPopover} ref={statusPopoverRef}>
+                          <button className={`${styles.statusOption}${todo.status === 'nothing' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'nothing')}>
+                            <span className={styles.statusIcon}>○</span> Nothing
+                          </button>
+                          <button className={`${styles.statusOption}${todo.status === 'in_progress' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'in_progress')}>
+                            <span className={`${styles.statusIcon} ${styles.statusIconInProgress}`}>△</span> In Progress
+                          </button>
+                          <button className={`${styles.statusOption}${todo.status === 'done' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'done')}>
+                            <span className={`${styles.statusIcon} ${styles.statusIconDone}`}>✓</span> Done
+                          </button>
+                        </div>
+                      )}
                       {todoPopoverId === todo.id && (
                         <div className={styles.todoPopover} ref={todoPopoverRef}>
                           <div className={styles.popoverText}>{todo.text}</div>

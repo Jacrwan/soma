@@ -66,7 +66,8 @@ export interface CanvasModule {
 export interface Todo {
   id: string;
   text: string;
-  done: boolean;
+  status: 'nothing' | 'in_progress' | 'done';
   subjectId?: string;
   dueDate?: string;
+  assignmentId?: number;
 }

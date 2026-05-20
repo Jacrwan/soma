@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { storage } from '../../lib/storage';
-import { CanvasCourse, CanvasAssignment, CanvasAnnouncement, Subject } from '../../types';
+import { CanvasCourse, CanvasAssignment, CanvasAnnouncement, Subject, Todo } from '../../types';
 import { getCourses, getAssignments, getAnnouncements, getModules } from '../../lib/canvas';
 import styles from './CanvasTab.module.css';
 
@@ -22,18 +22,34 @@ function fmtPosted(iso: string) {
 const CACHE_MAX_AGE = 30 * 60 * 1000;
 
 function syncCoursesToSubjects(courses: CanvasCourse[]) {
-  const existing = storage.getSubjects();
-  const existingNames = new Set(existing.map(s => s.name.toLowerCase()));
-  const newSubjects = courses
-    .filter(c => !existingNames.has(c.name.toLowerCase()))
-    .map((c, i) => ({
-      id: crypto.randomUUID(),
-      name: c.name,
-      color: COURSE_COLORS[(existing.length + i) % COURSE_COLORS.length] as Subject['color'],
-      totalTimeToday: 0,
-    }));
-  if (newSubjects.length > 0) {
-    storage.setSubjects([...existing, ...newSubjects]);
+  let subjects = storage.getSubjects();
+  let changed = false;
+
+  for (const course of courses) {
+    const courseLower = course.name.toLowerCase();
+    const matchIdx = subjects.findIndex(s => {
+      const sLower = s.name.toLowerCase();
+      return sLower === courseLower
+        || courseLower.includes(sLower)
+        || sLower.includes(courseLower);
+    });
+
+    if (matchIdx === -1) {
+      subjects = [...subjects, {
+        id: crypto.randomUUID(),
+        name: course.name,
+        color: COURSE_COLORS[subjects.length % COURSE_COLORS.length] as Subject['color'],
+        totalTimeToday: 0,
+      }];
+      changed = true;
+    } else if (subjects[matchIdx].name !== course.name) {
+      subjects = subjects.map((s, i) => i === matchIdx ? { ...s, name: course.name } : s);
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    storage.setSubjects(subjects);
   }
 }
 
@@ -154,9 +170,25 @@ export default function CanvasTab() {
   }
 
   function updateStatus(id: number, status: string) {
-    const updated = { ...assignmentStatus, [id]: status };
+    const updated = { ...assignmentStatus, [String(id)]: status };
     storage.setAssignmentStatus(updated);
     setAssignmentStatus(updated);
+
+    const todoStatusMap: Record<string, Todo['status']> = {
+      not_started: 'nothing',
+      in_progress: 'in_progress',
+      done: 'done',
+    };
+    const newTodoStatus = todoStatusMap[status];
+    if (newTodoStatus) {
+      const todos = storage.getTodos();
+      const updatedTodos = todos.map(t =>
+        t.assignmentId === id ? { ...t, status: newTodoStatus } : t,
+      );
+      if (updatedTodos.some((t, i) => t.status !== todos[i].status)) {
+        storage.setTodos(updatedTodos);
+      }
+    }
   }
 
   function getStatus(id: number) {

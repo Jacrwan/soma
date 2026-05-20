@@ -95,6 +95,7 @@ function parseTodos(content: string): string[] | null {
   }
 }
 
+
 function buildSystemPrompt(): string {
   const subjects = storage.getSubjects();
   const assignments = storage.getCachedAssignments();
@@ -103,7 +104,6 @@ function buildSystemPrompt(): string {
   const blocks = storage.getTimeBlocks().filter(b => isToday(b.startTime));
 
   const now = new Date();
-  const in14 = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
 
   const date = now.toLocaleDateString('en-US', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
@@ -113,17 +113,27 @@ function buildSystemPrompt(): string {
     .map(s => `${s.name} (id: ${s.id})`)
     .join(', ');
 
-  const upcoming = assignments.filter(a => {
-    const due = new Date(a.dueAt);
-    return due >= now && due <= in14;
-  });
+  const upcoming = assignments;
 
+  const assignmentStatus = storage.getAssignmentStatus();
+  const statusLabel: Record<string, string> = {
+    not_started: 'not started',
+    in_progress: 'in progress',
+    done: 'done',
+  };
+  console.log('[buildSystemPrompt] assignmentStatus:', assignmentStatus);
+  console.log('[buildSystemPrompt] first 3 assignment lookups:', upcoming.slice(0, 3).map(a => ({
+    id: a.id,
+    name: a.name,
+    rawStatus: assignmentStatus[String(a.id)] ?? '(not set)',
+    label: statusLabel[assignmentStatus[String(a.id)] ?? 'not_started'] ?? 'not started',
+  })));
   const assignmentsStr = upcoming.length > 0
     ? upcoming.map(a => {
         const due = new Date(a.dueAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-        const status = a.status.replace('_', ' ');
+        const status = statusLabel[assignmentStatus[String(a.id)] ?? 'not_started'] ?? 'not started';
         const desc = a.description ? `\n  Description: ${a.description.slice(0, 300)}` : '';
-        return `- ${a.name} (${a.courseName}) due ${due} — ${status}${desc}`;
+        return `- ${a.name} | ${a.courseName} | Due: ${due} | Status: ${status}${desc}`;
       }).join('\n')
     : 'None';
 
@@ -325,15 +335,39 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       console.warn('[todos] categorization failed, leaving unassigned:', e);
     }
 
+    const assignments = storage.getCachedAssignments();
+    let assignmentIds: (number | null)[] = todoTexts.map(() => null);
+    if (assignments.length > 0) {
+      try {
+        const systemPrompt = 'You are a todo-to-assignment matcher. Given a list of todos and a list of Canvas assignments, for each todo return the ID of the most relevant assignment it belongs to, or null if none fit. Respond with only a JSON array of assignment IDs (numbers) or nulls, in the same order as the todos.';
+        const assignmentList = assignments.map(a => ({
+          id: a.id,
+          name: a.name,
+          courseName: a.courseName,
+          dueAt: a.dueAt,
+        }));
+        const userMessage = `Assignments: ${JSON.stringify(assignmentList)}\nTodos:\n${todoTexts.map((t, i) => `${i + 1}. ${t}`).join('\n')}`;
+        const response = await sendMessage([{ role: 'user', content: userMessage }], systemPrompt);
+        const parsed = JSON.parse(response.replace(/```json|```/g, '').trim());
+        if (Array.isArray(parsed) && parsed.length === todoTexts.length) {
+          assignmentIds = parsed;
+        }
+      } catch (e) {
+        console.warn('[todos] assignment matching failed:', e);
+      }
+    }
+
     const newTodos: Todo[] = todoTexts.map((text, i) => {
       const assignedName = subjectAssignments[i];
       const subject = subjects.find(s => s.name.toLowerCase() === assignedName?.toLowerCase());
-      return { id: crypto.randomUUID(), text, done: false, subjectId: subject?.id };
+      const assignmentId = assignmentIds[i] ?? undefined;
+      return { id: crypto.randomUUID(), text, status: 'nothing' as const, subjectId: subject?.id, assignmentId };
     });
 
-    console.log('[todos] with subjectIds:', newTodos.map(t => ({
+    console.log('[todos] matched pairs:', newTodos.map(t => ({
       text: t.text,
       subject: subjects.find(s => s.id === t.subjectId)?.name ?? 'Unassigned',
+      assignment: assignments.find(a => a.id === t.assignmentId)?.name ?? null,
     })));
     storage.setTodos(newTodos);
     console.log('[todos] soma_todos in localStorage:', localStorage.getItem('soma_todos'));
