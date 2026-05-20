@@ -10,6 +10,9 @@ type Tab = 'today' | 'canvas' | 'ai' | 'calendar';
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('today');
+  const [selectedDate, setSelectedDate] = useState<Date>(() => {
+    const d = new Date(); d.setHours(0, 0, 0, 0); return d;
+  });
 
   // Handle Google OAuth implicit-flow redirect (popup or direct)
   useEffect(() => {
@@ -40,6 +43,14 @@ export default function App() {
     document.title = titles[tab];
   }, [tab]);
 
+  function handleSelectDate(date: Date) {
+    setSelectedDate(date);
+  }
+
+  function handleSwitchToToday() {
+    setTab('today');
+  }
+
   return (
     <div className={styles.app}>
       <nav className={styles.nav}>
@@ -49,10 +60,16 @@ export default function App() {
         <button className={tab === 'ai'       ? styles.active : ''} onClick={() => setTab('ai')}>AI</button>
       </nav>
       <main className={styles.main}>
-        {tab === 'today'    && <DayView />}
+        {tab === 'today'    && <DayView selectedDate={selectedDate} onSelectDate={handleSelectDate} />}
         {tab === 'canvas'   && <CanvasTab />}
-        {tab === 'calendar' && <CalendarTab />}
-        {tab === 'ai'       && <AITab onSwitchToToday={() => setTab('today')} />}
+        {tab === 'calendar' && (
+          <CalendarTab
+            selectedDate={selectedDate}
+            onSelectDate={handleSelectDate}
+            onSwitchToToday={handleSwitchToToday}
+          />
+        )}
+        {tab === 'ai' && <AITab onSwitchToToday={handleSwitchToToday} />}
       </main>
     </div>
   );

@@ -1,64 +1,113 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { storage } from '../../lib/storage';
 import { getEvents, getWeekRange, isCacheStale } from '../../lib/googleCalendar';
-import { GoogleCalendarEvent } from '../../types';
 import styles from './CalendarTab.module.css';
 
-function fmtEventTime(iso: string) {
-  const d = new Date(iso);
-  const h = d.getHours() % 12 || 12;
-  const m = d.getMinutes();
-  const ampm = d.getHours() >= 12 ? 'PM' : 'AM';
-  return m === 0 ? `${h} ${ampm}` : `${h}:${String(m).padStart(2, '0')} ${ampm}`;
+type ViewMode = 'month' | 'week';
+
+interface Filters {
+  gcal: boolean;
+  canvas: boolean;
+  soma: boolean;
 }
 
-function fmtDayLabel(iso: string) {
-  return new Date(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+interface Chip {
+  id: string;
+  label: string;
+  bgColor: string;
+  type: 'gcal' | 'canvas' | 'soma';
+  sortKey: number;
 }
 
-function fmtSynced(ts: number): string {
-  const mins = Math.floor((Date.now() - ts) / 60_000);
-  if (mins < 1) return 'just now';
-  if (mins === 1) return '1 min ago';
-  return `${mins} mins ago`;
+interface CalendarTabProps {
+  selectedDate: Date;
+  onSelectDate: (date: Date) => void;
+  onSwitchToToday: () => void;
 }
 
-function groupByDay(events: GoogleCalendarEvent[]): Map<string, GoogleCalendarEvent[]> {
-  const map = new Map<string, GoogleCalendarEvent[]>();
-  for (const e of events) {
-    const dt = e.start.dateTime ?? e.start.date;
-    if (!dt) continue;
-    const key = new Date(dt).toDateString();
-    if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push(e);
-  }
-  return map;
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+const GCAL_COLOR = '#1a73e8';
+const CANVAS_COLOR = '#f4511e';
+const MAX_CHIPS = 3;
+const FILTER_KEY = 'soma_calendar_filters';
+
+function isSameDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear()
+    && a.getMonth() === b.getMonth()
+    && a.getDate() === b.getDate();
 }
 
-export default function CalendarTab() {
-  const [clientId, setClientId] = useState(() => storage.getGoogleClientId());
+function addDays(date: Date, n: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
+function getSundayOfWeek(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - d.getDay());
+  return d;
+}
+
+function dateKey(date: Date): string {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function loadFilters(): Filters {
+  try {
+    const raw = localStorage.getItem(FILTER_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return {
+      gcal: parsed.gcal ?? true,
+      canvas: parsed.canvas ?? true,
+      soma: parsed.soma ?? true,
+    };
+  } catch { return { gcal: true, canvas: true, soma: true }; }
+}
+
+function saveFilters(f: Filters) {
+  localStorage.setItem(FILTER_KEY, JSON.stringify(f));
+}
+
+export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToday }: CalendarTabProps) {
+  // Google auth state
   const [token, setToken] = useState(() => storage.getGoogleToken());
+  const [clientId, setClientId] = useState(() => storage.getGoogleClientId());
   const [setupClientId, setSetupClientId] = useState('');
-  const [events, setEvents] = useState<GoogleCalendarEvent[]>(() => storage.getCachedGoogleEvents());
-  const [lastSynced, setLastSynced] = useState<number | null>(() => storage.getGoogleCacheTimestamp());
-  const [loading, setLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [error, setError] = useState('');
+  const [showConnect, setShowConnect] = useState(false);
+  const [gcalLoading, setGcalLoading] = useState(false);
+  const [gcalError, setGcalError] = useState('');
+
+  // View state
+  const [viewMode, setViewMode] = useState<ViewMode>('month');
+  const [viewMonth, setViewMonth] = useState<Date>(() => {
+    const d = new Date(selectedDate);
+    d.setDate(1); d.setHours(0, 0, 0, 0); return d;
+  });
+  const [viewWeekStart, setViewWeekStart] = useState<Date>(() => getSundayOfWeek(selectedDate));
+  const [filters, setFilters] = useState<Filters>(() => loadFilters());
+  const [dataVersion, setDataVersion] = useState(0);
 
   const isConnected = !!token;
 
-  // Listen for OAuth completion (popup or direct redirect)
+  // OAuth listeners
   useEffect(() => {
     const messageHandler = (e: MessageEvent) => {
       if (e.origin !== window.location.origin) return;
       if (e.data?.type === 'soma_google_auth' && e.data.token) {
         storage.setGoogleToken(e.data.token);
         setToken(e.data.token);
+        setShowConnect(false);
       }
     };
     const customHandler = (e: Event) => {
       const t = (e as CustomEvent).detail?.token;
-      if (t) setToken(t);
+      if (t) { setToken(t); setShowConnect(false); }
     };
     window.addEventListener('message', messageHandler);
     window.addEventListener('soma_google_auth', customHandler);
@@ -68,39 +117,38 @@ export default function CalendarTab() {
     };
   }, []);
 
-  // Auto-load events when connected
+  // Auto-fetch gcal events on connect; listen for updates
+  useEffect(() => {
+    const handler = () => setDataVersion(v => v + 1);
+    window.addEventListener('soma_gcal_updated', handler);
+    return () => window.removeEventListener('soma_gcal_updated', handler);
+  }, []);
+
   useEffect(() => {
     if (!token) return;
-    if (!isCacheStale(storage.getGoogleCacheTimestamp())) {
-      setEvents(storage.getCachedGoogleEvents());
-      return;
-    }
-    loadEvents(token, false);
+    if (!isCacheStale(storage.getGoogleCacheTimestamp())) return;
+    fetchGcalEvents(token);
   }, [token]);
 
-  async function loadEvents(tk: string, force: boolean) {
-    if (force) setSyncing(true); else setLoading(true);
-    setError('');
+  async function fetchGcalEvents(tk: string) {
+    setGcalLoading(true);
+    setGcalError('');
     try {
       const { timeMin, timeMax } = getWeekRange();
       const data = await getEvents(tk, timeMin, timeMax);
       storage.setCachedGoogleEvents(data);
-      const now = Date.now();
-      storage.setGoogleCacheTimestamp(now);
-      setEvents(data);
-      setLastSynced(now);
+      storage.setGoogleCacheTimestamp(Date.now());
+      setDataVersion(v => v + 1);
       window.dispatchEvent(new CustomEvent('soma_gcal_updated'));
     } catch (err) {
       if (err instanceof Error && err.message === 'auth') {
-        setError('Token expired. Please reconnect.');
         storage.setGoogleToken('');
         setToken('');
       } else {
-        setError('Failed to load events. Check your connection.');
+        setGcalError('Could not load Google Calendar events.');
       }
     } finally {
-      setSyncing(false);
-      setLoading(false);
+      setGcalLoading(false);
     }
   }
 
@@ -128,119 +176,328 @@ export default function CalendarTab() {
     storage.setGoogleCacheTimestamp(0);
     setToken('');
     setClientId('');
-    setEvents([]);
-    setLastSynced(null);
-    setSetupClientId('');
+    setDataVersion(v => v + 1);
     window.dispatchEvent(new CustomEvent('soma_gcal_updated'));
   }
 
-  // ── Setup card ─────────────────────────────────────────────────────────
-  if (!isConnected) {
+  function toggleFilter(key: keyof Filters) {
+    setFilters(prev => {
+      const next = { ...prev, [key]: !prev[key] };
+      saveFilters(next);
+      return next;
+    });
+  }
+
+  // Chips by date (useMemo re-runs when filters or data changes)
+  const chipsByDate = useMemo(() => {
+    const map = new Map<string, Chip[]>();
+    const subjects = storage.getSubjects();
+    const gcalEvents = storage.getCachedGoogleEvents();
+    const assignments = storage.getCachedAssignments();
+    const blocks = storage.getTimeBlocks();
+
+    function add(date: Date, chip: Chip) {
+      const k = dateKey(date);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(chip);
+    }
+
+    if (filters.gcal) {
+      for (const e of gcalEvents) {
+        const dt = e.start.dateTime ?? e.start.date;
+        if (!dt) continue;
+        add(new Date(dt), {
+          id: `gcal-${e.id}`,
+          label: e.summary ?? '(No title)',
+          bgColor: GCAL_COLOR,
+          type: 'gcal',
+          sortKey: new Date(dt).getTime(),
+        });
+      }
+    }
+
+    if (filters.canvas) {
+      for (const a of assignments) {
+        if (!a.dueAt) continue;
+        add(new Date(a.dueAt), {
+          id: `canvas-${a.id}`,
+          label: a.name,
+          bgColor: CANVAS_COLOR,
+          type: 'canvas',
+          sortKey: new Date(a.dueAt).getTime(),
+        });
+      }
+    }
+
+    if (filters.soma) {
+      for (const b of blocks) {
+        if (!b.startTime) continue;
+        const subj = subjects.find(s => s.id === b.subjectId);
+        add(new Date(b.startTime), {
+          id: `soma-${b.id}`,
+          label: b.task || subj?.name || 'Block',
+          bgColor: subj?.color ?? '#9e9e9e',
+          type: 'soma',
+          sortKey: new Date(b.startTime).getTime(),
+        });
+      }
+    }
+
+    for (const chips of map.values()) {
+      chips.sort((a, b) => a.sortKey - b.sortKey);
+    }
+    return map;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, dataVersion]);
+
+  // Navigation
+  function goToPrev() {
+    if (viewMode === 'month') {
+      setViewMonth(d => new Date(d.getFullYear(), d.getMonth() - 1, 1));
+    } else {
+      setViewWeekStart(d => addDays(d, -7));
+    }
+  }
+
+  function goToNext() {
+    if (viewMode === 'month') {
+      setViewMonth(d => new Date(d.getFullYear(), d.getMonth() + 1, 1));
+    } else {
+      setViewWeekStart(d => addDays(d, 7));
+    }
+  }
+
+  function goToToday() {
+    const today = new Date();
+    if (viewMode === 'month') {
+      setViewMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+    } else {
+      setViewWeekStart(getSundayOfWeek(today));
+    }
+  }
+
+  function switchViewMode(mode: ViewMode) {
+    if (mode === 'week') {
+      setViewWeekStart(getSundayOfWeek(viewMonth));
+    } else {
+      setViewMonth(new Date(viewWeekStart.getFullYear(), viewWeekStart.getMonth(), 1));
+    }
+    setViewMode(mode);
+  }
+
+  function handleDayClick(date: Date) {
+    onSelectDate(date);
+    onSwitchToToday();
+  }
+
+  // Header title
+  const headerTitle = viewMode === 'month'
+    ? `${MONTH_NAMES[viewMonth.getMonth()]} ${viewMonth.getFullYear()}`
+    : (() => {
+        const end = addDays(viewWeekStart, 6);
+        const sm = MONTH_NAMES[viewWeekStart.getMonth()];
+        const em = MONTH_NAMES[end.getMonth()];
+        if (viewWeekStart.getMonth() === end.getMonth()) {
+          return `${sm} ${viewWeekStart.getDate()}–${end.getDate()}, ${viewWeekStart.getFullYear()}`;
+        }
+        return `${sm} ${viewWeekStart.getDate()} – ${em} ${end.getDate()}`;
+      })();
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Month grid: 6 weeks × 7 days starting from the Sunday of the week containing month's 1st
+  const monthCells = useMemo(() => {
+    const firstOfMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1);
+    const gridStart = getSundayOfWeek(firstOfMonth);
+    return Array.from({ length: 42 }, (_, i) => {
+      const date = addDays(gridStart, i);
+      return {
+        date,
+        isCurrentMonth: date.getMonth() === viewMonth.getMonth(),
+      };
+    });
+  }, [viewMonth]);
+
+  // Week grid: 7 days starting from viewWeekStart (Sunday)
+  const weekDays = useMemo(
+    () => Array.from({ length: 7 }, (_, i) => addDays(viewWeekStart, i)),
+    [viewWeekStart],
+  );
+
+  function renderDayNum(date: Date, isCurrentMonth = true) {
+    const isToday = isSameDay(date, today);
+    const isSelected = isSameDay(date, selectedDate);
     return (
-      <div className={styles.setupOverlay}>
-        <div className={styles.setupCard}>
-          <span className={styles.setupTitle}>Connect Google Calendar</span>
-          <div className={styles.setupField}>
-            <label className={styles.setupLabel}>OAuth 2.0 Client ID</label>
-            <input
-              className={styles.setupInput}
-              placeholder="123456789-abc.apps.googleusercontent.com"
-              value={setupClientId || clientId}
-              onChange={e => setSetupClientId(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') openOAuthPopup(); }}
-            />
-          </div>
-          <button
-            className={styles.setupBtn}
-            onClick={openOAuthPopup}
-            disabled={!setupClientId.trim() && !clientId}
-          >
-            Connect Google Calendar
-          </button>
-          <div className={styles.setupHint}>
-            <strong>How to get a Client ID:</strong><br />
-            1. Go to console.cloud.google.com<br />
-            2. APIs &amp; Services → Credentials<br />
-            3. Create OAuth 2.0 Client ID (Web application)<br />
-            4. Add <code>{window.location.origin}</code> as an authorized redirect URI<br />
-            5. Enable the Google Calendar API
-          </div>
-        </div>
-      </div>
+      <span
+        className={[
+          styles.dateNum,
+          isToday ? styles.dateNumToday : '',
+          isSelected && !isToday ? styles.dateNumSelected : '',
+          !isCurrentMonth ? styles.dateNumOtherMonth : '',
+        ].filter(Boolean).join(' ')}
+      >
+        {date.getDate()}
+      </span>
     );
   }
 
-  // ── Connected view ─────────────────────────────────────────────────────
-  const grouped = groupByDay(events.filter(e => !!e.start.dateTime));
-  const allDayEvents = events.filter(e => !e.start.dateTime && !!e.start.date);
-  const days = Array.from(grouped.entries()).sort(
-    ([a], [b]) => new Date(a).getTime() - new Date(b).getTime(),
-  );
+  function renderChips(date: Date, maxVisible = MAX_CHIPS) {
+    const chips = chipsByDate.get(dateKey(date)) ?? [];
+    const visible = chips.slice(0, maxVisible);
+    const overflow = chips.length - maxVisible;
+    return (
+      <>
+        {visible.map(chip => (
+          <span
+            key={chip.id}
+            className={styles.chip}
+            style={{ background: chip.bgColor }}
+            title={chip.label}
+          >
+            {chip.label}
+          </span>
+        ))}
+        {overflow > 0 && (
+          <span className={styles.overflowChip}>+{overflow} more</span>
+        )}
+      </>
+    );
+  }
 
   return (
     <div className={styles.container}>
-      <div className={styles.topBar}>
-        <div className={styles.syncRow}>
-          <span className={styles.connectedDot} />
-          <span className={styles.connectedLabel}>Google Calendar</span>
-          {lastSynced && (
-            <span className={styles.syncLabel}>· {fmtSynced(lastSynced)}</span>
-          )}
-          <button
-            className={styles.refreshBtn}
-            onClick={() => loadEvents(token, true)}
-            disabled={syncing || loading}
-            title="Refresh"
-          >↻</button>
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <div className={styles.header}>
+        <div className={styles.headerLeft}>
+          <button className={styles.navArrow} onClick={goToPrev}>‹</button>
+          <button className={styles.navArrow} onClick={goToNext}>›</button>
+          <span className={styles.navTitle}>{headerTitle}</span>
         </div>
-        <button className={styles.disconnectLink} onClick={handleDisconnect}>Disconnect</button>
-      </div>
-
-      <div className={styles.content}>
-        {loading && <div className={styles.loading}>Loading…</div>}
-        {!loading && error && (
-          <div className={styles.errorState}>
-            <span>{error}</span>
-            <button className={styles.retryBtn} onClick={() => loadEvents(token, false)}>Retry</button>
+        <div className={styles.headerRight}>
+          <button className={styles.todayBtn} onClick={goToToday}>Today</button>
+          <div className={styles.viewToggle}>
+            <button
+              className={`${styles.viewToggleBtn}${viewMode === 'month' ? ` ${styles.viewToggleBtnActive}` : ''}`}
+              onClick={() => switchViewMode('month')}
+            >Month</button>
+            <button
+              className={`${styles.viewToggleBtn}${viewMode === 'week' ? ` ${styles.viewToggleBtnActive}` : ''}`}
+              onClick={() => switchViewMode('week')}
+            >Week</button>
           </div>
-        )}
-
-        {!loading && !error && (
-          <>
-            <div className={styles.weekHeader}>This week</div>
-            {days.length === 0 && allDayEvents.length === 0 && (
-              <div className={styles.empty}>No events this week.</div>
-            )}
-            {allDayEvents.length > 0 && (
-              <div className={styles.dayGroup}>
-                <div className={styles.dayLabel}>All-day</div>
-                {allDayEvents.map(e => (
-                  <div key={e.id} className={styles.eventRow}>
-                    <div className={styles.eventTime}>—</div>
-                    <div className={styles.eventTitle}>{e.summary ?? '(No title)'}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {days.map(([dayStr, dayEvents]) => (
-              <div key={dayStr} className={styles.dayGroup}>
-                <div className={styles.dayLabel}>{fmtDayLabel(dayEvents[0].start.dateTime!)}</div>
-                {dayEvents.map(e => (
-                  <div key={e.id} className={styles.eventRow}>
-                    <div className={styles.eventTime}>
-                      {fmtEventTime(e.start.dateTime!)}
-                      {e.end.dateTime && (
-                        <span className={styles.eventTimeEnd}> – {fmtEventTime(e.end.dateTime)}</span>
-                      )}
-                    </div>
-                    <div className={styles.eventTitle}>{e.summary ?? '(No title)'}</div>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </>
-        )}
+        </div>
       </div>
+
+      {/* ── Filter bar ─────────────────────────────────────────────────── */}
+      <div className={styles.filterBar}>
+        {isConnected ? (
+          <button
+            className={`${styles.filterPill}${filters.gcal ? ` ${styles.filterPillActive}` : ''}`}
+            style={filters.gcal ? { background: GCAL_COLOR, borderColor: GCAL_COLOR } : {}}
+            onClick={() => toggleFilter('gcal')}
+          >Google Calendar</button>
+        ) : (
+          <button
+            className={`${styles.filterPill} ${styles.filterPillConnect}`}
+            onClick={() => setShowConnect(v => !v)}
+          >+ Connect Google Calendar</button>
+        )}
+        <button
+          className={`${styles.filterPill}${filters.canvas ? ` ${styles.filterPillActive}` : ''}`}
+          style={filters.canvas ? { background: CANVAS_COLOR, borderColor: CANVAS_COLOR } : {}}
+          onClick={() => toggleFilter('canvas')}
+        >Canvas</button>
+        <button
+          className={`${styles.filterPill}${filters.soma ? ` ${styles.filterPillActive}` : ''}`}
+          onClick={() => toggleFilter('soma')}
+        >Soma</button>
+        {isConnected && (
+          <button className={styles.disconnectBtn} onClick={handleDisconnect}>Disconnect Google</button>
+        )}
+        {gcalLoading && <span className={styles.gcalLoading}>↻ Syncing…</span>}
+        {gcalError && <span className={styles.gcalError}>{gcalError}</span>}
+      </div>
+
+      {/* ── Connect card ───────────────────────────────────────────────── */}
+      {showConnect && !isConnected && (
+        <div className={styles.connectCard}>
+          <span className={styles.connectTitle}>Connect Google Calendar</span>
+          <div className={styles.connectRow}>
+            <input
+              className={styles.connectInput}
+              placeholder="OAuth 2.0 Client ID"
+              value={setupClientId || clientId}
+              onChange={e => setSetupClientId(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') openOAuthPopup(); if (e.key === 'Escape') setShowConnect(false); }}
+            />
+            <button
+              className={styles.connectBtn}
+              onClick={openOAuthPopup}
+              disabled={!setupClientId.trim() && !clientId}
+            >Connect</button>
+            <button className={styles.connectCancel} onClick={() => setShowConnect(false)}>✕</button>
+          </div>
+          <span className={styles.connectHint}>
+            Google Cloud Console → APIs &amp; Services → Credentials → OAuth 2.0 Client ID (Web).
+            Add <code>{window.location.origin}</code> as authorized redirect URI and enable the Calendar API.
+          </span>
+        </div>
+      )}
+
+      {/* ── Day-of-week header ─────────────────────────────────────────── */}
+      <div className={styles.dayHeaders}>
+        {DAY_NAMES.map(d => (
+          <div key={d} className={styles.dayHeaderCell}>{d}</div>
+        ))}
+      </div>
+
+      {/* ── Month grid ─────────────────────────────────────────────────── */}
+      {viewMode === 'month' && (
+        <div className={styles.monthGrid}>
+          {monthCells.map(({ date, isCurrentMonth }, i) => (
+            <div
+              key={i}
+              className={[
+                styles.monthCell,
+                !isCurrentMonth ? styles.monthCellOther : '',
+                isSameDay(date, today) ? styles.monthCellToday : '',
+                isSameDay(date, selectedDate) ? styles.monthCellSelected : '',
+              ].filter(Boolean).join(' ')}
+              onClick={() => handleDayClick(date)}
+            >
+              {renderDayNum(date, isCurrentMonth)}
+              <div className={styles.chipsArea}>
+                {renderChips(date)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Week grid ──────────────────────────────────────────────────── */}
+      {viewMode === 'week' && (
+        <div className={styles.weekGrid}>
+          {weekDays.map((day, i) => (
+            <div
+              key={i}
+              className={[
+                styles.weekCell,
+                isSameDay(day, today) ? styles.weekCellToday : '',
+                isSameDay(day, selectedDate) ? styles.weekCellSelected : '',
+              ].filter(Boolean).join(' ')}
+              onClick={() => handleDayClick(day)}
+            >
+              <div className={styles.weekCellHeader}>
+                {renderDayNum(day)}
+              </div>
+              <div className={styles.weekChipsArea}>
+                {renderChips(day, 999)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

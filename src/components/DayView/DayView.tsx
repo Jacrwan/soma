@@ -86,14 +86,16 @@ interface AddSubjectForm {
   color: SubjectColor;
 }
 
-export default function DayView() {
+interface DayViewProps {
+  selectedDate: Date;
+  onSelectDate: (date: Date) => void;
+}
+
+export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [blocks, setBlocks] = useState<TimeBlock[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [currentMinutes, setCurrentMinutes] = useState(0);
-  const [selectedDate, setSelectedDate] = useState<Date>(() => {
-    const d = new Date(); d.setHours(0, 0, 0, 0); return d;
-  });
-  const [viewWeekStart, setViewWeekStart] = useState<Date>(() => getMondayOfWeek(new Date()));
+  const [viewWeekStart, setViewWeekStart] = useState<Date>(() => getMondayOfWeek(selectedDate));
   const [addForm, setAddForm] = useState<AddBlockForm | null>(null);
   const [popover, setPopover] = useState<PopoverState | null>(null);
   const [timerSubject, setTimerSubject] = useState<Subject | null>(null);
@@ -135,6 +137,15 @@ export default function DayView() {
   const pinPopoverRef = useRef<HTMLDivElement>(null);
   const touchStartXRef = useRef(0);
   const wheelCooldownRef = useRef(false);
+  const prevSelectedDateRef = useRef(selectedDate);
+
+  // Sync week view when selectedDate changes from an external source (e.g. CalendarTab)
+  useEffect(() => {
+    if (!isSameDay(selectedDate, prevSelectedDateRef.current)) {
+      prevSelectedDateRef.current = selectedDate;
+      setViewWeekStart(getMondayOfWeek(selectedDate));
+    }
+  }, [selectedDate]);
 
   useEffect(() => {
     setSubjects(storage.getSubjects());
@@ -419,7 +430,8 @@ export default function DayView() {
   const archivedSubjects = subjects.filter(s => s.archived);
 
   function selectDate(date: Date) {
-    setSelectedDate(date);
+    onSelectDate(date);
+    prevSelectedDateRef.current = date;
     setViewWeekStart(getMondayOfWeek(date));
     setAddForm(null);
     setPopover(null);

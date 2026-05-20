@@ -1,265 +1,464 @@
-/* ── Setup ──────────────────────────────────────────────────────────────── */
-
-.setupOverlay {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-}
-
-.setupCard {
-  width: 400px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: var(--space-lg);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-}
-
-.setupTitle {
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.setupField {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.setupLabel {
-  font-size: 12px;
-  color: var(--text-secondary);
-  font-weight: 500;
-}
-
-.setupInput {
-  padding: 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: 13px;
-  background: var(--bg);
-  color: var(--text-primary);
-  outline: none;
-  width: 100%;
-}
-
-.setupInput:focus {
-  border-color: var(--accent);
-}
-
-.setupBtn {
-  padding: 8px 16px;
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  align-self: flex-end;
-}
-
-.setupBtn:hover:not(:disabled) {
-  background: var(--accent-hover);
-}
-
-.setupBtn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.setupHint {
-  font-size: 12px;
-  color: var(--text-muted);
-  line-height: 1.7;
-  border-top: 1px solid var(--border);
-  padding-top: var(--space-sm);
-}
-
-.setupHint code {
-  font-family: monospace;
-  background: var(--bg-secondary);
-  padding: 1px 4px;
-  border-radius: 3px;
-  font-size: 11px;
-}
-
-/* ── Connected layout ───────────────────────────────────────────────────── */
+/* ── Outer shell ─────────────────────────────────────────────────────────── */
 
 .container {
   display: flex;
   flex-direction: column;
   height: 100%;
+  background: var(--bg);
+  overflow: hidden;
 }
 
-.topBar {
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-md);
-  padding: 8px var(--space-md);
+  padding: 10px 16px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  gap: 8px;
 }
 
-.syncRow {
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.navArrow {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: background 0.1s, color 0.1s;
+}
+
+.navArrow:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.navTitle {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+.todayBtn {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 11px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.todayBtn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.viewToggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.viewToggleBtn {
+  padding: 4px 13px;
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: background 0.1s, color 0.1s;
+}
+
+.viewToggleBtn:hover:not(.viewToggleBtnActive) {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.viewToggleBtnActive {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* ── Filter bar ──────────────────────────────────────────────────────────── */
+
+.filterBar {
   display: flex;
   align-items: center;
   gap: 6px;
+  padding: 7px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
-.connectedDot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #34a853;
+.filterPill {
+  padding: 3px 11px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-secondary);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  line-height: 1.5;
+}
+
+.filterPill:hover:not(.filterPillActive) {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.filterPillActive {
+  color: #fff;
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.filterPillConnect {
+  border-style: dashed;
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.filterPillConnect:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.disconnectBtn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.disconnectBtn:hover {
+  color: var(--danger);
+}
+
+.gcalLoading {
+  font-size: 11px;
+  color: var(--text-muted);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+.gcalError {
+  font-size: 11px;
+  color: var(--danger);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ── Connect card ────────────────────────────────────────────────────────── */
+
+.connectCard {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   flex-shrink: 0;
 }
 
-.connectedLabel {
+.connectTitle {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-primary);
 }
 
-.syncLabel {
+.connectRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.connectInput {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text-primary);
+  outline: none;
+  min-width: 0;
+}
+
+.connectInput:focus {
+  border-color: var(--accent);
+}
+
+.connectBtn {
+  padding: 6px 14px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.connectBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.connectCancel {
+  background: none;
+  border: none;
+  font-size: 16px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.connectCancel:hover {
+  color: var(--text-primary);
+}
+
+.connectHint {
   font-size: 11px;
   color: var(--text-muted);
+  line-height: 1.6;
 }
 
-.refreshBtn {
-  background: none;
-  border: none;
-  font-size: 14px;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 0 2px;
-  line-height: 1;
-  transition: color 0.15s, transform 0.2s;
+.connectHint code {
+  font-family: monospace;
+  background: var(--bg-tertiary);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 10px;
 }
 
-.refreshBtn:hover:not(:disabled) {
-  color: var(--text-primary);
+/* ── Day-of-week header row ──────────────────────────────────────────────── */
+
+.dayHeaders {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
-.refreshBtn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.disconnectLink {
-  background: none;
-  border: none;
-  font-size: 12px;
-  color: var(--text-muted);
-  cursor: pointer;
-  padding: 0;
-}
-
-.disconnectLink:hover {
-  color: var(--danger);
-}
-
-/* ── Content ────────────────────────────────────────────────────────────── */
-
-.content {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--space-md) var(--space-lg);
-  max-width: 640px;
-}
-
-.loading {
-  color: var(--text-muted);
-  font-size: 14px;
-  padding: var(--space-xl) 0;
-}
-
-.errorState {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-  color: var(--danger);
-  font-size: 14px;
-  padding: var(--space-md) 0;
-}
-
-.retryBtn {
-  padding: 6px 16px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg);
-  font-size: 13px;
-  cursor: pointer;
-  color: var(--text-primary);
-  align-self: flex-start;
-}
-
-.retryBtn:hover {
-  background: var(--bg-secondary);
-}
-
-.weekHeader {
+.dayHeaderCell {
+  text-align: center;
+  padding: 5px 0;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.4px;
   color: var(--text-muted);
-  margin-bottom: var(--space-md);
 }
 
-.empty {
-  color: var(--text-muted);
-  font-size: 14px;
+/* ── Month grid ──────────────────────────────────────────────────────────── */
+
+.monthGrid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  grid-template-rows: repeat(6, 1fr);
+  overflow-y: auto;
+  min-height: 0;
 }
 
-/* ── Day group ──────────────────────────────────────────────────────────── */
-
-.dayGroup {
-  margin-bottom: var(--space-lg);
-}
-
-.dayLabel {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 6px;
-  padding-bottom: 4px;
+.monthCell {
+  border-right: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-}
-
-.eventRow {
+  padding: 4px 5px;
+  cursor: pointer;
+  overflow: hidden;
   display: flex;
-  align-items: baseline;
-  gap: var(--space-md);
-  padding: 6px 0;
-  border-bottom: 1px solid var(--bg-tertiary);
+  flex-direction: column;
+  min-height: 80px;
+  transition: background 0.1s;
 }
 
-.eventRow:last-child {
-  border-bottom: none;
+.monthCell:nth-child(7n) {
+  border-right: none;
 }
 
-.eventTime {
+.monthCell:hover {
+  background: var(--bg-secondary);
+}
+
+.monthCellOther {
+  background: color-mix(in srgb, var(--bg-tertiary) 30%, transparent);
+}
+
+.monthCellOther:hover {
+  background: var(--bg-secondary);
+}
+
+.monthCellToday {
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.monthCellSelected {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+/* ── Week grid ───────────────────────────────────────────────────────────── */
+
+.weekGrid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.weekCell {
+  border-right: 1px solid var(--border);
+  padding: 8px 5px;
+  cursor: pointer;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: background 0.1s;
+}
+
+.weekCell:last-child {
+  border-right: none;
+}
+
+.weekCell:hover {
+  background: var(--bg-secondary);
+}
+
+.weekCellToday {
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.weekCellSelected {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.weekCellHeader {
+  display: flex;
+  justify-content: center;
+  padding-bottom: 4px;
+}
+
+.weekChipsArea {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ── Date number ─────────────────────────────────────────────────────────── */
+
+.dateNum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
   font-size: 12px;
-  color: var(--text-muted);
-  white-space: nowrap;
-  flex-shrink: 0;
-  min-width: 80px;
-}
-
-.eventTimeEnd {
-  color: var(--text-muted);
-}
-
-.eventTitle {
-  font-size: 13px;
+  font-weight: 500;
   color: var(--text-primary);
+  flex-shrink: 0;
+  margin-bottom: 2px;
+  line-height: 1;
+}
+
+.dateNumToday {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+
+.dateNumSelected {
+  background: var(--bg-tertiary);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.dateNumOtherMonth {
+  color: var(--text-muted);
+  opacity: 0.45;
+}
+
+/* ── Chips ───────────────────────────────────────────────────────────────── */
+
+.chipsArea {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.chip {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 5px;
+  border-radius: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #fff;
+  display: block;
+  line-height: 1.5;
+}
+
+.overflowChip {
+  font-size: 10px;
+  color: var(--text-muted);
+  padding: 0 2px;
+  line-height: 1.5;
+}
+
+@media (max-width: 768px) {
+  .navTitle {
+    font-size: 14px;
+  }
+
+  .monthCell {
+    min-height: 60px;
+    padding: 3px;
+  }
+
+  .weekCell {
+    padding: 6px 3px;
+  }
+
+  .chip {
+    font-size: 10px;
+    padding: 1px 4px;
+  }
 }
