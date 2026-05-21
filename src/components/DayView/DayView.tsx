@@ -517,7 +517,9 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
 
           {showCurrentTime && (
             <div className={styles.currentTimeLine} style={{ top: minToTop(currentMinutes) }}>
-              <div className={styles.nowPill}>now</div>
+              <div className={styles.nowPill}>
+                {`${String(Math.floor(currentMinutes / 60)).padStart(2, '0')}:${String(currentMinutes % 60).padStart(2, '0')}`}
+              </div>
             </div>
           )}
 
