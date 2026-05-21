@@ -222,7 +222,9 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     const minutes = START_HOUR * 60 + i * 30;
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
-    return { minutes, label: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}` };
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    return { minutes, label: `${h12}:${String(m).padStart(2, '0')} ${ampm}` };
   });
 
   const isViewingToday = isSameDay(selectedDate, new Date());
@@ -518,7 +520,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
           {showCurrentTime && (
             <div className={styles.currentTimeLine} style={{ top: minToTop(currentMinutes) }}>
               <div className={styles.nowPill}>
-                {`${String(Math.floor(currentMinutes / 60)).padStart(2, '0')}:${String(currentMinutes % 60).padStart(2, '0')}`}
+                {`${Math.floor(currentMinutes / 60) % 12 || 12}:${String(currentMinutes % 60).padStart(2, '0')} ${currentMinutes >= 12 * 60 ? 'PM' : 'AM'}`}
               </div>
             </div>
           )}

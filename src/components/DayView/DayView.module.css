@@ -159,7 +159,7 @@
 }
 
 .timeLabel {
-  width: 52px;
+  width: 68px;
   flex-shrink: 0;
   font-size: 11px;
   color: var(--text-muted);
@@ -194,7 +194,7 @@
 /* Current time indicator */
 .currentTimeLine {
   position: absolute;
-  left: 52px;   /* start at grid area so the line doesn't run through the time column */
+  left: 68px;   /* start at grid area so the line doesn't run through the time column */
   right: 0;
   height: 2px;
   background: var(--danger);
@@ -205,7 +205,7 @@
 
 .nowPill {
   position: absolute;
-  left: -44px;  /* pulls the pill back into the time column; pill spans x:8–50 within gridWrapper */
+  left: -60px;  /* pulls the pill back into the time column; pill spans x:8–64 within 68px column */
   top: 50%;
   transform: translateY(-50%);  /* centers pill on the 2px line: top=-9px, center=1px */
   background: var(--danger);
@@ -213,7 +213,7 @@
   font-size: 11px;
   font-weight: 600;
   border-radius: 10px;
-  width: 46px;
+  width: 56px;
   height: 20px;
   display: flex;
   align-items: center;
@@ -225,7 +225,7 @@
 /* Blocks */
 .block {
   position: absolute;
-  left: 56px;
+  left: 72px;
   right: 8px;
   border-left-width: 3px;
   border-left-style: solid;
@@ -261,7 +261,7 @@
 /* Google Calendar read-only blocks */
 .gcalBlock {
   position: absolute;
-  left: 56px;
+  left: 72px;
   right: 8px;
   border-radius: 6px;
   padding: 3px 7px;
@@ -299,7 +299,7 @@
 /* Inline add form */
 .addForm {
   position: absolute;
-  left: 56px;
+  left: 72px;
   right: 8px;
   z-index: 10;
   background: #fff;
@@ -337,7 +337,7 @@
 
 .popover {
   position: absolute;
-  left: 56px;
+  left: 72px;
   width: 220px;
   z-index: 10;
   background: #fff;
