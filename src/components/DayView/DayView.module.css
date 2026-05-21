@@ -194,21 +194,23 @@
 /* Current time indicator */
 .currentTimeLine {
   position: absolute;
-  left: 0;
+  left: 52px;   /* start at grid area so the line doesn't run through the time column */
   right: 0;
-  height: 1px;
+  height: 2px;
   background: var(--danger);
   z-index: 3;
   pointer-events: none;
-  display: flex;
-  align-items: center;
   overflow: visible;
 }
 
 .nowPill {
+  position: absolute;
+  left: -44px;  /* pulls the pill back into the time column; pill spans x:8–50 within gridWrapper */
+  top: 50%;
+  transform: translateY(-50%);  /* centers pill on the 2px line: top=-9px, center=1px */
   background: var(--danger);
   color: #fff;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   border-radius: 10px;
   width: 42px;
@@ -216,9 +218,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  transform: translateY(-50%);
   letter-spacing: 0.2px;
+  white-space: nowrap;
 }
 
 /* Blocks */
