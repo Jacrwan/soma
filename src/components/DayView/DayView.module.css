@@ -2,6 +2,9 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 /* ── Date bar ───────────────────────────────────────────────────────────── */
@@ -133,8 +136,7 @@
 
 .container {
   display: flex;
-  flex: 1;
-  min-height: 0;
+  flex: 0 0 auto;
 }
 
 /* ── Left panel ── */
@@ -1081,14 +1083,12 @@
 
   .left {
     flex: none;
-    height: 60vh;
     border-right: none;
     border-bottom: 1px solid var(--border);
   }
 
   .right {
-    flex: 1;
-    min-height: 0;
+    flex: none;
   }
 
   .subjectHeaderToggle {

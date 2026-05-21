@@ -39,6 +39,10 @@ export interface CanvasAssignment {
   htmlUrl: string;
   status: 'not_started' | 'in_progress' | 'done';
   description?: string;
+  submission?: {
+    workflow_state?: string | null;
+    submitted_at?: string | null;
+  } | null;
 }
 
 export interface CanvasCourse {

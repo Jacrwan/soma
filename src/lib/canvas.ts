@@ -77,6 +77,12 @@ export async function getAssignments(
       htmlUrl: a.html_url,
       status: 'not_started' as const,
       description: a.description ? stripHtml(a.description) : undefined,
+      submission: a.submission
+        ? {
+            workflow_state: a.submission.workflow_state ?? null,
+            submitted_at: a.submission.submitted_at ?? null,
+          }
+        : null,
     }));
 }
 

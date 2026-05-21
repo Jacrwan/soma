@@ -3,6 +3,7 @@ import { storage, inferSubjectId } from '../../lib/storage';
 import { Subject, TimeBlock, SubjectColor, Todo, GoogleCalendarEvent } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
 import TimerOverlay from '../Timer/TimerOverlay';
+import DailySummary from '../DailySummary/DailySummary';
 import styles from './DayView.module.css';
 
 const SLOT_HEIGHT = 40;
@@ -489,6 +490,8 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
           })}
         </div>
       </div>
+
+      <DailySummary />
 
     <div className={styles.container}>
       {/* ── Left panel ── */}
