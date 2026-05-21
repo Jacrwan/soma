@@ -186,24 +186,6 @@
 .slotArea {
   flex: 1;
   height: 100%;
-  cursor: pointer;
-  position: relative;
-}
-
-.slotArea:hover {
-  background: #fafafa;
-}
-
-.slotArea:hover::after {
-  content: '+';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 16px;
-  color: var(--text-muted);
-  opacity: 0.3;
-  pointer-events: none;
 }
 
 /* Current time indicator */
@@ -315,33 +297,6 @@
 }
 
 /* Inline add form */
-.addForm {
-  position: absolute;
-  left: 72px;
-  right: 8px;
-  z-index: 10;
-  background: #fff;
-  border: 1px solid #ebebeb;
-  border-radius: 10px;
-  padding: var(--space-sm);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.07);
-}
-
-.addForm select,
-.addForm input {
-  padding: 4px 8px;
-  border: 1px solid #ebebeb;
-  border-radius: 6px;
-  font-size: 13px;
-  background: #fff;
-  color: var(--text-primary);
-  outline: none;
-  width: 100%;
-}
-
 .btnRow {
   display: flex;
   gap: var(--space-xs);
@@ -354,10 +309,9 @@
 }
 
 .popover {
-  position: absolute;
-  left: 72px;
+  position: fixed;
   width: 220px;
-  z-index: 10;
+  z-index: 9999;
   background: #fff;
   border: 1px solid #ebebeb;
   border-radius: 10px;
@@ -1125,31 +1079,54 @@
 
 .pinTimeSelects {
   display: flex;
+  align-items: center;
   gap: 4px;
 }
 
-.pinSelect {
-  padding: 3px 6px;
+.pinTimeInput {
+  width: 42px;
+  padding: 3px 5px;
   border: 1px solid #ebebeb;
   border-radius: 5px;
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
   background: #fff;
   color: var(--text-primary);
   outline: none;
+  text-align: center;
 }
 
-.pinDurationInput {
-  width: 58px;
-  padding: 3px 6px;
+.pinTimeInput:focus { border-color: var(--accent); }
+
+.pinTimeSep {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 -1px;
+}
+
+.pinAmpmToggle {
+  display: flex;
   border: 1px solid #ebebeb;
   border-radius: 5px;
-  font-size: 12px;
-  background: #fff;
-  color: var(--text-primary);
-  outline: none;
+  overflow: hidden;
+  margin-left: 2px;
 }
 
-.pinDurationInput:focus { border-color: var(--accent); }
+.pinAmpmBtn {
+  padding: 3px 6px;
+  background: none;
+  border: none;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.pinAmpmBtnActive {
+  background: var(--accent);
+  color: #fff;
+}
 
 .pinDurationUnit {
   font-size: 12px;
@@ -1331,9 +1308,6 @@
   color: #3a3a3a;
 }
 
-:global(body.focus-mode) .slotArea:hover {
-  background: #1a1a1a;
-}
 
 :global(body.focus-mode) .right {
   background: #1a1a1a;
@@ -1372,132 +1346,4 @@
   background: #222;
 }
 
-/* ── Reschedule toast ── */
-
-@keyframes toastIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.rescheduleToast {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  width: 300px;
-  z-index: 400;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  animation: toastIn 220ms ease;
-}
-
-.rescheduleBanner {
-  background: #fff;
-  border: 1px solid #e8e8e8;
-  border-radius: 10px;
-  padding: 12px 14px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.09);
-}
-
-.rescheduleBannerText {
-  display: block;
-  font-size: 13px;
-  color: var(--text-primary);
-  line-height: 1.4;
-  margin-bottom: 8px;
-}
-
-.rescheduleBannerActions {
-  display: flex;
-  gap: 6px;
-}
-
-.rescheduleFindBtn {
-  flex: 1;
-  padding: 5px 10px;
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.rescheduleFindBtn:hover { background: var(--accent-hover); }
-
-.rescheduleImissBtn {
-  padding: 5px 10px;
-  background: none;
-  border: 1px solid #e8e8e8;
-  border-radius: 6px;
-  font-size: 12px;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.rescheduleImissBtn:hover { color: var(--text-secondary); background: #f5f5f5; }
-
-.rescheduleCard {
-  background: #fff;
-  border: 1px solid #e8e8e8;
-  border-radius: 10px;
-  padding: 12px 14px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.09);
-}
-
-.rescheduleCardLoading {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-style: italic;
-}
-
-.rescheduleCardTitle {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0 0 4px;
-}
-
-.rescheduleCardReason {
-  font-size: 12px;
-  color: var(--text-secondary);
-  line-height: 1.5;
-  margin: 0 0 10px;
-}
-
-.rescheduleCardActions {
-  display: flex;
-  gap: 6px;
-}
-
-.rescheduleAcceptBtn {
-  flex: 1;
-  padding: 5px 10px;
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-
-.rescheduleAcceptBtn:hover { background: var(--accent-hover); }
-
-.rescheduleCardDismiss {
-  padding: 5px 10px;
-  background: none;
-  border: 1px solid #e8e8e8;
-  border-radius: 6px;
-  font-size: 12px;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.rescheduleCardDismiss:hover { color: var(--text-secondary); background: #f5f5f5; }
 

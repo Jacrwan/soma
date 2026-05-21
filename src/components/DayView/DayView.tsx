@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { storage, inferSubjectId } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
 import { Subject, TimeBlock, SubjectColor, Todo, GoogleCalendarEvent } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
-import TimerOverlay, { RescheduleInfo } from '../Timer/TimerOverlay';
+import TimerOverlay from '../Timer/TimerOverlay';
 import styles from './DayView.module.css';
 
 const SLOT_HEIGHT = 60;
@@ -76,16 +77,11 @@ function fmtSecs(s: number) {
 }
 
 
-interface AddBlockForm {
-  slotMinutes: number;
-  subjectId: string;
-  task: string;
-  durationMinutes: number;
-}
-
 interface PopoverState {
   block: TimeBlock;
   subject: Subject | undefined;
+  x: number;
+  y: number;
 }
 
 interface SubjectEditState {
@@ -99,12 +95,6 @@ interface AddSubjectForm {
   color: SubjectColor;
 }
 
-interface RescheduleSuggestion {
-  date: string;       // YYYY-MM-DD
-  startTime: string;  // HH:MM
-  endTime: string;    // HH:MM
-  reason: string;
-}
 
 interface DayViewProps {
   selectedDate: Date;
@@ -116,7 +106,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [currentMinutes, setCurrentMinutes] = useState(0);
   const [viewWeekStart, setViewWeekStart] = useState<Date>(() => getMondayOfWeek(selectedDate));
-  const [addForm, setAddForm] = useState<AddBlockForm | null>(null);
   const [popover, setPopover] = useState<PopoverState | null>(null);
   const [timerSubject, setTimerSubject] = useState<Subject | null>(null);
   const [showAddSubject, setShowAddSubject] = useState(false);
@@ -146,7 +135,9 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [todoPopoverId, setTodoPopoverId] = useState<string | null>(null);
   const [statusPopoverId, setStatusPopoverId] = useState<string | null>(null);
   const [pinPopoverId, setPinPopoverId] = useState<string | null>(null);
-  const [pinForm, setPinForm] = useState({ hour: 9, minute: 0, durationMinutes: 60 });
+  const [pinForm, setPinForm] = useState<{ hour: number; minute: number; ampm: 'AM' | 'PM'; durationHours: number; durationMinutes: number }>(
+    { hour: 9, minute: 0, ampm: 'AM', durationHours: 1, durationMinutes: 0 }
+  );
   const [initialTimerTask, setInitialTimerTask] = useState('');
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [addSubjectForm, setAddSubjectForm] = useState<AddSubjectForm>({ name: '', color: COLORS[0] });
@@ -167,12 +158,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     const s = localStorage.getItem('soma_panel_ratio');
     return s ? Math.max(0.35, Math.min(0.75, parseFloat(s))) : 0.65;
   });
-  const [rescheduleInfo, setRescheduleInfo] = useState<RescheduleInfo | null>(null);
-  const [rescheduleVisible, setRescheduleVisible] = useState(false);
-  const [rescheduleSuggestion, setRescheduleSuggestion] = useState<RescheduleSuggestion | null>(null);
-  const [rescheduleLoading, setRescheduleLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const rescheduleTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const popoverRef = useRef<HTMLDivElement>(null);
   const todoPopoverRef = useRef<HTMLDivElement>(null);
   const statusPopoverRef = useRef<HTMLDivElement>(null);
@@ -268,39 +254,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
 
   const isViewingToday = isSameDay(selectedDate, new Date());
   const showCurrentTime = isViewingToday;
-
-  function openAddForm(slotMinutes: number) {
-    setPopover(null);
-    setAddForm({
-      slotMinutes,
-      subjectId: activeSubjects[0]?.id ?? '',
-      task: '',
-      durationMinutes: 60,
-    });
-  }
-
-  function saveBlock() {
-    if (!addForm) return;
-    const subject = subjects.find(s => s.id === addForm.subjectId);
-    if (!subject) return;
-    const start = new Date(
-      selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(),
-      Math.floor(addForm.slotMinutes / 60), addForm.slotMinutes % 60,
-    );
-    const end = new Date(start.getTime() + addForm.durationMinutes * 60_000);
-    const block: TimeBlock = {
-      id: crypto.randomUUID(),
-      subjectId: addForm.subjectId,
-      task: addForm.task,
-      startTime: start.toISOString(),
-      endTime: end.toISOString(),
-      source: 'manual',
-    };
-    const all = [...storage.getTimeBlocks(), block];
-    storage.setTimeBlocks(all);
-    setBlocks(prev => [...prev, block]);
-    setAddForm(null);
-  }
 
   function deleteBlock(id: string) {
     storage.setTimeBlocks(storage.getTimeBlocks().filter(b => b.id !== id));
@@ -402,73 +355,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     document.addEventListener('mouseup', onUp);
   }, []);
 
-  async function findMoreTime(info: RescheduleInfo) {
-    setRescheduleLoading(true);
-    try {
-      const now = new Date();
-      const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-      const timeStr = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
-      const tomorrowDate = new Date(now);
-      tomorrowDate.setDate(now.getDate() + 1);
-      const allBlocks = storage.getTimeBlocks();
-      const todayRemaining = allBlocks.filter(b => isOnDate(b.startTime, now) && new Date(b.startTime) > now);
-      const tomorrowBlocks = allBlocks.filter(b => isOnDate(b.startTime, tomorrowDate));
-      const fmtBlock = (b: TimeBlock) => {
-        const subj = subjects.find(s => s.id === b.subjectId);
-        return `${fmtTime(b.startTime)}–${fmtTime(b.endTime)}: ${subj?.name ?? ''} — ${b.task}`;
-      };
-      const threeDaysMs = now.getTime() + 3 * 24 * 60 * 60 * 1000;
-      const soonAssignments = storage.getCachedAssignments().filter(a => new Date(a.dueAt).getTime() <= threeDaysMs);
-      const assignmentsStr = soonAssignments.length > 0
-        ? soonAssignments.map(a => `${a.name} — due ${new Date(a.dueAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`).join(', ')
-        : 'none';
-      const userMsg = `Task not finished: ${info.todoText}. Subject: ${info.subjectName}. Today is ${dateStr} ${timeStr}. Today's remaining schedule:\n${todayRemaining.length > 0 ? todayRemaining.map(fmtBlock).join('\n') : 'None'}\nTomorrow's schedule:\n${tomorrowBlocks.length > 0 ? tomorrowBlocks.map(fmtBlock).join('\n') : 'None'}\nAssignments due soon: ${assignmentsStr}. Suggest the best time slot to continue this task.`;
-      const text = await sendMessage(
-        [{ role: 'user', content: userMsg }],
-        `You are a study scheduler. A student didn't finish a task. Suggest ONE specific time block today or tomorrow to continue working on it. Return only JSON: { "date": "YYYY-MM-DD", "startTime": "HH:MM", "endTime": "HH:MM", "reason": "one short sentence" }`,
-      );
-      const parsed = JSON.parse(text.replace(/```json|```/g, '').trim()) as RescheduleSuggestion;
-      setRescheduleSuggestion(parsed);
-    } catch {
-      // fail silently
-    } finally {
-      setRescheduleLoading(false);
-    }
-  }
-
-  function handleRescheduleAccept(info: RescheduleInfo, suggestion: RescheduleSuggestion) {
-    const [yr, mo, dy] = suggestion.date.split('-').map(Number);
-    const [sh, sm] = suggestion.startTime.split(':').map(Number);
-    const [eh, em] = suggestion.endTime.split(':').map(Number);
-    const startIso = new Date(yr, mo - 1, dy, sh, sm).toISOString();
-    const endIso = new Date(yr, mo - 1, dy, eh, em).toISOString();
-    const block: TimeBlock = {
-      id: crypto.randomUUID(),
-      subjectId: info.subjectId,
-      task: info.todoText,
-      startTime: startIso,
-      endTime: endIso,
-      source: 'ai',
-    };
-    storage.setTimeBlocks([...storage.getTimeBlocks(), block]);
-    if (isOnDate(startIso, selectedDate)) {
-      setBlocks(prev => [...prev, block]);
-    }
-    dismissReschedule(info.todoId);
-  }
-
-  function dismissReschedule(todoId: string) {
-    try {
-      const existing = JSON.parse(localStorage.getItem('soma_reschedule_dismissed') ?? '{}');
-      localStorage.setItem('soma_reschedule_dismissed', JSON.stringify({
-        ...existing,
-        [todoId]: toISODateString(new Date()),
-      }));
-    } catch { /* ignore */ }
-    setRescheduleInfo(null);
-    setRescheduleSuggestion(null);
-    setRescheduleLoading(false);
-  }
 
   const generateBrief = useCallback(async () => {
     setBriefLoading(true);
@@ -533,15 +419,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     setBriefCollapsed(!isViewingToday);
   }, [isViewingToday]);
 
-  useEffect(() => {
-    clearTimeout(rescheduleTimerRef.current);
-    if (rescheduleInfo) {
-      rescheduleTimerRef.current = setTimeout(() => setRescheduleVisible(true), 1000);
-    } else {
-      setRescheduleVisible(false);
-    }
-    return () => clearTimeout(rescheduleTimerRef.current);
-  }, [rescheduleInfo]);
 
   function toggleGroup(groupId: string) {
     setCollapsedGroups(prev => {
@@ -584,11 +461,13 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
   }
 
   function pinTodo(todo: Todo) {
+    const hour24 = (pinForm.hour % 12) + (pinForm.ampm === 'PM' ? 12 : 0);
+    const totalDurMins = pinForm.durationHours * 60 + pinForm.durationMinutes;
     const start = new Date(
       selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(),
-      pinForm.hour, pinForm.minute,
+      hour24, pinForm.minute,
     );
-    const end = new Date(start.getTime() + pinForm.durationMinutes * 60_000);
+    const end = new Date(start.getTime() + Math.max(totalDurMins, 1) * 60_000);
     const block: TimeBlock = {
       id: crypto.randomUUID(),
       subjectId: todo.subjectId ?? '',
@@ -606,10 +485,15 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     setStatusPopoverId(null);
     setTodoPopoverId(null);
     const now = new Date();
-    const h = now.getHours(), m = now.getMinutes();
-    const hour = isViewingToday ? Math.min(m >= 30 ? h + 1 : h, 23) : 9;
-    const minute = isViewingToday ? (m < 30 ? 30 : 0) : 0;
-    setPinForm({ hour, minute, durationMinutes: 60 });
+    let hour24 = 9, minute = 0;
+    if (isViewingToday) {
+      const h = now.getHours(), m = now.getMinutes();
+      hour24 = Math.min(m >= 30 ? h + 1 : h, 23);
+      minute = m < 30 ? 30 : 0;
+    }
+    const ampm: 'AM' | 'PM' = hour24 >= 12 ? 'PM' : 'AM';
+    const hour = hour24 % 12 || 12;
+    setPinForm({ hour, minute, ampm, durationHours: 1, durationMinutes: 0 });
     setPinPopoverId(prev => prev === todoId ? null : todoId);
   }
 
@@ -642,7 +526,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     onSelectDate(date);
     prevSelectedDateRef.current = date;
     setViewWeekStart(getMondayOfWeek(date));
-    setAddForm(null);
     setPopover(null);
   }
 
@@ -715,7 +598,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               style={{ top: minToTop(slot.minutes), height: SLOT_HEIGHT }}
             >
               <span className={styles.timeLabel}>{slot.label}</span>
-              <div className={styles.slotArea} onClick={() => openAddForm(slot.minutes)} />
+              <div className={styles.slotArea} />
             </div>
           ))}
 
@@ -733,7 +616,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             const end = new Date(block.endTime);
             const startMin = start.getHours() * 60 + start.getMinutes();
             const durMin = (end.getTime() - start.getTime()) / 60_000;
-            if (durMin < 2) return null;
+            if (durMin <= 0) return null;
             const blockTopPx = minToTop(startMin);
             const fullHeight = Math.max(durToHeight(durMin), 24);
             const nowLinePx = showCurrentTime ? minToTop(currentMinutes) : Infinity;
@@ -755,8 +638,8 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                 }}
                 onClick={e => {
                   e.stopPropagation();
-                  setAddForm(null);
-                  setPopover({ block, subject });
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setPopover({ block, subject, x: rect.left, y: rect.top });
                 }}
               >
                 <span className={styles.blockSubject}>{subject?.name}</span>
@@ -786,63 +669,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             );
           })}
 
-          {addForm && (
-            <div
-              className={styles.addForm}
-              style={{ top: minToTop(addForm.slotMinutes) }}
-              onClick={e => e.stopPropagation()}
-            >
-              <select
-                value={addForm.subjectId}
-                onChange={e => setAddForm(f => f && { ...f, subjectId: e.target.value })}
-              >
-                {activeSubjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-              <input
-                placeholder="Task"
-                value={addForm.task}
-                autoFocus
-                onChange={e => setAddForm(f => f && { ...f, task: e.target.value })}
-                onKeyDown={e => { if (e.key === 'Enter') saveBlock(); if (e.key === 'Escape') setAddForm(null); }}
-              />
-              <select
-                value={addForm.durationMinutes}
-                onChange={e => setAddForm(f => f && { ...f, durationMinutes: Number(e.target.value) })}
-              >
-                <option value={30}>30 min</option>
-                <option value={60}>1 hour</option>
-                <option value={90}>1.5 hours</option>
-                <option value={120}>2 hours</option>
-              </select>
-              <div className={styles.btnRow}>
-                <button className={`${styles.btn} ${styles.btnAccent}`} onClick={saveBlock}>Save</button>
-                <button className={styles.btn} onClick={() => setAddForm(null)}>Cancel</button>
-              </div>
-            </div>
-          )}
-
-          {popover && (
-            <div
-              ref={popoverRef}
-              className={styles.popover}
-              style={{ top: minToTop(new Date(popover.block.startTime).getHours() * 60 + new Date(popover.block.startTime).getMinutes()) }}
-            >
-              <div className={styles.popoverHeader}>
-                <SubjectDot color={popover.subject?.color ?? '#ccc'} size={12} />
-                <span>{popover.subject?.name ?? 'Unknown'}</span>
-              </div>
-              {popover.block.task && <div className={styles.popoverTask}>{popover.block.task}</div>}
-              <div className={styles.popoverTime}>
-                {fmtTime(popover.block.startTime)} – {fmtTime(popover.block.endTime)}
-              </div>
-              <button
-                className={`${styles.btn} ${styles.btnDanger}`}
-                onClick={() => deleteBlock(popover.block.id)}
-              >
-                Delete
-              </button>
-            </div>
-          )}
         </div>
       </div>
 
@@ -1092,38 +918,54 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                           <div className={styles.pinFormRow}>
                             <label className={styles.pinLabel}>Start</label>
                             <div className={styles.pinTimeSelects}>
-                              <select
-                                className={styles.pinSelect}
+                              <input
+                                type="number"
+                                className={styles.pinTimeInput}
                                 value={pinForm.hour}
-                                onChange={e => setPinForm(f => ({ ...f, hour: Number(e.target.value) }))}
-                              >
-                                {Array.from({ length: 18 }, (_, i) => i + 6).map(h => {
-                                  const ampm = h >= 12 ? 'PM' : 'AM';
-                                  const label = `${h % 12 || 12} ${ampm}`;
-                                  return <option key={h} value={h}>{label}</option>;
-                                })}
-                              </select>
-                              <select
-                                className={styles.pinSelect}
-                                value={pinForm.minute}
-                                onChange={e => setPinForm(f => ({ ...f, minute: Number(e.target.value) }))}
-                              >
-                                <option value={0}>:00</option>
-                                <option value={30}>:30</option>
-                              </select>
+                                min={1}
+                                max={12}
+                                onChange={e => setPinForm(f => ({ ...f, hour: Math.min(12, Math.max(1, Number(e.target.value) || 1)) }))}
+                              />
+                              <span className={styles.pinTimeSep}>:</span>
+                              <input
+                                type="number"
+                                className={styles.pinTimeInput}
+                                value={String(pinForm.minute).padStart(2, '0')}
+                                min={0}
+                                max={59}
+                                onChange={e => setPinForm(f => ({ ...f, minute: Math.min(59, Math.max(0, Number(e.target.value) || 0)) }))}
+                              />
+                              <div className={styles.pinAmpmToggle}>
+                                <button
+                                  className={`${styles.pinAmpmBtn}${pinForm.ampm === 'AM' ? ` ${styles.pinAmpmBtnActive}` : ''}`}
+                                  onClick={() => setPinForm(f => ({ ...f, ampm: 'AM' }))}
+                                >AM</button>
+                                <button
+                                  className={`${styles.pinAmpmBtn}${pinForm.ampm === 'PM' ? ` ${styles.pinAmpmBtnActive}` : ''}`}
+                                  onClick={() => setPinForm(f => ({ ...f, ampm: 'PM' }))}
+                                >PM</button>
+                              </div>
                             </div>
                           </div>
                           <div className={styles.pinFormRow}>
                             <label className={styles.pinLabel}>Duration</label>
                             <input
                               type="number"
-                              className={styles.pinDurationInput}
-                              value={pinForm.durationMinutes}
-                              min={15}
-                              step={15}
-                              onChange={e => setPinForm(f => ({ ...f, durationMinutes: Math.max(15, Number(e.target.value)) }))}
+                              className={styles.pinTimeInput}
+                              value={pinForm.durationHours}
+                              min={0}
+                              onChange={e => setPinForm(f => ({ ...f, durationHours: Math.max(0, Number(e.target.value) || 0) }))}
                             />
-                            <span className={styles.pinDurationUnit}>min</span>
+                            <span className={styles.pinDurationUnit}>h</span>
+                            <input
+                              type="number"
+                              className={styles.pinTimeInput}
+                              value={String(pinForm.durationMinutes).padStart(2, '0')}
+                              min={0}
+                              max={59}
+                              onChange={e => setPinForm(f => ({ ...f, durationMinutes: Math.min(59, Math.max(0, Number(e.target.value) || 0)) }))}
+                            />
+                            <span className={styles.pinDurationUnit}>m</span>
                           </div>
                           <div className={styles.pinActions}>
                             <button className={`${styles.btn} ${styles.btnAccent}`} onClick={() => pinTodo(todo)}>Pin</button>
@@ -1278,38 +1120,54 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                           <div className={styles.pinFormRow}>
                             <label className={styles.pinLabel}>Start</label>
                             <div className={styles.pinTimeSelects}>
-                              <select
-                                className={styles.pinSelect}
+                              <input
+                                type="number"
+                                className={styles.pinTimeInput}
                                 value={pinForm.hour}
-                                onChange={e => setPinForm(f => ({ ...f, hour: Number(e.target.value) }))}
-                              >
-                                {Array.from({ length: 18 }, (_, i) => i + 6).map(h => {
-                                  const ampm = h >= 12 ? 'PM' : 'AM';
-                                  const label = `${h % 12 || 12} ${ampm}`;
-                                  return <option key={h} value={h}>{label}</option>;
-                                })}
-                              </select>
-                              <select
-                                className={styles.pinSelect}
-                                value={pinForm.minute}
-                                onChange={e => setPinForm(f => ({ ...f, minute: Number(e.target.value) }))}
-                              >
-                                <option value={0}>:00</option>
-                                <option value={30}>:30</option>
-                              </select>
+                                min={1}
+                                max={12}
+                                onChange={e => setPinForm(f => ({ ...f, hour: Math.min(12, Math.max(1, Number(e.target.value) || 1)) }))}
+                              />
+                              <span className={styles.pinTimeSep}>:</span>
+                              <input
+                                type="number"
+                                className={styles.pinTimeInput}
+                                value={String(pinForm.minute).padStart(2, '0')}
+                                min={0}
+                                max={59}
+                                onChange={e => setPinForm(f => ({ ...f, minute: Math.min(59, Math.max(0, Number(e.target.value) || 0)) }))}
+                              />
+                              <div className={styles.pinAmpmToggle}>
+                                <button
+                                  className={`${styles.pinAmpmBtn}${pinForm.ampm === 'AM' ? ` ${styles.pinAmpmBtnActive}` : ''}`}
+                                  onClick={() => setPinForm(f => ({ ...f, ampm: 'AM' }))}
+                                >AM</button>
+                                <button
+                                  className={`${styles.pinAmpmBtn}${pinForm.ampm === 'PM' ? ` ${styles.pinAmpmBtnActive}` : ''}`}
+                                  onClick={() => setPinForm(f => ({ ...f, ampm: 'PM' }))}
+                                >PM</button>
+                              </div>
                             </div>
                           </div>
                           <div className={styles.pinFormRow}>
                             <label className={styles.pinLabel}>Duration</label>
                             <input
                               type="number"
-                              className={styles.pinDurationInput}
-                              value={pinForm.durationMinutes}
-                              min={15}
-                              step={15}
-                              onChange={e => setPinForm(f => ({ ...f, durationMinutes: Math.max(15, Number(e.target.value)) }))}
+                              className={styles.pinTimeInput}
+                              value={pinForm.durationHours}
+                              min={0}
+                              onChange={e => setPinForm(f => ({ ...f, durationHours: Math.max(0, Number(e.target.value) || 0) }))}
                             />
-                            <span className={styles.pinDurationUnit}>min</span>
+                            <span className={styles.pinDurationUnit}>h</span>
+                            <input
+                              type="number"
+                              className={styles.pinTimeInput}
+                              value={String(pinForm.durationMinutes).padStart(2, '0')}
+                              min={0}
+                              max={59}
+                              onChange={e => setPinForm(f => ({ ...f, durationMinutes: Math.min(59, Math.max(0, Number(e.target.value) || 0)) }))}
+                            />
+                            <span className={styles.pinDurationUnit}>m</span>
                           </div>
                           <div className={styles.pinActions}>
                             <button className={`${styles.btn} ${styles.btnAccent}`} onClick={() => pinTodo(todo)}>Pin</button>
@@ -1349,56 +1207,9 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
           onSessionSaved={handleSessionSaved}
           onRunningChange={handleRunningChange}
           initialTask={initialTimerTask}
-          onReschedulePrompt={setRescheduleInfo}
         />
       )}
 
-      {/* ── Reschedule toast ── */}
-      {rescheduleInfo && rescheduleVisible && (
-        <div className={styles.rescheduleToast}>
-          <div className={styles.rescheduleBanner}>
-            <span className={styles.rescheduleBannerText}>
-              Didn't finish "{rescheduleInfo.todoText.length > 40 ? `${rescheduleInfo.todoText.slice(0, 40)}…` : rescheduleInfo.todoText}"?
-            </span>
-            <div className={styles.rescheduleBannerActions}>
-              {!rescheduleSuggestion && !rescheduleLoading && (
-                <button className={styles.rescheduleFindBtn} onClick={() => findMoreTime(rescheduleInfo)}>
-                  Find more time
-                </button>
-              )}
-              <button className={styles.rescheduleImissBtn} onClick={() => dismissReschedule(rescheduleInfo.todoId)}>
-                Dismiss
-              </button>
-            </div>
-          </div>
-          {rescheduleLoading && (
-            <div className={styles.rescheduleCard}>
-              <span className={styles.rescheduleCardLoading}>Finding the best time slot…</span>
-            </div>
-          )}
-          {rescheduleSuggestion && (() => {
-            const todayKey = toISODateString(new Date());
-            const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-            const tomorrowKey = toISODateString(tomorrow);
-            const [sh, sm] = rescheduleSuggestion.startTime.split(':').map(Number);
-            const [eh, em] = rescheduleSuggestion.endTime.split(':').map(Number);
-            const fmt12 = (h: number, m: number) => `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
-            const dayLabel = rescheduleSuggestion.date === todayKey ? 'today'
-              : rescheduleSuggestion.date === tomorrowKey ? 'tomorrow'
-              : new Date(`${rescheduleSuggestion.date}T12:00`).toLocaleDateString('en-US', { weekday: 'long' });
-            return (
-              <div className={styles.rescheduleCard}>
-                <p className={styles.rescheduleCardTitle}>How about {dayLabel} at {fmt12(sh, sm)}–{fmt12(eh, em)}?</p>
-                <p className={styles.rescheduleCardReason}>{rescheduleSuggestion.reason}</p>
-                <div className={styles.rescheduleCardActions}>
-                  <button className={styles.rescheduleAcceptBtn} onClick={() => handleRescheduleAccept(rescheduleInfo, rescheduleSuggestion)}>Accept</button>
-                  <button className={styles.rescheduleCardDismiss} onClick={() => setRescheduleSuggestion(null)}>Try again</button>
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-      )}
 
       {/* ── Add Subject Modal ── */}
       {showAddSubject && (
@@ -1435,6 +1246,31 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
         </div>
       )}
     </div>
+
+    {/* ── Block popover (portal — escapes overflow:hidden parents) ── */}
+    {popover && createPortal(
+      <div
+        ref={popoverRef}
+        className={styles.popover}
+        style={{ left: popover.x, top: popover.y }}
+      >
+        <div className={styles.popoverHeader}>
+          <SubjectDot color={popover.subject?.color ?? '#ccc'} size={12} />
+          <span>{popover.subject?.name ?? 'Unknown'}</span>
+        </div>
+        {popover.block.task && <div className={styles.popoverTask}>{popover.block.task}</div>}
+        <div className={styles.popoverTime}>
+          {fmtTime(popover.block.startTime)} – {fmtTime(popover.block.endTime)}
+        </div>
+        <button
+          className={`${styles.btn} ${styles.btnDanger}`}
+          onClick={() => deleteBlock(popover.block.id)}
+        >
+          Delete
+        </button>
+      </div>,
+      document.body
+    )}
     </div>
   );
 }

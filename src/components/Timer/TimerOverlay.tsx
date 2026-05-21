@@ -25,27 +25,15 @@ function isToday(iso: string) {
     && d.getDate() === n.getDate();
 }
 
-function getDismissed(): Record<string, string> {
-  try { return JSON.parse(localStorage.getItem('soma_reschedule_dismissed') ?? '{}'); } catch { return {}; }
-}
-
-export interface RescheduleInfo {
-  todoId: string;
-  todoText: string;
-  subjectId: string;
-  subjectName: string;
-}
-
 interface Props {
   subject: Subject;
   onClose: () => void;
   onSessionSaved: (updatedSubjects: Subject[], updatedBlocks: TimeBlock[]) => void;
   onRunningChange?: (isRunning: boolean) => void;
   initialTask?: string;
-  onReschedulePrompt?: (info: RescheduleInfo) => void;
 }
 
-export default function TimerOverlay({ subject, onClose, onSessionSaved, onRunningChange, initialTask, onReschedulePrompt }: Props) {
+export default function TimerOverlay({ subject, onClose, onSessionSaved, onRunningChange, initialTask }: Props) {
   const [task, setTask] = useState(initialTask ?? '');
   const [step, setStep] = useState<'input' | 'running'>('input');
   const [isStopping, setIsStopping] = useState(false);
@@ -126,24 +114,6 @@ export default function TimerOverlay({ subject, onClose, onSessionSaved, onRunni
     const updatedBlocks = [...allBlocks, newBlock];
     storage.setTimeBlocks(updatedBlocks);
     onSessionSaved(updatedSubjects, updatedBlocks.filter(b => isToday(b.startTime)));
-
-    // Check for an unfinished matching todo and prompt to reschedule
-    if (onReschedulePrompt && task.trim()) {
-      const now = new Date();
-      const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-      const matched = storage.getTodos().find(t =>
-        t.date === todayKey &&
-        t.status !== 'done' &&
-        t.text.trim().toLowerCase() === task.trim().toLowerCase()
-      );
-      if (matched) {
-        const dismissed = getDismissed();
-        if (dismissed[matched.id] !== todayKey) {
-          const subj = storage.getSubjects().find(s => s.id === matched.subjectId);
-          onReschedulePrompt({ todoId: matched.id, todoText: matched.text, subjectId: matched.subjectId ?? '', subjectName: subj?.name ?? '' });
-        }
-      }
-    }
 
     stopTimeoutRef.current = setTimeout(() => {
       onRunningChange?.(false);
