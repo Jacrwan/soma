@@ -489,9 +489,10 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
 
     const existingTodos = storage.getTodos();
     const existingTexts = new Set(existingTodos.map(t => t.text));
+    const todayKey = getTodayKey();
     const newTodos: Todo[] = blocks
       .filter(b => b.task && !existingTexts.has(b.task))
-      .map(b => ({ id: crypto.randomUUID(), text: b.task, status: 'nothing' as const, subjectId: b.subjectId }));
+      .map(b => ({ id: crypto.randomUUID(), text: b.task, status: 'nothing' as const, subjectId: b.subjectId, date: todayKey }));
     if (newTodos.length > 0) storage.setTodos([...existingTodos, ...newTodos]);
 
     updateSession(activeSessionId, s => ({
@@ -523,9 +524,10 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       if (Array.isArray(parsed.assignmentIds) && parsed.assignmentIds.length === todoTexts.length) assignmentIds = parsed.assignmentIds;
     } catch { /* leave unassigned/null */ }
 
+    const todayKey = getTodayKey();
     const newTodos: Todo[] = todoTexts.map((text, i) => {
       const subject = activeSubjects.find(s => s.name.toLowerCase() === subjectAssignments[i]?.toLowerCase());
-      return { id: crypto.randomUUID(), text, status: 'nothing' as const, subjectId: subject?.id, assignmentId: assignmentIds[i] ?? undefined };
+      return { id: crypto.randomUUID(), text, status: 'nothing' as const, subjectId: subject?.id, assignmentId: assignmentIds[i] ?? undefined, date: todayKey };
     });
     storage.setTodos(newTodos);
 

@@ -96,7 +96,15 @@ export const storage = {
   getAnthropicKey: (): string => get(KEYS.anthropicKey, ''),
   setAnthropicKey: (v: string) => set(KEYS.anthropicKey, v),
 
-  getTodos: (): Todo[] => get(KEYS.todos, []),
+  getTodos: (): Todo[] => {
+    const todos = get<Todo[]>(KEYS.todos, []);
+    if (!todos.some(t => !t.date)) return todos;
+    const now = new Date();
+    const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const migrated = todos.map(t => t.date ? t : { ...t, date: todayKey });
+    set(KEYS.todos, migrated);
+    return migrated;
+  },
   setTodos: (v: Todo[]) => set(KEYS.todos, v),
 
   getGoogleToken: (): string => get(KEYS.googleToken, ''),

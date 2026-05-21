@@ -86,6 +86,7 @@
   background: var(--accent);
   color: #fff;
   border-radius: 8px;
+  padding: 6px 8px;
 }
 
 .dayColSelected:hover {
@@ -97,7 +98,7 @@
 }
 
 .dayAbbr {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.3px;
@@ -109,7 +110,7 @@
 }
 
 .dayNum {
-  font-size: 13px;
+  font-size: 18px;
   font-weight: 600;
   line-height: 1;
 }
@@ -140,9 +141,23 @@
 
 /* ── Left panel ── */
 .left {
-  flex: 0 0 65%;
+  flex-shrink: 0;
   overflow-y: auto;
-  border-right: 1px solid #f0f0f0;
+  min-width: 400px;
+}
+
+.dividerHandle {
+  width: 4px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: #f0f0f0;
+  transition: background 0.15s;
+  user-select: none;
+}
+
+.dividerHandle:hover {
+  background: var(--accent);
+  opacity: 0.45;
 }
 
 .gridWrapper {
@@ -194,30 +209,33 @@
 /* Current time indicator */
 .currentTimeLine {
   position: absolute;
-  left: 68px;   /* start at grid area so the line doesn't run through the time column */
+  left: 0;
   right: 0;
   height: 2px;
-  background: var(--danger);
-  z-index: 3;
+  display: flex;
+  align-items: center;
+  z-index: 10;
   pointer-events: none;
   overflow: visible;
 }
 
+.currentTimeLine::after {
+  content: '';
+  flex: 1;
+  height: 2px;
+  background: var(--danger);
+}
+
 .nowPill {
-  position: absolute;
-  left: -60px;  /* pulls the pill back into the time column; pill spans x:8–64 within 68px column */
-  top: 50%;
-  transform: translateY(-50%);  /* centers pill on the 2px line: top=-9px, center=1px */
+  flex-shrink: 0;
   background: var(--danger);
   color: #fff;
   font-size: 11px;
   font-weight: 600;
+  line-height: 20px;
   border-radius: 10px;
-  width: 56px;
+  padding: 0 7px;
   height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   letter-spacing: 0.2px;
   white-space: nowrap;
 }
@@ -230,7 +248,7 @@
   border-left-width: 3px;
   border-left-style: solid;
   border-radius: 6px;
-  padding: 3px 7px;
+  padding: 4px 7px 3px;
   cursor: pointer;
   z-index: 1;
   overflow: hidden;
@@ -446,10 +464,108 @@
   margin-top: 2px;
 }
 
+.dateHeaderRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.clockWidget {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.clockTime {
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .dateHeaderDivider {
   height: 1px;
   background: #f0f0f0;
   margin-bottom: var(--space-md);
+}
+
+/* ── Daily Brief ── */
+
+.dailyBrief {
+  margin-bottom: var(--space-md);
+}
+
+.dailyBriefHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 4px 0;
+  user-select: none;
+}
+
+.dailyBriefLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.dailyBriefControls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dailyBriefRefresh {
+  background: none;
+  border: none;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.dailyBriefRefresh:hover {
+  color: var(--accent);
+}
+
+.dailyBriefChevron {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.dailyBriefBody {
+  overflow: hidden;
+  transition: max-height 200ms ease;
+}
+
+.dailyBriefText {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  padding-top: 6px;
+  margin: 0;
+}
+
+.dailyBriefLine {
+  margin-bottom: 6px;
+}
+
+.dailyBriefLine:last-child {
+  margin-bottom: 0;
+}
+
+.dailyBriefLoading {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding-top: 6px;
 }
 
 /* ── Subject groups ── */
@@ -1164,3 +1280,95 @@
     min-height: 0;
   }
 }
+
+/* ── Focus mode banner spacer ──────────────────────────────────────────── */
+
+.focusBannerSpacer {
+  height: 80px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+  .focusBannerSpacer { height: 64px; }
+}
+
+/* ── Focus mode theme overrides ────────────────────────────────────────── */
+
+:global(body.focus-mode) .wrapper {
+  background: #0f0f0f;
+}
+
+:global(body.focus-mode) .dateBar {
+  background: #1a1a1a;
+  border-bottom-color: #2a2a2a;
+  transition: background-color 400ms ease, border-color 400ms ease;
+}
+
+:global(body.focus-mode) .weekArrow,
+:global(body.focus-mode) .todayBtn {
+  color: #555;
+  border-color: #2a2a2a;
+}
+
+:global(body.focus-mode) .dayAbbr {
+  color: #444;
+}
+
+:global(body.focus-mode) .dayNum {
+  color: #aaa;
+}
+
+:global(body.focus-mode) .left {
+  background: #0f0f0f;
+  border-right-color: #2a2a2a;
+}
+
+:global(body.focus-mode) .slot {
+  border-bottom-color: #2a2a2a;
+}
+
+:global(body.focus-mode) .timeLabel {
+  color: #3a3a3a;
+}
+
+:global(body.focus-mode) .slotArea:hover {
+  background: #1a1a1a;
+}
+
+:global(body.focus-mode) .right {
+  background: #1a1a1a;
+}
+
+:global(body.focus-mode) .dateHeaderWeekday {
+  color: #e8e8e8;
+}
+
+:global(body.focus-mode) .dateHeaderDate,
+:global(body.focus-mode) .dateHeaderCount {
+  color: #555;
+}
+
+:global(body.focus-mode) .dateHeaderDivider {
+  background: #2a2a2a;
+}
+
+:global(body.focus-mode) .subjectGroup {
+  border-bottom-color: #2a2a2a;
+}
+
+:global(body.focus-mode) .subjectGroupHeader:hover {
+  background: #222;
+}
+
+:global(body.focus-mode) .subjectName {
+  color: #e8e8e8;
+}
+
+:global(body.focus-mode) .todoText {
+  color: #ccc;
+}
+
+:global(body.focus-mode) .todoItem:hover {
+  background: #222;
+}
+

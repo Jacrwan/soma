@@ -1,14 +1,38 @@
-.app { display: flex; flex-direction: column; height: 100vh; }
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  transition: background-color 400ms ease;
+}
 
 .nav {
   display: flex;
   border-bottom: 1px solid #f0f0f0;
   background: #fff;
   flex-shrink: 0;
+  transition: background-color 400ms ease, border-color 400ms ease;
+}
+
+:global(body.focus-mode) .app {
+  background: #0f0f0f;
+}
+
+:global(body.focus-mode) .nav {
+  background: #1a1a1a;
+  border-bottom-color: #2a2a2a;
+}
+
+:global(body.focus-mode) .nav button {
+  color: #555;
+}
+
+:global(body.focus-mode) .nav button.active {
+  color: #fff;
+  border-bottom-color: var(--accent);
 }
 
 .nav button {
-  padding: 12px 20px;
+  padding: 16px 24px;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -17,17 +41,21 @@
   font-weight: 500;
   margin-bottom: -1px;
   cursor: pointer;
-  transition: color 0.15s;
+  transition: color 0.15s, background 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.nav button:hover { color: var(--text-primary); }
+.nav button:hover { color: var(--text-primary); background: #fafafa; }
 
 .nav button.active {
   color: var(--accent);
   border-bottom-color: var(--accent);
+  font-weight: 600;
 }
 
-.main { flex: 1; overflow: hidden; }
+.main { flex: 1; overflow: hidden; padding: 0 16px; }
 
 @media (max-width: 768px) {
   .nav button {

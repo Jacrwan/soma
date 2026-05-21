@@ -12,7 +12,12 @@
 
 @keyframes pulse {
   0%, 100% { opacity: 1; }
-  50%       { opacity: 0.3; }
+  50%       { opacity: 0.35; }
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-100%); }
+  to   { transform: translateY(0); }
 }
 
 .backdrop {
@@ -129,88 +134,115 @@
 
 .cancelLink:hover { color: var(--text-secondary); }
 
-/* ── Floating pill (running) ─────────────────────────────────────────────── */
+/* ── Focus banner (running) ─────────────────────────────────────────────── */
 
-.pill {
+.focusBanner {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
-  z-index: 300;
-  width: 280px;
-  background: #fff;
-  border-radius: 26px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.10);
-  overflow: hidden;
-  cursor: pointer;
-  transition: box-shadow 0.15s;
+  top: 45px;
+  left: 0;
+  right: 0;
+  height: 80px;
+  background: #1a1a1a;
+  border-bottom: 1px solid #2a2a2a;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  z-index: 299;
+  animation: slideDown 300ms ease forwards;
+  transform: translateY(0);
+  transition: transform 300ms ease;
   user-select: none;
 }
 
-.pill:hover {
-  box-shadow: 0 6px 32px rgba(0, 0, 0, 0.14);
+.focusBannerOut {
+  transform: translateY(-100%);
+  animation: none;
 }
 
-.pillMain {
-  height: 52px;
+.bannerLeft {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 12px 0 16px;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
 }
 
-.pulseDot {
-  width: 8px;
-  height: 8px;
+.bannerDot {
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   flex-shrink: 0;
-  animation: pulse 1.5s infinite;
+  animation: pulse 2s ease-in-out infinite;
 }
 
-.pillSubject {
-  flex: 1;
+.bannerInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bannerSubject {
   font-size: 13px;
   font-weight: 600;
-  max-width: 120px;
+  color: #e8e8e8;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-primary);
 }
 
-.pillElapsed {
-  font-size: 13px;
+.bannerTask {
+  font-size: 11px;
+  color: #555;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bannerCenter {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.bannerTimer {
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-size: 42px;
+  font-weight: 300;
+  color: #fff;
+  letter-spacing: 2px;
   font-variant-numeric: tabular-nums;
-  color: var(--text-secondary);
-  letter-spacing: 0.5px;
-  flex-shrink: 0;
 }
 
-.pillBtn {
-  width: 28px;
-  height: 28px;
+.bannerRight {
+  flex: 1;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.bannerBtn {
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  border: 1px solid var(--border);
+  border: 1px solid #333;
   background: none;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
-  color: var(--text-secondary);
-  flex-shrink: 0;
-  transition: background 0.1s, color 0.1s;
-}
-
-.pillBtn:hover {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-}
-
-.pillTask {
-  padding: 0 16px 12px;
   font-size: 12px;
-  color: var(--text-muted);
-  line-height: 1.4;
+  color: #ccc;
+  flex-shrink: 0;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+
+.bannerBtn:hover {
+  background: #2a2a2a;
+  border-color: #555;
+  color: #fff;
 }
 
 @media (max-width: 768px) {
@@ -218,10 +250,13 @@
     width: calc(100vw - 32px);
   }
 
-  .pill {
-    right: 12px;
-    bottom: 12px;
-    width: calc(100vw - 24px);
-    border-radius: 16px;
+  .focusBanner {
+    padding: 0 16px;
+    height: 64px;
+    top: 44px;
+  }
+
+  .bannerTimer {
+    font-size: 32px;
   }
 }

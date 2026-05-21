@@ -33,6 +33,12 @@ body {
   color: var(--text-primary);
   font-size: 14px;
   line-height: 1.5;
+  transition: background-color 400ms ease, color 400ms ease;
+}
+
+body.focus-mode {
+  background: #0f0f0f;
+  color: #e8e8e8;
 }
 
 button { cursor: pointer; font-family: inherit; }

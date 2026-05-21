@@ -70,6 +70,7 @@ export interface Todo {
   subjectId?: string;
   dueDate?: string;
   assignmentId?: number;
+  date: string; // YYYY-MM-DD
 }
 
 export interface GoogleCalendarEvent {

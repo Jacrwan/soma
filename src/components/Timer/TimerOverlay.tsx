@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { Subject, TimerSession, TimeBlock } from '../../types';
 import { storage } from '../../lib/storage';
 import { useTimer } from '../../hooks/useTimer';
-import SubjectDot from '../shared/SubjectDot';
 import styles from './TimerOverlay.module.css';
 
 function fmtElapsed(secs: number) {
@@ -30,40 +29,40 @@ interface Props {
   subject: Subject;
   onClose: () => void;
   onSessionSaved: (updatedSubjects: Subject[], updatedBlocks: TimeBlock[]) => void;
-  onLiveBlockUpdate?: (block: TimeBlock) => void;
+  onRunningChange?: (isRunning: boolean) => void;
   initialTask?: string;
 }
 
-export default function TimerOverlay({ subject, onClose, onSessionSaved, onLiveBlockUpdate, initialTask }: Props) {
+export default function TimerOverlay({ subject, onClose, onSessionSaved, onRunningChange, initialTask }: Props) {
   const [task, setTask] = useState(initialTask ?? '');
   const [step, setStep] = useState<'input' | 'running'>('input');
+  const [isStopping, setIsStopping] = useState(false);
   const [preElapsedInput, setPreElapsedInput] = useState('00:00');
-  const [expanded, setExpanded] = useState(false);
   const { elapsed, isRunning, isPaused, start, pause, resume, stop } = useTimer();
-  const liveBlockRef = useRef<TimeBlock | null>(null);
   const startTimeRef = useRef<string | null>(null);
   const elapsedRef = useRef(0);
+  const stopTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => { elapsedRef.current = elapsed; }, [elapsed]);
 
-  // Lock scroll only during input modal, not during floating pill
+  // Lock scroll only during input modal
   useEffect(() => {
     if (step === 'input') document.body.style.overflow = 'hidden';
     else document.body.style.overflow = '';
     return () => { document.body.style.overflow = ''; };
   }, [step]);
 
-  // Live block growth every 60s
+  // Manage focus-mode body class
   useEffect(() => {
-    if (step !== 'running') return;
-    const id = setInterval(() => {
-      if (!liveBlockRef.current) return;
-      const updated: TimeBlock = { ...liveBlockRef.current, endTime: new Date().toISOString() };
-      liveBlockRef.current = updated;
-      onLiveBlockUpdate?.(updated);
-    }, 60_000);
-    return () => clearInterval(id);
-  }, [step]);
+    const active = step === 'running' && !isStopping;
+    document.body.classList.toggle('focus-mode', active);
+    return () => { document.body.classList.remove('focus-mode'); };
+  }, [step, isStopping]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => { clearTimeout(stopTimeoutRef.current); };
+  }, []);
 
   function handleStart() {
     const preSeconds = parsePreElapsed(preElapsedInput);
@@ -72,22 +71,18 @@ export default function TimerOverlay({ subject, onClose, onSessionSaved, onLiveB
     startTimeRef.current = adjustedStart.toISOString();
     start(preSeconds);
     setStep('running');
-
-    const nowDate = new Date();
-    const matching = storage.getTimeBlocks().find(b =>
-      b.subjectId === subject.id &&
-      isToday(b.startTime) &&
-      new Date(b.startTime) <= nowDate &&
-      new Date(b.endTime) >= nowDate
-    );
-    liveBlockRef.current = matching ?? null;
+    onRunningChange?.(true);
   }
 
   function handleStop() {
+    setIsStopping(true);
     stop();
     const endTime = new Date().toISOString();
     const sessionStartTime = startTimeRef.current;
-    if (!sessionStartTime) { onClose(); return; }
+    if (!sessionStartTime) {
+      stopTimeoutRef.current = setTimeout(() => { onRunningChange?.(false); onClose(); }, 300);
+      return;
+    }
 
     const durationSeconds = elapsedRef.current;
 
@@ -107,35 +102,23 @@ export default function TimerOverlay({ subject, onClose, onSessionSaved, onLiveB
     storage.setSubjects(updatedSubjects);
 
     const allBlocks = storage.getTimeBlocks();
-    const sessionStart = new Date(sessionStartTime);
-    const matchingBlock = allBlocks.find(b =>
-      b.subjectId === subject.id &&
-      isToday(b.startTime) &&
-      new Date(b.startTime) <= sessionStart &&
-      new Date(b.endTime) >= sessionStart
-    );
-
-    let updatedBlocks: TimeBlock[];
-    if (matchingBlock) {
-      updatedBlocks = allBlocks.map(b =>
-        b.id === matchingBlock.id ? { ...b, endTime, timerSessionId: session.id } : b
-      );
-    } else {
-      const newBlock: TimeBlock = {
-        id: crypto.randomUUID(),
-        subjectId: subject.id,
-        task,
-        startTime: sessionStartTime,
-        endTime,
-        source: 'manual',
-        timerSessionId: session.id,
-      };
-      updatedBlocks = [...allBlocks, newBlock];
-    }
+    const newBlock: TimeBlock = {
+      id: crypto.randomUUID(),
+      subjectId: subject.id,
+      task,
+      startTime: sessionStartTime,
+      endTime,
+      source: 'manual',
+      timerSessionId: session.id,
+    };
+    const updatedBlocks = [...allBlocks, newBlock];
     storage.setTimeBlocks(updatedBlocks);
-
     onSessionSaved(updatedSubjects, updatedBlocks.filter(b => isToday(b.startTime)));
-    onClose();
+
+    stopTimeoutRef.current = setTimeout(() => {
+      onRunningChange?.(false);
+      onClose();
+    }, 300);
   }
 
   if (step === 'input') {
@@ -171,30 +154,33 @@ export default function TimerOverlay({ subject, onClose, onSessionSaved, onLiveB
   }
 
   return (
-    <div
-      className={`${styles.pill}${expanded ? ` ${styles.pillExpanded}` : ''}`}
-      onClick={() => setExpanded(e => !e)}
-    >
-      <div className={styles.pillMain}>
-        <span className={styles.pulseDot} style={{ background: subject.color }} />
-        <span className={styles.pillSubject}>{subject.name}</span>
-        <span className={styles.pillElapsed}>{fmtElapsed(elapsed)}</span>
+    <div className={`${styles.focusBanner}${isStopping ? ` ${styles.focusBannerOut}` : ''}`}>
+      <div className={styles.bannerLeft}>
+        <span className={styles.bannerDot} style={{ background: subject.color }} />
+        <div className={styles.bannerInfo}>
+          <span className={styles.bannerSubject}>{subject.name}</span>
+          {task && <span className={styles.bannerTask}>{task}</span>}
+        </div>
+      </div>
+      <div className={styles.bannerCenter}>
+        <span className={styles.bannerTimer}>{fmtElapsed(elapsed)}</span>
+      </div>
+      <div className={styles.bannerRight}>
         <button
-          className={styles.pillBtn}
+          className={styles.bannerBtn}
           title={isPaused || !isRunning ? 'Resume' : 'Pause'}
-          onClick={e => { e.stopPropagation(); isPaused || !isRunning ? resume() : pause(); }}
+          onClick={() => isPaused || !isRunning ? resume() : pause()}
         >
           {isPaused || !isRunning ? '▶' : '⏸'}
         </button>
         <button
-          className={styles.pillBtn}
+          className={styles.bannerBtn}
           title="Stop"
-          onClick={e => { e.stopPropagation(); handleStop(); }}
+          onClick={handleStop}
         >
           ■
         </button>
       </div>
-      {expanded && task && <div className={styles.pillTask}>{task}</div>}
     </div>
   );
 }

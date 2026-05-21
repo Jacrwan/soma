@@ -1,19 +1,28 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { storage, inferSubjectId } from '../../lib/storage';
+import { sendMessage } from '../../lib/ai';
 import { Subject, TimeBlock, SubjectColor, Todo, GoogleCalendarEvent } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
 import TimerOverlay from '../Timer/TimerOverlay';
 import styles from './DayView.module.css';
 
-const SLOT_HEIGHT = 40;
-const START_HOUR = 6;
-const END_HOUR = 24;
-const TOTAL_SLOTS = (END_HOUR - START_HOUR) * 2;
+const SLOT_HEIGHT = 60;
+const START_HOUR = 5;
+const TOTAL_HOURS = 24;
 const COLORS: SubjectColor[] = [
   '#ef5350', '#42a5f5', '#66bb6a', '#ab47bc',
   '#ffa726', '#26c6da', '#ec407a', '#8d6e63',
 ];
 const DAY_ABBRS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+function getTodayKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+function toISODateString(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
 
 function getMondayOfWeek(date: Date): Date {
   const d = new Date(date);
@@ -43,12 +52,16 @@ function dayKey(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
 
-function minToTop(minutes: number) {
-  return ((minutes - START_HOUR * 60) / 30) * SLOT_HEIGHT;
+function minToTop(clockMinutes: number) {
+  const startMinutes = START_HOUR * 60;
+  const offset = clockMinutes >= startMinutes
+    ? clockMinutes - startMinutes
+    : clockMinutes + (24 * 60 - startMinutes);
+  return (offset / 60) * SLOT_HEIGHT;
 }
 
 function durToHeight(minutes: number) {
-  return (minutes / 30) * SLOT_HEIGHT;
+  return (minutes / 60) * SLOT_HEIGHT;
 }
 
 function fmtTime(iso: string) {
@@ -116,8 +129,9 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     return migrated;
   });
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
-    const existing = storage.getTodos();
-    const withTodos = new Set(existing.map(t => t.subjectId ?? 'unassigned'));
+    const todayKey = getTodayKey();
+    const todayTodos = storage.getTodos().filter(t => t.date === todayKey);
+    const withTodos = new Set(todayTodos.map(t => t.subjectId ?? 'unassigned'));
     return new Set(storage.getSubjects().filter(s => !withTodos.has(s.id)).map(s => s.id));
   });
   const [addingToGroup, setAddingToGroup] = useState<string | null>(null);
@@ -133,6 +147,20 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [gcalEvents, setGcalEvents] = useState<GoogleCalendarEvent[]>([]);
   const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
   const [editingTodoText, setEditingTodoText] = useState('');
+  const [timerRunning, setTimerRunning] = useState(false);
+  const [briefCollapsed, setBriefCollapsed] = useState<boolean>(() => {
+    const s = localStorage.getItem('soma_brief_collapsed');
+    return s === null ? true : s === 'true';
+  });
+  const [briefText, setBriefText] = useState<string>(() =>
+    localStorage.getItem('soma_brief_text') ?? ''
+  );
+  const [briefLoading, setBriefLoading] = useState(false);
+  const [panelRatio, setPanelRatio] = useState<number>(() => {
+    const s = localStorage.getItem('soma_panel_ratio');
+    return s ? Math.max(0.35, Math.min(0.75, parseFloat(s))) : 0.65;
+  });
+  const containerRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const todoPopoverRef = useRef<HTMLDivElement>(null);
   const statusPopoverRef = useRef<HTMLDivElement>(null);
@@ -218,17 +246,16 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     return () => document.removeEventListener('mousedown', onDown);
   }, [pinPopoverId]);
 
-  const slots = Array.from({ length: TOTAL_SLOTS }, (_, i) => {
-    const minutes = START_HOUR * 60 + i * 30;
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const h12 = h % 12 || 12;
-    return { minutes, label: `${h12}:${String(m).padStart(2, '0')} ${ampm}` };
+  const slots = Array.from({ length: TOTAL_HOURS }, (_, i) => {
+    const hourOfDay = (START_HOUR + i) % 24;
+    const minutes = hourOfDay * 60;
+    const ampm = hourOfDay >= 12 ? 'PM' : 'AM';
+    const h12 = hourOfDay % 12 || 12;
+    return { minutes, label: `${h12}:00 ${ampm}` };
   });
 
   const isViewingToday = isSameDay(selectedDate, new Date());
-  const showCurrentTime = isViewingToday && currentMinutes >= START_HOUR * 60 && currentMinutes < END_HOUR * 60;
+  const showCurrentTime = isViewingToday;
 
   function openAddForm(slotMinutes: number) {
     setPopover(null);
@@ -319,8 +346,8 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     setBlocks(updatedBlocks.filter(b => isOnDate(b.startTime, selectedDate)));
   }
 
-  function handleLiveBlockUpdate(block: TimeBlock) {
-    setBlocks(prev => prev.map(b => b.id === block.id ? block : b));
+  function handleRunningChange(isRunning: boolean) {
+    setTimerRunning(isRunning);
   }
 
   function setTodoStatus(id: string, status: Todo['status']) {
@@ -344,6 +371,88 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     }
   }
 
+  const handleDividerMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const container = containerRef.current;
+    if (!container) return;
+    const onMove = (me: MouseEvent) => {
+      const rect = container.getBoundingClientRect();
+      const leftPx = me.clientX - rect.left;
+      const ratio = Math.max(400, Math.min(rect.width - 300, leftPx)) / rect.width;
+      setPanelRatio(ratio);
+      localStorage.setItem('soma_panel_ratio', String(ratio));
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, []);
+
+  const generateBrief = useCallback(async () => {
+    setBriefLoading(true);
+    try {
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+      const todayKey = getTodayKey();
+      const threeDaysMs = now.getTime() + 3 * 24 * 60 * 60 * 1000;
+      const allSubjects = storage.getSubjects();
+      const soonAssignments = storage.getCachedAssignments().filter(a => new Date(a.dueAt).getTime() <= threeDaysMs);
+      const assignmentsStr = soonAssignments.length > 0
+        ? soonAssignments.map(a => `• ${a.name} (${a.courseName}) — due ${new Date(a.dueAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`).join('\n')
+        : 'None';
+      const allTodos = storage.getTodos().filter(t => t.date === getTodayKey() && t.status !== 'done');
+      const incompleteTodos = allTodos.length;
+      const topTodos = allTodos.slice(0, 5)
+        .map(t => {
+          const subj = allSubjects.find(s => s.id === t.subjectId);
+          return `• ${t.text}${subj ? ` (${subj.name})` : ''}`;
+        }).join('\n');
+      const todayGcal = storage.getCachedGoogleEvents().filter(e => !!e.start.dateTime && isOnDate(e.start.dateTime, now));
+      const gcalStr = todayGcal.length > 0
+        ? todayGcal.map(e => `• ${e.summary ?? '(No title)'}${e.start.dateTime ? ` (${fmtTime(e.start.dateTime)})` : ''}`).join('\n')
+        : 'None';
+      const userMsg = `Today is ${dateStr}.
+
+Assignments due within 3 days:
+${assignmentsStr}
+
+Today's schedule:
+${gcalStr}
+
+Incomplete todos: ${incompleteTodos} total
+${topTodos || '(none)'}
+
+Write a brief daily summary with bullet points highlighting what to focus on today.`;
+      const text = await sendMessage(
+        [{ role: 'user', content: userMsg }],
+        'You are a concise daily assistant for a student. Generate a focused daily briefing. Use 1 short sentence of context, then bullet points for today\'s priorities. Keep it under 6 bullet points. No markdown headers, no bold, just plain bullet points with • character. Be warm and direct.',
+      );
+      setBriefText(text);
+      localStorage.setItem('soma_brief_text', text);
+      localStorage.setItem('soma_brief_date', todayKey);
+    } catch {
+      // fail silently — no API server or request error
+    } finally {
+      setBriefLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const cachedDate = localStorage.getItem('soma_brief_date');
+    const cachedText = localStorage.getItem('soma_brief_text');
+    if (cachedDate === getTodayKey() && cachedText) {
+      setBriefText(cachedText);
+    } else {
+      generateBrief();
+    }
+  }, [generateBrief]);
+
+  useEffect(() => {
+    setBriefCollapsed(!isViewingToday);
+  }, [isViewingToday]);
+
   function toggleGroup(groupId: string) {
     setCollapsedGroups(prev => {
       const next = new Set(prev);
@@ -361,7 +470,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   function addTodo(subjectId: string | undefined) {
     const text = newTodoText.trim();
     if (!text) { setAddingToGroup(null); return; }
-    const newTodo: Todo = { id: crypto.randomUUID(), text, status: 'nothing', subjectId };
+    const newTodo: Todo = { id: crypto.randomUUID(), text, status: 'nothing', subjectId, date: selectedDateKey };
     const updated = [...todos, newTodo];
     storage.setTodos(updated);
     setTodos(updated);
@@ -436,6 +545,8 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
 
   const activeSubjects = subjects.filter(s => !s.archived);
   const archivedSubjects = subjects.filter(s => s.archived);
+  const selectedDateKey = toISODateString(selectedDate);
+  const dayTodos = todos.filter(t => t.date === selectedDateKey);
 
   function selectDate(date: Date) {
     onSelectDate(date);
@@ -456,10 +567,11 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     }
   });
 
-  const gridHeight = TOTAL_SLOTS * SLOT_HEIGHT;
+  const gridHeight = TOTAL_HOURS * SLOT_HEIGHT;
 
   return (
     <div className={styles.wrapper}>
+      {timerRunning && <div className={styles.focusBannerSpacer} />}
       {/* ── Date bar ── */}
       <div
         className={styles.dateBar}
@@ -498,9 +610,9 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
         </div>
       </div>
 
-    <div className={styles.container}>
+    <div className={styles.container} ref={containerRef}>
       {/* ── Left panel ── */}
-      <div className={styles.left}>
+      <div className={styles.left} style={{ flex: `0 0 ${(panelRatio * 100).toFixed(1)}%` }}>
         {blocks.length === 0 && (
           <div className={styles.emptyBlocks}>No blocks yet. Click a slot to add one.</div>
         )}
@@ -531,13 +643,23 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
             const end = new Date(block.endTime);
             const startMin = start.getHours() * 60 + start.getMinutes();
             const durMin = (end.getTime() - start.getTime()) / 60_000;
+            if (durMin < 2) return null;
+            const blockTopPx = minToTop(startMin);
+            const fullHeight = Math.max(durToHeight(durMin), 24);
+            const nowLinePx = showCurrentTime ? minToTop(currentMinutes) : Infinity;
+            // Cap height at the now line for any block whose natural height overshoots it.
+            // This covers both mid-session blocks (end in future) and just-stopped short
+            // sessions where the 24px minimum would extend past the now indicator.
+            const height = blockTopPx < nowLinePx
+              ? Math.max(Math.min(fullHeight, nowLinePx - blockTopPx), 2)
+              : fullHeight;
             return (
               <div
                 key={block.id}
                 className={styles.block}
                 style={{
-                  top: minToTop(startMin),
-                  height: durToHeight(durMin),
+                  top: blockTopPx,
+                  height,
                   borderLeftColor: subject?.color ?? '#ccc',
                   backgroundColor: subject ? `${subject.color}1f` : '#f5f5f5',
                 }}
@@ -559,7 +681,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
             const end = new Date(event.end.dateTime ?? event.start.dateTime);
             const startMin = start.getHours() * 60 + start.getMinutes();
             const durMin = Math.max((end.getTime() - start.getTime()) / 60_000, 30);
-            if (startMin < START_HOUR * 60 || startMin >= END_HOUR * 60) return null;
             return (
               <div
                 key={event.id}
@@ -635,12 +756,24 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
         </div>
       </div>
 
+      <div className={styles.dividerHandle} onMouseDown={handleDividerMouseDown} />
+
       {/* ── Right panel ── */}
       <div className={styles.right}>
         {(() => {
           const weekday = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
           const monthDay = selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
-          const pendingCount = todos.filter(t => t.status !== 'done').length;
+          const pendingCount = dayTodos.filter(t => t.status !== 'done').length;
+          const ch = Math.floor(currentMinutes / 60) % 12;
+          const cm = currentMinutes % 60;
+          const timeStr = `${ch || 12}:${String(cm).padStart(2, '0')} ${currentMinutes >= 12 * 60 ? 'PM' : 'AM'}`;
+          const minAngle = (cm / 60) * 360;
+          const hourAngle = ((ch + cm / 60) / 12) * 360;
+          const toRad = (deg: number) => (deg * Math.PI) / 180;
+          const mX = (20 + 13 * Math.sin(toRad(minAngle))).toFixed(2);
+          const mY = (20 - 13 * Math.cos(toRad(minAngle))).toFixed(2);
+          const hX = (20 + 8 * Math.sin(toRad(hourAngle))).toFixed(2);
+          const hY = (20 - 8 * Math.cos(toRad(hourAngle))).toFixed(2);
           return (
             <>
               <div className={styles.dateHeader}>
@@ -649,23 +782,70 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
                   <div className={styles.dateHeaderDate}>{monthDay}</div>
                   <div className={styles.dateHeaderCount}>{pendingCount} task{pendingCount !== 1 ? 's' : ''} today</div>
                 </div>
-                <button
-                  className={styles.addSubjectBtn}
-                  onClick={() => { setShowAddSubject(true); setEditSubject(null); }}
-                  title="Add subject"
-                >+</button>
+                <div className={styles.dateHeaderRight}>
+                  <div className={styles.clockWidget}>
+                    <span className={styles.clockTime}>{timeStr}</span>
+                    <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+                      <circle cx="20" cy="20" r="17" stroke="var(--accent)" strokeWidth="1.5"/>
+                      <line x1="20" y1="20" x2={mX} y2={mY} stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round"/>
+                      <line x1="20" y1="20" x2={hX} y2={hY} stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round"/>
+                    </svg>
+                  </div>
+                  <button
+                    className={styles.addSubjectBtn}
+                    onClick={() => { setShowAddSubject(true); setEditSubject(null); }}
+                    title="Add subject"
+                  >+</button>
+                </div>
               </div>
               <div className={styles.dateHeaderDivider} />
             </>
           );
         })()}
 
+        {/* ── Daily Brief ── */}
+        <div className={styles.dailyBrief}>
+          <div
+            className={styles.dailyBriefHeader}
+            onClick={() => {
+              const next = !briefCollapsed;
+              setBriefCollapsed(next);
+              localStorage.setItem('soma_brief_collapsed', String(next));
+            }}
+          >
+            <span className={styles.dailyBriefLabel}>Daily Brief</span>
+            <div className={styles.dailyBriefControls}>
+              {isViewingToday && (
+                <button
+                  className={styles.dailyBriefRefresh}
+                  title="Refresh"
+                  onClick={e => { e.stopPropagation(); generateBrief(); }}
+                >↻</button>
+              )}
+              <span className={styles.dailyBriefChevron}>{briefCollapsed ? '▸' : '▾'}</span>
+            </div>
+          </div>
+          <div className={styles.dailyBriefBody} style={{ maxHeight: briefCollapsed ? 0 : 200 }}>
+            {briefLoading
+              ? <span className={styles.dailyBriefLoading}>Generating your brief…</span>
+              : briefText
+                ? <div className={styles.dailyBriefText}>
+                    {briefText.split(/(?=•)/).map((line, i) => {
+                      const trimmed = line.trim();
+                      return trimmed ? <div key={i} className={styles.dailyBriefLine}>{trimmed}</div> : null;
+                    })}
+                  </div>
+                : null
+            }
+          </div>
+        </div>
+
         {activeSubjects.length === 0 && (
           <div className={styles.emptySubjects}>Add a subject to get started.</div>
         )}
 
         {activeSubjects.map(subject => {
-          const groupTodos = todos.filter(t => t.subjectId === subject.id);
+          const groupTodos = dayTodos.filter(t => t.subjectId === subject.id);
           const isCollapsed = collapsedGroups.has(subject.id);
           const isAdding = addingToGroup === subject.id;
           const showBody = !isCollapsed || isAdding;
@@ -906,7 +1086,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
         )}
 
         {(() => {
-          const unassigned = todos.filter(t => !t.subjectId);
+          const unassigned = dayTodos.filter(t => !t.subjectId);
           const isAdding = addingToGroup === 'unassigned';
           if (unassigned.length === 0 && !isAdding) return null;
           const isCollapsed = collapsedGroups.has('unassigned');
@@ -1077,7 +1257,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
           subject={timerSubject}
           onClose={() => { setTimerSubject(null); setInitialTimerTask(''); }}
           onSessionSaved={handleSessionSaved}
-          onLiveBlockUpdate={handleLiveBlockUpdate}
+          onRunningChange={handleRunningChange}
           initialTask={initialTimerTask}
         />
       )}
