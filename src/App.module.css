@@ -2,23 +2,26 @@
 
 .nav {
   display: flex;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
+  border-bottom: 1px solid #f0f0f0;
+  background: #fff;
   flex-shrink: 0;
 }
 
 .nav button {
-  padding: 14px 24px;
+  padding: 12px 20px;
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
-  color: var(--text-secondary);
-  font-size: 14px;
+  color: var(--text-muted);
+  font-size: 13px;
   font-weight: 500;
   margin-bottom: -1px;
+  cursor: pointer;
+  transition: color 0.15s;
 }
 
 .nav button:hover { color: var(--text-primary); }
+
 .nav button.active {
   color: var(--accent);
   border-bottom-color: var(--accent);
@@ -29,7 +32,7 @@
 @media (max-width: 768px) {
   .nav button {
     flex: 1;
-    padding: 12px 0;
+    padding: 11px 0;
     text-align: center;
   }
 }

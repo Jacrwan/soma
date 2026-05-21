@@ -14,9 +14,9 @@ export function useTimer() {
     }
   };
 
-  const start = useCallback(() => {
+  const start = useCallback((initialSeconds = 0) => {
     setStartTime(new Date().toISOString());
-    setElapsed(0);
+    setElapsed(initialSeconds);
     setIsRunning(true);
     setIsPaused(false);
     intervalRef.current = setInterval(() => setElapsed(e => e + 1), 1000);

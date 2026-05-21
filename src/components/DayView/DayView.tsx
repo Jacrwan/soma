@@ -131,6 +131,8 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [addSubjectForm, setAddSubjectForm] = useState<AddSubjectForm>({ name: '', color: COLORS[0] });
   const [editSubject, setEditSubject] = useState<SubjectEditState | null>(null);
   const [gcalEvents, setGcalEvents] = useState<GoogleCalendarEvent[]>([]);
+  const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
+  const [editingTodoText, setEditingTodoText] = useState('');
   const popoverRef = useRef<HTMLDivElement>(null);
   const todoPopoverRef = useRef<HTMLDivElement>(null);
   const statusPopoverRef = useRef<HTMLDivElement>(null);
@@ -319,11 +321,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     setBlocks(prev => prev.map(b => b.id === block.id ? block : b));
   }
 
-  useEffect(() => {
-    document.body.style.overflow = timerSubject ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
-  }, [timerSubject]);
-
   function setTodoStatus(id: string, status: Todo['status']) {
     const updated = todos.map(t => t.id === id ? { ...t, status } : t);
     storage.setTodos(updated);
@@ -368,6 +365,15 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     setTodos(updated);
     setNewTodoText('');
     setAddingToGroup(null);
+  }
+
+  function saveTodoEdit(id: string) {
+    const text = editingTodoText.trim();
+    if (!text) { setEditingTodoId(null); return; }
+    const updated = todos.map(t => t.id === id ? { ...t, text } : t);
+    storage.setTodos(updated);
+    setTodos(updated);
+    setEditingTodoId(null);
   }
 
   function openTimerFromTodo(subject: Subject, task: string) {
@@ -510,7 +516,9 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
           ))}
 
           {showCurrentTime && (
-            <div className={styles.currentTimeLine} style={{ top: minToTop(currentMinutes) }} />
+            <div className={styles.currentTimeLine} style={{ top: minToTop(currentMinutes) }}>
+              <div className={styles.nowPill}>now</div>
+            </div>
           )}
 
           {blocks.map(block => {
@@ -625,13 +633,28 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
 
       {/* ── Right panel ── */}
       <div className={styles.right}>
-        <div className={styles.panelHeader}>
-          <button
-            className={styles.addSubjectBtn}
-            onClick={() => { setShowAddSubject(true); setEditSubject(null); }}
-            title="Add subject"
-          >+</button>
-        </div>
+        {(() => {
+          const weekday = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
+          const monthDay = selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+          const pendingCount = todos.filter(t => t.status !== 'done').length;
+          return (
+            <>
+              <div className={styles.dateHeader}>
+                <div className={styles.dateHeaderText}>
+                  <div className={styles.dateHeaderWeekday}>{weekday}</div>
+                  <div className={styles.dateHeaderDate}>{monthDay}</div>
+                  <div className={styles.dateHeaderCount}>{pendingCount} task{pendingCount !== 1 ? 's' : ''} today</div>
+                </div>
+                <button
+                  className={styles.addSubjectBtn}
+                  onClick={() => { setShowAddSubject(true); setEditSubject(null); }}
+                  title="Add subject"
+                >+</button>
+              </div>
+              <div className={styles.dateHeaderDivider} />
+            </>
+          );
+        })()}
 
         {activeSubjects.length === 0 && (
           <div className={styles.emptySubjects}>Add a subject to get started.</div>
@@ -718,41 +741,60 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
                     <div key={todo.id} className={styles.todoItemWrap}>
                       <div className={`${styles.todoItem}${todo.status === 'done' ? ` ${styles.todoItemDone}` : ''}`}>
                         <button
-                          className={[
-                            styles.statusBtn,
-                            todo.status === 'in_progress' ? styles.statusBtnInProgress : '',
-                            todo.status === 'done' ? styles.statusBtnDone : '',
-                          ].filter(Boolean).join(' ')}
-                          onClick={() => {
-                            setTodoPopoverId(null);
-                            setStatusPopoverId(prev => prev === todo.id ? null : todo.id);
-                          }}
+                          className={todo.status === 'in_progress' ? styles.statusBtnInProgress : todo.status === 'done' ? styles.statusBtnDone : styles.statusBtn}
+                          onClick={() => { setTodoPopoverId(null); setStatusPopoverId(prev => prev === todo.id ? null : todo.id); }}
                         >
-                          {todo.status === 'in_progress' ? '△' : todo.status === 'done' ? '✓' : ''}
+                          {todo.status === 'in_progress' && (
+                            <svg width="10" height="10" viewBox="0 0 10 10"><polygon points="0,0 10,5 0,10" fill="currentColor" /></svg>
+                          )}
+                          {todo.status === 'done' && (
+                            <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          )}
                         </button>
                         <div className={styles.todoContent}>
-                          <span
-                            className={styles.todoText}
-                            onClick={() => { setStatusPopoverId(null); setTodoPopoverId(prev => prev === todo.id ? null : todo.id); }}
-                          >{todo.text}</span>
-                          {todo.dueDate && <div className={styles.todoDueDate}>{todo.dueDate}</div>}
+                          {editingTodoId === todo.id ? (
+                            <div className={styles.todoEditMode}>
+                              <input
+                                className={styles.todoEditInput}
+                                value={editingTodoText}
+                                autoFocus
+                                onChange={e => setEditingTodoText(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') saveTodoEdit(todo.id); if (e.key === 'Escape') setEditingTodoId(null); }}
+                              />
+                              <button className={styles.todoEditSave} onClick={() => saveTodoEdit(todo.id)}>✓</button>
+                              <button className={styles.todoEditCancel} onClick={() => setEditingTodoId(null)}>×</button>
+                            </div>
+                          ) : (
+                            <span
+                              className={styles.todoText}
+                              onClick={() => { setStatusPopoverId(null); setTodoPopoverId(prev => prev === todo.id ? null : todo.id); }}
+                            >{todo.text}</span>
+                          )}
+                          {todo.dueDate && <span className={styles.todoDueDate}>{todo.dueDate}</span>}
                         </div>
-                        <button
-                          className={styles.pinBtn}
-                          onClick={e => { e.stopPropagation(); openPinPopover(todo.id); }}
-                          title="Pin to schedule"
-                        >⊕</button>
+                        <div className={styles.todoActions}>
+                          <button
+                            className={styles.editTodoBtn}
+                            title="Edit"
+                            onClick={e => { e.stopPropagation(); setEditingTodoId(todo.id); setEditingTodoText(todo.text); setTodoPopoverId(null); }}
+                          >✎</button>
+                          <button
+                            className={styles.pinBtn}
+                            title="Pin to schedule"
+                            onClick={e => { e.stopPropagation(); openPinPopover(todo.id); }}
+                          >⊕</button>
+                        </div>
                       </div>
                       {statusPopoverId === todo.id && (
                         <div className={styles.statusPopover} ref={statusPopoverRef}>
                           <button className={`${styles.statusOption}${todo.status === 'nothing' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'nothing')}>
-                            <span className={styles.statusIcon}>○</span> Nothing
+                            <span className={styles.statusIcon}><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="#aaa" strokeWidth="1.5"/></svg></span> Nothing
                           </button>
                           <button className={`${styles.statusOption}${todo.status === 'in_progress' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'in_progress')}>
-                            <span className={`${styles.statusIcon} ${styles.statusIconInProgress}`}>△</span> In Progress
+                            <span className={`${styles.statusIcon} ${styles.statusIconInProgress}`}><svg width="10" height="10" viewBox="0 0 10 10"><polygon points="0,0 10,5 0,10" fill="currentColor"/></svg></span> In Progress
                           </button>
                           <button className={`${styles.statusOption}${todo.status === 'done' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'done')}>
-                            <span className={`${styles.statusIcon} ${styles.statusIconDone}`}>✓</span> Done
+                            <span className={`${styles.statusIcon} ${styles.statusIconDone}`}><svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L4 7L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span> Done
                           </button>
                         </div>
                       )}
@@ -763,7 +805,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
                             <button
                               className={styles.popoverStart}
                               onClick={() => openTimerFromTodo(subject, todo.text)}
-                            >Start</button>
+                            >Start timer</button>
                             <button
                               className={styles.popoverDismiss}
                               onClick={() => setTodoPopoverId(null)}
@@ -889,41 +931,60 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
                     <div key={todo.id} className={styles.todoItemWrap}>
                       <div className={`${styles.todoItem}${todo.status === 'done' ? ` ${styles.todoItemDone}` : ''}`}>
                         <button
-                          className={[
-                            styles.statusBtn,
-                            todo.status === 'in_progress' ? styles.statusBtnInProgress : '',
-                            todo.status === 'done' ? styles.statusBtnDone : '',
-                          ].filter(Boolean).join(' ')}
-                          onClick={() => {
-                            setTodoPopoverId(null);
-                            setStatusPopoverId(prev => prev === todo.id ? null : todo.id);
-                          }}
+                          className={todo.status === 'in_progress' ? styles.statusBtnInProgress : todo.status === 'done' ? styles.statusBtnDone : styles.statusBtn}
+                          onClick={() => { setTodoPopoverId(null); setStatusPopoverId(prev => prev === todo.id ? null : todo.id); }}
                         >
-                          {todo.status === 'in_progress' ? '△' : todo.status === 'done' ? '✓' : ''}
+                          {todo.status === 'in_progress' && (
+                            <svg width="10" height="10" viewBox="0 0 10 10"><polygon points="0,0 10,5 0,10" fill="currentColor" /></svg>
+                          )}
+                          {todo.status === 'done' && (
+                            <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          )}
                         </button>
                         <div className={styles.todoContent}>
-                          <span
-                            className={styles.todoText}
-                            onClick={() => { setStatusPopoverId(null); setTodoPopoverId(prev => prev === todo.id ? null : todo.id); }}
-                          >{todo.text}</span>
-                          {todo.dueDate && <div className={styles.todoDueDate}>{todo.dueDate}</div>}
+                          {editingTodoId === todo.id ? (
+                            <div className={styles.todoEditMode}>
+                              <input
+                                className={styles.todoEditInput}
+                                value={editingTodoText}
+                                autoFocus
+                                onChange={e => setEditingTodoText(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') saveTodoEdit(todo.id); if (e.key === 'Escape') setEditingTodoId(null); }}
+                              />
+                              <button className={styles.todoEditSave} onClick={() => saveTodoEdit(todo.id)}>✓</button>
+                              <button className={styles.todoEditCancel} onClick={() => setEditingTodoId(null)}>×</button>
+                            </div>
+                          ) : (
+                            <span
+                              className={styles.todoText}
+                              onClick={() => { setStatusPopoverId(null); setTodoPopoverId(prev => prev === todo.id ? null : todo.id); }}
+                            >{todo.text}</span>
+                          )}
+                          {todo.dueDate && <span className={styles.todoDueDate}>{todo.dueDate}</span>}
                         </div>
-                        <button
-                          className={styles.pinBtn}
-                          onClick={e => { e.stopPropagation(); openPinPopover(todo.id); }}
-                          title="Pin to schedule"
-                        >⊕</button>
+                        <div className={styles.todoActions}>
+                          <button
+                            className={styles.editTodoBtn}
+                            title="Edit"
+                            onClick={e => { e.stopPropagation(); setEditingTodoId(todo.id); setEditingTodoText(todo.text); setTodoPopoverId(null); }}
+                          >✎</button>
+                          <button
+                            className={styles.pinBtn}
+                            title="Pin to schedule"
+                            onClick={e => { e.stopPropagation(); openPinPopover(todo.id); }}
+                          >⊕</button>
+                        </div>
                       </div>
                       {statusPopoverId === todo.id && (
                         <div className={styles.statusPopover} ref={statusPopoverRef}>
                           <button className={`${styles.statusOption}${todo.status === 'nothing' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'nothing')}>
-                            <span className={styles.statusIcon}>○</span> Nothing
+                            <span className={styles.statusIcon}><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="#aaa" strokeWidth="1.5"/></svg></span> Nothing
                           </button>
                           <button className={`${styles.statusOption}${todo.status === 'in_progress' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'in_progress')}>
-                            <span className={`${styles.statusIcon} ${styles.statusIconInProgress}`}>△</span> In Progress
+                            <span className={`${styles.statusIcon} ${styles.statusIconInProgress}`}><svg width="10" height="10" viewBox="0 0 10 10"><polygon points="0,0 10,5 0,10" fill="currentColor"/></svg></span> In Progress
                           </button>
                           <button className={`${styles.statusOption}${todo.status === 'done' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'done')}>
-                            <span className={`${styles.statusIcon} ${styles.statusIconDone}`}>✓</span> Done
+                            <span className={`${styles.statusIcon} ${styles.statusIconDone}`}><svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L4 7L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span> Done
                           </button>
                         </div>
                       )}

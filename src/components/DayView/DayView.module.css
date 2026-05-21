@@ -9,9 +9,9 @@
 .dateBar {
   display: flex;
   align-items: center;
-  height: 48px;
-  background: var(--bg);
-  border-bottom: 1px solid var(--border);
+  height: 44px;
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
   flex-shrink: 0;
   padding: 0 var(--space-sm);
   gap: var(--space-xs);
@@ -27,23 +27,23 @@
   background: none;
   border: none;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 13px;
   cursor: pointer;
-  padding: 4px 7px;
+  padding: 4px 6px;
   line-height: 1;
   border-radius: 4px;
 }
 
 .weekArrow:hover {
   color: var(--text-primary);
-  background: var(--bg-secondary);
+  background: #f5f5f5;
 }
 
 .todayBtn {
   font-size: 11px;
   font-weight: 500;
-  padding: 3px 8px;
-  border: 1px solid var(--border);
+  padding: 2px 7px;
+  border: 1px solid #e8e8e8;
   border-radius: 4px;
   background: none;
   color: var(--text-secondary);
@@ -53,7 +53,7 @@
 }
 
 .todayBtn:hover {
-  background: var(--bg-secondary);
+  background: #f5f5f5;
   color: var(--text-primary);
 }
 
@@ -72,19 +72,20 @@
   justify-content: center;
   gap: 1px;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 2px 0;
   user-select: none;
   transition: background 0.1s;
 }
 
 .dayCol:hover:not(.dayColSelected) {
-  background: var(--bg-secondary);
+  background: #f5f5f5;
 }
 
 .dayColSelected {
   background: var(--accent);
   color: #fff;
+  border-radius: 8px;
 }
 
 .dayColSelected:hover {
@@ -96,7 +97,7 @@
 }
 
 .dayAbbr {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.3px;
@@ -104,11 +105,11 @@
 }
 
 .dayColSelected .dayAbbr {
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .dayNum {
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1;
 }
@@ -141,7 +142,7 @@
 .left {
   flex: 0 0 65%;
   overflow-y: auto;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid #f0f0f0;
 }
 
 .gridWrapper {
@@ -154,7 +155,7 @@
   right: 0;
   display: flex;
   align-items: flex-start;
-  border-bottom: 1px solid var(--bg-tertiary);
+  border-bottom: 1px solid #f5f5f5;
 }
 
 .timeLabel {
@@ -162,7 +163,7 @@
   flex-shrink: 0;
   font-size: 11px;
   color: var(--text-muted);
-  padding: 3px 6px 0;
+  padding: 3px 8px 0 0;
   text-align: right;
   user-select: none;
 }
@@ -171,21 +172,53 @@
   flex: 1;
   height: 100%;
   cursor: pointer;
+  position: relative;
 }
 
 .slotArea:hover {
-  background: var(--bg-secondary);
+  background: #fafafa;
 }
 
-/* Current time */
+.slotArea:hover::after {
+  content: '+';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 16px;
+  color: var(--text-muted);
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+/* Current time indicator */
 .currentTimeLine {
   position: absolute;
   left: 0;
   right: 0;
-  height: 2px;
+  height: 1px;
   background: var(--danger);
   z-index: 3;
   pointer-events: none;
+  display: flex;
+  align-items: center;
+  overflow: visible;
+}
+
+.nowPill {
+  background: var(--danger);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 10px;
+  width: 42px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transform: translateY(-50%);
+  letter-spacing: 0.2px;
 }
 
 /* Blocks */
@@ -195,7 +228,7 @@
   right: 8px;
   border-left-width: 3px;
   border-left-style: solid;
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 3px 7px;
   cursor: pointer;
   z-index: 1;
@@ -229,13 +262,13 @@
   position: absolute;
   left: 56px;
   right: 8px;
-  border-radius: 4px;
+  border-radius: 6px;
   padding: 3px 7px;
   z-index: 1;
   overflow: hidden;
   pointer-events: none;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  background: #f5f5f5;
+  border: 1px solid #ebebeb;
   display: flex;
   align-items: flex-start;
   gap: 4px;
@@ -268,23 +301,23 @@
   left: 56px;
   right: 8px;
   z-index: 10;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #ebebeb;
+  border-radius: 10px;
   padding: var(--space-sm);
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.07);
 }
 
 .addForm select,
 .addForm input {
   padding: 4px 8px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border: 1px solid #ebebeb;
+  border-radius: 6px;
   font-size: 13px;
-  background: var(--bg);
+  background: #fff;
   color: var(--text-primary);
   outline: none;
   width: 100%;
@@ -306,11 +339,11 @@
   left: 56px;
   width: 220px;
   z-index: 10;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #ebebeb;
+  border-radius: 10px;
   padding: var(--space-md);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
   animation: popoverIn 150ms ease;
   transform-origin: top left;
 }
@@ -339,16 +372,16 @@
 /* Shared button styles */
 .btn {
   padding: 4px 10px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg);
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
+  background: #fff;
   font-size: 12px;
   color: var(--text-primary);
   cursor: pointer;
 }
 
 .btn:hover {
-  background: var(--bg-secondary);
+  background: #f5f5f5;
 }
 
 .btnAccent {
@@ -379,42 +412,57 @@
   padding: var(--space-md);
 }
 
-.subjectHeader {
+/* Date header */
+.dateHeader {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  padding-bottom: var(--space-md);
+}
+
+.dateHeaderText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.dateHeaderWeekday {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.15;
+}
+
+.dateHeaderDate {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.dateHeaderCount {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.dateHeaderDivider {
+  height: 1px;
+  background: #f0f0f0;
   margin-bottom: var(--space-md);
 }
 
-.subjectHeaderToggle {
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: default;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.subjectHeaderTitle {
-  font-weight: 600;
-  font-size: 14px;
-}
-
-.subjectCaret {
-  display: none;
-  font-size: 11px;
-  color: var(--text-muted);
-}
+/* ── Subject groups ── */
 
 .addSubjectBtn {
   background: none;
   border: none;
-  font-size: 22px;
+  font-size: 20px;
   line-height: 1;
   color: var(--accent);
-  padding: 0;
+  padding: 2px 4px;
   cursor: pointer;
+  margin-top: 2px;
+  flex-shrink: 0;
 }
 
 .subjectRow {
@@ -428,7 +476,7 @@
 }
 
 .subjectRow:hover {
-  background: var(--bg-secondary);
+  background: #f5f5f5;
 }
 
 .subjectRow:hover .editIcon {
@@ -441,11 +489,14 @@
 
 .subjectName {
   flex: 1;
-  font-size: 14px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-primary);
 }
 
 .subjectTime {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -458,7 +509,8 @@
   color: var(--text-muted);
   padding: 2px 4px;
   cursor: pointer;
-  transition: opacity 0.1s;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
 }
 
 .editIcon:hover {
@@ -476,10 +528,10 @@
 
 .editSubjectForm input {
   padding: 4px 8px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border: 1px solid #ebebeb;
+  border-radius: 6px;
   font-size: 13px;
-  background: var(--bg);
+  background: #fff;
   color: var(--text-primary);
   outline: none;
   width: 100%;
@@ -504,7 +556,7 @@
 
 .colorCircleSelected {
   border-color: var(--text-primary);
-  outline: 2px solid var(--bg);
+  outline: 2px solid #fff;
   outline-offset: -3px;
 }
 
@@ -512,7 +564,9 @@
 .modalOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -520,14 +574,14 @@
 }
 
 .modalBox {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: #fff;
+  border-radius: 14px;
   padding: var(--space-lg);
-  width: 280px;
+  width: 300px;
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
 }
 
 .modalTitle {
@@ -537,14 +591,16 @@
 
 .modalInput {
   padding: 6px 10px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border: 1px solid #ebebeb;
+  border-radius: 6px;
   font-size: 14px;
-  background: var(--bg);
+  background: #fff;
   color: var(--text-primary);
   outline: none;
   width: 100%;
 }
+
+.modalInput:focus { border-color: var(--accent); }
 
 .modalActions {
   display: flex;
@@ -556,7 +612,7 @@
 
 .archivedSection {
   margin-top: var(--space-sm);
-  border-top: 1px solid var(--border);
+  border-top: 1px solid #f0f0f0;
   padding-top: var(--space-xs);
 }
 
@@ -577,7 +633,7 @@
 }
 
 .archivedToggle:hover {
-  background: var(--bg-secondary);
+  background: #f5f5f5;
   color: var(--text-primary);
 }
 
@@ -592,7 +648,7 @@
 
 .restoreBtn {
   background: none;
-  border: 1px solid var(--border);
+  border: 1px solid #e8e8e8;
   border-radius: 4px;
   font-size: 11px;
   color: var(--text-muted);
@@ -604,144 +660,278 @@
 
 .restoreBtn:hover {
   color: var(--text-primary);
-  border-color: var(--text-secondary);
-  background: var(--bg-secondary);
+  border-color: #bbb;
+  background: #f5f5f5;
 }
 
-/* ── Todos ─────────────────────────────────────────────────────────────── */
+/* ── Unified subject+todo list ─────────────────────────────────────────── */
 
-.todosSection {
-  margin-top: var(--space-sm);
-  border-top: 1px solid var(--border);
-  padding-top: 2px;
+.subjectGroup {
+  margin-bottom: 0;
+  border-bottom: 1px solid #f0f0f0;
 }
 
-.todosSectionTitle {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: var(--space-sm) var(--space-sm) var(--space-xs);
-  display: block;
+.subjectGroup:last-child {
+  border-bottom: none;
 }
 
-.todoGroup {
-  margin-bottom: 1px;
-}
-
-.todoGroupHeader {
+.subjectGroupHeader {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px var(--space-sm) 5px 8px;
+  padding: 8px var(--space-sm);
+  border-radius: 6px;
   cursor: pointer;
-  border-radius: 4px;
   user-select: none;
 }
 
-.todoGroupHeader:hover {
-  background: var(--bg-secondary);
+.subjectGroupHeader:hover {
+  background: #f5f5f5;
 }
 
-.todoGroupBar {
-  width: 3px;
-  height: 14px;
-  border-radius: 2px;
+.subjectGroupHeader:hover .editIcon {
+  opacity: 1;
+}
+
+.subjectGroupHeader:hover .todoGroupAdd {
+  opacity: 1;
+}
+
+.dotBtn {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.1s;
+}
+
+.dotBtn:hover {
+  transform: scale(1.4);
+}
+
+.subjectArrow {
+  font-size: 9px;
+  color: var(--text-muted);
   flex-shrink: 0;
 }
 
-.todoGroupName {
-  flex: 1;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.todoGroupCount {
-  font-size: 11px;
+.todoBadge {
+  font-size: 10px;
+  background: #f0f0f0;
   color: var(--text-muted);
+  border-radius: 8px;
+  padding: 1px 5px;
   font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
 
 .todoGroupAdd {
+  opacity: 0;
   background: none;
   border: none;
-  font-size: 17px;
+  font-size: 15px;
   line-height: 1;
   color: var(--text-muted);
   cursor: pointer;
   padding: 0 3px;
   border-radius: 3px;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
 }
 
 .todoGroupAdd:hover {
   color: var(--accent);
-  background: var(--bg-tertiary);
 }
 
 .todoGroupBody {
-  /* list of items */
+  padding-bottom: 4px;
+}
+
+/* ── Todo items ─────────────────────────────────────────────────────────── */
+
+.todoItemWrap {
+  /* wrapper for item + inline popovers */
 }
 
 .todoItem {
   display: flex;
-  align-items: flex-start;
-  gap: var(--space-sm);
-  padding: 4px var(--space-sm) 4px 24px;
-  border-radius: 4px;
+  align-items: center;
+  gap: 8px;
+  padding: 5px var(--space-sm) 5px 26px;
+  border-radius: 6px;
+  position: relative;
 }
 
 .todoItem:hover {
-  background: var(--bg-secondary);
+  background: #f9f9f9;
 }
 
 .todoItemDone {
-  opacity: 0.45;
+  opacity: 0.4;
 }
 
-/* Status button (replaces old checkbox) */
+/* Status button */
 .statusBtn {
   flex-shrink: 0;
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  border: 1.5px solid var(--text-muted);
+  border: 1.5px solid #d0d0d0;
   background: none;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-top: 1px;
   padding: 0;
-  color: transparent;
-  font-size: 8px;
-  line-height: 1;
   transition: border-color 0.1s;
 }
 
 .statusBtn:hover {
-  border-color: var(--text-secondary);
+  border-color: #aaa;
 }
 
 .statusBtnInProgress {
-  border-color: var(--accent);
+  border: none;
+  background: none;
+  width: 16px;
+  height: 16px;
   color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
 }
 
 .statusBtnDone {
-  border-color: var(--success);
+  border: none;
   background: var(--success);
-  color: #fff;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
 }
+
+.todoContent {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.todoText {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-primary);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.todoItemDone .todoText {
+  text-decoration: line-through;
+}
+
+.todoDueDate {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* Hover-only action icons */
+.todoActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.todoItem:hover .todoActions {
+  opacity: 1;
+}
+
+.editTodoBtn,
+.pinBtn {
+  background: none;
+  border: none;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 2px 4px;
+  cursor: pointer;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.1s, background 0.1s;
+}
+
+.editTodoBtn:hover,
+.pinBtn:hover {
+  color: var(--accent);
+  background: #f0f0f0;
+}
+
+/* Edit mode */
+.todoEditMode {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.todoEditInput {
+  flex: 1;
+  border: none;
+  border-bottom: 1.5px solid var(--accent);
+  background: transparent;
+  font-size: 13px;
+  color: var(--text-primary);
+  padding: 1px 0;
+  outline: none;
+}
+
+.todoEditSave,
+.todoEditCancel {
+  background: none;
+  border: none;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.todoEditSave {
+  color: var(--success);
+}
+
+.todoEditSave:hover { background: #f0fff0; }
+
+.todoEditCancel {
+  color: var(--text-muted);
+}
+
+.todoEditCancel:hover { background: #f5f5f5; }
 
 /* Status popover */
 .statusPopover {
-  margin: 2px 8px 4px 16px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  margin: 2px 8px 4px 20px;
+  background: #fff;
+  border: 1px solid #ebebeb;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10);
   padding: 4px;
   animation: popoverIn 120ms ease;
 }
@@ -750,8 +940,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 8px;
-  border-radius: 4px;
+  padding: 6px 8px;
+  border-radius: 5px;
   cursor: pointer;
   font-size: 12px;
   color: var(--text-secondary);
@@ -762,7 +952,7 @@
 }
 
 .statusOption:hover {
-  background: var(--bg-secondary);
+  background: #f5f5f5;
   color: var(--text-primary);
 }
 
@@ -772,9 +962,11 @@
 }
 
 .statusIcon {
-  width: 14px;
-  text-align: center;
-  font-size: 11px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
 }
 
@@ -788,36 +980,13 @@
 
 /* ── Pin to schedule ────────────────────────────────────────────────────── */
 
-.pinBtn {
-  opacity: 0;
-  background: none;
-  border: none;
-  font-size: 13px;
-  color: var(--text-muted);
-  padding: 2px 3px;
-  cursor: pointer;
-  border-radius: 3px;
-  line-height: 1;
-  flex-shrink: 0;
-  transition: opacity 0.1s;
-}
-
-.todoItem:hover .pinBtn {
-  opacity: 1;
-}
-
-.pinBtn:hover {
-  color: var(--accent);
-  background: var(--bg-tertiary);
-}
-
 .pinPopover {
-  margin: 2px 8px 4px 16px;
+  margin: 2px 8px 4px 20px;
   padding: 10px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  background: #fff;
+  border: 1px solid #ebebeb;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10);
   display: flex;
   flex-direction: column;
   gap: var(--space-sm);
@@ -844,10 +1013,10 @@
 
 .pinSelect {
   padding: 3px 6px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border: 1px solid #ebebeb;
+  border-radius: 5px;
   font-size: 12px;
-  background: var(--bg);
+  background: #fff;
   color: var(--text-primary);
   outline: none;
 }
@@ -855,17 +1024,15 @@
 .pinDurationInput {
   width: 58px;
   padding: 3px 6px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border: 1px solid #ebebeb;
+  border-radius: 5px;
   font-size: 12px;
-  background: var(--bg);
+  background: #fff;
   color: var(--text-primary);
   outline: none;
 }
 
-.pinDurationInput:focus {
-  border-color: var(--accent);
-}
+.pinDurationInput:focus { border-color: var(--accent); }
 
 .pinDurationUnit {
   font-size: 12px;
@@ -887,42 +1054,20 @@
   padding: 0;
 }
 
-.pinCancel:hover {
-  color: var(--text-secondary);
-}
+.pinCancel:hover { color: var(--text-secondary); }
 
-.todoContent {
-  flex: 1;
-  min-width: 0;
-}
-
-.todoText {
-  font-size: 13px;
-  line-height: 1.4;
-  display: block;
-  cursor: pointer;
-}
-
-.todoItemDone .todoText {
-  text-decoration: line-through;
-}
-
-.todoDueDate {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-top: 1px;
-}
+/* ── Todo add row ── */
 
 .todoAddRow {
   display: flex;
   align-items: center;
-  padding: 3px var(--space-sm) 4px 24px;
+  padding: 3px var(--space-sm) 4px 26px;
 }
 
 .todoAddInput {
   flex: 1;
   border: none;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1.5px solid #e0e0e0;
   background: transparent;
   font-size: 13px;
   color: var(--text-primary);
@@ -930,87 +1075,18 @@
   outline: none;
 }
 
-.todoAddInput:focus {
-  border-bottom-color: var(--accent);
-}
+.todoAddInput:focus { border-bottom-color: var(--accent); }
+.todoAddInput::placeholder { color: var(--text-muted); }
 
-.todoAddInput::placeholder {
-  color: var(--text-muted);
-}
-
-/* ── Unified subject+todo list ─────────────────────────────────────────── */
-
-.panelHeader {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding-bottom: var(--space-xs);
-}
-
-.subjectGroup {
-  margin-bottom: 2px;
-}
-
-.subjectGroupHeader {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px var(--space-sm);
-  border-radius: 6px;
-  cursor: pointer;
-  user-select: none;
-}
-
-.subjectGroupHeader:hover {
-  background: var(--bg-secondary);
-}
-
-.subjectGroupHeader:hover .editIcon {
-  opacity: 1;
-}
-
-.dotBtn {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: transform 0.1s;
-}
-
-.dotBtn:hover {
-  transform: scale(1.35);
-}
-
-.subjectArrow {
-  font-size: 10px;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.todoBadge {
-  font-size: 10px;
-  background: var(--bg-tertiary);
-  color: var(--text-muted);
-  border-radius: 8px;
-  padding: 1px 5px;
-  font-variant-numeric: tabular-nums;
-  flex-shrink: 0;
-}
-
-.todoItemWrap {
-  /* wrapper for todo + inline popover */
-}
+/* ── Todo popover ── */
 
 .todoPopover {
-  margin: 2px 8px 4px 24px;
+  margin: 2px 8px 4px 26px;
   padding: 8px 10px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  background: #fff;
+  border: 1px solid #ebebeb;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
   animation: popoverIn 150ms ease;
 }
 
@@ -1032,15 +1108,13 @@
   background: var(--accent);
   color: #fff;
   border: none;
-  border-radius: 4px;
+  border-radius: 5px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
 }
 
-.popoverStart:hover {
-  background: var(--accent-hover);
-}
+.popoverStart:hover { background: var(--accent-hover); }
 
 .popoverDismiss {
   background: none;
@@ -1051,9 +1125,7 @@
   padding: 0;
 }
 
-.popoverDismiss:hover {
-  color: var(--text-secondary);
-}
+.popoverDismiss:hover { color: var(--text-secondary); }
 
 /* ── Empty states ──────────────────────────────────────────────────────── */
 
@@ -1083,19 +1155,11 @@
     flex: none;
     height: 60vh;
     border-right: none;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid #f0f0f0;
   }
 
   .right {
     flex: 1;
     min-height: 0;
-  }
-
-  .subjectHeaderToggle {
-    cursor: pointer;
-  }
-
-  .subjectCaret {
-    display: inline;
   }
 }

@@ -12,6 +12,13 @@ function fmtElapsed(secs: number) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+function parsePreElapsed(s: string): number {
+  const parts = s.trim().split(':').map(p => parseInt(p, 10) || 0);
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return 0;
+}
+
 function isToday(iso: string) {
   const d = new Date(iso), n = new Date();
   return d.getFullYear() === n.getFullYear()
@@ -30,15 +37,23 @@ interface Props {
 export default function TimerOverlay({ subject, onClose, onSessionSaved, onLiveBlockUpdate, initialTask }: Props) {
   const [task, setTask] = useState(initialTask ?? '');
   const [step, setStep] = useState<'input' | 'running'>('input');
+  const [preElapsedInput, setPreElapsedInput] = useState('00:00');
+  const [expanded, setExpanded] = useState(false);
   const { elapsed, isRunning, isPaused, start, pause, resume, stop } = useTimer();
   const liveBlockRef = useRef<TimeBlock | null>(null);
   const startTimeRef = useRef<string | null>(null);
   const elapsedRef = useRef(0);
 
-  // Keep refs in sync so handleStop can read latest values
   useEffect(() => { elapsedRef.current = elapsed; }, [elapsed]);
 
-  // Live block growth every 60s while timer is on the running step
+  // Lock scroll only during input modal, not during floating pill
+  useEffect(() => {
+    if (step === 'input') document.body.style.overflow = 'hidden';
+    else document.body.style.overflow = '';
+    return () => { document.body.style.overflow = ''; };
+  }, [step]);
+
+  // Live block growth every 60s
   useEffect(() => {
     if (step !== 'running') return;
     const id = setInterval(() => {
@@ -51,13 +66,14 @@ export default function TimerOverlay({ subject, onClose, onSessionSaved, onLiveB
   }, [step]);
 
   function handleStart() {
-    const now = new Date().toISOString();
-    startTimeRef.current = now;
-    start();
+    const preSeconds = parsePreElapsed(preElapsedInput);
+    const now = new Date();
+    const adjustedStart = new Date(now.getTime() - preSeconds * 1000);
+    startTimeRef.current = adjustedStart.toISOString();
+    start(preSeconds);
     setStep('running');
 
-    // Find a matching block to track for live growth
-    const nowDate = new Date(now);
+    const nowDate = new Date();
     const matching = storage.getTimeBlocks().find(b =>
       b.subjectId === subject.id &&
       isToday(b.startTime) &&
@@ -75,7 +91,6 @@ export default function TimerOverlay({ subject, onClose, onSessionSaved, onLiveB
 
     const durationSeconds = elapsedRef.current;
 
-    // 1 & 2. Create and save session
     const session: TimerSession = {
       id: crypto.randomUUID(),
       subjectId: subject.id,
@@ -86,13 +101,11 @@ export default function TimerOverlay({ subject, onClose, onSessionSaved, onLiveB
     };
     storage.setTimerSessions([...storage.getTimerSessions(), session]);
 
-    // 3. Update subject totalTimeToday
     const updatedSubjects = storage.getSubjects().map(s =>
       s.id === subject.id ? { ...s, totalTimeToday: s.totalTimeToday + durationSeconds } : s
     );
     storage.setSubjects(updatedSubjects);
 
-    // 4. Block logic
     const allBlocks = storage.getTimeBlocks();
     const sessionStart = new Date(sessionStartTime);
     const matchingBlock = allBlocks.find(b =>
@@ -121,54 +134,67 @@ export default function TimerOverlay({ subject, onClose, onSessionSaved, onLiveB
     }
     storage.setTimeBlocks(updatedBlocks);
 
-    // 5. Notify parent with today's blocks
     onSessionSaved(updatedSubjects, updatedBlocks.filter(b => isToday(b.startTime)));
     onClose();
   }
 
-  return (
-    <div className={styles.backdrop} onClick={onClose}>
-      <div className={styles.card} onClick={e => e.stopPropagation()}>
-        {step === 'input' ? (
-          <>
-            <div className={styles.subjectLine}>
-              <SubjectDot color={subject.color} size={12} />
-              <span className={styles.subjectName}>{subject.name}</span>
-            </div>
+  if (step === 'input') {
+    return (
+      <div className={styles.backdrop} onClick={onClose}>
+        <div className={styles.modal} onClick={e => e.stopPropagation()}>
+          <div className={styles.subjectLine}>
+            <span className={styles.dot} style={{ background: subject.color }} />
+            <span className={styles.subjectName}>{subject.name}</span>
+          </div>
+          <div className={styles.preElapsedRow}>
+            <span className={styles.preElapsedLabel}>Time already spent</span>
             <input
-              className={styles.taskInput}
-              placeholder="What are you working on? (optional)"
-              value={task}
-              autoFocus
-              onChange={e => setTask(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleStart(); if (e.key === 'Escape') onClose(); }}
+              className={styles.preElapsedInput}
+              value={preElapsedInput}
+              placeholder="00:00"
+              onChange={e => setPreElapsedInput(e.target.value)}
             />
-            <button className={styles.startBtn} onClick={handleStart}>Start</button>
-            <button className={styles.cancelLink} onClick={onClose}>Cancel</button>
-          </>
-        ) : (
-          <>
-            <div className={styles.subjectLine}>
-              <span
-                className={styles.pulseDot}
-                style={{ background: subject.color }}
-              />
-              <SubjectDot color={subject.color} size={12} />
-              <span className={styles.subjectName}>{subject.name}</span>
-            </div>
-            <div className={styles.elapsed}>{fmtElapsed(elapsed)}</div>
-            {task && <div className={styles.taskLabel}>{task}</div>}
-            <div className={styles.controls}>
-              {isPaused || !isRunning ? (
-                <button className={`${styles.controlBtn} ${styles.controlBtnAccent}`} onClick={resume}>Resume</button>
-              ) : (
-                <button className={styles.controlBtn} onClick={pause}>Pause</button>
-              )}
-              <button className={`${styles.controlBtn} ${styles.controlBtnDanger}`} onClick={handleStop}>Stop</button>
-            </div>
-          </>
-        )}
+          </div>
+          <input
+            className={styles.taskInput}
+            placeholder="What are you working on? (optional)"
+            value={task}
+            autoFocus
+            onChange={e => setTask(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleStart(); if (e.key === 'Escape') onClose(); }}
+          />
+          <button className={styles.startBtn} onClick={handleStart}>Start</button>
+          <button className={styles.cancelLink} onClick={onClose}>Cancel</button>
+        </div>
       </div>
+    );
+  }
+
+  return (
+    <div
+      className={`${styles.pill}${expanded ? ` ${styles.pillExpanded}` : ''}`}
+      onClick={() => setExpanded(e => !e)}
+    >
+      <div className={styles.pillMain}>
+        <span className={styles.pulseDot} style={{ background: subject.color }} />
+        <span className={styles.pillSubject}>{subject.name}</span>
+        <span className={styles.pillElapsed}>{fmtElapsed(elapsed)}</span>
+        <button
+          className={styles.pillBtn}
+          title={isPaused || !isRunning ? 'Resume' : 'Pause'}
+          onClick={e => { e.stopPropagation(); isPaused || !isRunning ? resume() : pause(); }}
+        >
+          {isPaused || !isRunning ? '▶' : '⏸'}
+        </button>
+        <button
+          className={styles.pillBtn}
+          title="Stop"
+          onClick={e => { e.stopPropagation(); handleStop(); }}
+        >
+          ■
+        </button>
+      </div>
+      {expanded && task && <div className={styles.pillTask}>{task}</div>}
     </div>
   );
 }

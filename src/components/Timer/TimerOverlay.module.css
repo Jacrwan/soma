@@ -1,6 +1,8 @@
-@keyframes slideUp {
-  from { transform: translateY(100%); }
-  to   { transform: translateY(0); }
+/* ── Input modal ─────────────────────────────────────────────────────────── */
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
 @keyframes fadeIn {
@@ -16,84 +18,103 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   z-index: 300;
   display: flex;
-  align-items: flex-end;
-  animation: fadeIn 200ms ease;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 150ms ease;
 }
 
-@media (max-width: 768px) {
-  .backdrop {
-    align-items: stretch;
-  }
-  .card {
-    border-radius: 0;
-    flex: 1;
-    justify-content: center;
-    min-height: 100vh;
-    padding-bottom: var(--space-lg);
-  }
-}
-
-.card {
-  width: 100%;
-  background: var(--bg);
-  border-top: 1px solid var(--border);
-  border-radius: 16px 16px 0 0;
-  padding: var(--space-lg) var(--space-lg) 40px;
+.modal {
+  width: 380px;
+  background: #fff;
+  border-radius: 16px;
+  padding: 28px 28px 24px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: var(--space-md);
-  animation: slideUp 300ms cubic-bezier(0.32, 0.72, 0, 1);
+  align-items: stretch;
+  gap: 14px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.14);
+  animation: scaleIn 180ms ease;
 }
 
-/* Step 1 — input */
 .subjectLine {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  font-weight: 600;
-  font-size: 15px;
+  gap: 8px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .subjectName {
   font-size: 15px;
   font-weight: 600;
+  color: var(--text-primary);
 }
 
-.taskInput {
-  width: 100%;
-  max-width: 400px;
-  padding: 10px 14px;
+.preElapsedRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.preElapsedLabel {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.preElapsedInput {
+  width: 72px;
+  padding: 4px 8px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 14px;
-  background: var(--bg);
+  border-radius: 6px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  background: #fff;
   color: var(--text-primary);
   outline: none;
   text-align: center;
 }
 
-.taskInput:focus {
-  border-color: var(--accent);
+.preElapsedInput:focus { border-color: var(--accent); }
+
+.taskInput {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  background: #fff;
+  color: var(--text-primary);
+  outline: none;
 }
 
+.taskInput:focus { border-color: var(--accent); }
+
+.taskInput::placeholder { color: var(--text-muted); }
+
 .startBtn {
-  padding: 10px 40px;
+  width: 100%;
+  padding: 11px 0;
   background: var(--accent);
   color: #fff;
   border: none;
   border-radius: 8px;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+  transition: background 0.15s;
 }
 
-.startBtn:hover {
-  background: var(--accent-hover);
-}
+.startBtn:hover { background: var(--accent-hover); }
 
 .cancelLink {
   background: none;
@@ -102,71 +123,105 @@
   color: var(--text-muted);
   cursor: pointer;
   padding: 0;
+  text-align: center;
+  align-self: center;
 }
 
-.cancelLink:hover {
-  color: var(--text-secondary);
+.cancelLink:hover { color: var(--text-secondary); }
+
+/* ── Floating pill (running) ─────────────────────────────────────────────── */
+
+.pill {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 300;
+  width: 280px;
+  background: #fff;
+  border-radius: 26px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.10);
+  overflow: hidden;
+  cursor: pointer;
+  transition: box-shadow 0.15s;
+  user-select: none;
 }
 
-/* Step 2 — running */
+.pill:hover {
+  box-shadow: 0 6px 32px rgba(0, 0, 0, 0.14);
+}
+
+.pillMain {
+  height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 0 16px;
+}
+
 .pulseDot {
-  display: inline-block;
   width: 8px;
   height: 8px;
   border-radius: 50%;
+  flex-shrink: 0;
   animation: pulse 1.5s infinite;
+}
+
+.pillSubject {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.pillElapsed {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
   flex-shrink: 0;
 }
 
-.elapsed {
-  font-size: 48px;
-  font-weight: 300;
-  letter-spacing: 2px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-primary);
-}
-
-.taskLabel {
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-
-.controls {
-  display: flex;
-  gap: var(--space-md);
-}
-
-.controlBtn {
-  padding: 8px 28px;
+.pillBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  font-size: 14px;
-  color: var(--text-primary);
+  background: none;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  transition: background 0.1s, color 0.1s;
 }
 
-.controlBtn:hover {
+.pillBtn:hover {
   background: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
-.controlBtnAccent {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
+.pillTask {
+  padding: 0 16px 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
 }
 
-.controlBtnAccent:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
-}
+@media (max-width: 768px) {
+  .modal {
+    width: calc(100vw - 32px);
+  }
 
-.controlBtnDanger {
-  color: var(--danger);
-  border-color: var(--danger);
-}
-
-.controlBtnDanger:hover {
-  background: var(--danger);
-  color: #fff;
+  .pill {
+    right: 12px;
+    bottom: 12px;
+    width: calc(100vw - 24px);
+    border-radius: 16px;
+  }
 }
