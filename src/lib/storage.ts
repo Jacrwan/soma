@@ -1,4 +1,4 @@
-import { Subject, TimeBlock, TimerSession, CanvasAssignment, CanvasAnnouncement, CanvasModule, CanvasCourse, Todo, GoogleCalendarEvent } from '../types';
+import { Subject, TimeBlock, TimerSession, CanvasAssignment, CanvasAnnouncement, CanvasModule, CanvasCourse, Todo, GoogleCalendarEvent, ChatSession } from '../types';
 
 const KEYS = {
   subjects: 'soma_subjects',
@@ -18,6 +18,8 @@ const KEYS = {
   googleClientId: 'soma_google_client_id',
   googleEvents: 'soma_google_events',
   googleCacheTimestamp: 'soma_google_cache_timestamp',
+  chatSessions: 'soma_chat_sessions',
+  activeSessionId: 'soma_active_session_id',
 };
 
 const DEFAULT_SUBJECTS: Subject[] = [
@@ -108,4 +110,10 @@ export const storage = {
 
   getGoogleCacheTimestamp: (): number | null => get<number | null>(KEYS.googleCacheTimestamp, null),
   setGoogleCacheTimestamp: (v: number) => set(KEYS.googleCacheTimestamp, v),
+
+  getChatSessions: (): ChatSession[] => get(KEYS.chatSessions, []),
+  setChatSessions: (v: ChatSession[]) => set(KEYS.chatSessions, v),
+
+  getActiveSessionId: (): string => get(KEYS.activeSessionId, ''),
+  setActiveSessionId: (v: string) => set(KEYS.activeSessionId, v),
 };

@@ -1,19 +1,65 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { storage } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
-import { TimeBlock, Subject, Todo } from '../../types';
+import { TimeBlock, Subject, Todo, ChatMessage, ChatSession } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
 import styles from './AITab.module.css';
 
-interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  scheduleBlocks?: TimeBlock[];
-  todos?: string[];
-  scheduleDismissed?: boolean;
-  todosDismissed?: boolean;
+// ── Date/session helpers ────────────────────────────────────────────────────
+
+function getTodayKey(): string {
+  const now = new Date();
+  const effective = now.getHours() < 5
+    ? new Date(now.getTime() - 24 * 60 * 60 * 1000)
+    : now;
+  const y = effective.getFullYear();
+  const m = String(effective.getMonth() + 1).padStart(2, '0');
+  const d = String(effective.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
+
+function makeSessionTitle(dateKey: string): string {
+  const [y, mo, d] = dateKey.split('-').map(Number);
+  return new Date(y, mo - 1, d).toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric',
+  });
+}
+
+function migrateLegacy(sessions: ChatSession[]): ChatSession[] {
+  const raw = localStorage.getItem('soma_chat_history');
+  if (!raw) return sessions;
+  try {
+    const messages: ChatMessage[] = JSON.parse(raw);
+    if (!messages.length) { localStorage.removeItem('soma_chat_history'); return sessions; }
+    const todayKey = getTodayKey();
+    if (sessions.some(s => s.date === todayKey && s.messages.length > 0)) return sessions;
+    const migrated: ChatSession = {
+      id: crypto.randomUUID(),
+      date: todayKey,
+      title: makeSessionTitle(todayKey),
+      messages,
+      createdAt: new Date().toISOString(),
+    };
+    localStorage.removeItem('soma_chat_history');
+    return [migrated, ...sessions.filter(s => s.date !== todayKey)];
+  } catch { return sessions; }
+}
+
+function getOrCreateToday(sessions: ChatSession[]): { session: ChatSession; all: ChatSession[] } {
+  const todayKey = getTodayKey();
+  const existing = sessions.find(s => s.date === todayKey);
+  if (existing) return { session: existing, all: sessions };
+  const session: ChatSession = {
+    id: crypto.randomUUID(),
+    date: todayKey,
+    title: makeSessionTitle(todayKey),
+    messages: [],
+    createdAt: new Date().toISOString(),
+  };
+  return { session, all: [session, ...sessions] };
+}
+
+// ── Message formatting ──────────────────────────────────────────────────────
 
 function isToday(iso: string) {
   const d = new Date(iso), n = new Date();
@@ -37,6 +83,14 @@ function fmtDuration(startIso: string, endIso: string) {
   return `${mins}m`;
 }
 
+function fmtTime12(iso: string): string {
+  const d = new Date(iso);
+  const h = d.getHours() % 12 || 12;
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const ampm = d.getHours() >= 12 ? 'PM' : 'AM';
+  return `${h}:${m} ${ampm}`;
+}
+
 function stripTags(content: string) {
   return content
     .replace(/<schedule>[\s\S]*?<\/schedule>/g, '')
@@ -50,19 +104,6 @@ function formatMessage(content: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/\*\*(.+?)\*\*/gs, '<strong>$1</strong>');
-}
-
-const CHAT_KEY = 'soma_chat_history';
-
-function loadHistory(): ChatMessage[] {
-  try {
-    const raw = localStorage.getItem(CHAT_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-
-function saveHistory(msgs: ChatMessage[]) {
-  localStorage.setItem(CHAT_KEY, JSON.stringify(msgs));
 }
 
 function parseScheduleBlocks(content: string): TimeBlock[] | null {
@@ -83,26 +124,11 @@ function parseScheduleBlocks(content: string): TimeBlock[] | null {
 
 function parseTodos(content: string): string[] | null {
   const match = content.match(/<todos>([\s\S]*?)<\/todos>/);
-  console.log('[todos] raw tag match:', match ? match[1].trim() : 'NO MATCH');
   if (!match) return null;
-  try {
-    const parsed = JSON.parse(match[1].trim());
-    console.log('[todos] parsed array:', parsed);
-    return parsed;
-  } catch (e) {
-    console.error('[todos] JSON.parse failed:', e);
-    return null;
-  }
+  try { return JSON.parse(match[1].trim()); } catch { return null; }
 }
 
-
-function fmtTime12(iso: string): string {
-  const d = new Date(iso);
-  const h = d.getHours() % 12 || 12;
-  const m = String(d.getMinutes()).padStart(2, '0');
-  const ampm = d.getHours() >= 12 ? 'PM' : 'AM';
-  return `${h}:${m} ${ampm}`;
-}
+// ── System prompt ───────────────────────────────────────────────────────────
 
 function buildSystemPrompt(): string {
   const subjects = storage.getSubjects();
@@ -115,16 +141,11 @@ function buildSystemPrompt(): string {
   );
 
   const now = new Date();
-
   const date = now.toLocaleDateString('en-US', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   });
 
-  const subjectsStr = subjects
-    .map(s => `${s.name} (id: ${s.id})`)
-    .join(', ');
-
-  const upcoming = assignments;
+  const subjectsStr = subjects.map(s => `${s.name} (id: ${s.id})`).join(', ');
 
   const assignmentStatus = storage.getAssignmentStatus() as Record<string, string>;
   const statusLabel: Record<string, string> = {
@@ -132,15 +153,8 @@ function buildSystemPrompt(): string {
     in_progress: 'in progress',
     done: 'done',
   };
-  console.log('[buildSystemPrompt] assignmentStatus:', assignmentStatus);
-  console.log('[buildSystemPrompt] first 3 assignment lookups:', upcoming.slice(0, 3).map(a => ({
-    id: a.id,
-    name: a.name,
-    rawStatus: assignmentStatus[String(a.id)] ?? '(not set)',
-    label: statusLabel[assignmentStatus[String(a.id)] ?? 'not_started'] ?? 'not started',
-  })));
-  const assignmentsStr = upcoming.length > 0
-    ? upcoming.map(a => {
+  const assignmentsStr = assignments.length > 0
+    ? assignments.map(a => {
         const due = new Date(a.dueAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
         const status = statusLabel[assignmentStatus[String(a.id)] ?? 'not_started'] ?? 'not started';
         const desc = a.description ? `\n  Description: ${a.description.slice(0, 300)}` : '';
@@ -163,29 +177,22 @@ function buildSystemPrompt(): string {
       }).join('\n')
     : '';
 
-  const courseIds = [...new Set(upcoming.map(a => a.courseId))];
-
+  const courseIds = [...new Set(assignments.map(a => a.courseId))];
   const announcementsStr = courseIds.length > 0
     ? courseIds.map(cid => {
         const courseAnn = announcements.filter(a => a.courseId === cid).slice(0, 5);
         if (courseAnn.length === 0) return null;
-        const courseName = upcoming.find(a => a.courseId === cid)?.courseName ?? `Course ${cid}`;
-        const items = courseAnn.map(a =>
-          `  - ${a.title}: ${a.message.slice(0, 500)}`
-        ).join('\n');
-        return `${courseName}:\n${items}`;
+        const courseName = assignments.find(a => a.courseId === cid)?.courseName ?? `Course ${cid}`;
+        return `${courseName}:\n${courseAnn.map(a => `  - ${a.title}: ${a.message.slice(0, 500)}`).join('\n')}`;
       }).filter(Boolean).join('\n\n')
     : '';
 
   const modulesStr = courseIds.length > 0
     ? courseIds.map(cid => {
-        const courseMods = modules
-          .filter(m => m.courseId === cid)
-          .sort((a, b) => a.position - b.position);
+        const courseMods = modules.filter(m => m.courseId === cid).sort((a, b) => a.position - b.position);
         if (courseMods.length === 0) return null;
-        const courseName = upcoming.find(a => a.courseId === cid)?.courseName ?? `Course ${cid}`;
-        const items = courseMods.map(m => `  - ${m.name}`).join('\n');
-        return `${courseName}:\n${items}`;
+        const courseName = assignments.find(a => a.courseId === cid)?.courseName ?? `Course ${cid}`;
+        return `${courseName}:\n${courseMods.map(m => `  - ${m.name}`).join('\n')}`;
       }).filter(Boolean).join('\n\n')
     : '';
 
@@ -216,7 +223,7 @@ Always ask clarifying questions if the user's request is vague.
 Never generate a schedule without asking what time the user wants to start and end their day.`;
 }
 
-// ── Sub-components ───────────────────────────────────────────────────────
+// ── Sub-components ──────────────────────────────────────────────────────────
 
 function ScheduleCard({
   blocks, subjects, onAccept, onDismiss,
@@ -275,53 +282,190 @@ function TodoCard({
   );
 }
 
-// ── Main component ───────────────────────────────────────────────────────
+interface SessionRowProps {
+  session: ChatSession;
+  isActive: boolean;
+  isConfirming: boolean;
+  onSelect: () => void;
+  onDeleteClick: () => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+function SessionRow({ session, isActive, isConfirming, onSelect, onDeleteClick, onConfirm, onCancel }: SessionRowProps) {
+  if (isConfirming) {
+    return (
+      <div className={styles.sessionRowConfirm}>
+        <span className={styles.sessionConfirmText}>Delete?</span>
+        <button className={styles.sessionConfirmYes} onClick={e => { e.stopPropagation(); onConfirm(); }}>Delete</button>
+        <button className={styles.sessionConfirmNo} onClick={e => { e.stopPropagation(); onCancel(); }}>Cancel</button>
+      </div>
+    );
+  }
+
+  const msgCount = session.messages.length;
+  return (
+    <div
+      className={`${styles.sessionRow}${isActive ? ` ${styles.sessionRowActive}` : ''}`}
+      onClick={onSelect}
+    >
+      <div className={styles.sessionInfo}>
+        <span className={styles.sessionTitle}>{session.title}</span>
+        {msgCount > 0 && (
+          <span className={styles.sessionCount}>{msgCount} msg{msgCount !== 1 ? 's' : ''}</span>
+        )}
+      </div>
+      <button
+        className={styles.sessionDeleteBtn}
+        title="Delete chat"
+        onClick={e => { e.stopPropagation(); onDeleteClick(); }}
+      >×</button>
+    </div>
+  );
+}
+
+// ── Main component ──────────────────────────────────────────────────────────
 
 export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void }) {
-  const [messages, setMessages] = useState<ChatMessage[]>(() => loadHistory());
+  const [sessions, setSessions] = useState<ChatSession[]>(() => {
+    let s = storage.getChatSessions();
+    s = migrateLegacy(s);
+    const { all } = getOrCreateToday(s);
+    storage.setChatSessions(all);
+    return all;
+  });
+
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
+    const all = storage.getChatSessions();
+    const savedId = storage.getActiveSessionId();
+    if (savedId && all.some(s => s.id === savedId)) return savedId;
+    const todayKey = getTodayKey();
+    const today = all.find(s => s.date === todayKey);
+    const fallback = today?.id ?? all[0]?.id ?? '';
+    storage.setActiveSessionId(fallback);
+    return fallback;
+  });
+
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const subjects = storage.getSubjects();
+
+  const messages = useMemo(
+    () => sessions.find(s => s.id === activeSessionId)?.messages ?? [],
+    [sessions, activeSessionId],
+  );
+
+  const sortedSessions = useMemo(
+    () => [...sessions]
+      .filter(s => s.messages.length > 0 || s.id === activeSessionId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    [sessions, activeSessionId],
+  );
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
-  useEffect(() => {
-    saveHistory(messages);
-  }, [messages]);
+  function updateSession(id: string, fn: (s: ChatSession) => ChatSession) {
+    setSessions(prev => {
+      const next = prev.map(s => s.id === id ? fn(s) : s);
+      storage.setChatSessions(next);
+      return next;
+    });
+  }
+
+  function selectSession(id: string) {
+    setActiveSessionId(id);
+    storage.setActiveSessionId(id);
+    setDeleteConfirmId(null);
+    setInput('');
+  }
+
+  function newChat() {
+    const todayKey = getTodayKey();
+    const session: ChatSession = {
+      id: crypto.randomUUID(),
+      date: todayKey,
+      title: makeSessionTitle(todayKey),
+      messages: [],
+      createdAt: new Date().toISOString(),
+    };
+    setSessions(prev => {
+      const next = [session, ...prev];
+      storage.setChatSessions(next);
+      return next;
+    });
+    setActiveSessionId(session.id);
+    storage.setActiveSessionId(session.id);
+    setInput('');
+  }
+
+  function deleteSession(id: string) {
+    const next = sessions.filter(s => s.id !== id);
+    if (id === activeSessionId) {
+      if (next.length > 0) {
+        const sorted = [...next].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        );
+        setActiveSessionId(sorted[0].id);
+        storage.setActiveSessionId(sorted[0].id);
+      } else {
+        const todayKey = getTodayKey();
+        const fresh: ChatSession = {
+          id: crypto.randomUUID(),
+          date: todayKey,
+          title: makeSessionTitle(todayKey),
+          messages: [],
+          createdAt: new Date().toISOString(),
+        };
+        const withFresh = [fresh];
+        storage.setChatSessions(withFresh);
+        storage.setActiveSessionId(fresh.id);
+        setSessions(withFresh);
+        setActiveSessionId(fresh.id);
+        setDeleteConfirmId(null);
+        return;
+      }
+    }
+    storage.setChatSessions(next);
+    setSessions(next);
+    setDeleteConfirmId(null);
+  }
 
   async function send() {
     const text = input.trim();
-    if (!text || loading) return;
+    if (!text || loading || !activeSessionId) return;
+
+    const session = sessions.find(s => s.id === activeSessionId);
+    if (!session) return;
+
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: text };
-    const next = [...messages, userMsg];
-    setMessages(next);
+    const messagesWithUser = [...session.messages, userMsg];
+
     setInput('');
     setLoading(true);
+    updateSession(activeSessionId, s => ({ ...s, messages: messagesWithUser }));
+
     try {
       const systemPrompt = buildSystemPrompt();
-      const apiMessages = next.map(m => ({ role: m.role, content: m.content }));
+      const apiMessages = messagesWithUser.map(m => ({ role: m.role, content: m.content }));
       const planningKeywords = ['schedule', 'study plan', 'plan my day', 'generate'];
       const needsSonnet = planningKeywords.some(kw => text.toLowerCase().includes(kw));
       const response = await sendMessage(apiMessages, systemPrompt, needsSonnet ? 'sonnet' : undefined);
       const scheduleBlocks = parseScheduleBlocks(response) ?? undefined;
       const todos = parseTodos(response) ?? undefined;
-      console.log('[todos] attached to message:', todos);
-      setMessages(prev => [...prev, {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: response,
-        scheduleBlocks,
-        todos,
-      }]);
+      const assistantMsg: ChatMessage = {
+        id: crypto.randomUUID(), role: 'assistant', content: response, scheduleBlocks, todos,
+      };
+      updateSession(activeSessionId, s => ({ ...s, messages: [...s.messages, assistantMsg] }));
     } catch (err) {
-      setMessages(prev => [...prev, {
-        id: crypto.randomUUID(),
-        role: 'assistant',
+      const errorMsg: ChatMessage = {
+        id: crypto.randomUUID(), role: 'assistant',
         content: `Error: ${err instanceof Error ? err.message : 'Failed to get response.'}`,
-      }]);
+      };
+      updateSession(activeSessionId, s => ({ ...s, messages: [...s.messages, errorMsg] }));
     } finally {
       setLoading(false);
     }
@@ -336,156 +480,156 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     const newTodos: Todo[] = blocks
       .filter(b => b.task && !existingTexts.has(b.task))
       .map(b => ({ id: crypto.randomUUID(), text: b.task, status: 'nothing' as const, subjectId: b.subjectId }));
-    if (newTodos.length > 0) {
-      storage.setTodos([...existingTodos, ...newTodos]);
-    }
+    if (newTodos.length > 0) storage.setTodos([...existingTodos, ...newTodos]);
 
-    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, scheduleDismissed: true } : m));
+    updateSession(activeSessionId, s => ({
+      ...s, messages: s.messages.map(m => m.id === msgId ? { ...m, scheduleDismissed: true } : m),
+    }));
     onSwitchToToday();
   }
 
   function dismissSchedule(msgId: string) {
-    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, scheduleDismissed: true } : m));
+    updateSession(activeSessionId, s => ({
+      ...s, messages: s.messages.map(m => m.id === msgId ? { ...m, scheduleDismissed: true } : m),
+    }));
   }
 
   async function acceptTodos(msgId: string, todoTexts: string[]) {
-    console.log('[todos] acceptTodos called with:', todoTexts);
-    const subjects = storage.getSubjects().filter(s => !s.archived);
-    const subjectNames = subjects.map(s => s.name);
+    const activeSubjects = storage.getSubjects().filter(s => !s.archived);
+    const subjectNames = activeSubjects.map(s => s.name);
 
     let subjectAssignments: string[] = todoTexts.map(() => 'Unassigned');
     try {
       const systemPrompt = 'You are a todo categorizer. Given a list of todos and a list of subjects, assign each todo to the most appropriate subject. Respond with only a JSON array of subject names in the same order as the todos, exactly matching one of the provided subject names or "Unassigned" if none fit.';
       const userMessage = `Subjects: ${JSON.stringify(subjectNames)}.\nTodos:\n${todoTexts.map((t, i) => `${i + 1}. ${t}`).join('\n')}`;
       const response = await sendMessage([{ role: 'user', content: userMessage }], systemPrompt);
-      console.log('[todos] categorization response:', response);
       const parsed = JSON.parse(response.replace(/```json|```/g, '').trim());
-      if (Array.isArray(parsed) && parsed.length === todoTexts.length) {
-        subjectAssignments = parsed;
-      }
-    } catch (e) {
-      console.warn('[todos] categorization failed, leaving unassigned:', e);
-    }
+      if (Array.isArray(parsed) && parsed.length === todoTexts.length) subjectAssignments = parsed;
+    } catch { /* leave unassigned */ }
 
     const assignments = storage.getCachedAssignments();
     let assignmentIds: (number | null)[] = todoTexts.map(() => null);
     if (assignments.length > 0) {
       try {
         const systemPrompt = 'You are a todo-to-assignment matcher. Given a list of todos and a list of Canvas assignments, for each todo return the ID of the most relevant assignment it belongs to, or null if none fit. Respond with only a JSON array of assignment IDs (numbers) or nulls, in the same order as the todos.';
-        const assignmentList = assignments.map(a => ({
-          id: a.id,
-          name: a.name,
-          courseName: a.courseName,
-          dueAt: a.dueAt,
-        }));
+        const assignmentList = assignments.map(a => ({ id: a.id, name: a.name, courseName: a.courseName, dueAt: a.dueAt }));
         const userMessage = `Assignments: ${JSON.stringify(assignmentList)}\nTodos:\n${todoTexts.map((t, i) => `${i + 1}. ${t}`).join('\n')}`;
         const response = await sendMessage([{ role: 'user', content: userMessage }], systemPrompt);
         const parsed = JSON.parse(response.replace(/```json|```/g, '').trim());
-        if (Array.isArray(parsed) && parsed.length === todoTexts.length) {
-          assignmentIds = parsed;
-        }
-      } catch (e) {
-        console.warn('[todos] assignment matching failed:', e);
-      }
+        if (Array.isArray(parsed) && parsed.length === todoTexts.length) assignmentIds = parsed;
+      } catch { /* leave null */ }
     }
 
     const newTodos: Todo[] = todoTexts.map((text, i) => {
-      const assignedName = subjectAssignments[i];
-      const subject = subjects.find(s => s.name.toLowerCase() === assignedName?.toLowerCase());
-      const assignmentId = assignmentIds[i] ?? undefined;
-      return { id: crypto.randomUUID(), text, status: 'nothing' as const, subjectId: subject?.id, assignmentId };
+      const subject = activeSubjects.find(s => s.name.toLowerCase() === subjectAssignments[i]?.toLowerCase());
+      return { id: crypto.randomUUID(), text, status: 'nothing' as const, subjectId: subject?.id, assignmentId: assignmentIds[i] ?? undefined };
     });
-
-    console.log('[todos] matched pairs:', newTodos.map(t => ({
-      text: t.text,
-      subject: subjects.find(s => s.id === t.subjectId)?.name ?? 'Unassigned',
-      assignment: assignments.find(a => a.id === t.assignmentId)?.name ?? null,
-    })));
     storage.setTodos(newTodos);
-    console.log('[todos] soma_todos in localStorage:', localStorage.getItem('soma_todos'));
-    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, todosDismissed: true } : m));
+
+    updateSession(activeSessionId, s => ({
+      ...s, messages: s.messages.map(m => m.id === msgId ? { ...m, todosDismissed: true } : m),
+    }));
     onSwitchToToday();
   }
 
   function dismissTodos(msgId: string) {
-    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, todosDismissed: true } : m));
+    updateSession(activeSessionId, s => ({
+      ...s, messages: s.messages.map(m => m.id === msgId ? { ...m, todosDismissed: true } : m),
+    }));
   }
 
-  function clearChat() {
-    setMessages([]);
-    localStorage.removeItem(CHAT_KEY);
-  }
+  const activeSession = sessions.find(s => s.id === activeSessionId);
 
   return (
-    <div className={styles.container}>
-      <div className={styles.header}>
-        <span className={styles.headerTitle}>AI Scheduling</span>
-        <button className={styles.clearKeyBtn} onClick={clearChat}>Clear chat</button>
-      </div>
-
-      <div className={styles.messageList}>
-        {messages.length === 0 && (
-          <div className={styles.emptyState}>
-            <div className={styles.emptyHint}>
-              Start by describing what you need to accomplish today.
-            </div>
-            <div className={styles.suggestions}>
-              {['Plan my day', 'What should I study first?', 'Generate a schedule for today'].map(s => (
-                <button key={s} className={styles.suggestionBtn} onClick={() => setInput(s)}>
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-        {messages.map(msg => (
-          <div
-            key={msg.id}
-            className={`${styles.messageRow} ${msg.role === 'user' ? styles.userRow : styles.assistantRow}`}
-          >
-            <div
-              className={`${styles.bubble} ${msg.role === 'user' ? styles.userBubble : styles.assistantBubble}`}
-              dangerouslySetInnerHTML={{ __html: formatMessage(stripTags(msg.content)) }}
+    <div className={styles.layout}>
+      {/* ── Sidebar ─────────────────────────────────────────────────────── */}
+      <div className={styles.sidebar}>
+        <div className={styles.sidebarHeader}>
+          <span className={styles.sidebarTitle}>Chats</span>
+          <button className={styles.newChatBtn} onClick={newChat} title="New chat">✎</button>
+        </div>
+        <div className={styles.sessionList}>
+          {sortedSessions.map(session => (
+            <SessionRow
+              key={session.id}
+              session={session}
+              isActive={session.id === activeSessionId}
+              isConfirming={deleteConfirmId === session.id}
+              onSelect={() => selectSession(session.id)}
+              onDeleteClick={() => setDeleteConfirmId(session.id)}
+              onConfirm={() => deleteSession(session.id)}
+              onCancel={() => setDeleteConfirmId(null)}
             />
-            {msg.role === 'assistant' && msg.scheduleBlocks && !msg.scheduleDismissed && (
-              <ScheduleCard
-                blocks={msg.scheduleBlocks}
-                subjects={subjects}
-                onAccept={() => acceptSchedule(msg.id, msg.scheduleBlocks!)}
-                onDismiss={() => dismissSchedule(msg.id)}
-              />
-            )}
-            {msg.role === 'assistant' && msg.todos && !msg.todosDismissed && (
-              <TodoCard
-                todos={msg.todos}
-                onAccept={() => acceptTodos(msg.id, msg.todos!)}
-                onDismiss={() => dismissTodos(msg.id)}
-              />
-            )}
-          </div>
-        ))}
-        {loading && (
-          <div className={`${styles.messageRow} ${styles.assistantRow}`}>
-            <div className={`${styles.bubble} ${styles.assistantBubble} ${styles.thinkingBubble}`}>…</div>
-          </div>
-        )}
-        <div ref={messagesEndRef} />
+          ))}
+        </div>
       </div>
 
-      <div className={styles.inputRow}>
-        <input
-          className={styles.textInput}
-          placeholder="Message Soma…"
-          value={input}
-          disabled={loading}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
-        />
-        <button
-          className={styles.sendBtn}
-          onClick={send}
-          disabled={loading || !input.trim()}
-        >Send</button>
+      {/* ── Chat area ───────────────────────────────────────────────────── */}
+      <div className={styles.chatArea}>
+        <div className={styles.chatHeader}>
+          <span className={styles.chatTitle}>{activeSession?.title ?? 'AI Scheduling'}</span>
+        </div>
+
+        <div className={styles.messageList}>
+          {messages.length === 0 && (
+            <div className={styles.emptyState}>
+              <div className={styles.emptyHint}>Start by describing what you need to accomplish today.</div>
+              <div className={styles.suggestions}>
+                {['Plan my day', 'What should I study first?', 'Generate a schedule for today'].map(s => (
+                  <button key={s} className={styles.suggestionBtn} onClick={() => setInput(s)}>{s}</button>
+                ))}
+              </div>
+            </div>
+          )}
+          {messages.map(msg => (
+            <div
+              key={msg.id}
+              className={`${styles.messageRow} ${msg.role === 'user' ? styles.userRow : styles.assistantRow}`}
+            >
+              <div
+                className={`${styles.bubble} ${msg.role === 'user' ? styles.userBubble : styles.assistantBubble}`}
+                dangerouslySetInnerHTML={{ __html: formatMessage(stripTags(msg.content)) }}
+              />
+              {msg.role === 'assistant' && msg.scheduleBlocks && !msg.scheduleDismissed && (
+                <ScheduleCard
+                  blocks={msg.scheduleBlocks}
+                  subjects={subjects}
+                  onAccept={() => acceptSchedule(msg.id, msg.scheduleBlocks!)}
+                  onDismiss={() => dismissSchedule(msg.id)}
+                />
+              )}
+              {msg.role === 'assistant' && msg.todos && !msg.todosDismissed && (
+                <TodoCard
+                  todos={msg.todos}
+                  onAccept={() => acceptTodos(msg.id, msg.todos!)}
+                  onDismiss={() => dismissTodos(msg.id)}
+                />
+              )}
+            </div>
+          ))}
+          {loading && (
+            <div className={`${styles.messageRow} ${styles.assistantRow}`}>
+              <div className={`${styles.bubble} ${styles.assistantBubble} ${styles.thinkingBubble}`}>…</div>
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        <div className={styles.inputRow}>
+          <input
+            className={styles.textInput}
+            placeholder="Message Soma…"
+            value={input}
+            disabled={loading}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+          />
+          <button
+            className={styles.sendBtn}
+            onClick={send}
+            disabled={loading || !input.trim()}
+          >Send</button>
+        </div>
       </div>
     </div>
   );

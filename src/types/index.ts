@@ -78,3 +78,21 @@ export interface GoogleCalendarEvent {
   start: { dateTime?: string; date?: string };
   end: { dateTime?: string; date?: string };
 }
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  scheduleBlocks?: TimeBlock[];
+  todos?: string[];
+  scheduleDismissed?: boolean;
+  todosDismissed?: boolean;
+}
+
+export interface ChatSession {
+  id: string;
+  date: string; // YYYY-MM-DD
+  title: string;
+  messages: ChatMessage[];
+  createdAt: string; // ISO
+}
