@@ -352,6 +352,18 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const subjects = storage.getSubjects();
 
+  const systemPromptCache = useRef<{ prompt: string; canvasTs: number | null; dateKey: string } | null>(null);
+
+  function getCachedSystemPrompt(): string {
+    const canvasTs = storage.getCacheTimestamp();
+    const dateKey = getTodayKey();
+    const cached = systemPromptCache.current;
+    if (cached && cached.canvasTs === canvasTs && cached.dateKey === dateKey) return cached.prompt;
+    const prompt = buildSystemPrompt();
+    systemPromptCache.current = { prompt, canvasTs, dateKey };
+    return prompt;
+  }
+
   const messages = useMemo(
     () => sessions.find(s => s.id === activeSessionId)?.messages ?? [],
     [sessions, activeSessionId],
@@ -449,8 +461,8 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     updateSession(activeSessionId, s => ({ ...s, messages: messagesWithUser }));
 
     try {
-      const systemPrompt = buildSystemPrompt();
-      const apiMessages = messagesWithUser.map(m => ({ role: m.role, content: m.content }));
+      const systemPrompt = getCachedSystemPrompt();
+      const apiMessages = messagesWithUser.slice(-10).map(m => ({ role: m.role, content: m.content }));
       const planningKeywords = ['schedule', 'study plan', 'plan my day', 'generate'];
       const needsSonnet = planningKeywords.some(kw => text.toLowerCase().includes(kw));
       const response = await sendMessage(apiMessages, systemPrompt, needsSonnet ? 'sonnet' : undefined);
@@ -499,26 +511,17 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     const subjectNames = activeSubjects.map(s => s.name);
 
     let subjectAssignments: string[] = todoTexts.map(() => 'Unassigned');
+    const canvasAssignments = storage.getCachedAssignments();
+    let assignmentIds: (number | null)[] = todoTexts.map(() => null);
     try {
-      const systemPrompt = 'You are a todo categorizer. Given a list of todos and a list of subjects, assign each todo to the most appropriate subject. Respond with only a JSON array of subject names in the same order as the todos, exactly matching one of the provided subject names or "Unassigned" if none fit.';
-      const userMessage = `Subjects: ${JSON.stringify(subjectNames)}.\nTodos:\n${todoTexts.map((t, i) => `${i + 1}. ${t}`).join('\n')}`;
+      const assignmentList = canvasAssignments.map(a => ({ id: a.id, name: a.name, courseName: a.courseName, dueAt: a.dueAt }));
+      const systemPrompt = 'You are a todo categorizer and matcher. Given a list of todos, a list of subjects, and a list of Canvas assignments, return a JSON object with two keys: "subjects" (array of subject names in the same order as the todos, exactly matching one of the provided subject names or "Unassigned" if none fit) and "assignmentIds" (array of Canvas assignment IDs (numbers) or null for each todo, in the same order). Respond with only the raw JSON object, no markdown.';
+      const userMessage = `Subjects: ${JSON.stringify(subjectNames)}\nAssignments: ${JSON.stringify(assignmentList)}\nTodos:\n${todoTexts.map((t, i) => `${i + 1}. ${t}`).join('\n')}`;
       const response = await sendMessage([{ role: 'user', content: userMessage }], systemPrompt);
       const parsed = JSON.parse(response.replace(/```json|```/g, '').trim());
-      if (Array.isArray(parsed) && parsed.length === todoTexts.length) subjectAssignments = parsed;
-    } catch { /* leave unassigned */ }
-
-    const assignments = storage.getCachedAssignments();
-    let assignmentIds: (number | null)[] = todoTexts.map(() => null);
-    if (assignments.length > 0) {
-      try {
-        const systemPrompt = 'You are a todo-to-assignment matcher. Given a list of todos and a list of Canvas assignments, for each todo return the ID of the most relevant assignment it belongs to, or null if none fit. Respond with only a JSON array of assignment IDs (numbers) or nulls, in the same order as the todos.';
-        const assignmentList = assignments.map(a => ({ id: a.id, name: a.name, courseName: a.courseName, dueAt: a.dueAt }));
-        const userMessage = `Assignments: ${JSON.stringify(assignmentList)}\nTodos:\n${todoTexts.map((t, i) => `${i + 1}. ${t}`).join('\n')}`;
-        const response = await sendMessage([{ role: 'user', content: userMessage }], systemPrompt);
-        const parsed = JSON.parse(response.replace(/```json|```/g, '').trim());
-        if (Array.isArray(parsed) && parsed.length === todoTexts.length) assignmentIds = parsed;
-      } catch { /* leave null */ }
-    }
+      if (Array.isArray(parsed.subjects) && parsed.subjects.length === todoTexts.length) subjectAssignments = parsed.subjects;
+      if (Array.isArray(parsed.assignmentIds) && parsed.assignmentIds.length === todoTexts.length) assignmentIds = parsed.assignmentIds;
+    } catch { /* leave unassigned/null */ }
 
     const newTodos: Todo[] = todoTexts.map((text, i) => {
       const subject = activeSubjects.find(s => s.name.toLowerCase() === subjectAssignments[i]?.toLowerCase());

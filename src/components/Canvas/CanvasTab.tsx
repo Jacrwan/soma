@@ -19,7 +19,7 @@ function fmtPosted(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-const CACHE_MAX_AGE = 30 * 60 * 1000;
+const CACHE_MAX_AGE = 60 * 60 * 1000;
 
 function syncCoursesToSubjects(courses: CanvasCourse[]) {
   let subjects = storage.getSubjects();
