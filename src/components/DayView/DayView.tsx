@@ -3,7 +3,7 @@ import { storage, inferSubjectId } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
 import { Subject, TimeBlock, SubjectColor, Todo, GoogleCalendarEvent } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
-import TimerOverlay from '../Timer/TimerOverlay';
+import TimerOverlay, { RescheduleInfo } from '../Timer/TimerOverlay';
 import styles from './DayView.module.css';
 
 const SLOT_HEIGHT = 60;
@@ -99,6 +99,13 @@ interface AddSubjectForm {
   color: SubjectColor;
 }
 
+interface RescheduleSuggestion {
+  date: string;       // YYYY-MM-DD
+  startTime: string;  // HH:MM
+  endTime: string;    // HH:MM
+  reason: string;
+}
+
 interface DayViewProps {
   selectedDate: Date;
   onSelectDate: (date: Date) => void;
@@ -160,7 +167,12 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     const s = localStorage.getItem('soma_panel_ratio');
     return s ? Math.max(0.35, Math.min(0.75, parseFloat(s))) : 0.65;
   });
+  const [rescheduleInfo, setRescheduleInfo] = useState<RescheduleInfo | null>(null);
+  const [rescheduleVisible, setRescheduleVisible] = useState(false);
+  const [rescheduleSuggestion, setRescheduleSuggestion] = useState<RescheduleSuggestion | null>(null);
+  const [rescheduleLoading, setRescheduleLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const rescheduleTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const popoverRef = useRef<HTMLDivElement>(null);
   const todoPopoverRef = useRef<HTMLDivElement>(null);
   const statusPopoverRef = useRef<HTMLDivElement>(null);
@@ -390,6 +402,74 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     document.addEventListener('mouseup', onUp);
   }, []);
 
+  async function findMoreTime(info: RescheduleInfo) {
+    setRescheduleLoading(true);
+    try {
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+      const timeStr = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const tomorrowDate = new Date(now);
+      tomorrowDate.setDate(now.getDate() + 1);
+      const allBlocks = storage.getTimeBlocks();
+      const todayRemaining = allBlocks.filter(b => isOnDate(b.startTime, now) && new Date(b.startTime) > now);
+      const tomorrowBlocks = allBlocks.filter(b => isOnDate(b.startTime, tomorrowDate));
+      const fmtBlock = (b: TimeBlock) => {
+        const subj = subjects.find(s => s.id === b.subjectId);
+        return `${fmtTime(b.startTime)}–${fmtTime(b.endTime)}: ${subj?.name ?? ''} — ${b.task}`;
+      };
+      const threeDaysMs = now.getTime() + 3 * 24 * 60 * 60 * 1000;
+      const soonAssignments = storage.getCachedAssignments().filter(a => new Date(a.dueAt).getTime() <= threeDaysMs);
+      const assignmentsStr = soonAssignments.length > 0
+        ? soonAssignments.map(a => `${a.name} — due ${new Date(a.dueAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`).join(', ')
+        : 'none';
+      const userMsg = `Task not finished: ${info.todoText}. Subject: ${info.subjectName}. Today is ${dateStr} ${timeStr}. Today's remaining schedule:\n${todayRemaining.length > 0 ? todayRemaining.map(fmtBlock).join('\n') : 'None'}\nTomorrow's schedule:\n${tomorrowBlocks.length > 0 ? tomorrowBlocks.map(fmtBlock).join('\n') : 'None'}\nAssignments due soon: ${assignmentsStr}. Suggest the best time slot to continue this task.`;
+      const text = await sendMessage(
+        [{ role: 'user', content: userMsg }],
+        `You are a study scheduler. A student didn't finish a task. Suggest ONE specific time block today or tomorrow to continue working on it. Return only JSON: { "date": "YYYY-MM-DD", "startTime": "HH:MM", "endTime": "HH:MM", "reason": "one short sentence" }`,
+      );
+      const parsed = JSON.parse(text.replace(/```json|```/g, '').trim()) as RescheduleSuggestion;
+      setRescheduleSuggestion(parsed);
+    } catch {
+      // fail silently
+    } finally {
+      setRescheduleLoading(false);
+    }
+  }
+
+  function handleRescheduleAccept(info: RescheduleInfo, suggestion: RescheduleSuggestion) {
+    const [yr, mo, dy] = suggestion.date.split('-').map(Number);
+    const [sh, sm] = suggestion.startTime.split(':').map(Number);
+    const [eh, em] = suggestion.endTime.split(':').map(Number);
+    const startIso = new Date(yr, mo - 1, dy, sh, sm).toISOString();
+    const endIso = new Date(yr, mo - 1, dy, eh, em).toISOString();
+    const block: TimeBlock = {
+      id: crypto.randomUUID(),
+      subjectId: info.subjectId,
+      task: info.todoText,
+      startTime: startIso,
+      endTime: endIso,
+      source: 'ai',
+    };
+    storage.setTimeBlocks([...storage.getTimeBlocks(), block]);
+    if (isOnDate(startIso, selectedDate)) {
+      setBlocks(prev => [...prev, block]);
+    }
+    dismissReschedule(info.todoId);
+  }
+
+  function dismissReschedule(todoId: string) {
+    try {
+      const existing = JSON.parse(localStorage.getItem('soma_reschedule_dismissed') ?? '{}');
+      localStorage.setItem('soma_reschedule_dismissed', JSON.stringify({
+        ...existing,
+        [todoId]: toISODateString(new Date()),
+      }));
+    } catch { /* ignore */ }
+    setRescheduleInfo(null);
+    setRescheduleSuggestion(null);
+    setRescheduleLoading(false);
+  }
+
   const generateBrief = useCallback(async () => {
     setBriefLoading(true);
     try {
@@ -452,6 +532,16 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
   useEffect(() => {
     setBriefCollapsed(!isViewingToday);
   }, [isViewingToday]);
+
+  useEffect(() => {
+    clearTimeout(rescheduleTimerRef.current);
+    if (rescheduleInfo) {
+      rescheduleTimerRef.current = setTimeout(() => setRescheduleVisible(true), 1000);
+    } else {
+      setRescheduleVisible(false);
+    }
+    return () => clearTimeout(rescheduleTimerRef.current);
+  }, [rescheduleInfo]);
 
   function toggleGroup(groupId: string) {
     setCollapsedGroups(prev => {
@@ -1259,7 +1349,55 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
           onSessionSaved={handleSessionSaved}
           onRunningChange={handleRunningChange}
           initialTask={initialTimerTask}
+          onReschedulePrompt={setRescheduleInfo}
         />
+      )}
+
+      {/* ── Reschedule toast ── */}
+      {rescheduleInfo && rescheduleVisible && (
+        <div className={styles.rescheduleToast}>
+          <div className={styles.rescheduleBanner}>
+            <span className={styles.rescheduleBannerText}>
+              Didn't finish "{rescheduleInfo.todoText.length > 40 ? `${rescheduleInfo.todoText.slice(0, 40)}…` : rescheduleInfo.todoText}"?
+            </span>
+            <div className={styles.rescheduleBannerActions}>
+              {!rescheduleSuggestion && !rescheduleLoading && (
+                <button className={styles.rescheduleFindBtn} onClick={() => findMoreTime(rescheduleInfo)}>
+                  Find more time
+                </button>
+              )}
+              <button className={styles.rescheduleImissBtn} onClick={() => dismissReschedule(rescheduleInfo.todoId)}>
+                Dismiss
+              </button>
+            </div>
+          </div>
+          {rescheduleLoading && (
+            <div className={styles.rescheduleCard}>
+              <span className={styles.rescheduleCardLoading}>Finding the best time slot…</span>
+            </div>
+          )}
+          {rescheduleSuggestion && (() => {
+            const todayKey = toISODateString(new Date());
+            const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
+            const tomorrowKey = toISODateString(tomorrow);
+            const [sh, sm] = rescheduleSuggestion.startTime.split(':').map(Number);
+            const [eh, em] = rescheduleSuggestion.endTime.split(':').map(Number);
+            const fmt12 = (h: number, m: number) => `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+            const dayLabel = rescheduleSuggestion.date === todayKey ? 'today'
+              : rescheduleSuggestion.date === tomorrowKey ? 'tomorrow'
+              : new Date(`${rescheduleSuggestion.date}T12:00`).toLocaleDateString('en-US', { weekday: 'long' });
+            return (
+              <div className={styles.rescheduleCard}>
+                <p className={styles.rescheduleCardTitle}>How about {dayLabel} at {fmt12(sh, sm)}–{fmt12(eh, em)}?</p>
+                <p className={styles.rescheduleCardReason}>{rescheduleSuggestion.reason}</p>
+                <div className={styles.rescheduleCardActions}>
+                  <button className={styles.rescheduleAcceptBtn} onClick={() => handleRescheduleAccept(rescheduleInfo, rescheduleSuggestion)}>Accept</button>
+                  <button className={styles.rescheduleCardDismiss} onClick={() => setRescheduleSuggestion(null)}>Try again</button>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
       )}
 
       {/* ── Add Subject Modal ── */}
