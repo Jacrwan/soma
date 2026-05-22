@@ -723,10 +723,20 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
         <div className={styles.dailyBrief}>
           <div
             className={styles.dailyBriefHeader}
+            role="button"
+            tabIndex={0}
             onClick={() => {
               const next = !briefCollapsed;
               setBriefCollapsed(next);
               localStorage.setItem('soma_brief_collapsed', String(next));
+            }}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                const next = !briefCollapsed;
+                setBriefCollapsed(next);
+                localStorage.setItem('soma_brief_collapsed', String(next));
+              }
             }}
           >
             <span className={styles.dailyBriefLabel}>Daily Brief</span>
@@ -741,18 +751,20 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               <span className={styles.dailyBriefChevron}>{briefCollapsed ? '▸' : '▾'}</span>
             </div>
           </div>
-          <div className={styles.dailyBriefBody} style={{ maxHeight: briefCollapsed ? 0 : 200 }}>
-            {briefLoading
-              ? <span className={styles.dailyBriefLoading}>Generating your brief…</span>
-              : briefText
-                ? <div className={styles.dailyBriefText}>
-                    {briefText.split(/(?=•)/).map((line, i) => {
-                      const trimmed = line.trim();
-                      return trimmed ? <div key={i} className={styles.dailyBriefLine}>{trimmed}</div> : null;
-                    })}
-                  </div>
-                : null
-            }
+          <div className={`${styles.dailyBriefBody}${briefCollapsed ? ` ${styles.dailyBriefBodyCollapsed}` : ''}`}>
+            <div className={styles.dailyBriefBodyInner}>
+              {briefLoading
+                ? <span className={styles.dailyBriefLoading}>Generating your brief…</span>
+                : briefText
+                  ? <div className={styles.dailyBriefText}>
+                      {briefText.split(/(?=•)/).map((line, i) => {
+                        const trimmed = line.trim();
+                        return trimmed ? <div key={i} className={styles.dailyBriefLine}>{trimmed}</div> : null;
+                      })}
+                    </div>
+                  : null
+              }
+            </div>
           </div>
         </div>
 
@@ -811,6 +823,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               {isEditing && (
                 <div className={styles.editSubjectForm} onClick={e => e.stopPropagation()}>
                   <input
+                    className={styles.editSubjectInput}
                     value={editSubject!.name}
                     autoFocus
                     onChange={e => setEditSubject(s => s && { ...s, name: e.target.value })}
@@ -826,11 +839,13 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                       />
                     ))}
                   </div>
-                  <div className={styles.btnRow}>
-                    <button className={`${styles.btn} ${styles.btnAccent}`} onClick={saveEditSubject}>Save</button>
-                    <button className={styles.btn} onClick={() => archiveSubject(subject.id)}>Archive</button>
-                    <button className={`${styles.btn} ${styles.btnDanger}`} onClick={() => deleteSubject(subject.id)}>Delete</button>
-                    <button className={styles.btn} onClick={() => setEditSubject(null)}>Cancel</button>
+                  <div className={styles.editFormActions}>
+                    <button className={styles.editSaveBtn} onClick={saveEditSubject}>Save</button>
+                    <button className={styles.editCancelBtn} onClick={() => setEditSubject(null)}>Cancel</button>
+                  </div>
+                  <div className={styles.editFormDestructive}>
+                    <button className={styles.editArchiveBtn} onClick={() => archiveSubject(subject.id)}>Archive</button>
+                    <button className={styles.editDeleteBtn} onClick={() => deleteSubject(subject.id)}>Delete</button>
                   </div>
                 </div>
               )}
@@ -861,8 +876,12 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                                 onChange={e => setEditingTodoText(e.target.value)}
                                 onKeyDown={e => { if (e.key === 'Enter') saveTodoEdit(todo.id); if (e.key === 'Escape') setEditingTodoId(null); }}
                               />
-                              <button className={styles.todoEditSave} onClick={() => saveTodoEdit(todo.id)}>✓</button>
-                              <button className={styles.todoEditCancel} onClick={() => setEditingTodoId(null)}>×</button>
+                              <button className={styles.todoEditSave} title="Save" onClick={() => saveTodoEdit(todo.id)}>
+                                <svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4.5L4 7.5L10 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                              </button>
+                              <button className={styles.todoEditCancel} title="Cancel" onClick={() => setEditingTodoId(null)}>
+                                <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1 1L8 8M8 1L1 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                              </button>
                             </div>
                           ) : (
                             <span
@@ -877,24 +896,31 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                             className={styles.editTodoBtn}
                             title="Edit"
                             onClick={e => { e.stopPropagation(); setEditingTodoId(todo.id); setEditingTodoText(todo.text); setTodoPopoverId(null); }}
-                          >✎</button>
+                          >
+                            <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M7.5 1.5l2 2L3 10H1V8L7.5 1.5z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          </button>
                           <button
                             className={styles.pinBtn}
                             title="Pin to schedule"
                             onClick={e => { e.stopPropagation(); openPinPopover(todo.id); }}
-                          >⊕</button>
+                          >
+                            <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><circle cx="5.5" cy="5.5" r="4.5" stroke="currentColor" strokeWidth="1.3"/><line x1="5.5" y1="3" x2="5.5" y2="8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><line x1="3" y1="5.5" x2="8" y2="5.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                          </button>
                         </div>
                       </div>
                       {statusPopoverId === todo.id && (
                         <div className={styles.statusPopover} ref={statusPopoverRef}>
-                          <button className={`${styles.statusOption}${todo.status === 'nothing' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'nothing')}>
-                            <span className={styles.statusIcon}><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="#aaa" strokeWidth="1.5"/></svg></span> Nothing
+                          <button data-status="nothing" className={`${styles.statusOption}${todo.status === 'nothing' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'nothing')}>
+                            <span className={styles.statusIcon}><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1.5"/></svg></span>
+                            Nothing
                           </button>
-                          <button className={`${styles.statusOption}${todo.status === 'in_progress' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'in_progress')}>
-                            <span className={`${styles.statusIcon} ${styles.statusIconInProgress}`}><svg width="10" height="10" viewBox="0 0 10 10"><polygon points="0,0 10,5 0,10" fill="currentColor"/></svg></span> In Progress
+                          <button data-status="in_progress" className={`${styles.statusOption}${todo.status === 'in_progress' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'in_progress')}>
+                            <span className={`${styles.statusIcon} ${styles.statusIconInProgress}`}><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5.5" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="1.5"/><polygon points="5,4 10,6.5 5,9" fill="currentColor"/></svg></span>
+                            In progress
                           </button>
-                          <button className={`${styles.statusOption}${todo.status === 'done' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'done')}>
-                            <span className={`${styles.statusIcon} ${styles.statusIconDone}`}><svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L4 7L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span> Done
+                          <button data-status="done" className={`${styles.statusOption}${todo.status === 'done' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'done')}>
+                            <span className={`${styles.statusIcon} ${styles.statusIconDone}`}><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5.5" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="1.5"/><path d="M4 6.5L6 8.5L9.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
+                            Done
                           </button>
                         </div>
                       )}
@@ -968,7 +994,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                             <span className={styles.pinDurationUnit}>m</span>
                           </div>
                           <div className={styles.pinActions}>
-                            <button className={`${styles.btn} ${styles.btnAccent}`} onClick={() => pinTodo(todo)}>Pin</button>
+                            <button className={styles.pinSubmitBtn} onClick={() => pinTodo(todo)}>Pin to schedule</button>
                             <button className={styles.pinCancel} onClick={() => setPinPopoverId(null)}>Cancel</button>
                           </div>
                         </div>
@@ -1067,8 +1093,12 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                                 onChange={e => setEditingTodoText(e.target.value)}
                                 onKeyDown={e => { if (e.key === 'Enter') saveTodoEdit(todo.id); if (e.key === 'Escape') setEditingTodoId(null); }}
                               />
-                              <button className={styles.todoEditSave} onClick={() => saveTodoEdit(todo.id)}>✓</button>
-                              <button className={styles.todoEditCancel} onClick={() => setEditingTodoId(null)}>×</button>
+                              <button className={styles.todoEditSave} title="Save" onClick={() => saveTodoEdit(todo.id)}>
+                                <svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4.5L4 7.5L10 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                              </button>
+                              <button className={styles.todoEditCancel} title="Cancel" onClick={() => setEditingTodoId(null)}>
+                                <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1 1L8 8M8 1L1 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                              </button>
                             </div>
                           ) : (
                             <span
@@ -1083,24 +1113,31 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                             className={styles.editTodoBtn}
                             title="Edit"
                             onClick={e => { e.stopPropagation(); setEditingTodoId(todo.id); setEditingTodoText(todo.text); setTodoPopoverId(null); }}
-                          >✎</button>
+                          >
+                            <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M7.5 1.5l2 2L3 10H1V8L7.5 1.5z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          </button>
                           <button
                             className={styles.pinBtn}
                             title="Pin to schedule"
                             onClick={e => { e.stopPropagation(); openPinPopover(todo.id); }}
-                          >⊕</button>
+                          >
+                            <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><circle cx="5.5" cy="5.5" r="4.5" stroke="currentColor" strokeWidth="1.3"/><line x1="5.5" y1="3" x2="5.5" y2="8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><line x1="3" y1="5.5" x2="8" y2="5.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+                          </button>
                         </div>
                       </div>
                       {statusPopoverId === todo.id && (
                         <div className={styles.statusPopover} ref={statusPopoverRef}>
-                          <button className={`${styles.statusOption}${todo.status === 'nothing' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'nothing')}>
-                            <span className={styles.statusIcon}><svg width="12" height="12" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="6" r="5" stroke="#aaa" strokeWidth="1.5"/></svg></span> Nothing
+                          <button data-status="nothing" className={`${styles.statusOption}${todo.status === 'nothing' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'nothing')}>
+                            <span className={styles.statusIcon}><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1.5"/></svg></span>
+                            Nothing
                           </button>
-                          <button className={`${styles.statusOption}${todo.status === 'in_progress' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'in_progress')}>
-                            <span className={`${styles.statusIcon} ${styles.statusIconInProgress}`}><svg width="10" height="10" viewBox="0 0 10 10"><polygon points="0,0 10,5 0,10" fill="currentColor"/></svg></span> In Progress
+                          <button data-status="in_progress" className={`${styles.statusOption}${todo.status === 'in_progress' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'in_progress')}>
+                            <span className={`${styles.statusIcon} ${styles.statusIconInProgress}`}><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5.5" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="1.5"/><polygon points="5,4 10,6.5 5,9" fill="currentColor"/></svg></span>
+                            In progress
                           </button>
-                          <button className={`${styles.statusOption}${todo.status === 'done' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'done')}>
-                            <span className={`${styles.statusIcon} ${styles.statusIconDone}`}><svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4L4 7L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span> Done
+                          <button data-status="done" className={`${styles.statusOption}${todo.status === 'done' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'done')}>
+                            <span className={`${styles.statusIcon} ${styles.statusIconDone}`}><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5.5" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="1.5"/><path d="M4 6.5L6 8.5L9.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
+                            Done
                           </button>
                         </div>
                       )}
@@ -1170,7 +1207,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                             <span className={styles.pinDurationUnit}>m</span>
                           </div>
                           <div className={styles.pinActions}>
-                            <button className={`${styles.btn} ${styles.btnAccent}`} onClick={() => pinTodo(todo)}>Pin</button>
+                            <button className={styles.pinSubmitBtn} onClick={() => pinTodo(todo)}>Pin to schedule</button>
                             <button className={styles.pinCancel} onClick={() => setPinPopoverId(null)}>Cancel</button>
                           </div>
                         </div>
