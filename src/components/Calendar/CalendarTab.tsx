@@ -659,7 +659,6 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   }
 
   const todayInWeek = weekDays.some(d => isSameDay(d, today));
-  const todayColIndex = weekDays.findIndex(d => isSameDay(d, today));
 
   return (
     <div className={styles.container}>
@@ -847,6 +846,11 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                     {slot.label}
                   </div>
                 ))}
+                {todayInWeek && (
+                  <div className={styles.weekViewNowPill} style={{ top: weekMinToTop(currentMinutes) }}>
+                    {`${Math.floor(currentMinutes / 60) % 12 || 12}:${String(currentMinutes % 60).padStart(2, '0')} ${currentMinutes >= 12 * 60 ? 'PM' : 'AM'}`}
+                  </div>
+                )}
               </div>
 
               {/* Day columns with hour lines */}

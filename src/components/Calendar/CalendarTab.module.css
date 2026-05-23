@@ -434,19 +434,17 @@
 
 /* Day headers row */
 .weekViewHeaderRow {
-  display: flex;
+  display: grid;
+  grid-template-columns: 60px repeat(7, 1fr);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .weekViewGutterHeader {
-  width: 60px;
-  flex-shrink: 0;
   border-right: 1px solid var(--border);
 }
 
 .weekViewDayHeader {
-  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -515,6 +513,8 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  overflow: hidden;
+  min-width: 0;
 }
 
 .weekViewAllDayChip {
@@ -529,6 +529,7 @@
   text-overflow: ellipsis;
   display: block;
   line-height: 1.5;
+  max-width: 100%;
 }
 
 /* Scrollable time grid */
@@ -605,20 +606,38 @@
   left: 0;
   right: 0;
   height: 2px;
-  background: var(--accent);
+  background: var(--danger);
   z-index: 5;
   pointer-events: none;
 }
 
 .weekViewNowDot {
-  width: 9px;
-  height: 9px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--danger);
   position: absolute;
-  left: -5px;
+  left: -3px;
   transform: translateY(-50%);
   z-index: 6;
+  pointer-events: none;
+}
+
+.weekViewNowPill {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  background: var(--danger);
+  color: oklch(99% 0.003 0);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 20px;
+  border-radius: 10px;
+  padding: 0 7px;
+  height: 20px;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  z-index: 10;
   pointer-events: none;
 }
 
