@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import { storage, inferSubjectId } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
 import { Subject, TimeBlock, SubjectColor, Todo, GoogleCalendarEvent } from '../../types';
@@ -92,12 +91,23 @@ function fmtTimeShort(mins: number): string {
   return `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')}`;
 }
 
+function fmtDuration(startISO: string, endISO: string): string {
+  const mins = Math.round((new Date(endISO).getTime() - new Date(startISO).getTime()) / 60_000);
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h > 0 && m > 0) return `${h}h ${m}m`;
+  if (h > 0) return `${h}h`;
+  return `${m}m`;
+}
 
-interface PopoverState {
-  block: TimeBlock;
-  subject: Subject | undefined;
-  x: number;
-  y: number;
+interface BlockEditForm {
+  task: string;
+  startHour: number;
+  startMinute: number;
+  startAmPm: 'AM' | 'PM';
+  endHour: number;
+  endMinute: number;
+  endAmPm: 'AM' | 'PM';
 }
 
 interface DotGroup {
@@ -186,7 +196,11 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [currentMinutes, setCurrentMinutes] = useState(0);
   const [viewWeekStart, setViewWeekStart] = useState<Date>(() => getMondayOfWeek(selectedDate));
-  const [popover, setPopover] = useState<PopoverState | null>(null);
+  const [blockModal, setBlockModal] = useState<{ block: TimeBlock; subject: Subject | undefined } | null>(null);
+  const [blockEditMode, setBlockEditMode] = useState(false);
+  const [blockEditForm, setBlockEditForm] = useState<BlockEditForm>({
+    task: '', startHour: 9, startMinute: 0, startAmPm: 'AM', endHour: 10, endMinute: 0, endAmPm: 'AM',
+  });
   const [timerSubject, setTimerSubject] = useState<Subject | null>(null);
   const [showAddSubject, setShowAddSubject] = useState(false);
   const [todos, setTodos] = useState<Todo[]>(() => {
@@ -240,7 +254,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     return s ? Math.max(0.35, Math.min(0.75, parseFloat(s))) : 0.65;
   });
   const containerRef = useRef<HTMLDivElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
   const statusPopoverRef = useRef<HTMLDivElement>(null);
   const pinPopoverRef = useRef<HTMLDivElement>(null);
   const subjectPickerRef = useRef<HTMLDivElement>(null);
@@ -282,15 +295,20 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   }, [selectedDate]);
 
   useEffect(() => {
-    if (!popover) return;
-    const onDown = (e: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        setPopover(null);
-      }
+    if (!blockModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setBlockModal(null); setBlockEditMode(false); }
     };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [popover]);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [blockModal]);
+
+  useEffect(() => {
+    if (!editSubject) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setEditSubject(null); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [editSubject]);
 
   useEffect(() => {
     if (!statusPopoverId) return;
@@ -346,7 +364,47 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   function deleteBlock(id: string) {
     storage.setTimeBlocks(storage.getTimeBlocks().filter(b => b.id !== id));
     setBlocks(prev => prev.filter(b => b.id !== id));
-    setPopover(null);
+    setBlockModal(null);
+    setBlockEditMode(false);
+  }
+
+  function openBlockEdit(block: TimeBlock) {
+    const toForm = (d: Date) => {
+      const h24 = d.getHours(), m = d.getMinutes();
+      return { hour: h24 % 12 || 12, minute: m, ampm: (h24 >= 12 ? 'PM' : 'AM') as 'AM' | 'PM' };
+    };
+    const s = toForm(new Date(block.startTime));
+    const e = toForm(new Date(block.endTime));
+    setBlockEditForm({
+      task: block.task ?? '',
+      startHour: s.hour, startMinute: s.minute, startAmPm: s.ampm,
+      endHour: e.hour, endMinute: e.minute, endAmPm: e.ampm,
+    });
+    setBlockEditMode(true);
+  }
+
+  function saveBlockEdit() {
+    if (!blockModal) return;
+    const toHour24 = (h: number, ampm: 'AM' | 'PM') => (h % 12) + (ampm === 'PM' ? 12 : 0);
+    const start = new Date(
+      selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(),
+      toHour24(blockEditForm.startHour, blockEditForm.startAmPm), blockEditForm.startMinute,
+    );
+    const end = new Date(
+      selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(),
+      toHour24(blockEditForm.endHour, blockEditForm.endAmPm), blockEditForm.endMinute,
+    );
+    const updated: TimeBlock = {
+      ...blockModal.block,
+      task: blockEditForm.task.trim() || blockModal.block.task,
+      startTime: toLocalISO(start),
+      endTime: toLocalISO(end),
+    };
+    const allBlocks = storage.getTimeBlocks().map(b => b.id === updated.id ? updated : b);
+    storage.setTimeBlocks(allBlocks);
+    setBlocks(allBlocks.filter(b => isOnDate(b.startTime, selectedDate)));
+    setBlockModal({ block: updated, subject: blockModal.subject });
+    setBlockEditMode(false);
   }
 
   function saveNewSubject() {
@@ -918,8 +976,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                       }}
                       onClick={e => {
                         e.stopPropagation();
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setPopover({ block, subject, x: rect.left, y: rect.top });
+                        setBlockModal({ block, subject });
                       }}
                     >
                       {height >= 30 && (
@@ -948,8 +1005,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                       style={{ top: group.topPx }}
                       onClick={e => {
                         e.stopPropagation();
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setPopover({ block: group.blocks[group.blocks.length - 1], subject, x: rect.left, y: rect.top });
+                        setBlockModal({ block: group.blocks[group.blocks.length - 1], subject });
                       }}
                     >
                       <span className={styles.blockDotCircle} style={{ background: subject?.color ?? '#ccc' }} />
@@ -1108,13 +1164,12 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
           const isCollapsed = collapsedGroups.has(subject.id);
           const showBody = !isCollapsed;
           const pending = groupTodos.filter(t => t.status !== 'done').length;
-          const isEditing = editSubject?.id === subject.id;
 
           return (
             <div key={subject.id} className={styles.subjectGroup}>
               <div
                 className={styles.subjectGroupHeader}
-                onClick={() => { if (!isEditing) toggleGroup(subject.id); }}
+                onClick={() => toggleGroup(subject.id)}
               >
                 <span className={styles.dotIndicator} style={{ background: subject.color }} />
                 <span className={styles.subjectName}>{subject.name}</span>
@@ -1131,46 +1186,13 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                   className={styles.editIcon}
                   onClick={e => {
                     e.stopPropagation();
-                    if (isEditing) setEditSubject(null);
-                    else setEditSubject({ id: subject.id, name: subject.name, color: subject.color });
+                    setEditSubject({ id: subject.id, name: subject.name, color: subject.color });
                   }}
                 >✎</button>
-                {!isEditing && (
-                  <span className={styles.subjectArrow}>{isCollapsed ? '▾' : '▴'}</span>
-                )}
+                <span className={styles.subjectArrow}>{isCollapsed ? '▾' : '▴'}</span>
               </div>
 
-              {isEditing && (
-                <div className={styles.editSubjectForm} onClick={e => e.stopPropagation()}>
-                  <input
-                    className={styles.editSubjectInput}
-                    value={editSubject!.name}
-                    autoFocus
-                    onChange={e => setEditSubject(s => s && { ...s, name: e.target.value })}
-                    onKeyDown={e => { if (e.key === 'Enter') saveEditSubject(); if (e.key === 'Escape') setEditSubject(null); }}
-                  />
-                  <div className={styles.colorPicker}>
-                    {COLORS.map(c => (
-                      <button
-                        key={c}
-                        className={`${styles.colorCircle}${editSubject!.color === c ? ` ${styles.colorCircleSelected}` : ''}`}
-                        style={{ background: c }}
-                        onClick={() => setEditSubject(s => s && { ...s, color: c })}
-                      />
-                    ))}
-                  </div>
-                  <div className={styles.editFormActions}>
-                    <button className={styles.editSaveBtn} onClick={saveEditSubject}>Save</button>
-                    <button className={styles.editCancelBtn} onClick={() => setEditSubject(null)}>Cancel</button>
-                  </div>
-                  <div className={styles.editFormDestructive}>
-                    <button className={styles.editArchiveBtn} onClick={() => archiveSubject(subject.id)}>Archive</button>
-                    <button className={styles.editDeleteBtn} onClick={() => deleteSubject(subject.id)}>Delete</button>
-                  </div>
-                </div>
-              )}
-
-              {!isEditing && showBody && (
+              {showBody && (
                 <div className={styles.todoGroupBody}>
                   {groupTodos.map(todo => renderTodoItem(todo))}
                 </div>
@@ -1422,30 +1444,143 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
       )}
     </div>
 
-    {/* ── Block popover (portal — escapes overflow:hidden parents) ── */}
-    {popover && createPortal(
-      <div
-        ref={popoverRef}
-        className={styles.popover}
-        style={{ left: popover.x, top: popover.y }}
-      >
-        <div className={styles.popoverHeader}>
-          <SubjectDot color={popover.subject?.color ?? '#ccc'} size={12} />
-          <span>{popover.subject?.name ?? 'Unknown'}</span>
+      {/* ── Subject Edit Modal ── */}
+      {editSubject && (
+        <div className={styles.modalOverlay} onClick={() => setEditSubject(null)}>
+          <div className={styles.taskModalBox} onClick={e => e.stopPropagation()}>
+            <div className={styles.taskModalHeader}>
+              <span className={styles.taskModalTitle}>Edit Subject</span>
+              <span className={styles.taskModalSubjectChip}>
+                <span className={styles.taskModalSubjectDot} style={{ background: editSubject.color }} />
+                {editSubject.name || 'Untitled'}
+              </span>
+            </div>
+            <input
+              className={styles.taskModalInput}
+              placeholder="Subject name"
+              value={editSubject.name}
+              autoFocus
+              onChange={e => setEditSubject(s => s && { ...s, name: e.target.value })}
+              onKeyDown={e => { if (e.key === 'Enter' && editSubject.name.trim()) saveEditSubject(); }}
+            />
+            <div className={styles.taskModalField}>
+              <label className={styles.taskModalLabel}>Color</label>
+              <div className={styles.colorPicker}>
+                {COLORS.map(c => (
+                  <button
+                    key={c}
+                    className={`${styles.colorCircle}${editSubject.color === c ? ` ${styles.colorCircleSelected}` : ''}`}
+                    style={{ background: c }}
+                    onClick={() => setEditSubject(s => s && { ...s, color: c })}
+                  />
+                ))}
+              </div>
+            </div>
+            <button
+              className={styles.taskModalSubmit}
+              onClick={saveEditSubject}
+              disabled={!editSubject.name.trim()}
+            >Save</button>
+            <button className={styles.taskModalCancel} onClick={() => setEditSubject(null)}>Cancel</button>
+            <div className={styles.subjectModalDestructive}>
+              <button className={styles.editArchiveBtn} onClick={() => archiveSubject(editSubject.id)}>Archive</button>
+              <button className={styles.editDeleteBtn} onClick={() => deleteSubject(editSubject.id)}>Delete subject</button>
+            </div>
+          </div>
         </div>
-        {popover.block.task && <div className={styles.popoverTask}>{popover.block.task}</div>}
-        <div className={styles.popoverTime}>
-          {fmtTime(popover.block.startTime)} – {fmtTime(popover.block.endTime)}
+      )}
+
+      {/* ── Block Modal ── */}
+      {blockModal && (
+        <div className={styles.modalOverlay} onClick={() => { setBlockModal(null); setBlockEditMode(false); }}>
+          <div className={styles.taskModalBox} onClick={e => e.stopPropagation()}>
+            <div className={styles.taskModalHeader}>
+              <span className={styles.taskModalTitle}>Time Block</span>
+              {blockModal.subject && (
+                <span className={styles.taskModalSubjectChip}>
+                  <span className={styles.taskModalSubjectDot} style={{ background: blockModal.subject.color }} />
+                  {blockModal.subject.name}
+                </span>
+              )}
+            </div>
+
+            {blockEditMode ? (
+              <>
+                <div className={styles.taskModalField}>
+                  <label className={styles.taskModalLabel}>Task</label>
+                  <input
+                    className={styles.taskModalInput}
+                    value={blockEditForm.task}
+                    placeholder="Task name"
+                    autoFocus
+                    onChange={e => setBlockEditForm(f => ({ ...f, task: e.target.value }))}
+                    onKeyDown={e => { if (e.key === 'Enter') saveBlockEdit(); }}
+                  />
+                </div>
+                <div className={styles.taskModalField}>
+                  <label className={styles.taskModalLabel}>Start time</label>
+                  <div className={styles.taskModalTimeRow}>
+                    <input type="number" className={styles.pinTimeInput} value={blockEditForm.startHour} min={1} max={12}
+                      onChange={e => setBlockEditForm(f => ({ ...f, startHour: Math.min(12, Math.max(1, Number(e.target.value) || 1)) }))} />
+                    <span className={styles.pinTimeSep}>:</span>
+                    <input type="number" className={styles.pinTimeInput} value={String(blockEditForm.startMinute).padStart(2, '0')} min={0} max={59}
+                      onChange={e => setBlockEditForm(f => ({ ...f, startMinute: Math.min(59, Math.max(0, Number(e.target.value) || 0)) }))} />
+                    <div className={styles.pinAmpmToggle}>
+                      <button className={`${styles.pinAmpmBtn}${blockEditForm.startAmPm === 'AM' ? ` ${styles.pinAmpmBtnActive}` : ''}`}
+                        onClick={() => setBlockEditForm(f => ({ ...f, startAmPm: 'AM' }))}>AM</button>
+                      <button className={`${styles.pinAmpmBtn}${blockEditForm.startAmPm === 'PM' ? ` ${styles.pinAmpmBtnActive}` : ''}`}
+                        onClick={() => setBlockEditForm(f => ({ ...f, startAmPm: 'PM' }))}>PM</button>
+                    </div>
+                  </div>
+                </div>
+                <div className={styles.taskModalField}>
+                  <label className={styles.taskModalLabel}>End time</label>
+                  <div className={styles.taskModalTimeRow}>
+                    <input type="number" className={styles.pinTimeInput} value={blockEditForm.endHour} min={1} max={12}
+                      onChange={e => setBlockEditForm(f => ({ ...f, endHour: Math.min(12, Math.max(1, Number(e.target.value) || 1)) }))} />
+                    <span className={styles.pinTimeSep}>:</span>
+                    <input type="number" className={styles.pinTimeInput} value={String(blockEditForm.endMinute).padStart(2, '0')} min={0} max={59}
+                      onChange={e => setBlockEditForm(f => ({ ...f, endMinute: Math.min(59, Math.max(0, Number(e.target.value) || 0)) }))} />
+                    <div className={styles.pinAmpmToggle}>
+                      <button className={`${styles.pinAmpmBtn}${blockEditForm.endAmPm === 'AM' ? ` ${styles.pinAmpmBtnActive}` : ''}`}
+                        onClick={() => setBlockEditForm(f => ({ ...f, endAmPm: 'AM' }))}>AM</button>
+                      <button className={`${styles.pinAmpmBtn}${blockEditForm.endAmPm === 'PM' ? ` ${styles.pinAmpmBtnActive}` : ''}`}
+                        onClick={() => setBlockEditForm(f => ({ ...f, endAmPm: 'PM' }))}>PM</button>
+                    </div>
+                  </div>
+                </div>
+                <button className={styles.taskModalSubmit} onClick={saveBlockEdit}>Save Changes</button>
+                <button className={styles.taskModalCancel} onClick={() => setBlockEditMode(false)}>Cancel</button>
+              </>
+            ) : (
+              <>
+                {blockModal.block.task && (
+                  <div className={styles.blockModalTask}>{blockModal.block.task}</div>
+                )}
+                <div className={styles.blockModalInfo}>
+                  <div className={styles.blockModalInfoRow}>
+                    <span className={styles.blockModalInfoLabel}>Time</span>
+                    <span className={styles.blockModalInfoValue}>
+                      {fmtTime(blockModal.block.startTime)} – {fmtTime(blockModal.block.endTime)}
+                    </span>
+                  </div>
+                  <div className={styles.blockModalInfoRow}>
+                    <span className={styles.blockModalInfoLabel}>Duration</span>
+                    <span className={styles.blockModalInfoValue}>
+                      {fmtDuration(blockModal.block.startTime, blockModal.block.endTime)}
+                    </span>
+                  </div>
+                </div>
+                <div className={styles.blockModalActions}>
+                  <button className={styles.blockModalEditBtn} onClick={() => openBlockEdit(blockModal.block)}>Edit</button>
+                  <button className={styles.blockModalDeleteBtn} onClick={() => deleteBlock(blockModal.block.id)}>Delete</button>
+                </div>
+                <button className={styles.taskModalCancel} onClick={() => setBlockModal(null)}>Close</button>
+              </>
+            )}
+          </div>
         </div>
-        <button
-          className={`${styles.btn} ${styles.btnDanger}`}
-          onClick={() => deleteBlock(popover.block.id)}
-        >
-          Delete
-        </button>
-      </div>,
-      document.body
-    )}
+      )}
     </div>
   );
 }

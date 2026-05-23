@@ -1968,6 +1968,103 @@
   opacity: 1;
 }
 
+/* ── Subject edit modal ─────────────────────────────────────────────────── */
+
+.subjectModalDestructive {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid oklch(94% 0.005 265);
+  justify-content: center;
+}
+
+/* ── Block modal ────────────────────────────────────────────────────────── */
+
+.blockModalTask {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.4;
+  margin-bottom: 16px;
+}
+
+.blockModalInfo {
+  background: oklch(98% 0.004 265);
+  border: 1px solid oklch(93% 0.006 265);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.blockModalInfoRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.blockModalInfoLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+}
+
+.blockModalInfoValue {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.blockModalActions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.blockModalEditBtn {
+  flex: 1;
+  padding: 10px;
+  background: none;
+  border: 1.5px solid oklch(72% 0.12 265);
+  border-radius: 9px;
+  color: oklch(48% 0.2 265);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.blockModalEditBtn:hover {
+  background: oklch(55% 0.2 265);
+  border-color: oklch(55% 0.2 265);
+  color: #fff;
+}
+
+.blockModalDeleteBtn {
+  flex: 1;
+  padding: 10px;
+  background: none;
+  border: 1.5px solid oklch(72% 0.12 20);
+  border-radius: 9px;
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.blockModalDeleteBtn:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
 /* ── Reduced motion ────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
