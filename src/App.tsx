@@ -7,9 +7,11 @@ import { storage } from './lib/storage';
 import styles from './App.module.css';
 
 type Tab = 'today' | 'canvas' | 'ai' | 'calendar';
+type LegalPanel = 'privacy' | 'terms' | 'data' | 'contact' | 'ai' | null;
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('today');
+  const [legalPanel, setLegalPanel] = useState<LegalPanel>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
     const d = new Date(); d.setHours(0, 0, 0, 0); return d;
   });
@@ -49,6 +51,12 @@ export default function App() {
 
   function handleSwitchToToday() {
     setTab('today');
+  }
+
+  function clearLocalData() {
+    if (!window.confirm('Clear all locally stored Soma data on this browser? This cannot be undone.')) return;
+    localStorage.clear();
+    window.location.reload();
   }
 
   return (
@@ -97,6 +105,76 @@ export default function App() {
         )}
         {tab === 'ai' && <AITab onSwitchToToday={handleSwitchToToday} />}
       </main>
+      <footer className={styles.footer}>
+        <div className={styles.footerLinks}>
+          <button onClick={() => setLegalPanel('privacy')}>Privacy</button>
+          <button onClick={() => setLegalPanel('terms')}>Terms</button>
+          <button onClick={() => setLegalPanel('data')}>Data Deletion</button>
+          <button onClick={() => setLegalPanel('contact')}>Contact</button>
+          <button onClick={() => setLegalPanel('ai')}>AI Disclaimer</button>
+        </div>
+        <span className={styles.footerNotice}>
+          © 2026 Soma. Not affiliated with Canvas, Instructure, Google, or any school.
+        </span>
+      </footer>
+
+      {legalPanel && (
+        <div className={styles.legalOverlay} onClick={() => setLegalPanel(null)}>
+          <div className={styles.legalModal} onClick={e => e.stopPropagation()}>
+            <div className={styles.legalHeader}>
+              <span className={styles.legalTitle}>
+                {legalPanel === 'privacy' && 'Privacy Policy'}
+                {legalPanel === 'terms' && 'Terms of Service'}
+                {legalPanel === 'data' && 'Data Deletion'}
+                {legalPanel === 'contact' && 'Contact'}
+                {legalPanel === 'ai' && 'AI Disclaimer'}
+              </span>
+              <button className={styles.legalClose} onClick={() => setLegalPanel(null)}>×</button>
+            </div>
+
+            {legalPanel === 'privacy' && (
+              <div className={styles.legalBody}>
+                <p>Soma stores your subjects, tasks, Canvas data, Google Calendar data, AI chat history, and preferences in this browser using local storage unless the app is later configured with a hosted backend.</p>
+                <p>Canvas and Google tokens are used to load the data you request. Do not share your tokens. Remove access from Canvas, Google, or this browser if you no longer want Soma to use them.</p>
+                <p>Soma may send assignment, schedule, and chat context to the configured AI provider when you use AI features. Verify important assignments, due dates, grades, and schedules in Canvas or Google Calendar.</p>
+                <p>Soma is not intended for children under 13.</p>
+              </div>
+            )}
+
+            {legalPanel === 'terms' && (
+              <div className={styles.legalBody}>
+                <p>Use Soma only with accounts and tokens you are authorized to access. You are responsible for keeping Canvas, Google, and API credentials private.</p>
+                <p>Soma is provided as a productivity tool without guarantees that data, AI output, due dates, grades, or schedules are complete, accurate, or available at all times.</p>
+                <p>By using Soma, you agree to verify school-critical information in the official systems of record, including Canvas, Google Calendar, and your school’s communications.</p>
+              </div>
+            )}
+
+            {legalPanel === 'data' && (
+              <div className={styles.legalBody}>
+                <p>Most Soma data is stored locally in this browser. Clearing local data removes saved Canvas tokens, cached assignments, calendar data, AI chats, subjects, tasks, and preferences from this browser.</p>
+                <p>This does not delete data from Canvas, Google, your school, or any third-party service.</p>
+                <button className={styles.dangerButton} onClick={clearLocalData}>Clear local Soma data</button>
+              </div>
+            )}
+
+            {legalPanel === 'contact' && (
+              <div className={styles.legalBody}>
+                <p>For privacy, security, or support requests, contact the project owner through the Soma GitHub repository.</p>
+                <a className={styles.legalLink} href="https://github.com/Jacrwan/soma" target="_blank" rel="noopener noreferrer">
+                  github.com/Jacrwan/soma
+                </a>
+              </div>
+            )}
+
+            {legalPanel === 'ai' && (
+              <div className={styles.legalBody}>
+                <p>AI-generated briefs, plans, summaries, and suggestions may be inaccurate, incomplete, or outdated. Do not rely on AI output as the only source for academic deadlines, grades, or official requirements.</p>
+                <p>When using AI features, Soma may include your tasks, schedules, Canvas assignments, announcements, modules, and chat messages as context for the AI response.</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

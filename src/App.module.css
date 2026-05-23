@@ -57,10 +57,152 @@
 
 .main { flex: 1; overflow: hidden; padding: 0 16px; }
 
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border-top: 1px solid #f0f0f0;
+  background: #fff;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.footerLinks {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.footerLinks button {
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+}
+
+.footerLinks button:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.footerNotice {
+  text-align: right;
+  line-height: 1.35;
+}
+
+.legalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.legalModal {
+  width: min(560px, 100%);
+  max-height: min(620px, calc(100vh - 40px));
+  overflow: auto;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.18);
+}
+
+.legalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.legalTitle {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.legalClose {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.legalClose:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.legalBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.legalBody p {
+  margin: 0;
+}
+
+.legalLink {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.legalLink:hover {
+  text-decoration: underline;
+}
+
+.dangerButton {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 8px 12px;
+  border: 1px solid #ef5350;
+  border-radius: 6px;
+  background: #fff;
+  color: #d43d3d;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dangerButton:hover {
+  background: #fff5f5;
+}
+
 @media (max-width: 768px) {
   .nav button {
     flex: 1;
     padding: 11px 0;
     text-align: center;
+  }
+
+  .footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .footerNotice {
+    text-align: left;
   }
 }
