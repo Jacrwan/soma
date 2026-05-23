@@ -211,6 +211,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     return new Set(storage.getSubjects().filter(s => !withTodos.has(s.id)).map(s => s.id));
   });
   const [taskModal, setTaskModal] = useState<{ subjectId: string | undefined; editingTodo?: Todo } | null>(null);
+  const [subjectPickerMode, setSubjectPickerMode] = useState<'timer' | 'task' | null>(null);
   const [taskForm, setTaskForm] = useState<TaskFormState>({
     text: '', hours: 0, minutes: 0, dueDate: '', notes: '',
     scheduleIt: false, startHour: 9, startMinute: 0, startAmPm: 'AM',
@@ -242,6 +243,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const popoverRef = useRef<HTMLDivElement>(null);
   const statusPopoverRef = useRef<HTMLDivElement>(null);
   const pinPopoverRef = useRef<HTMLDivElement>(null);
+  const subjectPickerRef = useRef<HTMLDivElement>(null);
   const touchStartXRef = useRef(0);
   const wheelCooldownRef = useRef(false);
   const prevSelectedDateRef = useRef(selectedDate);
@@ -318,6 +320,17 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [taskModal]);
+
+  useEffect(() => {
+    if (!subjectPickerMode) return;
+    const onDown = (e: MouseEvent) => {
+      if (subjectPickerRef.current && !subjectPickerRef.current.contains(e.target as Node)) {
+        setSubjectPickerMode(null);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [subjectPickerMode]);
 
   const slots = Array.from({ length: TOTAL_HOURS }, (_, i) => {
     const hourOfDay = (START_HOUR + i) % 24;
@@ -1007,11 +1020,47 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                       <line x1="20" y1="20" x2={hX} y2={hY} stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round"/>
                     </svg>
                   </div>
-                  <button
-                    className={styles.addSubjectBtn}
-                    onClick={() => { setShowAddSubject(true); setEditSubject(null); }}
-                    title="Add subject"
-                  >+</button>
+                  <div className={styles.headerBtns} ref={subjectPickerRef}>
+                    <button
+                      className={`${styles.headerIconBtn}${subjectPickerMode === 'timer' ? ` ${styles.headerIconBtnActive}` : ''}`}
+                      title="Start timer"
+                      onClick={() => setSubjectPickerMode(prev => prev === 'timer' ? null : 'timer')}
+                    >
+                      <svg width="9" height="11" viewBox="0 0 9 11" fill="none">
+                        <polygon points="0,0 9,5.5 0,11" fill="currentColor"/>
+                      </svg>
+                    </button>
+                    <button
+                      className={`${styles.headerIconBtn}${subjectPickerMode === 'task' ? ` ${styles.headerIconBtnActive}` : ''}`}
+                      title="Add task"
+                      onClick={() => setSubjectPickerMode(prev => prev === 'task' ? null : 'task')}
+                    >+</button>
+                    {subjectPickerMode && (
+                      <div className={styles.subjectPicker}>
+                        <div className={styles.subjectPickerTitle}>
+                          {subjectPickerMode === 'timer' ? 'Start Timer' : 'Add Task'}
+                        </div>
+                        {activeSubjects.map(subject => (
+                          <button
+                            key={subject.id}
+                            className={styles.subjectPickerItem}
+                            onClick={() => {
+                              setSubjectPickerMode(null);
+                              if (subjectPickerMode === 'timer') {
+                                setInitialTimerTask('');
+                                setTimerSubject(subject);
+                              } else {
+                                startAdding(subject.id);
+                              }
+                            }}
+                          >
+                            <span className={styles.subjectPickerDot} style={{ background: subject.color }} />
+                            {subject.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className={styles.dateHeaderDivider} />
@@ -1085,17 +1134,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                 className={styles.subjectGroupHeader}
                 onClick={() => { if (!isEditing) toggleGroup(subject.id); }}
               >
-                <button
-                  className={styles.dotBtn}
-                  style={{ background: subject.color }}
-                  onClick={e => {
-                    e.stopPropagation();
-                    if (isEditing) return;
-                    setInitialTimerTask('');
-                    setTimerSubject(subject);
-                  }}
-                  title={`Start timer for ${subject.name}`}
-                />
+                <span className={styles.dotIndicator} style={{ background: subject.color }} />
                 <span className={styles.subjectName}>{subject.name}</span>
                 <span className={styles.subjectTime}>{fmtSecs(subject.totalTimeToday)}</span>
                 {groupTodos.length > 0 && (
