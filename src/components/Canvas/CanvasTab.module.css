@@ -101,6 +101,32 @@
   flex-shrink: 0;
 }
 
+.subNav {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.subNavBtn {
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.subNavBtnActive {
+  background: var(--bg);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
 .syncRow {
   display: flex;
   align-items: center;
@@ -356,6 +382,12 @@
   flex-shrink: 0;
 }
 
+.assignmentScore {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .assignmentDue {
   font-size: 12px;
   color: var(--text-muted);
@@ -586,6 +618,165 @@
 .comingSoon {
   font-size: 13px;
   color: var(--text-muted);
+}
+
+/* ── Grades view ────────────────────────────────────────────────────────── */
+
+.gradesView {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-lg) var(--space-md);
+  max-width: 680px;
+}
+
+.gradesSummary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-md) var(--space-lg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: var(--space-lg);
+  background: var(--bg-secondary);
+}
+
+.gradesSummaryLabel {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.gradesSummaryScore {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.gradesList {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: var(--space-xl);
+}
+
+.gradesRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.gradesRow:last-child { border-bottom: none; }
+
+.gradesDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.gradesInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.gradesName {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gradesCode {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.gradesRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.gradesLetter {
+  font-size: 18px;
+  font-weight: 700;
+  min-width: 28px;
+  text-align: right;
+}
+
+.gradesScore {
+  font-size: 13px;
+  font-weight: 500;
+  min-width: 48px;
+  text-align: right;
+}
+
+.gradesNoGrade {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* Assignment scores section */
+.assignmentScores {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-lg);
+}
+
+.scoresHeader {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-sm);
+}
+
+.scoreRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.scoreRow:last-child { border-bottom: none; }
+
+.scoreDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.scoreInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.scoreName {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scoreCourse {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.scoreValue {
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
 }
 
 @media (max-width: 768px) {

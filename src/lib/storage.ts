@@ -20,6 +20,7 @@ const KEYS = {
   googleCacheTimestamp: 'soma_google_cache_timestamp',
   chatSessions: 'soma_chat_sessions',
   activeSessionId: 'soma_active_session_id',
+  canvasCourseNames: 'soma_canvas_course_names',
 };
 
 const DEFAULT_SUBJECTS: Subject[] = [
@@ -124,4 +125,7 @@ export const storage = {
 
   getActiveSessionId: (): string => get(KEYS.activeSessionId, ''),
   setActiveSessionId: (v: string) => set(KEYS.activeSessionId, v),
+
+  getCanvasCourseNames: (): string[] => get(KEYS.canvasCourseNames, []),
+  setCanvasCourseNames: (v: string[]) => set(KEYS.canvasCourseNames, v),
 };

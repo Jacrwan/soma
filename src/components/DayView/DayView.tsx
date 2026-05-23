@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { storage, inferSubjectId } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
 import { Subject, TimeBlock, SubjectColor, Todo, GoogleCalendarEvent, CanvasAssignment, CanvasCourse } from '../../types';
-import SubjectDot from '../shared/SubjectDot';
 import TimerOverlay from '../Timer/TimerOverlay';
 import AssignmentDetail from '../Canvas/AssignmentDetail';
 import styles from './DayView.module.css';
@@ -78,6 +77,26 @@ function fmtTime(iso: string) {
 
 function fmtSecs(s: number) {
   return `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}`;
+}
+
+function looksLikeCanvasCourseName(name: string): boolean {
+  return /\b(AP|Hon|Honors|Semester|Periods?|P\d|S[12]|Yr)\b/i.test(name)
+    || /\bPer\s*:/i.test(name)
+    || /-.+/.test(name)
+    || /\(.+\bPeriods?\b.+\)/i.test(name);
+}
+
+function getVisibleSubjects(): Subject[] {
+  const currentCanvasCourseNames = new Set(storage.getCachedCourses().map(c => c.name));
+  const knownCanvasCourseNames = new Set(storage.getCanvasCourseNames());
+
+  return storage.getSubjects().filter(s => {
+    if (s.archived) return false;
+    if (currentCanvasCourseNames.size === 0) return true;
+    if (currentCanvasCourseNames.has(s.name)) return true;
+    if (knownCanvasCourseNames.has(s.name)) return false;
+    return !looksLikeCanvasCourseName(s.name);
+  });
 }
 
 function fmtEstimated(mins: number): string {
@@ -237,7 +256,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     { hour: 9, minute: 0, ampm: 'AM', durationHours: 1, durationMinutes: 0 }
   );
   const [initialTimerTask, setInitialTimerTask] = useState('');
-  const [archivedOpen, setArchivedOpen] = useState(false);
   const [addSubjectForm, setAddSubjectForm] = useState<AddSubjectForm>({ name: '', color: COLORS[0] });
   const [editSubject, setEditSubject] = useState<SubjectEditState | null>(null);
   const [gcalEvents, setGcalEvents] = useState<GoogleCalendarEvent[]>([]);
@@ -246,8 +264,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [quickAddHour, setQuickAddHour] = useState<number | null>(null);
   const [quickAddSubjectId, setQuickAddSubjectId] = useState<string>('');
   const [quickAddDuration, setQuickAddDuration] = useState<number>(60);
-  const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
-  const [editingTodoText, setEditingTodoText] = useState('');
   const [timerRunning, setTimerRunning] = useState(false);
   const [briefCollapsed, setBriefCollapsed] = useState<boolean>(() => {
     const s = localStorage.getItem('soma_brief_collapsed');
@@ -299,7 +315,11 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   }, [selectedDate]);
 
   useEffect(() => {
-    setSubjects(storage.getSubjects());
+    const visibleSubjects = getVisibleSubjects();
+    if (visibleSubjects.length !== storage.getSubjects().length) {
+      storage.setSubjects(visibleSubjects);
+    }
+    setSubjects(visibleSubjects);
     const tick = () => {
       const now = new Date();
       setCurrentMinutes(now.getHours() * 60 + now.getMinutes());
@@ -432,11 +452,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
           const reordered = [...subjects];
           const [item] = reordered.splice(from, 1);
           reordered.splice(overIndex, 0, item);
-          const archived = subjectsRef.current.filter(s => s.archived);
-          const updated = [
-            ...reordered.map((s, i) => ({ ...s, order: i })),
-            ...archived.map((s, i) => ({ ...s, order: reordered.length + i })),
-          ];
+          const updated = reordered.map((s, i) => ({ ...s, order: i }));
           storage.setSubjects(updated);
           setSubjects(updated);
         }
@@ -607,19 +623,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     storage.setSubjects(updated);
     setSubjects(updated);
     setEditSubject(null);
-  }
-
-  function archiveSubject(id: string) {
-    const updated = subjects.map(s => s.id === id ? { ...s, archived: true } : s);
-    storage.setSubjects(updated);
-    setSubjects(updated);
-    setEditSubject(null);
-  }
-
-  function restoreSubject(id: string) {
-    const updated = subjects.map(s => s.id === id ? { ...s, archived: false } : s);
-    storage.setSubjects(updated);
-    setSubjects(updated);
   }
 
   function deleteSubject(id: string) {
@@ -930,7 +933,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
   function handleSlotClick(hour: number) {
     setQuickAddHour(hour);
     setQuickAddDuration(60);
-    const subs = storage.getSubjects().filter(s => !s.archived);
+    const subs = storage.getSubjects();
     setQuickAddSubjectId(subs[0]?.id ?? '');
   }
 
@@ -974,10 +977,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     }
   }
 
-  const activeSubjects = subjects
-    .filter(s => !s.archived)
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  const archivedSubjects = subjects.filter(s => s.archived);
+  const activeSubjects = subjects.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const selectedDateKey = toISODateString(selectedDate);
 
   // Keep refs in sync for use inside pointer/drag event handlers
@@ -1020,7 +1020,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     onSelectDate(date);
     prevSelectedDateRef.current = date;
     setViewWeekStart(getMondayOfWeek(date));
-    setPopover(null);
   }
 
   const isCurrentWeek = isSameDay(viewWeekStart, getMondayOfWeek(new Date()));
@@ -1545,27 +1544,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
           );
         })}
 
-        {archivedSubjects.length > 0 && (
-          <div className={styles.archivedSection}>
-            <button
-              className={styles.archivedToggle}
-              onClick={() => setArchivedOpen(o => !o)}
-            >
-              Archived ({archivedSubjects.length}) {archivedOpen ? '▲' : '▾'}
-            </button>
-            {archivedOpen && archivedSubjects.map(subject => (
-              <div key={subject.id} className={styles.archivedRow}>
-                <SubjectDot color={subject.color} size={12} />
-                <span className={styles.subjectName}>{subject.name}</span>
-                <button
-                  className={styles.restoreBtn}
-                  onClick={() => restoreSubject(subject.id)}
-                >Restore</button>
-              </div>
-            ))}
-          </div>
-        )}
-
         {(() => {
           const unassigned = dayTodos.filter(t => !t.subjectId);
           if (unassigned.length === 0) return null;
@@ -1827,7 +1805,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             >Save</button>
             <button className={styles.taskModalCancel} onClick={() => setEditSubject(null)}>Cancel</button>
             <div className={styles.subjectModalDestructive}>
-              <button className={styles.editArchiveBtn} onClick={() => archiveSubject(editSubject.id)}>Archive</button>
               <button className={styles.editDeleteBtn} onClick={() => deleteSubject(editSubject.id)}>Delete subject</button>
             </div>
           </div>
@@ -1946,7 +1923,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             value={quickAddSubjectId}
             onChange={e => setQuickAddSubjectId(e.target.value)}
           >
-            {subjects.filter(s => !s.archived).map(s => (
+            {subjects.map(s => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>

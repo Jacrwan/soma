@@ -35,17 +35,105 @@ export async function canvasFetch(token: string, baseUrl: string, path: string):
   return data;
 }
 
-export async function getCourses(token: string, baseUrl: string): Promise<CanvasCourse[]> {
-  const raw = await canvasFetch(
-    token, baseUrl,
-    '/api/v1/courses?enrollment_state=active&per_page=50',
-  );
-  console.log('[canvas] raw courses response', raw);
-  return raw.map(c => ({
-    id: c.id,
-    name: c.name,
+type RawCanvasCourse = Record<string, unknown> & {
+  id?: number;
+  name?: string;
+  course_code?: string;
+  enrollment_term_id?: number;
+  start_at?: string | null;
+  end_at?: string | null;
+  access_restricted_by_date?: boolean;
+  term?: {
+    id?: number;
+    name?: string;
+    start_at?: string | null;
+    end_at?: string | null;
+  };
+};
+
+function toMillis(value: unknown): number | null {
+  if (typeof value !== 'string' || !value) return null;
+  const ms = new Date(value).getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
+
+function isWithinWindow(start: unknown, end: unknown, now = Date.now()): boolean {
+  const startMs = toMillis(start);
+  const endMs = toMillis(end);
+  return (startMs === null || startMs <= now) && (endMs === null || endMs >= now);
+}
+
+function hasDateWindow(course: RawCanvasCourse): boolean {
+  return !!(course.start_at || course.end_at || course.term?.start_at || course.term?.end_at);
+}
+
+function isCurrentByDate(course: RawCanvasCourse): boolean {
+  if (course.access_restricted_by_date) return false;
+  const courseDatesCurrent = course.start_at || course.end_at
+    ? isWithinWindow(course.start_at, course.end_at)
+    : true;
+  const termDatesCurrent = course.term?.start_at || course.term?.end_at
+    ? isWithinWindow(course.term?.start_at, course.term?.end_at)
+    : true;
+  return courseDatesCurrent && termDatesCurrent;
+}
+
+function currentSemesterTermNamePattern(): RegExp {
+  const month = new Date().getMonth();
+  if (month >= 0 && month <= 6) return /\b(s2|semester\s*2|spring)\b/i;
+  return /\b(s1|semester\s*1|fall|autumn)\b/i;
+}
+
+function looksLikeOldSectionCourse(name: string): boolean {
+  return /\[[^\]]*\bPer\s*:/i.test(name)
+    || /\(.+\bPeriods?\b.+\)/i.test(name);
+}
+
+function chooseCurrentCourses(raw: RawCanvasCourse[]): RawCanvasCourse[] {
+  const unrestricted = raw.filter(c => !c.access_restricted_by_date);
+  const withoutOldSectionNames = unrestricted.filter(c => !looksLikeOldSectionCourse(c.name ?? ''));
+  const candidateCourses = withoutOldSectionNames.length > 0 ? withoutOldSectionNames : unrestricted;
+  const dated = candidateCourses.filter(hasDateWindow);
+  const currentByDate = dated.filter(isCurrentByDate);
+  if (currentByDate.length > 0) return currentByDate;
+
+  const termNamePattern = currentSemesterTermNamePattern();
+  const currentByTermName = candidateCourses.filter(c => termNamePattern.test(c.term?.name ?? ''));
+  if (currentByTermName.length > 0) return currentByTermName;
+
+  const byTerm = new Map<number, RawCanvasCourse[]>();
+  for (const course of candidateCourses) {
+    const termId = course.enrollment_term_id ?? course.term?.id;
+    if (!termId) continue;
+    byTerm.set(termId, [...(byTerm.get(termId) ?? []), course]);
+  }
+  const largestTermGroup = [...byTerm.values()].sort((a, b) => b.length - a.length)[0];
+  if (largestTermGroup?.length) return largestTermGroup;
+
+  return candidateCourses;
+}
+
+function toCourse(c: RawCanvasCourse): CanvasCourse {
+  return {
+    id: c.id as number,
+    name: c.name as string,
     courseCode: c.course_code ?? '',
-  }));
+  };
+}
+
+export async function getCourses(token: string, baseUrl: string): Promise<CanvasCourse[]> {
+  const [raw, favorites] = await Promise.all([
+    canvasFetch(token, baseUrl, '/api/v1/courses?enrollment_state=active&per_page=100&include[]=term') as Promise<RawCanvasCourse[]>,
+    canvasFetch(token, baseUrl, '/api/v1/users/self/favorites/courses?per_page=100&include[]=term')
+      .catch(() => []) as Promise<RawCanvasCourse[]>,
+  ]);
+
+  const favoriteIds = new Set(favorites.map(c => c.id).filter(Boolean));
+  const listedCourses = favoriteIds.size > 0
+    ? raw.filter(c => favoriteIds.has(c.id))
+    : raw;
+
+  return chooseCurrentCourses(listedCourses).map(toCourse);
 }
 
 export async function getAssignments(
@@ -53,32 +141,46 @@ export async function getAssignments(
   baseUrl: string,
   course: CanvasCourse,
 ): Promise<CanvasAssignment[]> {
-  const raw = await canvasFetch(
-    token, baseUrl,
-    `/api/v1/courses/${course.id}/assignments?per_page=50&order_by=due_at&include[]=submission`,
+  // Fetch upcoming + past assignments in parallel (Canvas filters by bucket server-side)
+  const [upcoming, past] = await Promise.all([
+    canvasFetch(token, baseUrl,
+      `/api/v1/courses/${course.id}/assignments?per_page=100&order_by=due_at&include[]=submission`,
+    ),
+    canvasFetch(token, baseUrl,
+      `/api/v1/courses/${course.id}/assignments?bucket=past&per_page=100&order_by=due_at&include[]=submission`,
+    ).catch(() => []),
+  ]);
+
+  // Only keep past assignments from the current school year (Aug 1 of current or previous year)
+  const now = new Date();
+  const schoolYearStart = new Date(
+    now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1,
+    7, 1 // August 1
   );
 
-  const now = new Date();
-  const past7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const future30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  // Merge, deduplicate by id
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const assignmentMap = new Map<number, any>();
+  for (const a of upcoming) {
+    if (a.due_at) assignmentMap.set(a.id, a);
+  }
+  for (const a of past) {
+    if (a.due_at && new Date(a.due_at) >= schoolYearStart) assignmentMap.set(a.id, a);
+  }
 
-  return raw
-    .filter(a => {
-      if (!a.due_at) return false;
-      const due = new Date(a.due_at);
-      return due >= past7 && due <= future30;
-    })
-    .map(a => ({
-      id: a.id,
-      name: a.name,
-      courseId: course.id,
-      courseName: course.name,
-      dueAt: a.due_at,
-      htmlUrl: a.html_url,
-      status: 'not_started' as const,
-      description: a.description ? stripHtml(a.description) : undefined,
-      submittedAt: a.submission?.submitted_at ?? null,
-    }));
+  return Array.from(assignmentMap.values()).map(a => ({
+    id: a.id,
+    name: a.name,
+    courseId: course.id,
+    courseName: course.name,
+    dueAt: a.due_at,
+    htmlUrl: a.html_url,
+    status: 'not_started' as const,
+    description: a.description ? stripHtml(a.description) : undefined,
+    submittedAt: a.submission?.submitted_at ?? null,
+    score: a.submission?.score ?? null,
+    pointsPossible: a.points_possible ?? null,
+  }));
 }
 
 export async function getAnnouncements(
