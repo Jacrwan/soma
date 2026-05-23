@@ -36,15 +36,20 @@ export async function canvasFetch(token: string, baseUrl: string, path: string):
 }
 
 export async function getCourses(token: string, baseUrl: string): Promise<CanvasCourse[]> {
-  const raw = await canvasFetch(
-    token, baseUrl,
-    '/api/v1/courses?enrollment_state=active&per_page=50',
-  );
-  console.log('[canvas] raw courses response', raw);
-  return raw.map(c => ({
-    id: c.id,
-    name: c.name,
-    courseCode: c.course_code ?? '',
+  const raw = await canvasFetch(token, baseUrl, '/api/v1/courses?enrollment_state=active&per_page=100&include[]=term');
+
+  // Only keep courses from the most recent enrollment term
+  const termIds = raw.map((c: Record<string, unknown>) => c.enrollment_term_id as number).filter(Boolean);
+  const maxTermId = termIds.length ? Math.max(...termIds) : null;
+
+  const filtered = maxTermId
+    ? raw.filter((c: Record<string, unknown>) => c.enrollment_term_id === maxTermId)
+    : raw;
+
+  return filtered.map((c: Record<string, unknown>) => ({
+    id: c.id as number,
+    name: c.name as string,
+    courseCode: (c.course_code as string) ?? '',
   }));
 }
 
@@ -53,32 +58,46 @@ export async function getAssignments(
   baseUrl: string,
   course: CanvasCourse,
 ): Promise<CanvasAssignment[]> {
-  const raw = await canvasFetch(
-    token, baseUrl,
-    `/api/v1/courses/${course.id}/assignments?per_page=50&order_by=due_at&include[]=submission`,
+  // Fetch upcoming + past assignments in parallel (Canvas filters by bucket server-side)
+  const [upcoming, past] = await Promise.all([
+    canvasFetch(token, baseUrl,
+      `/api/v1/courses/${course.id}/assignments?per_page=100&order_by=due_at&include[]=submission`,
+    ),
+    canvasFetch(token, baseUrl,
+      `/api/v1/courses/${course.id}/assignments?bucket=past&per_page=100&order_by=due_at&include[]=submission`,
+    ).catch(() => []),
+  ]);
+
+  // Only keep past assignments from the current school year (Aug 1 of current or previous year)
+  const now = new Date();
+  const schoolYearStart = new Date(
+    now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1,
+    7, 1 // August 1
   );
 
-  const now = new Date();
-  const past7 = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const future30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  // Merge, deduplicate by id
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const assignmentMap = new Map<number, any>();
+  for (const a of upcoming) {
+    if (a.due_at) assignmentMap.set(a.id, a);
+  }
+  for (const a of past) {
+    if (a.due_at && new Date(a.due_at) >= schoolYearStart) assignmentMap.set(a.id, a);
+  }
 
-  return raw
-    .filter(a => {
-      if (!a.due_at) return false;
-      const due = new Date(a.due_at);
-      return due >= past7 && due <= future30;
-    })
-    .map(a => ({
-      id: a.id,
-      name: a.name,
-      courseId: course.id,
-      courseName: course.name,
-      dueAt: a.due_at,
-      htmlUrl: a.html_url,
-      status: 'not_started' as const,
-      description: a.description ? stripHtml(a.description) : undefined,
-      submittedAt: a.submission?.submitted_at ?? null,
-    }));
+  return Array.from(assignmentMap.values()).map(a => ({
+    id: a.id,
+    name: a.name,
+    courseId: course.id,
+    courseName: course.name,
+    dueAt: a.due_at,
+    htmlUrl: a.html_url,
+    status: 'not_started' as const,
+    description: a.description ? stripHtml(a.description) : undefined,
+    submittedAt: a.submission?.submitted_at ?? null,
+    score: a.submission?.score ?? null,
+    pointsPossible: a.points_possible ?? null,
+  }));
 }
 
 export async function getAnnouncements(
