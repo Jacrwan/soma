@@ -258,6 +258,33 @@
   text-overflow: ellipsis;
 }
 
+.blockDot {
+  position: absolute;
+  left: 72px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transform: translateY(-50%);
+  cursor: pointer;
+  z-index: 1;
+}
+
+.blockDotCircle {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.blockDotLabel {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
 /* Google Calendar read-only blocks */
 .gcalBlock {
   position: absolute;

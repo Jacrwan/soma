@@ -4,6 +4,10 @@ import { storage } from '../../lib/storage';
 import { useTimer } from '../../hooks/useTimer';
 import styles from './TimerOverlay.module.css';
 
+function toLocalISO(date: Date): string {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, -1);
+}
+
 function fmtElapsed(secs: number) {
   const h = Math.floor(secs / 3600);
   const m = Math.floor((secs % 3600) / 60);
@@ -68,7 +72,7 @@ export default function TimerOverlay({ subject, onClose, onSessionSaved, onRunni
     const preSeconds = parsePreElapsed(preElapsedInput);
     const now = new Date();
     const adjustedStart = new Date(now.getTime() - preSeconds * 1000);
-    startTimeRef.current = adjustedStart.toISOString();
+    startTimeRef.current = toLocalISO(adjustedStart);
     start(preSeconds);
     setStep('running');
     onRunningChange?.(true);
@@ -77,7 +81,7 @@ export default function TimerOverlay({ subject, onClose, onSessionSaved, onRunni
   function handleStop() {
     setIsStopping(true);
     stop();
-    const endTime = new Date().toISOString();
+    const endTime = toLocalISO(new Date());
     const sessionStartTime = startTimeRef.current;
     if (!sessionStartTime) {
       stopTimeoutRef.current = setTimeout(() => { onRunningChange?.(false); onClose(); }, 300);

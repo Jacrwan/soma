@@ -16,6 +16,10 @@ const COLORS: SubjectColor[] = [
 ];
 const DAY_ABBRS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+function toLocalISO(date: Date): string {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, -1);
+}
+
 function getTodayKey() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -82,6 +86,59 @@ interface PopoverState {
   subject: Subject | undefined;
   x: number;
   y: number;
+}
+
+interface DotGroup {
+  subjectId: string;
+  topPx: number;
+  label: string;
+  count: number;
+  blocks: TimeBlock[];
+}
+
+function groupShortBlocks(shortBlocks: TimeBlock[]): DotGroup[] {
+  const bySubject = new Map<string, TimeBlock[]>();
+  for (const b of shortBlocks) {
+    if (!bySubject.has(b.subjectId)) bySubject.set(b.subjectId, []);
+    bySubject.get(b.subjectId)!.push(b);
+  }
+  const groups: DotGroup[] = [];
+  for (const [subjectId, list] of bySubject) {
+    const sorted = [...list].sort(
+      (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+    );
+    let cluster: TimeBlock[] = [];
+    for (const block of sorted) {
+      if (cluster.length === 0) {
+        cluster = [block];
+      } else {
+        const gapMin =
+          (new Date(block.startTime).getTime() - new Date(cluster[0].startTime).getTime()) / 60_000;
+        if (gapMin <= 5) {
+          cluster.push(block);
+        } else {
+          groups.push(makeGroup(subjectId, cluster));
+          cluster = [block];
+        }
+      }
+    }
+    if (cluster.length > 0) groups.push(makeGroup(subjectId, cluster));
+  }
+  return groups;
+}
+
+function makeGroup(subjectId: string, cluster: TimeBlock[]): DotGroup {
+  const earliest = cluster[0];
+  const mostRecent = cluster[cluster.length - 1];
+  const s = new Date(earliest.startTime);
+  const startMin = s.getHours() * 60 + s.getMinutes();
+  return {
+    subjectId,
+    topPx: minToTop(startMin),
+    label: mostRecent.task ?? '',
+    count: cluster.length,
+    blocks: cluster,
+  };
 }
 
 interface SubjectEditState {
@@ -472,8 +529,8 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
       id: crypto.randomUUID(),
       subjectId: todo.subjectId ?? '',
       task: todo.text,
-      startTime: start.toISOString(),
-      endTime: end.toISOString(),
+      startTime: toLocalISO(start),
+      endTime: toLocalISO(end),
       source: 'manual',
     };
     storage.setTimeBlocks([...storage.getTimeBlocks(), block]);
@@ -610,43 +667,83 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             </div>
           )}
 
-          {blocks.map(block => {
-            const subject = subjects.find(s => s.id === block.subjectId);
-            const start = new Date(block.startTime);
-            const end = new Date(block.endTime);
-            const startMin = start.getHours() * 60 + start.getMinutes();
-            const durMin = (end.getTime() - start.getTime()) / 60_000;
-            if (durMin <= 0) return null;
-            const blockTopPx = minToTop(startMin);
-            const fullHeight = Math.max(durToHeight(durMin), 24);
-            const nowLinePx = showCurrentTime ? minToTop(currentMinutes) : Infinity;
-            // Cap height at the now line for any block whose natural height overshoots it.
-            // This covers both mid-session blocks (end in future) and just-stopped short
-            // sessions where the 24px minimum would extend past the now indicator.
-            const height = blockTopPx < nowLinePx
-              ? Math.max(Math.min(fullHeight, nowLinePx - blockTopPx), 2)
-              : fullHeight;
+          {(() => {
+            const shortBlocks: TimeBlock[] = [];
+            const regularBlocks: TimeBlock[] = [];
+            for (const block of blocks) {
+              const durMin = (new Date(block.endTime).getTime() - new Date(block.startTime).getTime()) / 60_000;
+              if (durMin <= 0) continue;
+              if (durMin < 5) shortBlocks.push(block);
+              else regularBlocks.push(block);
+            }
+            const dotGroups = groupShortBlocks(shortBlocks);
             return (
-              <div
-                key={block.id}
-                className={styles.block}
-                style={{
-                  top: blockTopPx,
-                  height,
-                  borderLeftColor: subject?.color ?? '#ccc',
-                  backgroundColor: subject ? `${subject.color}1f` : '#f5f5f5',
-                }}
-                onClick={e => {
-                  e.stopPropagation();
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setPopover({ block, subject, x: rect.left, y: rect.top });
-                }}
-              >
-                <span className={styles.blockSubject}>{subject?.name}</span>
-                <span className={styles.blockTask}>{block.task}</span>
-              </div>
+              <>
+                {regularBlocks.map(block => {
+                  const subject = subjects.find(s => s.id === block.subjectId);
+                  const start = new Date(block.startTime);
+                  const startMin = start.getHours() * 60 + start.getMinutes();
+                  const durMin = (new Date(block.endTime).getTime() - start.getTime()) / 60_000;
+                  const blockTopPx = minToTop(startMin);
+                  const fullHeight = Math.max(durToHeight(durMin), 2);
+                  const nowLinePx = showCurrentTime ? minToTop(currentMinutes) : Infinity;
+                  const height = blockTopPx < nowLinePx
+                    ? Math.max(Math.min(fullHeight, nowLinePx - blockTopPx), 2)
+                    : fullHeight;
+                  return (
+                    <div
+                      key={block.id}
+                      className={styles.block}
+                      style={{
+                        top: blockTopPx,
+                        height,
+                        borderLeftColor: subject?.color ?? '#ccc',
+                        backgroundColor: subject ? `${subject.color}1f` : '#f5f5f5',
+                      }}
+                      onClick={e => {
+                        e.stopPropagation();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setPopover({ block, subject, x: rect.left, y: rect.top });
+                      }}
+                    >
+                      {height >= 30 && (
+                        <>
+                          <span className={styles.blockSubject}>{subject?.name}</span>
+                          {block.task && block.task !== subject?.name && (
+                            <span className={styles.blockTask}>{block.task}</span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+                {dotGroups.map((group, i) => {
+                  const subject = subjects.find(s => s.id === group.subjectId);
+                  const displayLabel = group.label && group.label !== subject?.name
+                    ? group.label
+                    : (subject?.name ?? '');
+                  const labelWithCount = group.count > 1
+                    ? `${displayLabel} ×${group.count}`
+                    : displayLabel;
+                  return (
+                    <div
+                      key={`dot-${group.subjectId}-${i}`}
+                      className={styles.blockDot}
+                      style={{ top: group.topPx }}
+                      onClick={e => {
+                        e.stopPropagation();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setPopover({ block: group.blocks[group.blocks.length - 1], subject, x: rect.left, y: rect.top });
+                      }}
+                    >
+                      <span className={styles.blockDotCircle} style={{ background: subject?.color ?? '#ccc' }} />
+                      {labelWithCount && <span className={styles.blockDotLabel}>{labelWithCount}</span>}
+                    </div>
+                  );
+                })}
+              </>
             );
-          })}
+          })()}
 
           {gcalEvents.map(event => {
             if (!event.start.dateTime) return null;
