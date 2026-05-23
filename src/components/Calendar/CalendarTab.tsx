@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { storage } from '../../lib/storage';
 import { getEvents, getWeekRange, isCacheStale } from '../../lib/googleCalendar';
 import { TimeBlock, Subject, GoogleCalendarEvent } from '../../types';
@@ -64,6 +64,11 @@ const FILTER_KEY = 'soma_calendar_filters';
 const WEEK_SLOT_HEIGHT = 60;
 const WEEK_TOTAL_HOURS = 24;
 const WEEK_GRID_HEIGHT = WEEK_TOTAL_HOURS * WEEK_SLOT_HEIGHT;
+const weekHourSlots = Array.from({ length: WEEK_TOTAL_HOURS }, (_, i) => {
+  const ampm = i >= 12 ? 'PM' : 'AM';
+  const h12 = i % 12 || 12;
+  return { label: i === 0 ? '' : `${h12} ${ampm}` };
+});
 
 function weekMinToTop(clockMinutes: number): number {
   return (clockMinutes / 60) * WEEK_SLOT_HEIGHT;
@@ -160,6 +165,8 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   });
 
   const weekGridRef = useRef<HTMLDivElement>(null);
+  const weekModalBoxRef = useRef<HTMLDivElement>(null);
+  const preModalFocusRef = useRef<HTMLElement | null>(null);
 
   const isConnected = !!token;
 
@@ -207,11 +214,30 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
 
   useEffect(() => {
     if (!weekBlockModal) return;
+    // Save where focus was so we can restore it on close
+    preModalFocusRef.current = document.activeElement as HTMLElement;
+    // Move focus into the modal after paint
+    const focusId = setTimeout(() => {
+      weekModalBoxRef.current?.querySelector<HTMLElement>('button:not([disabled]), input')?.focus();
+    }, 0);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setWeekBlockModal(null); setWeekBlockEditMode(false); }
+      if (e.key === 'Escape') { setWeekBlockModal(null); setWeekBlockEditMode(false); return; }
+      if (e.key === 'Tab' && weekModalBoxRef.current) {
+        const focusable = Array.from(weekModalBoxRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled])'
+        ));
+        if (focusable.length < 2) return;
+        const first = focusable[0], last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
     };
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      clearTimeout(focusId);
+      preModalFocusRef.current?.focus();
+    };
   }, [weekBlockModal]);
 
   // Auto-scroll to current time when entering week view
@@ -371,10 +397,10 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, dataVersion]);
 
-  function getPositionedEventsForDay(day: Date): {
+  const getPositionedEventsForDay = useCallback((day: Date): {
     events: PositionedEvent[];
     dots: { id: string; color: string; top: number }[];
-  } {
+  } => {
     const subjects = storage.getSubjects();
     const gcalEvents = storage.getCachedGoogleEvents();
     const blocks = storage.getTimeBlocks();
@@ -398,6 +424,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     if (filters.soma) {
       for (const b of blocks) {
         if (!b.startTime || !isOnDate(b.startTime, day)) continue;
+        if (b.source === 'canvas') continue;
         const start = new Date(b.startTime);
         const end = new Date(b.endTime);
         const startMin = start.getHours() * 60 + start.getMinutes();
@@ -488,6 +515,23 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
       return max + 1;
     });
 
+    // Propagate: overlapping events must share the same numCols so their widths
+    // tile correctly. Without this, chained overlaps can give inconsistent values
+    // (e.g. B=3-cols but D=2-cols when B and D overlap) causing visual collisions.
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (let i = 0; i < events.length; i++) {
+        for (let j = i + 1; j < events.length; j++) {
+          if (events[j].startMin < events[i].endMin && events[i].startMin < events[j].endMin) {
+            const maxN = Math.max(numColsArr[i], numColsArr[j]);
+            if (numColsArr[i] !== maxN) { numColsArr[i] = maxN; changed = true; }
+            if (numColsArr[j] !== maxN) { numColsArr[j] = maxN; changed = true; }
+          }
+        }
+      }
+    }
+
     return {
       events: events.map((ev, i) => ({
         id: ev.id,
@@ -505,7 +549,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
       })),
       dots,
     };
-  }
+  }, [filters]);
 
   function goToPrev() {
     if (viewMode === 'month') {
@@ -575,12 +619,11 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     [viewWeekStart],
   );
 
-  // Hour slots for the week time grid
-  const weekHourSlots = Array.from({ length: WEEK_TOTAL_HOURS }, (_, i) => {
-    const ampm = i >= 12 ? 'PM' : 'AM';
-    const h12 = i % 12 || 12;
-    return { label: i === 0 ? '' : `${h12} ${ampm}` };
-  });
+  // Computed once per data/filter/week change — not on every clock tick
+  const weekPositionedDays = useMemo(
+    () => weekDays.map(day => getPositionedEventsForDay(day)),
+    [weekDays, dataVersion, getPositionedEventsForDay],
+  );
 
   function renderDayNum(date: Date, isCurrentMonth = true) {
     const isToday = isSameDay(date, today);
@@ -623,8 +666,8 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
       {/* ── Header ── */}
       <div className={styles.header}>
         <div className={styles.headerLeft}>
-          <button className={styles.navArrow} onClick={goToPrev}>‹</button>
-          <button className={styles.navArrow} onClick={goToNext}>›</button>
+          <button className={styles.navArrow} onClick={goToPrev} aria-label={viewMode === 'month' ? 'Previous month' : 'Previous week'}>‹</button>
+          <button className={styles.navArrow} onClick={goToNext} aria-label={viewMode === 'month' ? 'Next month' : 'Next week'}>›</button>
           <span className={styles.navTitle}>{headerTitle}</span>
         </div>
         <div className={styles.headerRight}>
@@ -633,10 +676,12 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
             <button
               className={`${styles.viewToggleBtn}${viewMode === 'month' ? ` ${styles.viewToggleBtnActive}` : ''}`}
               onClick={() => switchViewMode('month')}
+              aria-pressed={viewMode === 'month'}
             >Month</button>
             <button
               className={`${styles.viewToggleBtn}${viewMode === 'week' ? ` ${styles.viewToggleBtnActive}` : ''}`}
               onClick={() => switchViewMode('week')}
+              aria-pressed={viewMode === 'week'}
             >Week</button>
           </div>
         </div>
@@ -649,27 +694,36 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
             className={`${styles.filterPill}${filters.gcal ? ` ${styles.filterPillActive}` : ''}`}
             style={filters.gcal ? { background: GCAL_COLOR, borderColor: GCAL_COLOR } : {}}
             onClick={() => toggleFilter('gcal')}
+            aria-pressed={filters.gcal}
           >Google Calendar</button>
         ) : (
           <button
             className={`${styles.filterPill} ${styles.filterPillConnect}`}
             onClick={() => setShowConnect(v => !v)}
+            aria-expanded={showConnect}
           >+ Connect Google Calendar</button>
         )}
         <button
           className={`${styles.filterPill}${filters.canvas ? ` ${styles.filterPillActive}` : ''}`}
           style={filters.canvas ? { background: CANVAS_COLOR, borderColor: CANVAS_COLOR } : {}}
           onClick={() => toggleFilter('canvas')}
+          aria-pressed={filters.canvas}
         >Canvas</button>
         <button
           className={`${styles.filterPill}${filters.soma ? ` ${styles.filterPillActive}` : ''}`}
           onClick={() => toggleFilter('soma')}
+          aria-pressed={filters.soma}
         >Soma</button>
         {isConnected && (
           <button className={styles.disconnectBtn} onClick={handleDisconnect}>Disconnect Google</button>
         )}
-        {gcalLoading && <span className={styles.gcalLoading}>↻ Syncing…</span>}
-        {gcalError && <span className={styles.gcalError}>{gcalError}</span>}
+        {gcalLoading && <span className={styles.gcalLoading} role="status" aria-live="polite">↻ Syncing…</span>}
+        {gcalError && (
+          <>
+            <span className={styles.gcalError} role="alert">{gcalError}</span>
+            <button className={styles.gcalRetryBtn} onClick={() => token && fetchGcalEvents(token)}>Retry</button>
+          </>
+        )}
       </div>
 
       {/* ── Connect card ── */}
@@ -680,12 +734,13 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
             <input
               className={styles.connectInput}
               placeholder="OAuth 2.0 Client ID"
+              aria-label="Google OAuth 2.0 Client ID"
               value={setupClientId || clientId}
               onChange={e => setSetupClientId(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') openOAuthPopup(); if (e.key === 'Escape') setShowConnect(false); }}
             />
             <button className={styles.connectBtn} onClick={openOAuthPopup} disabled={!setupClientId.trim() && !clientId}>Connect</button>
-            <button className={styles.connectCancel} onClick={() => setShowConnect(false)}>✕</button>
+            <button className={styles.connectCancel} onClick={() => setShowConnect(false)} aria-label="Close">✕</button>
           </div>
           <span className={styles.connectHint}>
             Google Cloud Console → APIs &amp; Services → Credentials → OAuth 2.0 Client ID (Web).
@@ -713,6 +768,10 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                   isSameDay(date, selectedDate) ? styles.monthCellSelected : '',
                 ].filter(Boolean).join(' ')}
                 onClick={() => handleDayClick(date)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleDayClick(date); } }}
+                tabIndex={0}
+                role="button"
+                aria-current={isSameDay(date, today) ? 'date' : undefined}
               >
                 {renderDayNum(date, isCurrentMonth)}
                 <div className={styles.chipsArea}>{renderChips(date)}</div>
@@ -736,6 +795,9 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                   key={i}
                   className={styles.weekViewDayHeader}
                   onClick={() => handleDayClick(day)}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleDayClick(day); } }}
+                  tabIndex={0}
+                  role="button"
                 >
                   <span className={styles.weekViewDayAbbr}>{DAY_NAMES[day.getDay()]}</span>
                   <span className={`${styles.weekViewDayNum}${isToday ? ` ${styles.weekViewDayNumToday}` : ''}`}>
@@ -799,10 +861,13 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                 ))}
 
                 {/* Day columns */}
-                {weekDays.map((day, dayIndex) => {
-                  const isToday = isSameDay(day, today);
-                  const { events: posEvents, dots: posDots } = getPositionedEventsForDay(day);
+                {(() => {
                   const nowTop = weekMinToTop(currentMinutes);
+                  return (
+                    <>
+                    {weekDays.map((day, dayIndex) => {
+                  const isToday = isSameDay(day, today);
+                  const { events: posEvents, dots: posDots } = weekPositionedDays[dayIndex];
 
                   return (
                     <div
@@ -810,21 +875,33 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                       className={`${styles.weekViewDayCol}${isToday ? ` ${styles.weekViewDayColToday}` : ''}`}
                       onClick={() => handleDayClick(day)}
                     >
-                      {/* Current time indicator */}
+                      {/* Current time dot — only on today's column */}
                       {isToday && todayInWeek && (
-                        <div className={styles.weekViewNowLine} style={{ top: nowTop }}>
-                          <div className={styles.weekViewNowDot} />
-                        </div>
+                        <div className={styles.weekViewNowDot} style={{ top: nowTop }} />
                       )}
 
-                      {/* Short-session dots */}
-                      {posDots.map(dot => (
-                        <div
-                          key={dot.id}
-                          className={styles.weekViewDot}
-                          style={{ top: dot.top, background: dot.color }}
-                        />
-                      ))}
+                      {/* Short-session dots — stacked when within 5 min of each other */}
+                      {(() => {
+                        const sorted = [...posDots].sort((a, b) => a.top - b.top);
+                        const positioned: { dot: typeof posDots[0]; renderTop: number }[] = [];
+                        let groupBase = -Infinity;
+                        let groupCount = 0;
+                        for (const dot of sorted) {
+                          if (dot.top - groupBase > 5) {
+                            groupBase = dot.top;
+                            groupCount = 0;
+                          }
+                          positioned.push({ dot, renderTop: groupBase + groupCount * 8 });
+                          groupCount++;
+                        }
+                        return positioned.map(({ dot, renderTop }) => (
+                          <div
+                            key={dot.id}
+                            className={styles.weekViewDot}
+                            style={{ top: renderTop, background: dot.color }}
+                          />
+                        ));
+                      })()}
 
                       {/* Event blocks */}
                       {posEvents.map(ev => (
@@ -837,11 +914,23 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                             left: `calc(${ev.left * 100}% + 1px)`,
                             width: `calc(${ev.width * 100}% - 2px)`,
                             background: ev.color,
-                            borderLeftColor: ev.borderColor,
+                            borderColor: ev.borderColor,
                           }}
+                          tabIndex={ev.type === 'soma' && ev.block ? 0 : undefined}
+                          role={ev.type === 'soma' && ev.block ? 'button' : undefined}
                           onClick={e => {
                             e.stopPropagation();
                             if (ev.type === 'soma' && ev.block) {
+                              const subjects = storage.getSubjects();
+                              const subject = subjects.find(s => s.id === ev.block!.subjectId);
+                              setWeekBlockModal({ block: ev.block, subject });
+                              setWeekBlockEditMode(false);
+                            }
+                          }}
+                          onKeyDown={e => {
+                            if ((e.key === 'Enter' || e.key === ' ') && ev.type === 'soma' && ev.block) {
+                              e.preventDefault();
+                              e.stopPropagation();
                               const subjects = storage.getSubjects();
                               const subject = subjects.find(s => s.id === ev.block!.subjectId);
                               setWeekBlockModal({ block: ev.block, subject });
@@ -859,17 +948,12 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                     </div>
                   );
                 })}
-
-                {/* Current time line extension — spans from today column to right edge */}
-                {todayInWeek && (() => {
-                  const leftPercent = (todayColIndex / 7) * 100;
-                  return (
-                    <div
-                      className={styles.weekViewNowLineExtension}
-                      style={{ top: weekMinToTop(currentMinutes), left: `${leftPercent}%` }}
-                    />
+                    {todayInWeek && (
+                      <div className={styles.weekViewNowLine} style={{ top: nowTop }} />
+                    )}
+                    </>
                   );
-                })()}
+              })()}
               </div>
             </div>
           </div>
@@ -879,9 +963,16 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
       {/* ── Week Block Modal ── */}
       {weekBlockModal && (
         <div className={styles.weekModalOverlay} onClick={() => { setWeekBlockModal(null); setWeekBlockEditMode(false); }}>
-          <div className={styles.weekModalBox} onClick={e => e.stopPropagation()}>
+          <div
+            className={styles.weekModalBox}
+            onClick={e => e.stopPropagation()}
+            ref={weekModalBoxRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="week-modal-title"
+          >
             <div className={styles.weekModalHeader}>
-              <span className={styles.weekModalTitle}>Time Block</span>
+              <span className={styles.weekModalTitle} id="week-modal-title">Time Block</span>
               {weekBlockModal.subject && (
                 <span className={styles.weekModalSubjectChip}>
                   <span className={styles.weekModalSubjectDot} style={{ background: weekBlockModal.subject.color }} />

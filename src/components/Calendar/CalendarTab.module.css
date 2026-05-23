@@ -41,7 +41,7 @@
   cursor: pointer;
   padding: 4px 6px;
   border-radius: 6px;
-  transition: background 0.1s, color 0.1s;
+  transition: background 0.1s ease-out, color 0.1s ease-out;
 }
 
 .navArrow:hover {
@@ -66,7 +66,7 @@
   background: none;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background 0.1s;
+  transition: background 0.1s ease-out;
 }
 
 .todayBtn:hover {
@@ -89,7 +89,7 @@
   background: none;
   cursor: pointer;
   color: var(--text-secondary);
-  transition: background 0.1s, color 0.1s;
+  transition: background 0.1s ease-out, color 0.1s ease-out;
 }
 
 .viewToggleBtn:hover:not(.viewToggleBtnActive) {
@@ -99,7 +99,7 @@
 
 .viewToggleBtnActive {
   background: var(--accent);
-  color: #fff;
+  color: oklch(99% 0.003 265);
 }
 
 /* ── Filter bar ──────────────────────────────────────────────────────────── */
@@ -123,7 +123,7 @@
   border: 1px solid var(--border);
   background: none;
   color: var(--text-secondary);
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: background 0.15s ease-out, color 0.15s ease-out, border-color 0.15s ease-out;
   line-height: 1.5;
 }
 
@@ -133,7 +133,7 @@
 }
 
 .filterPillActive {
-  color: #fff;
+  color: oklch(99% 0.003 265);
   border-color: var(--accent);
   background: var(--accent);
 }
@@ -172,6 +172,17 @@
 .gcalError {
   font-size: 11px;
   color: var(--danger);
+}
+
+.gcalRetryBtn {
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: var(--danger);
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+  line-height: 1;
 }
 
 @keyframes pulse {
@@ -222,7 +233,7 @@
 .connectBtn {
   padding: 6px 14px;
   background: var(--accent);
-  color: #fff;
+  color: oklch(99% 0.003 265);
   border: none;
   border-radius: 5px;
   font-size: 13px;
@@ -303,7 +314,7 @@
   display: flex;
   flex-direction: column;
   min-height: 80px;
-  transition: background 0.1s;
+  transition: background 0.1s ease-out;
 }
 
 .monthCell:nth-child(7n) {
@@ -350,7 +361,7 @@
 
 .dateNumToday {
   background: var(--accent);
-  color: #fff;
+  color: oklch(99% 0.003 265);
   font-weight: 700;
 }
 
@@ -383,7 +394,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #fff;
+  color: oklch(99% 0.003 0);
   display: block;
   line-height: 1.5;
 }
@@ -442,7 +453,7 @@
   padding: 6px 0 5px;
   cursor: pointer;
   border-left: 1px solid var(--border);
-  transition: background 0.1s;
+  transition: background 0.1s ease-out;
   user-select: none;
 }
 
@@ -474,22 +485,21 @@
 }
 
 .weekViewDayNumToday {
-  background: #e53935;
-  color: #fff;
+  background: var(--accent);
+  color: oklch(99% 0.003 265);
   font-weight: 700;
 }
 
 /* All-day row */
 .weekViewAllDayRow {
-  display: flex;
+  display: grid;
+  grid-template-columns: 60px repeat(7, 1fr);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   min-height: 24px;
 }
 
 .weekViewAllDayLabel {
-  width: 60px;
-  flex-shrink: 0;
   display: flex;
   align-items: flex-start;
   justify-content: flex-end;
@@ -500,7 +510,6 @@
 }
 
 .weekViewAllDayCell {
-  flex: 1;
   border-left: 1px solid var(--border);
   padding: 3px 2px;
   display: flex;
@@ -513,8 +522,8 @@
   font-weight: 500;
   padding: 1px 5px;
   border-radius: 3px;
-  background: #f4511e;
-  color: #fff;
+  background: oklch(58% 0.21 30);
+  color: oklch(99% 0.003 0);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -587,7 +596,7 @@
 }
 
 .weekViewDayColToday {
-  background: color-mix(in srgb, #e53935 3%, transparent);
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
 }
 
 /* Current time indicator */
@@ -596,7 +605,7 @@
   left: 0;
   right: 0;
   height: 2px;
-  background: #e53935;
+  background: var(--accent);
   z-index: 5;
   pointer-events: none;
 }
@@ -605,22 +614,14 @@
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: #e53935;
+  background: var(--accent);
   position: absolute;
   left: -5px;
-  top: -3.5px;
+  transform: translateY(-50%);
+  z-index: 6;
+  pointer-events: none;
 }
 
-/* The line that extends from today col to right edge — rendered in dayCols */
-.weekViewNowLineExtension {
-  position: absolute;
-  right: 0;
-  height: 2px;
-  background: #e53935;
-  z-index: 4;
-  pointer-events: none;
-  opacity: 0.3;
-}
 
 /* Short-session dot */
 .weekViewDot {
@@ -643,7 +644,7 @@
   z-index: 2;
   overflow: hidden;
   box-sizing: border-box;
-  transition: filter 0.1s;
+  transition: filter 0.1s ease-out;
 }
 
 .weekViewBlock:hover {
@@ -651,18 +652,17 @@
 }
 
 .weekViewBlockSoma {
-  border-left-width: 3px;
-  border-left-style: solid;
+  border: 1px solid;
 }
 
 .weekViewBlockGcal {
-  border-left: none;
+  border: none;
 }
 
 .weekViewBlockLabel {
   font-size: 11px;
   font-weight: 600;
-  color: #fff;
+  color: oklch(99% 0.003 0);
   display: block;
   white-space: nowrap;
   overflow: hidden;
@@ -672,7 +672,7 @@
 
 .weekViewBlockSub {
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.85);
+  color: oklch(99% 0.003 0 / 0.85);
   display: block;
   white-space: nowrap;
   overflow: hidden;
@@ -685,7 +685,7 @@
 .weekModalOverlay {
   position: fixed;
   inset: 0;
-  background: oklch(0% 0 0 / 0.35);
+  background: oklch(4% 0.003 265 / 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -699,7 +699,7 @@
   padding: 24px;
   width: 420px;
   max-width: calc(100vw - 32px);
-  box-shadow: 0 8px 32px oklch(0% 0 0 / 0.18), 0 2px 8px oklch(0% 0 0 / 0.1);
+  box-shadow: 0 8px 32px oklch(4% 0.003 265 / 0.18), 0 2px 8px oklch(4% 0.003 265 / 0.1);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -780,13 +780,13 @@
   flex: 1;
   padding: 9px;
   background: var(--accent);
-  color: #fff;
+  color: oklch(99% 0.003 265);
   border: none;
   border-radius: 8px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.1s;
+  transition: background 0.1s ease-out;
 }
 
 .weekModalEditBtn:hover {
@@ -803,7 +803,7 @@
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.1s;
+  transition: background 0.1s ease-out;
 }
 
 .weekModalDeleteBtn:hover {
@@ -819,7 +819,7 @@
   font-weight: 500;
   color: var(--text-secondary);
   cursor: pointer;
-  transition: background 0.1s;
+  transition: background 0.1s ease-out;
   width: 100%;
 }
 
@@ -893,7 +893,7 @@
   background: none;
   cursor: pointer;
   color: var(--text-secondary);
-  transition: background 0.1s, color 0.1s;
+  transition: background 0.1s ease-out, color 0.1s ease-out;
 }
 
 .weekModalAmpmBtn:hover:not(.weekModalAmpmBtnActive) {
@@ -902,22 +902,60 @@
 
 .weekModalAmpmBtnActive {
   background: var(--accent);
-  color: #fff;
+  color: oklch(99% 0.003 265);
 }
 
 .weekModalSubmit {
   padding: 10px;
   background: var(--accent);
-  color: #fff;
+  color: oklch(99% 0.003 265);
   border: none;
   border-radius: 8px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.1s;
+  transition: background 0.1s ease-out;
   width: 100%;
 }
 
 .weekModalSubmit:hover {
   background: var(--accent-hover);
+}
+
+/* ── Keyboard focus rings ─────────────────────────────────────────────────── */
+
+.navArrow:focus-visible,
+.todayBtn:focus-visible,
+.viewToggleBtn:focus-visible,
+.filterPill:focus-visible,
+.disconnectBtn:focus-visible,
+.gcalRetryBtn:focus-visible,
+.connectBtn:focus-visible,
+.connectCancel:focus-visible,
+.weekViewDayHeader:focus-visible,
+.weekViewBlock:focus-visible,
+.monthCell:focus-visible,
+.weekModalEditBtn:focus-visible,
+.weekModalDeleteBtn:focus-visible,
+.weekModalCancel:focus-visible,
+.weekModalAmpmBtn:focus-visible,
+.weekModalSubmit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gcalLoading { animation: none; }
+  .navArrow,
+  .todayBtn,
+  .viewToggleBtn,
+  .filterPill,
+  .monthCell,
+  .weekViewDayHeader,
+  .weekViewBlock,
+  .weekModalEditBtn,
+  .weekModalDeleteBtn,
+  .weekModalCancel,
+  .weekModalSubmit,
+  .weekModalAmpmBtn { transition: none; }
 }
