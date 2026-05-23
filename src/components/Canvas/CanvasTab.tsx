@@ -21,22 +21,31 @@ function fmtPosted(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-const CACHE_MAX_AGE = 60 * 60 * 1000;
+function looksLikeCanvasCourseName(name: string): boolean {
+  return /\b(AP|Hon|Honors|Semester|Periods?|P\d|S[12]|Yr)\b/i.test(name)
+    || /\bPer\s*:/i.test(name)
+    || /-.+/.test(name)
+    || /\(.+\bPeriods?\b.+\)/i.test(name);
+}
 
-function syncCoursesToSubjects(courses: CanvasCourse[], prevCourseNames: Set<string>) {
+function syncCoursesToSubjects(courses: CanvasCourse[]) {
   let subjects = storage.getSubjects();
   let changed = false;
 
   const currentCourseNames = new Set(courses.map(c => c.name));
+  const knownCanvasCourseNames = new Set([
+    ...storage.getCanvasCourseNames(),
+    ...storage.getCachedCourses().map(c => c.name),
+  ]);
 
-  // Archive subjects that were previously Canvas courses but aren't in the current list
-  subjects = subjects.map(s => {
-    if (!s.archived && prevCourseNames.has(s.name) && !currentCourseNames.has(s.name)) {
-      changed = true;
-      return { ...s, archived: true };
-    }
-    return s;
-  });
+  const prunedSubjects = subjects.filter(s =>
+    currentCourseNames.has(s.name)
+      || (!knownCanvasCourseNames.has(s.name) && !looksLikeCanvasCourseName(s.name))
+  );
+  if (prunedSubjects.length !== subjects.length) {
+    subjects = prunedSubjects;
+    changed = true;
+  }
 
   // Add subjects for current courses that don't exist yet
   for (const course of courses) {
@@ -45,16 +54,14 @@ function syncCoursesToSubjects(courses: CanvasCourse[], prevCourseNames: Set<str
       subjects = [...subjects, {
         id: crypto.randomUUID(),
         name: course.name,
-        color: COURSE_COLORS[subjects.filter(s => !s.archived).length % COURSE_COLORS.length] as Subject['color'],
+        color: COURSE_COLORS[subjects.length % COURSE_COLORS.length] as Subject['color'],
         totalTimeToday: 0,
       }];
-      changed = true;
-    } else if (subjects[matchIdx].archived) {
-      subjects = subjects.map((s, i) => i === matchIdx ? { ...s, archived: false } : s);
       changed = true;
     }
   }
 
+  storage.setCanvasCourseNames([...currentCourseNames]);
   if (changed) storage.setSubjects(subjects);
 }
 
@@ -99,24 +106,32 @@ export default function CanvasTab() {
 
   useEffect(() => {
     if (!isConnected) return;
-    const ts = storage.getCacheTimestamp();
     loadData(token, baseUrl);
   }, []);
 
+  async function refreshSecondaryData(tk: string, url: string, coursesData: CanvasCourse[]) {
+    const [announcementGroups, moduleGroups] = await Promise.all([
+      Promise.all(coursesData.map(c => getAnnouncements(tk, url, c.id).catch(() => []))),
+      Promise.all(coursesData.map(c => getModules(tk, url, c.id).catch(() => []))),
+    ]);
+    const flatAnnouncements = announcementGroups.flat();
+    storage.setCachedAnnouncements(flatAnnouncements);
+    setAnnouncements(flatAnnouncements);
+    storage.setCachedModules(moduleGroups.flat());
+  }
+
   async function loadData(tk: string, url: string, force = false) {
-    if (force) setSyncing(true); else setLoading(true);
+    const hasCachedAssignments = storage.getCachedAssignments().length > 0;
+    if (force || hasCachedAssignments) setSyncing(true); else setLoading(true);
     setError('');
     try {
-      const prevCourseNames = new Set(storage.getCachedCourses().map(c => c.name));
       const coursesData = await getCourses(tk, url);
       setCourses(coursesData);
+      syncCoursesToSubjects(coursesData);
       storage.setCachedCourses(coursesData);
-      syncCoursesToSubjects(coursesData, prevCourseNames);
-      const [assignmentGroups, announcementGroups, moduleGroups] = await Promise.all([
-        Promise.all(coursesData.map(c => getAssignments(tk, url, c))),
-        Promise.all(coursesData.map(c => getAnnouncements(tk, url, c.id))),
-        Promise.all(coursesData.map(c => getModules(tk, url, c.id))),
-      ]);
+      const assignmentGroups = await Promise.all(
+        coursesData.map(c => getAssignments(tk, url, c).catch(() => [])),
+      );
       const all = assignmentGroups.flat();
       all.sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime());
 
@@ -143,13 +158,12 @@ export default function CanvasTab() {
 
       setAssignments(all);
       storage.setCachedAssignments(all);
-      const flatAnnouncements = announcementGroups.flat();
-      storage.setCachedAnnouncements(flatAnnouncements);
-      setAnnouncements(flatAnnouncements);
-      storage.setCachedModules(moduleGroups.flat());
       const now = Date.now();
       storage.setCacheTimestamp(now);
       setLastSynced(now);
+      setSyncing(false);
+      setLoading(false);
+      refreshSecondaryData(tk, url, coursesData).catch(() => {});
     } catch {
       setError('Failed to load. Check your token and URL.');
     } finally {

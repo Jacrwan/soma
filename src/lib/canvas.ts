@@ -35,22 +35,105 @@ export async function canvasFetch(token: string, baseUrl: string, path: string):
   return data;
 }
 
-export async function getCourses(token: string, baseUrl: string): Promise<CanvasCourse[]> {
-  const raw = await canvasFetch(token, baseUrl, '/api/v1/courses?enrollment_state=active&per_page=100&include[]=term');
+type RawCanvasCourse = Record<string, unknown> & {
+  id?: number;
+  name?: string;
+  course_code?: string;
+  enrollment_term_id?: number;
+  start_at?: string | null;
+  end_at?: string | null;
+  access_restricted_by_date?: boolean;
+  term?: {
+    id?: number;
+    name?: string;
+    start_at?: string | null;
+    end_at?: string | null;
+  };
+};
 
-  // Only keep courses from the most recent enrollment term
-  const termIds = raw.map((c: Record<string, unknown>) => c.enrollment_term_id as number).filter(Boolean);
-  const maxTermId = termIds.length ? Math.max(...termIds) : null;
+function toMillis(value: unknown): number | null {
+  if (typeof value !== 'string' || !value) return null;
+  const ms = new Date(value).getTime();
+  return Number.isNaN(ms) ? null : ms;
+}
 
-  const filtered = maxTermId
-    ? raw.filter((c: Record<string, unknown>) => c.enrollment_term_id === maxTermId)
-    : raw;
+function isWithinWindow(start: unknown, end: unknown, now = Date.now()): boolean {
+  const startMs = toMillis(start);
+  const endMs = toMillis(end);
+  return (startMs === null || startMs <= now) && (endMs === null || endMs >= now);
+}
 
-  return filtered.map((c: Record<string, unknown>) => ({
+function hasDateWindow(course: RawCanvasCourse): boolean {
+  return !!(course.start_at || course.end_at || course.term?.start_at || course.term?.end_at);
+}
+
+function isCurrentByDate(course: RawCanvasCourse): boolean {
+  if (course.access_restricted_by_date) return false;
+  const courseDatesCurrent = course.start_at || course.end_at
+    ? isWithinWindow(course.start_at, course.end_at)
+    : true;
+  const termDatesCurrent = course.term?.start_at || course.term?.end_at
+    ? isWithinWindow(course.term?.start_at, course.term?.end_at)
+    : true;
+  return courseDatesCurrent && termDatesCurrent;
+}
+
+function currentSemesterTermNamePattern(): RegExp {
+  const month = new Date().getMonth();
+  if (month >= 0 && month <= 6) return /\b(s2|semester\s*2|spring)\b/i;
+  return /\b(s1|semester\s*1|fall|autumn)\b/i;
+}
+
+function looksLikeOldSectionCourse(name: string): boolean {
+  return /\[[^\]]*\bPer\s*:/i.test(name)
+    || /\(.+\bPeriods?\b.+\)/i.test(name);
+}
+
+function chooseCurrentCourses(raw: RawCanvasCourse[]): RawCanvasCourse[] {
+  const unrestricted = raw.filter(c => !c.access_restricted_by_date);
+  const withoutOldSectionNames = unrestricted.filter(c => !looksLikeOldSectionCourse(c.name ?? ''));
+  const candidateCourses = withoutOldSectionNames.length > 0 ? withoutOldSectionNames : unrestricted;
+  const dated = candidateCourses.filter(hasDateWindow);
+  const currentByDate = dated.filter(isCurrentByDate);
+  if (currentByDate.length > 0) return currentByDate;
+
+  const termNamePattern = currentSemesterTermNamePattern();
+  const currentByTermName = candidateCourses.filter(c => termNamePattern.test(c.term?.name ?? ''));
+  if (currentByTermName.length > 0) return currentByTermName;
+
+  const byTerm = new Map<number, RawCanvasCourse[]>();
+  for (const course of candidateCourses) {
+    const termId = course.enrollment_term_id ?? course.term?.id;
+    if (!termId) continue;
+    byTerm.set(termId, [...(byTerm.get(termId) ?? []), course]);
+  }
+  const largestTermGroup = [...byTerm.values()].sort((a, b) => b.length - a.length)[0];
+  if (largestTermGroup?.length) return largestTermGroup;
+
+  return candidateCourses;
+}
+
+function toCourse(c: RawCanvasCourse): CanvasCourse {
+  return {
     id: c.id as number,
     name: c.name as string,
-    courseCode: (c.course_code as string) ?? '',
-  }));
+    courseCode: c.course_code ?? '',
+  };
+}
+
+export async function getCourses(token: string, baseUrl: string): Promise<CanvasCourse[]> {
+  const [raw, favorites] = await Promise.all([
+    canvasFetch(token, baseUrl, '/api/v1/courses?enrollment_state=active&per_page=100&include[]=term') as Promise<RawCanvasCourse[]>,
+    canvasFetch(token, baseUrl, '/api/v1/users/self/favorites/courses?per_page=100&include[]=term')
+      .catch(() => []) as Promise<RawCanvasCourse[]>,
+  ]);
+
+  const favoriteIds = new Set(favorites.map(c => c.id).filter(Boolean));
+  const listedCourses = favoriteIds.size > 0
+    ? raw.filter(c => favoriteIds.has(c.id))
+    : raw;
+
+  return chooseCurrentCourses(listedCourses).map(toCourse);
 }
 
 export async function getAssignments(
