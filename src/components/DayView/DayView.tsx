@@ -330,7 +330,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   }, []);
 
   useEffect(() => {
-    setBlocks(storage.getTimeBlocks().filter(b => isOnDate(b.startTime, selectedDate)));
+    setBlocks(storage.getTimeBlocks().filter(b => b.source !== 'canvas' && isOnDate(b.startTime, selectedDate)));
   }, [selectedDate]);
 
   useEffect(() => {
@@ -595,7 +595,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     };
     const allBlocks = storage.getTimeBlocks().map(b => b.id === updated.id ? updated : b);
     storage.setTimeBlocks(allBlocks);
-    setBlocks(allBlocks.filter(b => isOnDate(b.startTime, selectedDate)));
+    setBlocks(allBlocks.filter(b => b.source !== 'canvas' && isOnDate(b.startTime, selectedDate)));
     setBlockModal({ block: updated, subject: blockModal.subject });
     setBlockEditMode(false);
   }
@@ -634,7 +634,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
 
   function handleSessionSaved(updatedSubjects: Subject[], updatedBlocks: TimeBlock[]) {
     setSubjects(updatedSubjects);
-    setBlocks(updatedBlocks.filter(b => isOnDate(b.startTime, selectedDate)));
+    setBlocks(updatedBlocks.filter(b => b.source !== 'canvas' && isOnDate(b.startTime, selectedDate)));
   }
 
   function handleRunningChange(isRunning: boolean) {
@@ -1221,6 +1221,25 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
         {blocks.length === 0 && (
           <div className={styles.emptyBlocks}>No blocks yet. Click a slot to add one.</div>
         )}
+
+        {dueAssignments.length > 0 && (
+          <div className={styles.dueTodayRow}>
+            <span className={styles.dueTodayLabel}>Due today</span>
+            <div className={styles.dueTodayChips}>
+              {dueAssignments.map(({ assignment, color }) => (
+                <button
+                  key={`due-chip-${assignment.id}`}
+                  className={styles.dueTodayChip}
+                  style={{ background: color + '22', borderColor: color + '88', color }}
+                  onClick={() => setDeadlineDetail({ courseId: assignment.courseId, assignmentId: assignment.id })}
+                >
+                  {assignment.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className={styles.gridWrapper} style={{ height: gridHeight }}>
 
           {slots.map(slot => (
@@ -1249,6 +1268,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             const shortBlocks: TimeBlock[] = [];
             const regularBlocks: TimeBlock[] = [];
             for (const block of blocks) {
+              if (block.source === 'canvas') continue;
               const durMin = (new Date(block.endTime).getTime() - new Date(block.startTime).getTime()) / 60_000;
               if (durMin <= 0) continue;
               if (durMin < 5) shortBlocks.push(block);
@@ -1342,33 +1362,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             );
           })}
 
-          {dueAssignments.map(({ assignment, color }) => {
-            const due = new Date(assignment.dueAt);
-            const dueMin = due.getHours() * 60 + due.getMinutes();
-            const topPx = minToTop(dueMin);
-            const isPast = due.getTime() < Date.now() && isSameDay(selectedDate, new Date());
-            return (
-              <div
-                key={`due-${assignment.id}`}
-                className={styles.deadlineMarker}
-                style={{ top: topPx, borderColor: color, opacity: isPast ? 0.45 : 1 }}
-                onClick={() => setDeadlineDetail({ courseId: assignment.courseId, assignmentId: assignment.id })}
-              >
-                <span className={styles.deadlineDot} style={{ background: color }} />
-                <span className={styles.deadlineName}>{assignment.name}</span>
-                <span className={styles.deadlineTime}>
-                  {due.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                </span>
-                <button
-                  className={styles.deadlineStudyBtn}
-                  onClick={e => { e.stopPropagation(); startStudyFromAssignment(assignment); }}
-                  title="Start studying"
-                >
-                  ▶ Study
-                </button>
-              </div>
-            );
-          })}
 
         </div>
       </div>
