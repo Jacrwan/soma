@@ -263,6 +263,9 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   });
   const [dragSubjectId, setDragSubjectId] = useState<string | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [dragTodoId, setDragTodoId] = useState<string | null>(null);
+  const [dragTodoGroupId, setDragTodoGroupId] = useState<string | null>(null);
+  const [dragTodoOverIndex, setDragTodoOverIndex] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const statusPopoverRef = useRef<HTMLDivElement>(null);
   const pinPopoverRef = useRef<HTMLDivElement>(null);
@@ -277,6 +280,15 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const activeSubjectsRef = useRef<Subject[]>([]);
   const subjectsRef = useRef<Subject[]>([]);
   const dragOverIndexRef = useRef<number | null>(null);
+  const dragTodoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragTodoPendingRef = useRef<string | null>(null);
+  const wasInTodoDragRef = useRef(false);
+  const todoRowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const dragTodoIdRef = useRef<string | null>(null);
+  const dragTodoGroupIdRef = useRef<string | null>(null);
+  const dragTodoOverIndexRef = useRef<number | null>(null);
+  const todosRef = useRef<Todo[]>([]);
+  const selectedDateKeyRef = useRef<string>('');
 
   // Sync week view when selectedDate changes from an external source (e.g. CalendarTab)
   useEffect(() => {
@@ -443,6 +455,77 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       document.body.style.userSelect = '';
     };
   }, [dragSubjectId]);
+
+  useEffect(() => {
+    if (!dragTodoId || !dragTodoGroupId) return;
+    document.body.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+
+    function onMove(e: PointerEvent) {
+      const groupId = dragTodoGroupIdRef.current;
+      if (!groupId) return;
+      const allTodos = todosRef.current;
+      const dateKey = selectedDateKeyRef.current;
+      const groupTodos = groupId === 'unassigned'
+        ? allTodos.filter(t => t.date === dateKey && !t.subjectId)
+        : allTodos.filter(t => t.date === dateKey && t.subjectId === groupId);
+      const ordered = [...groupTodos].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      const y = e.clientY;
+      let best = 0, bestDist = Infinity;
+      ordered.forEach((t, i) => {
+        const el = todoRowRefs.current.get(t.id);
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const dist = Math.abs(y - (rect.top + rect.height / 2));
+        if (dist < bestDist) { bestDist = dist; best = i; }
+      });
+      setDragTodoOverIndex(prev => prev === best ? prev : best);
+    }
+
+    function onUp() {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+
+      const overIndex = dragTodoOverIndexRef.current;
+      const todoId = dragTodoIdRef.current;
+      const groupId = dragTodoGroupIdRef.current;
+
+      if (overIndex !== null && todoId && groupId) {
+        const allTodos = storage.getTodos();
+        const dateKey = selectedDateKeyRef.current;
+        const groupTodos = groupId === 'unassigned'
+          ? allTodos.filter(t => t.date === dateKey && !t.subjectId)
+          : allTodos.filter(t => t.date === dateKey && t.subjectId === groupId);
+        const ordered = [...groupTodos].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        const from = ordered.findIndex(t => t.id === todoId);
+        if (from !== -1 && from !== overIndex) {
+          const reordered = [...ordered];
+          const [item] = reordered.splice(from, 1);
+          reordered.splice(overIndex, 0, item);
+          const reorderedWithOrder = reordered.map((t, i) => ({ ...t, order: i }));
+          const updated = allTodos.map(t => reorderedWithOrder.find(rt => rt.id === t.id) ?? t);
+          storage.setTodos(updated);
+          setTodos(updated);
+        }
+      }
+
+      setTimeout(() => { wasInTodoDragRef.current = false; }, 0);
+      setDragTodoId(null);
+      setDragTodoGroupId(null);
+      setDragTodoOverIndex(null);
+    }
+
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    return () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [dragTodoId, dragTodoGroupId]);
 
   const slots = Array.from({ length: TOTAL_HOURS }, (_, i) => {
     const hourOfDay = (START_HOUR + i) % 24;
@@ -687,6 +770,27 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     }
   }
 
+  function handleTodoPointerDown(e: React.PointerEvent, todoId: string, groupId: string) {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest('button')) return;
+    dragTodoPendingRef.current = todoId;
+    dragTodoTimerRef.current = setTimeout(() => {
+      if (dragTodoPendingRef.current !== todoId) return;
+      dragTodoTimerRef.current = null;
+      wasInTodoDragRef.current = true;
+      setDragTodoId(todoId);
+      setDragTodoGroupId(groupId);
+    }, 200);
+  }
+
+  function handleTodoPointerUp() {
+    if (dragTodoTimerRef.current) {
+      clearTimeout(dragTodoTimerRef.current);
+      dragTodoTimerRef.current = null;
+      dragTodoPendingRef.current = null;
+    }
+  }
+
   function startAdding(groupId: string) {
     const subjectId = groupId === 'unassigned' ? undefined : groupId;
     let startHour = 9, startMinute = 0;
@@ -880,6 +984,11 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
   activeSubjectsRef.current = activeSubjects;
   subjectsRef.current = subjects;
   dragOverIndexRef.current = dragOverIndex;
+  dragTodoIdRef.current = dragTodoId;
+  dragTodoGroupIdRef.current = dragTodoGroupId;
+  dragTodoOverIndexRef.current = dragTodoOverIndex;
+  todosRef.current = todos;
+  selectedDateKeyRef.current = selectedDateKey;
 
   // Live preview order while dragging
   const orderedActiveSubjects = (() => {
@@ -892,6 +1001,20 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     return result;
   })();
   const dayTodos = todos.filter(t => t.date === selectedDateKey);
+
+  function getOrderedGroupTodos(groupId: string): Todo[] {
+    const groupTodos = groupId === 'unassigned'
+      ? dayTodos.filter(t => !t.subjectId)
+      : dayTodos.filter(t => t.subjectId === groupId);
+    const sorted = [...groupTodos].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    if (dragTodoId === null || dragTodoOverIndex === null || dragTodoGroupId !== groupId) return sorted;
+    const from = sorted.findIndex(t => t.id === dragTodoId);
+    if (from === -1) return sorted;
+    const result = [...sorted];
+    const [item] = result.splice(from, 1);
+    result.splice(dragTodoOverIndex, 0, item);
+    return result;
+  }
 
   function selectDate(date: Date) {
     onSelectDate(date);
@@ -913,12 +1036,20 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
 
   const gridHeight = TOTAL_HOURS * SLOT_HEIGHT;
 
-  function renderTodoItem(todo: Todo) {
+  function renderTodoItem(todo: Todo, groupId: string) {
     const actualMins = getActualMinutesForTodo(todo);
     const hasEstimate = (todo.estimatedMinutes ?? 0) > 0;
+    const isTodoDragging = dragTodoId === todo.id;
 
     return (
-      <div key={todo.id} className={styles.todoItemWrap}>
+      <div
+        key={todo.id}
+        className={`${styles.todoItemWrap}${isTodoDragging ? ` ${styles.todoItemWrapDragging}` : ''}`}
+        ref={el => { if (el) todoRowRefs.current.set(todo.id, el); else todoRowRefs.current.delete(todo.id); }}
+        onPointerDown={e => handleTodoPointerDown(e, todo.id, groupId)}
+        onPointerUp={handleTodoPointerUp}
+        onPointerCancel={handleTodoPointerUp}
+      >
         <div className={`${styles.todoItem}${todo.status === 'done' ? ` ${styles.todoItemDone}` : ''}`}>
           <button
             className={todo.status === 'in_progress' ? styles.statusBtnInProgress : todo.status === 'done' ? styles.statusBtnDone : styles.statusBtn}
@@ -932,7 +1063,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             )}
           </button>
           <div className={styles.todoContent}>
-            <span className={styles.todoText} onClick={() => openEditTodo(todo)}>{todo.text}</span>
+            <span className={styles.todoText} onClick={() => { if (wasInTodoDragRef.current) { wasInTodoDragRef.current = false; return; } openEditTodo(todo); }}>{todo.text}</span>
             {hasEstimate && (
               <span className={styles.todoEstBadge}>{fmtEstimated(todo.estimatedMinutes!)}</span>
             )}
@@ -1407,7 +1538,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
 
               {showBody && (
                 <div className={styles.todoGroupBody}>
-                  {groupTodos.map(todo => renderTodoItem(todo))}
+                  {getOrderedGroupTodos(subject.id).map(todo => renderTodoItem(todo, subject.id))}
                 </div>
               )}
             </div>
@@ -1460,7 +1591,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               </div>
               {showBody && (
                 <div className={styles.todoGroupBody}>
-                  {unassigned.map(todo => renderTodoItem(todo))}
+                  {getOrderedGroupTodos('unassigned').map(todo => renderTodoItem(todo, 'unassigned'))}
                 </div>
               )}
             </div>

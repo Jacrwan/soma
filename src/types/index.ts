@@ -85,6 +85,7 @@ export interface Todo {
   date: string; // YYYY-MM-DD
   estimatedMinutes?: number;
   notes?: string;
+  order?: number;
 }
 
 export interface GoogleCalendarEvent {
