@@ -62,16 +62,11 @@ const MAX_CHIPS = 3;
 const FILTER_KEY = 'soma_calendar_filters';
 
 const WEEK_SLOT_HEIGHT = 60;
-const WEEK_START_HOUR = 5;
 const WEEK_TOTAL_HOURS = 24;
 const WEEK_GRID_HEIGHT = WEEK_TOTAL_HOURS * WEEK_SLOT_HEIGHT;
 
 function weekMinToTop(clockMinutes: number): number {
-  const startMinutes = WEEK_START_HOUR * 60;
-  const offset = clockMinutes >= startMinutes
-    ? clockMinutes - startMinutes
-    : clockMinutes + (24 * 60 - startMinutes);
-  return (offset / 60) * WEEK_SLOT_HEIGHT;
+  return (clockMinutes / 60) * WEEK_SLOT_HEIGHT;
 }
 
 function isOnDate(iso: string, date: Date): boolean {
@@ -549,9 +544,8 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
 
   // Hour slots for the week time grid
   const weekHourSlots = Array.from({ length: WEEK_TOTAL_HOURS }, (_, i) => {
-    const h = (WEEK_START_HOUR + i) % 24;
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const h12 = h % 12 || 12;
+    const ampm = i >= 12 ? 'PM' : 'AM';
+    const h12 = i % 12 || 12;
     return { label: i === 0 ? '' : `${h12} ${ampm}` };
   });
 
