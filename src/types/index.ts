@@ -41,6 +41,8 @@ export interface CanvasAssignment {
   status: 'not_started' | 'in_progress' | 'done';
   description?: string;
   submittedAt?: string | null;
+  score?: number | null;
+  pointsPossible?: number | null;
 }
 
 export interface CanvasCourse {

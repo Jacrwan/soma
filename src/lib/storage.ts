@@ -7,6 +7,7 @@ const KEYS = {
   canvasToken: 'canvas_token',
   canvasBaseUrl: 'canvas_base_url',
   assignmentStatus: 'canvas_assignment_status',
+  clearedAssignments: 'canvas_cleared_assignments',
   cachedCourses: 'soma_cached_courses',
   cachedAssignments: 'soma_canvas_cache',
   cachedAnnouncements: 'soma_cached_announcements',
@@ -20,6 +21,7 @@ const KEYS = {
   googleCacheTimestamp: 'soma_google_cache_timestamp',
   chatSessions: 'soma_chat_sessions',
   activeSessionId: 'soma_active_session_id',
+  canvasCourseNames: 'soma_canvas_course_names',
 };
 
 const DEFAULT_SUBJECTS: Subject[] = [
@@ -78,6 +80,9 @@ export const storage = {
   getAssignmentStatus: (): Record<number, string> => get(KEYS.assignmentStatus, {}),
   setAssignmentStatus: (v: Record<number, string>) => set(KEYS.assignmentStatus, v),
 
+  getClearedAssignments: (): Record<number, boolean> => get(KEYS.clearedAssignments, {}),
+  setClearedAssignments: (v: Record<number, boolean>) => set(KEYS.clearedAssignments, v),
+
   getCachedCourses: (): CanvasCourse[] => get(KEYS.cachedCourses, []),
   setCachedCourses: (v: CanvasCourse[]) => set(KEYS.cachedCourses, v),
 
@@ -124,4 +129,7 @@ export const storage = {
 
   getActiveSessionId: (): string => get(KEYS.activeSessionId, ''),
   setActiveSessionId: (v: string) => set(KEYS.activeSessionId, v),
+
+  getCanvasCourseNames: (): string[] => get(KEYS.canvasCourseNames, []),
+  setCanvasCourseNames: (v: string[]) => set(KEYS.canvasCourseNames, v),
 };

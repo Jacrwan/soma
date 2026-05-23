@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { storage } from '../../lib/storage';
 import { CanvasCourse, CanvasAssignment, CanvasAnnouncement, Subject, Todo } from '../../types';
-import { getCourses, getAssignments, getAnnouncements, getModules } from '../../lib/canvas';
+import { getCourses, getAssignments, getAnnouncements, getModules, getGrades } from '../../lib/canvas';
+import { CanvasGrade } from '../../types';
 import AssignmentDetail from './AssignmentDetail';
 import styles from './CanvasTab.module.css';
 
@@ -20,21 +21,35 @@ function fmtPosted(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-const CACHE_MAX_AGE = 60 * 60 * 1000;
+function looksLikeCanvasCourseName(name: string): boolean {
+  return /\b(AP|Hon|Honors|Semester|Periods?|P\d|S[12]|Yr)\b/i.test(name)
+    || /\bPer\s*:/i.test(name)
+    || /-.+/.test(name)
+    || /\(.+\bPeriods?\b.+\)/i.test(name);
+}
 
 function syncCoursesToSubjects(courses: CanvasCourse[]) {
   let subjects = storage.getSubjects();
   let changed = false;
 
-  for (const course of courses) {
-    const courseLower = course.name.toLowerCase();
-    const matchIdx = subjects.findIndex(s => {
-      const sLower = s.name.toLowerCase();
-      return sLower === courseLower
-        || courseLower.includes(sLower)
-        || sLower.includes(courseLower);
-    });
+  const currentCourseNames = new Set(courses.map(c => c.name));
+  const knownCanvasCourseNames = new Set([
+    ...storage.getCanvasCourseNames(),
+    ...storage.getCachedCourses().map(c => c.name),
+  ]);
 
+  const prunedSubjects = subjects.filter(s =>
+    currentCourseNames.has(s.name)
+      || (!knownCanvasCourseNames.has(s.name) && !looksLikeCanvasCourseName(s.name))
+  );
+  if (prunedSubjects.length !== subjects.length) {
+    subjects = prunedSubjects;
+    changed = true;
+  }
+
+  // Add subjects for current courses that don't exist yet
+  for (const course of courses) {
+    const matchIdx = subjects.findIndex(s => s.name === course.name);
     if (matchIdx === -1) {
       subjects = [...subjects, {
         id: crypto.randomUUID(),
@@ -43,15 +58,11 @@ function syncCoursesToSubjects(courses: CanvasCourse[]) {
         totalTimeToday: 0,
       }];
       changed = true;
-    } else if (subjects[matchIdx].name !== course.name) {
-      subjects = subjects.map((s, i) => i === matchIdx ? { ...s, name: course.name } : s);
-      changed = true;
     }
   }
 
-  if (changed) {
-    storage.setSubjects(subjects);
-  }
+  storage.setCanvasCourseNames([...currentCourseNames]);
+  if (changed) storage.setSubjects(subjects);
 }
 
 function fmtSynced(ts: number): string {
@@ -77,6 +88,9 @@ export default function CanvasTab() {
   const [assignmentStatus, setAssignmentStatus] = useState<Record<number, string>>(
     () => storage.getAssignmentStatus(),
   );
+  const [clearedAssignments, setClearedAssignments] = useState<Record<number, boolean>>(
+    () => storage.getClearedAssignments(),
+  );
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
   const [announcementsOpen, setAnnouncementsOpen] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
@@ -85,48 +99,57 @@ export default function CanvasTab() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [detailAssignment, setDetailAssignment] = useState<CanvasAssignment | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'all' | 'not_started' | 'in_progress' | 'done'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'not_started' | 'in_progress' | 'done' | 'cleared'>('all');
   const [sortBy, setSortBy] = useState<'due' | 'course'>('due');
+  const [canvasView, setCanvasView] = useState<'assignments' | 'grades'>('assignments');
+  const [grades, setGrades] = useState<CanvasGrade[]>([]);
+  const [gradesLoading, setGradesLoading] = useState(false);
 
   const isConnected = !!token && !!baseUrl;
 
   useEffect(() => {
     if (!isConnected) return;
-    const ts = storage.getCacheTimestamp();
-    if (ts && Date.now() - ts < CACHE_MAX_AGE) {
-      const cachedCourses = storage.getCachedCourses();
-      setCourses(cachedCourses);
-      syncCoursesToSubjects(cachedCourses);
-      setAssignments(storage.getCachedAssignments());
-      setAnnouncements(storage.getCachedAnnouncements());
-      setLastSynced(ts);
-    } else {
-      loadData(token, baseUrl);
-    }
+    loadData(token, baseUrl);
   }, []);
 
+  async function refreshSecondaryData(tk: string, url: string, coursesData: CanvasCourse[]) {
+    const [announcementGroups, moduleGroups] = await Promise.all([
+      Promise.all(coursesData.map(c => getAnnouncements(tk, url, c.id).catch(() => []))),
+      Promise.all(coursesData.map(c => getModules(tk, url, c.id).catch(() => []))),
+    ]);
+    const flatAnnouncements = announcementGroups.flat();
+    storage.setCachedAnnouncements(flatAnnouncements);
+    setAnnouncements(flatAnnouncements);
+    storage.setCachedModules(moduleGroups.flat());
+  }
+
   async function loadData(tk: string, url: string, force = false) {
-    if (force) setSyncing(true); else setLoading(true);
+    const hasCachedAssignments = storage.getCachedAssignments().length > 0;
+    if (force || hasCachedAssignments) setSyncing(true); else setLoading(true);
     setError('');
     try {
       const coursesData = await getCourses(tk, url);
       setCourses(coursesData);
-      storage.setCachedCourses(coursesData);
       syncCoursesToSubjects(coursesData);
-      const [assignmentGroups, announcementGroups, moduleGroups] = await Promise.all([
-        Promise.all(coursesData.map(c => getAssignments(tk, url, c))),
-        Promise.all(coursesData.map(c => getAnnouncements(tk, url, c.id))),
-        Promise.all(coursesData.map(c => getModules(tk, url, c.id))),
-      ]);
+      storage.setCachedCourses(coursesData);
+      const assignmentGroups = await Promise.all(
+        coursesData.map(c => getAssignments(tk, url, c).catch(() => [])),
+      );
       const all = assignmentGroups.flat();
-      all.sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime());
+      all.sort((a, b) => new Date(b.dueAt).getTime() - new Date(a.dueAt).getTime());
 
       // Auto-mark submitted assignments as done
       const currentStatus = storage.getAssignmentStatus();
       const updatedStatus = { ...currentStatus };
       let statusChanged = false;
       for (const a of all) {
-        if (a.submittedAt && updatedStatus[a.id] !== 'done') {
+        if (a.score != null && a.score > 0 && updatedStatus[a.id] !== 'done') {
+          updatedStatus[a.id] = 'done';
+          statusChanged = true;
+        } else if (a.score === 0 && !a.submittedAt && updatedStatus[a.id] !== 'not_started') {
+          updatedStatus[a.id] = 'not_started';
+          statusChanged = true;
+        } else if (a.submittedAt && a.score == null && updatedStatus[a.id] !== 'done') {
           updatedStatus[a.id] = 'done';
           statusChanged = true;
         }
@@ -138,18 +161,29 @@ export default function CanvasTab() {
 
       setAssignments(all);
       storage.setCachedAssignments(all);
-      const flatAnnouncements = announcementGroups.flat();
-      storage.setCachedAnnouncements(flatAnnouncements);
-      setAnnouncements(flatAnnouncements);
-      storage.setCachedModules(moduleGroups.flat());
       const now = Date.now();
       storage.setCacheTimestamp(now);
       setLastSynced(now);
+      setSyncing(false);
+      setLoading(false);
+      refreshSecondaryData(tk, url, coursesData).catch(() => {});
     } catch {
       setError('Failed to load. Check your token and URL.');
     } finally {
       setSyncing(false);
       setLoading(false);
+    }
+  }
+
+  async function loadGrades() {
+    setGradesLoading(true);
+    try {
+      const data = await getGrades(token, baseUrl);
+      setGrades(data);
+    } catch {
+      // silently fail — grades are best-effort
+    } finally {
+      setGradesLoading(false);
     }
   }
 
@@ -211,6 +245,17 @@ export default function CanvasTab() {
     }
   }
 
+  function setAssignmentCleared(id: number, cleared: boolean) {
+    const updated = { ...clearedAssignments };
+    if (cleared) {
+      updated[id] = true;
+    } else {
+      delete updated[id];
+    }
+    storage.setClearedAssignments(updated);
+    setClearedAssignments(updated);
+  }
+
   function getStatus(id: number) {
     return assignmentStatus[id] ?? 'not_started';
   }
@@ -266,9 +311,10 @@ export default function CanvasTab() {
 
   const filtered = assignments
     .filter(a => selectedCourseId === null || a.courseId === selectedCourseId)
-    .filter(a => statusFilter === 'all' || (assignmentStatus[a.id] ?? 'not_started') === statusFilter)
+    .filter(a => statusFilter === 'cleared' ? clearedAssignments[a.id] : !clearedAssignments[a.id])
+    .filter(a => statusFilter === 'all' || statusFilter === 'cleared' || (assignmentStatus[a.id] ?? 'not_started') === statusFilter)
     .sort((a, b) => sortBy === 'due'
-      ? new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime()
+      ? new Date(b.dueAt).getTime() - new Date(a.dueAt).getTime()
       : a.courseName.localeCompare(b.courseName)
     );
 
@@ -287,21 +333,112 @@ export default function CanvasTab() {
   return (
     <div className={styles.container}>
       <div className={styles.topBar}>
+        <div className={styles.subNav}>
+          <button
+            className={`${styles.subNavBtn}${canvasView === 'assignments' ? ` ${styles.subNavBtnActive}` : ''}`}
+            onClick={() => setCanvasView('assignments')}
+          >Assignments</button>
+          <button
+            className={`${styles.subNavBtn}${canvasView === 'grades' ? ` ${styles.subNavBtnActive}` : ''}`}
+            onClick={() => { setCanvasView('grades'); if (!grades.length) loadGrades(); }}
+          >Grades</button>
+        </div>
         <div className={styles.syncRow}>
           {lastSynced && (
             <span className={styles.syncLabel}>Last synced: {fmtSynced(lastSynced)}</span>
           )}
           <button
             className={styles.refreshBtn}
-            onClick={() => loadData(token, baseUrl, true)}
-            disabled={syncing || loading}
+            onClick={() => canvasView === 'grades' ? loadGrades() : loadData(token, baseUrl, true)}
+            disabled={syncing || loading || gradesLoading}
             title="Refresh"
-          >{syncing ? '↻' : '↻'}</button>
+          >↻</button>
         </div>
         <button className={styles.disconnectLink} onClick={handleDisconnect}>Disconnect</button>
       </div>
 
-      <div className={styles.layout}>
+      {canvasView === 'grades' && (
+        <div className={styles.gradesView}>
+          {gradesLoading && <div className={styles.loading}>Loading grades…</div>}
+          {!gradesLoading && grades.length === 0 && (
+            <div className={styles.empty}>No grade data available.</div>
+          )}
+          {!gradesLoading && grades.length > 0 && (() => {
+            const scored = grades.filter(g => g.currentScore !== null);
+            const avg = scored.length
+              ? (scored.reduce((s, g) => s + g.currentScore!, 0) / scored.length).toFixed(1)
+              : null;
+            const GRADE_COLORS: Record<string, string> = {
+              A: '#66bb6a', B: '#42a5f5', C: '#ffa726', D: '#ef5350', F: '#ef5350',
+            };
+            const scoreColor = (s: number | null) => {
+              if (s === null) return 'var(--text-muted)';
+              if (s >= 90) return '#66bb6a';
+              if (s >= 80) return '#42a5f5';
+              if (s >= 70) return '#ffa726';
+              return '#ef5350';
+            };
+            return (
+              <>
+                {avg && (
+                  <div className={styles.gradesSummary}>
+                    <span className={styles.gradesSummaryLabel}>Current Average</span>
+                    <span className={styles.gradesSummaryScore} style={{ color: scoreColor(Number(avg)) }}>{avg}%</span>
+                  </div>
+                )}
+                <div className={styles.gradesList}>
+                  {grades.map((g, i) => (
+                    <div key={g.courseId} className={styles.gradesRow}>
+                      <span className={styles.gradesDot} style={{ background: COURSE_COLORS[i % COURSE_COLORS.length] }} />
+                      <div className={styles.gradesInfo}>
+                        <span className={styles.gradesName}>{g.courseName}</span>
+                        <span className={styles.gradesCode}>{g.courseCode}</span>
+                      </div>
+                      <div className={styles.gradesRight}>
+                        {g.currentScore !== null ? (
+                          <>
+                            <span className={styles.gradesLetter} style={{ color: GRADE_COLORS[g.currentGrade?.[0] ?? ''] ?? 'var(--text-muted)' }}>
+                              {g.currentGrade ?? '—'}
+                            </span>
+                            <span className={styles.gradesScore} style={{ color: scoreColor(g.currentScore) }}>
+                              {g.currentScore.toFixed(1)}%
+                            </span>
+                          </>
+                        ) : (
+                          <span className={styles.gradesNoGrade}>No grade</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Per-course assignment scores */}
+                {assignments.length > 0 && (
+                  <div className={styles.assignmentScores}>
+                    <div className={styles.scoresHeader}>Assignment Scores</div>
+                    {assignments
+                      .filter(a => a.score !== null && a.score !== undefined)
+                      .map(a => (
+                        <div key={a.id} className={styles.scoreRow}>
+                          <span className={styles.scoreDot} style={{ background: COURSE_COLORS[courses.findIndex(c => c.id === a.courseId) % COURSE_COLORS.length] }} />
+                          <div className={styles.scoreInfo}>
+                            <span className={styles.scoreName}>{a.name}</span>
+                            <span className={styles.scoreCourse}>{a.courseName}</span>
+                          </div>
+                          <span className={styles.scoreValue} style={{ color: scoreColor(a.pointsPossible ? (a.score! / a.pointsPossible) * 100 : null) }}>
+                            {a.score}/{a.pointsPossible ?? '?'}
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </div>
+      )}
+
+      {canvasView === 'assignments' && <div className={styles.layout}>
         {/* ── Course sidebar ── */}
         <div className={styles.sidebar}>
           <button
@@ -332,13 +469,13 @@ export default function CanvasTab() {
             <>
               <div className={styles.filterBar}>
                 <div className={styles.filterPills}>
-                  {(['all', 'not_started', 'in_progress', 'done'] as const).map(f => (
+                  {(['all', 'not_started', 'in_progress', 'done', 'cleared'] as const).map(f => (
                     <button
                       key={f}
                       className={`${styles.filterPill}${statusFilter === f ? ` ${styles.filterPillActive}` : ''}`}
                       onClick={() => setStatusFilter(f)}
                     >
-                      {f === 'all' ? 'All' : f === 'not_started' ? 'Not started' : f === 'in_progress' ? 'In progress' : 'Done'}
+                      {f === 'all' ? 'Active' : f === 'not_started' ? 'Not started' : f === 'in_progress' ? 'In progress' : f === 'done' ? 'Done' : `Cleared (${Object.keys(clearedAssignments).length})`}
                     </button>
                   ))}
                 </div>
@@ -352,15 +489,18 @@ export default function CanvasTab() {
               </div>
               <div className={styles.assignmentList}>
                 {filtered.length === 0 ? (
-                  <div className={styles.empty}>No upcoming assignments.</div>
+                  <div className={styles.empty}>
+                    {statusFilter === 'cleared' ? 'No cleared assignments.' : 'No active assignments.'}
+                  </div>
                 ) : filtered.map(a => {
                   const status = getStatus(a.id);
                   const done = status === 'done';
+                  const cleared = !!clearedAssignments[a.id];
                   const color = courseColorMap[a.courseId] ?? '#ccc';
                   return (
                     <div
                       key={a.id}
-                      className={`${styles.assignmentRow}${done ? ` ${styles.done}` : ''}`}
+                      className={`${styles.assignmentRow}${done ? ` ${styles.done}` : ''}${cleared ? ` ${styles.cleared}` : ''}`}
                       onClick={() => setDetailAssignment(a)}
                       style={{ cursor: 'pointer' }}
                     >
@@ -373,6 +513,21 @@ export default function CanvasTab() {
                         <span className={styles.assignmentCourse}>{a.courseName}</span>
                       </div>
                       <div className={styles.assignmentRight}>
+                        {a.score != null && a.pointsPossible != null && (
+                          <span className={styles.assignmentScore} style={{
+                            color: a.pointsPossible > 0
+                              ? (() => {
+                                  const pct = (a.score / a.pointsPossible) * 100;
+                                  if (pct >= 90) return '#66bb6a';
+                                  if (pct >= 80) return '#42a5f5';
+                                  if (pct >= 70) return '#ffa726';
+                                  return '#ef5350';
+                                })()
+                              : 'var(--text-muted)'
+                          }}>
+                            {a.score}/{a.pointsPossible}
+                          </span>
+                        )}
                         <span className={styles.assignmentDue}>Due: {fmtDue(a.dueAt)}</span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={e => e.stopPropagation()}>
                           <button
@@ -380,6 +535,13 @@ export default function CanvasTab() {
                             onClick={() => updateStatus(a.id, done ? 'not_started' : 'done')}
                             title={done ? 'Mark not started' : 'Mark done'}
                           >✓</button>
+                          <button
+                            className={styles.clearBtn}
+                            onClick={() => setAssignmentCleared(a.id, !cleared)}
+                            title={cleared ? 'Restore to active list' : 'Clear from Canvas page'}
+                          >
+                            {cleared ? 'Restore' : 'Clear'}
+                          </button>
                           <select
                             className={styles.statusSelect}
                             value={status}
@@ -467,7 +629,7 @@ export default function CanvasTab() {
             </>
           )}
         </div>
-      </div>
+      </div>}
 
       {detailAssignment && (
         <AssignmentDetail
