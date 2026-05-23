@@ -622,6 +622,18 @@
   opacity: 0.3;
 }
 
+/* Short-session dot */
+.weekViewDot {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  left: 4px;
+  z-index: 3;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
 /* Event blocks */
 .weekViewBlock {
   position: absolute;

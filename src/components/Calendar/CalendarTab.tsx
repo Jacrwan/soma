@@ -371,7 +371,10 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, dataVersion]);
 
-  function getPositionedEventsForDay(day: Date): PositionedEvent[] {
+  function getPositionedEventsForDay(day: Date): {
+    events: PositionedEvent[];
+    dots: { id: string; color: string; top: number }[];
+  } {
     const subjects = storage.getSubjects();
     const gcalEvents = storage.getCachedGoogleEvents();
     const blocks = storage.getTimeBlocks();
@@ -387,10 +390,10 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
       endMin: number;
       block?: TimeBlock;
       gcalEvent?: GoogleCalendarEvent;
-      col?: number;
     }
 
     const events: RawEvent[] = [];
+    const dots: { id: string; color: string; top: number }[] = [];
 
     if (filters.soma) {
       for (const b of blocks) {
@@ -398,19 +401,34 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         const start = new Date(b.startTime);
         const end = new Date(b.endTime);
         const startMin = start.getHours() * 60 + start.getMinutes();
-        let endMin = end.getHours() * 60 + end.getMinutes();
-        if (endMin <= startMin) endMin = startMin + 30;
+        const endMin = end.getHours() * 60 + end.getMinutes();
+        const durMin = endMin - startMin;
+
+        if (durMin < 5) {
+          const subject = subjects.find(s => s.id === b.subjectId);
+          const dotColor = b.source === 'canvas' ? CANVAS_COLOR : (subject?.color ?? '#9e9e9e');
+          dots.push({ id: `dot-soma-${b.id}`, color: dotColor, top: weekMinToTop(startMin) });
+          continue;
+        }
+
+        const isCanvas = b.source === 'canvas';
         const subject = subjects.find(s => s.id === b.subjectId);
-        const baseColor = subject?.color ?? '#9e9e9e';
+        const baseColor = isCanvas ? CANVAS_COLOR : (subject?.color ?? '#9e9e9e');
+        const label = isCanvas
+          ? (b.task || subject?.name || 'Assignment')
+          : (subject?.name ?? b.task || 'Block');
+        const sublabel = isCanvas ? undefined
+          : (b.task && b.task !== subject?.name ? b.task : undefined);
+
         events.push({
           id: `soma-${b.id}`,
           type: 'soma',
-          label: subject?.name ?? 'Block',
-          sublabel: b.task && b.task !== subject?.name ? b.task : undefined,
+          label,
+          sublabel,
           color: `${baseColor}d9`,
           borderColor: baseColor,
           startMin,
-          endMin,
+          endMin: endMin > startMin ? endMin : startMin + 30,
           block: b,
         });
       }
@@ -422,15 +440,21 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         const start = new Date(e.start.dateTime);
         const end = new Date(e.end.dateTime ?? e.start.dateTime);
         const startMin = start.getHours() * 60 + start.getMinutes();
-        let endMin = end.getHours() * 60 + end.getMinutes();
-        if (endMin <= startMin) endMin = startMin + 30;
+        const endMin = end.getHours() * 60 + end.getMinutes();
+        const durMin = endMin - startMin;
+
+        if (durMin < 5) {
+          dots.push({ id: `dot-gcal-${e.id}`, color: GCAL_COLOR, top: weekMinToTop(startMin) });
+          continue;
+        }
+
         events.push({
           id: `gcal-${e.id}`,
           type: 'gcal',
           label: e.summary ?? '(No title)',
           color: GCAL_COLOR,
           startMin,
-          endMin,
+          endMin: endMin > startMin ? endMin : startMin + 30,
           gcalEvent: e,
         });
       }
@@ -438,40 +462,49 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
 
     events.sort((a, b) => a.startMin - b.startMin);
 
-    // Greedy column placement for overlap layout
-    const cols: RawEvent[][] = [];
-    for (const ev of events) {
-      let placed = false;
-      for (let c = 0; c < cols.length; c++) {
-        const last = cols[c][cols[c].length - 1];
-        if (last.endMin <= ev.startMin) {
-          cols[c].push(ev);
-          ev.col = c;
-          placed = true;
-          break;
+    // Interval-graph coloring: assign each event the lowest column index
+    // not used by any overlapping event already processed.
+    const colAssign: number[] = new Array(events.length).fill(0);
+    for (let i = 0; i < events.length; i++) {
+      const used = new Set<number>();
+      for (let j = 0; j < i; j++) {
+        if (events[j].startMin < events[i].endMin && events[i].startMin < events[j].endMin) {
+          used.add(colAssign[j]);
         }
       }
-      if (!placed) {
-        ev.col = cols.length;
-        cols.push([ev]);
-      }
+      let c = 0;
+      while (used.has(c)) c++;
+      colAssign[i] = c;
     }
 
-    const numCols = Math.max(cols.length, 1);
-    return events.map(ev => ({
-      id: ev.id,
-      type: ev.type,
-      label: ev.label,
-      sublabel: ev.sublabel,
-      color: ev.color,
-      borderColor: ev.borderColor,
-      top: weekMinToTop(ev.startMin),
-      height: Math.max(((ev.endMin - ev.startMin) / 60) * WEEK_SLOT_HEIGHT, 18),
-      left: (ev.col ?? 0) / numCols,
-      width: 1 / numCols,
-      block: ev.block,
-      gcalEvent: ev.gcalEvent,
-    }));
+    // numCols for each event = max col index of any concurrent event + 1
+    const numColsArr = events.map((ev, i) => {
+      let max = colAssign[i];
+      for (let j = 0; j < events.length; j++) {
+        if (i !== j && events[j].startMin < ev.endMin && ev.startMin < events[j].endMin) {
+          max = Math.max(max, colAssign[j]);
+        }
+      }
+      return max + 1;
+    });
+
+    return {
+      events: events.map((ev, i) => ({
+        id: ev.id,
+        type: ev.type,
+        label: ev.label,
+        sublabel: ev.sublabel,
+        color: ev.color,
+        borderColor: ev.borderColor,
+        top: weekMinToTop(ev.startMin),
+        height: Math.max(((ev.endMin - ev.startMin) / 60) * WEEK_SLOT_HEIGHT, 18),
+        left: colAssign[i] / numColsArr[i],
+        width: 1 / numColsArr[i],
+        block: ev.block,
+        gcalEvent: ev.gcalEvent,
+      })),
+      dots,
+    };
   }
 
   function goToPrev() {
@@ -768,7 +801,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                 {/* Day columns */}
                 {weekDays.map((day, dayIndex) => {
                   const isToday = isSameDay(day, today);
-                  const posEvents = getPositionedEventsForDay(day);
+                  const { events: posEvents, dots: posDots } = getPositionedEventsForDay(day);
                   const nowTop = weekMinToTop(currentMinutes);
 
                   return (
@@ -783,6 +816,15 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                           <div className={styles.weekViewNowDot} />
                         </div>
                       )}
+
+                      {/* Short-session dots */}
+                      {posDots.map(dot => (
+                        <div
+                          key={dot.id}
+                          className={styles.weekViewDot}
+                          style={{ top: dot.top, background: dot.color }}
+                        />
+                      ))}
 
                       {/* Event blocks */}
                       {posEvents.map(ev => (
