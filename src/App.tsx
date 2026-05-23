@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import DayView from './components/DayView/DayView';
 import CanvasTab from './components/Canvas/CanvasTab';
+import GradesTab from './components/Grades/GradesTab';
 import AITab from './components/AI/AITab';
 import CalendarTab from './components/Calendar/CalendarTab';
 import { storage } from './lib/storage';
 import styles from './App.module.css';
 
-type Tab = 'today' | 'canvas' | 'ai' | 'calendar';
+type Tab = 'today' | 'canvas' | 'grades' | 'ai' | 'calendar';
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('today');
@@ -37,6 +38,7 @@ export default function App() {
     const titles: Record<Tab, string> = {
       today: 'Soma — Day View',
       canvas: 'Soma — Canvas',
+      grades: 'Soma — Grades',
       ai: 'Soma — AI',
       calendar: 'Soma — Calendar',
     };
@@ -70,6 +72,13 @@ export default function App() {
           </svg>
           Canvas
         </button>
+        <button className={tab === 'grades' ? styles.active : ''} onClick={() => setTab('grades')}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
+            <path d="M2 11 L5 7 L7.5 9.5 L10 5 L12 7"/>
+            <path d="M2 13h10"/>
+          </svg>
+          Grades
+        </button>
         <button className={tab === 'calendar' ? styles.active : ''} onClick={() => setTab('calendar')}>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
             <rect x="1" y="2" width="12" height="11" rx="1.5"/>
@@ -88,6 +97,7 @@ export default function App() {
       <main className={styles.main}>
         {tab === 'today'    && <DayView selectedDate={selectedDate} onSelectDate={handleSelectDate} />}
         {tab === 'canvas'   && <CanvasTab />}
+        {tab === 'grades'   && <GradesTab />}
         {tab === 'calendar' && (
           <CalendarTab
             selectedDate={selectedDate}

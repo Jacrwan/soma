@@ -56,12 +56,6 @@ export default function TimerOverlay({ subject, onClose, onSessionSaved, onRunni
     return () => { document.body.style.overflow = ''; };
   }, [step]);
 
-  // Manage focus-mode body class
-  useEffect(() => {
-    const active = step === 'running' && !isStopping;
-    document.body.classList.toggle('focus-mode', active);
-    return () => { document.body.classList.remove('focus-mode'); };
-  }, [step, isStopping]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -178,11 +172,10 @@ export default function TimerOverlay({ subject, onClose, onSessionSaved, onRunni
           {isPaused || !isRunning ? '▶' : '⏸'}
         </button>
         <button
-          className={styles.bannerBtn}
-          title="Stop"
+          className={styles.bannerStopBtn}
           onClick={handleStop}
         >
-          ■
+          Stop
         </button>
       </div>
     </div>

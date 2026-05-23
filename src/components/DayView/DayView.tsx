@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { storage, inferSubjectId } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
-import { Subject, TimeBlock, SubjectColor, Todo, GoogleCalendarEvent } from '../../types';
+import { Subject, TimeBlock, SubjectColor, Todo, GoogleCalendarEvent, CanvasAssignment, CanvasCourse } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
 import TimerOverlay from '../Timer/TimerOverlay';
+import AssignmentDetail from '../Canvas/AssignmentDetail';
 import styles from './DayView.module.css';
 
 const SLOT_HEIGHT = 60;
@@ -240,6 +241,13 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [addSubjectForm, setAddSubjectForm] = useState<AddSubjectForm>({ name: '', color: COLORS[0] });
   const [editSubject, setEditSubject] = useState<SubjectEditState | null>(null);
   const [gcalEvents, setGcalEvents] = useState<GoogleCalendarEvent[]>([]);
+  const [dueAssignments, setDueAssignments] = useState<{ assignment: CanvasAssignment; course: CanvasCourse | undefined; color: string }[]>([]);
+  const [deadlineDetail, setDeadlineDetail] = useState<{ courseId: number; assignmentId: number } | null>(null);
+  const [quickAddHour, setQuickAddHour] = useState<number | null>(null);
+  const [quickAddSubjectId, setQuickAddSubjectId] = useState<string>('');
+  const [quickAddDuration, setQuickAddDuration] = useState<number>(60);
+  const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
+  const [editingTodoText, setEditingTodoText] = useState('');
   const [timerRunning, setTimerRunning] = useState(false);
   const [briefCollapsed, setBriefCollapsed] = useState<boolean>(() => {
     const s = localStorage.getItem('soma_brief_collapsed');
@@ -292,6 +300,26 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     loadGcal();
     window.addEventListener('soma_gcal_updated', loadGcal);
     return () => window.removeEventListener('soma_gcal_updated', loadGcal);
+  }, [selectedDate]);
+
+  useEffect(() => {
+    const COURSE_COLORS = [
+      '#ef5350', '#42a5f5', '#66bb6a', '#ab47bc',
+      '#ffa726', '#26c6da', '#ec407a', '#8d6e63',
+    ];
+    const assignments = storage.getCachedAssignments();
+    const courses = storage.getCachedCourses();
+    const courseColorMap = Object.fromEntries(
+      courses.map((c, i) => [c.id, COURSE_COLORS[i % COURSE_COLORS.length]])
+    );
+    const due = assignments
+      .filter(a => a.dueAt && isOnDate(a.dueAt, selectedDate))
+      .map(a => ({
+        assignment: a,
+        course: courses.find(c => c.id === a.courseId),
+        color: courseColorMap[a.courseId] ?? '#888',
+      }));
+    setDueAssignments(due);
   }, [selectedDate]);
 
   useEffect(() => {
@@ -698,6 +726,45 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     setPinPopoverId(prev => prev === todoId ? null : todoId);
   }
 
+  function startStudyFromAssignment(assignment: CanvasAssignment) {
+    const subs = storage.getSubjects();
+    const matched = subs.find(s => {
+      const sn = s.name.toLowerCase();
+      const cn = assignment.courseName.toLowerCase();
+      return cn.includes(sn) || sn.includes(cn);
+    }) ?? subs[0] ?? null;
+    if (!matched) return;
+    setInitialTimerTask(assignment.name);
+    setTimerSubject(matched);
+  }
+
+  function handleSlotClick(hour: number) {
+    setQuickAddHour(hour);
+    setQuickAddDuration(60);
+    const subs = storage.getSubjects().filter(s => !s.archived);
+    setQuickAddSubjectId(subs[0]?.id ?? '');
+  }
+
+  function commitQuickAdd() {
+    if (quickAddHour === null || !quickAddSubjectId) return;
+    const start = new Date(
+      selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(),
+      quickAddHour, 0,
+    );
+    const end = new Date(start.getTime() + quickAddDuration * 60_000);
+    const block: TimeBlock = {
+      id: crypto.randomUUID(),
+      subjectId: quickAddSubjectId,
+      task: '',
+      startTime: toLocalISO(start),
+      endTime: toLocalISO(end),
+      source: 'manual',
+    };
+    storage.setTimeBlocks([...storage.getTimeBlocks(), block]);
+    setBlocks(prev => [...prev, block]);
+    setQuickAddHour(null);
+  }
+
   function handleDateBarWheel(e: React.WheelEvent) {
     if (Math.abs(e.deltaX) < Math.abs(e.deltaY)) return;
     if (wheelCooldownRef.current) return;
@@ -874,6 +941,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
   }
 
   return (
+    <>
     <div className={styles.wrapper}>
       {timerRunning && <div className={styles.focusBannerSpacer} />}
       {/* ── Date bar ── */}
@@ -929,7 +997,10 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               style={{ top: minToTop(slot.minutes), height: SLOT_HEIGHT }}
             >
               <span className={styles.timeLabel}>{slot.label}</span>
-              <div className={styles.slotArea} />
+              <div
+                className={styles.slotArea}
+                onClick={() => handleSlotClick(slot.minutes / 60)}
+              />
             </div>
           ))}
 
@@ -1034,6 +1105,34 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               >
                 <span className={styles.gcalBadge}>G</span>
                 <span className={styles.gcalTitle}>{event.summary ?? '(No title)'}</span>
+              </div>
+            );
+          })}
+
+          {dueAssignments.map(({ assignment, color }) => {
+            const due = new Date(assignment.dueAt);
+            const dueMin = due.getHours() * 60 + due.getMinutes();
+            const topPx = minToTop(dueMin);
+            const isPast = due.getTime() < Date.now() && isSameDay(selectedDate, new Date());
+            return (
+              <div
+                key={`due-${assignment.id}`}
+                className={styles.deadlineMarker}
+                style={{ top: topPx, borderColor: color, opacity: isPast ? 0.45 : 1 }}
+                onClick={() => setDeadlineDetail({ courseId: assignment.courseId, assignmentId: assignment.id })}
+              >
+                <span className={styles.deadlineDot} style={{ background: color }} />
+                <span className={styles.deadlineName}>{assignment.name}</span>
+                <span className={styles.deadlineTime}>
+                  {due.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                </span>
+                <button
+                  className={styles.deadlineStudyBtn}
+                  onClick={e => { e.stopPropagation(); startStudyFromAssignment(assignment); }}
+                  title="Start studying"
+                >
+                  ▶ Study
+                </button>
               </div>
             );
           })}
@@ -1582,5 +1681,50 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
         </div>
       )}
     </div>
+
+    {deadlineDetail && (
+      <AssignmentDetail
+        courseId={deadlineDetail.courseId}
+        assignmentId={deadlineDetail.assignmentId}
+        onClose={() => setDeadlineDetail(null)}
+      />
+    )}
+
+    {quickAddHour !== null && (
+      <div className={styles.quickAddBackdrop} onClick={() => setQuickAddHour(null)}>
+        <div className={styles.quickAddModal} onClick={e => e.stopPropagation()}>
+          <span className={styles.quickAddTitle}>
+            Add block at {quickAddHour % 12 || 12}:00 {quickAddHour >= 12 ? 'PM' : 'AM'}
+          </span>
+          <select
+            className={styles.quickAddSelect}
+            value={quickAddSubjectId}
+            onChange={e => setQuickAddSubjectId(e.target.value)}
+          >
+            {subjects.filter(s => !s.archived).map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          <select
+            className={styles.quickAddSelect}
+            value={quickAddDuration}
+            onChange={e => setQuickAddDuration(Number(e.target.value))}
+          >
+            <option value={15}>15 min</option>
+            <option value={30}>30 min</option>
+            <option value={45}>45 min</option>
+            <option value={60}>1 hour</option>
+            <option value={90}>1.5 hours</option>
+            <option value={120}>2 hours</option>
+            <option value={180}>3 hours</option>
+          </select>
+          <div className={styles.quickAddBtns}>
+            <button className={styles.quickAddCancel} onClick={() => setQuickAddHour(null)}>Cancel</button>
+            <button className={styles.quickAddConfirm} onClick={commitQuickAdd}>Add</button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }
