@@ -1350,6 +1350,17 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               disabled={!taskForm.text.trim()}
             >{taskModal.editingTodo ? 'Save Changes' : 'Add Task'}</button>
             <button className={styles.taskModalCancel} onClick={() => setTaskModal(null)}>Cancel</button>
+            {taskModal.editingTodo && (
+              <button
+                className={styles.taskModalDelete}
+                onClick={() => {
+                  const updated = todos.filter(t => t.id !== taskModal.editingTodo!.id);
+                  storage.setTodos(updated);
+                  setTodos(updated);
+                  setTaskModal(null);
+                }}
+              >Delete task</button>
+            )}
           </div>
         </div>
       )}

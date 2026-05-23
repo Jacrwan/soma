@@ -1867,6 +1867,25 @@
   color: var(--text-secondary);
 }
 
+.taskModalDelete {
+  display: block;
+  width: 100%;
+  text-align: center;
+  background: none;
+  border: none;
+  font-size: 12px;
+  color: var(--danger);
+  opacity: 0.6;
+  cursor: pointer;
+  padding: 4px;
+  margin-top: 2px;
+  transition: opacity 0.15s;
+}
+
+.taskModalDelete:hover {
+  opacity: 1;
+}
+
 /* ── Reduced motion ────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
