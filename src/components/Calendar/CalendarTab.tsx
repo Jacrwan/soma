@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { storage } from '../../lib/storage';
 import { getEvents, getWeekRange, isCacheStale } from '../../lib/googleCalendar';
+import { TimeBlock, Subject, GoogleCalendarEvent } from '../../types';
 import styles from './CalendarTab.module.css';
 
 type ViewMode = 'month' | 'week';
@@ -25,6 +26,31 @@ interface CalendarTabProps {
   onSwitchToToday: () => void;
 }
 
+interface WeekBlockEditForm {
+  task: string;
+  startHour: number;
+  startMinute: number;
+  startAmPm: 'AM' | 'PM';
+  endHour: number;
+  endMinute: number;
+  endAmPm: 'AM' | 'PM';
+}
+
+interface PositionedEvent {
+  id: string;
+  type: 'soma' | 'gcal';
+  label: string;
+  sublabel?: string;
+  color: string;
+  borderColor?: string;
+  top: number;
+  height: number;
+  left: number;
+  width: number;
+  block?: TimeBlock;
+  gcalEvent?: GoogleCalendarEvent;
+}
+
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -34,6 +60,42 @@ const GCAL_COLOR = '#1a73e8';
 const CANVAS_COLOR = '#f4511e';
 const MAX_CHIPS = 3;
 const FILTER_KEY = 'soma_calendar_filters';
+
+const WEEK_SLOT_HEIGHT = 60;
+const WEEK_START_HOUR = 5;
+const WEEK_TOTAL_HOURS = 24;
+const WEEK_GRID_HEIGHT = WEEK_TOTAL_HOURS * WEEK_SLOT_HEIGHT;
+
+function weekMinToTop(clockMinutes: number): number {
+  const startMinutes = WEEK_START_HOUR * 60;
+  const offset = clockMinutes >= startMinutes
+    ? clockMinutes - startMinutes
+    : clockMinutes + (24 * 60 - startMinutes);
+  return (offset / 60) * WEEK_SLOT_HEIGHT;
+}
+
+function isOnDate(iso: string, date: Date): boolean {
+  const d = new Date(iso);
+  return d.getFullYear() === date.getFullYear()
+    && d.getMonth() === date.getMonth()
+    && d.getDate() === date.getDate();
+}
+
+function fmtTime(iso: string): string {
+  const d = new Date(iso);
+  const h = d.getHours(), m = d.getMinutes();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+function fmtDuration(startISO: string, endISO: string): string {
+  const mins = Math.round((new Date(endISO).getTime() - new Date(startISO).getTime()) / 60_000);
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h > 0 && m > 0) return `${h}h ${m}m`;
+  if (h > 0) return `${h}h`;
+  return `${m}m`;
+}
 
 function isSameDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear()
@@ -75,7 +137,6 @@ function saveFilters(f: Filters) {
 }
 
 export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToday }: CalendarTabProps) {
-  // Google auth state
   const [token, setToken] = useState(() => storage.getGoogleToken());
   const [clientId, setClientId] = useState(() => storage.getGoogleClientId());
   const [setupClientId, setSetupClientId] = useState('');
@@ -83,7 +144,6 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   const [gcalLoading, setGcalLoading] = useState(false);
   const [gcalError, setGcalError] = useState('');
 
-  // View state
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [viewMonth, setViewMonth] = useState<Date>(() => {
     const d = new Date(selectedDate);
@@ -93,9 +153,21 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   const [filters, setFilters] = useState<Filters>(() => loadFilters());
   const [dataVersion, setDataVersion] = useState(0);
 
+  const [currentMinutes, setCurrentMinutes] = useState(() => {
+    const now = new Date();
+    return now.getHours() * 60 + now.getMinutes();
+  });
+  const [weekBlockModal, setWeekBlockModal] = useState<{ block: TimeBlock; subject: Subject | undefined } | null>(null);
+  const [weekBlockEditMode, setWeekBlockEditMode] = useState(false);
+  const [weekBlockEditForm, setWeekBlockEditForm] = useState<WeekBlockEditForm>({
+    task: '', startHour: 9, startMinute: 0, startAmPm: 'AM',
+    endHour: 10, endMinute: 0, endAmPm: 'AM',
+  });
+
+  const weekGridRef = useRef<HTMLDivElement>(null);
+
   const isConnected = !!token;
 
-  // OAuth listeners
   useEffect(() => {
     const messageHandler = (e: MessageEvent) => {
       if (e.origin !== window.location.origin) return;
@@ -117,7 +189,6 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     };
   }, []);
 
-  // Auto-fetch gcal events on connect; listen for updates
   useEffect(() => {
     const handler = () => setDataVersion(v => v + 1);
     window.addEventListener('soma_gcal_updated', handler);
@@ -129,6 +200,32 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     if (!isCacheStale(storage.getGoogleCacheTimestamp())) return;
     fetchGcalEvents(token);
   }, [token]);
+
+  useEffect(() => {
+    const tick = () => {
+      const now = new Date();
+      setCurrentMinutes(now.getHours() * 60 + now.getMinutes());
+    };
+    const id = setInterval(tick, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (!weekBlockModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setWeekBlockModal(null); setWeekBlockEditMode(false); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [weekBlockModal]);
+
+  // Auto-scroll to current time when entering week view
+  useEffect(() => {
+    if (viewMode !== 'week' || !weekGridRef.current) return;
+    const now = new Date();
+    const scrollTop = Math.max(0, weekMinToTop(now.getHours() * 60 + now.getMinutes()) - 200);
+    weekGridRef.current.scrollTop = scrollTop;
+  }, [viewMode, viewWeekStart]);
 
   async function fetchGcalEvents(tk: string) {
     setGcalLoading(true);
@@ -188,7 +285,59 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     });
   }
 
-  // Chips by date (useMemo re-runs when filters or data changes)
+  function openWeekBlockEdit(block: TimeBlock) {
+    const toForm = (d: Date) => {
+      const h24 = d.getHours(), m = d.getMinutes();
+      return { hour: h24 % 12 || 12, minute: m, ampm: (h24 >= 12 ? 'PM' : 'AM') as 'AM' | 'PM' };
+    };
+    const s = toForm(new Date(block.startTime));
+    const e = toForm(new Date(block.endTime));
+    setWeekBlockEditForm({
+      task: block.task ?? '',
+      startHour: s.hour, startMinute: s.minute, startAmPm: s.ampm,
+      endHour: e.hour, endMinute: e.minute, endAmPm: e.ampm,
+    });
+    setWeekBlockEditMode(true);
+  }
+
+  function saveWeekBlockEdit() {
+    if (!weekBlockModal) return;
+    const toHour24 = (h: number, ampm: 'AM' | 'PM') => (h % 12) + (ampm === 'PM' ? 12 : 0);
+    const blockDate = new Date(weekBlockModal.block.startTime);
+    const start = new Date(
+      blockDate.getFullYear(), blockDate.getMonth(), blockDate.getDate(),
+      toHour24(weekBlockEditForm.startHour, weekBlockEditForm.startAmPm),
+      weekBlockEditForm.startMinute,
+    );
+    const end = new Date(
+      blockDate.getFullYear(), blockDate.getMonth(), blockDate.getDate(),
+      toHour24(weekBlockEditForm.endHour, weekBlockEditForm.endAmPm),
+      weekBlockEditForm.endMinute,
+    );
+    function toLocalISO(d: Date) {
+      return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, -1);
+    }
+    const updated: TimeBlock = {
+      ...weekBlockModal.block,
+      task: weekBlockEditForm.task.trim() || weekBlockModal.block.task,
+      startTime: toLocalISO(start),
+      endTime: toLocalISO(end),
+    };
+    const allBlocks = storage.getTimeBlocks().map(b => b.id === updated.id ? updated : b);
+    storage.setTimeBlocks(allBlocks);
+    setWeekBlockModal({ block: updated, subject: weekBlockModal.subject });
+    setWeekBlockEditMode(false);
+    setDataVersion(v => v + 1);
+  }
+
+  function deleteWeekBlock(id: string) {
+    storage.setTimeBlocks(storage.getTimeBlocks().filter(b => b.id !== id));
+    setWeekBlockModal(null);
+    setWeekBlockEditMode(false);
+    setDataVersion(v => v + 1);
+  }
+
+  // Month view chip data
   const chipsByDate = useMemo(() => {
     const map = new Map<string, Chip[]>();
     const subjects = storage.getSubjects();
@@ -206,51 +355,130 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
       for (const e of gcalEvents) {
         const dt = e.start.dateTime ?? e.start.date;
         if (!dt) continue;
-        add(new Date(dt), {
-          id: `gcal-${e.id}`,
-          label: e.summary ?? '(No title)',
-          bgColor: GCAL_COLOR,
-          type: 'gcal',
-          sortKey: new Date(dt).getTime(),
-        });
+        add(new Date(dt), { id: `gcal-${e.id}`, label: e.summary ?? '(No title)', bgColor: GCAL_COLOR, type: 'gcal', sortKey: new Date(dt).getTime() });
       }
     }
-
     if (filters.canvas) {
       for (const a of assignments) {
         if (!a.dueAt) continue;
-        add(new Date(a.dueAt), {
-          id: `canvas-${a.id}`,
-          label: a.name,
-          bgColor: CANVAS_COLOR,
-          type: 'canvas',
-          sortKey: new Date(a.dueAt).getTime(),
-        });
+        add(new Date(a.dueAt), { id: `canvas-${a.id}`, label: a.name, bgColor: CANVAS_COLOR, type: 'canvas', sortKey: new Date(a.dueAt).getTime() });
       }
     }
-
     if (filters.soma) {
       for (const b of blocks) {
         if (!b.startTime) continue;
         const subj = subjects.find(s => s.id === b.subjectId);
-        add(new Date(b.startTime), {
-          id: `soma-${b.id}`,
-          label: b.task || subj?.name || 'Block',
-          bgColor: subj?.color ?? '#9e9e9e',
-          type: 'soma',
-          sortKey: new Date(b.startTime).getTime(),
-        });
+        add(new Date(b.startTime), { id: `soma-${b.id}`, label: b.task || subj?.name || 'Block', bgColor: subj?.color ?? '#9e9e9e', type: 'soma', sortKey: new Date(b.startTime).getTime() });
       }
     }
-
-    for (const chips of map.values()) {
-      chips.sort((a, b) => a.sortKey - b.sortKey);
-    }
+    for (const chips of map.values()) chips.sort((a, b) => a.sortKey - b.sortKey);
     return map;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters, dataVersion]);
 
-  // Navigation
+  function getPositionedEventsForDay(day: Date): PositionedEvent[] {
+    const subjects = storage.getSubjects();
+    const gcalEvents = storage.getCachedGoogleEvents();
+    const blocks = storage.getTimeBlocks();
+
+    interface RawEvent {
+      id: string;
+      type: 'soma' | 'gcal';
+      label: string;
+      sublabel?: string;
+      color: string;
+      borderColor?: string;
+      startMin: number;
+      endMin: number;
+      block?: TimeBlock;
+      gcalEvent?: GoogleCalendarEvent;
+      col?: number;
+    }
+
+    const events: RawEvent[] = [];
+
+    if (filters.soma) {
+      for (const b of blocks) {
+        if (!b.startTime || !isOnDate(b.startTime, day)) continue;
+        const start = new Date(b.startTime);
+        const end = new Date(b.endTime);
+        const startMin = start.getHours() * 60 + start.getMinutes();
+        let endMin = end.getHours() * 60 + end.getMinutes();
+        if (endMin <= startMin) endMin = startMin + 30;
+        const subject = subjects.find(s => s.id === b.subjectId);
+        const baseColor = subject?.color ?? '#9e9e9e';
+        events.push({
+          id: `soma-${b.id}`,
+          type: 'soma',
+          label: subject?.name ?? 'Block',
+          sublabel: b.task && b.task !== subject?.name ? b.task : undefined,
+          color: `${baseColor}d9`,
+          borderColor: baseColor,
+          startMin,
+          endMin,
+          block: b,
+        });
+      }
+    }
+
+    if (filters.gcal) {
+      for (const e of gcalEvents) {
+        if (!e.start.dateTime || !isOnDate(e.start.dateTime, day)) continue;
+        const start = new Date(e.start.dateTime);
+        const end = new Date(e.end.dateTime ?? e.start.dateTime);
+        const startMin = start.getHours() * 60 + start.getMinutes();
+        let endMin = end.getHours() * 60 + end.getMinutes();
+        if (endMin <= startMin) endMin = startMin + 30;
+        events.push({
+          id: `gcal-${e.id}`,
+          type: 'gcal',
+          label: e.summary ?? '(No title)',
+          color: GCAL_COLOR,
+          startMin,
+          endMin,
+          gcalEvent: e,
+        });
+      }
+    }
+
+    events.sort((a, b) => a.startMin - b.startMin);
+
+    // Greedy column placement for overlap layout
+    const cols: RawEvent[][] = [];
+    for (const ev of events) {
+      let placed = false;
+      for (let c = 0; c < cols.length; c++) {
+        const last = cols[c][cols[c].length - 1];
+        if (last.endMin <= ev.startMin) {
+          cols[c].push(ev);
+          ev.col = c;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        ev.col = cols.length;
+        cols.push([ev]);
+      }
+    }
+
+    const numCols = Math.max(cols.length, 1);
+    return events.map(ev => ({
+      id: ev.id,
+      type: ev.type,
+      label: ev.label,
+      sublabel: ev.sublabel,
+      color: ev.color,
+      borderColor: ev.borderColor,
+      top: weekMinToTop(ev.startMin),
+      height: Math.max(((ev.endMin - ev.startMin) / 60) * WEEK_SLOT_HEIGHT, 18),
+      left: (ev.col ?? 0) / numCols,
+      width: 1 / numCols,
+      block: ev.block,
+      gcalEvent: ev.gcalEvent,
+    }));
+  }
+
   function goToPrev() {
     if (viewMode === 'month') {
       setViewMonth(d => new Date(d.getFullYear(), d.getMonth() - 1, 1));
@@ -290,7 +518,6 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     onSwitchToToday();
   }
 
-  // Header title
   const headerTitle = viewMode === 'month'
     ? `${MONTH_NAMES[viewMonth.getMonth()]} ${viewMonth.getFullYear()}`
     : (() => {
@@ -306,24 +533,27 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Month grid: 6 weeks × 7 days starting from the Sunday of the week containing month's 1st
   const monthCells = useMemo(() => {
     const firstOfMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1);
     const gridStart = getSundayOfWeek(firstOfMonth);
     return Array.from({ length: 42 }, (_, i) => {
       const date = addDays(gridStart, i);
-      return {
-        date,
-        isCurrentMonth: date.getMonth() === viewMonth.getMonth(),
-      };
+      return { date, isCurrentMonth: date.getMonth() === viewMonth.getMonth() };
     });
   }, [viewMonth]);
 
-  // Week grid: 7 days starting from viewWeekStart (Sunday)
   const weekDays = useMemo(
     () => Array.from({ length: 7 }, (_, i) => addDays(viewWeekStart, i)),
     [viewWeekStart],
   );
+
+  // Hour slots for the week time grid
+  const weekHourSlots = Array.from({ length: WEEK_TOTAL_HOURS }, (_, i) => {
+    const h = (WEEK_START_HOUR + i) % 24;
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    return { label: i === 0 ? '' : `${h12} ${ampm}` };
+  });
 
   function renderDayNum(date: Date, isCurrentMonth = true) {
     const isToday = isSameDay(date, today);
@@ -349,25 +579,21 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     return (
       <>
         {visible.map(chip => (
-          <span
-            key={chip.id}
-            className={styles.chip}
-            style={{ background: chip.bgColor }}
-            title={chip.label}
-          >
+          <span key={chip.id} className={styles.chip} style={{ background: chip.bgColor }} title={chip.label}>
             {chip.label}
           </span>
         ))}
-        {overflow > 0 && (
-          <span className={styles.overflowChip}>+{overflow} more</span>
-        )}
+        {overflow > 0 && <span className={styles.overflowChip}>+{overflow} more</span>}
       </>
     );
   }
 
+  const todayInWeek = weekDays.some(d => isSameDay(d, today));
+  const todayColIndex = weekDays.findIndex(d => isSameDay(d, today));
+
   return (
     <div className={styles.container}>
-      {/* ── Header ─────────────────────────────────────────────────────── */}
+      {/* ── Header ── */}
       <div className={styles.header}>
         <div className={styles.headerLeft}>
           <button className={styles.navArrow} onClick={goToPrev}>‹</button>
@@ -389,7 +615,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         </div>
       </div>
 
-      {/* ── Filter bar ─────────────────────────────────────────────────── */}
+      {/* ── Filter bar ── */}
       <div className={styles.filterBar}>
         {isConnected ? (
           <button
@@ -419,7 +645,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         {gcalError && <span className={styles.gcalError}>{gcalError}</span>}
       </div>
 
-      {/* ── Connect card ───────────────────────────────────────────────── */}
+      {/* ── Connect card ── */}
       {showConnect && !isConnected && (
         <div className={styles.connectCard}>
           <span className={styles.connectTitle}>Connect Google Calendar</span>
@@ -431,11 +657,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
               onChange={e => setSetupClientId(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') openOAuthPopup(); if (e.key === 'Escape') setShowConnect(false); }}
             />
-            <button
-              className={styles.connectBtn}
-              onClick={openOAuthPopup}
-              disabled={!setupClientId.trim() && !clientId}
-            >Connect</button>
+            <button className={styles.connectBtn} onClick={openOAuthPopup} disabled={!setupClientId.trim() && !clientId}>Connect</button>
             <button className={styles.connectCancel} onClick={() => setShowConnect(false)}>✕</button>
           </div>
           <span className={styles.connectHint}>
@@ -445,57 +667,268 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         </div>
       )}
 
-      {/* ── Day-of-week header ─────────────────────────────────────────── */}
-      <div className={styles.dayHeaders}>
-        {DAY_NAMES.map(d => (
-          <div key={d} className={styles.dayHeaderCell}>{d}</div>
-        ))}
-      </div>
-
-      {/* ── Month grid ─────────────────────────────────────────────────── */}
+      {/* ── Month view ── */}
       {viewMode === 'month' && (
-        <div className={styles.monthGrid}>
-          {monthCells.map(({ date, isCurrentMonth }, i) => (
-            <div
-              key={i}
-              className={[
-                styles.monthCell,
-                !isCurrentMonth ? styles.monthCellOther : '',
-                isSameDay(date, today) ? styles.monthCellToday : '',
-                isSameDay(date, selectedDate) ? styles.monthCellSelected : '',
-              ].filter(Boolean).join(' ')}
-              onClick={() => handleDayClick(date)}
-            >
-              {renderDayNum(date, isCurrentMonth)}
-              <div className={styles.chipsArea}>
-                {renderChips(date)}
+        <>
+          <div className={styles.dayHeaders}>
+            {DAY_NAMES.map(d => (
+              <div key={d} className={styles.dayHeaderCell}>{d}</div>
+            ))}
+          </div>
+          <div className={styles.monthGrid}>
+            {monthCells.map(({ date, isCurrentMonth }, i) => (
+              <div
+                key={i}
+                className={[
+                  styles.monthCell,
+                  !isCurrentMonth ? styles.monthCellOther : '',
+                  isSameDay(date, today) ? styles.monthCellToday : '',
+                  isSameDay(date, selectedDate) ? styles.monthCellSelected : '',
+                ].filter(Boolean).join(' ')}
+                onClick={() => handleDayClick(date)}
+              >
+                {renderDayNum(date, isCurrentMonth)}
+                <div className={styles.chipsArea}>{renderChips(date)}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ── Week view ── */}
+      {viewMode === 'week' && (
+        <div className={styles.weekViewOuter}>
+
+          {/* Day headers row */}
+          <div className={styles.weekViewHeaderRow}>
+            <div className={styles.weekViewGutterHeader} />
+            {weekDays.map((day, i) => {
+              const isToday = isSameDay(day, today);
+              return (
+                <div
+                  key={i}
+                  className={styles.weekViewDayHeader}
+                  onClick={() => handleDayClick(day)}
+                >
+                  <span className={styles.weekViewDayAbbr}>{DAY_NAMES[day.getDay()]}</span>
+                  <span className={`${styles.weekViewDayNum}${isToday ? ` ${styles.weekViewDayNumToday}` : ''}`}>
+                    {day.getDate()}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* All-day row (Canvas assignments) */}
+          {filters.canvas && (() => {
+            const assignments = storage.getCachedAssignments();
+            const hasAny = weekDays.some(day =>
+              assignments.some(a => a.dueAt && isSameDay(new Date(a.dueAt), day))
+            );
+            if (!hasAny) return null;
+            return (
+              <div className={styles.weekViewAllDayRow}>
+                <div className={styles.weekViewAllDayLabel}>all-day</div>
+                {weekDays.map((day, i) => {
+                  const chips = assignments.filter(a => a.dueAt && isSameDay(new Date(a.dueAt), day));
+                  return (
+                    <div key={i} className={styles.weekViewAllDayCell}>
+                      {chips.map(a => (
+                        <span key={a.id} className={styles.weekViewAllDayChip} title={a.name}>{a.name}</span>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
+          {/* Scrollable time grid */}
+          <div className={styles.weekViewScrollArea} ref={weekGridRef}>
+            <div className={styles.weekViewGrid} style={{ height: WEEK_GRID_HEIGHT }}>
+
+              {/* Time label column */}
+              <div className={styles.weekViewTimeCol}>
+                {weekHourSlots.map((slot, i) => (
+                  <div
+                    key={i}
+                    className={styles.weekViewTimeLabel}
+                    style={{ top: i * WEEK_SLOT_HEIGHT }}
+                  >
+                    {slot.label}
+                  </div>
+                ))}
+              </div>
+
+              {/* Day columns with hour lines */}
+              <div className={styles.weekViewDayCols}>
+                {/* Hour lines (rendered behind all columns via absolute positioning) */}
+                {weekHourSlots.map((_, i) => (
+                  <div
+                    key={i}
+                    className={styles.weekViewHourLine}
+                    style={{ top: i * WEEK_SLOT_HEIGHT }}
+                  />
+                ))}
+
+                {/* Day columns */}
+                {weekDays.map((day, dayIndex) => {
+                  const isToday = isSameDay(day, today);
+                  const posEvents = getPositionedEventsForDay(day);
+                  const nowTop = weekMinToTop(currentMinutes);
+
+                  return (
+                    <div
+                      key={dayIndex}
+                      className={`${styles.weekViewDayCol}${isToday ? ` ${styles.weekViewDayColToday}` : ''}`}
+                      onClick={() => handleDayClick(day)}
+                    >
+                      {/* Current time indicator */}
+                      {isToday && todayInWeek && (
+                        <div className={styles.weekViewNowLine} style={{ top: nowTop }}>
+                          <div className={styles.weekViewNowDot} />
+                        </div>
+                      )}
+
+                      {/* Event blocks */}
+                      {posEvents.map(ev => (
+                        <div
+                          key={ev.id}
+                          className={`${styles.weekViewBlock}${ev.type === 'soma' ? ` ${styles.weekViewBlockSoma}` : ` ${styles.weekViewBlockGcal}`}`}
+                          style={{
+                            top: ev.top,
+                            height: ev.height,
+                            left: `calc(${ev.left * 100}% + 1px)`,
+                            width: `calc(${ev.width * 100}% - 2px)`,
+                            background: ev.color,
+                            borderLeftColor: ev.borderColor,
+                          }}
+                          onClick={e => {
+                            e.stopPropagation();
+                            if (ev.type === 'soma' && ev.block) {
+                              const subjects = storage.getSubjects();
+                              const subject = subjects.find(s => s.id === ev.block!.subjectId);
+                              setWeekBlockModal({ block: ev.block, subject });
+                              setWeekBlockEditMode(false);
+                            }
+                          }}
+                          title={[ev.label, ev.sublabel].filter(Boolean).join(': ')}
+                        >
+                          <span className={styles.weekViewBlockLabel}>{ev.label}</span>
+                          {ev.sublabel && ev.height >= 30 && (
+                            <span className={styles.weekViewBlockSub}>{ev.sublabel}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+
+                {/* Current time line extension — spans from today column to right edge */}
+                {todayInWeek && (() => {
+                  const leftPercent = (todayColIndex / 7) * 100;
+                  return (
+                    <div
+                      className={styles.weekViewNowLineExtension}
+                      style={{ top: weekMinToTop(currentMinutes), left: `${leftPercent}%` }}
+                    />
+                  );
+                })()}
               </div>
             </div>
-          ))}
+          </div>
         </div>
       )}
 
-      {/* ── Week grid ──────────────────────────────────────────────────── */}
-      {viewMode === 'week' && (
-        <div className={styles.weekGrid}>
-          {weekDays.map((day, i) => (
-            <div
-              key={i}
-              className={[
-                styles.weekCell,
-                isSameDay(day, today) ? styles.weekCellToday : '',
-                isSameDay(day, selectedDate) ? styles.weekCellSelected : '',
-              ].filter(Boolean).join(' ')}
-              onClick={() => handleDayClick(day)}
-            >
-              <div className={styles.weekCellHeader}>
-                {renderDayNum(day)}
-              </div>
-              <div className={styles.weekChipsArea}>
-                {renderChips(day, 999)}
-              </div>
+      {/* ── Week Block Modal ── */}
+      {weekBlockModal && (
+        <div className={styles.weekModalOverlay} onClick={() => { setWeekBlockModal(null); setWeekBlockEditMode(false); }}>
+          <div className={styles.weekModalBox} onClick={e => e.stopPropagation()}>
+            <div className={styles.weekModalHeader}>
+              <span className={styles.weekModalTitle}>Time Block</span>
+              {weekBlockModal.subject && (
+                <span className={styles.weekModalSubjectChip}>
+                  <span className={styles.weekModalSubjectDot} style={{ background: weekBlockModal.subject.color }} />
+                  {weekBlockModal.subject.name}
+                </span>
+              )}
             </div>
-          ))}
+
+            {weekBlockEditMode ? (
+              <>
+                <div className={styles.weekModalField}>
+                  <label className={styles.weekModalLabel}>Task</label>
+                  <input
+                    className={styles.weekModalInput}
+                    value={weekBlockEditForm.task}
+                    placeholder="Task name"
+                    autoFocus
+                    onChange={e => setWeekBlockEditForm(f => ({ ...f, task: e.target.value }))}
+                    onKeyDown={e => { if (e.key === 'Enter') saveWeekBlockEdit(); }}
+                  />
+                </div>
+                <div className={styles.weekModalField}>
+                  <label className={styles.weekModalLabel}>Start</label>
+                  <div className={styles.weekModalTimeRow}>
+                    <input type="number" className={styles.weekModalTimeInput} value={weekBlockEditForm.startHour} min={1} max={12}
+                      onChange={e => setWeekBlockEditForm(f => ({ ...f, startHour: Math.min(12, Math.max(1, Number(e.target.value) || 1)) }))} />
+                    <span>:</span>
+                    <input type="number" className={styles.weekModalTimeInput} value={String(weekBlockEditForm.startMinute).padStart(2, '0')} min={0} max={59}
+                      onChange={e => setWeekBlockEditForm(f => ({ ...f, startMinute: Math.min(59, Math.max(0, Number(e.target.value) || 0)) }))} />
+                    <div className={styles.weekModalAmpm}>
+                      <button className={`${styles.weekModalAmpmBtn}${weekBlockEditForm.startAmPm === 'AM' ? ` ${styles.weekModalAmpmBtnActive}` : ''}`}
+                        onClick={() => setWeekBlockEditForm(f => ({ ...f, startAmPm: 'AM' }))}>AM</button>
+                      <button className={`${styles.weekModalAmpmBtn}${weekBlockEditForm.startAmPm === 'PM' ? ` ${styles.weekModalAmpmBtnActive}` : ''}`}
+                        onClick={() => setWeekBlockEditForm(f => ({ ...f, startAmPm: 'PM' }))}>PM</button>
+                    </div>
+                  </div>
+                </div>
+                <div className={styles.weekModalField}>
+                  <label className={styles.weekModalLabel}>End</label>
+                  <div className={styles.weekModalTimeRow}>
+                    <input type="number" className={styles.weekModalTimeInput} value={weekBlockEditForm.endHour} min={1} max={12}
+                      onChange={e => setWeekBlockEditForm(f => ({ ...f, endHour: Math.min(12, Math.max(1, Number(e.target.value) || 1)) }))} />
+                    <span>:</span>
+                    <input type="number" className={styles.weekModalTimeInput} value={String(weekBlockEditForm.endMinute).padStart(2, '0')} min={0} max={59}
+                      onChange={e => setWeekBlockEditForm(f => ({ ...f, endMinute: Math.min(59, Math.max(0, Number(e.target.value) || 0)) }))} />
+                    <div className={styles.weekModalAmpm}>
+                      <button className={`${styles.weekModalAmpmBtn}${weekBlockEditForm.endAmPm === 'AM' ? ` ${styles.weekModalAmpmBtnActive}` : ''}`}
+                        onClick={() => setWeekBlockEditForm(f => ({ ...f, endAmPm: 'AM' }))}>AM</button>
+                      <button className={`${styles.weekModalAmpmBtn}${weekBlockEditForm.endAmPm === 'PM' ? ` ${styles.weekModalAmpmBtnActive}` : ''}`}
+                        onClick={() => setWeekBlockEditForm(f => ({ ...f, endAmPm: 'PM' }))}>PM</button>
+                    </div>
+                  </div>
+                </div>
+                <button className={styles.weekModalSubmit} onClick={saveWeekBlockEdit}>Save Changes</button>
+                <button className={styles.weekModalCancel} onClick={() => setWeekBlockEditMode(false)}>Cancel</button>
+              </>
+            ) : (
+              <>
+                {weekBlockModal.block.task && (
+                  <div className={styles.weekModalTask}>{weekBlockModal.block.task}</div>
+                )}
+                <div className={styles.weekModalInfo}>
+                  <div className={styles.weekModalInfoRow}>
+                    <span className={styles.weekModalInfoLabel}>Time</span>
+                    <span className={styles.weekModalInfoValue}>
+                      {fmtTime(weekBlockModal.block.startTime)} – {fmtTime(weekBlockModal.block.endTime)}
+                    </span>
+                  </div>
+                  <div className={styles.weekModalInfoRow}>
+                    <span className={styles.weekModalInfoLabel}>Duration</span>
+                    <span className={styles.weekModalInfoValue}>
+                      {fmtDuration(weekBlockModal.block.startTime, weekBlockModal.block.endTime)}
+                    </span>
+                  </div>
+                </div>
+                <div className={styles.weekModalActions}>
+                  <button className={styles.weekModalEditBtn} onClick={() => openWeekBlockEdit(weekBlockModal.block)}>Edit</button>
+                  <button className={styles.weekModalDeleteBtn} onClick={() => deleteWeekBlock(weekBlockModal.block.id)}>Delete</button>
+                </div>
+                <button className={styles.weekModalCancel} onClick={() => setWeekBlockModal(null)}>Close</button>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

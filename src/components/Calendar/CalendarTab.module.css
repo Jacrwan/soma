@@ -330,54 +330,6 @@
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
-/* ── Week grid ───────────────────────────────────────────────────────────── */
-
-.weekGrid {
-  flex: 1;
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  overflow-y: auto;
-  min-height: 0;
-}
-
-.weekCell {
-  border-right: 1px solid var(--border);
-  padding: 8px 5px;
-  cursor: pointer;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  transition: background 0.1s;
-}
-
-.weekCell:last-child {
-  border-right: none;
-}
-
-.weekCell:hover {
-  background: var(--bg-secondary);
-}
-
-.weekCellToday {
-  background: color-mix(in srgb, var(--accent) 5%, transparent);
-}
-
-.weekCellSelected {
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-}
-
-.weekCellHeader {
-  display: flex;
-  justify-content: center;
-  padding-bottom: 4px;
-}
-
-.weekChipsArea {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
 
 /* ── Date number ─────────────────────────────────────────────────────────── */
 
@@ -453,12 +405,507 @@
     padding: 3px;
   }
 
-  .weekCell {
-    padding: 6px 3px;
-  }
-
   .chip {
     font-size: 10px;
     padding: 1px 4px;
   }
+}
+
+/* ── Week view (Apple Calendar style) ───────────────────────────────────────  */
+
+.weekViewOuter {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Day headers row */
+.weekViewHeaderRow {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.weekViewGutterHeader {
+  width: 60px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+}
+
+.weekViewDayHeader {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 0 5px;
+  cursor: pointer;
+  border-left: 1px solid var(--border);
+  transition: background 0.1s;
+  user-select: none;
+}
+
+.weekViewDayHeader:hover {
+  background: var(--bg-secondary);
+}
+
+.weekViewDayAbbr {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  line-height: 1.2;
+}
+
+.weekViewDayNum {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-top: 2px;
+  line-height: 1;
+}
+
+.weekViewDayNumToday {
+  background: #e53935;
+  color: #fff;
+  font-weight: 700;
+}
+
+/* All-day row */
+.weekViewAllDayRow {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  min-height: 24px;
+}
+
+.weekViewAllDayLabel {
+  width: 60px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 4px 8px 4px 0;
+  font-size: 10px;
+  color: var(--text-muted);
+  border-right: 1px solid var(--border);
+}
+
+.weekViewAllDayCell {
+  flex: 1;
+  border-left: 1px solid var(--border);
+  padding: 3px 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.weekViewAllDayChip {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #f4511e;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  line-height: 1.5;
+}
+
+/* Scrollable time grid */
+.weekViewScrollArea {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+}
+
+.weekViewScrollArea::-webkit-scrollbar {
+  width: 4px;
+}
+
+.weekViewGrid {
+  display: flex;
+  position: relative;
+}
+
+/* Time label column */
+.weekViewTimeCol {
+  width: 60px;
+  flex-shrink: 0;
+  position: relative;
+  border-right: 1px solid var(--border);
+}
+
+.weekViewTimeLabel {
+  position: absolute;
+  right: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  transform: translateY(-50%);
+  white-space: nowrap;
+  line-height: 1;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Day columns container */
+.weekViewDayCols {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  position: relative;
+}
+
+/* Hour lines across all columns */
+.weekViewHourLine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--border);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Individual day column */
+.weekViewDayCol {
+  position: relative;
+  border-left: 1px solid var(--border);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.weekViewDayColToday {
+  background: color-mix(in srgb, #e53935 3%, transparent);
+}
+
+/* Current time indicator */
+.weekViewNowLine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #e53935;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.weekViewNowDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #e53935;
+  position: absolute;
+  left: -5px;
+  top: -3.5px;
+}
+
+/* The line that extends from today col to right edge — rendered in dayCols */
+.weekViewNowLineExtension {
+  position: absolute;
+  right: 0;
+  height: 2px;
+  background: #e53935;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0.3;
+}
+
+/* Event blocks */
+.weekViewBlock {
+  position: absolute;
+  border-radius: 3px;
+  padding: 2px 4px;
+  cursor: pointer;
+  z-index: 2;
+  overflow: hidden;
+  box-sizing: border-box;
+  transition: filter 0.1s;
+}
+
+.weekViewBlock:hover {
+  filter: brightness(1.08);
+}
+
+.weekViewBlockSoma {
+  border-left-width: 3px;
+  border-left-style: solid;
+}
+
+.weekViewBlockGcal {
+  border-left: none;
+}
+
+.weekViewBlockLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.weekViewBlockSub {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.85);
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+/* ── Week block modal ────────────────────────────────────────────────────── */
+
+.weekModalOverlay {
+  position: fixed;
+  inset: 0;
+  background: oklch(0% 0 0 / 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+}
+
+.weekModalBox {
+  background: var(--bg);
+  border-radius: 16px;
+  padding: 24px;
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  box-shadow: 0 8px 32px oklch(0% 0 0 / 0.18), 0 2px 8px oklch(0% 0 0 / 0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.weekModalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.weekModalTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.weekModalSubjectChip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-radius: 20px;
+  padding: 3px 10px;
+}
+
+.weekModalSubjectDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.weekModalTask {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.weekModalInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.weekModalInfoRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.weekModalInfoLabel {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.weekModalInfoValue {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.weekModalActions {
+  display: flex;
+  gap: 8px;
+}
+
+.weekModalEditBtn {
+  flex: 1;
+  padding: 9px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.weekModalEditBtn:hover {
+  background: var(--accent-hover);
+}
+
+.weekModalDeleteBtn {
+  flex: 1;
+  padding: 9px;
+  background: none;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.weekModalDeleteBtn:hover {
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+.weekModalCancel {
+  padding: 9px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.1s;
+  width: 100%;
+}
+
+.weekModalCancel:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.weekModalField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.weekModalLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.weekModalInput {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--text-primary);
+  outline: none;
+  font-family: inherit;
+}
+
+.weekModalInput:focus {
+  border-color: var(--accent);
+}
+
+.weekModalTimeRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.weekModalTimeInput {
+  width: 48px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text-primary);
+  text-align: center;
+  outline: none;
+  font-family: inherit;
+}
+
+.weekModalTimeInput:focus {
+  border-color: var(--accent);
+}
+
+.weekModalAmpm {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.weekModalAmpmBtn {
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 500;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: background 0.1s, color 0.1s;
+}
+
+.weekModalAmpmBtn:hover:not(.weekModalAmpmBtnActive) {
+  background: var(--bg-secondary);
+}
+
+.weekModalAmpmBtnActive {
+  background: var(--accent);
+  color: #fff;
+}
+
+.weekModalSubmit {
+  padding: 10px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.1s;
+  width: 100%;
+}
+
+.weekModalSubmit:hover {
+  background: var(--accent-hover);
 }
