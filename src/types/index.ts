@@ -71,6 +71,8 @@ export interface Todo {
   dueDate?: string;
   assignmentId?: number;
   date: string; // YYYY-MM-DD
+  estimatedMinutes?: number;
+  notes?: string;
 }
 
 export interface GoogleCalendarEvent {

@@ -80,6 +80,18 @@ function fmtSecs(s: number) {
   return `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}`;
 }
 
+function fmtEstimated(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h > 0 && m > 0) return `~${h}h ${m}m`;
+  if (h > 0) return `~${h}h`;
+  return `~${m}m`;
+}
+
+function fmtTimeShort(mins: number): string {
+  return `${Math.floor(mins / 60)}:${String(mins % 60).padStart(2, '0')}`;
+}
+
 
 interface PopoverState {
   block: TimeBlock;
@@ -152,6 +164,17 @@ interface AddSubjectForm {
   color: SubjectColor;
 }
 
+interface TaskFormState {
+  text: string;
+  hours: number;
+  minutes: number;
+  dueDate: string;
+  notes: string;
+  scheduleIt: boolean;
+  startHour: number;
+  startMinute: number;
+  startAmPm: 'AM' | 'PM';
+}
 
 interface DayViewProps {
   selectedDate: Date;
@@ -187,8 +210,11 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     const withTodos = new Set(todayTodos.map(t => t.subjectId ?? 'unassigned'));
     return new Set(storage.getSubjects().filter(s => !withTodos.has(s.id)).map(s => s.id));
   });
-  const [addingToGroup, setAddingToGroup] = useState<string | null>(null);
-  const [newTodoText, setNewTodoText] = useState('');
+  const [taskModal, setTaskModal] = useState<{ subjectId: string | undefined } | null>(null);
+  const [taskForm, setTaskForm] = useState<TaskFormState>({
+    text: '', hours: 0, minutes: 0, dueDate: '', notes: '',
+    scheduleIt: false, startHour: 9, startMinute: 0, startAmPm: 'AM',
+  });
   const [todoPopoverId, setTodoPopoverId] = useState<string | null>(null);
   const [statusPopoverId, setStatusPopoverId] = useState<string | null>(null);
   const [pinPopoverId, setPinPopoverId] = useState<string | null>(null);
@@ -300,6 +326,13 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [pinPopoverId]);
+
+  useEffect(() => {
+    if (!taskModal) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setTaskModal(null); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [taskModal]);
 
   const slots = Array.from({ length: TOTAL_HOURS }, (_, i) => {
     const hourOfDay = (START_HOUR + i) % 24;
@@ -486,20 +519,68 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
   }
 
   function startAdding(groupId: string) {
-    setAddingToGroup(groupId);
-    setNewTodoText('');
-    setCollapsedGroups(prev => { const next = new Set(prev); next.delete(groupId); return next; });
+    const subjectId = groupId === 'unassigned' ? undefined : groupId;
+    let startHour = 9, startMinute = 0;
+    let startAmPm: 'AM' | 'PM' = 'AM';
+    if (isViewingToday) {
+      const now = new Date();
+      const h = now.getHours(), m = now.getMinutes();
+      const hour24 = Math.min(m >= 30 ? h + 1 : h, 23);
+      startMinute = m < 30 ? 30 : 0;
+      startAmPm = hour24 >= 12 ? 'PM' : 'AM';
+      startHour = hour24 % 12 || 12;
+    }
+    setTaskForm({ text: '', hours: 0, minutes: 0, dueDate: '', notes: '', scheduleIt: false, startHour, startMinute, startAmPm });
+    setTaskModal({ subjectId });
   }
 
-  function addTodo(subjectId: string | undefined) {
-    const text = newTodoText.trim();
-    if (!text) { setAddingToGroup(null); return; }
-    const newTodo: Todo = { id: crypto.randomUUID(), text, status: 'nothing', subjectId, date: selectedDateKey };
-    const updated = [...todos, newTodo];
-    storage.setTodos(updated);
-    setTodos(updated);
-    setNewTodoText('');
-    setAddingToGroup(null);
+  function saveTaskFromModal() {
+    if (!taskModal) return;
+    const text = taskForm.text.trim();
+    if (!text) { setTaskModal(null); return; }
+    const estimatedMinutes = taskForm.hours * 60 + taskForm.minutes;
+    const newTodo: Todo = {
+      id: crypto.randomUUID(),
+      text,
+      status: 'nothing',
+      subjectId: taskModal.subjectId,
+      dueDate: taskForm.dueDate || undefined,
+      notes: taskForm.notes.trim() || undefined,
+      estimatedMinutes: estimatedMinutes > 0 ? estimatedMinutes : undefined,
+      date: selectedDateKey,
+    };
+    const updatedTodos = [...todos, newTodo];
+    storage.setTodos(updatedTodos);
+    setTodos(updatedTodos);
+    if (taskForm.scheduleIt) {
+      const hour24 = (taskForm.startHour % 12) + (taskForm.startAmPm === 'PM' ? 12 : 0);
+      const durMins = Math.max(estimatedMinutes, 30);
+      const start = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), hour24, taskForm.startMinute);
+      const end = new Date(start.getTime() + durMins * 60_000);
+      const block: TimeBlock = {
+        id: crypto.randomUUID(),
+        subjectId: taskModal.subjectId ?? '',
+        task: text,
+        startTime: toLocalISO(start),
+        endTime: toLocalISO(end),
+        source: 'manual',
+      };
+      storage.setTimeBlocks([...storage.getTimeBlocks(), block]);
+      setBlocks(prev => [...prev, block]);
+    }
+    setTaskModal(null);
+  }
+
+  function getActualMinutesForTodo(todo: Todo): number {
+    const sessions = storage.getTimerSessions();
+    const total = sessions
+      .filter(s =>
+        s.task === todo.text &&
+        s.subjectId === todo.subjectId &&
+        isOnDate(s.startTime, selectedDate)
+      )
+      .reduce((sum, s) => sum + s.durationSeconds, 0);
+    return Math.floor(total / 60);
   }
 
   function saveTodoEdit(id: string) {
@@ -598,6 +679,177 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
   });
 
   const gridHeight = TOTAL_HOURS * SLOT_HEIGHT;
+
+  function renderTodoItem(todo: Todo, subject: Subject | undefined) {
+    const actualMins = getActualMinutesForTodo(todo);
+    const hasEstimate = (todo.estimatedMinutes ?? 0) > 0;
+    const showTimeDisplay = (hasEstimate || actualMins > 0) && editingTodoId !== todo.id;
+
+    return (
+      <div key={todo.id} className={styles.todoItemWrap}>
+        <div className={`${styles.todoItem}${todo.status === 'done' ? ` ${styles.todoItemDone}` : ''}`}>
+          <button
+            className={todo.status === 'in_progress' ? styles.statusBtnInProgress : todo.status === 'done' ? styles.statusBtnDone : styles.statusBtn}
+            onClick={() => { setTodoPopoverId(null); setStatusPopoverId(prev => prev === todo.id ? null : todo.id); }}
+          >
+            {todo.status === 'in_progress' && (
+              <svg width="10" height="10" viewBox="0 0 10 10"><polygon points="0,0 10,5 0,10" fill="currentColor" /></svg>
+            )}
+            {todo.status === 'done' && (
+              <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            )}
+          </button>
+          <div className={styles.todoContent}>
+            {editingTodoId === todo.id ? (
+              <div className={styles.todoEditMode}>
+                <input
+                  className={styles.todoEditInput}
+                  value={editingTodoText}
+                  autoFocus
+                  onChange={e => setEditingTodoText(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') saveTodoEdit(todo.id); if (e.key === 'Escape') setEditingTodoId(null); }}
+                />
+                <button className={styles.todoEditSave} title="Save" onClick={() => saveTodoEdit(todo.id)}>
+                  <svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4.5L4 7.5L10 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </button>
+                <button className={styles.todoEditCancel} title="Cancel" onClick={() => setEditingTodoId(null)}>
+                  <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1 1L8 8M8 1L1 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+                </button>
+              </div>
+            ) : (
+              <>
+                <span
+                  className={styles.todoText}
+                  onClick={() => { setStatusPopoverId(null); setTodoPopoverId(prev => prev === todo.id ? null : todo.id); }}
+                >{todo.text}</span>
+                {hasEstimate && (
+                  <span className={styles.todoEstBadge}>{fmtEstimated(todo.estimatedMinutes!)}</span>
+                )}
+                {todo.dueDate && <span className={styles.todoDueDate}>{todo.dueDate}</span>}
+              </>
+            )}
+          </div>
+          {showTimeDisplay && (
+            <span className={styles.todoTimeDisplay}>
+              {hasEstimate
+                ? `${fmtTimeShort(actualMins)} / ${fmtTimeShort(todo.estimatedMinutes!)}`
+                : fmtTimeShort(actualMins)
+              }
+            </span>
+          )}
+          <div className={styles.todoActions}>
+            <button
+              className={styles.editTodoBtn}
+              title="Edit"
+              onClick={e => { e.stopPropagation(); setEditingTodoId(todo.id); setEditingTodoText(todo.text); setTodoPopoverId(null); }}
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M7.5 1.5l2 2L3 10H1V8L7.5 1.5z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </button>
+            <button
+              className={styles.pinBtn}
+              title="Pin to schedule"
+              onClick={e => { e.stopPropagation(); openPinPopover(todo.id); }}
+            >
+              <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><circle cx="5.5" cy="5.5" r="4.5" stroke="currentColor" strokeWidth="1.3"/><line x1="5.5" y1="3" x2="5.5" y2="8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><line x1="3" y1="5.5" x2="8" y2="5.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+            </button>
+          </div>
+        </div>
+        {statusPopoverId === todo.id && (
+          <div className={styles.statusPopover} ref={statusPopoverRef}>
+            <button data-status="nothing" className={`${styles.statusOption}${todo.status === 'nothing' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'nothing')}>
+              <span className={styles.statusIcon}><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1.5"/></svg></span>
+              Nothing
+            </button>
+            <button data-status="in_progress" className={`${styles.statusOption}${todo.status === 'in_progress' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'in_progress')}>
+              <span className={`${styles.statusIcon} ${styles.statusIconInProgress}`}><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5.5" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="1.5"/><polygon points="5,4 10,6.5 5,9" fill="currentColor"/></svg></span>
+              In progress
+            </button>
+            <button data-status="done" className={`${styles.statusOption}${todo.status === 'done' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'done')}>
+              <span className={`${styles.statusIcon} ${styles.statusIconDone}`}><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5.5" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="1.5"/><path d="M4 6.5L6 8.5L9.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
+              Done
+            </button>
+          </div>
+        )}
+        {todoPopoverId === todo.id && (
+          <div className={styles.todoPopover} ref={todoPopoverRef}>
+            <div className={styles.popoverText}>{todo.text}</div>
+            <div className={styles.popoverActions}>
+              {subject && (
+                <button
+                  className={styles.popoverStart}
+                  onClick={() => openTimerFromTodo(subject, todo.text)}
+                >Start timer</button>
+              )}
+              <button
+                className={styles.popoverDismiss}
+                onClick={() => setTodoPopoverId(null)}
+              >Dismiss</button>
+            </div>
+          </div>
+        )}
+        {pinPopoverId === todo.id && (
+          <div className={styles.pinPopover} ref={pinPopoverRef}>
+            <div className={styles.pinFormRow}>
+              <label className={styles.pinLabel}>Start</label>
+              <div className={styles.pinTimeSelects}>
+                <input
+                  type="number"
+                  className={styles.pinTimeInput}
+                  value={pinForm.hour}
+                  min={1}
+                  max={12}
+                  onChange={e => setPinForm(f => ({ ...f, hour: Math.min(12, Math.max(1, Number(e.target.value) || 1)) }))}
+                />
+                <span className={styles.pinTimeSep}>:</span>
+                <input
+                  type="number"
+                  className={styles.pinTimeInput}
+                  value={String(pinForm.minute).padStart(2, '0')}
+                  min={0}
+                  max={59}
+                  onChange={e => setPinForm(f => ({ ...f, minute: Math.min(59, Math.max(0, Number(e.target.value) || 0)) }))}
+                />
+                <div className={styles.pinAmpmToggle}>
+                  <button
+                    className={`${styles.pinAmpmBtn}${pinForm.ampm === 'AM' ? ` ${styles.pinAmpmBtnActive}` : ''}`}
+                    onClick={() => setPinForm(f => ({ ...f, ampm: 'AM' }))}
+                  >AM</button>
+                  <button
+                    className={`${styles.pinAmpmBtn}${pinForm.ampm === 'PM' ? ` ${styles.pinAmpmBtnActive}` : ''}`}
+                    onClick={() => setPinForm(f => ({ ...f, ampm: 'PM' }))}
+                  >PM</button>
+                </div>
+              </div>
+            </div>
+            <div className={styles.pinFormRow}>
+              <label className={styles.pinLabel}>Duration</label>
+              <input
+                type="number"
+                className={styles.pinTimeInput}
+                value={pinForm.durationHours}
+                min={0}
+                onChange={e => setPinForm(f => ({ ...f, durationHours: Math.max(0, Number(e.target.value) || 0) }))}
+              />
+              <span className={styles.pinDurationUnit}>h</span>
+              <input
+                type="number"
+                className={styles.pinTimeInput}
+                value={String(pinForm.durationMinutes).padStart(2, '0')}
+                min={0}
+                max={59}
+                onChange={e => setPinForm(f => ({ ...f, durationMinutes: Math.min(59, Math.max(0, Number(e.target.value) || 0)) }))}
+              />
+              <span className={styles.pinDurationUnit}>m</span>
+            </div>
+            <div className={styles.pinActions}>
+              <button className={styles.pinSubmitBtn} onClick={() => pinTodo(todo)}>Pin to schedule</button>
+              <button className={styles.pinCancel} onClick={() => setPinPopoverId(null)}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={styles.wrapper}>
@@ -872,8 +1124,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
         {activeSubjects.map(subject => {
           const groupTodos = dayTodos.filter(t => t.subjectId === subject.id);
           const isCollapsed = collapsedGroups.has(subject.id);
-          const isAdding = addingToGroup === subject.id;
-          const showBody = !isCollapsed || isAdding;
+          const showBody = !isCollapsed;
           const pending = groupTodos.filter(t => t.status !== 'done').length;
           const isEditing = editSubject?.id === subject.id;
 
@@ -949,170 +1200,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
 
               {!isEditing && showBody && (
                 <div className={styles.todoGroupBody}>
-                  {groupTodos.map(todo => (
-                    <div key={todo.id} className={styles.todoItemWrap}>
-                      <div className={`${styles.todoItem}${todo.status === 'done' ? ` ${styles.todoItemDone}` : ''}`}>
-                        <button
-                          className={todo.status === 'in_progress' ? styles.statusBtnInProgress : todo.status === 'done' ? styles.statusBtnDone : styles.statusBtn}
-                          onClick={() => { setTodoPopoverId(null); setStatusPopoverId(prev => prev === todo.id ? null : todo.id); }}
-                        >
-                          {todo.status === 'in_progress' && (
-                            <svg width="10" height="10" viewBox="0 0 10 10"><polygon points="0,0 10,5 0,10" fill="currentColor" /></svg>
-                          )}
-                          {todo.status === 'done' && (
-                            <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                          )}
-                        </button>
-                        <div className={styles.todoContent}>
-                          {editingTodoId === todo.id ? (
-                            <div className={styles.todoEditMode}>
-                              <input
-                                className={styles.todoEditInput}
-                                value={editingTodoText}
-                                autoFocus
-                                onChange={e => setEditingTodoText(e.target.value)}
-                                onKeyDown={e => { if (e.key === 'Enter') saveTodoEdit(todo.id); if (e.key === 'Escape') setEditingTodoId(null); }}
-                              />
-                              <button className={styles.todoEditSave} title="Save" onClick={() => saveTodoEdit(todo.id)}>
-                                <svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4.5L4 7.5L10 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                              </button>
-                              <button className={styles.todoEditCancel} title="Cancel" onClick={() => setEditingTodoId(null)}>
-                                <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1 1L8 8M8 1L1 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
-                              </button>
-                            </div>
-                          ) : (
-                            <span
-                              className={styles.todoText}
-                              onClick={() => { setStatusPopoverId(null); setTodoPopoverId(prev => prev === todo.id ? null : todo.id); }}
-                            >{todo.text}</span>
-                          )}
-                          {todo.dueDate && <span className={styles.todoDueDate}>{todo.dueDate}</span>}
-                        </div>
-                        <div className={styles.todoActions}>
-                          <button
-                            className={styles.editTodoBtn}
-                            title="Edit"
-                            onClick={e => { e.stopPropagation(); setEditingTodoId(todo.id); setEditingTodoText(todo.text); setTodoPopoverId(null); }}
-                          >
-                            <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M7.5 1.5l2 2L3 10H1V8L7.5 1.5z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                          </button>
-                          <button
-                            className={styles.pinBtn}
-                            title="Pin to schedule"
-                            onClick={e => { e.stopPropagation(); openPinPopover(todo.id); }}
-                          >
-                            <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><circle cx="5.5" cy="5.5" r="4.5" stroke="currentColor" strokeWidth="1.3"/><line x1="5.5" y1="3" x2="5.5" y2="8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><line x1="3" y1="5.5" x2="8" y2="5.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
-                          </button>
-                        </div>
-                      </div>
-                      {statusPopoverId === todo.id && (
-                        <div className={styles.statusPopover} ref={statusPopoverRef}>
-                          <button data-status="nothing" className={`${styles.statusOption}${todo.status === 'nothing' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'nothing')}>
-                            <span className={styles.statusIcon}><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1.5"/></svg></span>
-                            Nothing
-                          </button>
-                          <button data-status="in_progress" className={`${styles.statusOption}${todo.status === 'in_progress' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'in_progress')}>
-                            <span className={`${styles.statusIcon} ${styles.statusIconInProgress}`}><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5.5" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="1.5"/><polygon points="5,4 10,6.5 5,9" fill="currentColor"/></svg></span>
-                            In progress
-                          </button>
-                          <button data-status="done" className={`${styles.statusOption}${todo.status === 'done' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'done')}>
-                            <span className={`${styles.statusIcon} ${styles.statusIconDone}`}><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5.5" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="1.5"/><path d="M4 6.5L6 8.5L9.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
-                            Done
-                          </button>
-                        </div>
-                      )}
-                      {todoPopoverId === todo.id && (
-                        <div className={styles.todoPopover} ref={todoPopoverRef}>
-                          <div className={styles.popoverText}>{todo.text}</div>
-                          <div className={styles.popoverActions}>
-                            <button
-                              className={styles.popoverStart}
-                              onClick={() => openTimerFromTodo(subject, todo.text)}
-                            >Start timer</button>
-                            <button
-                              className={styles.popoverDismiss}
-                              onClick={() => setTodoPopoverId(null)}
-                            >Dismiss</button>
-                          </div>
-                        </div>
-                      )}
-                      {pinPopoverId === todo.id && (
-                        <div className={styles.pinPopover} ref={pinPopoverRef}>
-                          <div className={styles.pinFormRow}>
-                            <label className={styles.pinLabel}>Start</label>
-                            <div className={styles.pinTimeSelects}>
-                              <input
-                                type="number"
-                                className={styles.pinTimeInput}
-                                value={pinForm.hour}
-                                min={1}
-                                max={12}
-                                onChange={e => setPinForm(f => ({ ...f, hour: Math.min(12, Math.max(1, Number(e.target.value) || 1)) }))}
-                              />
-                              <span className={styles.pinTimeSep}>:</span>
-                              <input
-                                type="number"
-                                className={styles.pinTimeInput}
-                                value={String(pinForm.minute).padStart(2, '0')}
-                                min={0}
-                                max={59}
-                                onChange={e => setPinForm(f => ({ ...f, minute: Math.min(59, Math.max(0, Number(e.target.value) || 0)) }))}
-                              />
-                              <div className={styles.pinAmpmToggle}>
-                                <button
-                                  className={`${styles.pinAmpmBtn}${pinForm.ampm === 'AM' ? ` ${styles.pinAmpmBtnActive}` : ''}`}
-                                  onClick={() => setPinForm(f => ({ ...f, ampm: 'AM' }))}
-                                >AM</button>
-                                <button
-                                  className={`${styles.pinAmpmBtn}${pinForm.ampm === 'PM' ? ` ${styles.pinAmpmBtnActive}` : ''}`}
-                                  onClick={() => setPinForm(f => ({ ...f, ampm: 'PM' }))}
-                                >PM</button>
-                              </div>
-                            </div>
-                          </div>
-                          <div className={styles.pinFormRow}>
-                            <label className={styles.pinLabel}>Duration</label>
-                            <input
-                              type="number"
-                              className={styles.pinTimeInput}
-                              value={pinForm.durationHours}
-                              min={0}
-                              onChange={e => setPinForm(f => ({ ...f, durationHours: Math.max(0, Number(e.target.value) || 0) }))}
-                            />
-                            <span className={styles.pinDurationUnit}>h</span>
-                            <input
-                              type="number"
-                              className={styles.pinTimeInput}
-                              value={String(pinForm.durationMinutes).padStart(2, '0')}
-                              min={0}
-                              max={59}
-                              onChange={e => setPinForm(f => ({ ...f, durationMinutes: Math.min(59, Math.max(0, Number(e.target.value) || 0)) }))}
-                            />
-                            <span className={styles.pinDurationUnit}>m</span>
-                          </div>
-                          <div className={styles.pinActions}>
-                            <button className={styles.pinSubmitBtn} onClick={() => pinTodo(todo)}>Pin to schedule</button>
-                            <button className={styles.pinCancel} onClick={() => setPinPopoverId(null)}>Cancel</button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  {isAdding && (
-                    <div className={styles.todoAddRow}>
-                      <input
-                        className={styles.todoAddInput}
-                        placeholder="New todo…"
-                        value={newTodoText}
-                        autoFocus
-                        onChange={e => setNewTodoText(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') addTodo(subject.id);
-                          if (e.key === 'Escape') setAddingToGroup(null);
-                        }}
-                      />
-                    </div>
-                  )}
+                  {groupTodos.map(todo => renderTodoItem(todo, subject))}
                 </div>
               )}
             </div>
@@ -1142,10 +1230,9 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
 
         {(() => {
           const unassigned = dayTodos.filter(t => !t.subjectId);
-          const isAdding = addingToGroup === 'unassigned';
-          if (unassigned.length === 0 && !isAdding) return null;
+          if (unassigned.length === 0) return null;
           const isCollapsed = collapsedGroups.has('unassigned');
-          const showBody = !isCollapsed || isAdding;
+          const showBody = !isCollapsed;
           const pending = unassigned.filter(t => t.status !== 'done').length;
           return (
             <div className={styles.subjectGroup}>
@@ -1166,166 +1253,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               </div>
               {showBody && (
                 <div className={styles.todoGroupBody}>
-                  {unassigned.map(todo => (
-                    <div key={todo.id} className={styles.todoItemWrap}>
-                      <div className={`${styles.todoItem}${todo.status === 'done' ? ` ${styles.todoItemDone}` : ''}`}>
-                        <button
-                          className={todo.status === 'in_progress' ? styles.statusBtnInProgress : todo.status === 'done' ? styles.statusBtnDone : styles.statusBtn}
-                          onClick={() => { setTodoPopoverId(null); setStatusPopoverId(prev => prev === todo.id ? null : todo.id); }}
-                        >
-                          {todo.status === 'in_progress' && (
-                            <svg width="10" height="10" viewBox="0 0 10 10"><polygon points="0,0 10,5 0,10" fill="currentColor" /></svg>
-                          )}
-                          {todo.status === 'done' && (
-                            <svg width="9" height="7" viewBox="0 0 9 7" fill="none"><path d="M1 3.5L3.5 6L8 1" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                          )}
-                        </button>
-                        <div className={styles.todoContent}>
-                          {editingTodoId === todo.id ? (
-                            <div className={styles.todoEditMode}>
-                              <input
-                                className={styles.todoEditInput}
-                                value={editingTodoText}
-                                autoFocus
-                                onChange={e => setEditingTodoText(e.target.value)}
-                                onKeyDown={e => { if (e.key === 'Enter') saveTodoEdit(todo.id); if (e.key === 'Escape') setEditingTodoId(null); }}
-                              />
-                              <button className={styles.todoEditSave} title="Save" onClick={() => saveTodoEdit(todo.id)}>
-                                <svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4.5L4 7.5L10 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                              </button>
-                              <button className={styles.todoEditCancel} title="Cancel" onClick={() => setEditingTodoId(null)}>
-                                <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1 1L8 8M8 1L1 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
-                              </button>
-                            </div>
-                          ) : (
-                            <span
-                              className={styles.todoText}
-                              onClick={() => { setStatusPopoverId(null); setTodoPopoverId(prev => prev === todo.id ? null : todo.id); }}
-                            >{todo.text}</span>
-                          )}
-                          {todo.dueDate && <span className={styles.todoDueDate}>{todo.dueDate}</span>}
-                        </div>
-                        <div className={styles.todoActions}>
-                          <button
-                            className={styles.editTodoBtn}
-                            title="Edit"
-                            onClick={e => { e.stopPropagation(); setEditingTodoId(todo.id); setEditingTodoText(todo.text); setTodoPopoverId(null); }}
-                          >
-                            <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M7.5 1.5l2 2L3 10H1V8L7.5 1.5z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                          </button>
-                          <button
-                            className={styles.pinBtn}
-                            title="Pin to schedule"
-                            onClick={e => { e.stopPropagation(); openPinPopover(todo.id); }}
-                          >
-                            <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><circle cx="5.5" cy="5.5" r="4.5" stroke="currentColor" strokeWidth="1.3"/><line x1="5.5" y1="3" x2="5.5" y2="8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><line x1="3" y1="5.5" x2="8" y2="5.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
-                          </button>
-                        </div>
-                      </div>
-                      {statusPopoverId === todo.id && (
-                        <div className={styles.statusPopover} ref={statusPopoverRef}>
-                          <button data-status="nothing" className={`${styles.statusOption}${todo.status === 'nothing' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'nothing')}>
-                            <span className={styles.statusIcon}><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5.5" stroke="currentColor" strokeWidth="1.5"/></svg></span>
-                            Nothing
-                          </button>
-                          <button data-status="in_progress" className={`${styles.statusOption}${todo.status === 'in_progress' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'in_progress')}>
-                            <span className={`${styles.statusIcon} ${styles.statusIconInProgress}`}><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5.5" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="1.5"/><polygon points="5,4 10,6.5 5,9" fill="currentColor"/></svg></span>
-                            In progress
-                          </button>
-                          <button data-status="done" className={`${styles.statusOption}${todo.status === 'done' ? ` ${styles.statusOptionActive}` : ''}`} onClick={() => setTodoStatus(todo.id, 'done')}>
-                            <span className={`${styles.statusIcon} ${styles.statusIconDone}`}><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5.5" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="1.5"/><path d="M4 6.5L6 8.5L9.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
-                            Done
-                          </button>
-                        </div>
-                      )}
-                      {todoPopoverId === todo.id && (
-                        <div className={styles.todoPopover} ref={todoPopoverRef}>
-                          <div className={styles.popoverText}>{todo.text}</div>
-                          <div className={styles.popoverActions}>
-                            <button
-                              className={styles.popoverDismiss}
-                              onClick={() => setTodoPopoverId(null)}
-                            >Dismiss</button>
-                          </div>
-                        </div>
-                      )}
-                      {pinPopoverId === todo.id && (
-                        <div className={styles.pinPopover} ref={pinPopoverRef}>
-                          <div className={styles.pinFormRow}>
-                            <label className={styles.pinLabel}>Start</label>
-                            <div className={styles.pinTimeSelects}>
-                              <input
-                                type="number"
-                                className={styles.pinTimeInput}
-                                value={pinForm.hour}
-                                min={1}
-                                max={12}
-                                onChange={e => setPinForm(f => ({ ...f, hour: Math.min(12, Math.max(1, Number(e.target.value) || 1)) }))}
-                              />
-                              <span className={styles.pinTimeSep}>:</span>
-                              <input
-                                type="number"
-                                className={styles.pinTimeInput}
-                                value={String(pinForm.minute).padStart(2, '0')}
-                                min={0}
-                                max={59}
-                                onChange={e => setPinForm(f => ({ ...f, minute: Math.min(59, Math.max(0, Number(e.target.value) || 0)) }))}
-                              />
-                              <div className={styles.pinAmpmToggle}>
-                                <button
-                                  className={`${styles.pinAmpmBtn}${pinForm.ampm === 'AM' ? ` ${styles.pinAmpmBtnActive}` : ''}`}
-                                  onClick={() => setPinForm(f => ({ ...f, ampm: 'AM' }))}
-                                >AM</button>
-                                <button
-                                  className={`${styles.pinAmpmBtn}${pinForm.ampm === 'PM' ? ` ${styles.pinAmpmBtnActive}` : ''}`}
-                                  onClick={() => setPinForm(f => ({ ...f, ampm: 'PM' }))}
-                                >PM</button>
-                              </div>
-                            </div>
-                          </div>
-                          <div className={styles.pinFormRow}>
-                            <label className={styles.pinLabel}>Duration</label>
-                            <input
-                              type="number"
-                              className={styles.pinTimeInput}
-                              value={pinForm.durationHours}
-                              min={0}
-                              onChange={e => setPinForm(f => ({ ...f, durationHours: Math.max(0, Number(e.target.value) || 0) }))}
-                            />
-                            <span className={styles.pinDurationUnit}>h</span>
-                            <input
-                              type="number"
-                              className={styles.pinTimeInput}
-                              value={String(pinForm.durationMinutes).padStart(2, '0')}
-                              min={0}
-                              max={59}
-                              onChange={e => setPinForm(f => ({ ...f, durationMinutes: Math.min(59, Math.max(0, Number(e.target.value) || 0)) }))}
-                            />
-                            <span className={styles.pinDurationUnit}>m</span>
-                          </div>
-                          <div className={styles.pinActions}>
-                            <button className={styles.pinSubmitBtn} onClick={() => pinTodo(todo)}>Pin to schedule</button>
-                            <button className={styles.pinCancel} onClick={() => setPinPopoverId(null)}>Cancel</button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  {isAdding && (
-                    <div className={styles.todoAddRow}>
-                      <input
-                        className={styles.todoAddInput}
-                        placeholder="New todo…"
-                        value={newTodoText}
-                        autoFocus
-                        onChange={e => setNewTodoText(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') addTodo(undefined);
-                          if (e.key === 'Escape') setAddingToGroup(null);
-                        }}
-                      />
-                    </div>
-                  )}
+                  {unassigned.map(todo => renderTodoItem(todo, undefined))}
                 </div>
               )}
             </div>
@@ -1344,6 +1272,136 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
         />
       )}
 
+      {/* ── Task Creation Modal ── */}
+      {taskModal && (
+        <div className={styles.modalOverlay} onClick={() => setTaskModal(null)}>
+          <div className={styles.taskModalBox} onClick={e => e.stopPropagation()}>
+            <div className={styles.taskModalHeader}>
+              <span className={styles.taskModalTitle}>New Task</span>
+              {(() => {
+                const subject = taskModal.subjectId ? subjects.find(s => s.id === taskModal.subjectId) : null;
+                return subject ? (
+                  <span className={styles.taskModalSubjectChip}>
+                    <span className={styles.taskModalSubjectDot} style={{ background: subject.color }} />
+                    {subject.name}
+                  </span>
+                ) : null;
+              })()}
+            </div>
+
+            <input
+              className={styles.taskModalInput}
+              placeholder="What do you need to do?"
+              value={taskForm.text}
+              autoFocus
+              onChange={e => setTaskForm(f => ({ ...f, text: e.target.value }))}
+              onKeyDown={e => { if (e.key === 'Enter' && taskForm.text.trim()) saveTaskFromModal(); }}
+            />
+
+            <div className={styles.taskModalField}>
+              <label className={styles.taskModalLabel}>Estimated time</label>
+              <div className={styles.taskModalTimeRow}>
+                <input
+                  type="number"
+                  className={styles.taskModalTimeInput}
+                  value={taskForm.hours}
+                  min={0}
+                  max={23}
+                  onChange={e => setTaskForm(f => ({ ...f, hours: Math.min(23, Math.max(0, Number(e.target.value) || 0)) }))}
+                />
+                <span className={styles.taskModalTimeUnit}>h</span>
+                <input
+                  type="number"
+                  className={styles.taskModalTimeInput}
+                  value={taskForm.minutes}
+                  min={0}
+                  max={59}
+                  onChange={e => setTaskForm(f => ({ ...f, minutes: Math.min(59, Math.max(0, Number(e.target.value) || 0)) }))}
+                />
+                <span className={styles.taskModalTimeUnit}>m</span>
+              </div>
+            </div>
+
+            <div className={styles.taskModalField}>
+              <label className={styles.taskModalLabel}>Due date</label>
+              <input
+                type="date"
+                className={styles.taskModalInput}
+                value={taskForm.dueDate}
+                onChange={e => setTaskForm(f => ({ ...f, dueDate: e.target.value }))}
+              />
+            </div>
+
+            <div className={styles.taskModalField}>
+              <label className={styles.taskModalLabel}>Notes</label>
+              <textarea
+                className={styles.taskModalTextarea}
+                rows={3}
+                placeholder="Any notes..."
+                value={taskForm.notes}
+                onChange={e => setTaskForm(f => ({ ...f, notes: e.target.value }))}
+              />
+            </div>
+
+            <div className={styles.taskModalToggleRow}>
+              <span className={styles.taskModalToggleLabel}>Schedule it</span>
+              <label className={styles.toggleSwitch}>
+                <input
+                  type="checkbox"
+                  checked={taskForm.scheduleIt}
+                  onChange={e => setTaskForm(f => ({ ...f, scheduleIt: e.target.checked }))}
+                />
+                <span className={styles.toggleTrack} />
+              </label>
+            </div>
+
+            {taskForm.scheduleIt && (
+              <div className={styles.scheduleExpanded}>
+                <div className={styles.taskModalField}>
+                  <label className={styles.taskModalLabel}>Start time</label>
+                  <div className={styles.taskModalTimeRow}>
+                    <input
+                      type="number"
+                      className={styles.taskModalTimeInput}
+                      value={taskForm.startHour}
+                      min={1}
+                      max={12}
+                      onChange={e => setTaskForm(f => ({ ...f, startHour: Math.min(12, Math.max(1, Number(e.target.value) || 1)) }))}
+                    />
+                    <span className={styles.pinTimeSep}>:</span>
+                    <input
+                      type="number"
+                      className={styles.taskModalTimeInput}
+                      value={String(taskForm.startMinute).padStart(2, '0')}
+                      min={0}
+                      max={59}
+                      onChange={e => setTaskForm(f => ({ ...f, startMinute: Math.min(59, Math.max(0, Number(e.target.value) || 0)) }))}
+                    />
+                    <div className={styles.pinAmpmToggle}>
+                      <button
+                        className={`${styles.pinAmpmBtn}${taskForm.startAmPm === 'AM' ? ` ${styles.pinAmpmBtnActive}` : ''}`}
+                        onClick={() => setTaskForm(f => ({ ...f, startAmPm: 'AM' }))}
+                      >AM</button>
+                      <button
+                        className={`${styles.pinAmpmBtn}${taskForm.startAmPm === 'PM' ? ` ${styles.pinAmpmBtnActive}` : ''}`}
+                        onClick={() => setTaskForm(f => ({ ...f, startAmPm: 'PM' }))}
+                      >PM</button>
+                    </div>
+                  </div>
+                </div>
+                <p className={styles.scheduleHint}>This will pin a time block on the schedule automatically when saved.</p>
+              </div>
+            )}
+
+            <button
+              className={styles.taskModalSubmit}
+              onClick={saveTaskFromModal}
+              disabled={!taskForm.text.trim()}
+            >Add Task</button>
+            <button className={styles.taskModalCancel} onClick={() => setTaskModal(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
 
       {/* ── Add Subject Modal ── */}
       {showAddSubject && (
