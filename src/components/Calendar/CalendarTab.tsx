@@ -416,7 +416,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         const baseColor = isCanvas ? CANVAS_COLOR : (subject?.color ?? '#9e9e9e');
         const label = isCanvas
           ? (b.task || subject?.name || 'Assignment')
-          : (subject?.name ?? b.task || 'Block');
+          : ((subject?.name ?? b.task) || 'Block');
         const sublabel = isCanvas ? undefined
           : (b.task && b.task !== subject?.name ? b.task : undefined);
 
