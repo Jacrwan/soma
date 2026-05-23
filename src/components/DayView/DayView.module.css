@@ -451,20 +451,6 @@
   gap: 10px;
 }
 
-.clockWidget {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.clockTime {
-  font-size: 15px;
-  font-weight: 400;
-  color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
 .dateHeaderDivider {
   height: 1px;
   background: oklch(94% 0.005 265);

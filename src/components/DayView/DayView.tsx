@@ -993,16 +993,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
           const weekday = selectedDate.toLocaleDateString('en-US', { weekday: 'long' });
           const monthDay = selectedDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
           const pendingCount = dayTodos.filter(t => t.status !== 'done').length;
-          const ch = Math.floor(currentMinutes / 60) % 12;
-          const cm = currentMinutes % 60;
-          const timeStr = `${ch || 12}:${String(cm).padStart(2, '0')} ${currentMinutes >= 12 * 60 ? 'PM' : 'AM'}`;
-          const minAngle = (cm / 60) * 360;
-          const hourAngle = ((ch + cm / 60) / 12) * 360;
-          const toRad = (deg: number) => (deg * Math.PI) / 180;
-          const mX = (20 + 13 * Math.sin(toRad(minAngle))).toFixed(2);
-          const mY = (20 - 13 * Math.cos(toRad(minAngle))).toFixed(2);
-          const hX = (20 + 8 * Math.sin(toRad(hourAngle))).toFixed(2);
-          const hY = (20 - 8 * Math.cos(toRad(hourAngle))).toFixed(2);
           return (
             <>
               <div className={styles.dateHeader}>
@@ -1012,14 +1002,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                   <div className={styles.dateHeaderCount}>{pendingCount} task{pendingCount !== 1 ? 's' : ''} today</div>
                 </div>
                 <div className={styles.dateHeaderRight}>
-                  <div className={styles.clockWidget}>
-                    <span className={styles.clockTime}>{timeStr}</span>
-                    <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-                      <circle cx="20" cy="20" r="17" stroke="var(--accent)" strokeWidth="1.5"/>
-                      <line x1="20" y1="20" x2={mX} y2={mY} stroke="var(--accent)" strokeWidth="1.5" strokeLinecap="round"/>
-                      <line x1="20" y1="20" x2={hX} y2={hY} stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round"/>
-                    </svg>
-                  </div>
                   <div className={styles.headerBtns} ref={subjectPickerRef}>
                     <button
                       className={`${styles.headerIconBtn}${subjectPickerMode === 'timer' ? ` ${styles.headerIconBtnActive}` : ''}`}
