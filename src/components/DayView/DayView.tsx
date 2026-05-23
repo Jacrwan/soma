@@ -261,6 +261,8 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [gcalEvents, setGcalEvents] = useState<GoogleCalendarEvent[]>([]);
   const [dueAssignments, setDueAssignments] = useState<{ assignment: CanvasAssignment; course: CanvasCourse | undefined; color: string }[]>([]);
   const [deadlineDetail, setDeadlineDetail] = useState<{ courseId: number; assignmentId: number } | null>(null);
+  const [dueTagPopoverId, setDueTagPopoverId] = useState<string | null>(null);
+  const [, forceTagUpdate] = useState(0);
   const [quickAddHour, setQuickAddHour] = useState<number | null>(null);
   const [quickAddSubjectId, setQuickAddSubjectId] = useState<string>('');
   const [quickAddDuration, setQuickAddDuration] = useState<number>(60);
@@ -283,8 +285,10 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [dragTodoGroupId, setDragTodoGroupId] = useState<string | null>(null);
   const [dragTodoOverIndex, setDragTodoOverIndex] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const gridWrapperRef = useRef<HTMLDivElement>(null);
   const statusPopoverRef = useRef<HTMLDivElement>(null);
   const pinPopoverRef = useRef<HTMLDivElement>(null);
+  const dueTagPopoverRef = useRef<HTMLDivElement>(null);
   const subjectPickerRef = useRef<HTMLDivElement>(null);
   const touchStartXRef = useRef(0);
   const wheelCooldownRef = useRef(false);
@@ -400,6 +404,17 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [pinPopoverId]);
+
+  useEffect(() => {
+    if (!dueTagPopoverId) return;
+    const onDown = (e: MouseEvent) => {
+      if (dueTagPopoverRef.current && !dueTagPopoverRef.current.contains(e.target as Node)) {
+        setDueTagPopoverId(null);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [dueTagPopoverId]);
 
   useEffect(() => {
     if (!taskModal) return;
@@ -1217,30 +1232,12 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
 
     <div className={styles.container} ref={containerRef}>
       {/* ── Left panel ── */}
-      <div className={styles.left} style={{ flex: `0 0 ${(panelRatio * 100).toFixed(1)}%` }}>
+      <div className={styles.left} style={{ flex: `0 0 ${(panelRatio * 100).toFixed(1)}%` }} onScroll={() => forceTagUpdate(v => v + 1)}>
         {blocks.length === 0 && (
           <div className={styles.emptyBlocks}>No blocks yet. Click a slot to add one.</div>
         )}
 
-        {dueAssignments.length > 0 && (
-          <div className={styles.dueTodayRow}>
-            <span className={styles.dueTodayLabel}>Due today</span>
-            <div className={styles.dueTodayChips}>
-              {dueAssignments.map(({ assignment, color }) => (
-                <button
-                  key={`due-chip-${assignment.id}`}
-                  className={styles.dueTodayChip}
-                  style={{ background: color + '22', borderColor: color + '88', color }}
-                  onClick={() => setDeadlineDetail({ courseId: assignment.courseId, assignmentId: assignment.id })}
-                >
-                  {assignment.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className={styles.gridWrapper} style={{ height: gridHeight }}>
+        <div className={styles.gridWrapper} style={{ height: gridHeight }} ref={gridWrapperRef}>
 
           {slots.map(slot => (
             <div
@@ -1362,6 +1359,80 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             );
           })}
 
+          {(() => {
+            const gridRect = gridWrapperRef.current?.getBoundingClientRect();
+            if (!gridRect) return null;
+            const fixedRight = window.innerWidth - gridRect.right;
+            console.log('[DueTags] gridRect.right:', gridRect.right, '| fixedRight:', fixedRight, '| window.innerWidth:', window.innerWidth);
+            const TAG_H = 20;
+            const TAG_GAP = 4;
+            const grouped = new Map<number, typeof dueAssignments>();
+            for (const item of dueAssignments) {
+              const d = new Date(item.assignment.dueAt);
+              const minutesFromMidnight = d.getHours() * 60 + d.getMinutes();
+              const isGeneric = minutesFromMidnight === 0 || minutesFromMidnight >= 23 * 60 + 58;
+              const key = isGeneric ? -1 : minutesFromMidnight;
+              if (!grouped.has(key)) grouped.set(key, []);
+              grouped.get(key)!.push(item);
+            }
+            return Array.from(grouped.entries()).flatMap(([key, items]) =>
+              items.map((item, idx) => {
+                const timeOffset = key === -1
+                  ? idx * (TAG_H + TAG_GAP) + 6
+                  : minToTop(key) - TAG_H / 2 + idx * (TAG_H + TAG_GAP);
+                const fixedTop = gridRect.top + timeOffset;
+                const assignmentId = String(item.assignment.id);
+                const isOpen = dueTagPopoverId === assignmentId;
+                const name = item.assignment.name;
+                const due = new Date(item.assignment.dueAt);
+                const dueTimeStr = due.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                return (
+                  <div
+                    key={`due-tag-${assignmentId}`}
+                    className={`${styles.dueTag}${isOpen ? ` ${styles.dueTagOpen}` : ''}`}
+                    style={{
+                      position: 'fixed',
+                      top: fixedTop,
+                      right: fixedRight,
+                      background: item.color + '26',
+                      borderColor: item.color,
+                      color: item.color,
+                    }}
+                    onMouseEnter={e => {
+                      console.log('[DueTag hover]', item.assignment.name, (e.currentTarget as HTMLElement).getBoundingClientRect());
+                    }}
+                    onClick={e => {
+                      e.stopPropagation();
+                      setDueTagPopoverId(prev => prev === assignmentId ? null : assignmentId);
+                    }}
+                  >
+                    {name}
+                    {isOpen && (
+                      <div
+                        className={styles.dueTagPopover}
+                        ref={dueTagPopoverRef}
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <div className={styles.dueTagPopoverName}>{name}</div>
+                        <div className={styles.dueTagPopoverCourse}>{item.assignment.courseName}</div>
+                        <div className={styles.dueTagPopoverTime}>Due at {dueTimeStr}</div>
+                        {item.assignment.htmlUrl && (
+                          <a
+                            className={styles.dueTagPopoverLink}
+                            href={item.assignment.htmlUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Open in Canvas ↗
+                          </a>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            );
+          })()}
 
         </div>
       </div>
