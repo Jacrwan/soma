@@ -210,12 +210,11 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     const withTodos = new Set(todayTodos.map(t => t.subjectId ?? 'unassigned'));
     return new Set(storage.getSubjects().filter(s => !withTodos.has(s.id)).map(s => s.id));
   });
-  const [taskModal, setTaskModal] = useState<{ subjectId: string | undefined } | null>(null);
+  const [taskModal, setTaskModal] = useState<{ subjectId: string | undefined; editingTodo?: Todo } | null>(null);
   const [taskForm, setTaskForm] = useState<TaskFormState>({
     text: '', hours: 0, minutes: 0, dueDate: '', notes: '',
     scheduleIt: false, startHour: 9, startMinute: 0, startAmPm: 'AM',
   });
-  const [todoPopoverId, setTodoPopoverId] = useState<string | null>(null);
   const [statusPopoverId, setStatusPopoverId] = useState<string | null>(null);
   const [pinPopoverId, setPinPopoverId] = useState<string | null>(null);
   const [pinForm, setPinForm] = useState<{ hour: number; minute: number; ampm: 'AM' | 'PM'; durationHours: number; durationMinutes: number }>(
@@ -226,8 +225,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [addSubjectForm, setAddSubjectForm] = useState<AddSubjectForm>({ name: '', color: COLORS[0] });
   const [editSubject, setEditSubject] = useState<SubjectEditState | null>(null);
   const [gcalEvents, setGcalEvents] = useState<GoogleCalendarEvent[]>([]);
-  const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
-  const [editingTodoText, setEditingTodoText] = useState('');
   const [timerRunning, setTimerRunning] = useState(false);
   const [briefCollapsed, setBriefCollapsed] = useState<boolean>(() => {
     const s = localStorage.getItem('soma_brief_collapsed');
@@ -243,7 +240,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   });
   const containerRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
-  const todoPopoverRef = useRef<HTMLDivElement>(null);
   const statusPopoverRef = useRef<HTMLDivElement>(null);
   const pinPopoverRef = useRef<HTMLDivElement>(null);
   const touchStartXRef = useRef(0);
@@ -293,17 +289,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [popover]);
-
-  useEffect(() => {
-    if (!todoPopoverId) return;
-    const onDown = (e: MouseEvent) => {
-      if (todoPopoverRef.current && !todoPopoverRef.current.contains(e.target as Node)) {
-        setTodoPopoverId(null);
-      }
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [todoPopoverId]);
 
   useEffect(() => {
     if (!statusPopoverId) return;
@@ -539,19 +524,35 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     const text = taskForm.text.trim();
     if (!text) { setTaskModal(null); return; }
     const estimatedMinutes = taskForm.hours * 60 + taskForm.minutes;
-    const newTodo: Todo = {
-      id: crypto.randomUUID(),
-      text,
-      status: 'nothing',
-      subjectId: taskModal.subjectId,
-      dueDate: taskForm.dueDate || undefined,
-      notes: taskForm.notes.trim() || undefined,
-      estimatedMinutes: estimatedMinutes > 0 ? estimatedMinutes : undefined,
-      date: selectedDateKey,
-    };
-    const updatedTodos = [...todos, newTodo];
-    storage.setTodos(updatedTodos);
-    setTodos(updatedTodos);
+
+    if (taskModal.editingTodo) {
+      const updated = todos.map(t => t.id === taskModal.editingTodo!.id ? {
+        ...t,
+        text,
+        dueDate: taskForm.dueDate || undefined,
+        notes: taskForm.notes.trim() || undefined,
+        estimatedMinutes: estimatedMinutes > 0 ? estimatedMinutes : undefined,
+      } : t);
+      storage.setTodos(updated);
+      setTodos(updated);
+    } else {
+      const newTodo: Todo = {
+        id: crypto.randomUUID(),
+        text,
+        status: 'nothing',
+        subjectId: taskModal.subjectId,
+        dueDate: taskForm.dueDate || undefined,
+        notes: taskForm.notes.trim() || undefined,
+        estimatedMinutes: estimatedMinutes > 0 ? estimatedMinutes : undefined,
+        date: selectedDateKey,
+      };
+      storage.setTodos([...todos, newTodo]);
+      setTodos(prev => [...prev, newTodo]);
+      // expand the group so the new todo is immediately visible
+      const groupId = taskModal.subjectId ?? 'unassigned';
+      setCollapsedGroups(prev => { const next = new Set(prev); next.delete(groupId); return next; });
+    }
+
     if (taskForm.scheduleIt) {
       const hour24 = (taskForm.startHour % 12) + (taskForm.startAmPm === 'PM' ? 12 : 0);
       const durMins = Math.max(estimatedMinutes, 30);
@@ -571,6 +572,13 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     setTaskModal(null);
   }
 
+  function openEditTodo(todo: Todo) {
+    const hours = Math.floor((todo.estimatedMinutes ?? 0) / 60);
+    const minutes = (todo.estimatedMinutes ?? 0) % 60;
+    setTaskForm({ text: todo.text, hours, minutes, dueDate: todo.dueDate ?? '', notes: todo.notes ?? '', scheduleIt: false, startHour: 9, startMinute: 0, startAmPm: 'AM' });
+    setTaskModal({ subjectId: todo.subjectId, editingTodo: todo });
+  }
+
   function getActualMinutesForTodo(todo: Todo): number {
     const sessions = storage.getTimerSessions();
     const total = sessions
@@ -581,21 +589,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
       )
       .reduce((sum, s) => sum + s.durationSeconds, 0);
     return Math.floor(total / 60);
-  }
-
-  function saveTodoEdit(id: string) {
-    const text = editingTodoText.trim();
-    if (!text) { setEditingTodoId(null); return; }
-    const updated = todos.map(t => t.id === id ? { ...t, text } : t);
-    storage.setTodos(updated);
-    setTodos(updated);
-    setEditingTodoId(null);
-  }
-
-  function openTimerFromTodo(subject: Subject, task: string) {
-    setTodoPopoverId(null);
-    setInitialTimerTask(task);
-    setTimerSubject(subject);
   }
 
   function pinTodo(todo: Todo) {
@@ -621,7 +614,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
 
   function openPinPopover(todoId: string) {
     setStatusPopoverId(null);
-    setTodoPopoverId(null);
     const now = new Date();
     let hour24 = 9, minute = 0;
     if (isViewingToday) {
@@ -680,17 +672,16 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
 
   const gridHeight = TOTAL_HOURS * SLOT_HEIGHT;
 
-  function renderTodoItem(todo: Todo, subject: Subject | undefined) {
+  function renderTodoItem(todo: Todo) {
     const actualMins = getActualMinutesForTodo(todo);
     const hasEstimate = (todo.estimatedMinutes ?? 0) > 0;
-    const showTimeDisplay = (hasEstimate || actualMins > 0) && editingTodoId !== todo.id;
 
     return (
       <div key={todo.id} className={styles.todoItemWrap}>
         <div className={`${styles.todoItem}${todo.status === 'done' ? ` ${styles.todoItemDone}` : ''}`}>
           <button
             className={todo.status === 'in_progress' ? styles.statusBtnInProgress : todo.status === 'done' ? styles.statusBtnDone : styles.statusBtn}
-            onClick={() => { setTodoPopoverId(null); setStatusPopoverId(prev => prev === todo.id ? null : todo.id); }}
+            onClick={() => setStatusPopoverId(prev => prev === todo.id ? null : todo.id)}
           >
             {todo.status === 'in_progress' && (
               <svg width="10" height="10" viewBox="0 0 10 10"><polygon points="0,0 10,5 0,10" fill="currentColor" /></svg>
@@ -700,36 +691,13 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             )}
           </button>
           <div className={styles.todoContent}>
-            {editingTodoId === todo.id ? (
-              <div className={styles.todoEditMode}>
-                <input
-                  className={styles.todoEditInput}
-                  value={editingTodoText}
-                  autoFocus
-                  onChange={e => setEditingTodoText(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') saveTodoEdit(todo.id); if (e.key === 'Escape') setEditingTodoId(null); }}
-                />
-                <button className={styles.todoEditSave} title="Save" onClick={() => saveTodoEdit(todo.id)}>
-                  <svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4.5L4 7.5L10 1" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                </button>
-                <button className={styles.todoEditCancel} title="Cancel" onClick={() => setEditingTodoId(null)}>
-                  <svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1 1L8 8M8 1L1 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
-                </button>
-              </div>
-            ) : (
-              <>
-                <span
-                  className={styles.todoText}
-                  onClick={() => { setStatusPopoverId(null); setTodoPopoverId(prev => prev === todo.id ? null : todo.id); }}
-                >{todo.text}</span>
-                {hasEstimate && (
-                  <span className={styles.todoEstBadge}>{fmtEstimated(todo.estimatedMinutes!)}</span>
-                )}
-                {todo.dueDate && <span className={styles.todoDueDate}>{todo.dueDate}</span>}
-              </>
+            <span className={styles.todoText} onClick={() => openEditTodo(todo)}>{todo.text}</span>
+            {hasEstimate && (
+              <span className={styles.todoEstBadge}>{fmtEstimated(todo.estimatedMinutes!)}</span>
             )}
+            {todo.dueDate && <span className={styles.todoDueDate}>{todo.dueDate}</span>}
           </div>
-          {showTimeDisplay && (
+          {(hasEstimate || actualMins > 0) && (
             <span className={styles.todoTimeDisplay}>
               {hasEstimate
                 ? `${fmtTimeShort(actualMins)} / ${fmtTimeShort(todo.estimatedMinutes!)}`
@@ -741,7 +709,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             <button
               className={styles.editTodoBtn}
               title="Edit"
-              onClick={e => { e.stopPropagation(); setEditingTodoId(todo.id); setEditingTodoText(todo.text); setTodoPopoverId(null); }}
+              onClick={e => { e.stopPropagation(); openEditTodo(todo); }}
             >
               <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M7.5 1.5l2 2L3 10H1V8L7.5 1.5z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </button>
@@ -768,23 +736,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               <span className={`${styles.statusIcon} ${styles.statusIconDone}`}><svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5.5" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="1.5"/><path d="M4 6.5L6 8.5L9.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
               Done
             </button>
-          </div>
-        )}
-        {todoPopoverId === todo.id && (
-          <div className={styles.todoPopover} ref={todoPopoverRef}>
-            <div className={styles.popoverText}>{todo.text}</div>
-            <div className={styles.popoverActions}>
-              {subject && (
-                <button
-                  className={styles.popoverStart}
-                  onClick={() => openTimerFromTodo(subject, todo.text)}
-                >Start timer</button>
-              )}
-              <button
-                className={styles.popoverDismiss}
-                onClick={() => setTodoPopoverId(null)}
-              >Dismiss</button>
-            </div>
           </div>
         )}
         {pinPopoverId === todo.id && (
@@ -1200,7 +1151,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
 
               {!isEditing && showBody && (
                 <div className={styles.todoGroupBody}>
-                  {groupTodos.map(todo => renderTodoItem(todo, subject))}
+                  {groupTodos.map(todo => renderTodoItem(todo))}
                 </div>
               )}
             </div>
@@ -1253,7 +1204,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               </div>
               {showBody && (
                 <div className={styles.todoGroupBody}>
-                  {unassigned.map(todo => renderTodoItem(todo, undefined))}
+                  {unassigned.map(todo => renderTodoItem(todo))}
                 </div>
               )}
             </div>
@@ -1277,7 +1228,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
         <div className={styles.modalOverlay} onClick={() => setTaskModal(null)}>
           <div className={styles.taskModalBox} onClick={e => e.stopPropagation()}>
             <div className={styles.taskModalHeader}>
-              <span className={styles.taskModalTitle}>New Task</span>
+              <span className={styles.taskModalTitle}>{taskModal.editingTodo ? 'Edit Task' : 'New Task'}</span>
               {(() => {
                 const subject = taskModal.subjectId ? subjects.find(s => s.id === taskModal.subjectId) : null;
                 return subject ? (
@@ -1397,7 +1348,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               className={styles.taskModalSubmit}
               onClick={saveTaskFromModal}
               disabled={!taskForm.text.trim()}
-            >Add Task</button>
+            >{taskModal.editingTodo ? 'Save Changes' : 'Add Task'}</button>
             <button className={styles.taskModalCancel} onClick={() => setTaskModal(null)}>Cancel</button>
           </div>
         </div>
