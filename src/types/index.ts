@@ -8,6 +8,7 @@ export interface Subject {
   color: SubjectColor;
   totalTimeToday: number; // seconds
   archived?: boolean;
+  order?: number;
 }
 
 export interface TimeBlock {

@@ -1084,6 +1084,7 @@
 .subjectGroup {
   margin-bottom: 0;
   border-bottom: 1px solid oklch(95% 0.005 265);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 
 .subjectGroup:last-child {
@@ -1096,12 +1097,22 @@
   gap: 7px;
   padding: 10px var(--space-sm);
   border-radius: 6px;
-  cursor: pointer;
+  cursor: grab;
   user-select: none;
 }
 
 .subjectGroupHeader:hover {
   background: #f5f5f5;
+}
+
+.subjectGroupDragging {
+  position: relative;
+  z-index: 10;
+  transform: scale(1.015);
+  box-shadow: 0 4px 16px oklch(40% 0.01 265 / 0.13), 0 1px 4px oklch(40% 0.01 265 / 0.07);
+  border-radius: 8px;
+  background: #fff;
+  transition: none;
 }
 
 .subjectGroupHeader:hover .editIcon {

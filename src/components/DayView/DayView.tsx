@@ -261,6 +261,8 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     const s = localStorage.getItem('soma_panel_ratio');
     return s ? Math.max(0.35, Math.min(0.75, parseFloat(s))) : 0.65;
   });
+  const [dragSubjectId, setDragSubjectId] = useState<string | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const statusPopoverRef = useRef<HTMLDivElement>(null);
   const pinPopoverRef = useRef<HTMLDivElement>(null);
@@ -268,6 +270,13 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const touchStartXRef = useRef(0);
   const wheelCooldownRef = useRef(false);
   const prevSelectedDateRef = useRef(selectedDate);
+  const dragTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dragPendingIdRef = useRef<string | null>(null);
+  const wasInDragRef = useRef(false);
+  const subjectGroupRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const activeSubjectsRef = useRef<Subject[]>([]);
+  const subjectsRef = useRef<Subject[]>([]);
+  const dragOverIndexRef = useRef<number | null>(null);
 
   // Sync week view when selectedDate changes from an external source (e.g. CalendarTab)
   useEffect(() => {
@@ -377,6 +386,63 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [subjectPickerMode]);
+
+  useEffect(() => {
+    if (!dragSubjectId) return;
+    document.body.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+
+    function onMove(e: PointerEvent) {
+      const subjects = activeSubjectsRef.current;
+      const y = e.clientY;
+      let best = 0, bestDist = Infinity;
+      subjects.forEach((s, i) => {
+        const el = subjectGroupRefs.current.get(s.id);
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const dist = Math.abs(y - (rect.top + rect.height / 2));
+        if (dist < bestDist) { bestDist = dist; best = i; }
+      });
+      setDragOverIndex(prev => prev === best ? prev : best);
+    }
+
+    function onUp() {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+
+      const overIndex = dragOverIndexRef.current;
+      const subjects = activeSubjectsRef.current;
+      if (overIndex !== null) {
+        const from = subjects.findIndex(s => s.id === dragSubjectId);
+        if (from !== -1 && from !== overIndex) {
+          const reordered = [...subjects];
+          const [item] = reordered.splice(from, 1);
+          reordered.splice(overIndex, 0, item);
+          const archived = subjectsRef.current.filter(s => s.archived);
+          const updated = [
+            ...reordered.map((s, i) => ({ ...s, order: i })),
+            ...archived.map((s, i) => ({ ...s, order: reordered.length + i })),
+          ];
+          storage.setSubjects(updated);
+          setSubjects(updated);
+        }
+      }
+      setTimeout(() => { wasInDragRef.current = false; }, 0);
+      setDragSubjectId(null);
+      setDragOverIndex(null);
+    }
+
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    return () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [dragSubjectId]);
 
   const slots = Array.from({ length: TOTAL_HOURS }, (_, i) => {
     const hourOfDay = (START_HOUR + i) % 24;
@@ -602,6 +668,25 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     });
   }
 
+  function handleSubjectPointerDown(e: React.PointerEvent, subjectId: string) {
+    if (e.button !== 0) return;
+    dragPendingIdRef.current = subjectId;
+    dragTimerRef.current = setTimeout(() => {
+      if (dragPendingIdRef.current !== subjectId) return;
+      dragTimerRef.current = null;
+      wasInDragRef.current = true;
+      setDragSubjectId(subjectId);
+    }, 200);
+  }
+
+  function handleSubjectPointerUp() {
+    if (dragTimerRef.current) {
+      clearTimeout(dragTimerRef.current);
+      dragTimerRef.current = null;
+      dragPendingIdRef.current = null;
+    }
+  }
+
   function startAdding(groupId: string) {
     const subjectId = groupId === 'unassigned' ? undefined : groupId;
     let startHour = 9, startMinute = 0;
@@ -785,9 +870,27 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     }
   }
 
-  const activeSubjects = subjects.filter(s => !s.archived);
+  const activeSubjects = subjects
+    .filter(s => !s.archived)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const archivedSubjects = subjects.filter(s => s.archived);
   const selectedDateKey = toISODateString(selectedDate);
+
+  // Keep refs in sync for use inside pointer/drag event handlers
+  activeSubjectsRef.current = activeSubjects;
+  subjectsRef.current = subjects;
+  dragOverIndexRef.current = dragOverIndex;
+
+  // Live preview order while dragging
+  const orderedActiveSubjects = (() => {
+    if (dragSubjectId === null || dragOverIndex === null) return activeSubjects;
+    const from = activeSubjects.findIndex(s => s.id === dragSubjectId);
+    if (from === -1) return activeSubjects;
+    const result = [...activeSubjects];
+    const [item] = result.splice(from, 1);
+    result.splice(dragOverIndex, 0, item);
+    return result;
+  })();
   const dayTodos = todos.filter(t => t.date === selectedDateKey);
 
   function selectDate(date: Date) {
@@ -1258,17 +1361,28 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
           <div className={styles.emptySubjects}>Add a subject to get started.</div>
         )}
 
-        {activeSubjects.map(subject => {
+        {orderedActiveSubjects.map(subject => {
           const groupTodos = dayTodos.filter(t => t.subjectId === subject.id);
           const isCollapsed = collapsedGroups.has(subject.id);
           const showBody = !isCollapsed;
           const pending = groupTodos.filter(t => t.status !== 'done').length;
+          const isDragging = dragSubjectId === subject.id;
 
           return (
-            <div key={subject.id} className={styles.subjectGroup}>
+            <div
+              key={subject.id}
+              className={`${styles.subjectGroup}${isDragging ? ` ${styles.subjectGroupDragging}` : ''}`}
+              ref={el => { if (el) subjectGroupRefs.current.set(subject.id, el); else subjectGroupRefs.current.delete(subject.id); }}
+            >
               <div
                 className={styles.subjectGroupHeader}
-                onClick={() => toggleGroup(subject.id)}
+                onPointerDown={e => handleSubjectPointerDown(e, subject.id)}
+                onPointerUp={handleSubjectPointerUp}
+                onPointerCancel={handleSubjectPointerUp}
+                onClick={() => {
+                  if (wasInDragRef.current) { wasInDragRef.current = false; return; }
+                  toggleGroup(subject.id);
+                }}
               >
                 <span className={styles.dotIndicator} style={{ background: subject.color }} />
                 <span className={styles.subjectName}>{subject.name}</span>
