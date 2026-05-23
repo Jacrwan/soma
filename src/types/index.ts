@@ -39,6 +39,7 @@ export interface CanvasAssignment {
   htmlUrl: string;
   status: 'not_started' | 'in_progress' | 'done';
   description?: string;
+  submittedAt?: string | null;
 }
 
 export interface CanvasCourse {
@@ -61,6 +62,16 @@ export interface CanvasModule {
   name: string;
   position: number;
   courseId: number;
+}
+
+export interface CanvasGrade {
+  courseId: number;
+  courseName: string;
+  courseCode: string;
+  currentScore: number | null;
+  currentGrade: string | null;
+  finalScore: number | null;
+  finalGrade: string | null;
 }
 
 export interface Todo {

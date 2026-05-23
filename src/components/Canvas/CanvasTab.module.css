@@ -241,6 +241,61 @@
   padding: var(--space-lg) 0;
 }
 
+/* ── Filter bar ────────────────────────────────────────────────────────── */
+
+.filterBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.filterPills {
+  display: flex;
+  gap: 4px;
+}
+
+.filterPill {
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: background 0.12s, color 0.12s;
+}
+
+.filterPill:hover {
+  background: var(--bg-secondary);
+}
+
+.filterPillActive {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.sortBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 9px;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sortBtn:hover {
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
 /* ── Assignment list ───────────────────────────────────────────────────── */
 
 .assignmentList {
@@ -305,6 +360,34 @@
   font-size: 12px;
   color: var(--text-muted);
   white-space: nowrap;
+}
+
+.doneToggle {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.doneToggle:hover {
+  border-color: #66bb6a;
+  color: #66bb6a;
+}
+
+.doneToggleActive {
+  border-color: #66bb6a;
+  background: #66bb6a;
+  color: #fff;
 }
 
 .statusSelect {

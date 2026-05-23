@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { storage } from '../../lib/storage';
 import { CanvasCourse, CanvasAssignment, CanvasAnnouncement, Subject, Todo } from '../../types';
 import { getCourses, getAssignments, getAnnouncements, getModules } from '../../lib/canvas';
+import AssignmentDetail from './AssignmentDetail';
 import styles from './CanvasTab.module.css';
 
 const COURSE_COLORS = [
@@ -83,6 +84,9 @@ export default function CanvasTab() {
   const [syncing, setSyncing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [detailAssignment, setDetailAssignment] = useState<CanvasAssignment | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'not_started' | 'in_progress' | 'done'>('all');
+  const [sortBy, setSortBy] = useState<'due' | 'course'>('due');
 
   const isConnected = !!token && !!baseUrl;
 
@@ -116,6 +120,22 @@ export default function CanvasTab() {
       ]);
       const all = assignmentGroups.flat();
       all.sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime());
+
+      // Auto-mark submitted assignments as done
+      const currentStatus = storage.getAssignmentStatus();
+      const updatedStatus = { ...currentStatus };
+      let statusChanged = false;
+      for (const a of all) {
+        if (a.submittedAt && updatedStatus[a.id] !== 'done') {
+          updatedStatus[a.id] = 'done';
+          statusChanged = true;
+        }
+      }
+      if (statusChanged) {
+        storage.setAssignmentStatus(updatedStatus);
+        setAssignmentStatus(updatedStatus);
+      }
+
       setAssignments(all);
       storage.setCachedAssignments(all);
       const flatAnnouncements = announcementGroups.flat();
@@ -244,9 +264,13 @@ export default function CanvasTab() {
     courses.map((c, i) => [c.id, COURSE_COLORS[i % COURSE_COLORS.length]]),
   );
 
-  const filtered = selectedCourseId === null
-    ? assignments
-    : assignments.filter(a => a.courseId === selectedCourseId);
+  const filtered = assignments
+    .filter(a => selectedCourseId === null || a.courseId === selectedCourseId)
+    .filter(a => statusFilter === 'all' || (assignmentStatus[a.id] ?? 'not_started') === statusFilter)
+    .sort((a, b) => sortBy === 'due'
+      ? new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime()
+      : a.courseName.localeCompare(b.courseName)
+    );
 
   const filteredAnnouncements = selectedCourseId === null
     ? announcements
@@ -306,6 +330,26 @@ export default function CanvasTab() {
 
           {!loading && !error && (
             <>
+              <div className={styles.filterBar}>
+                <div className={styles.filterPills}>
+                  {(['all', 'not_started', 'in_progress', 'done'] as const).map(f => (
+                    <button
+                      key={f}
+                      className={`${styles.filterPill}${statusFilter === f ? ` ${styles.filterPillActive}` : ''}`}
+                      onClick={() => setStatusFilter(f)}
+                    >
+                      {f === 'all' ? 'All' : f === 'not_started' ? 'Not started' : f === 'in_progress' ? 'In progress' : 'Done'}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  className={styles.sortBtn}
+                  onClick={() => setSortBy(s => s === 'due' ? 'course' : 'due')}
+                  title="Toggle sort"
+                >
+                  {sortBy === 'due' ? 'By due date' : 'By course'} ↕
+                </button>
+              </div>
               <div className={styles.assignmentList}>
                 {filtered.length === 0 ? (
                   <div className={styles.empty}>No upcoming assignments.</div>
@@ -314,7 +358,12 @@ export default function CanvasTab() {
                   const done = status === 'done';
                   const color = courseColorMap[a.courseId] ?? '#ccc';
                   return (
-                    <div key={a.id} className={`${styles.assignmentRow}${done ? ` ${styles.done}` : ''}`}>
+                    <div
+                      key={a.id}
+                      className={`${styles.assignmentRow}${done ? ` ${styles.done}` : ''}`}
+                      onClick={() => setDetailAssignment(a)}
+                      style={{ cursor: 'pointer' }}
+                    >
                       <span
                         className={styles.dot}
                         style={{ background: color, opacity: done ? 0.3 : 1 }}
@@ -325,7 +374,12 @@ export default function CanvasTab() {
                       </div>
                       <div className={styles.assignmentRight}>
                         <span className={styles.assignmentDue}>Due: {fmtDue(a.dueAt)}</span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={e => e.stopPropagation()}>
+                          <button
+                            className={`${styles.doneToggle}${done ? ` ${styles.doneToggleActive}` : ''}`}
+                            onClick={() => updateStatus(a.id, done ? 'not_started' : 'done')}
+                            title={done ? 'Mark not started' : 'Mark done'}
+                          >✓</button>
                           <select
                             className={styles.statusSelect}
                             value={status}
@@ -414,6 +468,14 @@ export default function CanvasTab() {
           )}
         </div>
       </div>
+
+      {detailAssignment && (
+        <AssignmentDetail
+          courseId={detailAssignment.courseId}
+          assignmentId={detailAssignment.id}
+          onClose={() => setDetailAssignment(null)}
+        />
+      )}
     </div>
   );
 }

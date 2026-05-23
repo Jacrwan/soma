@@ -245,6 +245,23 @@
   color: #fff;
 }
 
+.bannerStopBtn {
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: none;
+  background: #ef5350;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.bannerStopBtn:hover {
+  background: #e53935;
+}
+
 @media (max-width: 768px) {
   .modal {
     width: calc(100vw - 32px);
