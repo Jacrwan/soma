@@ -538,13 +538,6 @@ export default function CanvasTab() {
                             onClick={() => updateStatus(a.id, done ? 'not_started' : 'done')}
                             title={done ? 'Mark not started' : 'Mark done'}
                           >✓</button>
-                          <button
-                            className={styles.clearBtn}
-                            onClick={() => setAssignmentCleared(a.id, !cleared)}
-                            title={cleared ? 'Restore to active list' : 'Clear from Canvas page'}
-                          >
-                            {cleared ? 'Restore' : 'Clear'}
-                          </button>
                           <select
                             className={styles.statusSelect}
                             value={status}
