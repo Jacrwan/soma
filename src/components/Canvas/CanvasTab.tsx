@@ -517,21 +517,20 @@ export default function CanvasTab() {
                         <span className={styles.assignmentCourse}>{a.courseName}</span>
                       </div>
                       <div className={styles.assignmentRight}>
-                        {a.score != null && a.pointsPossible != null && (
-                          <span className={styles.assignmentScore} style={{
-                            color: a.pointsPossible > 0
-                              ? (() => {
-                                  const pct = (a.score / a.pointsPossible) * 100;
-                                  if (pct >= 90) return '#66bb6a';
-                                  if (pct >= 80) return '#42a5f5';
-                                  if (pct >= 70) return '#ffa726';
-                                  return '#ef5350';
-                                })()
-                              : 'var(--text-muted)'
-                          }}>
-                            {a.score}/{a.pointsPossible}
-                          </span>
-                        )}
+                        <span className={styles.assignmentScore} style={{
+                          visibility: a.score != null && a.pointsPossible != null ? 'visible' : 'hidden',
+                          color: a.score != null && a.pointsPossible != null && a.pointsPossible > 0
+                            ? (() => {
+                                const pct = (a.score / a.pointsPossible!) * 100;
+                                if (pct >= 90) return '#66bb6a';
+                                if (pct >= 80) return '#42a5f5';
+                                if (pct >= 70) return '#ffa726';
+                                return '#ef5350';
+                              })()
+                            : 'var(--text-muted)',
+                        }}>
+                          {a.score ?? 0}/{a.pointsPossible ?? 0}
+                        </span>
                         <span className={styles.assignmentDue}>Due: {fmtDue(a.dueAt)}</span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={e => e.stopPropagation()}>
                           <button
