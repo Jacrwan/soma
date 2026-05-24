@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Subject, TimerSession, TimeBlock } from '../../types';
 import { storage } from '../../lib/storage';
+import { updateAIMemory } from '../../lib/insights';
 import { useTimer } from '../../hooks/useTimer';
 import styles from './TimerOverlay.module.css';
 
@@ -93,6 +94,14 @@ export default function TimerOverlay({ subject, onClose, onSessionSaved, onRunni
       durationSeconds,
     };
     storage.setTimerSessions([...storage.getTimerSessions(), session]);
+
+    const matchedTodo = storage.getTodos().find(t => t.text === task && t.subjectId === subject.id);
+    updateAIMemory({
+      subjectId: subject.id,
+      startHour: new Date(sessionStartTime).getHours(),
+      durationMinutes: Math.round(durationSeconds / 60),
+      estimatedMinutes: matchedTodo?.estimatedMinutes,
+    });
 
     const updatedSubjects = storage.getSubjects().map(s =>
       s.id === subject.id ? { ...s, totalTimeToday: s.totalTimeToday + durationSeconds } : s

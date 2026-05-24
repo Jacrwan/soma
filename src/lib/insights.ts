@@ -1,6 +1,74 @@
 import { storage } from './storage';
 import { Subject } from '../types';
 
+const AI_MEMORY_KEY = 'soma_ai_memory';
+
+interface AIMemoryStore {
+  subjectTimeDeltas: Record<string, { totalEstimated: number; totalActual: number; sampleCount: number }>;
+  peakHours: Record<number, number>;
+  subjectAverageDuration: Record<string, { avg: number; count: number }>;
+}
+
+export interface AIMemory {
+  subjectTimeDeltas: Record<string, { totalEstimated: number; totalActual: number; sampleCount: number }>;
+  peakHours: Record<number, number>;
+  subjectAverageDuration: Record<string, number>;
+}
+
+function loadAIMemoryStore(): AIMemoryStore {
+  const raw = localStorage.getItem(AI_MEMORY_KEY);
+  if (!raw) return { subjectTimeDeltas: {}, peakHours: {}, subjectAverageDuration: {} };
+  try { return JSON.parse(raw); } catch { return { subjectTimeDeltas: {}, peakHours: {}, subjectAverageDuration: {} }; }
+}
+
+export function getAIMemory(): AIMemory | null {
+  const store = loadAIMemoryStore();
+  const hasAny =
+    Object.keys(store.subjectTimeDeltas).length > 0 ||
+    Object.keys(store.peakHours).length > 0 ||
+    Object.keys(store.subjectAverageDuration).length > 0;
+  if (!hasAny) return null;
+  return {
+    subjectTimeDeltas: store.subjectTimeDeltas,
+    peakHours: store.peakHours,
+    subjectAverageDuration: Object.fromEntries(
+      Object.entries(store.subjectAverageDuration).map(([id, { avg }]) => [id, avg])
+    ),
+  };
+}
+
+export function updateAIMemory(session: {
+  subjectId: string;
+  startHour: number;
+  durationMinutes: number;
+  estimatedMinutes?: number;
+}): void {
+  const store = loadAIMemoryStore();
+
+  // peak hours
+  store.peakHours[session.startHour] = (store.peakHours[session.startHour] ?? 0) + session.durationMinutes;
+
+  // subject average duration (rolling)
+  const prev = store.subjectAverageDuration[session.subjectId] ?? { avg: 0, count: 0 };
+  const newCount = prev.count + 1;
+  store.subjectAverageDuration[session.subjectId] = {
+    avg: (prev.avg * prev.count + session.durationMinutes) / newCount,
+    count: newCount,
+  };
+
+  // estimated vs actual delta (only when estimated is provided)
+  if (session.estimatedMinutes != null && session.estimatedMinutes > 0) {
+    const prevDelta = store.subjectTimeDeltas[session.subjectId] ?? { totalEstimated: 0, totalActual: 0, sampleCount: 0 };
+    store.subjectTimeDeltas[session.subjectId] = {
+      totalEstimated: prevDelta.totalEstimated + session.estimatedMinutes,
+      totalActual: prevDelta.totalActual + session.durationMinutes,
+      sampleCount: prevDelta.sampleCount + 1,
+    };
+  }
+
+  localStorage.setItem(AI_MEMORY_KEY, JSON.stringify(store));
+}
+
 function dateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
