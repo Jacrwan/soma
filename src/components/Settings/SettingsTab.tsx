@@ -122,10 +122,76 @@ export default function SettingsTab() {
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Study Preferences</h2>
+        <div className={styles.prefGrid}>
+          <div className={styles.prefRow}>
+            <label className={styles.prefLabel}>Default session length</label>
+            <select
+              className={styles.prefSelect}
+              value={settings.studyPrefs.defaultSessionMinutes}
+              onChange={e => save({ ...settings, studyPrefs: { ...settings.studyPrefs, defaultSessionMinutes: Number(e.target.value) } })}
+            >
+              {[30, 45, 60, 90].map(m => (
+                <option key={m} value={m}>{m} min</option>
+              ))}
+            </select>
+          </div>
+
+          <div className={styles.prefRow}>
+            <label className={styles.prefLabel}>Default break duration</label>
+            <select
+              className={styles.prefSelect}
+              value={settings.studyPrefs.defaultBreakMinutes}
+              onChange={e => save({ ...settings, studyPrefs: { ...settings.studyPrefs, defaultBreakMinutes: Number(e.target.value) } })}
+            >
+              {[5, 10, 15, 20].map(m => (
+                <option key={m} value={m}>{m} min</option>
+              ))}
+            </select>
+          </div>
+
+          <div className={styles.prefRow}>
+            <label className={styles.prefLabel}>Preferred study start time</label>
+            <input
+              type="time"
+              className={styles.timeInput}
+              value={settings.studyPrefs.preferredStartTime}
+              onChange={e => save({ ...settings, studyPrefs: { ...settings.studyPrefs, preferredStartTime: e.target.value } })}
+            />
+          </div>
+        </div>
       </section>
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>AI Behavior</h2>
+        <div className={styles.prefGrid}>
+          <div className={styles.prefRow}>
+            <label className={styles.prefLabel}>Response verbosity</label>
+            <div className={styles.toggle}>
+              <button
+                className={`${styles.toggleBtn}${settings.aiPrefs.verbosity === 'concise' ? ` ${styles.toggleBtnActive}` : ''}`}
+                onClick={() => save({ ...settings, aiPrefs: { ...settings.aiPrefs, verbosity: 'concise' } })}
+              >Concise</button>
+              <button
+                className={`${styles.toggleBtn}${settings.aiPrefs.verbosity === 'detailed' ? ` ${styles.toggleBtnActive}` : ''}`}
+                onClick={() => save({ ...settings, aiPrefs: { ...settings.aiPrefs, verbosity: 'detailed' } })}
+              >Detailed</button>
+            </div>
+          </div>
+
+          <div className={styles.prefRow}>
+            <label className={styles.prefLabel}>When I ask to plan my day</label>
+            <div className={styles.toggle}>
+              <button
+                className={`${styles.toggleBtn}${settings.aiPrefs.defaultOutput === 'schedule' ? ` ${styles.toggleBtnActive}` : ''}`}
+                onClick={() => save({ ...settings, aiPrefs: { ...settings.aiPrefs, defaultOutput: 'schedule' } })}
+              >Create schedule</button>
+              <button
+                className={`${styles.toggleBtn}${settings.aiPrefs.defaultOutput === 'todos' ? ` ${styles.toggleBtnActive}` : ''}`}
+                onClick={() => save({ ...settings, aiPrefs: { ...settings.aiPrefs, defaultOutput: 'todos' } })}
+              >Create todos</button>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section className={styles.section}>

@@ -122,3 +122,68 @@
 .addBlockedBtn:hover {
   opacity: 1;
 }
+
+/* Study Preferences / AI Behavior */
+.prefGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.prefRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.prefLabel {
+  font-size: 13px;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.prefSelect {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 5px 8px;
+  cursor: pointer;
+  outline: none;
+}
+
+.prefSelect:focus {
+  border-color: var(--accent);
+}
+
+.toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.toggleBtn {
+  background: #fff;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+
+.toggleBtn + .toggleBtn {
+  border-left: 1px solid var(--border);
+}
+
+.toggleBtnActive {
+  background: var(--accent);
+  color: #fff;
+}
