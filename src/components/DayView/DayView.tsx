@@ -52,6 +52,12 @@ function isOnDate(iso: string, date: Date): boolean {
   return isSameDay(new Date(iso), date);
 }
 
+function subjectSecsFromSessions(subjectId: string, date: Date): number {
+  return storage.getTimerSessions()
+    .filter(s => s.subjectId === subjectId && isOnDate(s.startTime, date))
+    .reduce((acc, s) => acc + s.durationSeconds, 0);
+}
+
 function dayKey(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
@@ -433,12 +439,10 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   useEffect(() => {
     const blocksForDate = storage.getTimeBlocks().filter(b => isOnDate(b.startTime, selectedDate));
     setBlocks(blocksForDate);
-    setSubjects(prev => prev.map(s => {
-      const totalSecs = blocksForDate
-        .filter(b => b.subjectId === s.id)
-        .reduce((acc, b) => acc + Math.max(0, (new Date(b.endTime).getTime() - new Date(b.startTime).getTime()) / 1000), 0);
-      return { ...s, totalTimeToday: Math.round(totalSecs) };
-    }));
+    setSubjects(prev => prev.map(s => ({
+      ...s,
+      totalTimeToday: subjectSecsFromSessions(s.id, selectedDate),
+    })));
   }, [selectedDate]);
 
   useEffect(() => {
@@ -716,12 +720,10 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     storage.setTimeBlocks(allBlocks);
     const blocksForDate = allBlocks.filter(b => isOnDate(b.startTime, selectedDate));
     setBlocks(blocksForDate);
-    const updatedSubjects = subjects.map(s => {
-      const totalSecs = blocksForDate
-        .filter(b => b.subjectId === s.id)
-        .reduce((acc, b) => acc + Math.max(0, (new Date(b.endTime).getTime() - new Date(b.startTime).getTime()) / 1000), 0);
-      return { ...s, totalTimeToday: Math.round(totalSecs) };
-    });
+    const updatedSubjects = subjects.map(s => ({
+      ...s,
+      totalTimeToday: subjectSecsFromSessions(s.id, selectedDate),
+    }));
     storage.setSubjects(updatedSubjects);
     setSubjects(updatedSubjects);
     setBlockModal({ block: updated, subject: blockModal.subject });
