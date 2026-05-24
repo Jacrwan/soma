@@ -671,7 +671,11 @@
 }
 
 .weekViewBlockSoma {
-  border: 1px solid;
+  border-left: 3px solid;
+  border-top: none;
+  border-right: none;
+  border-bottom: none;
+  border-radius: 4px;
 }
 
 .weekViewBlockGcal {
@@ -681,7 +685,6 @@
 .weekViewBlockLabel {
   font-size: 11px;
   font-weight: 600;
-  color: oklch(99% 0.003 0);
   display: block;
   white-space: nowrap;
   overflow: hidden;
@@ -691,7 +694,6 @@
 
 .weekViewBlockSub {
   font-size: 10px;
-  color: oklch(99% 0.003 0 / 0.85);
   display: block;
   white-space: nowrap;
   overflow: hidden;

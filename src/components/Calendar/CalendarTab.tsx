@@ -43,6 +43,7 @@ interface PositionedEvent {
   sublabel?: string;
   color: string;
   borderColor?: string;
+  textColor: string;
   top: number;
   height: number;
   left: number;
@@ -452,8 +453,9 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
           type: 'soma',
           label,
           sublabel,
-          color: `${baseColor}d9`,
+          color: `${baseColor}26`,
           borderColor: baseColor,
+          textColor: baseColor,
           startMin,
           endMin: endMin > startMin ? endMin : startMin + 30,
           block: b,
@@ -480,6 +482,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
           type: 'gcal',
           label: e.summary ?? '(No title)',
           color: GCAL_COLOR,
+          textColor: 'oklch(99% 0.003 0)',
           startMin,
           endMin: endMin > startMin ? endMin : startMin + 30,
           gcalEvent: e,
@@ -540,6 +543,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         sublabel: ev.sublabel,
         color: ev.color,
         borderColor: ev.borderColor,
+        textColor: ev.textColor,
         top: weekMinToTop(ev.startMin),
         height: Math.max(((ev.endMin - ev.startMin) / 60) * WEEK_SLOT_HEIGHT, 18),
         left: colAssign[i] / numColsArr[i],
@@ -943,9 +947,9 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                           }}
                           title={[ev.label, ev.sublabel].filter(Boolean).join(': ')}
                         >
-                          <span className={styles.weekViewBlockLabel}>{ev.label}</span>
+                          <span className={styles.weekViewBlockLabel} style={{ color: ev.textColor }}>{ev.label}</span>
                           {ev.sublabel && ev.height >= 30 && (
-                            <span className={styles.weekViewBlockSub}>{ev.sublabel}</span>
+                            <span className={styles.weekViewBlockSub} style={{ color: ev.textColor, opacity: 0.75 }}>{ev.sublabel}</span>
                           )}
                         </div>
                       ))}

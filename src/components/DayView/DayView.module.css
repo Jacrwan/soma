@@ -1162,12 +1162,6 @@
   display: inline-block;
 }
 
-.subjectArrow {
-  font-size: 9px;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
 .todoBadge {
   font-size: 10px;
   background: oklch(95% 0.006 265);
