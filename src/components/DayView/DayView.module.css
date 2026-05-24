@@ -228,6 +228,7 @@
   position: absolute;
   left: 72px;
   right: 8px;
+  min-width: 0;
   border-left-width: 3px;
   border-left-style: solid;
   border-radius: 6px;
@@ -235,6 +236,7 @@
   cursor: pointer;
   z-index: 1;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .block:hover {
@@ -259,6 +261,17 @@
   text-overflow: ellipsis;
 }
 
+.blockCompactText {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .blockDot {
   position: absolute;
   left: 72px;
@@ -268,6 +281,8 @@
   transform: translateY(-50%);
   cursor: pointer;
   z-index: 1;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .blockDotCircle {
@@ -283,7 +298,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 150px;
+  min-width: 0;
 }
 
 /* Google Calendar read-only blocks */
@@ -798,24 +813,28 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
 
 .headerIconBtn {
-  width: 32px;
+  min-width: 0;
   height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   background: none;
   border: 1px solid oklch(90% 0.007 265);
   border-radius: 8px;
   color: var(--text-secondary);
-  font-size: 16px;
+  font-size: 12px;
+  font-weight: 600;
   line-height: 1;
   cursor: pointer;
   transition: background 0.12s, border-color 0.12s, color 0.12s;
   flex-shrink: 0;
+  padding: 0 10px;
+  white-space: nowrap;
 }
 
 .headerIconBtn:hover {
@@ -828,6 +847,11 @@
   background: oklch(95% 0.015 265);
   border-color: oklch(72% 0.12 265);
   color: oklch(48% 0.2 265);
+}
+
+.headerBtnSymbol {
+  font-size: 15px;
+  line-height: 1;
 }
 
 .subjectPicker {
@@ -1135,10 +1159,6 @@
   opacity: 1;
 }
 
-.subjectGroupHeader:hover .todoGroupAdd {
-  opacity: 1;
-}
-
 .dotBtn {
   width: 10px;
   height: 10px;
@@ -1173,21 +1193,24 @@
 }
 
 .todoGroupAdd {
-  opacity: 0;
-  background: none;
-  border: none;
-  font-size: 15px;
+  background: #fff;
+  border: 1px solid oklch(90% 0.007 265);
+  font-size: 11px;
+  font-weight: 600;
   line-height: 1;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 0 3px;
-  border-radius: 3px;
-  transition: opacity 0.15s;
+  padding: 5px 8px;
+  border-radius: 6px;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
   flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .todoGroupAdd:hover {
   color: var(--accent);
+  border-color: oklch(78% 0.08 265);
+  background: oklch(98% 0.006 265);
 }
 
 .todoGroupBody {
@@ -1304,18 +1327,12 @@
   white-space: nowrap;
 }
 
-/* Hover-only action icons */
 .todoActions {
   display: flex;
   align-items: center;
-  gap: 2px;
-  opacity: 0;
-  transition: opacity 0.15s;
-  flex-shrink: 0;
-}
-
-.todoItem:hover .todoActions {
+  gap: 4px;
   opacity: 1;
+  flex-shrink: 0;
 }
 
 .editTodoBtn,
@@ -1329,6 +1346,26 @@
   border-radius: 4px;
   line-height: 1;
   transition: color 0.1s, background 0.1s;
+}
+
+.startTodoBtn {
+  border: 1px solid oklch(88% 0.008 265);
+  background: #fff;
+  color: var(--text-secondary);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 650;
+  padding: 4px 8px;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+
+.startTodoBtn:hover {
+  border-color: oklch(72% 0.12 265);
+  background: oklch(97% 0.008 265);
+  color: oklch(48% 0.2 265);
 }
 
 .editTodoBtn:hover,
@@ -1929,6 +1966,21 @@
   background: #fff;
 }
 
+.taskDetailsToggle {
+  align-self: flex-start;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0 0 14px;
+}
+
+.taskDetailsToggle:hover {
+  color: var(--text-primary);
+}
+
 .taskModalField {
   display: flex;
   flex-direction: column;
@@ -2085,6 +2137,12 @@
 }
 
 /* Modal action buttons */
+.taskModalActions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .taskModalSubmit {
   width: 100%;
   padding: 11px;
@@ -2096,7 +2154,6 @@
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s;
-  margin-bottom: 8px;
 }
 
 .taskModalSubmit:hover:not(:disabled) {
@@ -2104,6 +2161,29 @@
 }
 
 .taskModalSubmit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.taskModalStart {
+  width: 100%;
+  padding: 10px;
+  background: #fff;
+  color: var(--accent);
+  border: 1px solid oklch(78% 0.08 265);
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.taskModalStart:hover:not(:disabled) {
+  background: oklch(97% 0.008 265);
+  border-color: var(--accent);
+}
+
+.taskModalStart:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -2263,4 +2343,3 @@
     transition: none;
   }
 }
-

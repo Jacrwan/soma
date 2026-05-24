@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
 import { storage, inferSubjectId } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
 import { Subject, TimeBlock, SubjectColor, Todo, GoogleCalendarEvent, CanvasAssignment, CanvasCourse } from '../../types';
@@ -138,9 +138,111 @@ interface BlockEditForm {
 interface DotGroup {
   subjectId: string;
   topPx: number;
+  lane?: number;
+  lanes?: number;
   label: string;
   count: number;
   blocks: TimeBlock[];
+}
+
+interface PositionedTimeBlock {
+  block: TimeBlock;
+  lane: number;
+  lanes: number;
+}
+
+function getBlockMinutes(block: TimeBlock) {
+  const start = new Date(block.startTime);
+  const end = new Date(block.endTime);
+  const startMin = start.getHours() * 60 + start.getMinutes();
+  const endMin = startMin + Math.max((end.getTime() - start.getTime()) / 60_000, 1);
+  return { startMin, endMin };
+}
+
+function layoutTimeBlocks(blocks: TimeBlock[]): PositionedTimeBlock[] {
+  const sorted = [...blocks].sort((a, b) => {
+    const aBounds = getBlockMinutes(a);
+    const bBounds = getBlockMinutes(b);
+    return aBounds.startMin - bBounds.startMin || aBounds.endMin - bBounds.endMin;
+  });
+  const positioned = new Map<string, { lane: number; lanes: number }>();
+  let cluster: TimeBlock[] = [];
+  let clusterEnd = -Infinity;
+
+  function flushCluster() {
+    if (cluster.length === 0) return;
+    const laneEnds: number[] = [];
+    let laneCount = 1;
+
+    for (const block of cluster) {
+      const { startMin, endMin } = getBlockMinutes(block);
+      let lane = laneEnds.findIndex(lastEnd => lastEnd <= startMin);
+      if (lane === -1) lane = laneEnds.length;
+      laneEnds[lane] = endMin;
+      laneCount = Math.max(laneCount, laneEnds.length);
+      positioned.set(block.id, { lane, lanes: laneCount });
+    }
+
+    for (const block of cluster) {
+      const pos = positioned.get(block.id);
+      if (pos) positioned.set(block.id, { ...pos, lanes: laneCount });
+    }
+  }
+
+  for (const block of sorted) {
+    const { startMin, endMin } = getBlockMinutes(block);
+    if (cluster.length === 0 || startMin < clusterEnd) {
+      cluster.push(block);
+      clusterEnd = Math.max(clusterEnd, endMin);
+    } else {
+      flushCluster();
+      cluster = [block];
+      clusterEnd = endMin;
+    }
+  }
+  flushCluster();
+
+  return sorted.map(block => {
+    const pos = positioned.get(block.id) ?? { lane: 0, lanes: 1 };
+    return { block, lane: pos.lane, lanes: pos.lanes };
+  });
+}
+
+function layoutDotGroups(groups: DotGroup[]): DotGroup[] {
+  const sorted = [...groups].sort((a, b) => a.topPx - b.topPx);
+  const positioned: DotGroup[] = [];
+  let cluster: DotGroup[] = [];
+
+  function flushCluster() {
+    if (cluster.length === 0) return;
+    const lanes = cluster.length;
+    cluster.forEach((group, lane) => {
+      positioned.push({ ...group, lane, lanes });
+    });
+  }
+
+  for (const group of sorted) {
+    const firstTop = cluster[0]?.topPx;
+    if (cluster.length === 0 || Math.abs(group.topPx - firstTop) <= 12) {
+      cluster.push(group);
+    } else {
+      flushCluster();
+      cluster = [group];
+    }
+  }
+  flushCluster();
+
+  return positioned;
+}
+
+function laneStyle(lane = 0, lanes = 1, gapPx = 4): CSSProperties {
+  const fraction = lane / lanes;
+  const widthFraction = 1 / lanes;
+  return {
+    left: `calc(72px + ${fraction * 100}% - ${fraction * 80}px)`,
+    width: `calc(${widthFraction * 100}% - ${widthFraction * 80 + gapPx}px)`,
+    right: 'auto',
+  };
 }
 
 function groupShortBlocks(shortBlocks: TimeBlock[]): DotGroup[] {
@@ -245,6 +347,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   });
   const [taskModal, setTaskModal] = useState<{ subjectId: string | undefined; editingTodo?: Todo } | null>(null);
   const [subjectPickerMode, setSubjectPickerMode] = useState<'timer' | 'task' | null>(null);
+  const [taskDetailsOpen, setTaskDetailsOpen] = useState(false);
   const [taskForm, setTaskForm] = useState<TaskFormState>({
     text: '', hours: 0, minutes: 0, dueDate: '', notes: '',
     scheduleIt: false, startHour: 9, startMinute: 0, startAmPm: 'AM',
@@ -818,10 +921,11 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
       startHour = hour24 % 12 || 12;
     }
     setTaskForm({ text: '', hours: 0, minutes: 0, dueDate: '', notes: '', scheduleIt: false, startHour, startMinute, startAmPm });
+    setTaskDetailsOpen(false);
     setTaskModal({ subjectId });
   }
 
-  function saveTaskFromModal() {
+  function saveTaskFromModal(startTimer = false) {
     if (!taskModal) return;
     const text = taskForm.text.trim();
     if (!text) { setTaskModal(null); return; }
@@ -869,13 +973,29 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
       setBlocks(prev => [...prev, block]);
     }
     setTaskModal(null);
+    if (startTimer && taskModal.subjectId) {
+      const subject = subjects.find(s => s.id === taskModal.subjectId);
+      if (subject) {
+        setInitialTimerTask(text);
+        setTimerSubject(subject);
+      }
+    }
   }
 
   function openEditTodo(todo: Todo) {
     const hours = Math.floor((todo.estimatedMinutes ?? 0) / 60);
     const minutes = (todo.estimatedMinutes ?? 0) % 60;
     setTaskForm({ text: todo.text, hours, minutes, dueDate: todo.dueDate ?? '', notes: todo.notes ?? '', scheduleIt: false, startHour: 9, startMinute: 0, startAmPm: 'AM' });
+    setTaskDetailsOpen(true);
     setTaskModal({ subjectId: todo.subjectId, editingTodo: todo });
+  }
+
+  function startTimerForTodo(todo: Todo) {
+    const subject = subjects.find(s => s.id === todo.subjectId);
+    if (!subject) return;
+    setTodoStatus(todo.id, 'in_progress');
+    setInitialTimerTask(todo.text);
+    setTimerSubject(subject);
   }
 
   function getActualMinutesForTodo(todo: Todo): number {
@@ -1054,6 +1174,15 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             </span>
           )}
           <div className={styles.todoActions}>
+            {todo.subjectId && todo.status !== 'done' && (
+              <button
+                className={styles.startTodoBtn}
+                title="Start timer for this task"
+                onClick={e => { e.stopPropagation(); startTimerForTodo(todo); }}
+              >
+                Start
+              </button>
+            )}
             <button
               className={styles.editTodoBtn}
               title="Edit"
@@ -1231,20 +1360,17 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               if (durMin < 5) shortBlocks.push(block);
               else regularBlocks.push(block);
             }
-            const dotGroups = groupShortBlocks(shortBlocks);
+            const dotGroups = layoutDotGroups(groupShortBlocks(shortBlocks));
+            const positionedBlocks = layoutTimeBlocks(regularBlocks);
             return (
               <>
-                {regularBlocks.map(block => {
+                {positionedBlocks.map(({ block, lane, lanes }) => {
                   const subject = subjects.find(s => s.id === block.subjectId);
                   const start = new Date(block.startTime);
                   const startMin = start.getHours() * 60 + start.getMinutes();
                   const durMin = (new Date(block.endTime).getTime() - start.getTime()) / 60_000;
                   const blockTopPx = minToTop(startMin);
-                  const fullHeight = Math.max(durToHeight(durMin), 2);
-                  const nowLinePx = showCurrentTime ? minToTop(currentMinutes) : Infinity;
-                  const height = blockTopPx < nowLinePx
-                    ? Math.max(Math.min(fullHeight, nowLinePx - blockTopPx), 2)
-                    : fullHeight;
+                  const height = Math.max(durToHeight(durMin), 2);
                   return (
                     <div
                       key={block.id}
@@ -1252,6 +1378,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                       style={{
                         top: blockTopPx,
                         height,
+                        ...laneStyle(lane, lanes),
                         borderLeftColor: subject?.color ?? '#ccc',
                         backgroundColor: subject ? `${subject.color}1f` : '#f5f5f5',
                       }}
@@ -1260,13 +1387,20 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                         setBlockModal({ block, subject });
                       }}
                     >
-                      {height >= 30 && (
+                      {height >= 38 && (
                         <>
                           <span className={styles.blockSubject}>{subject?.name}</span>
                           {block.task && block.task !== subject?.name && (
                             <span className={styles.blockTask}>{block.task}</span>
                           )}
                         </>
+                      )}
+                      {height >= 18 && height < 38 && (
+                        <span className={styles.blockCompactText}>
+                          {block.task && block.task !== subject?.name
+                            ? `${subject?.name ?? ''} - ${block.task}`
+                            : subject?.name}
+                        </span>
                       )}
                     </div>
                   );
@@ -1283,7 +1417,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                     <div
                       key={`dot-${group.subjectId}-${i}`}
                       className={styles.blockDot}
-                      style={{ top: group.topPx }}
+                      style={{ top: group.topPx, ...laneStyle(group.lane, group.lanes, 8) }}
                       onClick={e => {
                         e.stopPropagation();
                         setBlockModal({ block: group.blocks[group.blocks.length - 1], subject });
@@ -1410,23 +1544,17 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                 <div className={styles.dateHeaderRight}>
                   <div className={styles.headerBtns} ref={subjectPickerRef}>
                     <button
-                      className={`${styles.headerIconBtn}${subjectPickerMode === 'timer' ? ` ${styles.headerIconBtnActive}` : ''}`}
-                      title="Start timer"
-                      onClick={() => setSubjectPickerMode(prev => prev === 'timer' ? null : 'timer')}
-                    >
-                      <svg width="9" height="11" viewBox="0 0 9 11" fill="none">
-                        <polygon points="0,0 9,5.5 0,11" fill="currentColor"/>
-                      </svg>
-                    </button>
-                    <button
                       className={`${styles.headerIconBtn}${subjectPickerMode === 'task' ? ` ${styles.headerIconBtnActive}` : ''}`}
                       title="Add task"
                       onClick={() => setSubjectPickerMode(prev => prev === 'task' ? null : 'task')}
-                    >+</button>
+                    >
+                      <span className={styles.headerBtnSymbol}>+</span>
+                      <span>Add Task</span>
+                    </button>
                     {subjectPickerMode && (
                       <div className={styles.subjectPicker}>
                         <div className={styles.subjectPickerTitle}>
-                          {subjectPickerMode === 'timer' ? 'Start Timer' : 'Add Task'}
+                          Add Task
                         </div>
                         {activeSubjects.map(subject => (
                           <button
@@ -1535,8 +1663,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                 <button
                   className={styles.todoGroupAdd}
                   onClick={e => { e.stopPropagation(); startAdding(subject.id); }}
-                  title="Add todo"
-                >+</button>
+                >Add task</button>
                 <button
                   className={styles.editIcon}
                   onClick={e => {
@@ -1567,8 +1694,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                 <button
                   className={styles.todoGroupAdd}
                   onClick={e => { e.stopPropagation(); startAdding('unassigned'); }}
-                  title="Add todo"
-                >+</button>
+                >Add task</button>
               </div>
               <div className={styles.todoGroupBody}>
                 {getOrderedGroupTodos('unassigned').map(todo => renderTodoItem(todo, 'unassigned'))}
@@ -1615,107 +1741,127 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               onKeyDown={e => { if (e.key === 'Enter' && taskForm.text.trim()) saveTaskFromModal(); }}
             />
 
-            <div className={styles.taskModalField}>
-              <label className={styles.taskModalLabel}>Estimated time</label>
-              <div className={styles.taskModalTimeRow}>
-                <input
-                  type="number"
-                  className={styles.taskModalTimeInput}
-                  value={taskForm.hours}
-                  min={0}
-                  max={23}
-                  onChange={e => setTaskForm(f => ({ ...f, hours: Math.min(23, Math.max(0, Number(e.target.value) || 0)) }))}
-                />
-                <span className={styles.taskModalTimeUnit}>h</span>
-                <input
-                  type="number"
-                  className={styles.taskModalTimeInput}
-                  value={taskForm.minutes}
-                  min={0}
-                  max={59}
-                  onChange={e => setTaskForm(f => ({ ...f, minutes: Math.min(59, Math.max(0, Number(e.target.value) || 0)) }))}
-                />
-                <span className={styles.taskModalTimeUnit}>m</span>
-              </div>
-            </div>
+            <button
+              className={styles.taskDetailsToggle}
+              onClick={() => setTaskDetailsOpen(open => !open)}
+            >
+              {taskDetailsOpen ? 'Hide details' : '+ Details'}
+            </button>
 
-            <div className={styles.taskModalField}>
-              <label className={styles.taskModalLabel}>Due date</label>
-              <input
-                type="date"
-                className={styles.taskModalInput}
-                value={taskForm.dueDate}
-                onChange={e => setTaskForm(f => ({ ...f, dueDate: e.target.value }))}
-              />
-            </div>
-
-            <div className={styles.taskModalField}>
-              <label className={styles.taskModalLabel}>Notes</label>
-              <textarea
-                className={styles.taskModalTextarea}
-                rows={3}
-                placeholder="Any notes..."
-                value={taskForm.notes}
-                onChange={e => setTaskForm(f => ({ ...f, notes: e.target.value }))}
-              />
-            </div>
-
-            <div className={styles.taskModalToggleRow}>
-              <span className={styles.taskModalToggleLabel}>Schedule it</span>
-              <label className={styles.toggleSwitch}>
-                <input
-                  type="checkbox"
-                  checked={taskForm.scheduleIt}
-                  onChange={e => setTaskForm(f => ({ ...f, scheduleIt: e.target.checked }))}
-                />
-                <span className={styles.toggleTrack} />
-              </label>
-            </div>
-
-            {taskForm.scheduleIt && (
-              <div className={styles.scheduleExpanded}>
+            {taskDetailsOpen && (
+              <>
                 <div className={styles.taskModalField}>
-                  <label className={styles.taskModalLabel}>Start time</label>
+                  <label className={styles.taskModalLabel}>Estimated time</label>
                   <div className={styles.taskModalTimeRow}>
                     <input
                       type="number"
                       className={styles.taskModalTimeInput}
-                      value={taskForm.startHour}
-                      min={1}
-                      max={12}
-                      onChange={e => setTaskForm(f => ({ ...f, startHour: Math.min(12, Math.max(1, Number(e.target.value) || 1)) }))}
+                      value={taskForm.hours}
+                      min={0}
+                      max={23}
+                      onChange={e => setTaskForm(f => ({ ...f, hours: Math.min(23, Math.max(0, Number(e.target.value) || 0)) }))}
                     />
-                    <span className={styles.pinTimeSep}>:</span>
+                    <span className={styles.taskModalTimeUnit}>h</span>
                     <input
                       type="number"
                       className={styles.taskModalTimeInput}
-                      value={String(taskForm.startMinute).padStart(2, '0')}
+                      value={taskForm.minutes}
                       min={0}
                       max={59}
-                      onChange={e => setTaskForm(f => ({ ...f, startMinute: Math.min(59, Math.max(0, Number(e.target.value) || 0)) }))}
+                      onChange={e => setTaskForm(f => ({ ...f, minutes: Math.min(59, Math.max(0, Number(e.target.value) || 0)) }))}
                     />
-                    <div className={styles.pinAmpmToggle}>
-                      <button
-                        className={`${styles.pinAmpmBtn}${taskForm.startAmPm === 'AM' ? ` ${styles.pinAmpmBtnActive}` : ''}`}
-                        onClick={() => setTaskForm(f => ({ ...f, startAmPm: 'AM' }))}
-                      >AM</button>
-                      <button
-                        className={`${styles.pinAmpmBtn}${taskForm.startAmPm === 'PM' ? ` ${styles.pinAmpmBtnActive}` : ''}`}
-                        onClick={() => setTaskForm(f => ({ ...f, startAmPm: 'PM' }))}
-                      >PM</button>
-                    </div>
+                    <span className={styles.taskModalTimeUnit}>m</span>
                   </div>
                 </div>
-                <p className={styles.scheduleHint}>This will pin a time block on the schedule automatically when saved.</p>
-              </div>
+
+                <div className={styles.taskModalField}>
+                  <label className={styles.taskModalLabel}>Due date</label>
+                  <input
+                    type="date"
+                    className={styles.taskModalInput}
+                    value={taskForm.dueDate}
+                    onChange={e => setTaskForm(f => ({ ...f, dueDate: e.target.value }))}
+                  />
+                </div>
+
+                <div className={styles.taskModalField}>
+                  <label className={styles.taskModalLabel}>Notes</label>
+                  <textarea
+                    className={styles.taskModalTextarea}
+                    rows={3}
+                    placeholder="Any notes..."
+                    value={taskForm.notes}
+                    onChange={e => setTaskForm(f => ({ ...f, notes: e.target.value }))}
+                  />
+                </div>
+
+                <div className={styles.taskModalToggleRow}>
+                  <span className={styles.taskModalToggleLabel}>Schedule it</span>
+                  <label className={styles.toggleSwitch}>
+                    <input
+                      type="checkbox"
+                      checked={taskForm.scheduleIt}
+                      onChange={e => setTaskForm(f => ({ ...f, scheduleIt: e.target.checked }))}
+                    />
+                    <span className={styles.toggleTrack} />
+                  </label>
+                </div>
+
+                {taskForm.scheduleIt && (
+                  <div className={styles.scheduleExpanded}>
+                    <div className={styles.taskModalField}>
+                      <label className={styles.taskModalLabel}>Start time</label>
+                      <div className={styles.taskModalTimeRow}>
+                        <input
+                          type="number"
+                          className={styles.taskModalTimeInput}
+                          value={taskForm.startHour}
+                          min={1}
+                          max={12}
+                          onChange={e => setTaskForm(f => ({ ...f, startHour: Math.min(12, Math.max(1, Number(e.target.value) || 1)) }))}
+                        />
+                        <span className={styles.pinTimeSep}>:</span>
+                        <input
+                          type="number"
+                          className={styles.taskModalTimeInput}
+                          value={String(taskForm.startMinute).padStart(2, '0')}
+                          min={0}
+                          max={59}
+                          onChange={e => setTaskForm(f => ({ ...f, startMinute: Math.min(59, Math.max(0, Number(e.target.value) || 0)) }))}
+                        />
+                        <div className={styles.pinAmpmToggle}>
+                          <button
+                            className={`${styles.pinAmpmBtn}${taskForm.startAmPm === 'AM' ? ` ${styles.pinAmpmBtnActive}` : ''}`}
+                            onClick={() => setTaskForm(f => ({ ...f, startAmPm: 'AM' }))}
+                          >AM</button>
+                          <button
+                            className={`${styles.pinAmpmBtn}${taskForm.startAmPm === 'PM' ? ` ${styles.pinAmpmBtnActive}` : ''}`}
+                            onClick={() => setTaskForm(f => ({ ...f, startAmPm: 'PM' }))}
+                          >PM</button>
+                        </div>
+                      </div>
+                    </div>
+                    <p className={styles.scheduleHint}>This will pin a time block on the schedule automatically when saved.</p>
+                  </div>
+                )}
+              </>
             )}
 
-            <button
-              className={styles.taskModalSubmit}
-              onClick={saveTaskFromModal}
-              disabled={!taskForm.text.trim()}
-            >{taskModal.editingTodo ? 'Save Changes' : 'Add Task'}</button>
-            <button className={styles.taskModalCancel} onClick={() => setTaskModal(null)}>Cancel</button>
+            <div className={styles.taskModalActions}>
+              <button
+                className={styles.taskModalSubmit}
+                onClick={() => saveTaskFromModal(false)}
+                disabled={!taskForm.text.trim()}
+              >{taskModal.editingTodo ? 'Save Changes' : 'Add Task'}</button>
+              {!taskModal.editingTodo && taskModal.subjectId && (
+                <button
+                  className={styles.taskModalStart}
+                  onClick={() => saveTaskFromModal(true)}
+                  disabled={!taskForm.text.trim()}
+                >Add & Start Timer</button>
+              )}
+              <button className={styles.taskModalCancel} onClick={() => setTaskModal(null)}>Cancel</button>
+            </div>
             {taskModal.editingTodo && (
               <button
                 className={styles.taskModalDelete}
