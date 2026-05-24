@@ -131,6 +131,45 @@ function fmtDuration(startISO: string, endISO: string): string {
   return `${m}m`;
 }
 
+function fmtElapsed(minutes: number): string {
+  if (minutes === 0) return '0m';
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
+function computeElapsedTime(blocks: TimeBlock[], now: Date, viewDate: Date): Record<string, number> {
+  const nowMs = now.getTime();
+  const result: Record<string, number> = {};
+  for (const block of blocks) {
+    const blockStart = new Date(block.startTime);
+    const blockEnd = new Date(block.endTime);
+    // Blocks starting before START_HOUR belong to viewDate+1 (after-midnight wrap)
+    const effectiveDate = blockStart.getHours() < START_HOUR ? addDays(viewDate, 1) : viewDate;
+    const startMs = new Date(
+      effectiveDate.getFullYear(), effectiveDate.getMonth(), effectiveDate.getDate(),
+      blockStart.getHours(), blockStart.getMinutes(), blockStart.getSeconds(),
+    ).getTime();
+    const endMs = new Date(
+      effectiveDate.getFullYear(), effectiveDate.getMonth(), effectiveDate.getDate(),
+      blockEnd.getHours(), blockEnd.getMinutes(), blockEnd.getSeconds(),
+    ).getTime();
+    let elapsedMs: number;
+    if (nowMs <= startMs) {
+      elapsedMs = 0;
+    } else if (nowMs >= endMs) {
+      elapsedMs = endMs - startMs;
+    } else {
+      elapsedMs = nowMs - startMs;
+    }
+    const minutes = Math.floor(Math.max(0, elapsedMs) / 60_000);
+    result[block.subjectId] = (result[block.subjectId] ?? 0) + minutes;
+  }
+  return result;
+}
+
 interface BlockEditForm {
   task: string;
   startHour: number;
@@ -371,6 +410,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [deadlineDetail, setDeadlineDetail] = useState<{ courseId: number; assignmentId: number } | null>(null);
   const [dueTagPopover, setDueTagPopover] = useState<{ mfm: number; top: number; right: number } | null>(null);
   const [timerRunning, setTimerRunning] = useState(false);
+  const [elapsedBySubject, setElapsedBySubject] = useState<Record<string, number>>({});
   const [briefCollapsed, setBriefCollapsed] = useState<boolean>(() => {
     const s = localStorage.getItem('soma_brief_collapsed');
     return s === null ? true : s === 'true';
@@ -444,6 +484,36 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       totalTimeToday: subjectSecsFromSessions(s.id, selectedDate),
     })));
   }, [selectedDate]);
+
+  useEffect(() => {
+    const dateStr = toISODateString(selectedDate);
+    const nextDateStr = toISODateString(addDays(selectedDate, 1));
+    const todayStr = toISODateString(new Date());
+
+    function compute() {
+      const now = new Date();
+      const dateBlocks = storage.getTimeBlocks().filter(b => isOnDate(b.startTime, selectedDate));
+      const sameDayBlocks = dateBlocks.filter(b => new Date(b.startTime).getHours() >= START_HOUR);
+      const nextDayBlocks = dateBlocks.filter(b => new Date(b.startTime).getHours() < START_HOUR);
+
+      const sameDayResult = computeElapsedTime(sameDayBlocks, now, selectedDate);
+      const nextDayResult = computeElapsedTime(nextDayBlocks, now, selectedDate);
+
+      const combined: Record<string, number> = { ...sameDayResult };
+      for (const [id, mins] of Object.entries(nextDayResult)) {
+        combined[id] = (combined[id] ?? 0) + mins;
+      }
+
+      setElapsedBySubject(combined);
+      localStorage.setItem(`soma_elapsed_${dateStr}`, JSON.stringify(sameDayResult));
+      localStorage.setItem(`soma_elapsed_${nextDateStr}`, JSON.stringify(nextDayResult));
+    }
+
+    compute();
+    if (dateStr !== todayStr) return;
+    const id = setInterval(compute, 60_000);
+    return () => clearInterval(id);
+  }, [selectedDate, blocks]);
 
   useEffect(() => {
     function loadGcal() {
@@ -1665,7 +1735,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               >
                 <span className={styles.dotIndicator} style={{ background: subject.color }} />
                 <span className={styles.subjectName}>{subject.name}</span>
-                <span className={styles.subjectTime}>{fmtSecs(subject.totalTimeToday)}</span>
+                <span className={styles.subjectTime}>{fmtElapsed(elapsedBySubject[subject.id] ?? 0)}</span>
                 {groupTodos.length > 0 && (
                   <span className={styles.todoBadge}>{pending}/{groupTodos.length}</span>
                 )}
