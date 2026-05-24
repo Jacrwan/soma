@@ -230,8 +230,10 @@ export default function CanvasTab() {
 
     if (status === 'done') {
       setAssignmentCleared(id, true);
+      setStatusFilter('done');
     } else {
       setAssignmentCleared(id, false);
+      setStatusFilter(status as 'not_started' | 'in_progress');
     }
 
     const todoStatusMap: Record<string, Todo['status']> = {
