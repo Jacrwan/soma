@@ -7,7 +7,6 @@ const PEAK_HOURS = Array.from({ length: 18 }, (_, i) => i + 6); // 6am–11pm
 const DONUT_R = 55;
 const DONUT_C = 2 * Math.PI * DONUT_R; // ≈ 345.58
 const DONUT_STROKE = 14;
-const DONUT_BLUES = ['#4c6ef5', '#748ffc', '#91a7ff', '#bac8ff', '#c5d0fb'];
 
 function hourLabel(h: number): string {
   if (h === 0) return '12a';
@@ -122,7 +121,7 @@ export default function InsightsTab() {
       return {
         arc,
         startAngle,
-        color: DONUT_BLUES[i] ?? DONUT_BLUES[DONUT_BLUES.length - 1],
+        color: d.color,
         name: d.subjectName,
         minutes: d.minutes,
       };

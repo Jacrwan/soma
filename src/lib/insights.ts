@@ -125,7 +125,7 @@ export function getWeeklyStudyTime(weekOffset = 0): { day: string; minutes: numb
   return result;
 }
 
-export function getSubjectBreakdown(): { subjectName: string; minutes: number }[] {
+export function getSubjectBreakdown(): { subjectName: string; minutes: number; color: string }[] {
   const subjects = storage.getSubjects();
   const subjectMap = new Map<string, Subject>(subjects.map(s => [s.id, s]));
   const days = last7DayKeys();
@@ -147,6 +147,7 @@ export function getSubjectBreakdown(): { subjectName: string; minutes: number }[
   const result = [...minutesById.entries()]
     .map(([id, minutes]) => ({
       subjectName: subjectMap.get(id)?.name ?? 'Unknown',
+      color: subjectMap.get(id)?.color ?? '#91a7ff',
       minutes: Math.round(minutes),
     }))
     .sort((a, b) => b.minutes - a.minutes);
