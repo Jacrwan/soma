@@ -48,9 +48,12 @@ function truncate(text: string, max: number): string {
 }
 
 function heatmapColor(minutes: number): string {
-  if (minutes === 0) return '#F0F0F0';
-  if (minutes <= 30) return '#C7D9F5';
+  if (minutes <= 0) return '';
+  if (minutes <= 20) return '#DCEFFE';
+  if (minutes <= 40) return '#C3D9FB';
+  if (minutes <= 65) return '#A4C3F8';
   if (minutes <= 90) return '#7BAAF7';
+  if (minutes <= 130) return '#5A90E8';
   return '#3D6FDB';
 }
 
@@ -165,7 +168,7 @@ export default function InsightsTab() {
             aria-label="Previous week"
           >‹</button>
           <div className={styles.weekNavCenter}>
-            <h2 className={styles.sectionTitle}>Study time</h2>
+            <h2 className={`${styles.sectionTitle} ${styles.sectionTitleStudy}`}>Study time</h2>
             <span className={styles.weekRange}>{fmtDateRange(weekOffset)}</span>
           </div>
           <button
@@ -184,7 +187,7 @@ export default function InsightsTab() {
                 <span className={styles.barValue}>
                   {showLabel ? formatHours(minutes) : ''}
                 </span>
-                <div className={styles.barTrack}>
+                <div className={`${styles.barTrack}${minutes === 0 ? ` ${styles.barTrackEmpty}` : ''}`}>
                   <div
                     className={`${styles.bar}${isPeak ? ` ${styles.barPeak}` : ''}`}
                     style={{ height: `${(minutes / maxWeeklyMinutes) * 100}%` }}
@@ -198,8 +201,11 @@ export default function InsightsTab() {
       </section>
 
       {/* ── Subject breakdown ── */}
-      <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Subject breakdown — last 7 days</h2>
+      <section
+        className={styles.section}
+        style={{ '--section-accent': donutSlices[0]?.color } as React.CSSProperties}
+      >
+        <h2 className={`${styles.sectionTitle} ${styles.sectionTitleDynamic}`}>Subject breakdown — last 7 days</h2>
         {breakdown.length === 0 ? (
           <EmptyState message="No study sessions recorded yet." />
         ) : (
@@ -232,7 +238,7 @@ export default function InsightsTab() {
 
       {/* ── Estimated vs actual ── */}
       <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Estimated vs actual</h2>
+        <h2 className={`${styles.sectionTitle} ${styles.sectionTitleEva}`}>Estimated vs actual</h2>
         {estimated.length === 0 ? (
           <EmptyState message="Complete todos with time estimates to see this data." />
         ) : (
@@ -256,7 +262,7 @@ export default function InsightsTab() {
 
       {/* ── Study streak ── */}
       <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Study streak</h2>
+        <h2 className={`${styles.sectionTitle} ${styles.sectionTitleStreak}`}>Study streak</h2>
         <div className={styles.streakHero}>
           <svg width="32" height="44" viewBox="0 0 32 44" fill="none" className={styles.flameSvg} aria-hidden="true">
             <defs>
@@ -307,20 +313,23 @@ export default function InsightsTab() {
             {Array.from({ length: heatmapData.firstDayOfWeekMon }).map((_, i) => (
               <div key={`empty-${i}`} className={styles.heatmapCellEmpty} />
             ))}
-            {heatmapData.cells.map(({ day, minutes, isToday }) => (
-              <div
-                key={day}
-                className={[
-                  styles.heatmapCell,
-                  minutes > 90 ? styles.heatmapCellDeep : '',
-                  isToday ? styles.heatmapCellToday : '',
-                ].filter(Boolean).join(' ')}
-                style={{ background: heatmapColor(minutes) }}
-                title={minutes > 0 ? `${minutes}m studied` : undefined}
-              >
-                <span className={styles.heatmapDayNum}>{day}</span>
-              </div>
-            ))}
+            {heatmapData.cells.map(({ day, minutes, isToday }) => {
+              const color = heatmapColor(minutes);
+              return (
+                <div
+                  key={day}
+                  className={[
+                    styles.heatmapCell,
+                    color ? styles.heatmapCellStudied : '',
+                    isToday ? styles.heatmapCellToday : '',
+                  ].filter(Boolean).join(' ')}
+                  style={color ? { background: color } : undefined}
+                  title={minutes > 0 ? `${minutes}m studied` : undefined}
+                >
+                  <span className={styles.heatmapDayNum}>{day}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
