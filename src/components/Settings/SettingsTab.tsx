@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { storage, SomaSettings } from '../../lib/storage';
 import { resetTimeAccuracy, resetPeakHours, resetSubjectPacing } from '../../lib/insights';
 import styles from './SettingsTab.module.css';
@@ -12,6 +12,43 @@ function capitalize(s: string): string {
 
 export default function SettingsTab() {
   const [settings, setSettings] = useState<SomaSettings>(() => storage.getSomaSettings());
+
+  // Canvas integration state
+  const [canvasToken, setCanvasToken] = useState(() => storage.getCanvasToken());
+  const [canvasBaseUrl, setCanvasBaseUrl] = useState(() => storage.getCanvasBaseUrl());
+  const [showCanvasModal, setShowCanvasModal] = useState(false);
+  const [canvasUrlInput, setCanvasUrlInput] = useState('');
+  const [canvasTokenInput, setCanvasTokenInput] = useState('');
+  const [canvasConnecting, setCanvasConnecting] = useState(false);
+  const [canvasError, setCanvasError] = useState('');
+
+  // Google Calendar integration state
+  const [gcalToken, setGcalToken] = useState(() => storage.getGoogleToken());
+  const [gcalClientId, setGcalClientId] = useState(() => storage.getGoogleClientId());
+  const [showGcalModal, setShowGcalModal] = useState(false);
+  const [gcalClientIdInput, setGcalClientIdInput] = useState('');
+
+  // Listen for Google OAuth popup callback
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      if (e.origin !== window.location.origin) return;
+      if (e.data?.type === 'soma_google_auth' && e.data.token) {
+        storage.setGoogleToken(e.data.token);
+        setGcalToken(e.data.token);
+        setShowGcalModal(false);
+      }
+    };
+    const onCustom = (e: Event) => {
+      const t = (e as CustomEvent).detail?.token;
+      if (t) { setGcalToken(t); setShowGcalModal(false); }
+    };
+    window.addEventListener('message', onMessage);
+    window.addEventListener('soma_google_auth', onCustom);
+    return () => {
+      window.removeEventListener('message', onMessage);
+      window.removeEventListener('soma_google_auth', onCustom);
+    };
+  }, []);
 
   function save(next: SomaSettings) {
     setSettings(next);
@@ -57,6 +94,66 @@ export default function SettingsTab() {
         [day]: { ...prev, blocked: prev.blocked.filter((_, i) => i !== index) },
       },
     });
+  }
+
+  async function connectCanvas() {
+    const url = canvasUrlInput.trim().replace(/\/$/, '');
+    const tk = canvasTokenInput.trim();
+    if (!url || !tk) return;
+    setCanvasConnecting(true);
+    setCanvasError('');
+    try {
+      const base = import.meta.env.DEV ? '/canvas-api' : url;
+      const res = await fetch(`${base}/api/v1/courses?per_page=1`, {
+        headers: { Authorization: `Bearer ${tk}` },
+      });
+      if (!res.ok) throw new Error('bad');
+      storage.setCanvasToken(tk);
+      storage.setCanvasBaseUrl(url);
+      setCanvasToken(tk);
+      setCanvasBaseUrl(url);
+      setShowCanvasModal(false);
+      setCanvasUrlInput('');
+      setCanvasTokenInput('');
+    } catch {
+      setCanvasError('Invalid token or URL.');
+    } finally {
+      setCanvasConnecting(false);
+    }
+  }
+
+  function disconnectCanvas() {
+    storage.setCanvasToken('');
+    storage.setCanvasBaseUrl('');
+    setCanvasToken('');
+    setCanvasBaseUrl('');
+  }
+
+  function openGcalOAuth() {
+    const id = gcalClientIdInput.trim() || gcalClientId;
+    if (!id) return;
+    storage.setGoogleClientId(id);
+    setGcalClientId(id);
+    const params = new URLSearchParams({
+      client_id: id,
+      redirect_uri: window.location.origin,
+      response_type: 'token',
+      scope: 'https://www.googleapis.com/auth/calendar.readonly',
+      include_granted_scopes: 'true',
+    });
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+    const popup = window.open(authUrl, 'google_oauth', 'width=500,height=600,left=200,top=100');
+    if (!popup) window.location.href = authUrl;
+  }
+
+  function disconnectGcal() {
+    storage.setGoogleToken('');
+    storage.setGoogleClientId('');
+    storage.setCachedGoogleEvents([]);
+    storage.setGoogleCacheTimestamp(0);
+    setGcalToken('');
+    setGcalClientId('');
+    window.dispatchEvent(new CustomEvent('soma_gcal_updated'));
   }
 
   return (
@@ -236,7 +333,119 @@ export default function SettingsTab() {
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Integrations</h2>
+        <div className={styles.integrationList}>
+
+          {/* Canvas LMS */}
+          <div className={styles.integrationRow}>
+            <div className={styles.integrationInfo}>
+              <span className={styles.integrationLabel}>Canvas LMS</span>
+              <span className={styles.integrationDescription}>Sync your assignments and due dates</span>
+            </div>
+            <div className={styles.integrationActions}>
+              {canvasToken && canvasBaseUrl ? (
+                <>
+                  <span className={styles.connectedBadge}>Connected</span>
+                  <button className={styles.disconnectBtn} onClick={disconnectCanvas}>Disconnect</button>
+                </>
+              ) : (
+                <button className={styles.connectBtn} onClick={() => { setCanvasError(''); setShowCanvasModal(true); }}>Connect</button>
+              )}
+            </div>
+          </div>
+
+          {/* Google Calendar */}
+          <div className={styles.integrationRow}>
+            <div className={styles.integrationInfo}>
+              <span className={styles.integrationLabel}>Google Calendar</span>
+              <span className={styles.integrationDescription}>See your events alongside your schedule</span>
+            </div>
+            <div className={styles.integrationActions}>
+              {gcalToken ? (
+                <>
+                  <span className={styles.connectedBadge}>Connected</span>
+                  <button className={styles.disconnectBtn} onClick={disconnectGcal}>Disconnect</button>
+                </>
+              ) : (
+                <button className={styles.connectBtn} onClick={() => setShowGcalModal(true)}>Connect</button>
+              )}
+            </div>
+          </div>
+
+        </div>
       </section>
     </div>
+
+    {/* Canvas connect modal */}
+    {showCanvasModal && (
+      <div className={styles.modalOverlay} onClick={() => setShowCanvasModal(false)}>
+        <div className={styles.modalBox} onClick={e => e.stopPropagation()}>
+          <span className={styles.modalTitle}>Connect Canvas LMS</span>
+          <div className={styles.modalField}>
+            <label className={styles.modalLabel}>Canvas URL</label>
+            <input
+              className={styles.modalInput}
+              placeholder="https://school.instructure.com"
+              value={canvasUrlInput}
+              autoFocus
+              onChange={e => setCanvasUrlInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') connectCanvas(); if (e.key === 'Escape') setShowCanvasModal(false); }}
+            />
+          </div>
+          <div className={styles.modalField}>
+            <label className={styles.modalLabel}>Access token</label>
+            <input
+              className={styles.modalInput}
+              placeholder="Paste your token"
+              value={canvasTokenInput}
+              onChange={e => setCanvasTokenInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') connectCanvas(); if (e.key === 'Escape') setShowCanvasModal(false); }}
+            />
+          </div>
+          {canvasError && <span className={styles.modalError}>{canvasError}</span>}
+          <div className={styles.modalHint}>
+            In Canvas: Account → Settings → Approved Integrations → New Access Token
+          </div>
+          <div className={styles.modalActions}>
+            <button
+              className={styles.modalSubmit}
+              onClick={connectCanvas}
+              disabled={canvasConnecting || !canvasUrlInput.trim() || !canvasTokenInput.trim()}
+            >{canvasConnecting ? 'Connecting…' : 'Connect'}</button>
+            <button className={styles.modalCancel} onClick={() => setShowCanvasModal(false)}>Cancel</button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Google Calendar connect modal */}
+    {showGcalModal && (
+      <div className={styles.modalOverlay} onClick={() => setShowGcalModal(false)}>
+        <div className={styles.modalBox} onClick={e => e.stopPropagation()}>
+          <span className={styles.modalTitle}>Connect Google Calendar</span>
+          <div className={styles.modalField}>
+            <label className={styles.modalLabel}>OAuth Client ID</label>
+            <input
+              className={styles.modalInput}
+              placeholder="your-client-id.apps.googleusercontent.com"
+              value={gcalClientIdInput || gcalClientId}
+              autoFocus
+              onChange={e => setGcalClientIdInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Escape') setShowGcalModal(false); }}
+            />
+          </div>
+          <div className={styles.modalHint}>
+            Create a project in Google Cloud Console, enable Calendar API, and add an OAuth 2.0 Client ID.
+          </div>
+          <div className={styles.modalActions}>
+            <button
+              className={styles.modalSubmit}
+              onClick={openGcalOAuth}
+              disabled={!gcalClientIdInput.trim() && !gcalClientId}
+            >Authorize with Google</button>
+            <button className={styles.modalCancel} onClick={() => setShowGcalModal(false)}>Cancel</button>
+          </div>
+        </div>
+      </div>
+    )}
   );
 }
