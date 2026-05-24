@@ -389,14 +389,16 @@
 .chip {
   font-size: 11px;
   font-weight: 500;
-  padding: 1px 5px;
+  height: 18px;
+  line-height: 18px;
+  padding: 0 5px;
   border-radius: 3px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   color: oklch(99% 0.003 0);
   display: block;
-  line-height: 1.5;
+  flex-shrink: 0;
 }
 
 .overflowChip {
@@ -418,7 +420,9 @@
 
   .chip {
     font-size: 10px;
-    padding: 1px 4px;
+    height: 16px;
+    line-height: 16px;
+    padding: 0 4px;
   }
 }
 
@@ -520,7 +524,9 @@
 .weekViewAllDayChip {
   font-size: 10px;
   font-weight: 500;
-  padding: 1px 5px;
+  height: 16px;
+  line-height: 16px;
+  padding: 0 5px;
   border-radius: 3px;
   background: oklch(58% 0.21 30);
   color: oklch(99% 0.003 0);
@@ -528,7 +534,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   display: block;
-  line-height: 1.5;
+  flex-shrink: 0;
   max-width: 100%;
 }
 
