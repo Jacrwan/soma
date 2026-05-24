@@ -431,7 +431,14 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   }, []);
 
   useEffect(() => {
-    setBlocks(storage.getTimeBlocks().filter(b => isOnDate(b.startTime, selectedDate)));
+    const blocksForDate = storage.getTimeBlocks().filter(b => isOnDate(b.startTime, selectedDate));
+    setBlocks(blocksForDate);
+    setSubjects(prev => prev.map(s => {
+      const totalSecs = blocksForDate
+        .filter(b => b.subjectId === s.id)
+        .reduce((acc, b) => acc + Math.max(0, (new Date(b.endTime).getTime() - new Date(b.startTime).getTime()) / 1000), 0);
+      return { ...s, totalTimeToday: Math.round(totalSecs) };
+    }));
   }, [selectedDate]);
 
   useEffect(() => {
