@@ -183,6 +183,34 @@ export async function getAssignments(
   }));
 }
 
+export async function getActiveAssignments(
+  token: string,
+  baseUrl: string,
+  course: CanvasCourse,
+): Promise<CanvasAssignment[]> {
+  const raw = await canvasFetch(
+    token,
+    baseUrl,
+    `/api/v1/courses/${course.id}/assignments?bucket=upcoming&per_page=50&order_by=due_at&include[]=submission`,
+  );
+
+  return raw
+    .filter(a => a.due_at)
+    .map(a => ({
+      id: a.id,
+      name: a.name,
+      courseId: course.id,
+      courseName: course.name,
+      dueAt: a.due_at,
+      htmlUrl: a.html_url,
+      status: 'not_started' as const,
+      description: a.description ? stripHtml(a.description) : undefined,
+      submittedAt: a.submission?.submitted_at ?? null,
+      score: a.submission?.score ?? null,
+      pointsPossible: a.points_possible ?? null,
+    }));
+}
+
 export async function getAnnouncements(
   token: string,
   baseUrl: string,

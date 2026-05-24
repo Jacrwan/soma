@@ -86,6 +86,10 @@ function looksLikeCanvasCourseName(name: string): boolean {
     || /\(.+\bPeriods?\b.+\)/i.test(name);
 }
 
+function isDefaultSubjectName(name: string): boolean {
+  return ['math', 'science', 'english', 'history', 'language', 'other'].includes(name.trim().toLowerCase());
+}
+
 function getVisibleSubjects(): Subject[] {
   const currentCanvasCourseNames = new Set(storage.getCachedCourses().map(c => c.name));
   const knownCanvasCourseNames = new Set(storage.getCanvasCourseNames());
@@ -94,6 +98,7 @@ function getVisibleSubjects(): Subject[] {
     if (s.archived) return false;
     if (currentCanvasCourseNames.size === 0) return true;
     if (currentCanvasCourseNames.has(s.name)) return true;
+    if (isDefaultSubjectName(s.name)) return false;
     if (knownCanvasCourseNames.has(s.name)) return false;
     return !looksLikeCanvasCourseName(s.name);
   });
@@ -845,9 +850,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
       };
       storage.setTodos([...todos, newTodo]);
       setTodos(prev => [...prev, newTodo]);
-      // expand the group so the new todo is immediately visible
-      const groupId = taskModal.subjectId ?? 'unassigned';
-      setCollapsedGroups(prev => { const next = new Set(prev); next.delete(groupId); return next; });
     }
 
     if (taskForm.scheduleIt) {
@@ -922,18 +924,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     const hour = hour24 % 12 || 12;
     setPinForm({ hour, minute, ampm, durationHours: 1, durationMinutes: 0 });
     setPinPopoverId(prev => prev === todoId ? null : todoId);
-  }
-
-  function startStudyFromAssignment(assignment: CanvasAssignment) {
-    const subs = storage.getSubjects();
-    const matched = subs.find(s => {
-      const sn = s.name.toLowerCase();
-      const cn = assignment.courseName.toLowerCase();
-      return cn.includes(sn) || sn.includes(cn);
-    }) ?? subs[0] ?? null;
-    if (!matched) return;
-    setInitialTimerTask(assignment.name);
-    setTimerSubject(matched);
   }
 
   function handleDateBarWheel(e: React.WheelEvent) {

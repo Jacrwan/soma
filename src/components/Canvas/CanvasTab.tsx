@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { storage } from '../../lib/storage';
 import { CanvasCourse, CanvasAssignment, CanvasAnnouncement, Subject, Todo } from '../../types';
-import { getCourses, getAssignments, getAnnouncements, getModules, getGrades } from '../../lib/canvas';
+import { getCourses, getActiveAssignments, getAssignments, getAnnouncements, getModules, getGrades } from '../../lib/canvas';
 import { CanvasGrade } from '../../types';
 import AssignmentDetail from './AssignmentDetail';
 import styles from './CanvasTab.module.css';
@@ -10,6 +10,7 @@ const COURSE_COLORS = [
   '#ef5350', '#42a5f5', '#66bb6a', '#ab47bc',
   '#ffa726', '#26c6da', '#ec407a', '#8d6e63',
 ];
+const CACHE_MAX_AGE = 10 * 60 * 1000;
 
 function fmtDue(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', {
@@ -28,6 +29,10 @@ function looksLikeCanvasCourseName(name: string): boolean {
     || /\(.+\bPeriods?\b.+\)/i.test(name);
 }
 
+function isDefaultSubjectName(name: string): boolean {
+  return ['math', 'science', 'english', 'history', 'language', 'other'].includes(name.trim().toLowerCase());
+}
+
 function syncCoursesToSubjects(courses: CanvasCourse[]) {
   let subjects = storage.getSubjects();
   let changed = false;
@@ -40,7 +45,7 @@ function syncCoursesToSubjects(courses: CanvasCourse[]) {
 
   const prunedSubjects = subjects.filter(s =>
     currentCourseNames.has(s.name)
-      || (!knownCanvasCourseNames.has(s.name) && !looksLikeCanvasCourseName(s.name))
+      || (!isDefaultSubjectName(s.name) && !knownCanvasCourseNames.has(s.name) && !looksLikeCanvasCourseName(s.name))
   );
   if (prunedSubjects.length !== subjects.length) {
     subjects = prunedSubjects;
@@ -109,7 +114,12 @@ export default function CanvasTab() {
 
   useEffect(() => {
     if (!isConnected) return;
-    loadData(token, baseUrl);
+    const hasCachedAssignments = storage.getCachedAssignments().length > 0;
+    const cacheTs = storage.getCacheTimestamp();
+    const cacheFresh = !!cacheTs && Date.now() - cacheTs < CACHE_MAX_AGE;
+    if (!hasCachedAssignments || !cacheFresh) {
+      loadData(token, baseUrl, false, { includeHistory: false });
+    }
   }, []);
 
   async function refreshSecondaryData(tk: string, url: string, coursesData: CanvasCourse[]) {
@@ -123,7 +133,13 @@ export default function CanvasTab() {
     storage.setCachedModules(moduleGroups.flat());
   }
 
-  async function loadData(tk: string, url: string, force = false) {
+  async function loadData(
+    tk: string,
+    url: string,
+    force = false,
+    options: { includeHistory?: boolean } = {},
+  ) {
+    const includeHistory = options.includeHistory ?? force;
     const hasCachedAssignments = storage.getCachedAssignments().length > 0;
     if (force || hasCachedAssignments) setSyncing(true); else setLoading(true);
     setError('');
@@ -133,7 +149,9 @@ export default function CanvasTab() {
       syncCoursesToSubjects(coursesData);
       storage.setCachedCourses(coursesData);
       const assignmentGroups = await Promise.all(
-        coursesData.map(c => getAssignments(tk, url, c).catch(() => [])),
+        coursesData.map(c => (
+          includeHistory ? getAssignments(tk, url, c) : getActiveAssignments(tk, url, c)
+        ).catch(() => [])),
       );
       const all = assignmentGroups.flat();
       all.sort((a, b) => new Date(b.dueAt).getTime() - new Date(a.dueAt).getTime());

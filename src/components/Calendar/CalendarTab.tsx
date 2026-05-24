@@ -413,6 +413,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
       sublabel?: string;
       color: string;
       borderColor?: string;
+      textColor?: string;
       startMin: number;
       endMin: number;
       block?: TimeBlock;
@@ -434,19 +435,15 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
 
         if (durMin < 5) {
           const subject = subjects.find(s => s.id === b.subjectId);
-          const dotColor = b.source === 'canvas' ? CANVAS_COLOR : (subject?.color ?? '#9e9e9e');
+          const dotColor = subject?.color ?? '#9e9e9e';
           dots.push({ id: `dot-soma-${b.id}`, color: dotColor, top: weekMinToTop(startMin) });
           continue;
         }
 
-        const isCanvas = b.source === 'canvas';
         const subject = subjects.find(s => s.id === b.subjectId);
-        const baseColor = isCanvas ? CANVAS_COLOR : (subject?.color ?? '#9e9e9e');
-        const label = isCanvas
-          ? (b.task || subject?.name || 'Assignment')
-          : ((subject?.name ?? b.task) || 'Block');
-        const sublabel = isCanvas ? undefined
-          : (b.task && b.task !== subject?.name ? b.task : undefined);
+        const baseColor = subject?.color ?? '#9e9e9e';
+        const label = (subject?.name ?? b.task) || 'Block';
+        const sublabel = b.task && b.task !== subject?.name ? b.task : undefined;
 
         events.push({
           id: `soma-${b.id}`,
@@ -543,7 +540,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         sublabel: ev.sublabel,
         color: ev.color,
         borderColor: ev.borderColor,
-        textColor: ev.textColor,
+        textColor: ev.textColor ?? ev.borderColor ?? 'var(--text-primary)',
         top: weekMinToTop(ev.startMin),
         height: Math.max(((ev.endMin - ev.startMin) / 60) * WEEK_SLOT_HEIGHT, 18),
         left: colAssign[i] / numColsArr[i],
