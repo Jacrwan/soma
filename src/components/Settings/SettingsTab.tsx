@@ -63,7 +63,7 @@ export default function SettingsTab() {
     <div className={styles.page}>
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Availability</h2>
-        <div className={styles.availabilityGrid}>
+        <div className={styles.availabilityList}>
           {DAYS.map(day => {
             const avail = settings.availability[day];
             return (
@@ -84,37 +84,39 @@ export default function SettingsTab() {
                       value={avail.end}
                       onChange={e => setDayField(day, 'end', e.target.value)}
                     />
+                    <button
+                      className={styles.addBlockedBtn}
+                      onClick={() => addBlocked(day)}
+                    >+ blocked</button>
                   </div>
                 </div>
 
-                {avail.blocked.map((block, i) => (
-                  <div key={i} className={styles.blockedRow}>
-                    <span className={styles.blockedLabel}>Blocked</span>
-                    <input
-                      type="time"
-                      className={styles.timeInput}
-                      value={block.start}
-                      onChange={e => setBlocked(day, i, 'start', e.target.value)}
-                    />
-                    <span className={styles.timeSep}>to</span>
-                    <input
-                      type="time"
-                      className={styles.timeInput}
-                      value={block.end}
-                      onChange={e => setBlocked(day, i, 'end', e.target.value)}
-                    />
-                    <button
-                      className={styles.removeBtn}
-                      onClick={() => removeBlocked(day, i)}
-                      title="Remove"
-                    >×</button>
+                {avail.blocked.length > 0 && (
+                  <div className={styles.blockedTags}>
+                    {avail.blocked.map((block, i) => (
+                      <div key={i} className={styles.blockedTag}>
+                        <input
+                          type="time"
+                          className={styles.tagTime}
+                          value={block.start}
+                          onChange={e => setBlocked(day, i, 'start', e.target.value)}
+                        />
+                        <span className={styles.tagDash}>–</span>
+                        <input
+                          type="time"
+                          className={styles.tagTime}
+                          value={block.end}
+                          onChange={e => setBlocked(day, i, 'end', e.target.value)}
+                        />
+                        <button
+                          className={styles.tagRemove}
+                          onClick={() => removeBlocked(day, i)}
+                          title="Remove"
+                        >×</button>
+                      </div>
+                    ))}
                   </div>
-                ))}
-
-                <button
-                  className={styles.addBlockedBtn}
-                  onClick={() => addBlocked(day)}
-                >+ Add blocked time</button>
+                )}
               </div>
             );
           })}
@@ -167,13 +169,13 @@ export default function SettingsTab() {
         <div className={styles.prefGrid}>
           <div className={styles.prefRow}>
             <label className={styles.prefLabel}>Response verbosity</label>
-            <div className={styles.toggle}>
+            <div className={styles.segment}>
               <button
-                className={`${styles.toggleBtn}${settings.aiPrefs.verbosity === 'concise' ? ` ${styles.toggleBtnActive}` : ''}`}
+                className={`${styles.segBtn}${settings.aiPrefs.verbosity === 'concise' ? ` ${styles.segBtnActive}` : ''}`}
                 onClick={() => save({ ...settings, aiPrefs: { ...settings.aiPrefs, verbosity: 'concise' } })}
               >Concise</button>
               <button
-                className={`${styles.toggleBtn}${settings.aiPrefs.verbosity === 'detailed' ? ` ${styles.toggleBtnActive}` : ''}`}
+                className={`${styles.segBtn}${settings.aiPrefs.verbosity === 'detailed' ? ` ${styles.segBtnActive}` : ''}`}
                 onClick={() => save({ ...settings, aiPrefs: { ...settings.aiPrefs, verbosity: 'detailed' } })}
               >Detailed</button>
             </div>
@@ -181,15 +183,15 @@ export default function SettingsTab() {
 
           <div className={styles.prefRow}>
             <label className={styles.prefLabel}>When I ask to plan my day</label>
-            <div className={styles.toggle}>
+            <div className={styles.segment}>
               <button
-                className={`${styles.toggleBtn}${settings.aiPrefs.defaultOutput === 'schedule' ? ` ${styles.toggleBtnActive}` : ''}`}
+                className={`${styles.segBtn}${settings.aiPrefs.defaultOutput === 'schedule' ? ` ${styles.segBtnActive}` : ''}`}
                 onClick={() => save({ ...settings, aiPrefs: { ...settings.aiPrefs, defaultOutput: 'schedule' } })}
-              >Create schedule</button>
+              >Schedule</button>
               <button
-                className={`${styles.toggleBtn}${settings.aiPrefs.defaultOutput === 'todos' ? ` ${styles.toggleBtnActive}` : ''}`}
+                className={`${styles.segBtn}${settings.aiPrefs.defaultOutput === 'todos' ? ` ${styles.segBtnActive}` : ''}`}
                 onClick={() => save({ ...settings, aiPrefs: { ...settings.aiPrefs, defaultOutput: 'todos' } })}
-              >Create todos</button>
+              >Todos</button>
             </div>
           </div>
         </div>
@@ -200,13 +202,13 @@ export default function SettingsTab() {
         <div className={styles.prefGrid}>
           <div className={styles.prefRow}>
             <label className={styles.prefLabel}>Enable AI learning</label>
-            <div className={styles.toggle}>
+            <div className={styles.segment}>
               <button
-                className={`${styles.toggleBtn}${settings.aiMemory.enabled ? ` ${styles.toggleBtnActive}` : ''}`}
+                className={`${styles.segBtn}${settings.aiMemory.enabled ? ` ${styles.segBtnActive}` : ''}`}
                 onClick={() => save({ ...settings, aiMemory: { enabled: true } })}
               >On</button>
               <button
-                className={`${styles.toggleBtn}${!settings.aiMemory.enabled ? ` ${styles.toggleBtnActive}` : ''}`}
+                className={`${styles.segBtn}${!settings.aiMemory.enabled ? ` ${styles.segBtnActive}` : ''}`}
                 onClick={() => save({ ...settings, aiMemory: { enabled: false } })}
               >Off</button>
             </div>
@@ -218,15 +220,15 @@ export default function SettingsTab() {
               <button
                 className={styles.resetBtn}
                 onClick={() => { if (window.confirm('Reset time accuracy data? This cannot be undone.')) resetTimeAccuracy(); }}
-              >Reset time accuracy</button>
+              >Time accuracy</button>
               <button
                 className={styles.resetBtn}
                 onClick={() => { if (window.confirm('Reset peak hours data? This cannot be undone.')) resetPeakHours(); }}
-              >Reset peak hours</button>
+              >Peak hours</button>
               <button
                 className={styles.resetBtn}
                 onClick={() => { if (window.confirm('Reset subject pacing data? This cannot be undone.')) resetSubjectPacing(); }}
-              >Reset subject pacing</button>
+              >Subject pacing</button>
             </div>
           </div>
         </div>
