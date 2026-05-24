@@ -187,3 +187,40 @@
   background: var(--accent);
   color: #fff;
 }
+
+/* Reset group */
+.resetGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.resetGroupLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.resetBtns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.resetBtn {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--danger);
+  background: #fff;
+  border: 1px solid oklch(88% 0.04 25);
+  border-radius: 7px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  white-space: nowrap;
+}
+
+.resetBtn:hover {
+  background: oklch(98% 0.01 25);
+  border-color: var(--danger);
+}

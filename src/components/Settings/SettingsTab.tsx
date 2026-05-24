@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { storage, SomaSettings } from '../../lib/storage';
+import { resetTimeAccuracy, resetPeakHours, resetSubjectPacing } from '../../lib/insights';
 import styles from './SettingsTab.module.css';
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
@@ -196,6 +197,39 @@ export default function SettingsTab() {
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>AI Memory</h2>
+        <div className={styles.prefGrid}>
+          <div className={styles.prefRow}>
+            <label className={styles.prefLabel}>Enable AI learning</label>
+            <div className={styles.toggle}>
+              <button
+                className={`${styles.toggleBtn}${settings.aiMemory.enabled ? ` ${styles.toggleBtnActive}` : ''}`}
+                onClick={() => save({ ...settings, aiMemory: { enabled: true } })}
+              >On</button>
+              <button
+                className={`${styles.toggleBtn}${!settings.aiMemory.enabled ? ` ${styles.toggleBtnActive}` : ''}`}
+                onClick={() => save({ ...settings, aiMemory: { enabled: false } })}
+              >Off</button>
+            </div>
+          </div>
+
+          <div className={styles.resetGroup}>
+            <span className={styles.resetGroupLabel}>Reset stored data</span>
+            <div className={styles.resetBtns}>
+              <button
+                className={styles.resetBtn}
+                onClick={() => { if (window.confirm('Reset time accuracy data? This cannot be undone.')) resetTimeAccuracy(); }}
+              >Reset time accuracy</button>
+              <button
+                className={styles.resetBtn}
+                onClick={() => { if (window.confirm('Reset peak hours data? This cannot be undone.')) resetPeakHours(); }}
+              >Reset peak hours</button>
+              <button
+                className={styles.resetBtn}
+                onClick={() => { if (window.confirm('Reset subject pacing data? This cannot be undone.')) resetSubjectPacing(); }}
+              >Reset subject pacing</button>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section className={styles.section}>

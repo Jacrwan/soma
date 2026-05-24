@@ -43,6 +43,7 @@ export function updateAIMemory(session: {
   durationMinutes: number;
   estimatedMinutes?: number;
 }): void {
+  if (!storage.getSomaSettings().aiMemory.enabled) return;
   const store = loadAIMemoryStore();
 
   // peak hours
@@ -66,6 +67,24 @@ export function updateAIMemory(session: {
     };
   }
 
+  localStorage.setItem(AI_MEMORY_KEY, JSON.stringify(store));
+}
+
+export function resetTimeAccuracy(): void {
+  const store = loadAIMemoryStore();
+  store.subjectTimeDeltas = {};
+  localStorage.setItem(AI_MEMORY_KEY, JSON.stringify(store));
+}
+
+export function resetPeakHours(): void {
+  const store = loadAIMemoryStore();
+  store.peakHours = {};
+  localStorage.setItem(AI_MEMORY_KEY, JSON.stringify(store));
+}
+
+export function resetSubjectPacing(): void {
+  const store = loadAIMemoryStore();
+  store.subjectAverageDuration = {};
   localStorage.setItem(AI_MEMORY_KEY, JSON.stringify(store));
 }
 
