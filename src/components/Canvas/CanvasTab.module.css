@@ -631,21 +631,191 @@
   display: flex;
   align-items: center;
   gap: var(--space-md);
+  flex-wrap: wrap;
 }
 
 .generateBtn {
   padding: 7px 16px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: var(--bg-secondary);
+  background: #fff;
   font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.generateBtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: oklch(98% 0.006 265);
+}
+
+.generateBtn:disabled {
   color: var(--text-muted);
+  background: var(--bg-secondary);
   cursor: not-allowed;
 }
 
-.comingSoon {
+.studyPlanMeta,
+.studyPlanNotice,
+.studyPlanEmpty {
   font-size: 13px;
   color: var(--text-muted);
+}
+
+.studyPlanNotice,
+.studyPlanEmpty {
+  margin-top: var(--space-sm);
+}
+
+.studyPlanDays {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin-top: var(--space-md);
+}
+
+.studyPlanDay {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.studyPlanDayHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: 9px 12px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.studyPlanDayLabel {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.studyPlanDayDate {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.studyPlanItems {
+  display: flex;
+  flex-direction: column;
+}
+
+.studyPlanItem {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+.studyPlanItem:last-child {
+  border-bottom: 0;
+}
+
+.studyPlanItem:hover {
+  background: var(--bg-secondary);
+}
+
+.studyPlanItemDisabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.studyPlanDot {
+  width: 8px;
+  height: 8px;
+  margin-top: 5px;
+  border-radius: 50%;
+}
+
+.studyPlanItemMain {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.studyPlanItemTitle {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.studyPlanItemCourse,
+.studyPlanReason {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.studyPlanAction {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+.studyPlanMinutes {
+  display: inline-flex;
+  justify-content: center;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.studyPlanItemSide {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.studyPlanTaskBtn {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+  padding: 5px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.studyPlanTaskBtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: oklch(98% 0.006 265);
+}
+
+.studyPlanTaskBtn:disabled {
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  cursor: default;
 }
 
 /* ── Grades view ────────────────────────────────────────────────────────── */

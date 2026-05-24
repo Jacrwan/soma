@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { storage } from '../../lib/storage';
 import { CanvasCourse, CanvasAssignment, CanvasAnnouncement, Subject, Todo } from '../../types';
 import { getCourses, getActiveAssignments, getAssignments, getAnnouncements, getModules, getGrades } from '../../lib/canvas';
+import { sendMessage } from '../../lib/ai';
 import { CanvasGrade } from '../../types';
 import AssignmentDetail from './AssignmentDetail';
 import styles from './CanvasTab.module.css';
@@ -11,6 +12,34 @@ const COURSE_COLORS = [
   '#ffa726', '#26c6da', '#ec407a', '#8d6e63',
 ];
 const CACHE_MAX_AGE = 10 * 60 * 1000;
+const STUDY_PLAN_DAYS = 7;
+const STUDY_PLAN_CACHE_KEY = 'soma_canvas_study_plan_preview';
+
+interface StudyPlanItem {
+  assignmentId: number;
+  courseId: number;
+  courseName: string;
+  title: string;
+  dueAt: string;
+  suggestedAction: string;
+  reason: string;
+  estimatedMinutes: number;
+}
+
+interface StudyPlanDay {
+  label: string;
+  date: string;
+  items: StudyPlanItem[];
+}
+
+type StudyPlanState = 'idle' | 'loading' | 'generated' | 'empty' | 'error';
+
+interface StudyPlanSnapshot {
+  state: Exclude<StudyPlanState, 'loading'>;
+  days: StudyPlanDay[];
+  notice: string;
+  generatedAt: number;
+}
 
 function fmtDue(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', {
@@ -20,6 +49,201 @@ function fmtDue(iso: string) {
 
 function fmtPosted(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function dayKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function startOfLocalDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function daysFromToday(iso: string) {
+  const due = new Date(iso);
+  if (Number.isNaN(due.getTime())) return STUDY_PLAN_DAYS + 1;
+  const today = startOfLocalDay(new Date());
+  const dueDay = startOfLocalDay(due);
+  return Math.floor((dueDay.getTime() - today.getTime()) / 86_400_000);
+}
+
+function studyDayLabel(dateKey: string) {
+  const today = startOfLocalDay(new Date());
+  const tomorrow = addDays(today, 1);
+  if (dateKey === dayKey(today)) return 'Today';
+  if (dateKey === dayKey(tomorrow)) return 'Tomorrow';
+  return new Date(`${dateKey}T12:00:00`).toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function compactDueLabel(iso: string) {
+  const delta = daysFromToday(iso);
+  if (delta < 0) return `Overdue by ${Math.abs(delta)} day${Math.abs(delta) === 1 ? '' : 's'}`;
+  if (delta === 0) return 'Due today';
+  if (delta === 1) return 'Due tomorrow';
+  return `Due in ${delta} days`;
+}
+
+function studyReason(a: CanvasAssignment) {
+  const parts = [compactDueLabel(a.dueAt)];
+  if (a.pointsPossible != null) parts.push(`${a.pointsPossible} points`);
+  return parts.join(', ');
+}
+
+function dueDateKey(iso: string) {
+  const due = new Date(iso);
+  return Number.isNaN(due.getTime()) ? dayKey(new Date()) : dayKey(due);
+}
+
+function findSubjectIdForCourse(courseName: string) {
+  return storage.getSubjects().find(s => s.name === courseName)?.id;
+}
+
+function estimateStudyMinutes(a: CanvasAssignment) {
+  const points = a.pointsPossible ?? 0;
+  if (points >= 80) return 60;
+  if (points >= 30) return 45;
+  return 25;
+}
+
+function fallbackAction(a: CanvasAssignment) {
+  const name = a.name.toLowerCase();
+  if (name.includes('quiz') || name.includes('test') || name.includes('exam')) {
+    return 'Review notes, redo missed examples, and make a quick formula or concept sheet.';
+  }
+  if (name.includes('essay') || name.includes('write') || name.includes('draft')) {
+    return 'Outline the response, gather evidence, then write or revise the next section.';
+  }
+  if (name.includes('read')) {
+    return 'Read the assigned section and write a short summary with key terms.';
+  }
+  return 'Open the assignment, identify the next concrete step, and work through it.';
+}
+
+function rankStudyAssignments(
+  assignments: CanvasAssignment[],
+  selectedCourseId: number | null,
+  assignmentStatus: Record<number, string>,
+  clearedAssignments: Record<number, boolean>,
+) {
+  return assignments
+    .filter(a => selectedCourseId === null || a.courseId === selectedCourseId)
+    .filter(a => !clearedAssignments[a.id])
+    .filter(a => (assignmentStatus[a.id] ?? 'not_started') !== 'done')
+    .filter(a => {
+      const delta = daysFromToday(a.dueAt);
+      return delta <= STUDY_PLAN_DAYS;
+    })
+    .sort((a, b) => {
+      const aDelta = daysFromToday(a.dueAt);
+      const bDelta = daysFromToday(b.dueAt);
+      if (aDelta !== bDelta) return aDelta - bDelta;
+      const aStatus = assignmentStatus[a.id] ?? 'not_started';
+      const bStatus = assignmentStatus[b.id] ?? 'not_started';
+      if (aStatus !== bStatus) return aStatus === 'in_progress' ? -1 : 1;
+      return (b.pointsPossible ?? 0) - (a.pointsPossible ?? 0);
+    })
+    .slice(0, 16);
+}
+
+function buildFallbackPlan(assignments: CanvasAssignment[]): StudyPlanDay[] {
+  const buckets = new Map<string, StudyPlanItem[]>();
+  for (const a of assignments) {
+    const delta = daysFromToday(a.dueAt);
+    const bucketDate = delta <= 0
+      ? startOfLocalDay(new Date())
+      : startOfLocalDay(new Date(a.dueAt));
+    const key = dayKey(bucketDate);
+    const item: StudyPlanItem = {
+      assignmentId: a.id,
+      courseId: a.courseId,
+      courseName: a.courseName,
+      title: a.name,
+      dueAt: a.dueAt,
+      suggestedAction: fallbackAction(a),
+      reason: studyReason(a),
+      estimatedMinutes: estimateStudyMinutes(a),
+    };
+    buckets.set(key, [...(buckets.get(key) ?? []), item]);
+  }
+  return [...buckets.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, items]) => ({
+      label: studyDayLabel(date),
+      date,
+      items: items.slice(0, 4),
+    }))
+    .filter(day => day.items.length > 0);
+}
+
+function parseStudyPlanJson(raw: string, sourceAssignments: CanvasAssignment[]): StudyPlanDay[] | null {
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[0]) as { days?: StudyPlanDay[] };
+    if (!Array.isArray(parsed.days)) return null;
+    const assignmentMap = new Map(sourceAssignments.map(a => [a.id, a]));
+    const days = parsed.days.map(day => {
+      const date = typeof day.date === 'string' ? day.date : dayKey(new Date());
+      const label = typeof day.label === 'string' ? day.label : studyDayLabel(date);
+      const items = Array.isArray(day.items) ? day.items.flatMap(item => {
+        const assignmentId = Number(item.assignmentId);
+        const source = assignmentMap.get(assignmentId);
+        if (!source) return [];
+        return [{
+          assignmentId,
+          courseId: source.courseId,
+          courseName: source.courseName,
+          title: source.name,
+          dueAt: source.dueAt,
+          suggestedAction: String(item.suggestedAction || fallbackAction(source)).slice(0, 180),
+          reason: studyReason(source),
+          estimatedMinutes: Math.min(120, Math.max(15, Number(item.estimatedMinutes) || estimateStudyMinutes(source))),
+        }];
+      }).slice(0, 4) : [];
+      return { label, date, items };
+    }).filter(day => day.items.length > 0);
+    return days.length > 0 ? days : null;
+  } catch {
+    return null;
+  }
+}
+
+function getCachedStudyPlan(): StudyPlanSnapshot {
+  const fallback: StudyPlanSnapshot = { state: 'idle', days: [], notice: '', generatedAt: 0 };
+  const raw = localStorage.getItem(STUDY_PLAN_CACHE_KEY);
+  if (!raw) return fallback;
+  try {
+    const parsed = JSON.parse(raw) as Partial<StudyPlanSnapshot>;
+    if (!Array.isArray(parsed.days)) return fallback;
+    const state = parsed.state ?? 'idle';
+    return {
+      state,
+      days: parsed.days,
+      notice: typeof parsed.notice === 'string' ? parsed.notice : '',
+      generatedAt: typeof parsed.generatedAt === 'number' ? parsed.generatedAt : 0,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function setCachedStudyPlan(state: StudyPlanSnapshot['state'], days: StudyPlanDay[], notice = '') {
+  localStorage.setItem(STUDY_PLAN_CACHE_KEY, JSON.stringify({
+    state,
+    days,
+    notice,
+    generatedAt: Date.now(),
+  }));
 }
 
 function looksLikeCanvasCourseName(name: string): boolean {
@@ -78,6 +302,7 @@ function fmtSynced(ts: number): string {
 }
 
 export default function CanvasTab() {
+  const [initialStudyPlan] = useState(() => getCachedStudyPlan());
   const [token, setToken] = useState(() => storage.getCanvasToken());
   const [baseUrl, setBaseUrl] = useState(() => storage.getCanvasBaseUrl());
   const [setupUrl, setSetupUrl] = useState('');
@@ -109,6 +334,10 @@ export default function CanvasTab() {
   const [canvasView, setCanvasView] = useState<'assignments' | 'grades'>('assignments');
   const [grades, setGrades] = useState<CanvasGrade[]>([]);
   const [gradesLoading, setGradesLoading] = useState(false);
+  const [studyPlanState, setStudyPlanState] = useState<StudyPlanState>(initialStudyPlan.state);
+  const [studyPlanDays, setStudyPlanDays] = useState<StudyPlanDay[]>(initialStudyPlan.days);
+  const [studyPlanNotice, setStudyPlanNotice] = useState(initialStudyPlan.notice);
+  const [createdStudyTasks, setCreatedStudyTasks] = useState<Record<number, boolean>>({});
 
   const isConnected = !!token && !!baseUrl;
 
@@ -286,6 +515,92 @@ export default function CanvasTab() {
     return assignmentStatus[id] ?? 'not_started';
   }
 
+  async function generateStudyPlan() {
+    const eligible = rankStudyAssignments(assignments, selectedCourseId, assignmentStatus, clearedAssignments);
+    setStudyPlanNotice('');
+
+    if (eligible.length === 0) {
+      setStudyPlanDays([]);
+      setStudyPlanState('empty');
+      setCachedStudyPlan('empty', []);
+      return;
+    }
+
+    setStudyPlanState('loading');
+    const fallbackPlan = buildFallbackPlan(eligible);
+    const context = eligible.map(a => ({
+      assignmentId: a.id,
+      title: a.name,
+      course: a.courseName,
+      dueAt: a.dueAt,
+      due: compactDueLabel(a.dueAt),
+      status: assignmentStatus[a.id] ?? 'not_started',
+      pointsPossible: a.pointsPossible ?? null,
+      submitted: !!a.submittedAt,
+    }));
+
+    const systemPrompt = `You create practical student study plans from Canvas assignment data.
+Return only valid JSON. Do not include markdown.
+Use this shape:
+{"days":[{"label":"Today","date":"YYYY-MM-DD","items":[{"assignmentId":123,"suggestedAction":"specific next study action","estimatedMinutes":30}]}]}
+Rules:
+- Group by day, using Today for overdue and due-today work.
+- Include only assignment IDs from the provided data.
+- Each day must have 1 to 4 items.
+- Make actions concrete and short.
+- Do not write due-date wording; Soma will calculate due labels from Canvas dates.
+- estimatedMinutes must be between 15 and 120.`;
+
+    try {
+      const response = await sendMessage([
+        {
+          role: 'user',
+          content: JSON.stringify({
+            today: dayKey(new Date()),
+            horizonDays: STUDY_PLAN_DAYS,
+            selectedCourseId,
+            assignments: context,
+          }),
+        },
+      ], systemPrompt);
+      const parsed = parseStudyPlanJson(response, eligible);
+      if (!parsed) throw new Error('Invalid study plan JSON');
+      setStudyPlanDays(parsed);
+      setStudyPlanState('generated');
+      setCachedStudyPlan('generated', parsed);
+    } catch {
+      setStudyPlanDays(fallbackPlan);
+      const fallbackState = fallbackPlan.length > 0 ? 'generated' : 'error';
+      const fallbackNotice = 'AI summary could not be generated, so Soma built a simple due-date plan instead.';
+      setStudyPlanState(fallbackState);
+      setStudyPlanNotice(fallbackNotice);
+      setCachedStudyPlan(fallbackState, fallbackPlan, fallbackNotice);
+    }
+  }
+
+  function createTaskFromStudyPlan(item: StudyPlanItem) {
+    const existing = storage.getTodos();
+    const duplicate = existing.some(t => t.assignmentId === item.assignmentId);
+    if (duplicate) {
+      setCreatedStudyTasks(prev => ({ ...prev, [item.assignmentId]: true }));
+      return;
+    }
+
+    const todo: Todo = {
+      id: crypto.randomUUID(),
+      text: item.suggestedAction || item.title,
+      status: 'nothing',
+      subjectId: findSubjectIdForCourse(item.courseName),
+      dueDate: dueDateKey(item.dueAt),
+      assignmentId: item.assignmentId,
+      date: dayKey(new Date()),
+      estimatedMinutes: item.estimatedMinutes,
+      notes: item.title,
+    };
+    storage.setTodos([...existing, todo]);
+    setCreatedStudyTasks(prev => ({ ...prev, [item.assignmentId]: true }));
+  }
+
   // ── Setup card ──────────────────────────────────────────────────────────
   if (!isConnected) {
     return (
@@ -347,6 +662,12 @@ export default function CanvasTab() {
   const filteredAnnouncements = selectedCourseId === null
     ? announcements
     : announcements.filter(a => a.courseId === selectedCourseId);
+  const studyPlanEligible = rankStudyAssignments(
+    assignments,
+    selectedCourseId,
+    assignmentStatus,
+    clearedAssignments,
+  );
 
   function toggleExpanded(id: number) {
     setExpandedIds(prev => {
@@ -648,9 +969,80 @@ export default function CanvasTab() {
                   <div className={styles.studyPlanRule} />
                 </div>
                 <div className={styles.studyPlanBody}>
-                  <button className={styles.generateBtn} disabled>Generate Study Plan</button>
-                  <span className={styles.comingSoon}>Coming in Phase 4</span>
+                  <button
+                    className={styles.generateBtn}
+                    onClick={generateStudyPlan}
+                    disabled={studyPlanState === 'loading' || studyPlanEligible.length === 0}
+                  >
+                    {studyPlanState === 'loading' ? 'Generating…' : 'Generate Study Plan'}
+                  </button>
+                  <span className={styles.studyPlanMeta}>
+                    {studyPlanEligible.length > 0
+                      ? `${studyPlanEligible.length} active item${studyPlanEligible.length === 1 ? '' : 's'} in the next 7 days`
+                      : 'No active assignments due in the next 7 days'}
+                  </span>
                 </div>
+                {studyPlanNotice && <div className={styles.studyPlanNotice}>{studyPlanNotice}</div>}
+                {studyPlanState === 'empty' && (
+                  <div className={styles.studyPlanEmpty}>Nothing urgent to plan right now.</div>
+                )}
+                {studyPlanState === 'error' && (
+                  <div className={styles.studyPlanEmpty}>Could not generate a study plan. Try again after refreshing Canvas.</div>
+                )}
+                {studyPlanDays.length > 0 && (
+                  <div className={styles.studyPlanDays}>
+                    {studyPlanDays.map(day => (
+                      <div key={`${day.date}-${day.label}`} className={styles.studyPlanDay}>
+                        <div className={styles.studyPlanDayHeader}>
+                          <span className={styles.studyPlanDayLabel}>{day.label}</span>
+                          <span className={styles.studyPlanDayDate}>{day.date}</span>
+                        </div>
+                        <div className={styles.studyPlanItems}>
+                          {day.items.map(item => {
+                            const assignment = assignments.find(a => a.id === item.assignmentId);
+                            const color = courseColorMap[item.courseId] ?? '#ccc';
+                            return (
+                              <div
+                                key={`${day.date}-${item.assignmentId}`}
+                                className={`${styles.studyPlanItem}${!assignment ? ` ${styles.studyPlanItemDisabled}` : ''}`}
+                                onClick={() => assignment && setDetailAssignment(assignment)}
+                                role="button"
+                                tabIndex={assignment ? 0 : -1}
+                                onKeyDown={e => {
+                                  if (assignment && (e.key === 'Enter' || e.key === ' ')) {
+                                    e.preventDefault();
+                                    setDetailAssignment(assignment);
+                                  }
+                                }}
+                              >
+                                <span className={styles.studyPlanDot} style={{ background: color }} />
+                                <span className={styles.studyPlanItemMain}>
+                                  <span className={styles.studyPlanItemTitle}>{item.title}</span>
+                                  <span className={styles.studyPlanItemCourse}>{item.courseName}</span>
+                                  <span className={styles.studyPlanAction}>{item.suggestedAction}</span>
+                                  <span className={styles.studyPlanReason}>{item.reason}</span>
+                                </span>
+                                <span className={styles.studyPlanItemSide}>
+                                  <span className={styles.studyPlanMinutes}>{item.estimatedMinutes}m</span>
+                                  <button
+                                    className={styles.studyPlanTaskBtn}
+                                    onClick={e => {
+                                      e.stopPropagation();
+                                      createTaskFromStudyPlan(item);
+                                    }}
+                                    disabled={!!createdStudyTasks[item.assignmentId]}
+                                  >
+                                    {createdStudyTasks[item.assignmentId] ? 'Task created' : 'Create task'}
+                                  </button>
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </>
           )}
