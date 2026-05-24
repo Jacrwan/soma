@@ -262,7 +262,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [dueAssignments, setDueAssignments] = useState<{ assignment: CanvasAssignment; course: CanvasCourse | undefined; color: string }[]>([]);
   const [deadlineDetail, setDeadlineDetail] = useState<{ courseId: number; assignmentId: number } | null>(null);
   const [dueTagPopover, setDueTagPopover] = useState<{ mfm: number; top: number; right: number } | null>(null);
-  const [, forceTagUpdate] = useState(0);
   const [quickAddHour, setQuickAddHour] = useState<number | null>(null);
   const [quickAddSubjectId, setQuickAddSubjectId] = useState<string>('');
   const [quickAddDuration, setQuickAddDuration] = useState<number>(60);
@@ -285,7 +284,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [dragTodoGroupId, setDragTodoGroupId] = useState<string | null>(null);
   const [dragTodoOverIndex, setDragTodoOverIndex] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const gridWrapperRef = useRef<HTMLDivElement>(null);
   const dueTagPopoverRef = useRef<HTMLDivElement>(null);
   const statusPopoverRef = useRef<HTMLDivElement>(null);
   const pinPopoverRef = useRef<HTMLDivElement>(null);
@@ -1232,11 +1230,11 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
 
     <div className={styles.container} ref={containerRef}>
       {/* ── Left panel ── */}
-      <div className={styles.left} style={{ flex: `0 0 ${(panelRatio * 100).toFixed(1)}%` }} onScroll={() => forceTagUpdate(v => v + 1)}>
+      <div className={styles.left} style={{ flex: `0 0 ${(panelRatio * 100).toFixed(1)}%` }}>
         {blocks.length === 0 && (
           <div className={styles.emptyBlocks}>No blocks yet. Click a slot to add one.</div>
         )}
-        <div className={styles.gridWrapper} ref={gridWrapperRef} style={{ height: gridHeight }}>
+        <div className={styles.gridWrapper} style={{ height: gridHeight }}>
 
           {slots.map(slot => (
             <div
@@ -1358,9 +1356,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
           })}
 
           {(() => {
-            const gridRect = gridWrapperRef.current?.getBoundingClientRect();
-            if (!gridRect) return null;
-            const fixedRight = window.innerWidth - gridRect.right;
             const grouped = new Map<number, typeof dueAssignments>();
             for (const item of dueAssignments) {
               const d = new Date(item.assignment.dueAt);
@@ -1369,7 +1364,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               grouped.get(mfm)!.push(item);
             }
             return Array.from(grouped.entries()).map(([mfm, items]) => {
-              const fixedTop = gridRect.top + (mfm - START_HOUR * 60) * (SLOT_HEIGHT / 60) - 10;
+              const topPx = (mfm - START_HOUR * 60) * (SLOT_HEIGHT / 60) - 10;
               const isOpen = dueTagPopover?.mfm === mfm;
               const isSingle = items.length === 1;
               const { assignment: firstA, color: firstColor } = items[0];
@@ -1378,9 +1373,9 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                   key={`due-pill-${mfm}`}
                   className={styles.duePill}
                   style={{
-                    position: 'fixed',
-                    top: fixedTop,
-                    right: fixedRight,
+                    position: 'absolute',
+                    top: topPx,
+                    right: 0,
                     ...(isSingle
                       ? { background: firstColor + '26', borderColor: firstColor, color: firstColor }
                       : { background: 'var(--bg-secondary)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }
@@ -1388,7 +1383,12 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                   }}
                   onClick={e => {
                     e.stopPropagation();
-                    setDueTagPopover(prev => prev?.mfm === mfm ? null : { mfm, top: fixedTop, right: fixedRight });
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    setDueTagPopover(prev => prev?.mfm === mfm ? null : {
+                      mfm,
+                      top: rect.top,
+                      right: window.innerWidth - rect.right,
+                    });
                   }}
                 >
                   {isSingle ? firstA.name : (
