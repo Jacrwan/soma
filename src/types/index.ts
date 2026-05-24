@@ -97,12 +97,18 @@ export interface GoogleCalendarEvent {
   end: { dateTime?: string; date?: string };
 }
 
+export interface AiTodo {
+  text: string;
+  subjectId?: string;
+  assignmentId?: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   scheduleBlocks?: TimeBlock[];
-  todos?: string[];
+  todos?: AiTodo[];
   scheduleDismissed?: boolean;
   todosDismissed?: boolean;
 }

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { storage } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
-import { TimeBlock, Subject, Todo, ChatMessage, ChatSession } from '../../types';
+import { TimeBlock, Subject, Todo, ChatMessage, ChatSession, AiTodo } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
 import styles from './AITab.module.css';
 
@@ -122,10 +122,18 @@ function parseScheduleBlocks(content: string): TimeBlock[] | null {
   } catch { return null; }
 }
 
-function parseTodos(content: string): string[] | null {
+function parseTodos(content: string): AiTodo[] | null {
   const match = content.match(/<todos>([\s\S]*?)<\/todos>/);
   if (!match) return null;
-  try { return JSON.parse(match[1].trim()); } catch { return null; }
+  try {
+    const parsed = JSON.parse(match[1].trim());
+    if (!Array.isArray(parsed)) return null;
+    return parsed.map(item => ({
+      text: typeof item === 'string' ? item : String(item.text ?? ''),
+      subjectId: item.subjectId ?? undefined,
+      assignmentId: typeof item.assignmentId === 'number' ? item.assignmentId : undefined,
+    })).filter(t => t.text);
+  } catch { return null; }
 }
 
 // ── System prompt ───────────────────────────────────────────────────────────
@@ -158,7 +166,7 @@ function buildSystemPrompt(): string {
         const due = new Date(a.dueAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
         const status = statusLabel[assignmentStatus[String(a.id)] ?? 'not_started'] ?? 'not started';
         const desc = a.description ? `\n  Description: ${a.description.slice(0, 300)}` : '';
-        return `- ${a.name} | ${a.courseName} | Due: ${due} | Status: ${status}${desc}`;
+        return `- ${a.name} (id: ${a.id}) | ${a.courseName} | Due: ${due} | Status: ${status}${desc}`;
       }).join('\n')
     : 'None';
 
@@ -213,10 +221,13 @@ ${modulesStr ? `\nCourse modules (structure):\n${modulesStr}` : ''}
 When the user asks you to generate a schedule or todo list, respond with:
 1. A friendly natural language explanation
 2. A JSON block wrapped in <schedule> tags containing an array of TimeBlock objects
-3. A JSON block wrapped in <todos> tags containing an array of todo strings
+3. A JSON block wrapped in <todos> tags containing an array of todo objects
 
 TimeBlock format: { subjectId, task, startTime (ISO), endTime (ISO), source: "ai" }
 Match subjectId to the user's existing subjects by name (case-insensitive).
+
+Todo format: [{"text":"...","subjectId":"uuid-here","assignmentId":12345}]
+Use the exact subject IDs from the subjects list above. Use the exact assignment IDs from the assignments list above. Set subjectId to null if no subject applies. Set assignmentId to null if not linked to a Canvas assignment.
 
 If you can't match a subject, use the "Other" subject.
 Always ask clarifying questions if the user's request is vague.
@@ -262,7 +273,7 @@ function ScheduleCard({
 function TodoCard({
   todos, onAccept, onDismiss,
 }: {
-  todos: string[];
+  todos: AiTodo[];
   onAccept: () => void;
   onDismiss: () => void;
 }) {
@@ -271,7 +282,7 @@ function TodoCard({
       <div className={styles.cardHeader}>✅ Todo List</div>
       <div className={styles.cardBody}>
         {todos.map((t, i) => (
-          <div key={i} className={styles.todoRow}>• {t}</div>
+          <div key={i} className={styles.todoRow}>• {t.text}</div>
         ))}
       </div>
       <div className={styles.cardActions}>
@@ -507,28 +518,16 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     }));
   }
 
-  async function acceptTodos(msgId: string, todoTexts: string[]) {
-    const activeSubjects = storage.getSubjects().filter(s => !s.archived);
-    const subjectNames = activeSubjects.map(s => s.name);
-
-    let subjectAssignments: string[] = todoTexts.map(() => 'Unassigned');
-    const canvasAssignments = storage.getCachedAssignments();
-    let assignmentIds: (number | null)[] = todoTexts.map(() => null);
-    try {
-      const assignmentList = canvasAssignments.map(a => ({ id: a.id, name: a.name, courseName: a.courseName, dueAt: a.dueAt }));
-      const systemPrompt = 'You are a todo categorizer and matcher. Given a list of todos, a list of subjects, and a list of Canvas assignments, return a JSON object with two keys: "subjects" (array of subject names in the same order as the todos, exactly matching one of the provided subject names or "Unassigned" if none fit) and "assignmentIds" (array of Canvas assignment IDs (numbers) or null for each todo, in the same order). Respond with only the raw JSON object, no markdown.';
-      const userMessage = `Subjects: ${JSON.stringify(subjectNames)}\nAssignments: ${JSON.stringify(assignmentList)}\nTodos:\n${todoTexts.map((t, i) => `${i + 1}. ${t}`).join('\n')}`;
-      const response = await sendMessage([{ role: 'user', content: userMessage }], systemPrompt);
-      const parsed = JSON.parse(response.replace(/```json|```/g, '').trim());
-      if (Array.isArray(parsed.subjects) && parsed.subjects.length === todoTexts.length) subjectAssignments = parsed.subjects;
-      if (Array.isArray(parsed.assignmentIds) && parsed.assignmentIds.length === todoTexts.length) assignmentIds = parsed.assignmentIds;
-    } catch { /* leave unassigned/null */ }
-
+  function acceptTodos(msgId: string, todos: AiTodo[]) {
     const todayKey = getTodayKey();
-    const newTodos: Todo[] = todoTexts.map((text, i) => {
-      const subject = activeSubjects.find(s => s.name.toLowerCase() === subjectAssignments[i]?.toLowerCase());
-      return { id: crypto.randomUUID(), text, status: 'nothing' as const, subjectId: subject?.id, assignmentId: assignmentIds[i] ?? undefined, date: todayKey };
-    });
+    const newTodos: Todo[] = todos.map(item => ({
+      id: crypto.randomUUID(),
+      text: item.text,
+      status: 'nothing' as const,
+      subjectId: item.subjectId,
+      assignmentId: item.assignmentId,
+      date: todayKey,
+    }));
     storage.setTodos(newTodos);
 
     updateSession(activeSessionId, s => ({
