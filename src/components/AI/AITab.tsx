@@ -93,8 +93,8 @@ function fmtTime12(iso: string): string {
 
 function stripTags(content: string) {
   return content
-    .replace(/<schedule>[\s\S]*?<\/schedule>/g, '')
-    .replace(/<todos>[\s\S]*?<\/todos>/g, '')
+    .replace(/<schedule>[\s\S]*?<\/(?:schedule|todos)>/g, '')
+    .replace(/<todos>[\s\S]*?<\/(?:todos|schedule)>/g, '')
     .trim();
 }
 
@@ -107,7 +107,7 @@ function formatMessage(content: string): string {
 }
 
 function parseScheduleBlocks(content: string): TimeBlock[] | null {
-  const match = content.match(/<schedule>([\s\S]*?)<\/schedule>/);
+  const match = content.match(/<schedule>([\s\S]*?)<\/(?:schedule|todos)>/);
   if (!match) return null;
   try {
     const raw: Partial<TimeBlock>[] = JSON.parse(match[1].trim());
@@ -123,7 +123,7 @@ function parseScheduleBlocks(content: string): TimeBlock[] | null {
 }
 
 function parseTodos(content: string): AiTodo[] | null {
-  const match = content.match(/<todos>([\s\S]*?)<\/todos>/);
+  const match = content.match(/<todos>([\s\S]*?)<\/(?:todos|schedule)>/);
   if (!match) return null;
   try {
     const parsed = JSON.parse(match[1].trim());
@@ -220,14 +220,15 @@ ${announcementsStr ? `\nRecent course announcements:\n${announcementsStr}` : ''}
 ${modulesStr ? `\nCourse modules (structure):\n${modulesStr}` : ''}
 When the user asks you to generate a schedule or todo list, respond with:
 1. A friendly natural language explanation
-2. A JSON block wrapped in <schedule> tags containing an array of TimeBlock objects
-3. A JSON block wrapped in <todos> tags containing an array of todo objects
+2. If generating a schedule: a JSON array wrapped in <schedule>...</schedule> tags
+3. If generating todos: a JSON array wrapped in <todos>...</todos> tags
 
-TimeBlock format: { subjectId, task, startTime (ISO), endTime (ISO), source: "ai" }
-Match subjectId to the user's existing subjects by name (case-insensitive).
+CRITICAL: Always close <schedule> with </schedule> and <todos> with </todos>. Never mix closing tags.
 
-Todo format: [{"text":"...","subjectId":"uuid-here","assignmentId":12345}]
+Schedule item format: { subjectId, task, startTime (ISO), endTime (ISO), source: "ai" }
+Todo item format: [{"text":"...","subjectId":"uuid-here","assignmentId":12345}]
 Use the exact subject IDs from the subjects list above. Use the exact assignment IDs from the assignments list above. Set subjectId to null if no subject applies. Set assignmentId to null if not linked to a Canvas assignment.
+Match subjectId to the user's existing subjects by name (case-insensitive).
 
 If you can't match a subject, use the "Other" subject.
 Always ask clarifying questions if the user's request is vague.

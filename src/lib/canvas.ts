@@ -122,18 +122,12 @@ function toCourse(c: RawCanvasCourse): CanvasCourse {
 }
 
 export async function getCourses(token: string, baseUrl: string): Promise<CanvasCourse[]> {
-  const [raw, favorites] = await Promise.all([
-    canvasFetch(token, baseUrl, '/api/v1/courses?enrollment_state=active&per_page=100&include[]=term') as Promise<RawCanvasCourse[]>,
-    canvasFetch(token, baseUrl, '/api/v1/users/self/favorites/courses?per_page=100&include[]=term')
-      .catch(() => []) as Promise<RawCanvasCourse[]>,
-  ]);
+  const raw = await canvasFetch(
+    token, baseUrl,
+    '/api/v1/courses?enrollment_state=active&per_page=100&include[]=term',
+  ) as Promise<RawCanvasCourse[]>;
 
-  const favoriteIds = new Set(favorites.map(c => c.id).filter(Boolean));
-  const listedCourses = favoriteIds.size > 0
-    ? raw.filter(c => favoriteIds.has(c.id))
-    : raw;
-
-  return chooseCurrentCourses(listedCourses).map(toCourse);
+  return chooseCurrentCourses(await raw).map(toCourse);
 }
 
 export async function getAssignments(
