@@ -318,7 +318,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       setCurrentMinutes(now.getHours() * 60 + now.getMinutes());
     };
     tick();
-    const id = setInterval(tick, 60_000);
+    const id = setInterval(tick, 1_000);
     return () => clearInterval(id);
   }, []);
 
