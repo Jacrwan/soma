@@ -228,6 +228,10 @@ export default function CanvasTab() {
     storage.setAssignmentStatus(updated);
     setAssignmentStatus(updated);
 
+    if (status === 'done') {
+      setAssignmentCleared(id, true);
+    }
+
     const todoStatusMap: Record<string, Todo['status']> = {
       not_started: 'nothing',
       in_progress: 'in_progress',
