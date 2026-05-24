@@ -225,6 +225,10 @@ When the user asks you to generate a schedule or todo list, respond with:
 
 CRITICAL: Always close <schedule> with </schedule> and <todos> with </todos>. Never mix closing tags.
 
+CRITICAL: NEVER output both <schedule> and <todos> in the same response. Choose exactly one:
+- Use <schedule> when the user asks to plan their day, create a schedule, or asks what to do today with a time structure. Accepting a schedule automatically creates todos, so adding <todos> alongside a <schedule> is always wrong and redundant.
+- Use <todos> when the user asks for a task list, things to do for a specific assignment, or a checklist — only when no time structure is needed.
+
 Schedule item format: { subjectId, task, startTime (ISO), endTime (ISO), source: "ai" }
 Todo item format: [{"text":"...","subjectId":"uuid-here","assignmentId":12345}]
 Use the exact subject IDs from the subjects list above. Use the exact assignment IDs from the assignments list above. Set subjectId to null if no subject applies. Set assignmentId to null if not linked to a Canvas assignment.
