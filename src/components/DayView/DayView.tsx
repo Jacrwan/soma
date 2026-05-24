@@ -1210,9 +1210,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     <div className={styles.container} ref={containerRef}>
       {/* ── Left panel ── */}
       <div className={styles.left} style={{ flex: `0 0 ${(panelRatio * 100).toFixed(1)}%` }}>
-        {blocks.length === 0 && (
-          <div className={styles.emptyBlocks}>No blocks yet. Click a slot to add one.</div>
-        )}
+
         <div className={styles.gridWrapper} style={{ height: gridHeight }}>
 
           {slots.map(slot => (
