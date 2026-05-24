@@ -261,6 +261,8 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [gcalEvents, setGcalEvents] = useState<GoogleCalendarEvent[]>([]);
   const [dueAssignments, setDueAssignments] = useState<{ assignment: CanvasAssignment; course: CanvasCourse | undefined; color: string }[]>([]);
   const [deadlineDetail, setDeadlineDetail] = useState<{ courseId: number; assignmentId: number } | null>(null);
+  const [dueTagPopover, setDueTagPopover] = useState<{ mfm: number; top: number; right: number } | null>(null);
+  const [, forceTagUpdate] = useState(0);
   const [quickAddHour, setQuickAddHour] = useState<number | null>(null);
   const [quickAddSubjectId, setQuickAddSubjectId] = useState<string>('');
   const [quickAddDuration, setQuickAddDuration] = useState<number>(60);
@@ -283,6 +285,8 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [dragTodoGroupId, setDragTodoGroupId] = useState<string | null>(null);
   const [dragTodoOverIndex, setDragTodoOverIndex] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const gridWrapperRef = useRef<HTMLDivElement>(null);
+  const dueTagPopoverRef = useRef<HTMLDivElement>(null);
   const statusPopoverRef = useRef<HTMLDivElement>(null);
   const pinPopoverRef = useRef<HTMLDivElement>(null);
   const subjectPickerRef = useRef<HTMLDivElement>(null);
@@ -400,6 +404,17 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [pinPopoverId]);
+
+  useEffect(() => {
+    if (!dueTagPopover) return;
+    const onDown = (e: MouseEvent) => {
+      if (dueTagPopoverRef.current && !dueTagPopoverRef.current.contains(e.target as Node)) {
+        setDueTagPopover(null);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [dueTagPopover]);
 
   useEffect(() => {
     if (!taskModal) return;
@@ -1217,11 +1232,11 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
 
     <div className={styles.container} ref={containerRef}>
       {/* ── Left panel ── */}
-      <div className={styles.left} style={{ flex: `0 0 ${(panelRatio * 100).toFixed(1)}%` }}>
+      <div className={styles.left} style={{ flex: `0 0 ${(panelRatio * 100).toFixed(1)}%` }} onScroll={() => forceTagUpdate(v => v + 1)}>
         {blocks.length === 0 && (
           <div className={styles.emptyBlocks}>No blocks yet. Click a slot to add one.</div>
         )}
-        <div className={styles.gridWrapper} style={{ height: gridHeight }}>
+        <div className={styles.gridWrapper} ref={gridWrapperRef} style={{ height: gridHeight }}>
 
           {slots.map(slot => (
             <div
@@ -1342,33 +1357,72 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             );
           })}
 
-          {dueAssignments.map(({ assignment, color }) => {
-            const due = new Date(assignment.dueAt);
-            const dueMin = due.getHours() * 60 + due.getMinutes();
-            const topPx = minToTop(dueMin);
-            const isPast = due.getTime() < Date.now() && isSameDay(selectedDate, new Date());
-            return (
-              <div
-                key={`due-${assignment.id}`}
-                className={styles.deadlineMarker}
-                style={{ top: topPx, borderColor: color, opacity: isPast ? 0.45 : 1 }}
-                onClick={() => setDeadlineDetail({ courseId: assignment.courseId, assignmentId: assignment.id })}
-              >
-                <span className={styles.deadlineDot} style={{ background: color }} />
-                <span className={styles.deadlineName}>{assignment.name}</span>
-                <span className={styles.deadlineTime}>
-                  {due.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                </span>
-                <button
-                  className={styles.deadlineStudyBtn}
-                  onClick={e => { e.stopPropagation(); startStudyFromAssignment(assignment); }}
-                  title="Start studying"
+          {(() => {
+            const gridRect = gridWrapperRef.current?.getBoundingClientRect();
+            if (!gridRect) return null;
+            const fixedRight = window.innerWidth - gridRect.right;
+            const grouped = new Map<number, typeof dueAssignments>();
+            for (const item of dueAssignments) {
+              const d = new Date(item.assignment.dueAt);
+              const mfm = d.getHours() * 60 + d.getMinutes();
+              if (!grouped.has(mfm)) grouped.set(mfm, []);
+              grouped.get(mfm)!.push(item);
+            }
+            return Array.from(grouped.entries()).map(([mfm, items]) => {
+              const fixedTop = gridRect.top + (mfm - START_HOUR * 60) * (SLOT_HEIGHT / 60) - 10;
+              const isOpen = dueTagPopover?.mfm === mfm;
+              const isSingle = items.length === 1;
+              const { assignment: firstA, color: firstColor } = items[0];
+              return (
+                <div
+                  key={`due-pill-${mfm}`}
+                  className={styles.duePill}
+                  style={{
+                    position: 'fixed',
+                    top: fixedTop,
+                    right: fixedRight,
+                    ...(isSingle
+                      ? { background: firstColor + '26', borderColor: firstColor, color: firstColor }
+                      : { background: 'var(--bg-secondary)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }
+                    ),
+                  }}
+                  onClick={e => {
+                    e.stopPropagation();
+                    setDueTagPopover(prev => prev?.mfm === mfm ? null : { mfm, top: fixedTop, right: fixedRight });
+                  }}
                 >
-                  ▶ Study
-                </button>
-              </div>
-            );
-          })}
+                  {isSingle ? firstA.name : (
+                    <>
+                      <span style={{ marginRight: 4 }}>{items.length} due</span>
+                      {items.map(({ color: c, assignment: a }) => (
+                        <span key={a.id} className={styles.duePillDot} style={{ background: c }} />
+                      ))}
+                    </>
+                  )}
+                  {isOpen && (
+                    <div
+                      className={styles.duePillPopover}
+                      ref={dueTagPopoverRef}
+                      style={{ top: dueTagPopover!.top, right: dueTagPopover!.right }}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      {items.map(({ assignment: a, color: c }) => (
+                        <div key={a.id} className={styles.duePillPopoverRow}>
+                          <span className={styles.duePillDot} style={{ background: c }} />
+                          <span className={styles.duePillPopoverName}>{a.name}</span>
+                          {a.htmlUrl && (
+                            <a className={styles.duePillPopoverLink} href={a.htmlUrl} target="_blank" rel="noreferrer">
+                              Open in Canvas ↗
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            });
+          })()}
 
         </div>
       </div>
