@@ -4,12 +4,14 @@ import { storage } from '../../lib/storage';
 import styles from './InsightsTab.module.css';
 
 const PEAK_HOURS = Array.from({ length: 18 }, (_, i) => i + 6); // 6am–11pm
+const RING_R = 22;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_R; // ≈ 138.23
 
 function hourLabel(h: number): string {
-  if (h === 0) return '12am';
-  if (h < 12) return `${h}am`;
-  if (h === 12) return '12pm';
-  return `${h - 12}pm`;
+  if (h === 0) return '12a';
+  if (h < 12) return `${h}a`;
+  if (h === 12) return '12p';
+  return `${h - 12}p`;
 }
 
 const DAY_LABELS: Record<string, string> = {
@@ -44,6 +46,20 @@ function truncate(text: string, max: number): string {
   return text.length > max ? text.slice(0, max).trimEnd() + '…' : text;
 }
 
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className={styles.emptyState}>
+      <span className={styles.emptyIcon}>
+        <svg width="18" height="14" viewBox="0 0 18 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+          <path d="M1 13V8M6 13V4M11 13V6M16 13V1"/>
+          <path d="M1 13h16" strokeOpacity="0.25"/>
+        </svg>
+      </span>
+      <span className={styles.emptyMsg}>{message}</span>
+    </div>
+  );
+}
+
 export default function InsightsTab() {
   const weekly = useMemo(() => getWeeklyStudyTime(), []);
   const breakdown = useMemo(() => getSubjectBreakdown(), []);
@@ -67,33 +83,42 @@ export default function InsightsTab() {
         .map(x => x.h)
     : [];
 
+  const ringOffset = RING_CIRCUMFERENCE * (1 - Math.min(streak, 7) / 7);
+
   return (
     <div className={styles.page}>
+
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Study time — last 7 days</h2>
         <div className={styles.chart}>
-          {weekly.map(({ day, minutes }) => (
-            <div key={day} className={styles.barCol}>
-              <span className={styles.barValue}>{formatHours(minutes)}</span>
-              <div className={styles.barTrack}>
-                <div
-                  className={styles.bar}
-                  style={{ height: `${(minutes / maxWeeklyMinutes) * 100}%` }}
-                />
+          {weekly.map(({ day, minutes }) => {
+            const isPeak = minutes === maxWeeklyMinutes && minutes > 0;
+            const showLabel = minutes > 0 && minutes >= maxWeeklyMinutes * 0.45;
+            return (
+              <div key={day} className={styles.barCol}>
+                <span className={styles.barValue}>
+                  {showLabel ? formatHours(minutes) : ''}
+                </span>
+                <div className={styles.barTrack}>
+                  <div
+                    className={`${styles.bar}${isPeak ? ` ${styles.barPeak}` : ''}`}
+                    style={{ height: `${(minutes / maxWeeklyMinutes) * 100}%` }}
+                  />
+                </div>
+                <span className={styles.barLabel}>{dayLabel(day)}</span>
               </div>
-              <span className={styles.barLabel}>{dayLabel(day)}</span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Subject breakdown — last 7 days</h2>
         {breakdown.length === 0 ? (
-          <p className={styles.empty}>No study sessions recorded yet.</p>
+          <EmptyState message="No study sessions recorded yet." />
         ) : (
           <div className={styles.breakdown}>
-            {breakdown.map(({ subjectName, minutes }) => (
+            {breakdown.map(({ subjectName, minutes }, index) => (
               <div key={subjectName} className={styles.breakdownRow}>
                 <div className={styles.breakdownMeta}>
                   <span className={styles.breakdownName}>{subjectName}</span>
@@ -102,7 +127,10 @@ export default function InsightsTab() {
                 <div className={styles.hBarTrack}>
                   <div
                     className={styles.hBar}
-                    style={{ width: `${(minutes / maxBreakdownMinutes) * 100}%` }}
+                    style={{
+                      width: `${(minutes / maxBreakdownMinutes) * 100}%`,
+                      opacity: Math.max(0.38, 1 - index * 0.1),
+                    }}
                   />
                 </div>
               </div>
@@ -114,7 +142,7 @@ export default function InsightsTab() {
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Estimated vs actual</h2>
         {estimated.length === 0 ? (
-          <p className={styles.empty}>Complete some todos with time estimates to see this data.</p>
+          <EmptyState message="Complete todos with time estimates to see this data." />
         ) : (
           <div className={styles.evaList}>
             {estimated.map(({ text, estimated: est, actual }) => {
@@ -136,8 +164,23 @@ export default function InsightsTab() {
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Study streak</h2>
-        <div className={styles.streakRow}>
-          <span className={styles.streakNumber}>{streak}</span>
+        <div className={styles.streakWidget}>
+          <div className={styles.streakRingWrap}>
+            <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+              <circle cx="28" cy="28" r={RING_R} strokeWidth="3.5" className={styles.streakRingBg} />
+              <circle
+                cx="28" cy="28" r={RING_R}
+                strokeWidth="3.5"
+                className={styles.streakRingFill}
+                strokeDasharray={RING_CIRCUMFERENCE}
+                strokeDashoffset={ringOffset}
+                transform="rotate(-90 28 28)"
+              />
+            </svg>
+            <div className={styles.streakInner}>
+              <span className={styles.streakNum}>{streak}</span>
+            </div>
+          </div>
           <span className={styles.streakLabel}>day streak</span>
         </div>
       </section>
@@ -147,7 +190,7 @@ export default function InsightsTab() {
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Time accuracy</h2>
         {!aiMemory ? (
-          <p className={styles.empty}>Complete more tasks to unlock AI insights.</p>
+          <EmptyState message="Complete more tasks to unlock AI insights." />
         ) : (() => {
           const rows = Object.entries(aiMemory.subjectTimeDeltas)
             .filter(([, d]) => d.sampleCount >= 3)
@@ -156,7 +199,7 @@ export default function InsightsTab() {
               avgDelta: Math.round((d.totalActual - d.totalEstimated) / d.sampleCount),
             }));
           return rows.length === 0 ? (
-            <p className={styles.empty}>Need more data — complete at least 3 timed todos per subject.</p>
+            <EmptyState message="Complete at least 3 timed todos per subject to see accuracy." />
           ) : (
             <div className={styles.evaList}>
               {rows.map(({ name, avgDelta }) => {
@@ -177,7 +220,7 @@ export default function InsightsTab() {
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Peak study hours</h2>
         {!aiMemory ? (
-          <p className={styles.empty}>Complete more tasks to unlock AI insights.</p>
+          <EmptyState message="Complete more tasks to unlock AI insights." />
         ) : (
           <div className={styles.peakChart}>
             {PEAK_HOURS.map(h => {
@@ -204,7 +247,7 @@ export default function InsightsTab() {
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Subject pacing</h2>
         {!aiMemory ? (
-          <p className={styles.empty}>Complete more tasks to unlock AI insights.</p>
+          <EmptyState message="Complete more tasks to unlock AI insights." />
         ) : (() => {
           const rows = Object.entries(aiMemory.subjectAverageDuration)
             .map(([id, avg]) => ({
@@ -214,7 +257,7 @@ export default function InsightsTab() {
             .filter(r => r.avg > 0)
             .sort((a, b) => b.avg - a.avg);
           return rows.length === 0 ? (
-            <p className={styles.empty}>No pacing data yet.</p>
+            <EmptyState message="No pacing data yet." />
           ) : (
             <div className={styles.evaList}>
               {rows.map(({ name, avg }) => (
@@ -227,6 +270,7 @@ export default function InsightsTab() {
           );
         })()}
       </section>
+
     </div>
   );
 }

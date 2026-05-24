@@ -1,25 +1,46 @@
 .page {
-  padding: 32px 40px;
-  max-width: 680px;
+  padding: 40px 48px 80px;
+  max-width: 760px;
+  margin: 0 auto;
 }
 
+/* ── Section ── */
+
 .section {
-  margin-bottom: 40px;
+  margin-bottom: 52px;
+}
+
+.section:last-child {
+  margin-bottom: 0;
 }
 
 .sectionTitle {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin: 0 0 20px;
+  color: var(--text-primary);
+  margin: 0 0 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
+
+.sectionTitle::before {
+  content: '';
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+/* ── Weekly bar chart ── */
 
 .chart {
   display: flex;
   align-items: flex-end;
-  gap: 10px;
+  gap: 8px;
   height: 160px;
 }
 
@@ -35,9 +56,9 @@
   font-size: 11px;
   font-weight: 600;
   color: var(--text-secondary);
-  margin-bottom: 4px;
-  height: 16px;
-  line-height: 16px;
+  margin-bottom: 5px;
+  height: 15px;
+  line-height: 15px;
   white-space: nowrap;
 }
 
@@ -46,17 +67,22 @@
   width: 100%;
   display: flex;
   align-items: flex-end;
-  background: var(--bg-secondary);
+  background: transparent;
+  border: 1px solid oklch(91% 0.008 265);
   border-radius: 6px;
   overflow: hidden;
 }
 
 .bar {
   width: 100%;
+  background: oklch(63% 0.14 265);
+  border-radius: 4px 4px 0 0;
+  min-height: 0;
+  transition: height 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.barPeak {
   background: var(--accent);
-  border-radius: 6px;
-  min-height: 3px;
-  transition: height 0.3s ease;
 }
 
 .barLabel {
@@ -66,17 +92,18 @@
   color: var(--text-muted);
 }
 
-/* Subject breakdown */
+/* ── Subject breakdown ── */
+
 .breakdown {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .breakdownRow {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
 }
 
 .breakdownMeta {
@@ -98,51 +125,25 @@
 }
 
 .hBarTrack {
-  height: 7px;
-  background: var(--bg-secondary);
-  border-radius: 4px;
+  height: 4px;
+  background: oklch(93% 0.006 265);
+  border-radius: 3px;
   overflow: hidden;
 }
 
 .hBar {
   height: 100%;
   background: var(--accent);
-  border-radius: 4px;
+  border-radius: 3px;
   min-width: 3px;
-  transition: width 0.3s ease;
+  transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Streak */
-.streakRow {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
+/* ── Estimated vs actual ── */
 
-.streakNumber {
-  font-size: 56px;
-  font-weight: 700;
-  color: var(--accent);
-  line-height: 1;
-}
-
-.streakLabel {
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.empty {
-  font-size: 13px;
-  color: var(--text-muted);
-  margin: 0;
-}
-
-/* Estimated vs actual */
 .evaList {
   display: flex;
   flex-direction: column;
-  gap: 0;
   border: 1px solid var(--border);
   border-radius: 10px;
   overflow: hidden;
@@ -191,11 +192,83 @@
   text-align: right;
 }
 
-/* Peak hours */
+/* ── Streak widget ── */
+
+.streakWidget {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.streakRingWrap {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+}
+
+.streakRingBg {
+  stroke: oklch(92% 0.008 265);
+  fill: none;
+}
+
+.streakRingFill {
+  stroke: var(--accent);
+  fill: none;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.streakInner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.streakNum {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.streakLabel {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+/* ── Empty state ── */
+
+.emptyState {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  background: oklch(97.5% 0.004 265);
+  border: 1px solid oklch(92% 0.006 265);
+  border-radius: 10px;
+}
+
+.emptyIcon {
+  color: oklch(75% 0.08 265);
+  display: flex;
+  flex-shrink: 0;
+}
+
+.emptyMsg {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* ── Peak hours chart ── */
+
 .peakChart {
   display: flex;
   align-items: flex-end;
-  gap: 4px;
+  gap: 3px;
   height: 100px;
 }
 
@@ -212,17 +285,18 @@
   width: 100%;
   display: flex;
   align-items: flex-end;
-  background: var(--bg-secondary);
+  background: transparent;
+  border: 1px solid oklch(91% 0.008 265);
   border-radius: 4px;
   overflow: hidden;
 }
 
 .peakBar {
   width: 100%;
-  background: oklch(72% 0.08 265);
-  border-radius: 4px;
-  min-height: 2px;
-  transition: height 0.3s ease;
+  background: oklch(63% 0.14 265);
+  border-radius: 3px 3px 0 0;
+  min-height: 0;
+  transition: height 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .peakBarTop {
@@ -230,7 +304,7 @@
 }
 
 .peakLabel {
-  margin-top: 5px;
+  margin-top: 4px;
   font-size: 9px;
   font-weight: 500;
   color: var(--text-muted);
@@ -240,4 +314,15 @@
 .peakLabelTop {
   color: var(--accent);
   font-weight: 700;
+}
+
+/* ── Reduced motion ── */
+
+@media (prefers-reduced-motion: reduce) {
+  .bar,
+  .hBar,
+  .peakBar,
+  .streakRingFill {
+    transition: none;
+  }
 }
