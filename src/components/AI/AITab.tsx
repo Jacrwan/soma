@@ -204,6 +204,27 @@ function buildSystemPrompt(): string {
       }).filter(Boolean).join('\n\n')
     : '';
 
+  function fmt12(time: string): string {
+    const [h, m] = time.split(':').map(Number);
+    const ampm = h >= 12 ? 'pm' : 'am';
+    const h12 = h % 12 || 12;
+    return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2, '0')}${ampm}`;
+  }
+
+  const { availability } = storage.getSomaSettings();
+  const DAY_NAMES = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
+  const availabilityStr = DAY_NAMES
+    .map(day => {
+      const avail = availability[day];
+      if (!avail.start || !avail.end) return null;
+      const blocked = avail.blocked.length > 0
+        ? `, blocked ${avail.blocked.map(b => `${fmt12(b.start)}–${fmt12(b.end)}`).join(', ')}`
+        : '';
+      return `${day.charAt(0).toUpperCase() + day.slice(1)}: ${fmt12(avail.start)}–${fmt12(avail.end)}${blocked}`;
+    })
+    .filter(Boolean)
+    .join('\n');
+
   return `You are Soma, a personal study assistant. Help the user plan their day.
 
 Today is ${date}.
@@ -212,6 +233,9 @@ Their subjects: ${subjectsStr}
 
 Upcoming assignments (next 14 days):
 ${assignmentsStr}
+
+User availability:
+${availabilityStr || 'Not set — ask the user what time they want to start and end.'}
 
 Current schedule:
 ${blocksStr}
@@ -236,7 +260,7 @@ Match subjectId to the user's existing subjects by name (case-insensitive).
 
 If you can't match a subject, use the "Other" subject.
 Always ask clarifying questions if the user's request is vague.
-Never generate a schedule without asking what time the user wants to start and end their day.`;
+If the user's availability is set above, use it to constrain the schedule automatically — do not ask for start/end times unless the user asks to override them. If availability is not set, ask the user what time they want to start and end their day before generating a schedule.`;
 }
 
 // ── Sub-components ──────────────────────────────────────────────────────────
