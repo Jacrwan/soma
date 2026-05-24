@@ -65,3 +65,75 @@
   font-weight: 500;
   color: var(--text-muted);
 }
+
+/* Subject breakdown */
+.breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.breakdownRow {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.breakdownMeta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.breakdownName {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.breakdownTime {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.hBarTrack {
+  height: 7px;
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.hBar {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  min-width: 3px;
+  transition: width 0.3s ease;
+}
+
+/* Streak */
+.streakRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.streakNumber {
+  font-size: 56px;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.streakLabel {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+}
