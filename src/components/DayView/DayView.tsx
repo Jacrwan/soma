@@ -238,12 +238,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     }
     return migrated;
   });
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
-    const todayKey = getTodayKey();
-    const todayTodos = storage.getTodos().filter(t => t.date === todayKey);
-    const withTodos = new Set(todayTodos.map(t => t.subjectId ?? 'unassigned'));
-    return new Set(storage.getSubjects().filter(s => !withTodos.has(s.id)).map(s => s.id));
-  });
   const [taskModal, setTaskModal] = useState<{ subjectId: string | undefined; editingTodo?: Todo } | null>(null);
   const [subjectPickerMode, setSubjectPickerMode] = useState<'timer' | 'task' | null>(null);
   const [taskForm, setTaskForm] = useState<TaskFormState>({
@@ -262,9 +256,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [dueAssignments, setDueAssignments] = useState<{ assignment: CanvasAssignment; course: CanvasCourse | undefined; color: string }[]>([]);
   const [deadlineDetail, setDeadlineDetail] = useState<{ courseId: number; assignmentId: number } | null>(null);
   const [dueTagPopover, setDueTagPopover] = useState<{ mfm: number; top: number; right: number } | null>(null);
-  const [quickAddHour, setQuickAddHour] = useState<number | null>(null);
-  const [quickAddSubjectId, setQuickAddSubjectId] = useState<string>('');
-  const [quickAddDuration, setQuickAddDuration] = useState<number>(60);
   const [timerRunning, setTimerRunning] = useState(false);
   const [briefCollapsed, setBriefCollapsed] = useState<boolean>(() => {
     const s = localStorage.getItem('soma_brief_collapsed');
@@ -608,7 +599,16 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     };
     const allBlocks = storage.getTimeBlocks().map(b => b.id === updated.id ? updated : b);
     storage.setTimeBlocks(allBlocks);
-    setBlocks(allBlocks.filter(b => isOnDate(b.startTime, selectedDate)));
+    const blocksForDate = allBlocks.filter(b => isOnDate(b.startTime, selectedDate));
+    setBlocks(blocksForDate);
+    const updatedSubjects = subjects.map(s => {
+      const totalSecs = blocksForDate
+        .filter(b => b.subjectId === s.id)
+        .reduce((acc, b) => acc + Math.max(0, (new Date(b.endTime).getTime() - new Date(b.startTime).getTime()) / 1000), 0);
+      return { ...s, totalTimeToday: Math.round(totalSecs) };
+    });
+    storage.setSubjects(updatedSubjects);
+    setSubjects(updatedSubjects);
     setBlockModal({ block: updated, subject: blockModal.subject });
     setBlockEditMode(false);
   }
@@ -759,13 +759,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
   }, [isViewingToday]);
 
 
-  function toggleGroup(groupId: string) {
-    setCollapsedGroups(prev => {
-      const next = new Set(prev);
-      next.has(groupId) ? next.delete(groupId) : next.add(groupId);
-      return next;
-    });
-  }
 
   function handleSubjectPointerDown(e: React.PointerEvent, subjectId: string) {
     if (e.button !== 0) return;
@@ -941,33 +934,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     if (!matched) return;
     setInitialTimerTask(assignment.name);
     setTimerSubject(matched);
-  }
-
-  function handleSlotClick(hour: number) {
-    setQuickAddHour(hour);
-    setQuickAddDuration(60);
-    const subs = storage.getSubjects();
-    setQuickAddSubjectId(subs[0]?.id ?? '');
-  }
-
-  function commitQuickAdd() {
-    if (quickAddHour === null || !quickAddSubjectId) return;
-    const start = new Date(
-      selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(),
-      quickAddHour, 0,
-    );
-    const end = new Date(start.getTime() + quickAddDuration * 60_000);
-    const block: TimeBlock = {
-      id: crypto.randomUUID(),
-      subjectId: quickAddSubjectId,
-      task: '',
-      startTime: toLocalISO(start),
-      endTime: toLocalISO(end),
-      source: 'manual',
-    };
-    storage.setTimeBlocks([...storage.getTimeBlocks(), block]);
-    setBlocks(prev => [...prev, block]);
-    setQuickAddHour(null);
   }
 
   function handleDateBarWheel(e: React.WheelEvent) {
@@ -1256,10 +1222,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               style={{ top: minToTop(slot.minutes), height: SLOT_HEIGHT }}
             >
               <span className={styles.timeLabel}>{slot.label}</span>
-              <div
-                className={styles.slotArea}
-                onClick={() => handleSlotClick(slot.minutes / 60)}
-              />
+              <div className={styles.slotArea} />
             </div>
           ))}
 
@@ -1560,8 +1523,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
 
         {orderedActiveSubjects.map(subject => {
           const groupTodos = dayTodos.filter(t => t.subjectId === subject.id);
-          const isCollapsed = collapsedGroups.has(subject.id);
-          const showBody = !isCollapsed;
           const pending = groupTodos.filter(t => t.status !== 'done').length;
           const isDragging = dragSubjectId === subject.id;
 
@@ -1576,10 +1537,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                 onPointerDown={e => handleSubjectPointerDown(e, subject.id)}
                 onPointerUp={handleSubjectPointerUp}
                 onPointerCancel={handleSubjectPointerUp}
-                onClick={() => {
-                  if (wasInDragRef.current) { wasInDragRef.current = false; return; }
-                  toggleGroup(subject.id);
-                }}
               >
                 <span className={styles.dotIndicator} style={{ background: subject.color }} />
                 <span className={styles.subjectName}>{subject.name}</span>
@@ -1599,14 +1556,11 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                     setEditSubject({ id: subject.id, name: subject.name, color: subject.color });
                   }}
                 >✎</button>
-                <span className={styles.subjectArrow}>{isCollapsed ? '▾' : '▴'}</span>
               </div>
 
-              {showBody && (
-                <div className={styles.todoGroupBody}>
-                  {getOrderedGroupTodos(subject.id).map(todo => renderTodoItem(todo, subject.id))}
-                </div>
-              )}
+              <div className={styles.todoGroupBody}>
+                {getOrderedGroupTodos(subject.id).map(todo => renderTodoItem(todo, subject.id))}
+              </div>
             </div>
           );
         })}
@@ -1614,15 +1568,10 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
         {(() => {
           const unassigned = dayTodos.filter(t => !t.subjectId);
           if (unassigned.length === 0) return null;
-          const isCollapsed = collapsedGroups.has('unassigned');
-          const showBody = !isCollapsed;
           const pending = unassigned.filter(t => t.status !== 'done').length;
           return (
             <div className={styles.subjectGroup}>
-              <div
-                className={styles.subjectGroupHeader}
-                onClick={() => toggleGroup('unassigned')}
-              >
+              <div className={styles.subjectGroupHeader}>
                 <span className={styles.subjectName}>Unassigned</span>
                 {unassigned.length > 0 && (
                   <span className={styles.todoBadge}>{pending}/{unassigned.length}</span>
@@ -1632,13 +1581,10 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                   onClick={e => { e.stopPropagation(); startAdding('unassigned'); }}
                   title="Add todo"
                 >+</button>
-                <span className={styles.subjectArrow}>{isCollapsed ? '▾' : '▴'}</span>
               </div>
-              {showBody && (
-                <div className={styles.todoGroupBody}>
-                  {getOrderedGroupTodos('unassigned').map(todo => renderTodoItem(todo, 'unassigned'))}
-                </div>
-              )}
+              <div className={styles.todoGroupBody}>
+                {getOrderedGroupTodos('unassigned').map(todo => renderTodoItem(todo, 'unassigned'))}
+              </div>
             </div>
           );
         })()}
@@ -1979,41 +1925,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
       />
     )}
 
-    {quickAddHour !== null && (
-      <div className={styles.quickAddBackdrop} onClick={() => setQuickAddHour(null)}>
-        <div className={styles.quickAddModal} onClick={e => e.stopPropagation()}>
-          <span className={styles.quickAddTitle}>
-            Add block at {quickAddHour % 12 || 12}:00 {quickAddHour >= 12 ? 'PM' : 'AM'}
-          </span>
-          <select
-            className={styles.quickAddSelect}
-            value={quickAddSubjectId}
-            onChange={e => setQuickAddSubjectId(e.target.value)}
-          >
-            {subjects.map(s => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
-          <select
-            className={styles.quickAddSelect}
-            value={quickAddDuration}
-            onChange={e => setQuickAddDuration(Number(e.target.value))}
-          >
-            <option value={15}>15 min</option>
-            <option value={30}>30 min</option>
-            <option value={45}>45 min</option>
-            <option value={60}>1 hour</option>
-            <option value={90}>1.5 hours</option>
-            <option value={120}>2 hours</option>
-            <option value={180}>3 hours</option>
-          </select>
-          <div className={styles.quickAddBtns}>
-            <button className={styles.quickAddCancel} onClick={() => setQuickAddHour(null)}>Cancel</button>
-            <button className={styles.quickAddConfirm} onClick={commitQuickAdd}>Add</button>
-          </div>
-        </div>
-      </div>
-    )}
     </>
   );
 }
