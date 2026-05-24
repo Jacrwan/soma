@@ -97,19 +97,19 @@ function blockDateKey(isoTime: string): string {
 }
 
 
-function last7DayKeys(): string[] {
+function last7DayKeys(weekOffset = 0): string[] {
   const keys: string[] = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
-    d.setDate(d.getDate() - i);
+    d.setDate(d.getDate() + weekOffset * 7 - i);
     keys.push(dateKey(d));
   }
   return keys;
 }
 
-export function getWeeklyStudyTime(): { day: string; minutes: number }[] {
-  const days = last7DayKeys();
+export function getWeeklyStudyTime(weekOffset = 0): { day: string; minutes: number }[] {
+  const days = last7DayKeys(weekOffset);
   const result = days.map(day => {
     const raw = localStorage.getItem(`soma_elapsed_${day}`);
     if (!raw) return { day, minutes: 0 };

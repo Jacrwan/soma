@@ -35,6 +35,62 @@
   flex-shrink: 0;
 }
 
+/* ── Week navigation ── */
+
+.weekNavRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.weekNavCenter {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.weekNavRow .sectionTitle {
+  margin: 0;
+}
+
+.weekNavBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 0 1px;
+  transition: color 0.12s, border-color 0.12s;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.weekNavBtn:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: oklch(76% 0.06 265);
+}
+
+.weekNavBtn:disabled {
+  opacity: 0.28;
+  cursor: not-allowed;
+}
+
+.weekRange {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 /* ── Weekly bar chart ── */
 
 .chart {
@@ -92,51 +148,51 @@
   color: var(--text-muted);
 }
 
-/* ── Subject breakdown ── */
+/* ── Subject breakdown — donut ── */
 
-.breakdown {
+.donutWrap {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+}
+
+.donutLegend {
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 0;
 }
 
-.breakdownRow {
+.donutLegendItem {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
 }
 
-.breakdownMeta {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
+.donutLegendDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
-.breakdownName {
+.donutLegendName {
   font-size: 13px;
-  font-weight: 500;
   color: var(--text-primary);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
-.breakdownTime {
+.donutLegendTime {
   font-size: 12px;
   font-weight: 500;
   color: var(--text-muted);
-}
-
-.hBarTrack {
-  height: 4px;
-  background: oklch(93% 0.006 265);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.hBar {
-  height: 100%;
-  background: var(--accent);
-  border-radius: 3px;
-  min-width: 3px;
-  transition: width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
 }
 
 /* ── Estimated vs actual ── */
@@ -192,52 +248,103 @@
   text-align: right;
 }
 
-/* ── Streak widget ── */
+/* ── Streak hero ── */
 
-.streakWidget {
+.streakHero {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
+  margin-bottom: 28px;
 }
 
-.streakRingWrap {
-  position: relative;
-  width: 56px;
-  height: 56px;
+.flameSvg {
   flex-shrink: 0;
 }
 
-.streakRingBg {
-  stroke: oklch(92% 0.008 265);
-  fill: none;
-}
-
-.streakRingFill {
-  stroke: var(--accent);
-  fill: none;
-  stroke-linecap: round;
-  transition: stroke-dashoffset 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.streakInner {
-  position: absolute;
-  inset: 0;
+.streakMeta {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  align-items: baseline;
+  gap: 7px;
 }
 
-.streakNum {
-  font-size: 17px;
+.streakBigNum {
+  font-size: 30px;
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1;
 }
 
-.streakLabel {
+.streakDayLabel {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-muted);
+}
+
+/* ── Monthly heatmap ── */
+
+.heatmapSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.heatmapTitle {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.heatmapDow {
+  display: grid;
+  grid-template-columns: repeat(7, 38px);
+  gap: 3px;
+}
+
+.heatmapDowCell {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.heatmapGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 38px);
+  gap: 3px;
+}
+
+.heatmapCellEmpty {
+  height: 34px;
+}
+
+.heatmapCell {
+  height: 34px;
+  border-radius: 5px;
+  background: oklch(95.5% 0.004 265);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.heatmapCellActive .heatmapDayNum {
+  color: oklch(98% 0.005 265);
+}
+
+.heatmapCellToday {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.heatmapDayNum {
+  font-size: 10px;
+  font-weight: 500;
+  color: oklch(68% 0.01 265);
+  user-select: none;
+  line-height: 1;
 }
 
 /* ── Empty state ── */
@@ -320,9 +427,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .bar,
-  .hBar,
-  .peakBar,
-  .streakRingFill {
+  .peakBar {
     transition: none;
   }
 }

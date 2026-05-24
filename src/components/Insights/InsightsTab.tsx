@@ -1,11 +1,13 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { getWeeklyStudyTime, getSubjectBreakdown, getEstimatedVsActual, getStudyStreak, getAIMemory } from '../../lib/insights';
 import { storage } from '../../lib/storage';
 import styles from './InsightsTab.module.css';
 
 const PEAK_HOURS = Array.from({ length: 18 }, (_, i) => i + 6); // 6am–11pm
-const RING_R = 22;
-const RING_CIRCUMFERENCE = 2 * Math.PI * RING_R; // ≈ 138.23
+const DONUT_R = 55;
+const DONUT_C = 2 * Math.PI * DONUT_R; // ≈ 345.58
+const DONUT_STROKE = 14;
+const DONUT_BLUES = ['#4c6ef5', '#748ffc', '#91a7ff', '#bac8ff', '#c5d0fb'];
 
 function hourLabel(h: number): string {
   if (h === 0) return '12a';
@@ -46,6 +48,26 @@ function truncate(text: string, max: number): string {
   return text.length > max ? text.slice(0, max).trimEnd() + '…' : text;
 }
 
+function heatmapColor(minutes: number): string {
+  if (minutes < 30) return 'oklch(88% 0.09 265)';
+  if (minutes < 60) return 'oklch(78% 0.14 265)';
+  if (minutes < 120) return 'oklch(68% 0.18 265)';
+  return 'oklch(59% 0.21 265)';
+}
+
+function fmtDateRange(weekOffset: number): string {
+  const end = new Date();
+  end.setHours(0, 0, 0, 0);
+  end.setDate(end.getDate() + weekOffset * 7);
+  const start = new Date(end);
+  start.setDate(start.getDate() - 6);
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const sm = months[start.getMonth()];
+  const em = months[end.getMonth()];
+  if (sm === em) return `${sm} ${start.getDate()}–${end.getDate()}`;
+  return `${sm} ${start.getDate()} – ${em} ${end.getDate()}`;
+}
+
 function EmptyState({ message }: { message: string }) {
   return (
     <div className={styles.emptyState}>
@@ -61,7 +83,9 @@ function EmptyState({ message }: { message: string }) {
 }
 
 export default function InsightsTab() {
-  const weekly = useMemo(() => getWeeklyStudyTime(), []);
+  const [weekOffset, setWeekOffset] = useState(0);
+
+  const weekly = useMemo(() => getWeeklyStudyTime(weekOffset), [weekOffset]);
   const breakdown = useMemo(() => getSubjectBreakdown(), []);
   const estimated = useMemo(() => getEstimatedVsActual(), []);
   const streak = useMemo(() => getStudyStreak(), []);
@@ -70,7 +94,6 @@ export default function InsightsTab() {
   const subjectNameMap = useMemo(() => new Map(subjects.map(s => [s.id, s.name])), [subjects]);
 
   const maxWeeklyMinutes = Math.max(...weekly.map(d => d.minutes), 1);
-  const maxBreakdownMinutes = Math.max(...breakdown.map(s => s.minutes), 1);
 
   const maxPeakMinutes = aiMemory
     ? Math.max(...PEAK_HOURS.map(h => aiMemory.peakHours[h] ?? 0), 1)
@@ -83,13 +106,77 @@ export default function InsightsTab() {
         .map(x => x.h)
     : [];
 
-  const ringOffset = RING_CIRCUMFERENCE * (1 - Math.min(streak, 7) / 7);
+  const totalBreakdownMinutes = useMemo(
+    () => breakdown.reduce((s, d) => s + d.minutes, 0),
+    [breakdown]
+  );
+
+  const donutSlices = useMemo(() => {
+    if (totalBreakdownMinutes === 0) return [];
+    let cumAngle = 0;
+    return breakdown.slice(0, 5).map((d, i) => {
+      const fraction = d.minutes / totalBreakdownMinutes;
+      const arc = fraction * DONUT_C;
+      const startAngle = cumAngle - 90;
+      cumAngle += fraction * 360;
+      return {
+        arc,
+        startAngle,
+        color: DONUT_BLUES[i] ?? DONUT_BLUES[DONUT_BLUES.length - 1],
+        name: d.subjectName,
+        minutes: d.minutes,
+      };
+    });
+  }, [breakdown, totalBreakdownMinutes]);
+
+  const heatmapData = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells: { day: number; minutes: number; isToday: boolean }[] = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const raw = localStorage.getItem(`soma_elapsed_${dateStr}`);
+      let minutes = 0;
+      if (raw) {
+        try {
+          const data: Record<string, number> = JSON.parse(raw);
+          minutes = Math.round(Object.values(data).reduce((sum, m) => sum + m, 0));
+        } catch {}
+      }
+      cells.push({ day: d, minutes, isToday: d === now.getDate() });
+    }
+    return { cells, firstDayOfWeek: new Date(year, month, 1).getDay() };
+  }, []);
+
+  const heatmapMonthLabel = useMemo(
+    () => new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+    []
+  );
 
   return (
     <div className={styles.page}>
 
+      {/* ── Study time ── */}
       <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Study time — last 7 days</h2>
+        <div className={styles.weekNavRow}>
+          <button
+            className={styles.weekNavBtn}
+            onClick={() => setWeekOffset(o => o - 1)}
+            aria-label="Previous week"
+          >‹</button>
+          <div className={styles.weekNavCenter}>
+            <h2 className={styles.sectionTitle}>Study time</h2>
+            <span className={styles.weekRange}>{fmtDateRange(weekOffset)}</span>
+          </div>
+          <button
+            className={styles.weekNavBtn}
+            onClick={() => setWeekOffset(o => o + 1)}
+            disabled={weekOffset >= 0}
+            aria-label="Next week"
+          >›</button>
+        </div>
         <div className={styles.chart}>
           {weekly.map(({ day, minutes }) => {
             const isPeak = minutes === maxWeeklyMinutes && minutes > 0;
@@ -112,33 +199,40 @@ export default function InsightsTab() {
         </div>
       </section>
 
+      {/* ── Subject breakdown ── */}
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Subject breakdown — last 7 days</h2>
         {breakdown.length === 0 ? (
           <EmptyState message="No study sessions recorded yet." />
         ) : (
-          <div className={styles.breakdown}>
-            {breakdown.map(({ subjectName, minutes }, index) => (
-              <div key={subjectName} className={styles.breakdownRow}>
-                <div className={styles.breakdownMeta}>
-                  <span className={styles.breakdownName}>{subjectName}</span>
-                  <span className={styles.breakdownTime}>{formatHours(minutes)}</span>
+          <div className={styles.donutWrap}>
+            <svg viewBox="0 0 130 130" width="130" height="130" aria-hidden="true">
+              {donutSlices.map((slice, i) => (
+                <circle
+                  key={i}
+                  cx="65" cy="65" r={DONUT_R}
+                  fill="none"
+                  stroke={slice.color}
+                  strokeWidth={DONUT_STROKE}
+                  strokeDasharray={`${slice.arc} ${DONUT_C}`}
+                  transform={`rotate(${slice.startAngle} 65 65)`}
+                />
+              ))}
+            </svg>
+            <div className={styles.donutLegend}>
+              {donutSlices.map((slice, i) => (
+                <div key={i} className={styles.donutLegendItem}>
+                  <span className={styles.donutLegendDot} style={{ background: slice.color }} />
+                  <span className={styles.donutLegendName}>{slice.name}</span>
+                  <span className={styles.donutLegendTime}>{formatHours(slice.minutes)}</span>
                 </div>
-                <div className={styles.hBarTrack}>
-                  <div
-                    className={styles.hBar}
-                    style={{
-                      width: `${(minutes / maxBreakdownMinutes) * 100}%`,
-                      opacity: Math.max(0.38, 1 - index * 0.1),
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
       </section>
 
+      {/* ── Estimated vs actual ── */}
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Estimated vs actual</h2>
         {estimated.length === 0 ? (
@@ -162,26 +256,60 @@ export default function InsightsTab() {
         )}
       </section>
 
+      {/* ── Study streak ── */}
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Study streak</h2>
-        <div className={styles.streakWidget}>
-          <div className={styles.streakRingWrap}>
-            <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
-              <circle cx="28" cy="28" r={RING_R} strokeWidth="3.5" className={styles.streakRingBg} />
-              <circle
-                cx="28" cy="28" r={RING_R}
-                strokeWidth="3.5"
-                className={styles.streakRingFill}
-                strokeDasharray={RING_CIRCUMFERENCE}
-                strokeDashoffset={ringOffset}
-                transform="rotate(-90 28 28)"
-              />
-            </svg>
-            <div className={styles.streakInner}>
-              <span className={styles.streakNum}>{streak}</span>
-            </div>
+        <div className={styles.streakHero}>
+          <svg width="24" height="30" viewBox="0 0 24 30" fill="none" className={styles.flameSvg} aria-hidden="true">
+            <defs>
+              <linearGradient id="flameGrad" x1="0" y1="1" x2="0" y2="0">
+                <stop offset="0%" stopColor="#E8590C" />
+                <stop offset="60%" stopColor="#F76707" />
+                <stop offset="100%" stopColor="#FFD43B" />
+              </linearGradient>
+            </defs>
+            <path
+              d="M12 1C12 1 20 9 20 17C20 23.6 16.4 28 12 29C7.6 28 4 23.6 4 17C4 9 12 1 12 1Z"
+              fill="url(#flameGrad)"
+            />
+            <path
+              d="M12 11C12 11 16 16 16 20.5C16 23.5 14.3 26 12 27C9.7 26 8 23.5 8 20.5C8 16 12 11 12 11Z"
+              fill="oklch(99% 0.01 60)"
+              opacity="0.5"
+            />
+          </svg>
+          <div className={styles.streakMeta}>
+            <span className={styles.streakBigNum}>{streak}</span>
+            <span className={styles.streakDayLabel}>day streak</span>
           </div>
-          <span className={styles.streakLabel}>day streak</span>
+        </div>
+
+        <div className={styles.heatmapSection}>
+          <span className={styles.heatmapTitle}>{heatmapMonthLabel}</span>
+          <div className={styles.heatmapDow}>
+            {['S','M','T','W','T','F','S'].map((d, i) => (
+              <span key={i} className={styles.heatmapDowCell}>{d}</span>
+            ))}
+          </div>
+          <div className={styles.heatmapGrid}>
+            {Array.from({ length: heatmapData.firstDayOfWeek }).map((_, i) => (
+              <div key={`empty-${i}`} className={styles.heatmapCellEmpty} />
+            ))}
+            {heatmapData.cells.map(({ day, minutes, isToday }) => (
+              <div
+                key={day}
+                className={[
+                  styles.heatmapCell,
+                  minutes > 0 ? styles.heatmapCellActive : '',
+                  isToday ? styles.heatmapCellToday : '',
+                ].filter(Boolean).join(' ')}
+                style={minutes > 0 ? { background: heatmapColor(minutes) } : undefined}
+                title={minutes > 0 ? `${minutes}m studied` : undefined}
+              >
+                <span className={styles.heatmapDayNum}>{day}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
