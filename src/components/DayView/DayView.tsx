@@ -1046,6 +1046,14 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     }
   });
 
+  const todoCountByDay = new Map<string, number>();
+  todos.forEach(t => {
+    if (t.date) {
+      const k = dayKey(new Date(t.date + 'T00:00:00'));
+      todoCountByDay.set(k, (todoCountByDay.get(k) ?? 0) + 1);
+    }
+  });
+
   const gridHeight = TOTAL_HOURS * SLOT_HEIGHT;
 
   function renderTodoItem(todo: Todo, groupId: string) {
@@ -1208,7 +1216,12 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
           {weekDays.map((day, i) => {
             const isToday = isSameDay(day, new Date());
             const isSelected = isSameDay(day, selectedDate);
-            const count = assignmentCountByDay.get(dayKey(day)) ?? 0;
+            const k = dayKey(day);
+            const todoCount = todoCountByDay.get(k) ?? 0;
+            const assignmentCount = assignmentCountByDay.get(k) ?? 0;
+            const badgeLabel = todoCount > 0 || assignmentCount > 0
+              ? assignmentCount > 0 ? `${todoCount} • ${assignmentCount}` : `${todoCount}`
+              : null;
             return (
               <div
                 key={i}
@@ -1221,7 +1234,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               >
                 <span className={styles.dayAbbr}>{DAY_ABBRS[i]}</span>
                 <span className={styles.dayNum}>{day.getDate()}</span>
-                {count > 0 && <span className={styles.dayBadge}>{count}</span>}
+                {badgeLabel && <span className={styles.dayBadge}>{badgeLabel}</span>}
               </div>
             );
           })}
