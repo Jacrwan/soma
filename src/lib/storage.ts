@@ -1,5 +1,61 @@
 import { Subject, TimeBlock, TimerSession, CanvasAssignment, CanvasAnnouncement, CanvasModule, CanvasCourse, Todo, GoogleCalendarEvent, ChatSession } from '../types';
 
+interface DayAvailability {
+  start: string;
+  end: string;
+  blocked: { start: string; end: string }[];
+}
+
+export interface SomaSettings {
+  availability: {
+    monday: DayAvailability;
+    tuesday: DayAvailability;
+    wednesday: DayAvailability;
+    thursday: DayAvailability;
+    friday: DayAvailability;
+    saturday: DayAvailability;
+    sunday: DayAvailability;
+  };
+  studyPrefs: {
+    defaultSessionMinutes: number;
+    defaultBreakMinutes: number;
+    preferredStartTime: string;
+  };
+  aiPrefs: {
+    verbosity: 'concise' | 'detailed';
+    defaultOutput: 'schedule' | 'todos';
+  };
+  aiMemory: {
+    enabled: boolean;
+  };
+}
+
+const DEFAULT_DAY: DayAvailability = { start: '08:00', end: '22:00', blocked: [] };
+
+const DEFAULT_SETTINGS: SomaSettings = {
+  availability: {
+    monday: { ...DEFAULT_DAY },
+    tuesday: { ...DEFAULT_DAY },
+    wednesday: { ...DEFAULT_DAY },
+    thursday: { ...DEFAULT_DAY },
+    friday: { ...DEFAULT_DAY },
+    saturday: { ...DEFAULT_DAY },
+    sunday: { ...DEFAULT_DAY },
+  },
+  studyPrefs: {
+    defaultSessionMinutes: 50,
+    defaultBreakMinutes: 10,
+    preferredStartTime: '09:00',
+  },
+  aiPrefs: {
+    verbosity: 'concise',
+    defaultOutput: 'schedule',
+  },
+  aiMemory: {
+    enabled: true,
+  },
+};
+
 const KEYS = {
   subjects: 'soma_subjects',
   timeBlocks: 'soma_blocks',
@@ -125,4 +181,7 @@ export const storage = {
 
   getCanvasCourseNames: (): string[] => get(KEYS.canvasCourseNames, []),
   setCanvasCourseNames: (v: string[]) => set(KEYS.canvasCourseNames, v),
+
+  getSomaSettings: (): SomaSettings => get('soma_settings', DEFAULT_SETTINGS),
+  setSomaSettings: (v: SomaSettings) => set('soma_settings', v),
 };

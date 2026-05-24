@@ -4,10 +4,11 @@ import CanvasTab from './components/Canvas/CanvasTab';
 import AITab from './components/AI/AITab';
 import CalendarTab from './components/Calendar/CalendarTab';
 import InsightsTab from './components/Insights/InsightsTab';
+import SettingsTab from './components/Settings/SettingsTab';
 import { storage } from './lib/storage';
 import styles from './App.module.css';
 
-type Tab = 'today' | 'canvas' | 'ai' | 'calendar' | 'insights';
+type Tab = 'today' | 'canvas' | 'ai' | 'calendar' | 'insights' | 'settings';
 type LegalPanel = 'privacy' | 'terms' | 'data' | 'contact' | 'ai' | null;
 
 export default function App() {
@@ -43,6 +44,7 @@ export default function App() {
       ai: 'Soma — AI',
       calendar: 'Soma — Calendar',
       insights: 'Soma — Insights',
+      settings: 'Soma — Settings',
     };
     document.title = titles[tab];
   }, [tab]);
@@ -101,6 +103,13 @@ export default function App() {
           </svg>
           Insights
         </button>
+        <button className={tab === 'settings' ? styles.active : ''} onClick={() => setTab('settings')}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="7" cy="7" r="1.8"/>
+            <path d="M7 1.5v1M7 11.5v1M1.5 7h1M11.5 7h1M3.2 3.2l.7.7M10.1 10.1l.7.7M10.1 3.2l-.7.7M3.2 10.1l.7.7"/>
+          </svg>
+          Settings
+        </button>
       </nav>
       <main className={styles.main}>
         {tab === 'today'    && <DayView selectedDate={selectedDate} onSelectDate={handleSelectDate} />}
@@ -114,6 +123,7 @@ export default function App() {
         )}
         {tab === 'ai' && <AITab onSwitchToToday={handleSwitchToToday} />}
         {tab === 'insights' && <InsightsTab />}
+        {tab === 'settings' && <SettingsTab />}
       </main>
       <footer className={styles.footer}>
         <div className={styles.footerLinks}>
