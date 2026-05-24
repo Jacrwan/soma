@@ -137,3 +137,56 @@
   color: var(--text-muted);
   margin: 0;
 }
+
+/* Estimated vs actual */
+.evaList {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.evaRow {
+  display: grid;
+  grid-template-columns: 1fr 60px 60px 100px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.evaRow:last-child {
+  border-bottom: none;
+}
+
+.evaText {
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.evaEst,
+.evaActual {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.evaOver {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--danger);
+  text-align: right;
+}
+
+.evaUnder {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--success);
+  text-align: right;
+}

@@ -19,13 +19,26 @@ function formatHours(minutes: number): string {
   return `${h}h ${m}m`;
 }
 
+function formatDelta(estimated: number, actual: number): { label: string; over: boolean } {
+  const diff = actual - estimated;
+  const abs = Math.abs(diff);
+  const h = Math.floor(abs / 60);
+  const m = abs % 60;
+  const time = h > 0 ? (m > 0 ? `${h}h ${m}m` : `${h}h`) : `${m}m`;
+  return diff > 0
+    ? { label: `+${time} over`, over: true }
+    : { label: `${time} under`, over: false };
+}
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? text.slice(0, max).trimEnd() + '…' : text;
+}
+
 export default function InsightsTab() {
   const weekly = useMemo(() => getWeeklyStudyTime(), []);
   const breakdown = useMemo(() => getSubjectBreakdown(), []);
   const estimated = useMemo(() => getEstimatedVsActual(), []);
   const streak = useMemo(() => getStudyStreak(), []);
-
-  void estimated;
 
   const maxWeeklyMinutes = Math.max(...weekly.map(d => d.minutes), 1);
   const maxBreakdownMinutes = Math.max(...breakdown.map(s => s.minutes), 1);
@@ -70,6 +83,29 @@ export default function InsightsTab() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Estimated vs actual</h2>
+        {estimated.length === 0 ? (
+          <p className={styles.empty}>Complete some todos with time estimates to see this data.</p>
+        ) : (
+          <div className={styles.evaList}>
+            {estimated.map(({ text, estimated: est, actual }) => {
+              const delta = formatDelta(est, actual);
+              return (
+                <div key={text} className={styles.evaRow}>
+                  <span className={styles.evaText}>{truncate(text, 40)}</span>
+                  <span className={styles.evaEst}>{formatHours(est)}</span>
+                  <span className={styles.evaActual}>{formatHours(actual)}</span>
+                  <span className={delta.over ? styles.evaOver : styles.evaUnder}>
+                    {delta.label}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
