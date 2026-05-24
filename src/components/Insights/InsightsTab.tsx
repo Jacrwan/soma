@@ -48,10 +48,10 @@ function truncate(text: string, max: number): string {
 }
 
 function heatmapColor(minutes: number): string {
-  if (minutes < 30) return 'oklch(88% 0.09 265)';
-  if (minutes < 60) return 'oklch(78% 0.14 265)';
-  if (minutes < 120) return 'oklch(68% 0.18 265)';
-  return 'oklch(59% 0.21 265)';
+  if (minutes === 0) return '#F0F0F0';
+  if (minutes <= 30) return '#C7D9F5';
+  if (minutes <= 90) return '#7BAAF7';
+  return '#3D6FDB';
 }
 
 function fmtDateRange(weekOffset: number): string {
@@ -83,6 +83,7 @@ function EmptyState({ message }: { message: string }) {
 
 export default function InsightsTab() {
   const [weekOffset, setWeekOffset] = useState(0);
+  const [calendarOffset, setCalendarOffset] = useState(0);
 
   const weekly = useMemo(() => getWeeklyStudyTime(weekOffset), [weekOffset]);
   const breakdown = useMemo(() => getSubjectBreakdown(), []);
@@ -130,8 +131,9 @@ export default function InsightsTab() {
 
   const heatmapData = useMemo(() => {
     const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
+    const target = new Date(now.getFullYear(), now.getMonth() + calendarOffset, 1);
+    const year = target.getFullYear();
+    const month = target.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const cells: { day: number; minutes: number; isToday: boolean }[] = [];
     for (let d = 1; d <= daysInMonth; d++) {
@@ -144,15 +146,12 @@ export default function InsightsTab() {
           minutes = Math.round(Object.values(data).reduce((sum, m) => sum + m, 0));
         } catch {}
       }
-      cells.push({ day: d, minutes, isToday: d === now.getDate() });
+      const isToday = year === now.getFullYear() && month === now.getMonth() && d === now.getDate();
+      cells.push({ day: d, minutes, isToday });
     }
-    return { cells, firstDayOfWeek: new Date(year, month, 1).getDay() };
-  }, []);
-
-  const heatmapMonthLabel = useMemo(
-    () => new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
-    []
-  );
+    const firstDow = new Date(year, month, 1).getDay();
+    return { cells, firstDayOfWeekMon: (firstDow + 6) % 7, year, month };
+  }, [calendarOffset]);
 
   return (
     <div className={styles.page}>
@@ -259,22 +258,21 @@ export default function InsightsTab() {
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Study streak</h2>
         <div className={styles.streakHero}>
-          <svg width="24" height="30" viewBox="0 0 24 30" fill="none" className={styles.flameSvg} aria-hidden="true">
+          <svg width="32" height="44" viewBox="0 0 32 44" fill="none" className={styles.flameSvg} aria-hidden="true">
             <defs>
-              <linearGradient id="flameGrad" x1="0" y1="1" x2="0" y2="0">
-                <stop offset="0%" stopColor="#E8590C" />
-                <stop offset="60%" stopColor="#F76707" />
-                <stop offset="100%" stopColor="#FFD43B" />
+              <linearGradient id="flameGrad" x1="16" y1="43" x2="16" y2="0" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#FF4500" />
+                <stop offset="100%" stopColor="#FFB700" />
               </linearGradient>
             </defs>
             <path
-              d="M12 1C12 1 20 9 20 17C20 23.6 16.4 28 12 29C7.6 28 4 23.6 4 17C4 9 12 1 12 1Z"
+              d="M16 43C5 43 1 33 4 24C6 17 9 13 13 8C15 4 15 1 18 0C22 3 26 10 27 17C29 24 28 33 25 39C22 43 27 43 16 43Z"
               fill="url(#flameGrad)"
             />
             <path
-              d="M12 11C12 11 16 16 16 20.5C16 23.5 14.3 26 12 27C9.7 26 8 23.5 8 20.5C8 16 12 11 12 11Z"
-              fill="oklch(99% 0.01 60)"
-              opacity="0.5"
+              d="M16 34C13 34 11 29 12 24C13 20 15 17 16 13C18 17 20 20 21 24C22 29 20 34 16 34Z"
+              fill="#FFFDE7"
+              opacity="0.55"
             />
           </svg>
           <div className={styles.streakMeta}>
@@ -284,14 +282,29 @@ export default function InsightsTab() {
         </div>
 
         <div className={styles.heatmapSection}>
-          <span className={styles.heatmapTitle}>{heatmapMonthLabel}</span>
+          <div className={styles.heatmapNav}>
+            <button
+              className={styles.heatmapNavBtn}
+              onClick={() => setCalendarOffset(o => o - 1)}
+              aria-label="Previous month"
+            >‹</button>
+            <span className={styles.heatmapTitle}>
+              {new Date(heatmapData.year, heatmapData.month).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+            </span>
+            <button
+              className={styles.heatmapNavBtn}
+              onClick={() => setCalendarOffset(o => o + 1)}
+              disabled={calendarOffset >= 0}
+              aria-label="Next month"
+            >›</button>
+          </div>
           <div className={styles.heatmapDow}>
-            {['S','M','T','W','T','F','S'].map((d, i) => (
+            {['M','T','W','T','F','S','S'].map((d, i) => (
               <span key={i} className={styles.heatmapDowCell}>{d}</span>
             ))}
           </div>
           <div className={styles.heatmapGrid}>
-            {Array.from({ length: heatmapData.firstDayOfWeek }).map((_, i) => (
+            {Array.from({ length: heatmapData.firstDayOfWeekMon }).map((_, i) => (
               <div key={`empty-${i}`} className={styles.heatmapCellEmpty} />
             ))}
             {heatmapData.cells.map(({ day, minutes, isToday }) => (
@@ -299,10 +312,10 @@ export default function InsightsTab() {
                 key={day}
                 className={[
                   styles.heatmapCell,
-                  minutes > 0 ? styles.heatmapCellActive : '',
+                  minutes > 90 ? styles.heatmapCellDeep : '',
                   isToday ? styles.heatmapCellToday : '',
                 ].filter(Boolean).join(' ')}
-                style={minutes > 0 ? { background: heatmapColor(minutes) } : undefined}
+                style={{ background: heatmapColor(minutes) }}
                 title={minutes > 0 ? `${minutes}m studied` : undefined}
               >
                 <span className={styles.heatmapDayNum}>{day}</span>

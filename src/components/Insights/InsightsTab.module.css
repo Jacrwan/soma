@@ -288,18 +288,49 @@
   gap: 8px;
 }
 
+.heatmapNav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .heatmapTitle {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+  text-align: center;
+}
+
+.heatmapNavBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
   color: var(--text-muted);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 5px;
+  transition: color 0.12s, background 0.12s;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.heatmapNavBtn:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: oklch(94% 0.006 265);
+}
+
+.heatmapNavBtn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
 }
 
 .heatmapDow {
   display: grid;
-  grid-template-columns: repeat(7, 38px);
-  gap: 3px;
+  grid-template-columns: repeat(7, 32px);
+  gap: 4px;
 }
 
 .heatmapDowCell {
@@ -307,42 +338,41 @@
   font-weight: 600;
   color: var(--text-muted);
   text-align: center;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
 }
 
 .heatmapGrid {
   display: grid;
-  grid-template-columns: repeat(7, 38px);
-  gap: 3px;
+  grid-template-columns: repeat(7, 32px);
+  gap: 4px;
 }
 
 .heatmapCellEmpty {
-  height: 34px;
+  width: 32px;
+  height: 32px;
 }
 
 .heatmapCell {
-  height: 34px;
-  border-radius: 5px;
-  background: oklch(95.5% 0.004 265);
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
 }
 
-.heatmapCellActive .heatmapDayNum {
-  color: oklch(98% 0.005 265);
+.heatmapCellDeep .heatmapDayNum {
+  color: oklch(97% 0.005 265);
 }
 
 .heatmapCellToday {
-  box-shadow: inset 0 0 0 1.5px var(--accent);
+  box-shadow: inset 0 0 0 2px #3D6FDB;
 }
 
 .heatmapDayNum {
   font-size: 10px;
   font-weight: 500;
-  color: oklch(68% 0.01 265);
+  color: oklch(52% 0.01 265);
   user-select: none;
   line-height: 1;
 }
