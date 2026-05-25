@@ -615,12 +615,12 @@
 }
 
 /* Current time indicator */
-.weekViewNowLine {
+.weekViewNowSegment {
   position: absolute;
   left: 0;
   right: 0;
   height: 2px;
-  background: var(--danger);
+  background: #ef4444;
   z-index: 5;
   pointer-events: none;
 }
@@ -629,7 +629,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--danger);
+  background: #ef4444;
   position: absolute;
   left: -4px;
   transform: translateY(calc(-50% + 1px));

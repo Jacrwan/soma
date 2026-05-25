@@ -640,7 +640,6 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   }
 
   const todayInWeek = weekDays.some(d => isSameDay(d, today));
-  const todayColIndex = weekDays.findIndex(d => isSameDay(d, today));
 
   return (
     <div className={styles.container}>
@@ -837,6 +836,15 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                       className={`${styles.weekViewDayCol}${isToday ? ` ${styles.weekViewDayColToday}` : ''}`}
                       onClick={() => handleDayClick(day)}
                     >
+                      {/* Per-column time segment — faint on other days, full red on today */}
+                      <div
+                        className={styles.weekViewNowSegment}
+                        style={{ top: nowTop, opacity: isToday ? 1 : 0.15 }}
+                      />
+                      {/* Dot only on today */}
+                      {isToday && (
+                        <div className={styles.weekViewNowDot} style={{ top: nowTop }} />
+                      )}
 
                       {/* Short-session dots — stacked when within 5 min of each other */}
                       {(() => {
@@ -906,15 +914,6 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                     </div>
                   );
                 })}
-                    {todayInWeek && (
-                      <>
-                        <div className={styles.weekViewNowLine} style={{ top: nowTop }} />
-                        <div className={styles.weekViewNowDot} style={{
-                          top: nowTop,
-                          left: `calc(${todayColIndex} / 7 * 100% - 4px)`,
-                        }} />
-                      </>
-                    )}
                     </>
                   );
               })()}
