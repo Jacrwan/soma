@@ -213,7 +213,11 @@ export default function App() {
   const [user, setUser]         = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
-    const d = new Date(); d.setHours(0, 0, 0, 0); return d;
+    const now = new Date();
+    const d = new Date(now);
+    if (now.getHours() < 5) d.setDate(d.getDate() - 1); // before 5 AM = still previous logical day
+    d.setHours(0, 0, 0, 0);
+    return d;
   });
   const navigate = useNavigate();
 

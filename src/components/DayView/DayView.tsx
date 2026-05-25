@@ -9,6 +9,15 @@ import styles from './DayView.module.css';
 const SLOT_HEIGHT = 60;
 const START_HOUR = 5;
 const TOTAL_HOURS = 24;
+
+// Midnight–4:59 AM belongs to the previous logical day (day runs 5 AM → 5 AM).
+function logicalToday(): Date {
+  const now = new Date();
+  const d = new Date(now);
+  if (now.getHours() < START_HOUR) d.setDate(d.getDate() - 1);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
 const COLORS: SubjectColor[] = [
   '#ef5350', '#42a5f5', '#66bb6a', '#ab47bc',
   '#ffa726', '#26c6da', '#ec407a', '#8d6e63',
@@ -20,8 +29,8 @@ function toLocalISO(date: Date): string {
 }
 
 function getTodayKey() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const d = logicalToday();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function toISODateString(date: Date): string {
@@ -486,7 +495,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   useEffect(() => {
     const dateStr = toISODateString(selectedDate);
     const nextDateStr = toISODateString(addDays(selectedDate, 1));
-    const todayStr = toISODateString(new Date());
+    const todayStr = toISODateString(logicalToday());
 
     function compute() {
       const now = new Date();
@@ -745,7 +754,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     return { minutes, label: `${h12}:00 ${ampm}` };
   });
 
-  const isViewingToday = isSameDay(selectedDate, new Date());
+  const isViewingToday = isSameDay(selectedDate, logicalToday());
   const showCurrentTime = isViewingToday;
 
   function deleteBlock(id: string) {
@@ -1191,7 +1200,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     setViewWeekStart(getMondayOfWeek(date));
   }
 
-  const isCurrentWeek = isSameDay(viewWeekStart, getMondayOfWeek(new Date()));
+  const isCurrentWeek = isSameDay(viewWeekStart, getMondayOfWeek(logicalToday()));
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(viewWeekStart, i));
 
   const assignmentCountByDay = new Map<string, number>();
@@ -1374,12 +1383,12 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
           <button className={styles.weekArrow} onClick={() => setViewWeekStart(d => addDays(d, -7))}>←</button>
           <button className={styles.weekArrow} onClick={() => setViewWeekStart(d => addDays(d, 7))}>→</button>
           {!isCurrentWeek && (
-            <button className={styles.todayBtn} onClick={() => selectDate(new Date())}>Today</button>
+            <button className={styles.todayBtn} onClick={() => selectDate(logicalToday())}>Today</button>
           )}
         </div>
         <div className={styles.daysRow}>
           {weekDays.map((day, i) => {
-            const isToday = isSameDay(day, new Date());
+            const isToday = isSameDay(day, logicalToday());
             const isSelected = isSameDay(day, selectedDate);
             const k = dayKey(day);
             const todoCount = todoCountByDay.get(k) ?? 0;
