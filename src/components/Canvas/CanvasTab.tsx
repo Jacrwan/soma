@@ -711,10 +711,6 @@ Rules:
             <div className={styles.empty}>No grade data available.</div>
           )}
           {!gradesLoading && grades.length > 0 && (() => {
-            const scored = grades.filter(g => g.currentScore !== null);
-            const avg = scored.length
-              ? (scored.reduce((s, g) => s + g.currentScore!, 0) / scored.length).toFixed(1)
-              : null;
             const GRADE_COLORS: Record<string, string> = {
               A: '#66bb6a', B: '#42a5f5', C: '#ffa726', D: '#ef5350', F: '#ef5350',
             };

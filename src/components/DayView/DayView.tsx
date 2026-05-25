@@ -81,9 +81,6 @@ function fmtTime(iso: string) {
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
-function fmtSecs(s: number) {
-  return `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}`;
-}
 
 function looksLikeCanvasCourseName(name: string): boolean {
   return /\b(AP|Hon|Honors|Semester|Periods?|P\d|S[12]|Yr)\b/i.test(name)

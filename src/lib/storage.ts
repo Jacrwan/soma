@@ -1,6 +1,10 @@
 import { supabase } from './supabase';
 import { Subject, TimeBlock, TimerSession, CanvasAssignment, CanvasAnnouncement, CanvasModule, CanvasCourse, Todo, GoogleCalendarEvent, ChatSession } from '../types';
 
+const SOMA_TODOS_KEY = 'soma_todos';
+const SOMA_BLOCKS_KEY = 'soma_blocks';
+const SOMA_SETTINGS_KEY = 'soma_settings';
+
 interface DayAvailability {
   start: string;
   end: string;
@@ -225,8 +229,42 @@ export const storage = {
   getActiveSessionId: (): string => get(KEYS.activeSessionId, ''),
   setActiveSessionId: (v: string) => set(KEYS.activeSessionId, v),
 
+  // ── Time blocks (localStorage) ───────────────────────────────────────
+  getTimeBlocks: (): TimeBlock[] => get(SOMA_BLOCKS_KEY, []),
+  setTimeBlocks: (v: TimeBlock[]) => set(SOMA_BLOCKS_KEY, v),
+
+  // ── Todos sync (localStorage) ────────────────────────────────────────
+  getTodos: (): Todo[] => get(SOMA_TODOS_KEY, []),
+  setTodos: (v: Todo[]) => set(SOMA_TODOS_KEY, v),
+
+  // ── Settings sync (localStorage) ─────────────────────────────────────
+  getSomaSettings(): SomaSettings {
+    const rawStr = localStorage.getItem(SOMA_SETTINGS_KEY);
+    if (!rawStr) return DEFAULT_SETTINGS;
+    try {
+      const raw = JSON.parse(rawStr) as Record<string, unknown>;
+      if (raw.availability && !raw.personalHours) {
+        const migrated: SomaSettings = {
+          ...DEFAULT_SETTINGS,
+          studyPrefs: (raw.studyPrefs as SomaSettings['studyPrefs']) ?? DEFAULT_SETTINGS.studyPrefs,
+          aiPrefs: (raw.aiPrefs as SomaSettings['aiPrefs']) ?? DEFAULT_SETTINGS.aiPrefs,
+          aiMemory: (raw.aiMemory as SomaSettings['aiMemory']) ?? DEFAULT_SETTINGS.aiMemory,
+          personalHours: raw.availability as WeekSchedule,
+          schoolHours: emptyWeek(),
+          workHours: emptyWeek(),
+        };
+        localStorage.setItem(SOMA_SETTINGS_KEY, JSON.stringify(migrated));
+        return migrated;
+      }
+      return { ...DEFAULT_SETTINGS, ...raw } as SomaSettings;
+    } catch {
+      return DEFAULT_SETTINGS;
+    }
+  },
+  setSomaSettings: (v: SomaSettings) => set(SOMA_SETTINGS_KEY, v),
+
   // ── Todos (Supabase) ─────────────────────────────────────────────────
-  async getTodos(date: string): Promise<Todo[]> {
+  async fetchTodos(date: string): Promise<Todo[]> {
     const id = await uid();
     const { data } = await supabase
       .from('todos')

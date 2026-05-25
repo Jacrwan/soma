@@ -123,7 +123,7 @@ export default function InsightsTab() {
   const donutSlices = useMemo(() => {
     if (totalBreakdownMinutes === 0) return [];
     let cumAngle = 0;
-    return breakdown.slice(0, 5).map((d, i) => {
+    return breakdown.slice(0, 5).map((d) => {
       const fraction = d.minutes / totalBreakdownMinutes;
       const arc = fraction * DONUT_C;
       const startAngle = cumAngle - 90;

@@ -125,7 +125,7 @@ export async function getCourses(token: string, baseUrl: string): Promise<Canvas
   const raw = await canvasFetch(
     token, baseUrl,
     '/api/v1/courses?enrollment_state=active&per_page=100&include[]=term',
-  ) as Promise<RawCanvasCourse[]>;
+  ) as RawCanvasCourse[];
 
   return chooseCurrentCourses(await raw).map(toCourse);
 }
