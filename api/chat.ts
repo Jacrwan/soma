@@ -1,37 +1,36 @@
-import express from 'express';
-import cors from 'cors';
-import 'dotenv/config';
-import fetch from 'node-fetch';
+export const config = { api: { bodyParser: { sizeLimit: '10mb' } } };
 
-const app = express();
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+export default async function handler(req: any, res: any) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
 
-app.post('/api/chat', async (req, res) => {
-  const { messages, systemPrompt, model } = req.body;
-  const resolvedModel = 'claude-haiku-4-5-20251001';
+  const { messages, systemPrompt } = req.body as {
+    messages: { role: string; content: string }[];
+    systemPrompt: string;
+  };
+
   try {
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'x-api-key': process.env.ANTHROPIC_API_KEY ?? '',
         'anthropic-version': '2023-06-01',
         'anthropic-beta': 'prompt-caching-2024-07-31',
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: resolvedModel,
+        model: 'claude-haiku-4-5-20251001',
         max_tokens: 4096,
         system: [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }],
         messages,
       }),
     });
+
     const data = await response.json();
     if (!response.ok) return res.status(response.status).json(data);
     res.json(data);
-  } catch (err) {
+  } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
-});
-
-app.listen(3001, () => console.log('Proxy server running on http://localhost:3001'));
+}
