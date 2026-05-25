@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Routes, Route, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import AuthScreen from './components/Auth/AuthScreen';
@@ -11,33 +12,24 @@ import SettingsTab from './components/Settings/SettingsTab';
 import { storage } from './lib/storage';
 import styles from './App.module.css';
 
-type Tab = 'today' | 'canvas' | 'ai' | 'calendar' | 'insights' | 'settings';
 type LegalPanel = 'privacy' | 'terms' | 'data' | 'contact' | 'ai' | null;
 
-export default function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [authReady, setAuthReady] = useState(false);
-  const [tab, setTab] = useState<Tab>('today');
+// ── App shell layout (sidebar + footer + outlet) ─────────────────────────
+function AppShell({ user, onLogout, onClearLocal }: {
+  user: User | null;
+  onLogout: () => void;
+  onClearLocal: () => void;
+}) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [legalPanel, setLegalPanel] = useState<LegalPanel>(null);
-  const [selectedDate, setSelectedDate] = useState<Date>(() => {
-    const d = new Date(); d.setHours(0, 0, 0, 0); return d;
-  });
 
-  // Bootstrap auth state
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user ?? null);
-      setAuthReady(true);
-    });
+  // Redirect unauthenticated users
+  if (!user) return <Navigate to="/login" replace />;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
+  const p = location.pathname;
 
-    return () => subscription.unsubscribe();
-  }, []);
-
-  // Handle Google OAuth implicit-flow redirect (popup or direct)
+  // Google OAuth implicit-flow redirect
   useEffect(() => {
     const hash = window.location.hash;
     if (!hash || !hash.includes('access_token')) return;
@@ -50,44 +42,28 @@ export default function App() {
       window.opener.postMessage({ type: 'soma_google_auth', token }, window.location.origin);
       window.close();
     } else {
-      window.history.replaceState(null, '', window.location.pathname);
+      window.history.replaceState(null, '', p);
       window.dispatchEvent(new CustomEvent('soma_google_auth', { detail: { token } }));
-      setTab('calendar');
+      navigate('/calendar');
     }
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Document title
   useEffect(() => {
-    const titles: Record<Tab, string> = {
-      today: 'Soma — Day View',
-      canvas: 'Soma — Canvas',
-      ai: 'Soma — AI',
-      calendar: 'Soma — Calendar',
-      insights: 'Soma — Insights',
-      settings: 'Soma — Settings',
+    const titles: Record<string, string> = {
+      '/day-view':  'Soma — Day View',
+      '/canvas':    'Soma — Canvas',
+      '/ai':        'Soma — AI',
+      '/calendar':  'Soma — Calendar',
+      '/insights':  'Soma — Insights',
+      '/settings':  'Soma — Settings',
     };
-    document.title = titles[tab];
-  }, [tab]);
+    document.title = titles[p] ?? 'Soma';
+  }, [p]);
 
-  function handleSelectDate(date: Date) {
-    setSelectedDate(date);
+  function nav(path: string) {
+    return `${styles.navItem}${p === path ? ` ${styles.navItemActive}` : ''}`;
   }
-
-  function handleSwitchToToday() {
-    setTab('today');
-  }
-
-  function clearLocalData() {
-    if (!window.confirm('Clear all locally stored Soma data on this browser? This cannot be undone.')) return;
-    localStorage.clear();
-    window.location.reload();
-  }
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-  }
-
-  if (!authReady) return null;
-  if (!user) return <AuthScreen />;
 
   return (
     <div className={styles.app}>
@@ -95,10 +71,7 @@ export default function App() {
         <div className={styles.brand}>Soma</div>
 
         <div className={styles.navItems}>
-          <button
-            className={`${styles.navItem}${tab === 'today' ? ` ${styles.navItemActive}` : ''}`}
-            onClick={() => setTab('today')}
-          >
+          <button className={nav('/day-view')} onClick={() => navigate('/day-view')}>
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
               <rect x="1" y="2" width="12" height="11" rx="1.5"/>
               <path d="M1 5.5h12"/>
@@ -108,10 +81,7 @@ export default function App() {
             Day View
           </button>
 
-          <button
-            className={`${styles.navItem}${tab === 'canvas' ? ` ${styles.navItemActive}` : ''}`}
-            onClick={() => setTab('canvas')}
-          >
+          <button className={nav('/canvas')} onClick={() => navigate('/canvas')}>
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
               <rect x="2" y="1" width="10" height="12" rx="1.5"/>
               <path d="M4.5 5h5M4.5 7.5h5M4.5 10h3"/>
@@ -119,10 +89,7 @@ export default function App() {
             Canvas
           </button>
 
-          <button
-            className={`${styles.navItem}${tab === 'calendar' ? ` ${styles.navItemActive}` : ''}`}
-            onClick={() => setTab('calendar')}
-          >
+          <button className={nav('/calendar')} onClick={() => navigate('/calendar')}>
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
               <rect x="1" y="2" width="12" height="11" rx="1.5"/>
               <path d="M1 5.5h12M5 5.5v7.5M9 5.5v7.5"/>
@@ -131,20 +98,14 @@ export default function App() {
             Calendar
           </button>
 
-          <button
-            className={`${styles.navItem}${tab === 'ai' ? ` ${styles.navItemActive}` : ''}`}
-            onClick={() => setTab('ai')}
-          >
+          <button className={nav('/ai')} onClick={() => navigate('/ai')}>
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
               <path d="M7 1L8.1 5.9L13 7L8.1 8.1L7 13L5.9 8.1L1 7L5.9 5.9Z"/>
             </svg>
             AI
           </button>
 
-          <button
-            className={`${styles.navItem}${tab === 'insights' ? ` ${styles.navItemActive}` : ''}`}
-            onClick={() => setTab('insights')}
-          >
+          <button className={nav('/insights')} onClick={() => navigate('/insights')}>
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
               <path d="M2 10.5l3-3.5 2.5 2 3-4 1.5 2"/>
               <path d="M1 13h12"/>
@@ -154,21 +115,14 @@ export default function App() {
         </div>
 
         <div className={styles.sidebarBottom}>
-          <button
-            className={`${styles.navItem}${tab === 'settings' ? ` ${styles.navItemActive}` : ''}`}
-            onClick={() => setTab('settings')}
-          >
+          <button className={nav('/settings')} onClick={() => navigate('/settings')}>
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="7" cy="7" r="1.8"/>
               <path d="M7 1.5v1M7 11.5v1M1.5 7h1M11.5 7h1M3.2 3.2l.7.7M10.1 10.1l.7.7M10.1 3.2l-.7.7M3.2 10.1l.7.7"/>
             </svg>
             Settings
           </button>
-          <button
-            className={styles.navItem}
-            onClick={handleLogout}
-            title="Log out"
-          >
+          <button className={styles.navItem} onClick={onLogout} title="Log out">
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
               <path d="M5 2H2a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h3"/>
               <path d="M9.5 10l3-3-3-3"/>
@@ -180,18 +134,7 @@ export default function App() {
       </nav>
 
       <main className={styles.main}>
-        {tab === 'today'    && <DayView selectedDate={selectedDate} onSelectDate={handleSelectDate} />}
-        {tab === 'canvas'   && <CanvasTab />}
-        {tab === 'calendar' && (
-          <CalendarTab
-            selectedDate={selectedDate}
-            onSelectDate={handleSelectDate}
-            onSwitchToToday={handleSwitchToToday}
-          />
-        )}
-        {tab === 'ai' && <AITab onSwitchToToday={handleSwitchToToday} />}
-        {tab === 'insights' && <InsightsTab />}
-        {tab === 'settings' && <SettingsTab />}
+        <Outlet />
       </main>
 
       <footer className={styles.footer} aria-hidden="true">
@@ -213,10 +156,10 @@ export default function App() {
             <div className={styles.legalHeader}>
               <span className={styles.legalTitle}>
                 {legalPanel === 'privacy' && 'Privacy Policy'}
-                {legalPanel === 'terms' && 'Terms of Service'}
-                {legalPanel === 'data' && 'Data Deletion'}
+                {legalPanel === 'terms'   && 'Terms of Service'}
+                {legalPanel === 'data'    && 'Data Deletion'}
                 {legalPanel === 'contact' && 'Contact'}
-                {legalPanel === 'ai' && 'AI Disclaimer'}
+                {legalPanel === 'ai'      && 'AI Disclaimer'}
               </span>
               <button className={styles.legalClose} onClick={() => setLegalPanel(null)}>×</button>
             </div>
@@ -229,7 +172,6 @@ export default function App() {
                 <p>Soma is not intended for children under 13.</p>
               </div>
             )}
-
             {legalPanel === 'terms' && (
               <div className={styles.legalBody}>
                 <p>Use Soma only with accounts and tokens you are authorized to access. You are responsible for keeping Canvas, Google, and API credentials private.</p>
@@ -237,15 +179,13 @@ export default function App() {
                 <p>By using Soma, you agree to verify school-critical information in the official systems of record, including Canvas, Google Calendar, and your school's communications.</p>
               </div>
             )}
-
             {legalPanel === 'data' && (
               <div className={styles.legalBody}>
                 <p>Most Soma data is stored locally in this browser. Clearing local data removes saved Canvas tokens, cached assignments, calendar data, AI chats, subjects, tasks, and preferences from this browser.</p>
                 <p>This does not delete data from Canvas, Google, your school, or any third-party service.</p>
-                <button className={styles.dangerButton} onClick={clearLocalData}>Clear local Soma data</button>
+                <button className={styles.dangerButton} onClick={onClearLocal}>Clear local Soma data</button>
               </div>
             )}
-
             {legalPanel === 'contact' && (
               <div className={styles.legalBody}>
                 <p>For privacy, security, or support requests, contact the project owner through the Soma GitHub repository.</p>
@@ -254,7 +194,6 @@ export default function App() {
                 </a>
               </div>
             )}
-
             {legalPanel === 'ai' && (
               <div className={styles.legalBody}>
                 <p>AI-generated briefs, plans, summaries, and suggestions may be inaccurate, incomplete, or outdated. Do not rely on AI output as the only source for academic deadlines, grades, or official requirements.</p>
@@ -265,5 +204,72 @@ export default function App() {
         </div>
       )}
     </div>
+  );
+}
+
+// ── Root component ────────────────────────────────────────────────────────
+export default function App() {
+  const [user, setUser]         = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(() => {
+    const d = new Date(); d.setHours(0, 0, 0, 0); return d;
+  });
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user ?? null);
+      setAuthReady(true);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  function handleLogout() {
+    supabase.auth.signOut();
+    navigate('/login');
+  }
+
+  function handleClearLocal() {
+    if (!window.confirm('Clear all locally stored Soma data on this browser? This cannot be undone.')) return;
+    localStorage.clear();
+    window.location.reload();
+  }
+
+  if (!authReady) return null;
+
+  const shell = (
+    <AppShell user={user} onLogout={handleLogout} onClearLocal={handleClearLocal} />
+  );
+
+  return (
+    <Routes>
+      {/* Auth routes */}
+      <Route path="/login"  element={user ? <Navigate to="/day-view" replace /> : <AuthScreen initialMode="login"  />} />
+      <Route path="/signup" element={user ? <Navigate to="/day-view" replace /> : <AuthScreen initialMode="signup" />} />
+
+      {/* Root redirect */}
+      <Route path="/" element={<Navigate to={user ? '/day-view' : '/login'} replace />} />
+
+      {/* Protected app routes inside shell */}
+      <Route element={shell}>
+        <Route path="/day-view"  element={<DayView selectedDate={selectedDate} onSelectDate={setSelectedDate} />} />
+        <Route path="/canvas"    element={<CanvasTab />} />
+        <Route path="/calendar"  element={
+          <CalendarTab
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+            onSwitchToToday={() => navigate('/day-view')}
+          />
+        } />
+        <Route path="/ai"       element={<AITab onSwitchToToday={() => navigate('/day-view')} />} />
+        <Route path="/insights" element={<InsightsTab />} />
+        <Route path="/settings" element={<SettingsTab />} />
+        {/* Unknown app routes → day view */}
+        <Route path="*" element={<Navigate to="/day-view" replace />} />
+      </Route>
+    </Routes>
   );
 }

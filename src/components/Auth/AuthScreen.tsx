@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import styles from './AuthScreen.module.css';
 
-export default function AuthScreen() {
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+export default function AuthScreen({ initialMode = 'login' }: { initialMode?: 'login' | 'signup' }) {
+  const [mode, setMode] = useState<'login' | 'signup'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);

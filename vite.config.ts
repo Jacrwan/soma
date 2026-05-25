@@ -3,8 +3,6 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  base: '/app/',
-  build: { outDir: 'dist/app' },
   server: {
     host: true,
     proxy: {
