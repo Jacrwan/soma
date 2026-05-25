@@ -727,12 +727,6 @@ Rules:
             };
             return (
               <>
-                {avg && (
-                  <div className={styles.gradesSummary}>
-                    <span className={styles.gradesSummaryLabel}>Current Average</span>
-                    <span className={styles.gradesSummaryScore} style={{ color: scoreColor(Number(avg)) }}>{avg}%</span>
-                  </div>
-                )}
                 <div className={styles.gradesList}>
                   {grades.map((g, i) => (
                     <div key={g.courseId} className={styles.gradesRow}>
