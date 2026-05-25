@@ -452,6 +452,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const dragTodoOverIndexRef = useRef<number | null>(null);
   const todosRef = useRef<Todo[]>([]);
   const selectedDateKeyRef = useRef<string>('');
+  const computeIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
   // Sync week view when selectedDate changes from an external source (e.g. CalendarTab)
   useEffect(() => {
@@ -505,14 +506,17 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       }
 
       setElapsedBySubject(combined);
+      // Guard: discard the write if selectedDate has changed since this effect started
+      if (selectedDateKeyRef.current !== dateStr) return;
       localStorage.setItem(`soma_elapsed_${dateStr}`, JSON.stringify(sameDayResult));
       localStorage.setItem(`soma_elapsed_${nextDateStr}`, JSON.stringify(nextDayResult));
     }
 
     compute();
     if (dateStr !== todayStr) return;
-    const id = setInterval(compute, 60_000);
-    return () => clearInterval(id);
+    clearInterval(computeIntervalRef.current);
+    computeIntervalRef.current = setInterval(compute, 60_000);
+    return () => { clearInterval(computeIntervalRef.current); };
   }, [selectedDate, blocks]);
 
   useEffect(() => {
