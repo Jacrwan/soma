@@ -205,9 +205,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  height: 2px;
-  display: flex;
-  align-items: center;
+  height: 0;
   z-index: 10;
   pointer-events: none;
   overflow: visible;
@@ -215,21 +213,28 @@
 
 .currentTimeLine::after {
   content: '';
-  flex: 1;
+  position: absolute;
+  left: 72px;
+  right: 0;
+  top: 0;
   height: 1.5px;
   background: var(--danger);
 }
 
 .nowPill {
-  flex-shrink: 0;
+  position: absolute;
+  left: 0;
+  width: 68px;
+  transform: translateY(-50%);
   background: var(--danger);
   color: #fff;
   font-size: 10px;
   font-weight: 600;
-  padding: 2px 6px;
+  padding: 2px 8px 2px 0;
   border-radius: 10px;
   white-space: nowrap;
-  margin-right: 4px;
+  text-align: right;
+  box-sizing: border-box;
   line-height: 1.4;
   letter-spacing: 0.01em;
 }
@@ -317,37 +322,58 @@
   position: absolute;
   left: 72px;
   right: 8px;
-  border-radius: 6px;
-  padding: 3px 7px;
+  border-radius: 8px;
+  border-left: 3px solid rgba(150, 150, 150, 0.5);
+  background: rgba(150, 150, 150, 0.15);
+  padding: 4px 7px 3px;
   z-index: 1;
   overflow: hidden;
-  pointer-events: none;
-  background: #f5f5f5;
-  border: 1px solid #ebebeb;
-  display: flex;
-  align-items: flex-start;
-  gap: 4px;
-  opacity: 0.85;
+  box-sizing: border-box;
 }
 
-.gcalBadge {
-  font-size: 9px;
-  font-weight: 700;
-  color: #4285f4;
-  background: rgba(66, 133, 244, 0.15);
-  border-radius: 3px;
-  padding: 0 3px;
-  flex-shrink: 0;
-  line-height: 16px;
-}
-
-.gcalTitle {
-  font-style: italic;
-  font-size: 11px;
-  color: var(--text-secondary);
+.gcalBlockTitle {
+  font-weight: 600;
+  font-size: 12px;
+  display: block;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--text-primary);
+}
+
+.gcalBlockTime {
+  font-size: 11px;
+  color: var(--text-secondary);
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gcalBlockCompact {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gcalBlockLink {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  opacity: 0.6;
+  line-height: 1;
+}
+
+.gcalBlockLink:hover {
+  opacity: 1;
 }
 
 /* Deadline markers */

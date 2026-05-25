@@ -93,6 +93,7 @@ export interface Todo {
 export interface GoogleCalendarEvent {
   id: string;
   summary?: string;
+  htmlLink?: string;
   start: { dateTime?: string; date?: string };
   end: { dateTime?: string; date?: string };
 }

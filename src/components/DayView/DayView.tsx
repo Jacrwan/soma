@@ -1545,18 +1545,42 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             const start = new Date(event.start.dateTime);
             const end = new Date(event.end.dateTime ?? event.start.dateTime);
             const startMin = start.getHours() * 60 + start.getMinutes();
-            const durMin = Math.max((end.getTime() - start.getTime()) / 60_000, 30);
+            const durMin = Math.max((end.getTime() - start.getTime()) / 60_000, 15);
+            const height = Math.max(durToHeight(durMin), 2);
+            const fmtHm = (d: Date) => {
+              const h = d.getHours(), m = d.getMinutes();
+              return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+            };
+            const timeStr = `${fmtHm(start)} – ${fmtHm(end)}`;
             return (
               <div
                 key={event.id}
                 className={styles.gcalBlock}
-                style={{
-                  top: minToTop(startMin),
-                  height: durToHeight(durMin),
-                }}
+                style={{ top: minToTop(startMin), height }}
               >
-                <span className={styles.gcalBadge}>G</span>
-                <span className={styles.gcalTitle}>{event.summary ?? '(No title)'}</span>
+                {height >= 38 && (
+                  <>
+                    <span className={styles.gcalBlockTitle}>{event.summary ?? '(No title)'}</span>
+                    <span className={styles.gcalBlockTime}>{timeStr}</span>
+                  </>
+                )}
+                {height >= 18 && height < 38 && (
+                  <span className={styles.gcalBlockCompact}>{event.summary ?? '(No title)'}</span>
+                )}
+                {event.htmlLink && (
+                  <a
+                    href={event.htmlLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={styles.gcalBlockLink}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                      <path d="M4 2H2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1V6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+                      <path d="M6 1h3v3M9 1L5.5 4.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </a>
+                )}
               </div>
             );
           })}
