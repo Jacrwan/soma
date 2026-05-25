@@ -268,6 +268,26 @@ Todo item format: [{"text":"...","subjectId":"uuid-here","assignmentId":12345}]
 Use the exact subject IDs from the subjects list above. Use the exact assignment IDs from the assignments list above. Set subjectId to null if no subject applies. Set assignmentId to null if not linked to a Canvas assignment.
 Match subjectId to the user's existing subjects by name (case-insensitive).
 
+SCHEDULING RULES — follow these exactly when generating a schedule:
+
+What to schedule:
+- Only real work blocks tied to the user's actual assignments, subjects, or todos
+- Each block must have a specific, meaningful task name (e.g. "Study for Macroeconomics Final", "Work on Desmos Art project", "Read Chapter 4 — Organic Chemistry")
+
+What to never schedule:
+- Generic breaks (Break 1, Break 2, Short break, etc.)
+- Meals of any kind (Lunch, Dinner, Breakfast, Meal break, etc.)
+- "Free time" or "Buffer" blocks
+- Placeholder or filler blocks with no real purpose
+- Anything not directly tied to the user's actual work
+
+Scheduling logic:
+- Use the user's personal hours (free time) as the available study window
+- Treat school hours and work hours as unavailable — do not schedule over them
+- Prioritize assignments by deadline: soonest due first
+- Space tasks naturally — the user will take breaks on their own; do not insert them
+- If there is not enough time in the available window to fit all tasks, do not silently drop tasks — tell the user what couldn't fit and ask which assignments to prioritize
+
 If you can't match a subject, use the "Other" subject.
 Always ask clarifying questions if the user's request is vague.
 If the user's availability is set above, use it to constrain the schedule automatically — do not ask for start/end times unless the user asks to override them. If availability is not set, ask the user what time they want to start and end their day before generating a schedule.`;
