@@ -3,55 +3,96 @@
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: var(--bg);
+  background: #0A0B0F;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 .card {
-  width: 360px;
-  background: var(--nav-bg);
-  border-radius: 14px;
-  padding: 36px 32px 32px;
+  width: 380px;
+  background: #0F1117;
+  border: 1px solid oklch(20% 0.012 265);
+  border-radius: 16px;
+  padding: 40px 36px 36px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  box-shadow: 0 12px 48px oklch(0% 0 0 / 0.18);
+  gap: 22px;
+  box-shadow:
+    0 4px 24px oklch(0% 0 0 / 0.3),
+    0 24px 64px oklch(0% 0 0 / 0.4);
 }
 
 .wordmark {
   font-family: 'DM Serif Display', serif;
   font-size: 22px;
-  color: var(--nav-active);
+  color: #F0EEE8;
   text-align: center;
   letter-spacing: -0.2px;
   user-select: none;
+  text-decoration: none;
+  display: block;
 }
 
-.tabs {
-  display: flex;
-  background: oklch(14% 0.014 265);
-  border-radius: 8px;
-  padding: 3px;
-  gap: 3px;
-}
-
-.tab {
-  flex: 1;
-  padding: 7px 0;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  font-size: 13px;
+.heading {
+  font-size: 15px;
   font-weight: 500;
-  color: var(--nav-text);
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #8A8A9E;
+  text-align: center;
+  margin-top: -8px;
 }
 
-.tabActive {
-  background: oklch(55% 0.22 266 / 0.2);
-  color: var(--nav-active);
+.googleBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 0;
+  background: #F0EEE8;
+  color: #1a1a2e;
+  border: none;
+  border-radius: 9px;
+  font-size: 14px;
   font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.15s, transform 0.15s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.googleBtn:hover:not(:disabled) {
+  opacity: 0.91;
+  transform: translateY(-1px);
+}
+
+.googleBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dividerLine {
+  flex: 1;
+  height: 1px;
+  background: oklch(20% 0.012 265);
+}
+
+.dividerText {
+  font-size: 11px;
+  color: #5A5A6E;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .fields {
@@ -62,59 +103,92 @@
 
 .input {
   width: 100%;
-  padding: 10px 13px;
+  padding: 11px 14px;
   background: oklch(14% 0.014 265);
   border: 1px solid oklch(22% 0.018 265);
-  border-radius: 8px;
+  border-radius: 9px;
   font-size: 14px;
-  color: var(--nav-active);
+  color: #F0EEE8;
   outline: none;
   transition: border-color 0.15s;
-  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: inherit;
   box-sizing: border-box;
 }
 
 .input::placeholder {
-  color: oklch(45% 0.012 265);
+  color: #5A5A6E;
 }
 
 .input:focus {
-  border-color: oklch(55% 0.22 266 / 0.7);
+  border-color: oklch(55% 0.22 266 / 0.65);
 }
 
 .submitBtn {
   width: 100%;
   padding: 11px 0;
-  background: var(--accent);
-  color: oklch(99% 0.003 265);
+  background: #5B6AF0;
+  color: #F0EEE8;
   border: none;
-  border-radius: 8px;
+  border-radius: 9px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s;
-  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  transition: opacity 0.15s, transform 0.15s cubic-bezier(0.22, 1, 0.36, 1);
+  font-family: inherit;
+  margin-top: 2px;
 }
 
 .submitBtn:hover:not(:disabled) {
-  background: var(--accent-hover);
+  opacity: 0.88;
+  transform: translateY(-1px);
 }
 
 .submitBtn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
 .error {
   font-size: 13px;
-  color: var(--danger);
+  color: oklch(62% 0.2 25);
   text-align: center;
   line-height: 1.4;
 }
 
 .notice {
-  font-size: 12px;
-  color: oklch(45% 0.012 265);
+  font-size: 13px;
+  color: #8A8A9E;
   text-align: center;
   line-height: 1.4;
+}
+
+.toggle {
+  font-size: 13px;
+  color: #5A5A6E;
+  text-align: center;
+  line-height: 1.4;
+}
+
+.toggleLink {
+  background: none;
+  border: none;
+  color: #8A8ADE;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.toggleLink:hover {
+  color: #F0EEE8;
+}
+
+@media (max-width: 440px) {
+  .card {
+    width: calc(100vw - 32px);
+    padding: 32px 24px 28px;
+  }
 }
