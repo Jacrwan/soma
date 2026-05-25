@@ -1,4 +1,7 @@
 import { useState, useEffect } from 'react';
+import type { User } from '@supabase/supabase-js';
+import { supabase } from './lib/supabase';
+import AuthScreen from './components/Auth/AuthScreen';
 import DayView from './components/DayView/DayView';
 import CanvasTab from './components/Canvas/CanvasTab';
 import AITab from './components/AI/AITab';
@@ -12,11 +15,27 @@ type Tab = 'today' | 'canvas' | 'ai' | 'calendar' | 'insights' | 'settings';
 type LegalPanel = 'privacy' | 'terms' | 'data' | 'contact' | 'ai' | null;
 
 export default function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [tab, setTab] = useState<Tab>('today');
   const [legalPanel, setLegalPanel] = useState<LegalPanel>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
     const d = new Date(); d.setHours(0, 0, 0, 0); return d;
   });
+
+  // Bootstrap auth state
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user ?? null);
+      setAuthReady(true);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   // Handle Google OAuth implicit-flow redirect (popup or direct)
   useEffect(() => {
@@ -62,6 +81,13 @@ export default function App() {
     localStorage.clear();
     window.location.reload();
   }
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+  }
+
+  if (!authReady) return null;
+  if (!user) return <AuthScreen />;
 
   return (
     <div className={styles.app}>
@@ -137,6 +163,18 @@ export default function App() {
               <circle cx="7" cy="7" r="1.8"/>
               <path d="M7 1.5v1M7 11.5v1M1.5 7h1M11.5 7h1M3.2 3.2l.7.7M10.1 10.1l.7.7M10.1 3.2l-.7.7M3.2 10.1l.7.7"/>
             </svg>
+          </button>
+          <button
+            className={styles.navItem}
+            onClick={handleLogout}
+            title="Log out"
+          >
+            <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 2H2a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h3"/>
+              <path d="M9.5 10l3-3-3-3"/>
+              <path d="M12.5 7H5"/>
+            </svg>
+            Log out
           </button>
         </div>
       </nav>
