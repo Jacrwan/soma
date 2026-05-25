@@ -48,13 +48,19 @@ function truncate(text: string, max: number): string {
 }
 
 function heatmapColor(minutes: number): string {
+  if (minutes <= 0) return '#EEF0F5';
+  if (minutes <= 30) return '#C5D8F5';
+  if (minutes <= 60) return '#85B0ED';
+  if (minutes <= 120) return '#4A82D9';
+  if (minutes <= 180) return '#1E57C2';
+  return '#0D3A8F';
+}
+
+function fmtCellTime(minutes: number): string {
   if (minutes <= 0) return '';
-  if (minutes <= 20) return '#DCEFFE';
-  if (minutes <= 40) return '#C3D9FB';
-  if (minutes <= 65) return '#A4C3F8';
-  if (minutes <= 90) return '#7BAAF7';
-  if (minutes <= 130) return '#5A90E8';
-  return '#3D6FDB';
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h > 0 ? `${h}h` : `${m}m`;
 }
 
 function fmtDateRange(weekOffset: number): string {
@@ -314,19 +320,26 @@ export default function InsightsTab() {
               <div key={`empty-${i}`} className={styles.heatmapCellEmpty} />
             ))}
             {heatmapData.cells.map(({ day, minutes, isToday }) => {
-              const color = heatmapColor(minutes);
+              const isDark = minutes >= 61;
+              const timeLabel = fmtCellTime(minutes);
               return (
                 <div
                   key={day}
                   className={[
                     styles.heatmapCell,
-                    color ? styles.heatmapCellStudied : '',
                     isToday ? styles.heatmapCellToday : '',
                   ].filter(Boolean).join(' ')}
-                  style={color ? { background: color } : undefined}
+                  style={{ background: heatmapColor(minutes) }}
                   title={minutes > 0 ? `${minutes}m studied` : undefined}
                 >
-                  <span className={styles.heatmapDayNum}>{day}</span>
+                  <span className={[styles.heatmapDayNum, isDark ? styles.heatmapDayNumDark : ''].filter(Boolean).join(' ')}>
+                    {day}
+                  </span>
+                  {timeLabel && (
+                    <span className={[styles.heatmapTimeLabel, isDark ? styles.heatmapTimeLabelDark : ''].filter(Boolean).join(' ')}>
+                      {timeLabel}
+                    </span>
+                  )}
                 </div>
               );
             })}

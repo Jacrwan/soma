@@ -329,33 +329,33 @@
 }
 
 .heatmapTitle {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
-  color: var(--text-muted);
-  letter-spacing: 0.06em;
+  color: oklch(62% 0.006 265);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   flex: 1;
   text-align: center;
 }
 
 .heatmapNavBtn {
-  background: oklch(96% 0.006 265);
-  border: 1px solid oklch(90% 0.008 265);
+  background: none;
+  border: none;
   cursor: pointer;
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 500;
+  color: oklch(62% 0.006 265);
+  font-size: 16px;
   line-height: 1;
-  padding: 3px 10px;
-  border-radius: 20px;
-  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  padding: 4px 6px;
+  border-radius: 4px;
+  transition: color 0.12s;
   user-select: none;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .heatmapNavBtn:hover:not(:disabled) {
-  background: oklch(92% 0.01 265);
-  border-color: oklch(82% 0.01 265);
   color: var(--text-primary);
 }
 
@@ -372,9 +372,9 @@
 }
 
 .heatmapDowCell {
-  font-size: 8px;
-  font-weight: 700;
-  color: oklch(72% 0.01 265);
+  font-size: 11px;
+  font-weight: 500;
+  color: #999;
   text-align: center;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -393,27 +393,45 @@
 
 .heatmapCell {
   aspect-ratio: 1;
-  max-width: 48px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.heatmapCellStudied .heatmapDayNum {
-  color: oklch(98% 0.004 265);
+  border-radius: 6px;
+  position: relative;
 }
 
 .heatmapCellToday {
-  box-shadow: inset 0 0 0 2px #3D6FDB;
+  outline: 2px solid #5B6AF0;
+  outline-offset: -2px;
 }
 
 .heatmapDayNum {
+  position: absolute;
+  top: 6px;
+  left: 6px;
   font-size: 10px;
   font-weight: 500;
-  color: #555;
+  color: oklch(25% 0.004 265);
   user-select: none;
   line-height: 1;
+}
+
+.heatmapDayNumDark {
+  color: oklch(97% 0.004 265);
+}
+
+.heatmapTimeLabel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  color: oklch(40% 0.006 265);
+  user-select: none;
+  pointer-events: none;
+}
+
+.heatmapTimeLabelDark {
+  color: oklch(96% 0.004 265);
 }
 
 /* ── Empty state ── */
