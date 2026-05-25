@@ -6,16 +6,20 @@ interface DayAvailability {
   blocked: { start: string; end: string }[];
 }
 
+interface WeekSchedule {
+  monday: DayAvailability;
+  tuesday: DayAvailability;
+  wednesday: DayAvailability;
+  thursday: DayAvailability;
+  friday: DayAvailability;
+  saturday: DayAvailability;
+  sunday: DayAvailability;
+}
+
 export interface SomaSettings {
-  availability: {
-    monday: DayAvailability;
-    tuesday: DayAvailability;
-    wednesday: DayAvailability;
-    thursday: DayAvailability;
-    friday: DayAvailability;
-    saturday: DayAvailability;
-    sunday: DayAvailability;
-  };
+  schoolHours: WeekSchedule;
+  workHours: WeekSchedule;
+  personalHours: WeekSchedule;
   studyPrefs: {
     defaultSessionMinutes: number;
     defaultBreakMinutes: number;
@@ -31,9 +35,22 @@ export interface SomaSettings {
 }
 
 const DEFAULT_DAY: DayAvailability = { start: '08:00', end: '22:00', blocked: [] };
+const DEFAULT_EMPTY_DAY: DayAvailability = { start: '', end: '', blocked: [] };
 
-const DEFAULT_SETTINGS: SomaSettings = {
-  availability: {
+function emptyWeek(): WeekSchedule {
+  return {
+    monday: { ...DEFAULT_EMPTY_DAY },
+    tuesday: { ...DEFAULT_EMPTY_DAY },
+    wednesday: { ...DEFAULT_EMPTY_DAY },
+    thursday: { ...DEFAULT_EMPTY_DAY },
+    friday: { ...DEFAULT_EMPTY_DAY },
+    saturday: { ...DEFAULT_EMPTY_DAY },
+    sunday: { ...DEFAULT_EMPTY_DAY },
+  };
+}
+
+function defaultPersonalWeek(): WeekSchedule {
+  return {
     monday: { ...DEFAULT_DAY },
     tuesday: { ...DEFAULT_DAY },
     wednesday: { ...DEFAULT_DAY },
@@ -41,7 +58,13 @@ const DEFAULT_SETTINGS: SomaSettings = {
     friday: { ...DEFAULT_DAY },
     saturday: { ...DEFAULT_DAY },
     sunday: { ...DEFAULT_DAY },
-  },
+  };
+}
+
+const DEFAULT_SETTINGS: SomaSettings = {
+  schoolHours: emptyWeek(),
+  workHours: emptyWeek(),
+  personalHours: defaultPersonalWeek(),
   studyPrefs: {
     defaultSessionMinutes: 50,
     defaultBreakMinutes: 10,
@@ -182,6 +205,29 @@ export const storage = {
   getCanvasCourseNames: (): string[] => get(KEYS.canvasCourseNames, []),
   setCanvasCourseNames: (v: string[]) => set(KEYS.canvasCourseNames, v),
 
-  getSomaSettings: (): SomaSettings => get('soma_settings', DEFAULT_SETTINGS),
+  getSomaSettings: (): SomaSettings => {
+    const rawStr = localStorage.getItem('soma_settings');
+    if (!rawStr) return DEFAULT_SETTINGS;
+    try {
+      const raw = JSON.parse(rawStr) as Record<string, unknown>;
+      // Migrate: old flat availability → personalHours
+      if (raw.availability && !raw.personalHours) {
+        const migrated: SomaSettings = {
+          ...DEFAULT_SETTINGS,
+          studyPrefs: (raw.studyPrefs as SomaSettings['studyPrefs']) ?? DEFAULT_SETTINGS.studyPrefs,
+          aiPrefs: (raw.aiPrefs as SomaSettings['aiPrefs']) ?? DEFAULT_SETTINGS.aiPrefs,
+          aiMemory: (raw.aiMemory as SomaSettings['aiMemory']) ?? DEFAULT_SETTINGS.aiMemory,
+          personalHours: raw.availability as WeekSchedule,
+          schoolHours: emptyWeek(),
+          workHours: emptyWeek(),
+        };
+        localStorage.setItem('soma_settings', JSON.stringify(migrated));
+        return migrated;
+      }
+      return { ...DEFAULT_SETTINGS, ...raw } as SomaSettings;
+    } catch {
+      return DEFAULT_SETTINGS;
+    }
+  },
   setSomaSettings: (v: SomaSettings) => set('soma_settings', v),
 };

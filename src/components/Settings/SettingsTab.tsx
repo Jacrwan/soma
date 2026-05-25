@@ -5,6 +5,7 @@ import styles from './SettingsTab.module.css';
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 type Day = typeof DAYS[number];
+type HoursCategory = 'schoolHours' | 'workHours' | 'personalHours';
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -55,44 +56,102 @@ export default function SettingsTab() {
     storage.setSomaSettings(next);
   }
 
-  function setDayField(day: Day, field: 'start' | 'end', value: string) {
+  function setDayField(cat: HoursCategory, day: Day, field: 'start' | 'end', value: string) {
     save({
       ...settings,
-      availability: {
-        ...settings.availability,
-        [day]: { ...settings.availability[day], [field]: value },
+      [cat]: {
+        ...settings[cat],
+        [day]: { ...settings[cat][day], [field]: value },
       },
     });
   }
 
-  function addBlocked(day: Day) {
-    const prev = settings.availability[day];
+  function addBlocked(cat: HoursCategory, day: Day) {
+    const prev = settings[cat][day];
     save({
       ...settings,
-      availability: {
-        ...settings.availability,
+      [cat]: {
+        ...settings[cat],
         [day]: { ...prev, blocked: [...prev.blocked, { start: '15:00', end: '16:00' }] },
       },
     });
   }
 
-  function setBlocked(day: Day, index: number, field: 'start' | 'end', value: string) {
-    const prev = settings.availability[day];
+  function setBlocked(cat: HoursCategory, day: Day, index: number, field: 'start' | 'end', value: string) {
+    const prev = settings[cat][day];
     const blocked = prev.blocked.map((b, i) => i === index ? { ...b, [field]: value } : b);
     save({
       ...settings,
-      availability: { ...settings.availability, [day]: { ...prev, blocked } },
+      [cat]: { ...settings[cat], [day]: { ...prev, blocked } },
     });
   }
 
-  function removeBlocked(day: Day, index: number) {
-    const prev = settings.availability[day];
+  function removeBlocked(cat: HoursCategory, day: Day, index: number) {
+    const prev = settings[cat][day];
     save({
       ...settings,
-      availability: {
-        ...settings.availability,
+      [cat]: {
+        ...settings[cat],
         [day]: { ...prev, blocked: prev.blocked.filter((_, i) => i !== index) },
       },
+    });
+  }
+
+  function renderDayRows(cat: HoursCategory) {
+    return DAYS.map(day => {
+      const avail = settings[cat][day];
+      return (
+        <div key={day} className={styles.dayRow}>
+          <div className={styles.dayHeader}>
+            <span className={styles.dayLabel}>{capitalize(day)}</span>
+            <div className={styles.timeRange}>
+              <input
+                type="time"
+                className={styles.timeInput}
+                value={avail.start}
+                onChange={e => setDayField(cat, day, 'start', e.target.value)}
+              />
+              <span className={styles.timeSep}>to</span>
+              <input
+                type="time"
+                className={styles.timeInput}
+                value={avail.end}
+                onChange={e => setDayField(cat, day, 'end', e.target.value)}
+              />
+              <button
+                className={styles.addBlockedBtn}
+                onClick={() => addBlocked(cat, day)}
+              >+ blocked</button>
+            </div>
+          </div>
+          {avail.blocked.length > 0 && (
+            <div className={styles.blockedTags}>
+              {avail.blocked.map((block, i) => (
+                <div key={i} className={styles.blockedTag}>
+                  <input
+                    type="time"
+                    className={styles.tagTime}
+                    value={block.start}
+                    onChange={e => setBlocked(cat, day, i, 'start', e.target.value)}
+                  />
+                  <span className={styles.tagDash}>–</span>
+                  <input
+                    type="time"
+                    className={styles.tagTime}
+                    value={block.end}
+                    onChange={e => setBlocked(cat, day, i, 'end', e.target.value)}
+                  />
+                  <button
+                    className={styles.tagRemove}
+                    onClick={() => removeBlocked(cat, day, i)}
+                    title="Remove"
+                  >×</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
     });
   }
 
@@ -161,63 +220,23 @@ export default function SettingsTab() {
     <div className={styles.page}>
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Availability</h2>
-        <div className={styles.availabilityList}>
-          {DAYS.map(day => {
-            const avail = settings.availability[day];
-            return (
-              <div key={day} className={styles.dayRow}>
-                <div className={styles.dayHeader}>
-                  <span className={styles.dayLabel}>{capitalize(day)}</span>
-                  <div className={styles.timeRange}>
-                    <input
-                      type="time"
-                      className={styles.timeInput}
-                      value={avail.start}
-                      onChange={e => setDayField(day, 'start', e.target.value)}
-                    />
-                    <span className={styles.timeSep}>to</span>
-                    <input
-                      type="time"
-                      className={styles.timeInput}
-                      value={avail.end}
-                      onChange={e => setDayField(day, 'end', e.target.value)}
-                    />
-                    <button
-                      className={styles.addBlockedBtn}
-                      onClick={() => addBlocked(day)}
-                    >+ blocked</button>
-                  </div>
-                </div>
 
-                {avail.blocked.length > 0 && (
-                  <div className={styles.blockedTags}>
-                    {avail.blocked.map((block, i) => (
-                      <div key={i} className={styles.blockedTag}>
-                        <input
-                          type="time"
-                          className={styles.tagTime}
-                          value={block.start}
-                          onChange={e => setBlocked(day, i, 'start', e.target.value)}
-                        />
-                        <span className={styles.tagDash}>–</span>
-                        <input
-                          type="time"
-                          className={styles.tagTime}
-                          value={block.end}
-                          onChange={e => setBlocked(day, i, 'end', e.target.value)}
-                        />
-                        <button
-                          className={styles.tagRemove}
-                          onClick={() => removeBlocked(day, i)}
-                          title="Remove"
-                        >×</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+        <div className={styles.subsection}>
+          <h3 className={styles.subsectionTitle}>School hours</h3>
+          <p className={styles.subsectionHint}>When you're in class — unavailable for studying</p>
+          <div className={styles.availabilityList}>{renderDayRows('schoolHours')}</div>
+        </div>
+
+        <div className={styles.subsection}>
+          <h3 className={styles.subsectionTitle}>Work hours</h3>
+          <p className={styles.subsectionHint}>When you're at work — unavailable for studying</p>
+          <div className={styles.availabilityList}>{renderDayRows('workHours')}</div>
+        </div>
+
+        <div className={styles.subsection}>
+          <h3 className={styles.subsectionTitle}>Personal hours</h3>
+          <p className={styles.subsectionHint}>Your free window — available for studying</p>
+          <div className={styles.availabilityList}>{renderDayRows('personalHours')}</div>
         </div>
       </section>
 

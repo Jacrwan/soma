@@ -211,19 +211,29 @@ function buildSystemPrompt(): string {
     return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2, '0')}${ampm}`;
   }
 
-  const { availability } = storage.getSomaSettings();
+  const { schoolHours, workHours, personalHours } = storage.getSomaSettings();
   const DAY_NAMES = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
-  const availabilityStr = DAY_NAMES
-    .map(day => {
-      const avail = availability[day];
-      if (!avail.start || !avail.end) return null;
-      const blocked = avail.blocked.length > 0
-        ? `, blocked ${avail.blocked.map(b => `${fmt12(b.start)}–${fmt12(b.end)}`).join(', ')}`
-        : '';
-      return `${day.charAt(0).toUpperCase() + day.slice(1)}: ${fmt12(avail.start)}–${fmt12(avail.end)}${blocked}`;
-    })
-    .filter(Boolean)
-    .join('\n');
+
+  function fmtWeek(week: typeof schoolHours, label: string): string {
+    const lines = DAY_NAMES
+      .map(day => {
+        const avail = week[day];
+        if (!avail.start || !avail.end) return null;
+        const blocked = avail.blocked.length > 0
+          ? `, blocked ${avail.blocked.map(b => `${fmt12(b.start)}–${fmt12(b.end)}`).join(', ')}`
+          : '';
+        return `  ${day.charAt(0).toUpperCase() + day.slice(1)}: ${fmt12(avail.start)}–${fmt12(avail.end)}${blocked}`;
+      })
+      .filter(Boolean);
+    return lines.length > 0 ? `${label}:\n${lines.join('\n')}` : '';
+  }
+
+  const scheduleStr = [
+    fmtWeek(schoolHours, 'In class (unavailable for studying)'),
+    fmtWeek(workHours, 'At work (unavailable for studying)'),
+    fmtWeek(personalHours, 'Free time (available for studying)'),
+  ].filter(Boolean).join('\n\n');
+  const availabilityStr = scheduleStr;
 
   return `You are Soma, a personal study assistant. Help the user plan their day.
 

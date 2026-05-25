@@ -23,6 +23,32 @@
   margin: 0 0 18px;
 }
 
+/* ── Availability subsections ── */
+
+.subsection {
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
+}
+
+.subsection:first-of-type {
+  padding-top: 0;
+  border-top: none;
+}
+
+.subsectionTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 2px;
+  letter-spacing: 0.01em;
+}
+
+.subsectionHint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0 0 12px;
+}
+
 /* ── Availability ── */
 
 .availabilityList {
