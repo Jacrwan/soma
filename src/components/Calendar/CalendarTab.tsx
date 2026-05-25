@@ -640,6 +640,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   }
 
   const todayInWeek = weekDays.some(d => isSameDay(d, today));
+  const todayColIndex = weekDays.findIndex(d => isSameDay(d, today));
 
   return (
     <div className={styles.container}>
@@ -907,8 +908,16 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                 })}
                     {todayInWeek && (
                       <>
-                        <div className={styles.weekViewNowLine} style={{ top: nowTop }} />
-                        <div className={styles.weekViewNowDot} style={{ top: nowTop }} />
+                        <div className={styles.weekViewNowLine} style={{
+                          top: nowTop,
+                          left: `calc(${todayColIndex} / 7 * 100%)`,
+                          right: 'unset',
+                          width: 'calc(100% / 7)',
+                        }} />
+                        <div className={styles.weekViewNowDot} style={{
+                          top: nowTop,
+                          left: `calc(${todayColIndex} / 7 * 100% - 4px)`,
+                        }} />
                       </>
                     )}
                     </>
