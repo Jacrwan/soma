@@ -441,10 +441,18 @@ export default function CanvasTab() {
     setConnectLoading(true);
     setConnectError('');
     try {
-      const validationBase = import.meta.env.DEV ? '/canvas-api' : url;
-      const res = await fetch(`${validationBase}/api/v1/courses?per_page=1`, {
-        headers: { Authorization: `Bearer ${tk}` },
-      });
+      let res: Response;
+      if (import.meta.env.DEV) {
+        res = await fetch(`/canvas-api/api/v1/courses?per_page=1`, {
+          headers: { Authorization: `Bearer ${tk}` },
+        });
+      } else {
+        res = await fetch('/api/canvas', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ canvasUrl: url, token: tk, endpoint: '/api/v1/courses?per_page=1' }),
+        });
+      }
       if (!res.ok) throw new Error('bad');
       storage.setCanvasToken(tk);
       storage.setCanvasBaseUrl(url);

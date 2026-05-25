@@ -15,13 +15,18 @@ export function stripHtml(html: string): string {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function canvasFetch(token: string, baseUrl: string, path: string): Promise<any[]> {
-  const base = import.meta.env.DEV ? DEV_BASE : baseUrl;
-  const url = base ? `${base}${path}` : path;
-  console.log('[canvas] fetching', url);
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  console.log('[canvas] response', res.status, url);
+  let res: Response;
+  if (import.meta.env.DEV) {
+    res = await fetch(`${DEV_BASE}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } else {
+    res = await fetch('/api/canvas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ canvasUrl: baseUrl, token, endpoint: path }),
+    });
+  }
   if (!res.ok) throw new Error(`Canvas error: ${res.status}`);
 
   const data = await res.json();
