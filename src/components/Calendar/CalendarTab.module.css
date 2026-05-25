@@ -487,9 +487,17 @@
 }
 
 .weekViewDayNumToday {
-  background: var(--accent);
+  background: #5B6AF0;
   color: oklch(99% 0.003 265);
   font-weight: 700;
+}
+
+.weekViewDayHeaderDimmed .weekViewDayAbbr {
+  opacity: 0.5;
+}
+
+.weekViewDayHeaderDimmed .weekViewDayNum {
+  opacity: 0.5;
 }
 
 /* All-day row */
@@ -603,7 +611,11 @@
 }
 
 .weekViewDayColToday {
-  background: color-mix(in srgb, var(--accent) 5%, transparent);
+  background: transparent;
+}
+
+.weekViewDayColOther {
+  background: rgba(0, 0, 0, 0.03);
 }
 
 /* Current time indicator */
@@ -618,13 +630,13 @@
 }
 
 .weekViewNowDot {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--danger);
   position: absolute;
-  left: -3px;
-  transform: translateY(-50%);
+  left: -4px;
+  transform: translateY(calc(-50% + 1px));
   z-index: 6;
   pointer-events: none;
 }

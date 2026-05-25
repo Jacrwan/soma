@@ -749,7 +749,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
               return (
                 <div
                   key={i}
-                  className={styles.weekViewDayHeader}
+                  className={`${styles.weekViewDayHeader}${isToday ? '' : ` ${styles.weekViewDayHeaderDimmed}`}`}
                   onClick={() => handleDayClick(day)}
                   onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleDayClick(day); } }}
                   tabIndex={0}
@@ -833,13 +833,9 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                   return (
                     <div
                       key={dayIndex}
-                      className={`${styles.weekViewDayCol}${isToday ? ` ${styles.weekViewDayColToday}` : ''}`}
+                      className={`${styles.weekViewDayCol}${isToday ? ` ${styles.weekViewDayColToday}` : ` ${styles.weekViewDayColOther}`}`}
                       onClick={() => handleDayClick(day)}
                     >
-                      {/* Current time dot — only on today's column */}
-                      {isToday && todayInWeek && (
-                        <div className={styles.weekViewNowDot} style={{ top: nowTop }} />
-                      )}
 
                       {/* Short-session dots — stacked when within 5 min of each other */}
                       {(() => {
@@ -910,7 +906,10 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                   );
                 })}
                     {todayInWeek && (
-                      <div className={styles.weekViewNowLine} style={{ top: nowTop }} />
+                      <>
+                        <div className={styles.weekViewNowLine} style={{ top: nowTop }} />
+                        <div className={styles.weekViewNowDot} style={{ top: nowTop }} />
+                      </>
                     )}
                     </>
                   );
