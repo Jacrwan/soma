@@ -55,7 +55,7 @@
   font-weight: 600;
 }
 
-.main { flex: 1; overflow: hidden; padding: 0 16px; }
+.main { flex: 1; overflow-y: auto; padding: 0 16px; }
 
 .footer {
   display: flex;
