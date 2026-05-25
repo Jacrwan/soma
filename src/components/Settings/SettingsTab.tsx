@@ -7,7 +7,7 @@ import styles from './SettingsTab.module.css';
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 type Day = typeof DAYS[number];
 type HoursCategory = 'schoolHours' | 'workHours' | 'personalHours';
-type Section = 'availability' | 'study' | 'ai' | 'memory' | 'integrations';
+type Section = 'profile' | 'availability' | 'study' | 'ai' | 'memory' | 'integrations';
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -15,7 +15,19 @@ function capitalize(s: string): string {
 
 export default function SettingsTab() {
   const [settings, setSettings] = useState<SomaSettings>(() => storage.getSomaSettings());
-  const [activeSection, setActiveSection] = useState<Section>('availability');
+  const [activeSection, setActiveSection] = useState<Section>('profile');
+
+  // Profile state
+  const [profileEmail, setProfileEmail]       = useState('');
+  const [profileName, setProfileName]         = useState('');
+  const [isEmailProvider, setIsEmailProvider] = useState(false);
+  const [newPassword, setNewPassword]         = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordError, setPasswordError]     = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading]     = useState(false);
+  const [deleteError, setDeleteError]         = useState<string | null>(null);
 
   // Canvas integration state
   const [canvasToken, setCanvasToken] = useState(() => storage.getCanvasToken());
@@ -37,6 +49,17 @@ export default function SettingsTab() {
         storage.setGoogleToken(pt);
         setGcalToken(pt);
       }
+    });
+  }, []);
+
+  // Load profile info
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      const u = data.user;
+      if (!u) return;
+      setProfileEmail(u.email ?? '');
+      setProfileName(u.user_metadata?.full_name ?? u.user_metadata?.name ?? '');
+      setIsEmailProvider(u.app_metadata?.provider === 'email');
     });
   }, []);
 
@@ -144,6 +167,57 @@ export default function SettingsTab() {
     });
   }
 
+  async function handlePasswordChange(e: React.FormEvent) {
+    e.preventDefault();
+    setPasswordError(null);
+    setPasswordSuccess(null);
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match.');
+      return;
+    }
+    setPasswordLoading(true);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) {
+      setPasswordError(error.message);
+    } else {
+      setPasswordSuccess('Password updated.');
+      setNewPassword('');
+      setConfirmPassword('');
+    }
+    setPasswordLoading(false);
+  }
+
+  async function handleDeleteAccount() {
+    if (!window.confirm('Are you sure? This will permanently delete your account and all your data.')) return;
+    setDeleteLoading(true);
+    setDeleteError(null);
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+    if (!token) { setDeleteLoading(false); return; }
+    try {
+      const res = await fetch('/api/delete-account', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        const body = await res.json();
+        setDeleteError(body.error ?? 'Failed to delete account.');
+        setDeleteLoading(false);
+        return;
+      }
+      await supabase.auth.signOut();
+      window.location.href = '/';
+    } catch {
+      setDeleteError('Network error. Please try again.');
+      setDeleteLoading(false);
+    }
+  }
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    window.location.href = '/login';
+  }
+
   async function connectCanvas() {
     const url = canvasUrlInput.trim().replace(/\/$/, '');
     const tk = canvasTokenInput.trim();
@@ -197,11 +271,12 @@ export default function SettingsTab() {
   }
 
   const navItems: [Section, string][] = [
-    ['availability', 'Availability'],
-    ['study', 'Study Preferences'],
-    ['ai', 'AI Behavior'],
-    ['memory', 'AI Memory'],
-    ['integrations', 'Integrations'],
+    ['profile',       'Profile'],
+    ['availability',  'Availability'],
+    ['study',         'Study Preferences'],
+    ['ai',            'AI Behavior'],
+    ['memory',        'AI Memory'],
+    ['integrations',  'Integrations'],
   ];
 
   return (
@@ -221,6 +296,84 @@ export default function SettingsTab() {
       </nav>
 
       <div className={styles.settingsContent}>
+
+        {activeSection === 'profile' && (
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>Profile</h2>
+
+            {/* Signed in as */}
+            <div className={styles.profileBlock}>
+              <span className={styles.profileLabel}>Signed in as</span>
+              {profileName && <span className={styles.profileName}>{profileName}</span>}
+              <span className={styles.profileEmail}>{profileEmail}</span>
+            </div>
+
+            <div className={styles.profileSep} />
+
+            {/* Change password */}
+            <div className={styles.profileBlock}>
+              <span className={styles.profileLabel}>Change password</span>
+              {isEmailProvider ? (
+                <form onSubmit={handlePasswordChange} className={styles.profilePassForm}>
+                  <input
+                    className={styles.profilePassInput}
+                    type="password"
+                    placeholder="New password"
+                    autoComplete="new-password"
+                    value={newPassword}
+                    onChange={e => setNewPassword(e.target.value)}
+                    required
+                  />
+                  <input
+                    className={styles.profilePassInput}
+                    type="password"
+                    placeholder="Confirm password"
+                    autoComplete="new-password"
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    required
+                  />
+                  {passwordError   && <p className={styles.profileMsgError}>{passwordError}</p>}
+                  {passwordSuccess && <p className={styles.profileMsgOk}>{passwordSuccess}</p>}
+                  <button className={styles.profilePassBtn} type="submit" disabled={passwordLoading}>
+                    {passwordLoading ? 'Updating…' : 'Update password'}
+                  </button>
+                </form>
+              ) : (
+                <span className={styles.profileGoogleNote}>Password is managed by Google.</span>
+              )}
+            </div>
+
+            <div className={styles.profileSep} />
+
+            {/* Sign out */}
+            <div className={styles.profileBlock}>
+              <span className={styles.profileLabel}>Session</span>
+              <div>
+                <button className={styles.profileSignOutBtn} onClick={handleSignOut}>
+                  Sign out
+                </button>
+              </div>
+            </div>
+
+            <div className={styles.profileSep} />
+
+            {/* Delete account */}
+            <div className={styles.profileBlock}>
+              <span className={styles.profileLabel}>Danger zone</span>
+              {deleteError && <p className={styles.profileMsgError}>{deleteError}</p>}
+              <div>
+                <button
+                  className={styles.profileDeleteBtn}
+                  onClick={handleDeleteAccount}
+                  disabled={deleteLoading}
+                >
+                  {deleteLoading ? 'Deleting…' : 'Delete account'}
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
 
         {activeSection === 'availability' && (
           <section className={styles.section}>

@@ -644,6 +644,145 @@
   border-color: oklch(76% 0.06 265);
 }
 
+/* ── Profile section ── */
+
+.profileBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0 8px;
+}
+
+.profileSep {
+  height: 1px;
+  background: var(--border);
+  margin: 8px 0 16px;
+}
+
+.profileLabel {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.profileName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.profileEmail {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.profileGoogleNote {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.profilePassForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 320px;
+}
+
+.profilePassInput {
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.profilePassInput:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px oklch(65% 0.2 265 / 0.1);
+}
+
+.profilePassBtn {
+  align-self: flex-start;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 7px;
+  padding: 7px 16px;
+  cursor: pointer;
+  transition: opacity 0.12s;
+  margin-top: 2px;
+}
+
+.profilePassBtn:hover:not(:disabled) {
+  opacity: 0.88;
+}
+
+.profilePassBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.profileMsgError {
+  font-size: 12px;
+  color: var(--danger);
+  line-height: 1.4;
+}
+
+.profileMsgOk {
+  font-size: 12px;
+  color: oklch(52% 0.15 155);
+  line-height: 1.4;
+}
+
+.profileSignOutBtn {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.profileSignOutBtn:hover {
+  color: var(--text-primary);
+  border-color: oklch(76% 0.06 265);
+}
+
+.profileDeleteBtn {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--danger);
+  background: none;
+  border: 1px solid oklch(88% 0.04 25);
+  border-radius: 7px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.profileDeleteBtn:hover:not(:disabled) {
+  background: oklch(98.5% 0.01 25);
+  border-color: oklch(78% 0.08 25);
+}
+
+.profileDeleteBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* ── Reduced motion ── */
 
 @media (prefers-reduced-motion: reduce) {
