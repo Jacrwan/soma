@@ -35,7 +35,7 @@
 
 .modal {
   width: 380px;
-  background: #fff;
+  background: var(--bg);
   border-radius: 16px;
   padding: 28px 28px 24px;
   display: flex;
@@ -83,7 +83,7 @@
   border-radius: 6px;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
-  background: #fff;
+  background: var(--bg);
   color: var(--text-primary);
   outline: none;
   text-align: center;
@@ -97,7 +97,7 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 14px;
-  background: #fff;
+  background: var(--bg);
   color: var(--text-primary);
   outline: none;
 }
@@ -110,7 +110,7 @@
   width: 100%;
   padding: 11px 0;
   background: var(--accent);
-  color: #fff;
+  color: oklch(99% 0.003 265);
   border: none;
   border-radius: 8px;
   font-size: 14px;
@@ -138,20 +138,20 @@
 
 .focusBanner {
   position: fixed;
-  top: 45px;
-  left: 0;
+  top: 0;
+  left: 220px;
   right: 0;
-  height: 80px;
-  background: #1a1a1a;
-  border-bottom: 1px solid #2a2a2a;
+  height: 52px;
+  background: var(--nav-bg);
+  border-bottom: 1px solid oklch(55% 0.22 266 / 0.3);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 28px;
+  padding: 0 24px;
   z-index: 299;
-  animation: slideDown 300ms ease forwards;
+  animation: slideDown 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
   transform: translateY(0);
-  transition: transform 300ms ease;
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
 }
 
@@ -179,25 +179,27 @@
 .bannerInfo {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   min-width: 0;
 }
 
 .bannerSubject {
-  font-size: 13px;
-  font-weight: 600;
-  color: #e8e8e8;
+  font-size: 14px;
+  font-weight: 700;
+  color: oklch(97% 0.006 265);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.2;
 }
 
 .bannerTask {
-  font-size: 11px;
-  color: #555;
+  font-size: 13px;
+  color: oklch(97% 0.006 265 / 0.5);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.2;
 }
 
 .bannerCenter {
@@ -208,10 +210,10 @@
 
 .bannerTimer {
   font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
-  font-size: 42px;
-  font-weight: 300;
-  color: #fff;
-  letter-spacing: 2px;
+  font-size: 28px;
+  font-weight: 400;
+  color: oklch(97% 0.006 265);
+  letter-spacing: 0.05em;
   font-variant-numeric: tabular-nums;
 }
 
@@ -224,42 +226,43 @@
 }
 
 .bannerBtn {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: 1px solid #333;
-  background: none;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: transparent;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  color: #ccc;
+  font-size: 13px;
+  color: oklch(97% 0.006 265);
   flex-shrink: 0;
-  transition: background 0.1s, border-color 0.1s, color 0.1s;
+  transition: border-color 0.15s, background 0.15s;
 }
 
 .bannerBtn:hover {
-  background: #2a2a2a;
-  border-color: #555;
-  color: #fff;
+  border-color: rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .bannerStopBtn {
-  padding: 8px 18px;
-  border-radius: 8px;
-  border: none;
-  background: #ef5350;
-  color: #fff;
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 20px;
+  border: 1px solid #E85555;
+  background: transparent;
+  color: #E85555;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
 
 .bannerStopBtn:hover {
-  background: #e53935;
+  background: #E85555;
+  color: oklch(99% 0.003 265);
 }
 
 @media (max-width: 768px) {
@@ -268,12 +271,13 @@
   }
 
   .focusBanner {
+    left: 0;
+    top: 48px;
     padding: 0 16px;
-    height: 64px;
-    top: 44px;
+    height: 52px;
   }
 
   .bannerTimer {
-    font-size: 32px;
+    font-size: 22px;
   }
 }
