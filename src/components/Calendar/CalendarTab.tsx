@@ -834,7 +834,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                   return (
                     <div
                       key={dayIndex}
-                      className={`${styles.weekViewDayCol}${isToday ? ` ${styles.weekViewDayColToday}` : ` ${styles.weekViewDayColOther}`}`}
+                      className={`${styles.weekViewDayCol}${isToday ? ` ${styles.weekViewDayColToday}` : ''}`}
                       onClick={() => handleDayClick(day)}
                     >
 
@@ -908,12 +908,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                 })}
                     {todayInWeek && (
                       <>
-                        <div className={styles.weekViewNowLine} style={{
-                          top: nowTop,
-                          left: `calc(${todayColIndex} / 7 * 100%)`,
-                          right: 'unset',
-                          width: 'calc(100% / 7)',
-                        }} />
+                        <div className={styles.weekViewNowLine} style={{ top: nowTop }} />
                         <div className={styles.weekViewNowDot} style={{
                           top: nowTop,
                           left: `calc(${todayColIndex} / 7 * 100% - 4px)`,

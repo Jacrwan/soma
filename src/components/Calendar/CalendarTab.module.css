@@ -493,11 +493,11 @@
 }
 
 .weekViewDayHeaderDimmed .weekViewDayAbbr {
-  opacity: 0.5;
+  opacity: 0.45;
 }
 
 .weekViewDayHeaderDimmed .weekViewDayNum {
-  opacity: 0.5;
+  opacity: 0.45;
 }
 
 /* All-day row */
@@ -611,11 +611,7 @@
 }
 
 .weekViewDayColToday {
-  background: transparent;
-}
-
-.weekViewDayColOther {
-  background: rgba(0, 0, 0, 0.03);
+  background: rgba(91, 106, 240, 0.04);
 }
 
 /* Current time indicator */
