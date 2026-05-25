@@ -223,12 +223,15 @@
 .nowPill {
   flex-shrink: 0;
   background: var(--danger);
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 2px solid var(--bg);
-  font-size: 0;
-  padding: 0;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 10px;
+  white-space: nowrap;
+  margin-right: 4px;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
 }
 
 /* Blocks */

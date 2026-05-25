@@ -7,7 +7,7 @@ import AssignmentDetail from '../Canvas/AssignmentDetail';
 import styles from './DayView.module.css';
 
 const SLOT_HEIGHT = 60;
-const START_HOUR = 5;
+const START_HOUR = 0;
 const TOTAL_HOURS = 24;
 
 // Midnight–4:59 AM belongs to the previous logical day (day runs 5 AM → 5 AM).
@@ -459,6 +459,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const todosRef = useRef<Todo[]>([]);
   const selectedDateKeyRef = useRef<string>('');
   const computeIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const prevLogicalTodayStrRef = useRef<string>(toISODateString(logicalToday()));
 
   // Sync week view when selectedDate changes from an external source (e.g. CalendarTab)
   useEffect(() => {
@@ -524,6 +525,24 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     computeIntervalRef.current = setInterval(compute, 60_000);
     return () => { clearInterval(computeIntervalRef.current); };
   }, [selectedDate, blocks]);
+
+  // Detect midnight crossing: flush elapsed for old day, auto-advance to new day
+  useEffect(() => {
+    const id = setInterval(() => {
+      const newTodayStr = toISODateString(logicalToday());
+      if (newTodayStr === prevLogicalTodayStrRef.current) return;
+      const oldDateStr = prevLogicalTodayStrRef.current;
+      prevLogicalTodayStrRef.current = newTodayStr;
+      const oldDate = new Date(`${oldDateStr}T00:00:00`);
+      const oldBlocks = storage.getTimeBlocks().filter(b => isOnDate(b.startTime, oldDate));
+      localStorage.setItem(
+        `soma_elapsed_${oldDateStr}`,
+        JSON.stringify(computeElapsedTime(oldBlocks, new Date(), oldDate)),
+      );
+      if (isSameDay(selectedDate, oldDate)) onSelectDate(logicalToday());
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [selectedDate, onSelectDate]);
 
   useEffect(() => {
     function loadGcal() {
