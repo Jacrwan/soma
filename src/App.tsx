@@ -250,9 +250,6 @@ export default function App() {
       <Route path="/login"  element={user ? <Navigate to="/day-view" replace /> : <AuthScreen initialMode="login"  />} />
       <Route path="/signup" element={user ? <Navigate to="/day-view" replace /> : <AuthScreen initialMode="signup" />} />
 
-      {/* Root redirect */}
-      <Route path="/" element={<Navigate to={user ? '/day-view' : '/login'} replace />} />
-
       {/* Protected app routes inside shell */}
       <Route element={shell}>
         <Route path="/day-view"  element={<DayView selectedDate={selectedDate} onSelectDate={setSelectedDate} />} />
