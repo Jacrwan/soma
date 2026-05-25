@@ -81,8 +81,8 @@
 .sidebar {
   width: 220px;
   flex-shrink: 0;
-  background: var(--nav-bg);
-  border-right: 1px solid oklch(16% 0.015 265);
+  background: #ffffff;
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -93,21 +93,21 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px var(--space-md);
-  border-bottom: 1px solid oklch(16% 0.015 265);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .sidebarTitle {
   font-size: 13px;
   font-weight: 600;
-  color: var(--nav-active);
+  color: var(--text-primary);
 }
 
 .newChatBtn {
   background: none;
   border: none;
   font-size: 15px;
-  color: var(--nav-text);
+  color: var(--text-muted);
   cursor: pointer;
   padding: 2px 4px;
   border-radius: 4px;
@@ -115,8 +115,8 @@
 }
 
 .newChatBtn:hover {
-  color: var(--nav-active);
-  background: oklch(15% 0.016 265);
+  color: var(--text-primary);
+  background: var(--bg-secondary);
 }
 
 .sessionList {
@@ -136,7 +136,7 @@
 }
 
 .sessionRow:hover {
-  background: oklch(15% 0.016 265);
+  background: var(--bg-secondary);
 }
 
 .sessionRow:hover .sessionDeleteBtn {
@@ -144,28 +144,28 @@
 }
 
 .sessionRowActive {
-  background: oklch(16% 0.022 265);
+  background: var(--bg-secondary);
 }
 
 .sessionRowActive:hover {
-  background: oklch(18% 0.024 265);
+  background: oklch(93% 0.008 265);
 }
 
 .sessionRowActive .sessionTitle {
-  color: var(--nav-active);
+  color: var(--accent);
 }
 
 .sessionRowActive .sessionCount {
-  color: oklch(58% 0.015 265);
+  color: var(--text-muted);
 }
 
 .sessionRowActive .sessionDeleteBtn {
-  color: oklch(55% 0.015 265);
+  color: var(--text-muted);
 }
 
 .sessionRowActive .sessionDeleteBtn:hover {
-  color: var(--nav-active);
-  background: oklch(20% 0.018 265);
+  color: var(--danger);
+  background: oklch(96% 0.006 265);
 }
 
 .sessionInfo {
@@ -179,7 +179,7 @@
 .sessionTitle {
   font-size: 13px;
   font-weight: 500;
-  color: var(--nav-text);
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -187,14 +187,14 @@
 
 .sessionCount {
   font-size: 11px;
-  color: oklch(46% 0.015 265);
+  color: var(--text-muted);
 }
 
 .sessionDeleteBtn {
   background: none;
   border: none;
   font-size: 16px;
-  color: oklch(46% 0.015 265);
+  color: var(--text-muted);
   cursor: pointer;
   padding: 0 2px;
   line-height: 1;
@@ -206,7 +206,7 @@
 
 .sessionDeleteBtn:hover {
   color: var(--danger);
-  background: oklch(15% 0.015 265);
+  background: var(--bg-secondary);
 }
 
 .sessionRowConfirm {
@@ -214,12 +214,12 @@
   align-items: center;
   gap: 5px;
   padding: 7px var(--space-md);
-  background: oklch(14% 0.015 265);
+  background: var(--bg-secondary);
 }
 
 .sessionConfirmText {
   font-size: 12px;
-  color: var(--nav-text);
+  color: var(--text-secondary);
   flex: 1;
 }
 
