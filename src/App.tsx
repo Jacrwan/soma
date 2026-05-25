@@ -157,12 +157,12 @@ export default function App() {
           <button
             className={`${styles.navItem}${tab === 'settings' ? ` ${styles.navItemActive}` : ''}`}
             onClick={() => setTab('settings')}
-            title="Settings"
           >
-            <svg width="20" height="20" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="7" cy="7" r="1.8"/>
               <path d="M7 1.5v1M7 11.5v1M1.5 7h1M11.5 7h1M3.2 3.2l.7.7M10.1 10.1l.7.7M10.1 3.2l-.7.7M3.2 10.1l.7.7"/>
             </svg>
+            Settings
           </button>
           <button
             className={styles.navItem}

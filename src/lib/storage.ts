@@ -25,6 +25,9 @@ export interface SomaSettings {
   schoolHours: WeekSchedule;
   workHours: WeekSchedule;
   personalHours: WeekSchedule;
+  schoolHoursEnabled: boolean;
+  workHoursEnabled: boolean;
+  personalHoursEnabled: boolean;
   studyPrefs: {
     defaultSessionMinutes: number;
     defaultBreakMinutes: number;
@@ -89,6 +92,9 @@ const DEFAULT_SETTINGS: SomaSettings = {
   schoolHours: emptyWeek(),
   workHours: emptyWeek(),
   personalHours: defaultPersonalWeek(),
+  schoolHoursEnabled: true,
+  workHoursEnabled: true,
+  personalHoursEnabled: true,
   studyPrefs: {
     defaultSessionMinutes: 50,
     defaultBreakMinutes: 10,

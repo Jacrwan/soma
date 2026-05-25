@@ -211,7 +211,7 @@ function buildSystemPrompt(): string {
     return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2, '0')}${ampm}`;
   }
 
-  const { schoolHours, workHours, personalHours } = storage.getSomaSettings();
+  const { schoolHours, workHours, personalHours, schoolHoursEnabled, workHoursEnabled, personalHoursEnabled } = storage.getSomaSettings();
   const DAY_NAMES = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 
   function fmtWeek(week: typeof schoolHours, label: string): string {
@@ -229,9 +229,9 @@ function buildSystemPrompt(): string {
   }
 
   const scheduleStr = [
-    fmtWeek(schoolHours, 'In class (unavailable for studying)'),
-    fmtWeek(workHours, 'At work (unavailable for studying)'),
-    fmtWeek(personalHours, 'Free time (available for studying)'),
+    schoolHoursEnabled !== false ? fmtWeek(schoolHours, 'In class (unavailable for studying)') : '',
+    workHoursEnabled !== false ? fmtWeek(workHours, 'At work (unavailable for studying)') : '',
+    personalHoursEnabled !== false ? fmtWeek(personalHours, 'Free time (available for studying)') : '',
   ].filter(Boolean).join('\n\n');
   const availabilityStr = scheduleStr;
 

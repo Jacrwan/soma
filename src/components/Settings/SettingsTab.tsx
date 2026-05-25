@@ -248,21 +248,39 @@ export default function SettingsTab() {
             <h2 className={styles.sectionTitle}>Availability</h2>
 
             <div className={styles.subsection}>
-              <h3 className={styles.subsectionTitle}>School hours</h3>
+              <div className={styles.subsectionHeader}>
+                <h3 className={styles.subsectionTitle}>School hours</h3>
+                <button
+                  className={`${styles.categoryToggle}${settings.schoolHoursEnabled !== false ? ` ${styles.categoryToggleOn}` : ''}`}
+                  onClick={() => save({ ...settings, schoolHoursEnabled: settings.schoolHoursEnabled === false })}
+                >{settings.schoolHoursEnabled !== false ? 'Enabled' : 'Disabled'}</button>
+              </div>
               <p className={styles.subsectionHint}>When you're in class — unavailable for studying</p>
-              <div className={styles.availabilityList}>{renderDayRows('schoolHours')}</div>
+              <div className={`${styles.availabilityList}${settings.schoolHoursEnabled === false ? ` ${styles.availabilityListDisabled}` : ''}`}>{renderDayRows('schoolHours')}</div>
             </div>
 
             <div className={styles.subsection}>
-              <h3 className={styles.subsectionTitle}>Work hours</h3>
+              <div className={styles.subsectionHeader}>
+                <h3 className={styles.subsectionTitle}>Work hours</h3>
+                <button
+                  className={`${styles.categoryToggle}${settings.workHoursEnabled !== false ? ` ${styles.categoryToggleOn}` : ''}`}
+                  onClick={() => save({ ...settings, workHoursEnabled: settings.workHoursEnabled === false })}
+                >{settings.workHoursEnabled !== false ? 'Enabled' : 'Disabled'}</button>
+              </div>
               <p className={styles.subsectionHint}>When you're at work — unavailable for studying</p>
-              <div className={styles.availabilityList}>{renderDayRows('workHours')}</div>
+              <div className={`${styles.availabilityList}${settings.workHoursEnabled === false ? ` ${styles.availabilityListDisabled}` : ''}`}>{renderDayRows('workHours')}</div>
             </div>
 
             <div className={styles.subsection}>
-              <h3 className={styles.subsectionTitle}>Personal hours</h3>
+              <div className={styles.subsectionHeader}>
+                <h3 className={styles.subsectionTitle}>Personal hours</h3>
+                <button
+                  className={`${styles.categoryToggle}${settings.personalHoursEnabled !== false ? ` ${styles.categoryToggleOn}` : ''}`}
+                  onClick={() => save({ ...settings, personalHoursEnabled: settings.personalHoursEnabled === false })}
+                >{settings.personalHoursEnabled !== false ? 'Enabled' : 'Disabled'}</button>
+              </div>
               <p className={styles.subsectionHint}>Your free window — available for studying</p>
-              <div className={styles.availabilityList}>{renderDayRows('personalHours')}</div>
+              <div className={`${styles.availabilityList}${settings.personalHoursEnabled === false ? ` ${styles.availabilityListDisabled}` : ''}`}>{renderDayRows('personalHours')}</div>
             </div>
           </section>
         )}
