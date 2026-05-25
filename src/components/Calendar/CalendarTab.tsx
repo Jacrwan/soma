@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { storage } from '../../lib/storage';
+import { supabase } from '../../lib/supabase';
 import { getEvents, getWeekRange, isCacheStale } from '../../lib/googleCalendar';
 import { TimeBlock, Subject, GoogleCalendarEvent } from '../../types';
 import styles from './CalendarTab.module.css';
@@ -139,9 +140,6 @@ function saveFilters(f: Filters) {
 
 export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToday }: CalendarTabProps) {
   const [token, setToken] = useState(() => storage.getGoogleToken());
-  const [clientId, setClientId] = useState(() => storage.getGoogleClientId());
-  const [setupClientId, setSetupClientId] = useState('');
-  const [showConnect, setShowConnect] = useState(false);
   const [gcalLoading, setGcalLoading] = useState(false);
   const [gcalError, setGcalError] = useState('');
 
@@ -171,25 +169,15 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
 
   const isConnected = !!token;
 
+  // On mount (and after OAuth redirect back), pull provider_token from session
   useEffect(() => {
-    const messageHandler = (e: MessageEvent) => {
-      if (e.origin !== window.location.origin) return;
-      if (e.data?.type === 'soma_google_auth' && e.data.token) {
-        storage.setGoogleToken(e.data.token);
-        setToken(e.data.token);
-        setShowConnect(false);
+    supabase.auth.getSession().then(({ data }) => {
+      const pt = data.session?.provider_token;
+      if (pt) {
+        storage.setGoogleToken(pt);
+        setToken(pt);
       }
-    };
-    const customHandler = (e: Event) => {
-      const t = (e as CustomEvent).detail?.token;
-      if (t) { setToken(t); setShowConnect(false); }
-    };
-    window.addEventListener('message', messageHandler);
-    window.addEventListener('soma_google_auth', customHandler);
-    return () => {
-      window.removeEventListener('message', messageHandler);
-      window.removeEventListener('soma_google_auth', customHandler);
-    };
+    });
   }, []);
 
   useEffect(() => {
@@ -271,30 +259,22 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     }
   }
 
-  function openOAuthPopup() {
-    const id = setupClientId.trim() || clientId;
-    if (!id) return;
-    storage.setGoogleClientId(id);
-    setClientId(id);
-    const params = new URLSearchParams({
-      client_id: id,
-      redirect_uri: window.location.origin,
-      response_type: 'token',
-      scope: 'https://www.googleapis.com/auth/calendar.readonly',
-      include_granted_scopes: 'true',
+  async function connectGcal() {
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        scopes: 'https://www.googleapis.com/auth/calendar.readonly',
+        redirectTo: window.location.href,
+        queryParams: { access_type: 'offline', prompt: 'consent' },
+      },
     });
-    const url = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
-    const popup = window.open(url, 'google_oauth', 'width=500,height=600,left=200,top=100');
-    if (!popup) window.location.href = url;
   }
 
   function handleDisconnect() {
     storage.setGoogleToken('');
-    storage.setGoogleClientId('');
     storage.setCachedGoogleEvents([]);
     storage.setGoogleCacheTimestamp(0);
     setToken('');
-    setClientId('');
     setDataVersion(v => v + 1);
     window.dispatchEvent(new CustomEvent('soma_gcal_updated'));
   }
@@ -699,8 +679,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         ) : (
           <button
             className={`${styles.filterPill} ${styles.filterPillConnect}`}
-            onClick={() => setShowConnect(v => !v)}
-            aria-expanded={showConnect}
+            onClick={connectGcal}
           >+ Connect Google Calendar</button>
         )}
         <button
@@ -725,29 +704,6 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
           </>
         )}
       </div>
-
-      {/* ── Connect card ── */}
-      {showConnect && !isConnected && (
-        <div className={styles.connectCard}>
-          <span className={styles.connectTitle}>Connect Google Calendar</span>
-          <div className={styles.connectRow}>
-            <input
-              className={styles.connectInput}
-              placeholder="OAuth 2.0 Client ID"
-              aria-label="Google OAuth 2.0 Client ID"
-              value={setupClientId || clientId}
-              onChange={e => setSetupClientId(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') openOAuthPopup(); if (e.key === 'Escape') setShowConnect(false); }}
-            />
-            <button className={styles.connectBtn} onClick={openOAuthPopup} disabled={!setupClientId.trim() && !clientId}>Connect</button>
-            <button className={styles.connectCancel} onClick={() => setShowConnect(false)} aria-label="Close">✕</button>
-          </div>
-          <span className={styles.connectHint}>
-            Google Cloud Console → APIs &amp; Services → Credentials → OAuth 2.0 Client ID (Web).
-            Add <code>{window.location.origin}</code> as authorized redirect URI and enable the Calendar API.
-          </span>
-        </div>
-      )}
 
       {/* ── Month view ── */}
       {viewMode === 'month' && (

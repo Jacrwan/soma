@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { storage, SomaSettings } from '../../lib/storage';
 import { resetTimeAccuracy, resetPeakHours, resetSubjectPacing } from '../../lib/insights';
+import { supabase } from '../../lib/supabase';
 import styles from './SettingsTab.module.css';
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
@@ -27,30 +28,16 @@ export default function SettingsTab() {
 
   // Google Calendar integration state
   const [gcalToken, setGcalToken] = useState(() => storage.getGoogleToken());
-  const [gcalClientId, setGcalClientId] = useState(() => storage.getGoogleClientId());
-  const [showGcalModal, setShowGcalModal] = useState(false);
-  const [gcalClientIdInput, setGcalClientIdInput] = useState('');
 
-  // Listen for Google OAuth popup callback
+  // On mount (and after OAuth redirect back), pull provider_token from session
   useEffect(() => {
-    const onMessage = (e: MessageEvent) => {
-      if (e.origin !== window.location.origin) return;
-      if (e.data?.type === 'soma_google_auth' && e.data.token) {
-        storage.setGoogleToken(e.data.token);
-        setGcalToken(e.data.token);
-        setShowGcalModal(false);
+    supabase.auth.getSession().then(({ data }) => {
+      const pt = data.session?.provider_token;
+      if (pt) {
+        storage.setGoogleToken(pt);
+        setGcalToken(pt);
       }
-    };
-    const onCustom = (e: Event) => {
-      const t = (e as CustomEvent).detail?.token;
-      if (t) { setGcalToken(t); setShowGcalModal(false); }
-    };
-    window.addEventListener('message', onMessage);
-    window.addEventListener('soma_google_auth', onCustom);
-    return () => {
-      window.removeEventListener('message', onMessage);
-      window.removeEventListener('soma_google_auth', onCustom);
-    };
+    });
   }, []);
 
   function save(next: SomaSettings) {
@@ -190,30 +177,22 @@ export default function SettingsTab() {
     setCanvasBaseUrl('');
   }
 
-  function openGcalOAuth() {
-    const id = gcalClientIdInput.trim() || gcalClientId;
-    if (!id) return;
-    storage.setGoogleClientId(id);
-    setGcalClientId(id);
-    const params = new URLSearchParams({
-      client_id: id,
-      redirect_uri: window.location.origin,
-      response_type: 'token',
-      scope: 'https://www.googleapis.com/auth/calendar.readonly',
-      include_granted_scopes: 'true',
+  async function connectGcal() {
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        scopes: 'https://www.googleapis.com/auth/calendar.readonly',
+        redirectTo: window.location.href,
+        queryParams: { access_type: 'offline', prompt: 'consent' },
+      },
     });
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
-    const popup = window.open(authUrl, 'google_oauth', 'width=500,height=600,left=200,top=100');
-    if (!popup) window.location.href = authUrl;
   }
 
   function disconnectGcal() {
     storage.setGoogleToken('');
-    storage.setGoogleClientId('');
     storage.setCachedGoogleEvents([]);
     storage.setGoogleCacheTimestamp(0);
     setGcalToken('');
-    setGcalClientId('');
     window.dispatchEvent(new CustomEvent('soma_gcal_updated'));
   }
 
@@ -436,7 +415,7 @@ export default function SettingsTab() {
                       <button className={styles.disconnectBtn} onClick={disconnectGcal}>Disconnect</button>
                     </>
                   ) : (
-                    <button className={styles.connectBtn} onClick={() => setShowGcalModal(true)}>Connect</button>
+                    <button className={styles.connectBtn} onClick={connectGcal}>Connect</button>
                   )}
                 </div>
               </div>
@@ -490,36 +469,6 @@ export default function SettingsTab() {
       </div>
     )}
 
-    {/* Google Calendar connect modal */}
-    {showGcalModal && (
-      <div className={styles.modalOverlay} onClick={() => setShowGcalModal(false)}>
-        <div className={styles.modalBox} onClick={e => e.stopPropagation()}>
-          <span className={styles.modalTitle}>Connect Google Calendar</span>
-          <div className={styles.modalField}>
-            <label className={styles.modalLabel}>OAuth Client ID</label>
-            <input
-              className={styles.modalInput}
-              placeholder="your-client-id.apps.googleusercontent.com"
-              value={gcalClientIdInput || gcalClientId}
-              autoFocus
-              onChange={e => setGcalClientIdInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Escape') setShowGcalModal(false); }}
-            />
-          </div>
-          <div className={styles.modalHint}>
-            Create a project in Google Cloud Console, enable Calendar API, and add an OAuth 2.0 Client ID.
-          </div>
-          <div className={styles.modalActions}>
-            <button
-              className={styles.modalSubmit}
-              onClick={openGcalOAuth}
-              disabled={!gcalClientIdInput.trim() && !gcalClientId}
-            >Authorize with Google</button>
-            <button className={styles.modalCancel} onClick={() => setShowGcalModal(false)}>Cancel</button>
-          </div>
-        </div>
-      </div>
-    )}
-    </>
+</>
   );
 }
