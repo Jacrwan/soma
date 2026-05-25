@@ -10,6 +10,7 @@ import CalendarTab from './components/Calendar/CalendarTab';
 import InsightsTab from './components/Insights/InsightsTab';
 import SettingsTab from './components/Settings/SettingsTab';
 import { storage } from './lib/storage';
+import LandingPage from './components/Landing/LandingPage';
 import styles from './App.module.css';
 
 type LegalPanel = 'privacy' | 'terms' | 'data' | 'contact' | 'ai' | null;
@@ -246,6 +247,9 @@ export default function App() {
 
   return (
     <Routes>
+      {/* Landing page */}
+      <Route path="/" element={<LandingPage />} />
+
       {/* Auth routes */}
       <Route path="/login"  element={user ? <Navigate to="/day-view" replace /> : <AuthScreen initialMode="login"  />} />
       <Route path="/signup" element={user ? <Navigate to="/day-view" replace /> : <AuthScreen initialMode="signup" />} />
