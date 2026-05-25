@@ -81,7 +81,8 @@
 .sidebar {
   width: 220px;
   flex-shrink: 0;
-  border-right: 1px solid var(--border);
+  background: var(--nav-bg);
+  border-right: 1px solid oklch(16% 0.015 265);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -92,21 +93,21 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px var(--space-md);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid oklch(16% 0.015 265);
   flex-shrink: 0;
 }
 
 .sidebarTitle {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--nav-active);
 }
 
 .newChatBtn {
   background: none;
   border: none;
   font-size: 15px;
-  color: var(--text-muted);
+  color: var(--nav-text);
   cursor: pointer;
   padding: 2px 4px;
   border-radius: 4px;
@@ -114,8 +115,8 @@
 }
 
 .newChatBtn:hover {
-  color: var(--text-primary);
-  background: var(--bg-secondary);
+  color: var(--nav-active);
+  background: oklch(15% 0.016 265);
 }
 
 .sessionList {
@@ -135,7 +136,7 @@
 }
 
 .sessionRow:hover {
-  background: var(--bg-secondary);
+  background: oklch(15% 0.016 265);
 }
 
 .sessionRow:hover .sessionDeleteBtn {
@@ -143,28 +144,28 @@
 }
 
 .sessionRowActive {
-  background: var(--accent);
+  background: oklch(16% 0.022 265);
 }
 
 .sessionRowActive:hover {
-  background: var(--accent-hover);
+  background: oklch(18% 0.024 265);
 }
 
 .sessionRowActive .sessionTitle {
-  color: #fff;
+  color: var(--nav-active);
 }
 
 .sessionRowActive .sessionCount {
-  color: rgba(255, 255, 255, 0.7);
+  color: oklch(58% 0.015 265);
 }
 
 .sessionRowActive .sessionDeleteBtn {
-  color: rgba(255, 255, 255, 0.7);
+  color: oklch(55% 0.015 265);
 }
 
 .sessionRowActive .sessionDeleteBtn:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.15);
+  color: var(--nav-active);
+  background: oklch(20% 0.018 265);
 }
 
 .sessionInfo {
@@ -178,7 +179,7 @@
 .sessionTitle {
   font-size: 13px;
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--nav-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -186,14 +187,14 @@
 
 .sessionCount {
   font-size: 11px;
-  color: var(--text-muted);
+  color: oklch(46% 0.015 265);
 }
 
 .sessionDeleteBtn {
   background: none;
   border: none;
   font-size: 16px;
-  color: var(--text-muted);
+  color: oklch(46% 0.015 265);
   cursor: pointer;
   padding: 0 2px;
   line-height: 1;
@@ -205,7 +206,7 @@
 
 .sessionDeleteBtn:hover {
   color: var(--danger);
-  background: var(--bg-tertiary);
+  background: oklch(15% 0.015 265);
 }
 
 .sessionRowConfirm {
@@ -213,12 +214,12 @@
   align-items: center;
   gap: 5px;
   padding: 7px var(--space-md);
-  background: var(--bg-secondary);
+  background: oklch(14% 0.015 265);
 }
 
 .sessionConfirmText {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--nav-text);
   flex: 1;
 }
 
@@ -354,8 +355,9 @@
 }
 
 .assistantBubble {
-  background: var(--bg-secondary);
+  background: oklch(96.8% 0.008 85);
   color: var(--text-primary);
+  border: 1px solid var(--border);
   border-bottom-left-radius: 3px;
 }
 
@@ -423,34 +425,42 @@
 
 .cardActions {
   display: flex;
-  gap: var(--space-sm);
+  flex-direction: column;
+  gap: 4px;
   padding: var(--space-sm) var(--space-md);
   border-top: 1px solid var(--border);
 }
 
 .cardBtn {
-  padding: 5px 12px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg);
+  background: none;
+  border: none;
   font-size: 12px;
-  color: var(--text-primary);
+  color: var(--text-muted);
   cursor: pointer;
+  padding: 4px 0;
+  text-align: center;
+  transition: color 0.12s;
 }
 
 .cardBtn:hover {
-  background: var(--bg-secondary);
+  color: var(--text-secondary);
 }
 
 .cardBtnAccent {
+  width: 100%;
+  padding: 9px;
   background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
+  color: oklch(99% 0.003 265);
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s;
 }
 
 .cardBtnAccent:hover {
   background: var(--accent-hover);
-  border-color: var(--accent-hover);
 }
 
 /* ── Input row ─────────────────────────────────────────────────────────── */
@@ -458,24 +468,28 @@
 .inputRow {
   display: flex;
   gap: var(--space-sm);
-  padding: var(--space-sm) var(--space-md);
+  padding: 10px 14px;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
+  background: var(--bg);
 }
 
 .textInput {
   flex: 1;
-  padding: 8px 12px;
+  padding: 9px 16px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 22px;
   font-size: 14px;
   background: var(--bg);
   color: var(--text-primary);
   outline: none;
+  box-shadow: 0 1px 6px oklch(0% 0 0 / 0.05);
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .textInput:focus {
   border-color: var(--accent);
+  box-shadow: 0 0 0 3px oklch(55% 0.22 266 / 0.1);
 }
 
 .textInput:disabled {
@@ -483,15 +497,16 @@
 }
 
 .sendBtn {
-  padding: 8px 16px;
+  padding: 8px 18px;
   background: var(--accent);
-  color: #fff;
+  color: oklch(99% 0.003 265);
   border: none;
-  border-radius: 6px;
+  border-radius: 20px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
   flex-shrink: 0;
+  transition: background 0.12s;
 }
 
 .sendBtn:hover:not(:disabled) {

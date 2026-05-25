@@ -10,8 +10,8 @@
   display: flex;
   align-items: center;
   height: 72px;
-  background: #fff;
-  border-bottom: 1px solid #f0f0f0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   padding: 0 var(--space-sm);
   gap: var(--space-xs);
@@ -83,14 +83,12 @@
 }
 
 .dayColSelected {
-  background: var(--accent);
-  color: #fff;
   border-radius: 8px;
-  padding: 6px 8px;
+  padding: 4px 0;
 }
 
 .dayColSelected:hover {
-  background: var(--accent-hover);
+  background: oklch(96% 0.008 265);
 }
 
 .dayColToday:not(.dayColSelected) .dayNum {
@@ -106,13 +104,26 @@
 }
 
 .dayColSelected .dayAbbr {
-  color: rgba(255, 255, 255, 0.75);
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .dayNum {
   font-size: 18px;
   font-weight: 600;
   line-height: 1;
+}
+
+.dayColSelected .dayNum {
+  background: var(--accent);
+  color: oklch(99% 0.003 265);
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
 }
 
 .dayBadge {
@@ -205,22 +216,19 @@
 .currentTimeLine::after {
   content: '';
   flex: 1;
-  height: 2px;
+  height: 1.5px;
   background: var(--danger);
 }
 
 .nowPill {
   flex-shrink: 0;
   background: var(--danger);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 20px;
-  border-radius: 10px;
-  padding: 0 7px;
-  height: 20px;
-  letter-spacing: 0.2px;
-  white-space: nowrap;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--bg);
+  font-size: 0;
+  padding: 0;
 }
 
 /* Blocks */
@@ -231,7 +239,7 @@
   min-width: 0;
   border-left-width: 3px;
   border-left-style: solid;
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 4px 7px 3px;
   cursor: pointer;
   z-index: 1;
@@ -658,10 +666,11 @@
 }
 
 .dateHeaderWeekday {
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1.15;
+  letter-spacing: -0.3px;
 }
 
 .dateHeaderDate {
@@ -692,6 +701,10 @@
 
 .dailyBrief {
   margin-bottom: var(--space-md);
+  background: oklch(97.2% 0.012 75);
+  border: 1px solid oklch(92% 0.014 75);
+  border-radius: 10px;
+  padding: 12px 14px;
 }
 
 .dailyBriefHeader {

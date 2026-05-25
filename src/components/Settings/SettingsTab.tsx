@@ -6,6 +6,7 @@ import styles from './SettingsTab.module.css';
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 type Day = typeof DAYS[number];
 type HoursCategory = 'schoolHours' | 'workHours' | 'personalHours';
+type Section = 'availability' | 'study' | 'ai' | 'memory' | 'integrations';
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -13,6 +14,7 @@ function capitalize(s: string): string {
 
 export default function SettingsTab() {
   const [settings, setSettings] = useState<SomaSettings>(() => storage.getSomaSettings());
+  const [activeSection, setActiveSection] = useState<Section>('availability');
 
   // Canvas integration state
   const [canvasToken, setCanvasToken] = useState(() => storage.getCanvasToken());
@@ -215,184 +217,217 @@ export default function SettingsTab() {
     window.dispatchEvent(new CustomEvent('soma_gcal_updated'));
   }
 
+  const navItems: [Section, string][] = [
+    ['availability', 'Availability'],
+    ['study', 'Study Preferences'],
+    ['ai', 'AI Behavior'],
+    ['memory', 'AI Memory'],
+    ['integrations', 'Integrations'],
+  ];
+
   return (
     <>
-    <div className={styles.page}>
-      <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Availability</h2>
+    <div className={styles.settingsLayout}>
+      <nav className={styles.settingsNav}>
+        <span className={styles.settingsNavLabel}>Settings</span>
+        {navItems.map(([key, label]) => (
+          <button
+            key={key}
+            className={`${styles.settingsNavItem}${activeSection === key ? ` ${styles.settingsNavItemActive}` : ''}`}
+            onClick={() => setActiveSection(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
 
-        <div className={styles.subsection}>
-          <h3 className={styles.subsectionTitle}>School hours</h3>
-          <p className={styles.subsectionHint}>When you're in class — unavailable for studying</p>
-          <div className={styles.availabilityList}>{renderDayRows('schoolHours')}</div>
-        </div>
+      <div className={styles.settingsContent}>
 
-        <div className={styles.subsection}>
-          <h3 className={styles.subsectionTitle}>Work hours</h3>
-          <p className={styles.subsectionHint}>When you're at work — unavailable for studying</p>
-          <div className={styles.availabilityList}>{renderDayRows('workHours')}</div>
-        </div>
+        {activeSection === 'availability' && (
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>Availability</h2>
 
-        <div className={styles.subsection}>
-          <h3 className={styles.subsectionTitle}>Personal hours</h3>
-          <p className={styles.subsectionHint}>Your free window — available for studying</p>
-          <div className={styles.availabilityList}>{renderDayRows('personalHours')}</div>
-        </div>
-      </section>
-
-      <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Study Preferences</h2>
-        <div className={styles.prefGrid}>
-          <div className={styles.prefRow}>
-            <label className={styles.prefLabel}>Default session length</label>
-            <select
-              className={styles.prefSelect}
-              value={settings.studyPrefs.defaultSessionMinutes}
-              onChange={e => save({ ...settings, studyPrefs: { ...settings.studyPrefs, defaultSessionMinutes: Number(e.target.value) } })}
-            >
-              {[30, 45, 60, 90].map(m => (
-                <option key={m} value={m}>{m} min</option>
-              ))}
-            </select>
-          </div>
-
-          <div className={styles.prefRow}>
-            <label className={styles.prefLabel}>Default break duration</label>
-            <select
-              className={styles.prefSelect}
-              value={settings.studyPrefs.defaultBreakMinutes}
-              onChange={e => save({ ...settings, studyPrefs: { ...settings.studyPrefs, defaultBreakMinutes: Number(e.target.value) } })}
-            >
-              {[5, 10, 15, 20].map(m => (
-                <option key={m} value={m}>{m} min</option>
-              ))}
-            </select>
-          </div>
-
-          <div className={styles.prefRow}>
-            <label className={styles.prefLabel}>Preferred study start time</label>
-            <input
-              type="time"
-              className={styles.timeInput}
-              value={settings.studyPrefs.preferredStartTime}
-              onChange={e => save({ ...settings, studyPrefs: { ...settings.studyPrefs, preferredStartTime: e.target.value } })}
-            />
-          </div>
-        </div>
-      </section>
-
-      <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>AI Behavior</h2>
-        <div className={styles.prefGrid}>
-          <div className={styles.prefRow}>
-            <label className={styles.prefLabel}>Response verbosity</label>
-            <div className={styles.segment}>
-              <button
-                className={`${styles.segBtn}${settings.aiPrefs.verbosity === 'concise' ? ` ${styles.segBtnActive}` : ''}`}
-                onClick={() => save({ ...settings, aiPrefs: { ...settings.aiPrefs, verbosity: 'concise' } })}
-              >Concise</button>
-              <button
-                className={`${styles.segBtn}${settings.aiPrefs.verbosity === 'detailed' ? ` ${styles.segBtnActive}` : ''}`}
-                onClick={() => save({ ...settings, aiPrefs: { ...settings.aiPrefs, verbosity: 'detailed' } })}
-              >Detailed</button>
+            <div className={styles.subsection}>
+              <h3 className={styles.subsectionTitle}>School hours</h3>
+              <p className={styles.subsectionHint}>When you're in class — unavailable for studying</p>
+              <div className={styles.availabilityList}>{renderDayRows('schoolHours')}</div>
             </div>
-          </div>
 
-          <div className={styles.prefRow}>
-            <label className={styles.prefLabel}>When I ask to plan my day</label>
-            <div className={styles.segment}>
-              <button
-                className={`${styles.segBtn}${settings.aiPrefs.defaultOutput === 'schedule' ? ` ${styles.segBtnActive}` : ''}`}
-                onClick={() => save({ ...settings, aiPrefs: { ...settings.aiPrefs, defaultOutput: 'schedule' } })}
-              >Schedule</button>
-              <button
-                className={`${styles.segBtn}${settings.aiPrefs.defaultOutput === 'todos' ? ` ${styles.segBtnActive}` : ''}`}
-                onClick={() => save({ ...settings, aiPrefs: { ...settings.aiPrefs, defaultOutput: 'todos' } })}
-              >Todos</button>
+            <div className={styles.subsection}>
+              <h3 className={styles.subsectionTitle}>Work hours</h3>
+              <p className={styles.subsectionHint}>When you're at work — unavailable for studying</p>
+              <div className={styles.availabilityList}>{renderDayRows('workHours')}</div>
             </div>
-          </div>
-        </div>
-      </section>
 
-      <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>AI Memory</h2>
-        <div className={styles.prefGrid}>
-          <div className={styles.prefRow}>
-            <label className={styles.prefLabel}>Enable AI learning</label>
-            <div className={styles.segment}>
-              <button
-                className={`${styles.segBtn}${settings.aiMemory.enabled ? ` ${styles.segBtnActive}` : ''}`}
-                onClick={() => save({ ...settings, aiMemory: { enabled: true } })}
-              >On</button>
-              <button
-                className={`${styles.segBtn}${!settings.aiMemory.enabled ? ` ${styles.segBtnActive}` : ''}`}
-                onClick={() => save({ ...settings, aiMemory: { enabled: false } })}
-              >Off</button>
+            <div className={styles.subsection}>
+              <h3 className={styles.subsectionTitle}>Personal hours</h3>
+              <p className={styles.subsectionHint}>Your free window — available for studying</p>
+              <div className={styles.availabilityList}>{renderDayRows('personalHours')}</div>
             </div>
-          </div>
+          </section>
+        )}
 
-          <div className={styles.resetGroup}>
-            <span className={styles.resetGroupLabel}>Reset stored data</span>
-            <div className={styles.resetBtns}>
-              <button
-                className={styles.resetBtn}
-                onClick={() => { if (window.confirm('Reset time accuracy data? This cannot be undone.')) resetTimeAccuracy(); }}
-              >Time accuracy</button>
-              <button
-                className={styles.resetBtn}
-                onClick={() => { if (window.confirm('Reset peak hours data? This cannot be undone.')) resetPeakHours(); }}
-              >Peak hours</button>
-              <button
-                className={styles.resetBtn}
-                onClick={() => { if (window.confirm('Reset subject pacing data? This cannot be undone.')) resetSubjectPacing(); }}
-              >Subject pacing</button>
-            </div>
-          </div>
-        </div>
-      </section>
+        {activeSection === 'study' && (
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>Study Preferences</h2>
+            <div className={styles.prefGrid}>
+              <div className={styles.prefRow}>
+                <label className={styles.prefLabel}>Default session length</label>
+                <select
+                  className={styles.prefSelect}
+                  value={settings.studyPrefs.defaultSessionMinutes}
+                  onChange={e => save({ ...settings, studyPrefs: { ...settings.studyPrefs, defaultSessionMinutes: Number(e.target.value) } })}
+                >
+                  {[30, 45, 60, 90].map(m => (
+                    <option key={m} value={m}>{m} min</option>
+                  ))}
+                </select>
+              </div>
 
-      <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Integrations</h2>
-        <div className={styles.integrationList}>
+              <div className={styles.prefRow}>
+                <label className={styles.prefLabel}>Default break duration</label>
+                <select
+                  className={styles.prefSelect}
+                  value={settings.studyPrefs.defaultBreakMinutes}
+                  onChange={e => save({ ...settings, studyPrefs: { ...settings.studyPrefs, defaultBreakMinutes: Number(e.target.value) } })}
+                >
+                  {[5, 10, 15, 20].map(m => (
+                    <option key={m} value={m}>{m} min</option>
+                  ))}
+                </select>
+              </div>
 
-          {/* Canvas LMS */}
-          <div className={styles.integrationRow}>
-            <div className={styles.integrationInfo}>
-              <span className={styles.integrationLabel}>Canvas LMS</span>
-              <span className={styles.integrationDescription}>Sync your assignments and due dates</span>
+              <div className={styles.prefRow}>
+                <label className={styles.prefLabel}>Preferred study start time</label>
+                <input
+                  type="time"
+                  className={styles.timeInput}
+                  value={settings.studyPrefs.preferredStartTime}
+                  onChange={e => save({ ...settings, studyPrefs: { ...settings.studyPrefs, preferredStartTime: e.target.value } })}
+                />
+              </div>
             </div>
-            <div className={styles.integrationActions}>
-              {canvasToken && canvasBaseUrl ? (
-                <>
-                  <span className={styles.connectedBadge}>Connected</span>
-                  <button className={styles.disconnectBtn} onClick={disconnectCanvas}>Disconnect</button>
-                </>
-              ) : (
-                <button className={styles.connectBtn} onClick={() => { setCanvasError(''); setShowCanvasModal(true); }}>Connect</button>
-              )}
-            </div>
-          </div>
+          </section>
+        )}
 
-          {/* Google Calendar */}
-          <div className={styles.integrationRow}>
-            <div className={styles.integrationInfo}>
-              <span className={styles.integrationLabel}>Google Calendar</span>
-              <span className={styles.integrationDescription}>See your events alongside your schedule</span>
-            </div>
-            <div className={styles.integrationActions}>
-              {gcalToken ? (
-                <>
-                  <span className={styles.connectedBadge}>Connected</span>
-                  <button className={styles.disconnectBtn} onClick={disconnectGcal}>Disconnect</button>
-                </>
-              ) : (
-                <button className={styles.connectBtn} onClick={() => setShowGcalModal(true)}>Connect</button>
-              )}
-            </div>
-          </div>
+        {activeSection === 'ai' && (
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>AI Behavior</h2>
+            <div className={styles.prefGrid}>
+              <div className={styles.prefRow}>
+                <label className={styles.prefLabel}>Response verbosity</label>
+                <div className={styles.segment}>
+                  <button
+                    className={`${styles.segBtn}${settings.aiPrefs.verbosity === 'concise' ? ` ${styles.segBtnActive}` : ''}`}
+                    onClick={() => save({ ...settings, aiPrefs: { ...settings.aiPrefs, verbosity: 'concise' } })}
+                  >Concise</button>
+                  <button
+                    className={`${styles.segBtn}${settings.aiPrefs.verbosity === 'detailed' ? ` ${styles.segBtnActive}` : ''}`}
+                    onClick={() => save({ ...settings, aiPrefs: { ...settings.aiPrefs, verbosity: 'detailed' } })}
+                  >Detailed</button>
+                </div>
+              </div>
 
-        </div>
-      </section>
+              <div className={styles.prefRow}>
+                <label className={styles.prefLabel}>When I ask to plan my day</label>
+                <div className={styles.segment}>
+                  <button
+                    className={`${styles.segBtn}${settings.aiPrefs.defaultOutput === 'schedule' ? ` ${styles.segBtnActive}` : ''}`}
+                    onClick={() => save({ ...settings, aiPrefs: { ...settings.aiPrefs, defaultOutput: 'schedule' } })}
+                  >Schedule</button>
+                  <button
+                    className={`${styles.segBtn}${settings.aiPrefs.defaultOutput === 'todos' ? ` ${styles.segBtnActive}` : ''}`}
+                    onClick={() => save({ ...settings, aiPrefs: { ...settings.aiPrefs, defaultOutput: 'todos' } })}
+                  >Todos</button>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeSection === 'memory' && (
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>AI Memory</h2>
+            <div className={styles.prefGrid}>
+              <div className={styles.prefRow}>
+                <label className={styles.prefLabel}>Enable AI learning</label>
+                <div className={styles.segment}>
+                  <button
+                    className={`${styles.segBtn}${settings.aiMemory.enabled ? ` ${styles.segBtnActive}` : ''}`}
+                    onClick={() => save({ ...settings, aiMemory: { enabled: true } })}
+                  >On</button>
+                  <button
+                    className={`${styles.segBtn}${!settings.aiMemory.enabled ? ` ${styles.segBtnActive}` : ''}`}
+                    onClick={() => save({ ...settings, aiMemory: { enabled: false } })}
+                  >Off</button>
+                </div>
+              </div>
+
+              <div className={styles.resetGroup}>
+                <span className={styles.resetGroupLabel}>Reset stored data</span>
+                <div className={styles.resetBtns}>
+                  <button
+                    className={styles.resetBtn}
+                    onClick={() => { if (window.confirm('Reset time accuracy data? This cannot be undone.')) resetTimeAccuracy(); }}
+                  >Time accuracy</button>
+                  <button
+                    className={styles.resetBtn}
+                    onClick={() => { if (window.confirm('Reset peak hours data? This cannot be undone.')) resetPeakHours(); }}
+                  >Peak hours</button>
+                  <button
+                    className={styles.resetBtn}
+                    onClick={() => { if (window.confirm('Reset subject pacing data? This cannot be undone.')) resetSubjectPacing(); }}
+                  >Subject pacing</button>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeSection === 'integrations' && (
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>Integrations</h2>
+            <div className={styles.integrationList}>
+
+              <div className={styles.integrationRow}>
+                <div className={styles.integrationInfo}>
+                  <span className={styles.integrationLabel}>Canvas LMS</span>
+                  <span className={styles.integrationDescription}>Sync your assignments and due dates</span>
+                </div>
+                <div className={styles.integrationActions}>
+                  {canvasToken && canvasBaseUrl ? (
+                    <>
+                      <span className={styles.connectedBadge}>Connected</span>
+                      <button className={styles.disconnectBtn} onClick={disconnectCanvas}>Disconnect</button>
+                    </>
+                  ) : (
+                    <button className={styles.connectBtn} onClick={() => { setCanvasError(''); setShowCanvasModal(true); }}>Connect</button>
+                  )}
+                </div>
+              </div>
+
+              <div className={styles.integrationRow}>
+                <div className={styles.integrationInfo}>
+                  <span className={styles.integrationLabel}>Google Calendar</span>
+                  <span className={styles.integrationDescription}>See your events alongside your schedule</span>
+                </div>
+                <div className={styles.integrationActions}>
+                  {gcalToken ? (
+                    <>
+                      <span className={styles.connectedBadge}>Connected</span>
+                      <button className={styles.disconnectBtn} onClick={disconnectGcal}>Disconnect</button>
+                    </>
+                  ) : (
+                    <button className={styles.connectBtn} onClick={() => setShowGcalModal(true)}>Connect</button>
+                  )}
+                </div>
+              </div>
+
+            </div>
+          </section>
+        )}
+
+      </div>
     </div>
 
     {/* Canvas connect modal */}

@@ -185,14 +185,15 @@
 /* ── Sidebar ───────────────────────────────────────────────────────────── */
 
 .sidebar {
-  width: 220px;
+  width: 180px;
   flex-shrink: 0;
   border-right: 1px solid var(--border);
-  padding: var(--space-md);
+  padding: var(--space-md) 10px;
   display: flex;
   flex-direction: column;
   gap: var(--space-xs);
   overflow-y: auto;
+  background: var(--bg);
 }
 
 .pill {

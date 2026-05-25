@@ -1,25 +1,29 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg: #ffffff;
-  --bg-secondary: #f5f5f5;
-  --bg-tertiary: #eeeeee;
-  --border: #e0e0e0;
-  --text-primary: #1a1a1a;
-  --text-secondary: #555555;
-  --text-muted: #999999;
-  --accent: #4f6ef7;
-  --accent-hover: #3a59e0;
-  --danger: #e53935;
-  --success: #43a047;
-  --subject-1: #ef5350;
-  --subject-2: #42a5f5;
-  --subject-3: #66bb6a;
-  --subject-4: #ab47bc;
-  --subject-5: #ffa726;
-  --subject-6: #26c6da;
-  --subject-7: #ec407a;
-  --subject-8: #8d6e63;
+  --nav-bg: oklch(10% 0.015 265);
+  --nav-text: oklch(60% 0.025 265);
+  --nav-active: oklch(97% 0.006 265);
+  --bg: oklch(98.5% 0.006 85);
+  --bg-secondary: oklch(96.2% 0.007 85);
+  --bg-tertiary: oklch(93% 0.008 85);
+  --border: oklch(91.8% 0.008 85);
+  --accent: oklch(55% 0.22 266);
+  --accent-hover: oklch(50% 0.22 266);
+  --accent-warm: oklch(72% 0.12 52);
+  --text-primary: oklch(13% 0.004 265);
+  --text-secondary: oklch(40% 0.005 265);
+  --text-muted: oklch(62% 0.006 265);
+  --danger: oklch(52% 0.2 25);
+  --success: oklch(52% 0.18 145);
+  --subject-1: oklch(55% 0.2 25);
+  --subject-2: oklch(57% 0.18 220);
+  --subject-3: oklch(57% 0.18 145);
+  --subject-4: oklch(52% 0.2 310);
+  --subject-5: oklch(68% 0.16 55);
+  --subject-6: oklch(60% 0.18 185);
+  --subject-7: oklch(55% 0.22 0);
+  --subject-8: oklch(48% 0.08 60);
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 16px;
@@ -28,7 +32,7 @@
 }
 
 body {
-  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg);
   color: var(--text-primary);
   font-size: 14px;
@@ -37,8 +41,8 @@ body {
 }
 
 body.focus-mode {
-  background: #0f0f0f;
-  color: #e8e8e8;
+  background: oklch(8% 0.008 265);
+  color: oklch(88% 0.005 265);
 }
 
 button { cursor: pointer; font-family: inherit; }

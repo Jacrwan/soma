@@ -1,3 +1,65 @@
+/* ── Two-column layout ── */
+
+.settingsLayout {
+  display: flex;
+  height: 100%;
+}
+
+.settingsNav {
+  width: 192px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  padding: 28px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--bg);
+}
+
+.settingsNavLabel {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  padding: 0 12px 10px;
+  display: block;
+}
+
+.settingsNavItem {
+  display: block;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: color 0.1s, background 0.1s;
+  font-family: 'DM Sans', inherit;
+}
+
+.settingsNavItem:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.settingsNavItemActive {
+  background: var(--bg-secondary);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.settingsContent {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px 48px 64px;
+  max-width: 620px;
+}
+
 .page {
   padding: 36px 48px 64px;
   max-width: 620px;
@@ -6,11 +68,7 @@
 /* ── Section ── */
 
 .section {
-  padding: 28px 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.section:last-child {
+  padding: 0 0 28px;
   border-bottom: none;
 }
 
