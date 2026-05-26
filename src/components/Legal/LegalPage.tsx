@@ -1,5 +1,6 @@
-import { useEffect, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
+import { supabase } from '../../lib/supabase';
 import styles from './LegalPage.module.css';
 
 export type LegalType =
@@ -28,12 +29,8 @@ function Privacy() {
       <div className={styles.section}>
         <h2>1. Who we are</h2>
         <p>
-          Soma is an independent study-productivity application. For privacy inquiries, contact us
-          through the{' '}
-          <a href="https://github.com/Jacrwan/soma" target="_blank" rel="noopener noreferrer">
-            GitHub repository
-          </a>
-          .
+          Soma is an independent study-productivity application. For privacy inquiries, visit our{' '}
+          <Link to="/contact">Contact</Link> page.
         </p>
       </div>
 
@@ -176,10 +173,7 @@ function Privacy() {
         </p>
         <p>
           To exercise any of these rights, contact us via the{' '}
-          <a href="https://github.com/Jacrwan/soma" target="_blank" rel="noopener noreferrer">
-            GitHub repository
-          </a>
-          .
+          <Link to="/contact">Contact</Link> page.
         </p>
       </div>
 
@@ -509,12 +503,9 @@ function Refund() {
       <div className={styles.section}>
         <h2>How to request a refund</h2>
         <p>
-          Open a request via the{' '}
-          <a href="https://github.com/Jacrwan/soma" target="_blank" rel="noopener noreferrer">
-            GitHub repository
-          </a>{' '}
-          with the subject "Refund Request" and include the email address on your account and the
-          date of the charge. We will process eligible refunds within 5 business days.
+          Contact us via the <Link to="/contact">Contact</Link> page with the subject "Refund
+          Request" and include the email address on your account and the date of the charge. We
+          will process eligible refunds within 5 business days.
         </p>
       </div>
 
@@ -610,11 +601,8 @@ function DataDeletion() {
         <h2>Request deletion by contact</h2>
         <p>
           If you cannot access the app to delete your account, contact us via the{' '}
-          <a href="https://github.com/Jacrwan/soma" target="_blank" rel="noopener noreferrer">
-            GitHub repository
-          </a>{' '}
-          with "Data Deletion Request" and the email address on your account. We will process the
-          request within 30 days.
+          <Link to="/contact">Contact</Link> page with your account email address. We will process
+          the request within 30 days.
         </p>
       </div>
     </div>
@@ -625,47 +613,7 @@ function Contact() {
   return (
     <div className={styles.body}>
       <div className={styles.section}>
-        <p>
-          For privacy requests, security disclosures, billing issues, or general support, reach
-          out through the Soma GitHub repository.
-        </p>
-      </div>
-
-      <div className={styles.divider} />
-
-      <div className={styles.section}>
-        <h2>GitHub</h2>
-        <p>
-          Open an issue or discussion at{' '}
-          <a href="https://github.com/Jacrwan/soma" target="_blank" rel="noopener noreferrer">
-            github.com/Jacrwan/soma
-          </a>
-          .
-        </p>
-      </div>
-
-      <div className={styles.section}>
-        <h2>Response time</h2>
-        <p>
-          We aim to respond to all inquiries within 5 business days. For security-related
-          disclosures, please open a private advisory on GitHub.
-        </p>
-      </div>
-
-      <div className={styles.section}>
-        <h2>Refund requests</h2>
-        <p>
-          For billing and refund requests, see our <Link to="/refund">Refund Policy</Link> for
-          what to include in your message.
-        </p>
-      </div>
-
-      <div className={styles.section}>
-        <h2>Data deletion requests</h2>
-        <p>
-          To request deletion of your data, see our <Link to="/data-deletion">Data Deletion</Link>{' '}
-          page. Most deletions can be completed self-serve from within the app.
-        </p>
+        <p>Contact information coming soon.</p>
       </div>
     </div>
   );
@@ -746,6 +694,7 @@ const CONFIG: Record<
 
 export default function LegalPage({ type }: { type: LegalType }) {
   const config = CONFIG[type];
+  const [backTo, setBackTo] = useState('/');
 
   useEffect(() => {
     const prev = document.title;
@@ -753,13 +702,19 @@ export default function LegalPage({ type }: { type: LegalType }) {
     return () => { document.title = prev; };
   }, [config.title]);
 
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) setBackTo('/day-view');
+    });
+  }, []);
+
   const Content = config.component;
 
   return (
     <div className={styles.wrap}>
       <div className={styles.topbar}>
-        <Link to="/" className={styles.wordmark}>Soma</Link>
-        <Link to="/" className={styles.back}>
+        <Link to={backTo} className={styles.wordmark}>Soma</Link>
+        <Link to={backTo} className={styles.back}>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 2L4 7l5 5" />
           </svg>
