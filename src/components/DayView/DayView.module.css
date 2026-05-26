@@ -670,6 +670,8 @@
   pointer-events: none;
   transition: opacity 150ms ease, transform 150ms ease;
   transform: translateY(4px);
+  white-space: normal;
+  overflow: hidden;
 }
 
 .duePillMulti:hover .duePillHoverPanel {
@@ -699,6 +701,9 @@
 .duePillHoverName {
   font-size: 13px;
   color: var(--text-primary);
+  white-space: normal;
+  word-break: break-word;
+  max-width: 100%;
 }
 
 /* Quick-add slot modal */
