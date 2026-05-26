@@ -41,6 +41,8 @@ export interface SomaSettings {
     enabled: boolean;
   };
   theme: 'dark' | 'light';
+  canvasToken?: string;
+  googleToken?: string;
 }
 
 export interface AIMemoryStore {
@@ -116,7 +118,6 @@ const DEFAULT_SETTINGS: SomaSettings = {
 const KEYS = {
   subjects: 'soma_subjects',
   timerSessions: 'soma_sessions',
-  canvasToken: 'canvas_token',
   canvasBaseUrl: 'canvas_base_url',
   assignmentStatus: 'canvas_assignment_status',
   clearedAssignments: 'canvas_cleared_assignments',
@@ -126,7 +127,6 @@ const KEYS = {
   cachedModules: 'soma_cached_modules',
   cacheTimestamp: 'soma_canvas_cache_timestamp',
   anthropicKey: 'anthropic_api_key',
-  googleToken: 'soma_google_token',
   googleClientId: 'soma_google_client_id',
   googleEvents: 'soma_google_events',
   googleCacheTimestamp: 'soma_google_cache_timestamp',
@@ -149,6 +149,11 @@ async function uid(): Promise<string> {
   const { data: { user } } = await supabase.auth.getUser();
   return user!.id;
 }
+
+// In-memory token cache — populated by loadTokens() at auth time.
+// Never written to localStorage; source of truth is Supabase settings.
+let _canvasToken = '';
+let _googleToken = '';
 
 // ── Utility ───────────────────────────────────────────────────────────────
 
@@ -183,8 +188,16 @@ export const storage = {
   setTimerSessions: (v: TimerSession[]) => set(KEYS.timerSessions, v),
 
   // ── Canvas (localStorage) ────────────────────────────────────────────
-  getCanvasToken: (): string => get(KEYS.canvasToken, ''),
-  setCanvasToken: (v: string) => set(KEYS.canvasToken, v),
+  getCanvasToken: (): string => _canvasToken,
+  setCanvasToken: (v: string): void => {
+    _canvasToken = v;
+    void (async () => {
+      try {
+        const s = await storage.getSettings();
+        await storage.saveSettings({ ...s, canvasToken: v, googleToken: _googleToken });
+      } catch (err) { console.error('[storage] canvas token persist failed:', err); }
+    })();
+  },
 
   getCanvasBaseUrl: (): string => get(KEYS.canvasBaseUrl, ''),
   setCanvasBaseUrl: (v: string) => set(KEYS.canvasBaseUrl, v),
@@ -218,8 +231,42 @@ export const storage = {
   setAnthropicKey: (v: string) => set(KEYS.anthropicKey, v),
 
   // ── Google Calendar (localStorage) ──────────────────────────────────
-  getGoogleToken: (): string => get(KEYS.googleToken, ''),
-  setGoogleToken: (v: string) => set(KEYS.googleToken, v),
+  getGoogleToken: (): string => _googleToken,
+  setGoogleToken: (v: string): void => {
+    _googleToken = v;
+    void (async () => {
+      try {
+        const s = await storage.getSettings();
+        await storage.saveSettings({ ...s, canvasToken: _canvasToken, googleToken: v });
+      } catch (err) { console.error('[storage] google token persist failed:', err); }
+    })();
+  },
+
+  // Call once after auth resolves. Populates the in-memory token cache from
+  // Supabase and performs a one-time migration away from localStorage.
+  async loadTokens(): Promise<void> {
+    try {
+      const s = await storage.getSettings();
+      _canvasToken = s.canvasToken ?? '';
+      _googleToken = s.googleToken ?? '';
+      // One-time migration: move plaintext tokens out of localStorage
+      const migrateKey = (key: string): string => {
+        const raw = localStorage.getItem(key);
+        if (!raw) return '';
+        localStorage.removeItem(key);
+        try { return JSON.parse(raw) as string; } catch { return ''; }
+      };
+      const lsCanvas = migrateKey('canvas_token');
+      const lsGoogle = migrateKey('soma_google_token');
+      if (lsCanvas || lsGoogle) {
+        if (!_canvasToken && lsCanvas) _canvasToken = lsCanvas;
+        if (!_googleToken && lsGoogle) _googleToken = lsGoogle;
+        await storage.saveSettings({ ...s, canvasToken: _canvasToken, googleToken: _googleToken });
+      }
+    } catch (err) {
+      console.error('[storage] loadTokens failed:', err);
+    }
+  },
 
   getGoogleClientId: (): string => get(KEYS.googleClientId, ''),
   setGoogleClientId: (v: string) => set(KEYS.googleClientId, v),
