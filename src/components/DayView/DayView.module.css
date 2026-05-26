@@ -211,10 +211,25 @@
   overflow: visible;
 }
 
+/* Red dot at line start */
+.currentTimeLine::before {
+  content: '';
+  position: absolute;
+  left: 68px;
+  top: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--danger);
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+
+/* Red horizontal line */
 .currentTimeLine::after {
   content: '';
   position: absolute;
-  left: 0;
+  left: 68px;
   right: 0;
   top: 0;
   height: 1.5px;
@@ -223,9 +238,8 @@
 
 .nowPill {
   position: absolute;
-  left: -68px;
-  width: 68px;
-  text-align: right;
+  right: calc(100% - 68px);
+  width: auto;
   transform: translateY(-50%);
   background: var(--danger);
   color: oklch(99% 0.003 0);
@@ -234,10 +248,9 @@
   line-height: 20px;
   height: 20px;
   border-radius: 10px;
-  padding: 0 7px;
+  padding: 0 8px;
   letter-spacing: 0.2px;
   white-space: nowrap;
-  box-sizing: border-box;
   z-index: 1;
 }
 
