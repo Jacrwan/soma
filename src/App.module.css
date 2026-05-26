@@ -10,8 +10,8 @@
 .sidebar {
   width: 220px;
   flex-shrink: 0;
-  background: var(--nav-bg);
-  border-right: 1px solid var(--nav-border);
+  background: var(--bg);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -113,8 +113,8 @@
   justify-content: space-between;
   gap: 16px;
   padding: 10px 20px;
-  border-top: 1px solid var(--nav-border);
-  background: var(--nav-bg);
+  border-top: 1px solid var(--border);
+  background: var(--bg);
   flex-wrap: wrap;
 }
 
