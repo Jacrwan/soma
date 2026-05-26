@@ -978,6 +978,16 @@
   flex-shrink: 0;
 }
 
+/* ── Dark mode overrides ───────────────────────────────────────────────── */
+
+[data-theme="dark"] .generateBtn { background: var(--bg); }
+[data-theme="dark"] .generateBtn:hover:not(:disabled) { background: var(--bg-secondary); }
+[data-theme="dark"] .studyPlanDay { background: var(--bg); }
+[data-theme="dark"] .studyPlanItem { background: var(--bg); }
+[data-theme="dark"] .studyPlanItem:hover { background: var(--bg-secondary); }
+[data-theme="dark"] .studyPlanTaskBtn { background: var(--bg); }
+[data-theme="dark"] .studyPlanTaskBtn:hover:not(:disabled) { background: var(--bg-secondary); }
+
 @media (max-width: 768px) {
   .layout {
     flex-direction: column;

@@ -2388,6 +2388,37 @@
   border-color: oklch(22% 0.014 75);
 }
 
+/* Hover states */
+[data-theme="dark"] .dayCol:hover:not(.dayColSelected) { background: var(--bg-secondary); }
+[data-theme="dark"] .dayColSelected:hover { background: var(--bg-secondary); }
+[data-theme="dark"] .weekArrow:hover { background: var(--bg-secondary); }
+[data-theme="dark"] .todayBtn { border-color: var(--border); }
+[data-theme="dark"] .todayBtn:hover { background: var(--bg-secondary); }
+[data-theme="dark"] .subjectGroupHeader:hover { background: var(--bg-secondary); }
+[data-theme="dark"] .subjectRow:hover { background: var(--bg-secondary); }
+
+/* Dragging */
+[data-theme="dark"] .subjectGroupDragging { background: var(--bg-secondary); }
+[data-theme="dark"] .todoItemWrapDragging { background: var(--bg-secondary); }
+
+/* Add task / start buttons */
+[data-theme="dark"] .todoGroupAdd { background: var(--bg); border-color: var(--border); color: var(--text-muted); }
+[data-theme="dark"] .todoGroupAdd:hover { background: var(--bg-secondary); }
+[data-theme="dark"] .startTodoBtn { background: var(--bg); border-color: var(--border); }
+
+/* Popovers / modals */
+[data-theme="dark"] .popover { background: var(--bg-secondary); border-color: var(--border); }
+[data-theme="dark"] .subjectPicker { background: var(--bg-secondary); border-color: var(--border); }
+[data-theme="dark"] .duePillPopover { background: var(--bg-secondary); border-color: var(--border); }
+[data-theme="dark"] .modalBox { background: var(--bg-secondary); }
+[data-theme="dark"] .modalInput { background: var(--bg); border-color: var(--border); }
+[data-theme="dark"] .taskModalBox { background: var(--bg-secondary); }
+[data-theme="dark"] .taskModalStart { background: var(--bg); }
+
+/* Generic btn */
+[data-theme="dark"] .btn { background: var(--bg-secondary); border-color: var(--border); }
+[data-theme="dark"] .btn:hover { background: var(--bg-tertiary); }
+
 /* ── Reduced motion ────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
