@@ -680,9 +680,10 @@
 
 .duePillHoverRow {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
-  padding: 4px 0;
+  padding: 6px 0;
+  white-space: nowrap;
 }
 
 .duePillHoverRow + .duePillHoverRow {
@@ -690,17 +691,15 @@
 }
 
 .duePillHoverDot {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
-  margin-top: 3px;
 }
 
 .duePillHoverName {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--text-primary);
-  line-height: 1.4;
 }
 
 /* Quick-add slot modal */
