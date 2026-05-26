@@ -429,6 +429,8 @@
 /* ── Week view (Apple Calendar style) ───────────────────────────────────────  */
 
 .weekViewOuter {
+  --week-time-col-width: 60px;
+  --week-scrollbar-width: 4px;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -439,7 +441,8 @@
 /* Day headers row */
 .weekViewHeaderRow {
   display: grid;
-  grid-template-columns: 60px repeat(7, 1fr);
+  grid-template-columns: var(--week-time-col-width) repeat(7, minmax(0, 1fr));
+  padding-right: var(--week-scrollbar-width);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -503,7 +506,8 @@
 /* All-day row */
 .weekViewAllDayRow {
   display: grid;
-  grid-template-columns: 60px repeat(7, 1fr);
+  grid-template-columns: var(--week-time-col-width) repeat(7, minmax(0, 1fr));
+  padding-right: var(--week-scrollbar-width);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   min-height: 24px;
@@ -549,9 +553,10 @@
 /* Scrollable time grid */
 .weekViewScrollArea {
   flex: 1;
-  overflow-y: auto;
+  overflow-y: scroll;
   overflow-x: hidden;
   min-height: 0;
+  scrollbar-gutter: stable;
 }
 
 .weekViewScrollArea::-webkit-scrollbar {
@@ -561,11 +566,13 @@
 .weekViewGrid {
   display: flex;
   position: relative;
+  width: 100%;
+  min-width: 0;
 }
 
 /* Time label column */
 .weekViewTimeCol {
-  width: 60px;
+  width: var(--week-time-col-width);
   flex-shrink: 0;
   position: relative;
   border-right: 1px solid var(--border);
@@ -589,6 +596,7 @@
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   position: relative;
+  min-width: 0;
 }
 
 /* Hour lines across all columns */
