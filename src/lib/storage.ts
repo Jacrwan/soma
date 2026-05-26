@@ -305,7 +305,8 @@ export const storage = {
   },
 
   async deleteTodo(todoId: string): Promise<void> {
-    await supabase.from('todos').delete().eq('id', todoId);
+    const id = await uid();
+    await supabase.from('todos').delete().eq('id', todoId).eq('user_id', id);
   },
 
   // ── Schedule blocks (Supabase) ───────────────────────────────────────
@@ -325,7 +326,8 @@ export const storage = {
   },
 
   async deleteScheduleBlock(blockId: string): Promise<void> {
-    await supabase.from('schedule_blocks').delete().eq('id', blockId);
+    const id = await uid();
+    await supabase.from('schedule_blocks').delete().eq('id', blockId).eq('user_id', id);
   },
 
   // ── Elapsed time (Supabase) ──────────────────────────────────────────
