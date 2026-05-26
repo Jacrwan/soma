@@ -214,7 +214,7 @@
 .currentTimeLine::after {
   content: '';
   position: absolute;
-  left: 72px;
+  left: 0;
   right: 0;
   top: 0;
   height: 1.5px;
@@ -226,17 +226,17 @@
   left: 0;
   width: 68px;
   transform: translateY(-50%);
-  background: var(--danger);
+  background: #ef4444;
   color: #fff;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 8px 2px 0;
-  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 20px;
   white-space: nowrap;
   text-align: right;
   box-sizing: border-box;
   line-height: 1.4;
-  letter-spacing: 0.01em;
+  z-index: 1;
 }
 
 /* Blocks */
