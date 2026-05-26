@@ -666,6 +666,7 @@
 /* Multi-item pill hover tooltip */
 .duePillMulti {
   overflow: visible;
+  cursor: default;
 }
 
 /* Bridge pseudo-element fills the gap between pill top and hover panel bottom */
@@ -727,7 +728,20 @@
   color: var(--text-primary);
   white-space: normal;
   word-break: break-word;
-  max-width: 100%;
+  flex: 1;
+}
+
+.duePillHoverLink {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-decoration: none;
+  flex-shrink: 0;
+  line-height: 1;
+  transition: color 0.1s;
+}
+
+.duePillHoverLink:hover {
+  color: var(--text-secondary);
 }
 
 /* Quick-add slot modal */

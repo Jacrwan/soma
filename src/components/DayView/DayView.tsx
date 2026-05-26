@@ -1718,7 +1718,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                       : { background: 'var(--bg-secondary)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }
                     ),
                   }}
-                  onClick={e => {
+                  onClick={isSingle ? (e => {
                     e.stopPropagation();
                     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                     setDueTagPopover(prev => prev?.mfm === mfm ? null : {
@@ -1726,7 +1726,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                       top: rect.top,
                       right: window.innerWidth - rect.right,
                     });
-                  }}
+                  }) : (e => e.stopPropagation())}
                 >
                   {isSingle ? firstA.name : (
                     <>
@@ -1739,12 +1739,15 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                           <div key={a.id} className={styles.duePillHoverRow}>
                             <span className={styles.duePillHoverDot} style={{ background: c }} />
                             <span className={styles.duePillHoverName}>{a.name}</span>
+                            {a.htmlUrl && (
+                              <a className={styles.duePillHoverLink} href={a.htmlUrl} target="_blank" rel="noreferrer">↗</a>
+                            )}
                           </div>
                         ))}
                       </div>
                     </>
                   )}
-                  {isOpen && (
+                  {isSingle && isOpen && (
                     <div
                       className={styles.duePillPopover}
                       ref={dueTagPopoverRef}
