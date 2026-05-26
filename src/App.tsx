@@ -143,7 +143,7 @@ function AppShell({ user, onLogout }: {
             <Link to="/billing">Billing</Link>
             <Link to="/refund">Refunds</Link>
             <Link to="/data-deletion">Data Deletion</Link>
-            <Link to="/ai">AI Disclaimer</Link>
+            <Link to="/ai-disclaimer">AI Disclaimer</Link>
             <Link to="/contact">Contact</Link>
           </div>
           <span className={styles.footerNotice}>
@@ -205,7 +205,7 @@ export default function App() {
       <Route path="/refund"        element={<LegalPage type="refund"        />} />
       <Route path="/data-deletion" element={<LegalPage type="data-deletion" />} />
       <Route path="/contact"       element={<LegalPage type="contact"       />} />
-      <Route path="/ai"            element={<LegalPage type="ai"            />} />
+      <Route path="/ai-disclaimer"  element={<LegalPage type="ai"            />} />
 
       {/* Protected app routes inside shell */}
       <Route element={shell}>

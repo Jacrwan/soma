@@ -1209,7 +1209,7 @@ export default function LandingPage() {
             <a href="/terms">Terms</a>
             <a href="/billing">Billing</a>
             <a href="/refund">Refunds</a>
-            <a href="/ai">AI Disclaimer</a>
+            <a href="/ai-disclaimer">AI Disclaimer</a>
             <a href="/contact">Contact</a>
           </div>
         </div>
