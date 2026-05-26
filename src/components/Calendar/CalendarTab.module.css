@@ -529,8 +529,25 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
-  overflow: hidden;
+  overflow: visible;
   min-width: 0;
+}
+
+.weekViewAllDayChipWrap {
+  position: relative;
+  display: block;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+/* Bridge fills gap between chip bottom and panel top */
+.weekViewAllDayChipWrap::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 8px;
 }
 
 .weekViewAllDayChip {
@@ -548,6 +565,63 @@
   display: block;
   flex-shrink: 0;
   max-width: 100%;
+  cursor: default;
+}
+
+.weekViewAllDayChipPanel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background: var(--bg);
+  border: 1px solid #EBEBEA;
+  border-radius: 12px;
+  padding: 10px 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  max-width: 260px;
+  min-width: 160px;
+  white-space: normal;
+  z-index: 200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease, transform 150ms ease;
+  transform: translateY(-4px);
+}
+
+.weekViewAllDayChipWrap:hover .weekViewAllDayChipPanel {
+  opacity: 1;
+  pointer-events: all;
+  transform: translateY(0);
+}
+
+.weekViewChipPanelName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.35;
+  margin-bottom: 4px;
+}
+
+.weekViewChipPanelMeta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 2px;
+}
+
+.weekViewChipPanelCourse {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.weekViewChipPanelLink {
+  font-size: 12px;
+  color: #5B6AF0;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.weekViewChipPanelLink:hover {
+  text-decoration: underline;
 }
 
 /* Scrollable time grid */

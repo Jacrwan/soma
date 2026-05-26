@@ -799,9 +799,25 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                   const chips = assignments.filter(a => a.dueAt && isSameDay(new Date(a.dueAt), day));
                   return (
                     <div key={i} className={styles.weekViewAllDayCell}>
-                      {chips.map(a => (
-                        <span key={a.id} className={styles.weekViewAllDayChip} title={a.name}>{a.name}</span>
-                      ))}
+                      {chips.map(a => {
+                        const dueDate = new Date(a.dueAt);
+                        const dueFmt = dueDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                        return (
+                          <div key={a.id} className={styles.weekViewAllDayChipWrap}>
+                            <span className={styles.weekViewAllDayChip}>{a.name}</span>
+                            <div className={styles.weekViewAllDayChipPanel} onClick={e => e.stopPropagation()}>
+                              <div className={styles.weekViewChipPanelName}>{a.name}</div>
+                              <div className={styles.weekViewChipPanelMeta}>Due {dueFmt}</div>
+                              <div className={styles.weekViewChipPanelCourse}>{a.courseName}</div>
+                              {a.htmlUrl && (
+                                <a className={styles.weekViewChipPanelLink} href={a.htmlUrl} target="_blank" rel="noreferrer">
+                                  Open in Canvas ↗
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   );
                 })}
