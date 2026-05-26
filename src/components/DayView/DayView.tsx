@@ -443,6 +443,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [dueTagPopover, setDueTagPopover] = useState<{ mfm: number; top: number; right: number } | null>(null);
   const [timerRunning, setTimerRunning] = useState(false);
   const [elapsedBySubject, setElapsedBySubject] = useState<Record<string, number>>({});
+  const [hoveredBadgeKey, setHoveredBadgeKey] = useState<string | null>(null);
   const [briefCollapsed, setBriefCollapsed] = useState<boolean>(() => {
     const s = localStorage.getItem('soma_brief_collapsed');
     return s === null ? true : s === 'true';
@@ -1266,6 +1267,26 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     }
   });
 
+  const itemsByDayKey = new Map<string, Array<{ name: string; color: string }>>();
+  todos.forEach(t => {
+    if (t.date) {
+      const k = dayKey(new Date(t.date + 'T00:00:00'));
+      if (!itemsByDayKey.has(k)) itemsByDayKey.set(k, []);
+      const subj = subjects.find(s => s.id === t.subjectId);
+      itemsByDayKey.get(k)!.push({ name: t.text, color: subj?.color ?? '#888' });
+    }
+  });
+  const WEEK_COURSE_COLORS = ['#ef5350', '#42a5f5', '#66bb6a', '#ab47bc', '#ffa726', '#26c6da', '#ec407a', '#8d6e63'];
+  const weekCourses = storage.getCachedCourses();
+  const weekCourseColorMap = Object.fromEntries(weekCourses.map((c, i) => [c.id, WEEK_COURSE_COLORS[i % WEEK_COURSE_COLORS.length]]));
+  storage.getCachedAssignments().forEach(a => {
+    if (a.dueAt) {
+      const k = dayKey(new Date(a.dueAt));
+      if (!itemsByDayKey.has(k)) itemsByDayKey.set(k, []);
+      itemsByDayKey.get(k)!.push({ name: a.name, color: weekCourseColorMap[a.courseId] ?? '#888' });
+    }
+  });
+
   const gridHeight = TOTAL_HOURS * SLOT_HEIGHT;
 
   function renderTodoItem(todo: Todo, groupId: string) {
@@ -1443,6 +1464,10 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             const badgeLabel = todoCount > 0 || assignmentCount > 0
               ? assignmentCount > 0 ? `${todoCount} • ${assignmentCount}` : `${todoCount}`
               : null;
+            const dayItems = itemsByDayKey.get(k) ?? [];
+            const isBadgeHov = hoveredBadgeKey === k;
+            const isSingleItem = dayItems.length === 1;
+            const isMultiItem = dayItems.length > 1;
             return (
               <div
                 key={i}
@@ -1457,7 +1482,37 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                 <span className={styles.dayCircle}>
                   <span className={styles.dayNum}>{day.getDate()}</span>
                 </span>
-                <span className={[styles.dayBadge, badgeLabel ? '' : styles.dayBadgeEmpty].filter(Boolean).join(' ')}>{badgeLabel}</span>
+                <div
+                  className={styles.dayBadgeWrap}
+                  onMouseEnter={() => { if (badgeLabel) setHoveredBadgeKey(k); }}
+                  onMouseLeave={() => setHoveredBadgeKey(null)}
+                >
+                  <span className={[
+                    styles.dayBadge,
+                    !badgeLabel ? styles.dayBadgeEmpty : '',
+                    isSingleItem && !isBadgeHov ? styles.dayBadgeSingleCollapsed : '',
+                    isSingleItem && isBadgeHov ? styles.dayBadgeSingleExpanded : '',
+                  ].filter(Boolean).join(' ')}>
+                    {isSingleItem && isBadgeHov ? (
+                      <>
+                        <span className={styles.dayBadgeItemDot} style={{ background: dayItems[0].color }} />
+                        {dayItems[0].name}
+                      </>
+                    ) : (
+                      badgeLabel
+                    )}
+                  </span>
+                  {isMultiItem && isBadgeHov && (
+                    <div className={styles.dayBadgePanel} onClick={e => e.stopPropagation()}>
+                      {dayItems.map((item, idx) => (
+                        <div key={idx} className={styles.dayBadgePanelRow}>
+                          <span className={styles.dayBadgePanelDot} style={{ background: item.color }} />
+                          <span className={styles.dayBadgePanelName}>{item.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
