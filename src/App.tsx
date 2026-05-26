@@ -178,9 +178,9 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  function handleLogout() {
-    supabase.auth.signOut();
-    navigate('/login');
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    navigate('/');
   }
 
   if (!authReady) return null;
