@@ -47,13 +47,13 @@ function truncate(text: string, max: number): string {
   return text.length > max ? text.slice(0, max).trimEnd() + '…' : text;
 }
 
-function heatmapColor(minutes: number): string {
-  if (minutes <= 0) return '#EEF0F5';
-  if (minutes <= 30) return '#C5D8F5';
-  if (minutes <= 60) return '#85B0ED';
-  if (minutes <= 120) return '#4A82D9';
-  if (minutes <= 180) return '#1E57C2';
-  return '#0D3A8F';
+function heatLevel(minutes: number): number {
+  if (minutes <= 0) return 0;
+  if (minutes <= 30) return 1;
+  if (minutes <= 60) return 2;
+  if (minutes <= 120) return 3;
+  if (minutes <= 180) return 4;
+  return 5;
 }
 
 function fmtCellTime(minutes: number): string {
@@ -320,16 +320,17 @@ export default function InsightsTab() {
               <div key={`empty-${i}`} className={styles.heatmapCellEmpty} />
             ))}
             {heatmapData.cells.map(({ day, minutes, isToday }) => {
-              const isDark = minutes >= 61;
+              const level = heatLevel(minutes);
+              const isDark = level >= 3;
               const timeLabel = fmtCellTime(minutes);
               return (
                 <div
                   key={day}
                   className={[
                     styles.heatmapCell,
+                    styles[`heatLevel${level}` as keyof typeof styles],
                     isToday ? styles.heatmapCellToday : '',
                   ].filter(Boolean).join(' ')}
-                  style={{ background: heatmapColor(minutes) }}
                   title={minutes > 0 ? `${minutes}m studied` : undefined}
                 >
                   <span className={[styles.heatmapDayNum, isDark ? styles.heatmapDayNumDark : ''].filter(Boolean).join(' ')}>

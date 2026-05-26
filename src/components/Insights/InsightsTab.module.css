@@ -402,6 +402,26 @@
   position: relative;
 }
 
+/* ── Heat level colours ── */
+
+.heatLevel0 { background: var(--bg-tertiary); }
+.heatLevel1 { background: #C5D8F5; }
+.heatLevel2 { background: #85B0ED; }
+.heatLevel3 { background: #4A82D9; }
+.heatLevel4 { background: #1E57C2; }
+.heatLevel5 { background: #0D3A8F; }
+
+[data-theme="dark"] .heatLevel1 { background: oklch(24% 0.07 265); }
+[data-theme="dark"] .heatLevel2 { background: oklch(32% 0.12 265); }
+[data-theme="dark"] .heatLevel3 { background: oklch(42% 0.17 265); }
+[data-theme="dark"] .heatLevel4 { background: oklch(52% 0.20 265); }
+[data-theme="dark"] .heatLevel5 { background: oklch(63% 0.22 265); }
+
+[data-theme="dark"] .heatmapDayNum { color: oklch(75% 0.006 265); }
+[data-theme="dark"] .heatmapDayNumDark { color: oklch(97% 0.004 265); }
+[data-theme="dark"] .heatmapTimeLabel { color: oklch(72% 0.008 265); }
+[data-theme="dark"] .heatmapTimeLabelDark { color: oklch(97% 0.004 265); }
+
 .heatmapCellToday {
   outline: 2px solid #5B6AF0;
   outline-offset: -2px;
