@@ -1892,7 +1892,13 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               {(() => {
                 const subject = taskModal.subjectId ? subjects.find(s => s.id === taskModal.subjectId) : null;
                 return subject ? (
-                  <span className={styles.taskModalSubjectChip}>
+                  <span
+                    className={styles.taskModalSubjectChip}
+                    style={{
+                      background: `${subject.color}1a`,
+                      borderColor: `${subject.color}4d`,
+                    }}
+                  >
                     <span className={styles.taskModalSubjectDot} style={{ background: subject.color }} />
                     {subject.name}
                   </span>

@@ -907,18 +907,23 @@
   line-height: 1;
 }
 
+@keyframes subjectPickerIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 .subjectPicker {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 8px);
   right: 0;
-  width: 180px;
-  background: #fff;
-  border: 1px solid oklch(91% 0.006 265);
-  border-radius: 10px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.1), 0 1px 4px rgba(0, 0, 0, 0.05);
+  width: 210px;
+  background: var(--bg, #FAFAF8);
+  border: 1px solid #EBEBEA;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.04);
   padding: 6px;
   z-index: 50;
-  animation: popoverIn 140ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: subjectPickerIn 150ms ease;
 }
 
 .subjectPickerTitle {
@@ -927,27 +932,28 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
-  padding: 4px 8px 6px;
+  padding: 6px 12px 4px;
 }
 
 .subjectPickerItem {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  padding: 7px 8px;
+  height: 40px;
+  padding: 0 12px;
   background: none;
   border: none;
-  border-radius: 6px;
-  font-size: 13px;
+  border-radius: 8px;
+  font-size: 14px;
   color: var(--text-primary);
   cursor: pointer;
   text-align: left;
-  transition: background 0.1s;
+  transition: background 0.12s;
 }
 
 .subjectPickerItem:hover {
-  background: oklch(97% 0.005 265);
+  background: rgba(91, 106, 240, 0.06);
 }
 
 .subjectPickerDot {
@@ -1128,9 +1134,9 @@
 .modalOverlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.22);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1951,12 +1957,12 @@
 /* ── Task creation modal ─────────────────────────────────────────────────── */
 
 @keyframes taskModalIn {
-  from { opacity: 0; transform: translateY(10px) scale(0.98); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
 .taskModalBox {
-  background: #fff;
+  background: #FAFAF8;
   border-radius: 16px;
   padding: 24px;
   width: 420px;
@@ -1964,7 +1970,7 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.14), 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.16);
   animation: taskModalIn 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -1976,9 +1982,11 @@
 }
 
 .taskModalTitle {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
 }
 
 .taskModalSubjectChip {
@@ -1988,10 +1996,9 @@
   font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary);
-  background: oklch(97% 0.004 265);
-  border: 1px solid oklch(92% 0.006 265);
   border-radius: 20px;
-  padding: 3px 10px 3px 7px;
+  padding: 4px 11px 4px 8px;
+  border: 1px solid transparent;
 }
 
 .taskModalSubjectDot {
@@ -2023,15 +2030,16 @@
   align-self: flex-start;
   border: none;
   background: none;
-  color: var(--text-muted);
+  color: var(--accent);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   padding: 0 0 14px;
+  opacity: 0.9;
 }
 
 .taskDetailsToggle:hover {
-  color: var(--text-primary);
+  opacity: 1;
 }
 
 .taskModalField {
@@ -2198,11 +2206,11 @@
 
 .taskModalSubmit {
   width: 100%;
-  padding: 11px;
+  height: 44px;
   background: var(--accent);
   color: #fff;
   border: none;
-  border-radius: 9px;
+  border-radius: 10px;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -2220,20 +2228,19 @@
 
 .taskModalStart {
   width: 100%;
-  padding: 10px;
-  background: #fff;
+  height: 44px;
+  background: transparent;
   color: var(--accent);
-  border: 1px solid oklch(78% 0.08 265);
-  border-radius: 9px;
+  border: 1.5px solid var(--accent);
+  border-radius: 10px;
   font-size: 14px;
-  font-weight: 650;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s;
 }
 
 .taskModalStart:hover:not(:disabled) {
-  background: oklch(97% 0.008 265);
-  border-color: var(--accent);
+  background: rgba(91, 106, 240, 0.06);
 }
 
 .taskModalStart:disabled {
