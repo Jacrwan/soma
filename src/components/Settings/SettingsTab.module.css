@@ -817,6 +817,18 @@
   color: var(--accent);
 }
 
+/* ── Dark mode overrides ───────────────────────────────────────────────── */
+
+[data-theme="dark"] .timeInput { background: var(--bg-secondary); }
+[data-theme="dark"] .prefSelect { background: var(--bg-secondary); }
+[data-theme="dark"] .segBtnActive { background: var(--bg-tertiary); box-shadow: 0 1px 3px oklch(0% 0 0 / 0.3); }
+[data-theme="dark"] .segBtn:hover:not(.segBtnActive) { background: var(--bg-tertiary); }
+[data-theme="dark"] .resetBtn { background: var(--bg); }
+[data-theme="dark"] .resetBtn:hover { background: var(--bg-secondary); }
+[data-theme="dark"] .modalBox { background: var(--bg-secondary); }
+[data-theme="dark"] .blockedTag { background: var(--bg-secondary); border-color: var(--border); }
+[data-theme="dark"] .tagRemove { background: var(--bg-tertiary); }
+
 /* ── Reduced motion ── */
 
 @media (prefers-reduced-motion: reduce) {
