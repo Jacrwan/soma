@@ -2249,39 +2249,42 @@
 }
 
 .taskModalCancel {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
-  text-align: center;
-  background: none;
-  border: none;
-  font-size: 13px;
-  color: var(--text-muted);
+  height: 44px;
+  background: transparent;
+  border: 1px solid #EBEBEA;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  color: oklch(38% 0.007 265);
   cursor: pointer;
-  padding: 4px;
-  transition: color 0.15s;
+  transition: background 0.12s, border-color 0.12s;
 }
 
 .taskModalCancel:hover {
-  color: var(--text-secondary);
+  background: oklch(97% 0.004 265);
+  border-color: oklch(84% 0.007 265);
 }
 
 .taskModalDelete {
   display: block;
-  width: 100%;
+  width: auto;
+  margin: 12px auto 0;
   text-align: center;
   background: none;
   border: none;
-  font-size: 12px;
-  color: var(--danger);
-  opacity: 0.6;
+  font-size: 13px;
+  color: #E85555;
   cursor: pointer;
-  padding: 4px;
-  margin-top: 2px;
-  transition: opacity 0.15s;
+  padding: 4px 8px;
+  transition: color 0.12s;
 }
 
 .taskModalDelete:hover {
-  opacity: 1;
+  color: oklch(42% 0.18 22);
 }
 
 /* ── Subject edit modal ─────────────────────────────────────────────────── */
