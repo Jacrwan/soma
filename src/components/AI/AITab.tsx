@@ -3,7 +3,20 @@ import { storage } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
 import { TimeBlock, Subject, Todo, ChatMessage, ChatSession, AiTodo } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
+import { SkeletonBlock } from '../UI/Skeleton';
 import styles from './AITab.module.css';
+
+function SessionListSkeleton() {
+  return (
+    <div style={{ padding: '6px 0' }}>
+      {[148, 112, 164].map((w, i) => (
+        <div key={i} style={{ padding: '7px 16px' }}>
+          <SkeletonBlock width={w} height={13} />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 // ── Date/session helpers ────────────────────────────────────────────────────
 
@@ -419,6 +432,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [sidebarMounted, setSidebarMounted] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const subjects = storage.getSubjects();
 
@@ -449,6 +463,8 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
+
+  useEffect(() => { setSidebarMounted(true); }, []);
 
   function updateSession(id: string, fn: (s: ChatSession) => ChatSession) {
     setSessions(prev => {
@@ -612,7 +628,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
           <button className={styles.newChatBtn} onClick={newChat} title="New chat">✎</button>
         </div>
         <div className={styles.sessionList}>
-          {sortedSessions.map(session => (
+          {!sidebarMounted ? <SessionListSkeleton /> : sortedSessions.map(session => (
             <SessionRow
               key={session.id}
               session={session}

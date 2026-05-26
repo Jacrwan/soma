@@ -5,7 +5,26 @@ import { getCourses, getActiveAssignments, getAssignments, getAnnouncements, get
 import { sendMessage } from '../../lib/ai';
 import { CanvasGrade } from '../../types';
 import AssignmentDetail from './AssignmentDetail';
+import { SkeletonBlock } from '../UI/Skeleton';
 import styles from './CanvasTab.module.css';
+
+function AssignmentSkeleton() {
+  const widths = [170, 210, 145, 192, 128];
+  return (
+    <div>
+      {widths.map((w, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+          <SkeletonBlock width={10} height={10} borderRadius="50%" />
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <SkeletonBlock width={w} height={13} />
+            <SkeletonBlock width={76} height={11} />
+          </div>
+          <SkeletonBlock width={64} height={11} />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const COURSE_COLORS = [
   '#ef5350', '#42a5f5', '#66bb6a', '#ab47bc',
@@ -801,7 +820,7 @@ Rules:
 
         {/* ── Assignment area ── */}
         <div className={styles.main}>
-          {loading && <div className={styles.loading}>Loading…</div>}
+          {loading && <AssignmentSkeleton />}
 
           {!loading && error && (
             <div className={styles.errorState}>

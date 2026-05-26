@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { getWeeklyStudyTime, getSubjectBreakdown, getEstimatedVsActual, getStudyStreak, getAIMemory } from '../../lib/insights';
 import { storage } from '../../lib/storage';
+import { SkeletonBlock } from '../UI/Skeleton';
 import styles from './InsightsTab.module.css';
 
 const PEAK_HOURS = Array.from({ length: 18 }, (_, i) => i + 6); // 6am–11pm
@@ -90,9 +91,72 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
+function InsightsSkeleton() {
+  const BAR_HEIGHTS = [55, 80, 40, 100, 70, 30, 90];
+  return (
+    <div className={styles.page}>
+      {/* Full-width: bar chart */}
+      <section className={`${styles.section} ${styles.spanFull}`}>
+        <div style={{ height: 20, width: 120, marginBottom: 18 }}>
+          <SkeletonBlock width={120} height={14} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 160 }}>
+          {BAR_HEIGHTS.map((h, i) => (
+            <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%' }}>
+              <div style={{ flex: 1, width: '100%', display: 'flex', alignItems: 'flex-end' }}>
+                <SkeletonBlock width="100%" height={`${h}%`} borderRadius="6px 6px 0 0" />
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <SkeletonBlock width={22} height={10} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Left col: donut + legend */}
+      <section className={styles.section}>
+        <div style={{ marginBottom: 18 }}>
+          <SkeletonBlock width={160} height={14} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
+          <SkeletonBlock width={130} height={130} borderRadius="50%" />
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {[100, 80, 120, 70].map((w, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                <SkeletonBlock width={8} height={8} borderRadius="50%" />
+                <SkeletonBlock width={w} height={12} />
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Right col: EVA rows */}
+      <section className={styles.section}>
+        <div style={{ marginBottom: 18 }}>
+          <SkeletonBlock width={140} height={14} />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 0, border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+          {[140, 110, 160].map((w, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderBottom: i < 2 ? '1px solid var(--border)' : 'none' }}>
+              <SkeletonBlock width={w} height={12} />
+              <div style={{ marginLeft: 'auto', flexShrink: 0 }}>
+                <SkeletonBlock width={48} height={11} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function InsightsTab() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [calendarOffset, setCalendarOffset] = useState(0);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => { setMounted(true); }, []);
 
   const weekly = useMemo(() => getWeeklyStudyTime(weekOffset), [weekOffset]);
   const breakdown = useMemo(() => getSubjectBreakdown(), []);
@@ -161,6 +225,8 @@ export default function InsightsTab() {
     const firstDow = new Date(year, month, 1).getDay();
     return { cells, firstDayOfWeekMon: (firstDow + 6) % 7, year, month };
   }, [calendarOffset]);
+
+  if (!mounted) return <InsightsSkeleton />;
 
   return (
     <div className={styles.page}>

@@ -1,0 +1,28 @@
+/* Skeleton shimmer tokens — override per theme */
+:global(:root) {
+  --sk-base: #EBEBEA;
+  --sk-highlight: #F5F5F3;
+}
+
+:global([data-theme='dark']) {
+  --sk-base: oklch(21% 0.009 265);
+  --sk-highlight: oklch(27% 0.010 265);
+}
+
+@keyframes skshimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+.block {
+  display: block;
+  background: linear-gradient(
+    90deg,
+    var(--sk-base)      25%,
+    var(--sk-highlight) 50%,
+    var(--sk-base)      75%
+  );
+  background-size: 200% 100%;
+  animation: skshimmer 1.6s ease-in-out infinite;
+  flex-shrink: 0;
+}

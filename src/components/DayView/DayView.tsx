@@ -4,7 +4,33 @@ import { sendMessage } from '../../lib/ai';
 import { Subject, TimeBlock, SubjectColor, Todo, GoogleCalendarEvent, CanvasAssignment, CanvasCourse } from '../../types';
 import TimerOverlay from '../Timer/TimerOverlay';
 import AssignmentDetail from '../Canvas/AssignmentDetail';
+import { SkeletonBlock } from '../UI/Skeleton';
 import styles from './DayView.module.css';
+
+function RightPanelSkeleton() {
+  const row = (titleW: number, t1W: number, t2W: number) => (
+    <div style={{ marginBottom: 22 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <SkeletonBlock width={10} height={10} borderRadius="50%" />
+        <SkeletonBlock width={titleW} height={13} />
+        <div style={{ marginLeft: 'auto', flexShrink: 0 }}>
+          <SkeletonBlock width={36} height={11} />
+        </div>
+      </div>
+      <div style={{ paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 7 }}>
+        <SkeletonBlock width={t1W} height={12} />
+        <SkeletonBlock width={t2W} height={12} />
+      </div>
+    </div>
+  );
+  return (
+    <div style={{ padding: '20px 20px 0' }}>
+      {row(148, 200, 136)}
+      {row(118, 172, 220)}
+      {row(168, 128, 156)}
+    </div>
+  );
+}
 
 const SLOT_HEIGHT = 60;
 const START_HOUR = 0;
@@ -425,6 +451,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     localStorage.getItem('soma_brief_text') ?? ''
   );
   const [briefLoading, setBriefLoading] = useState(false);
+  const [rightReady, setRightReady] = useState(false);
   const [panelRatio, setPanelRatio] = useState<number>(() => {
     const s = localStorage.getItem('soma_panel_ratio');
     return s ? Math.max(0.35, Math.min(0.75, parseFloat(s))) : 0.65;
@@ -475,6 +502,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       storage.setSubjects(visibleSubjects);
     }
     setSubjects(visibleSubjects);
+    setRightReady(true);
     const tick = () => {
       const now = new Date();
       setCurrentMinutes(now.getHours() * 60 + now.getMinutes());
@@ -1767,6 +1795,9 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
           </div>
         </div>
 
+        {!rightReady ? <RightPanelSkeleton /> : (
+        <>
+
         {activeSubjects.length === 0 && (
           <div className={styles.emptySubjects}>Add a subject to get started.</div>
         )}
@@ -1836,6 +1867,9 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             </div>
           );
         })()}
+
+        </>
+        )}
       </div>
 
       {/* ── Timer Overlay ── */}
