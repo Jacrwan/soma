@@ -1426,7 +1426,9 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                 onClick={() => selectDate(day)}
               >
                 <span className={styles.dayAbbr}>{DAY_ABBRS[i]}</span>
-                <span className={styles.dayNum}>{day.getDate()}</span>
+                <span className={styles.dayCircle}>
+                  <span className={styles.dayNum}>{day.getDate()}</span>
+                </span>
                 <span className={styles.dayBadge}>{badgeLabel ?? ''}</span>
               </div>
             );
