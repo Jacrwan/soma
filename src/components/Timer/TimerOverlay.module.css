@@ -142,8 +142,8 @@
   left: 220px;
   right: 0;
   height: 52px;
-  background: var(--nav-bg);
-  border-bottom: 1px solid oklch(55% 0.22 266 / 0.3);
+  background: #0F1117;
+  border-bottom: 1px solid rgba(91, 106, 240, 0.25);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -163,43 +163,40 @@
 .bannerLeft {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex: 1;
   min-width: 0;
 }
 
 .bannerDot {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
   animation: pulse 2s ease-in-out infinite;
 }
 
-.bannerInfo {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-
 .bannerSubject {
   font-size: 14px;
-  font-weight: 700;
-  color: oklch(97% 0.006 265);
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 1);
   white-space: nowrap;
-  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+.bannerSep {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.25);
+  margin: 0 2px;
+  flex-shrink: 0;
 }
 
 .bannerTask {
   font-size: 13px;
-  color: oklch(97% 0.006 265 / 0.5);
+  color: rgba(255, 255, 255, 0.5);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  line-height: 1.2;
 }
 
 .bannerCenter {
@@ -209,10 +206,10 @@
 }
 
 .bannerTimer {
-  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
-  font-size: 28px;
-  font-weight: 400;
-  color: oklch(97% 0.006 265);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 22px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 1);
   letter-spacing: 0.05em;
   font-variant-numeric: tabular-nums;
 }
@@ -226,43 +223,46 @@
 }
 
 .bannerBtn {
+  width: 32px;
   height: 32px;
-  padding: 0 14px;
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  background: transparent;
+  border-radius: 50%;
+  padding: 0;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 13px;
-  color: oklch(97% 0.006 265);
+  color: rgba(255, 255, 255, 1);
   flex-shrink: 0;
-  transition: border-color 0.15s, background 0.15s;
+  transition: background 0.15s;
 }
 
 .bannerBtn:hover {
-  border-color: rgba(255, 255, 255, 0.65);
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .bannerStopBtn {
+  width: 32px;
   height: 32px;
-  padding: 0 16px;
-  border-radius: 20px;
-  border: 1px solid #E85555;
-  background: transparent;
+  border-radius: 50%;
+  padding: 0;
+  border: none;
+  background: rgba(229, 57, 53, 0.15);
   color: #E85555;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 700;
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.15s, color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
 }
 
 .bannerStopBtn:hover {
-  background: #E85555;
-  color: oklch(99% 0.003 265);
+  background: rgba(229, 57, 53, 0.3);
 }
 
 @media (max-width: 768px) {
@@ -278,6 +278,6 @@
   }
 
   .bannerTimer {
-    font-size: 22px;
+    font-size: 18px;
   }
 }

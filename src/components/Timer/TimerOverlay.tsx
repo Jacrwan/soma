@@ -164,10 +164,13 @@ export default function TimerOverlay({ subject, onClose, onSessionSaved, onRunni
     <div className={`${styles.focusBanner}${isStopping ? ` ${styles.focusBannerOut}` : ''}`}>
       <div className={styles.bannerLeft}>
         <span className={styles.bannerDot} style={{ background: subject.color }} />
-        <div className={styles.bannerInfo}>
-          <span className={styles.bannerSubject}>{subject.name}</span>
-          {task && <span className={styles.bannerTask}>{task}</span>}
-        </div>
+        <span className={styles.bannerSubject}>{subject.name}</span>
+        {task && (
+          <>
+            <span className={styles.bannerSep}>/</span>
+            <span className={styles.bannerTask}>{task}</span>
+          </>
+        )}
       </div>
       <div className={styles.bannerCenter}>
         <span className={styles.bannerTimer}>{fmtElapsed(elapsed)}</span>
@@ -182,9 +185,10 @@ export default function TimerOverlay({ subject, onClose, onSessionSaved, onRunni
         </button>
         <button
           className={styles.bannerStopBtn}
+          title="Stop"
           onClick={handleStop}
         >
-          Stop
+          ■
         </button>
       </div>
     </div>
