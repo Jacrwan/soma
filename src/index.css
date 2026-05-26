@@ -2,14 +2,14 @@
 
 /* ── Light mode (default) ── */
 :root {
-  --nav-bg: oklch(97% 0.005 85);
-  --nav-border: oklch(89% 0.008 85);
+  --nav-bg: oklch(97.5% 0.003 265);
+  --nav-border: oklch(90% 0.006 265);
   --nav-text: oklch(42% 0.012 265);
   --nav-active: oklch(13% 0.004 265);
-  --bg: oklch(98.5% 0.006 85);
-  --bg-secondary: oklch(96.2% 0.007 85);
-  --bg-tertiary: oklch(93% 0.008 85);
-  --border: oklch(91.8% 0.008 85);
+  --bg: #ffffff;
+  --bg-secondary: oklch(96.5% 0.004 265);
+  --bg-tertiary: oklch(93% 0.005 265);
+  --border: oklch(91% 0.006 265);
   --accent: oklch(55% 0.22 266);
   --accent-hover: oklch(50% 0.22 266);
   --accent-warm: oklch(72% 0.12 52);
