@@ -58,7 +58,7 @@ const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
-const GCAL_COLOR = '#1a73e8';
+const GCAL_COLOR = '#9e9e9e';
 const CANVAS_COLOR = '#f4511e';
 const MAX_CHIPS = 3;
 const FILTER_KEY = 'soma_calendar_filters';
@@ -430,9 +430,9 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
           type: 'soma',
           label,
           sublabel,
-          color: `${baseColor}26`,
+          color: `${baseColor}1f`,
           borderColor: baseColor,
-          textColor: baseColor,
+          textColor: 'var(--text-primary)',
           startMin,
           endMin: endMin > startMin ? endMin : startMin + 30,
           block: b,
@@ -458,8 +458,9 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
           id: `gcal-${e.id}`,
           type: 'gcal',
           label: e.summary ?? '(No title)',
-          color: GCAL_COLOR,
-          textColor: 'oklch(99% 0.003 0)',
+          color: 'rgba(150, 150, 150, 0.15)',
+          borderColor: 'rgba(150, 150, 150, 0.5)',
+          textColor: 'var(--text-primary)',
           startMin,
           endMin: endMin > startMin ? endMin : startMin + 30,
           gcalEvent: e,

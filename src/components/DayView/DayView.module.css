@@ -225,17 +225,19 @@
   position: absolute;
   left: 0;
   width: 68px;
-  transform: translateY(-50%);
-  background: #ef4444;
-  color: #fff;
-  font-size: 11px;
-  font-weight: 500;
-  padding: 2px 8px;
-  border-radius: 20px;
-  white-space: nowrap;
   text-align: right;
+  transform: translateY(-50%);
+  background: var(--danger);
+  color: oklch(99% 0.003 0);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 20px;
+  height: 20px;
+  border-radius: 10px;
+  padding: 0 7px;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
   box-sizing: border-box;
-  line-height: 1.4;
   z-index: 1;
 }
 
