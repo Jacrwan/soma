@@ -11,7 +11,7 @@
   width: 220px;
   flex-shrink: 0;
   background: var(--nav-bg);
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid var(--nav-border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -113,7 +113,7 @@
   justify-content: space-between;
   gap: 16px;
   padding: 10px 20px;
-  border-top: 1px solid oklch(18% 0.012 265);
+  border-top: 1px solid var(--nav-border);
   background: var(--nav-bg);
   flex-wrap: wrap;
 }

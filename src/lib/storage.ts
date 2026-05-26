@@ -40,6 +40,7 @@ export interface SomaSettings {
   aiMemory: {
     enabled: boolean;
   };
+  theme: 'dark' | 'light';
 }
 
 export interface AIMemoryStore {
@@ -107,6 +108,7 @@ const DEFAULT_SETTINGS: SomaSettings = {
   aiMemory: {
     enabled: true,
   },
+  theme: 'dark',
 };
 
 // ── localStorage helpers (Canvas cache, tokens, session state) ────────────

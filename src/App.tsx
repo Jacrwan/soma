@@ -156,6 +156,11 @@ function AppShell({ user, onLogout }: {
   );
 }
 
+// ── Theme helpers ─────────────────────────────────────────────────────────
+export function applyTheme(theme: 'dark' | 'light') {
+  document.documentElement.dataset.theme = theme;
+}
+
 // ── Root component ────────────────────────────────────────────────────────
 export default function App() {
   const [user, setUser]         = useState<User | null>(null);
@@ -166,6 +171,10 @@ export default function App() {
     return d;
   });
   const navigate = useNavigate();
+
+  useEffect(() => {
+    applyTheme(storage.getSomaSettings().theme ?? 'dark');
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {

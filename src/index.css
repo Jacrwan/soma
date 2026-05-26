@@ -1,9 +1,11 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ── Light mode (default) ── */
 :root {
-  --nav-bg: oklch(10% 0.015 265);
-  --nav-text: oklch(60% 0.025 265);
-  --nav-active: oklch(97% 0.006 265);
+  --nav-bg: oklch(97% 0.005 85);
+  --nav-border: oklch(89% 0.008 85);
+  --nav-text: oklch(42% 0.012 265);
+  --nav-active: oklch(13% 0.004 265);
   --bg: oklch(98.5% 0.006 85);
   --bg-secondary: oklch(96.2% 0.007 85);
   --bg-tertiary: oklch(93% 0.008 85);
@@ -13,7 +15,7 @@
   --accent-warm: oklch(72% 0.12 52);
   --text-primary: oklch(13% 0.004 265);
   --text-secondary: oklch(40% 0.005 265);
-  --text-muted: oklch(62% 0.006 265);
+  --text-muted: oklch(55% 0.006 265);
   --danger: oklch(52% 0.2 25);
   --success: oklch(52% 0.18 145);
   --subject-1: oklch(55% 0.2 25);
@@ -31,13 +33,33 @@
   --space-xl: 40px;
 }
 
+/* ── Dark mode — matches landing page palette ── */
+[data-theme="dark"] {
+  --nav-bg: oklch(8% 0.012 265);
+  --nav-border: oklch(18% 0.012 265);
+  --nav-text: oklch(55% 0.025 265);
+  --nav-active: #F0EEE8;
+  --bg: #0A0B0F;
+  --bg-secondary: #0F1117;
+  --bg-tertiary: #161820;
+  --border: oklch(20% 0.012 265);
+  --accent: oklch(55% 0.22 266);
+  --accent-hover: oklch(60% 0.22 266);
+  --accent-warm: oklch(72% 0.12 52);
+  --text-primary: #F0EEE8;
+  --text-secondary: oklch(68% 0.01 265);
+  --text-muted: oklch(48% 0.01 265);
+  --danger: oklch(62% 0.2 25);
+  --success: oklch(62% 0.18 145);
+}
+
 body {
   font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg);
   color: var(--text-primary);
   font-size: 14px;
   line-height: 1.5;
-  transition: background-color 400ms ease, color 400ms ease;
+  transition: background-color 300ms ease, color 300ms ease;
 }
 
 body.focus-mode {

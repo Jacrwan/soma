@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { storage, SomaSettings } from '../../lib/storage';
+import { applyTheme } from '../../App';
 import { resetTimeAccuracy, resetPeakHours, resetSubjectPacing } from '../../lib/insights';
 import { supabase } from '../../lib/supabase';
 import styles from './SettingsTab.module.css';
@@ -7,7 +8,7 @@ import styles from './SettingsTab.module.css';
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 type Day = typeof DAYS[number];
 type HoursCategory = 'schoolHours' | 'workHours' | 'personalHours';
-type Section = 'profile' | 'availability' | 'study' | 'ai' | 'memory' | 'integrations';
+type Section = 'profile' | 'appearance' | 'availability' | 'study' | 'ai' | 'memory' | 'integrations';
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -272,6 +273,7 @@ export default function SettingsTab() {
 
   const navItems: [Section, string][] = [
     ['profile',       'Profile'],
+    ['appearance',    'Appearance'],
     ['availability',  'Availability'],
     ['study',         'Study Preferences'],
     ['ai',            'AI Behavior'],
@@ -370,6 +372,46 @@ export default function SettingsTab() {
                 >
                   {deleteLoading ? 'Deleting…' : 'Delete account'}
                 </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeSection === 'appearance' && (
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>Appearance</h2>
+            <div className={styles.prefGrid}>
+              <div className={styles.prefRow}>
+                <label className={styles.prefLabel}>Theme</label>
+                <div className={styles.themeToggle}>
+                  <button
+                    className={`${styles.themeBtn}${(settings.theme ?? 'dark') === 'light' ? ` ${styles.themeBtnActive}` : ''}`}
+                    onClick={() => {
+                      const next = { ...settings, theme: 'light' as const };
+                      save(next);
+                      applyTheme('light');
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                      <circle cx="7" cy="7" r="2.5"/>
+                      <path d="M7 1v1.5M7 11.5V13M1 7h1.5M11.5 7H13M3.05 3.05l1.06 1.06M9.89 9.89l1.06 1.06M10.95 3.05l-1.06 1.06M4.11 9.89l-1.06 1.06"/>
+                    </svg>
+                    Light
+                  </button>
+                  <button
+                    className={`${styles.themeBtn}${(settings.theme ?? 'dark') === 'dark' ? ` ${styles.themeBtnActive}` : ''}`}
+                    onClick={() => {
+                      const next = { ...settings, theme: 'dark' as const };
+                      save(next);
+                      applyTheme('dark');
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+                      <path d="M11.5 9A5.5 5.5 0 0 1 5 2.5a5.5 5.5 0 1 0 6.5 6.5Z"/>
+                    </svg>
+                    Dark
+                  </button>
+                </div>
               </div>
             </div>
           </section>

@@ -15,7 +15,7 @@
 .section {
   margin-bottom: 44px;
   padding-bottom: 8px;
-  border-bottom: 1px solid oklch(93% 0.003 265);
+  border-bottom: 1px solid var(--border);
 }
 
 .section:last-child {
@@ -154,13 +154,13 @@
   display: flex;
   align-items: flex-end;
   background: transparent;
-  border: 1px solid oklch(91% 0.008 265);
+  border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
 }
 
 .barTrackEmpty {
-  background: #EBEBEA;
+  background: var(--bg-tertiary);
 }
 
 .bar {
@@ -445,8 +445,8 @@
   align-items: center;
   gap: 10px;
   padding: 14px 16px;
-  background: oklch(97.5% 0.004 265);
-  border: 1px solid oklch(92% 0.006 265);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
   border-radius: 10px;
 }
 
@@ -484,7 +484,7 @@
   display: flex;
   align-items: flex-end;
   background: transparent;
-  border: 1px solid oklch(91% 0.008 265);
+  border: 1px solid var(--border);
   border-radius: 4px;
   overflow: hidden;
 }

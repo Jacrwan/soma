@@ -783,6 +783,40 @@
   cursor: not-allowed;
 }
 
+/* ── Theme toggle ── */
+
+.themeToggle {
+  display: flex;
+  gap: 8px;
+}
+
+.themeBtn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.14s, color 0.14s, background 0.14s;
+}
+
+.themeBtn:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.themeBtnActive {
+  border-color: var(--accent);
+  background: oklch(55% 0.22 266 / 0.12);
+  color: var(--accent);
+}
+
 /* ── Reduced motion ── */
 
 @media (prefers-reduced-motion: reduce) {
