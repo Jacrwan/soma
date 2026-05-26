@@ -160,9 +160,7 @@
 }
 
 .barTrackEmpty {
-  background-image: radial-gradient(circle, oklch(83% 0.007 265) 1px, transparent 1px);
-  background-size: 5px 5px;
-  background-position: center;
+  background: #EBEBEA;
 }
 
 .bar {
