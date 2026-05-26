@@ -266,8 +266,8 @@ export default function InsightsTab() {
         )}
       </section>
 
-      {/* ── Study streak — full width ── */}
-      <section className={`${styles.section} ${styles.spanFull}`}>
+      {/* ── Study streak — half col, pairs with Time Accuracy ── */}
+      <section className={styles.section}>
         <h2 className={`${styles.sectionTitle} ${styles.sectionTitleStreak}`}>Study streak</h2>
         <div className={styles.streakHero}>
           <svg width="32" height="44" viewBox="0 0 32 44" fill="none" className={styles.flameSvg} aria-hidden="true">
