@@ -33,22 +33,22 @@
   --space-xl: 40px;
 }
 
-/* ── Dark mode — matches landing page palette ── */
+/* ── Dark mode — dark gray palette ── */
 [data-theme="dark"] {
-  --nav-bg: oklch(8% 0.012 265);
-  --nav-border: oklch(18% 0.012 265);
-  --nav-text: oklch(55% 0.025 265);
+  --nav-bg: oklch(14% 0.010 265);
+  --nav-border: oklch(24% 0.010 265);
+  --nav-text: oklch(56% 0.025 265);
   --nav-active: #F0EEE8;
-  --bg: #0A0B0F;
-  --bg-secondary: #0F1117;
-  --bg-tertiary: #161820;
-  --border: oklch(20% 0.012 265);
+  --bg: oklch(13% 0.009 265);
+  --bg-secondary: oklch(17% 0.010 265);
+  --bg-tertiary: oklch(21% 0.010 265);
+  --border: oklch(27% 0.010 265);
   --accent: oklch(55% 0.22 266);
   --accent-hover: oklch(60% 0.22 266);
   --accent-warm: oklch(72% 0.12 52);
   --text-primary: #F0EEE8;
-  --text-secondary: oklch(68% 0.01 265);
-  --text-muted: oklch(48% 0.01 265);
+  --text-secondary: oklch(70% 0.010 265);
+  --text-muted: oklch(52% 0.010 265);
   --danger: oklch(62% 0.2 25);
   --success: oklch(62% 0.18 145);
 }
