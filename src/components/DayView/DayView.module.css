@@ -161,24 +161,55 @@
   height: 14px;
 }
 
-/* Single-item badge expands inline on hover */
-.dayBadgeSingleCollapsed {
+/* Bridge pseudo-element fills the gap so the panel stays open when moving mouse into it */
+.dayBadgeWrap::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 10px;
+}
+
+/* Single-item badge: expands on .dayBadgeWrap:hover via CSS */
+.dayBadgeSingle {
   display: inline-flex;
   align-items: center;
-  max-width: 52px;
   overflow: hidden;
   white-space: nowrap;
+  max-width: 60px;
   transition: max-width 150ms ease;
 }
 
-.dayBadgeSingleExpanded {
+.dayBadgeWrap:hover .dayBadgeSingle {
+  max-width: 240px;
+}
+
+.dayBadgeCount {
+  flex-shrink: 0;
+  transition: opacity 100ms ease, max-width 100ms ease;
+}
+
+.dayBadgeWrap:hover .dayBadgeCount {
+  opacity: 0;
+  max-width: 0;
+  overflow: hidden;
+}
+
+.dayBadgeInline {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  max-width: 220px;
+  flex-shrink: 0;
+  max-width: 0;
   overflow: hidden;
-  white-space: nowrap;
-  transition: max-width 150ms ease;
+  opacity: 0;
+  transition: opacity 100ms ease 60ms;
+}
+
+.dayBadgeWrap:hover .dayBadgeInline {
+  max-width: 200px;
+  opacity: 1;
 }
 
 .dayBadgeItemDot {
@@ -188,17 +219,12 @@
   flex-shrink: 0;
 }
 
-/* Multi-item floating panel */
-@keyframes badgePanelIn {
-  from { opacity: 0; transform: translateX(-50%) translateY(-4px); }
-  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
-}
-
+/* Multi-item panel: always in DOM, shown on .dayBadgeWrap:hover */
 .dayBadgePanel {
   position: absolute;
   top: calc(100% + 6px);
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(-50%) translateY(-4px);
   background: var(--bg);
   border: 1px solid #EBEBEA;
   border-radius: 12px;
@@ -207,8 +233,15 @@
   min-width: 160px;
   max-width: 240px;
   z-index: 200;
-  animation: badgePanelIn 150ms ease forwards;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
+.dayBadgeWrap:hover .dayBadgePanel {
+  opacity: 1;
   pointer-events: all;
+  transform: translateX(-50%) translateY(0);
 }
 
 .dayBadgePanelRow {

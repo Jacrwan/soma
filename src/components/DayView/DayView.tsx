@@ -443,7 +443,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [dueTagPopover, setDueTagPopover] = useState<{ mfm: number; top: number; right: number } | null>(null);
   const [timerRunning, setTimerRunning] = useState(false);
   const [elapsedBySubject, setElapsedBySubject] = useState<Record<string, number>>({});
-  const [hoveredBadgeKey, setHoveredBadgeKey] = useState<string | null>(null);
   const [briefCollapsed, setBriefCollapsed] = useState<boolean>(() => {
     const s = localStorage.getItem('soma_brief_collapsed');
     return s === null ? true : s === 'true';
@@ -1465,7 +1464,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               ? assignmentCount > 0 ? `${todoCount} • ${assignmentCount}` : `${todoCount}`
               : null;
             const dayItems = itemsByDayKey.get(k) ?? [];
-            const isBadgeHov = hoveredBadgeKey === k;
             const isSingleItem = dayItems.length === 1;
             const isMultiItem = dayItems.length > 1;
             return (
@@ -1482,27 +1480,25 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                 <span className={styles.dayCircle}>
                   <span className={styles.dayNum}>{day.getDate()}</span>
                 </span>
-                <div
-                  className={styles.dayBadgeWrap}
-                  onMouseEnter={() => { if (badgeLabel) setHoveredBadgeKey(k); }}
-                  onMouseLeave={() => setHoveredBadgeKey(null)}
-                >
+                <div className={styles.dayBadgeWrap}>
                   <span className={[
                     styles.dayBadge,
                     !badgeLabel ? styles.dayBadgeEmpty : '',
-                    isSingleItem && !isBadgeHov ? styles.dayBadgeSingleCollapsed : '',
-                    isSingleItem && isBadgeHov ? styles.dayBadgeSingleExpanded : '',
+                    isSingleItem ? styles.dayBadgeSingle : '',
                   ].filter(Boolean).join(' ')}>
-                    {isSingleItem && isBadgeHov ? (
+                    {isSingleItem ? (
                       <>
-                        <span className={styles.dayBadgeItemDot} style={{ background: dayItems[0].color }} />
-                        {dayItems[0].name}
+                        <span className={styles.dayBadgeCount}>{badgeLabel}</span>
+                        <span className={styles.dayBadgeInline}>
+                          <span className={styles.dayBadgeItemDot} style={{ background: dayItems[0].color }} />
+                          {dayItems[0].name}
+                        </span>
                       </>
                     ) : (
                       badgeLabel
                     )}
                   </span>
-                  {isMultiItem && isBadgeHov && (
+                  {isMultiItem && (
                     <div className={styles.dayBadgePanel} onClick={e => e.stopPropagation()}>
                       {dayItems.map((item, idx) => (
                         <div key={idx} className={styles.dayBadgePanelRow}>
