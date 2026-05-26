@@ -1,7 +1,13 @@
 .page {
   padding: 40px 48px 80px;
-  max-width: 680px;
-  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 40px;
+  align-items: start;
+}
+
+.spanFull {
+  grid-column: 1 / -1;
 }
 
 /* ── Section ── */
@@ -508,6 +514,19 @@
 .peakLabelTop {
   color: var(--accent);
   font-weight: 700;
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 900px) {
+  .page {
+    grid-template-columns: 1fr;
+    padding: 28px 24px 64px;
+  }
+
+  .spanFull {
+    grid-column: 1;
+  }
 }
 
 /* ── Reduced motion ── */

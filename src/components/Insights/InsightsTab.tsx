@@ -165,8 +165,8 @@ export default function InsightsTab() {
   return (
     <div className={styles.page}>
 
-      {/* ── Study time ── */}
-      <section className={styles.section}>
+      {/* ── Study time — full width ── */}
+      <section className={`${styles.section} ${styles.spanFull}`}>
         <div className={styles.weekNavRow}>
           <button
             className={styles.weekNavBtn}
@@ -206,7 +206,7 @@ export default function InsightsTab() {
         </div>
       </section>
 
-      {/* ── Subject breakdown ── */}
+      {/* ── Subject breakdown — left col ── */}
       <section
         className={styles.section}
         style={{ '--section-accent': donutSlices[0]?.color } as React.CSSProperties}
@@ -242,7 +242,7 @@ export default function InsightsTab() {
         )}
       </section>
 
-      {/* ── Estimated vs actual ── */}
+      {/* ── Estimated vs actual — right col ── */}
       <section className={styles.section}>
         <h2 className={`${styles.sectionTitle} ${styles.sectionTitleEva}`}>Estimated vs actual</h2>
         {estimated.length === 0 ? (
@@ -266,8 +266,8 @@ export default function InsightsTab() {
         )}
       </section>
 
-      {/* ── Study streak ── */}
-      <section className={styles.section}>
+      {/* ── Study streak — full width ── */}
+      <section className={`${styles.section} ${styles.spanFull}`}>
         <h2 className={`${styles.sectionTitle} ${styles.sectionTitleStreak}`}>Study streak</h2>
         <div className={styles.streakHero}>
           <svg width="32" height="44" viewBox="0 0 32 44" fill="none" className={styles.flameSvg} aria-hidden="true">
@@ -379,7 +379,7 @@ export default function InsightsTab() {
         })()}
       </section>
 
-      <section className={styles.section}>
+      <section className={`${styles.section} ${styles.spanFull}`}>
         <h2 className={styles.sectionTitle}>Peak study hours</h2>
         {!aiMemory ? (
           <EmptyState message="Complete more tasks to unlock AI insights." />
