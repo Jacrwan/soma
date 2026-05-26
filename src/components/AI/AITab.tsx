@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { storage } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
+import { friendlyError } from '../../lib/errors';
 import { TimeBlock, Subject, Todo, ChatMessage, ChatSession, AiTodo } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
 import { SkeletonBlock } from '../UI/Skeleton';
@@ -558,10 +559,10 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
         id: crypto.randomUUID(), role: 'assistant', content: response, scheduleBlocks, todos,
       };
       updateSession(activeSessionId, s => ({ ...s, messages: [...s.messages, assistantMsg] }));
-    } catch (err) {
+    } catch {
       const errorMsg: ChatMessage = {
         id: crypto.randomUUID(), role: 'assistant',
-        content: `Error: ${err instanceof Error ? err.message : 'Failed to get response.'}`,
+        content: friendlyError('ai'),
       };
       updateSession(activeSessionId, s => ({ ...s, messages: [...s.messages, errorMsg] }));
     } finally {

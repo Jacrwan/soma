@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Component, type ReactNode, type ErrorInfo } from 'react';
 import { Routes, Route, Navigate, Outlet, useLocation, useNavigate, Link } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
@@ -13,6 +13,58 @@ import { storage } from './lib/storage';
 import LandingPage from './components/Landing/LandingPage';
 import LegalPage from './components/Legal/LegalPage';
 import styles from './App.module.css';
+
+// ── Error boundary ────────────────────────────────────────────────────────
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[ErrorBoundary]', error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100dvh',
+          gap: 12,
+          fontFamily: 'system-ui, -apple-system, sans-serif',
+          textAlign: 'center',
+          padding: '0 24px',
+          background: '#0f0f0f',
+          color: '#c9c9c5',
+        }}>
+          <p style={{ fontSize: 17, fontWeight: 600, margin: 0 }}>Something went wrong.</p>
+          <p style={{ fontSize: 14, margin: 0, opacity: 0.6 }}>Please refresh the page to continue.</p>
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              marginTop: 8,
+              padding: '8px 20px',
+              border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: 8,
+              background: 'transparent',
+              color: '#c9c9c5',
+              cursor: 'pointer',
+              fontSize: 14,
+            }}
+          >
+            Refresh
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ── App shell layout (sidebar + footer + outlet) ─────────────────────────
 function AppShell({ user, onLogout }: {
@@ -201,6 +253,7 @@ export default function App() {
   );
 
   return (
+    <ErrorBoundary>
     <Routes>
       {/* Landing page */}
       <Route path="/" element={<LandingPage />} />
@@ -236,5 +289,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/day-view" replace />} />
       </Route>
     </Routes>
+    </ErrorBoundary>
   );
 }

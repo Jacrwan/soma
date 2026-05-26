@@ -87,7 +87,10 @@ export default async function handler(req: any, res: any) {
     });
 
     const data = await response.json();
-    if (!response.ok) return res.status(response.status).json(data);
+    if (!response.ok) {
+      console.error(JSON.stringify({ ...logBase, event: 'upstream_error', status: response.status }));
+      return res.status(500).json({ error: 'AI request failed' });
+    }
     res.json(data);
   } catch (err: any) {
     console.error(JSON.stringify({ ...logBase, event: 'error', message: err?.message }));

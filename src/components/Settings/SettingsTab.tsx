@@ -3,6 +3,7 @@ import { storage, SomaSettings } from '../../lib/storage';
 import { applyTheme } from '../../App';
 import { resetTimeAccuracy, resetPeakHours, resetSubjectPacing } from '../../lib/insights';
 import { supabase } from '../../lib/supabase';
+import { friendlyError } from '../../lib/errors';
 import styles from './SettingsTab.module.css';
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
@@ -179,7 +180,7 @@ export default function SettingsTab() {
     setPasswordLoading(true);
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) {
-      setPasswordError(error.message);
+      setPasswordError(friendlyError('auth'));
     } else {
       setPasswordSuccess('Password updated.');
       setNewPassword('');
@@ -201,15 +202,14 @@ export default function SettingsTab() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
-        const body = await res.json();
-        setDeleteError(body.error ?? 'Failed to delete account.');
+        setDeleteError(friendlyError('data'));
         setDeleteLoading(false);
         return;
       }
       await supabase.auth.signOut();
       window.location.href = '/';
     } catch {
-      setDeleteError('Network error. Please try again.');
+      setDeleteError(friendlyError('general'));
       setDeleteLoading(false);
     }
   }

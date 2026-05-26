@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { friendlyError } from '../../lib/errors';
 import styles from './AuthScreen.module.css';
 
 export default function AuthScreen({ initialMode = 'login' }: { initialMode?: 'login' | 'signup' }) {
@@ -20,7 +21,7 @@ export default function AuthScreen({ initialMode = 'login' }: { initialMode?: 'l
       options: { redirectTo: `${window.location.origin}/day-view` },
     });
     if (error) {
-      setError(error.message);
+      setError(friendlyError('auth'));
       setGoogleLoading(false);
     }
   }
@@ -33,10 +34,10 @@ export default function AuthScreen({ initialMode = 'login' }: { initialMode?: 'l
 
     if (mode === 'login') {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) setError(error.message);
+      if (error) setError(friendlyError('auth'));
     } else {
       const { error } = await supabase.auth.signUp({ email, password });
-      if (error) setError(error.message);
+      if (error) setError(friendlyError('auth'));
       else setNotice('Check your email for a confirmation link.');
     }
 

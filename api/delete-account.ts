@@ -30,7 +30,10 @@ export default async function handler(req: any, res: any) {
   }
 
   const { error: delErr } = await admin.auth.admin.deleteUser(uid);
-  if (delErr) return res.status(500).json({ error: delErr.message });
+  if (delErr) {
+    console.error('[delete-account] deleteUser failed:', delErr.message);
+    return res.status(500).json({ error: 'Request failed' });
+  }
 
   return res.status(200).json({ success: true });
 }
