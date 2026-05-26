@@ -134,6 +134,12 @@
   white-space: nowrap;
 }
 
+.dayBadge:empty {
+  background: transparent;
+  min-width: 0;
+  padding: 0;
+}
+
 /* ── Main layout ─────────────────────────────────────────────────────────── */
 
 .container {

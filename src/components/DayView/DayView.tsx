@@ -1427,7 +1427,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               >
                 <span className={styles.dayAbbr}>{DAY_ABBRS[i]}</span>
                 <span className={styles.dayNum}>{day.getDate()}</span>
-                {badgeLabel && <span className={styles.dayBadge}>{badgeLabel}</span>}
+                <span className={styles.dayBadge}>{badgeLabel ?? ''}</span>
               </div>
             );
           })}
