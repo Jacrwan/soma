@@ -269,6 +269,30 @@
   line-height: 1.4;
 }
 
+.dayBadgePanelLabel {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: oklch(60% 0.007 265);
+  padding: 0 0 3px;
+}
+
+.dayBadgePanelLabelDue {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #E85555;
+  padding: 0 0 3px;
+}
+
+.dayBadgePanelDivider {
+  height: 1px;
+  background: #EBEBEA;
+  margin: 5px 0;
+}
+
 /* ── Main layout ─────────────────────────────────────────────────────────── */
 
 .container {

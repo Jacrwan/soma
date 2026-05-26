@@ -1266,13 +1266,13 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     }
   });
 
-  const itemsByDayKey = new Map<string, Array<{ name: string; color: string }>>();
+  const itemsByDayKey = new Map<string, Array<{ name: string; color: string; type: 'todo' | 'assignment' }>>();
   todos.forEach(t => {
     if (t.date) {
       const k = dayKey(new Date(t.date + 'T00:00:00'));
       if (!itemsByDayKey.has(k)) itemsByDayKey.set(k, []);
       const subj = subjects.find(s => s.id === t.subjectId);
-      itemsByDayKey.get(k)!.push({ name: t.text, color: subj?.color ?? '#888' });
+      itemsByDayKey.get(k)!.push({ name: t.text, color: subj?.color ?? '#888', type: 'todo' });
     }
   });
   const WEEK_COURSE_COLORS = ['#ef5350', '#42a5f5', '#66bb6a', '#ab47bc', '#ffa726', '#26c6da', '#ec407a', '#8d6e63'];
@@ -1282,7 +1282,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     if (a.dueAt) {
       const k = dayKey(new Date(a.dueAt));
       if (!itemsByDayKey.has(k)) itemsByDayKey.set(k, []);
-      itemsByDayKey.get(k)!.push({ name: a.name, color: weekCourseColorMap[a.courseId] ?? '#888' });
+      itemsByDayKey.get(k)!.push({ name: a.name, color: weekCourseColorMap[a.courseId] ?? '#888', type: 'assignment' });
     }
   });
 
@@ -1500,12 +1500,38 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                   </span>
                   {isMultiItem && (
                     <div className={styles.dayBadgePanel} onClick={e => e.stopPropagation()}>
-                      {dayItems.map((item, idx) => (
-                        <div key={idx} className={styles.dayBadgePanelRow}>
-                          <span className={styles.dayBadgePanelDot} style={{ background: item.color }} />
-                          <span className={styles.dayBadgePanelName}>{item.name}</span>
-                        </div>
-                      ))}
+                      {(() => {
+                        const todoItems = dayItems.filter(item => item.type === 'todo');
+                        const assignmentItems = dayItems.filter(item => item.type === 'assignment');
+                        const hasBoth = todoItems.length > 0 && assignmentItems.length > 0;
+                        return (
+                          <>
+                            {todoItems.length > 0 && (
+                              <div>
+                                {hasBoth && <div className={styles.dayBadgePanelLabel}>Tasks</div>}
+                                {todoItems.map((item, idx) => (
+                                  <div key={idx} className={styles.dayBadgePanelRow}>
+                                    <span className={styles.dayBadgePanelDot} style={{ background: item.color }} />
+                                    <span className={styles.dayBadgePanelName}>{item.name}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            {hasBoth && <div className={styles.dayBadgePanelDivider} />}
+                            {assignmentItems.length > 0 && (
+                              <div>
+                                {hasBoth && <div className={styles.dayBadgePanelLabelDue}>Due</div>}
+                                {assignmentItems.map((item, idx) => (
+                                  <div key={idx} className={styles.dayBadgePanelRow}>
+                                    <span className={styles.dayBadgePanelDot} style={{ background: item.color }} />
+                                    <span className={styles.dayBadgePanelName}>{item.name}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
