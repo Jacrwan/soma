@@ -118,6 +118,23 @@ function getSundayOfWeek(date: Date): Date {
   return d;
 }
 
+function getFirstOfMonth(date: Date): Date {
+  const d = new Date(date.getFullYear(), date.getMonth(), 1);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function getMonthToRestoreFromWeek(weekStart: Date, originMonth: Date): Date {
+  const weekEnd = addDays(weekStart, 6);
+  if (
+    weekStart.getFullYear() === weekEnd.getFullYear()
+    && weekStart.getMonth() === weekEnd.getMonth()
+  ) {
+    return getFirstOfMonth(weekStart);
+  }
+  return originMonth;
+}
+
 function dateKey(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
@@ -144,10 +161,8 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   const [gcalError, setGcalError] = useState('');
 
   const [viewMode, setViewMode] = useState<ViewMode>('month');
-  const [viewMonth, setViewMonth] = useState<Date>(() => {
-    const d = new Date(selectedDate);
-    d.setDate(1); d.setHours(0, 0, 0, 0); return d;
-  });
+  const [viewMonth, setViewMonth] = useState<Date>(() => getFirstOfMonth(selectedDate));
+  const [originMonth, setOriginMonth] = useState<Date>(() => getFirstOfMonth(selectedDate));
   const [viewWeekStart, setViewWeekStart] = useState<Date>(() => getSundayOfWeek(selectedDate));
   const [filters, setFilters] = useState<Filters>(() => loadFilters());
   const [dataVersion, setDataVersion] = useState(0);
@@ -537,7 +552,8 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     if (viewMode === 'month') {
       setViewMonth(d => new Date(d.getFullYear(), d.getMonth() - 1, 1));
     } else {
-      setViewWeekStart(d => addDays(d, -7));
+      const next = addDays(viewWeekStart, -7);
+      setViewWeekStart(next);
     }
   }
 
@@ -545,24 +561,28 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     if (viewMode === 'month') {
       setViewMonth(d => new Date(d.getFullYear(), d.getMonth() + 1, 1));
     } else {
-      setViewWeekStart(d => addDays(d, 7));
+      const next = addDays(viewWeekStart, 7);
+      setViewWeekStart(next);
     }
   }
 
   function goToToday() {
     const today = new Date();
     if (viewMode === 'month') {
-      setViewMonth(new Date(today.getFullYear(), today.getMonth(), 1));
+      setViewMonth(getFirstOfMonth(today));
     } else {
-      setViewWeekStart(getSundayOfWeek(today));
+      const next = getSundayOfWeek(today);
+      setViewWeekStart(next);
     }
   }
 
   function switchViewMode(mode: ViewMode) {
+    if (mode === viewMode) return;
     if (mode === 'week') {
+      setOriginMonth(viewMonth);
       setViewWeekStart(getSundayOfWeek(viewMonth));
     } else {
-      setViewMonth(new Date(viewWeekStart.getFullYear(), viewWeekStart.getMonth(), 1));
+      setViewMonth(getMonthToRestoreFromWeek(viewWeekStart, originMonth));
     }
     setViewMode(mode);
   }
