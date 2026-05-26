@@ -142,8 +142,8 @@
   left: 220px;
   right: 0;
   height: 52px;
-  background: #0F1117;
-  border-bottom: 1px solid rgba(91, 106, 240, 0.25);
+  background: #0F1117 !important;
+  border-bottom: 1px solid rgba(91, 106, 240, 0.25) !important;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -179,7 +179,7 @@
 .bannerSubject {
   font-size: 14px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 1);
+  color: #ffffff !important;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -193,7 +193,7 @@
 
 .bannerTask {
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.5) !important;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -209,7 +209,7 @@
   font-family: 'DM Sans', sans-serif;
   font-size: 22px;
   font-weight: 500;
-  color: rgba(255, 255, 255, 1);
+  color: #ffffff !important;
   letter-spacing: 0.05em;
   font-variant-numeric: tabular-nums;
 }
@@ -227,20 +227,20 @@
   height: 32px;
   border-radius: 50%;
   padding: 0;
-  border: none;
-  background: rgba(255, 255, 255, 0.08);
+  border: none !important;
+  background: rgba(255, 255, 255, 0.08) !important;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 13px;
-  color: rgba(255, 255, 255, 1);
+  color: #ffffff !important;
   flex-shrink: 0;
   transition: background 0.15s;
 }
 
 .bannerBtn:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.15) !important;
 }
 
 .bannerStopBtn {
@@ -248,9 +248,9 @@
   height: 32px;
   border-radius: 50%;
   padding: 0;
-  border: none;
-  background: rgba(229, 57, 53, 0.15);
-  color: #E85555;
+  border: none !important;
+  background: rgba(229, 57, 53, 0.15) !important;
+  color: #E85555 !important;
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
@@ -262,7 +262,7 @@
 }
 
 .bannerStopBtn:hover {
-  background: rgba(229, 57, 53, 0.3);
+  background: rgba(229, 57, 53, 0.3) !important;
 }
 
 @media (max-width: 768px) {
