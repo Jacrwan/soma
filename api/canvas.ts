@@ -1,7 +1,7 @@
 /// <reference types="node" />
 
 const ALLOWED_ORIGINS = [
-  'https://soma-omega-three.vercel.app',
+  'https://somastudy.app',
   ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:5173'] : []),
 ];
 
