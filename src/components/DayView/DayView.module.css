@@ -211,20 +211,6 @@
   overflow: visible;
 }
 
-/* Red dot at line start */
-.currentTimeLine::before {
-  content: '';
-  position: absolute;
-  left: 68px;
-  top: 0;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--danger);
-  transform: translate(-50%, -50%);
-  z-index: 2;
-}
-
 /* Red horizontal line */
 .currentTimeLine::after {
   content: '';
