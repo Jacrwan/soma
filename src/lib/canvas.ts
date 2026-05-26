@@ -284,9 +284,17 @@ export async function getAssignmentDetails(
   courseId: number,
   assignmentId: number,
 ): Promise<AssignmentDetails> {
-  const base = import.meta.env.DEV ? DEV_BASE : baseUrl;
-  const url = `${base}/api/v1/courses/${courseId}/assignments/${assignmentId}?include[]=attachments`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const path = `/api/v1/courses/${courseId}/assignments/${assignmentId}?include[]=attachments`;
+  let res: Response;
+  if (import.meta.env.DEV) {
+    res = await fetch(`${DEV_BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  } else {
+    res = await fetch('/api/canvas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ canvasUrl: baseUrl, token, endpoint: path }),
+    });
+  }
   if (!res.ok) throw new Error(`Canvas error: ${res.status}`);
   const d = await res.json();
   return {
