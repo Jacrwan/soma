@@ -440,7 +440,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [gcalEvents, setGcalEvents] = useState<GoogleCalendarEvent[]>([]);
   const [dueAssignments, setDueAssignments] = useState<{ assignment: CanvasAssignment; course: CanvasCourse | undefined; color: string }[]>([]);
   const [deadlineDetail, setDeadlineDetail] = useState<{ courseId: number; assignmentId: number } | null>(null);
-  const [dueTagPopover, setDueTagPopover] = useState<{ mfm: number; top: number; right: number } | null>(null);
   const [timerRunning, setTimerRunning] = useState(false);
   const [elapsedBySubject, setElapsedBySubject] = useState<Record<string, number>>({});
   const [briefCollapsed, setBriefCollapsed] = useState<boolean>(() => {
@@ -462,7 +461,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [dragTodoGroupId, setDragTodoGroupId] = useState<string | null>(null);
   const [dragTodoOverIndex, setDragTodoOverIndex] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const dueTagPopoverRef = useRef<HTMLDivElement>(null);
   const statusPopoverRef = useRef<HTMLDivElement>(null);
   const pinPopoverRef = useRef<HTMLDivElement>(null);
   const subjectPickerRef = useRef<HTMLDivElement>(null);
@@ -639,17 +637,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [pinPopoverId]);
-
-  useEffect(() => {
-    if (!dueTagPopover) return;
-    const onDown = (e: MouseEvent) => {
-      if (dueTagPopoverRef.current && !dueTagPopoverRef.current.contains(e.target as Node)) {
-        setDueTagPopover(null);
-      }
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [dueTagPopover]);
 
   useEffect(() => {
     if (!taskModal) return;
@@ -1702,13 +1689,12 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             }
             return Array.from(grouped.entries()).map(([mfm, items]) => {
               const topPx = (mfm - START_HOUR * 60) * (SLOT_HEIGHT / 60) - 10;
-              const isOpen = dueTagPopover?.mfm === mfm;
               const isSingle = items.length === 1;
               const { assignment: firstA, color: firstColor } = items[0];
               return (
                 <div
                   key={`due-pill-${mfm}`}
-                  className={[styles.duePill, !isSingle ? styles.duePillMulti : ''].filter(Boolean).join(' ')}
+                  className={`${styles.duePill} ${styles.duePillMulti}`}
                   style={{
                     position: 'absolute',
                     top: topPx,
@@ -1718,15 +1704,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                       : { background: 'var(--bg-secondary)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }
                     ),
                   }}
-                  onClick={isSingle ? (e => {
-                    e.stopPropagation();
-                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                    setDueTagPopover(prev => prev?.mfm === mfm ? null : {
-                      mfm,
-                      top: rect.top,
-                      right: window.innerWidth - rect.right,
-                    });
-                  }) : (e => e.stopPropagation())}
+                  onClick={e => e.stopPropagation()}
                 >
                   {isSingle ? firstA.name : (
                     <>
@@ -1734,39 +1712,19 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                       {items.map(({ color: c, assignment: a }) => (
                         <span key={a.id} className={styles.duePillDot} style={{ background: c }} />
                       ))}
-                      <div className={styles.duePillHoverPanel} onClick={e => e.stopPropagation()}>
-                        {items.map(({ assignment: a, color: c }) => (
-                          <div key={a.id} className={styles.duePillHoverRow}>
-                            <span className={styles.duePillHoverDot} style={{ background: c }} />
-                            <span className={styles.duePillHoverName}>{a.name}</span>
-                            {a.htmlUrl && (
-                              <a className={styles.duePillHoverLink} href={a.htmlUrl} target="_blank" rel="noreferrer">↗</a>
-                            )}
-                          </div>
-                        ))}
-                      </div>
                     </>
                   )}
-                  {isSingle && isOpen && (
-                    <div
-                      className={styles.duePillPopover}
-                      ref={dueTagPopoverRef}
-                      style={{ top: dueTagPopover!.top, right: dueTagPopover!.right }}
-                      onClick={e => e.stopPropagation()}
-                    >
-                      {items.map(({ assignment: a, color: c }) => (
-                        <div key={a.id} className={styles.duePillPopoverRow}>
-                          <span className={styles.duePillDot} style={{ background: c }} />
-                          <span className={styles.duePillPopoverName}>{a.name}</span>
-                          {a.htmlUrl && (
-                            <a className={styles.duePillPopoverLink} href={a.htmlUrl} target="_blank" rel="noreferrer">
-                              Open in Canvas ↗
-                            </a>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <div className={styles.duePillHoverPanel} onClick={e => e.stopPropagation()}>
+                    {items.map(({ assignment: a, color: c }) => (
+                      <div key={a.id} className={styles.duePillHoverRow}>
+                        <span className={styles.duePillHoverDot} style={{ background: c }} />
+                        <span className={styles.duePillHoverName}>{a.name}</span>
+                        {a.htmlUrl && (
+                          <a className={styles.duePillHoverLink} href={a.htmlUrl} target="_blank" rel="noreferrer">↗</a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               );
             });
