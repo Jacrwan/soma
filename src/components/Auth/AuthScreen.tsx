@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import styles from './AuthScreen.module.css';
 
@@ -106,6 +107,15 @@ export default function AuthScreen({ initialMode = 'login' }: { initialMode?: 'l
           <button className={styles.submitBtn} type="submit" disabled={loading || googleLoading}>
             {loading ? '…' : mode === 'login' ? 'Log in' : 'Create account'}
           </button>
+
+          {mode === 'signup' && (
+            <p className={styles.consent}>
+              By creating an account you agree to our{' '}
+              <Link to="/terms" className={styles.consentLink}>Terms of Service</Link>
+              {' '}and{' '}
+              <Link to="/privacy" className={styles.consentLink}>Privacy Policy</Link>.
+            </p>
+          )}
         </form>
 
         <p className={styles.toggle}>

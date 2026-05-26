@@ -186,6 +186,24 @@
   color: #F0EEE8;
 }
 
+.consent {
+  font-size: 11px;
+  color: #5A5A6E;
+  text-align: center;
+  line-height: 1.5;
+  margin-top: -4px;
+}
+
+.consentLink {
+  color: #8A8ADE;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.consentLink:hover {
+  color: #F0EEE8;
+}
+
 @media (max-width: 440px) {
   .card {
     width: calc(100vw - 32px);

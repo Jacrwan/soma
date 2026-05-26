@@ -89,6 +89,14 @@
 
 /* ── Main content ── */
 
+.contentCol {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .main {
   flex: 1;
   overflow-y: auto;
@@ -99,104 +107,41 @@
 /* ── Footer (hidden — legal links not surfaced) ── */
 
 .footer {
-  display: none;
-}
-
-/* ── Legal overlay ── */
-
-.legalOverlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  background: oklch(0% 0 0 / 0.22);
-}
-
-.legalModal {
-  width: min(560px, 100%);
-  max-height: min(620px, calc(100vh - 40px));
-  overflow: auto;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 18px 60px oklch(0% 0 0 / 0.18);
-}
-
-.legalHeader {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 16px 18px;
-  border-bottom: 1px solid var(--border);
+  gap: 16px;
+  padding: 10px 20px;
+  border-top: 1px solid oklch(18% 0.012 265);
+  background: var(--nav-bg);
+  flex-wrap: wrap;
 }
 
-.legalTitle {
-  font-size: 15px;
-  font-weight: 650;
-  color: var(--text-primary);
-}
-
-.legalClose {
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 22px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.legalClose:hover {
-  background: var(--bg-secondary);
-  color: var(--text-primary);
-}
-
-.legalBody {
+.footerLinks {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 18px;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.55;
+  flex-wrap: wrap;
+  gap: 4px 16px;
 }
 
-.legalBody p {
-  margin: 0;
-}
-
-.legalLink {
-  color: var(--accent);
+.footerLinks a {
+  font-size: 11px;
+  color: var(--text-muted, #5A5A6E);
   text-decoration: none;
-  font-weight: 600;
+  transition: color 0.14s;
+  white-space: nowrap;
 }
 
-.legalLink:hover {
-  text-decoration: underline;
+.footerLinks a:hover {
+  color: oklch(65% 0.015 265);
 }
 
-.dangerButton {
-  align-self: flex-start;
-  margin-top: 4px;
-  padding: 8px 12px;
-  border: 1px solid oklch(68% 0.14 25);
-  border-radius: 8px;
-  background: var(--bg);
-  color: var(--danger);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
+.footerNotice {
+  font-size: 11px;
+  color: var(--text-muted, #5A5A6E);
+  white-space: nowrap;
 }
 
-.dangerButton:hover {
-  background: oklch(97% 0.01 25);
-}
 
 /* ── Focus mode ── */
 

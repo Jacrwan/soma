@@ -1205,9 +1205,12 @@ export default function LandingPage() {
             <p className="footer-copy">© 2026 Soma. Not affiliated with Canvas, Instructure, Google, or any school.</p>
           </div>
           <div className="footer-links">
-            <a href="#">Privacy</a>
-            <a href="#">Terms</a>
-            <a href="#">Contact</a>
+            <a href="/privacy">Privacy</a>
+            <a href="/terms">Terms</a>
+            <a href="/billing">Billing</a>
+            <a href="/refund">Refunds</a>
+            <a href="/ai">AI Disclaimer</a>
+            <a href="/contact">Contact</a>
           </div>
         </div>
       </footer>
