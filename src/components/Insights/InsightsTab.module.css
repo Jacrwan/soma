@@ -160,7 +160,8 @@
 }
 
 .barTrackEmpty {
-  background: var(--bg-tertiary);
+  background: transparent;
+  border-color: transparent;
 }
 
 .bar {
@@ -322,6 +323,7 @@
   flex-direction: column;
   gap: 6px;
   width: 100%;
+  max-width: 420px;
 }
 
 .heatmapNav {
