@@ -1682,7 +1682,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               return (
                 <div
                   key={`due-pill-${mfm}`}
-                  className={styles.duePill}
+                  className={[styles.duePill, !isSingle ? styles.duePillMulti : ''].filter(Boolean).join(' ')}
                   style={{
                     position: 'absolute',
                     top: topPx,
@@ -1708,6 +1708,14 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                       {items.map(({ color: c, assignment: a }) => (
                         <span key={a.id} className={styles.duePillDot} style={{ background: c }} />
                       ))}
+                      <div className={styles.duePillHoverPanel} onClick={e => e.stopPropagation()}>
+                        {items.map(({ assignment: a, color: c }) => (
+                          <div key={a.id} className={styles.duePillHoverRow}>
+                            <span className={styles.duePillHoverDot} style={{ background: c }} />
+                            <span className={styles.duePillHoverName}>{a.name}</span>
+                          </div>
+                        ))}
+                      </div>
                     </>
                   )}
                   {isOpen && (

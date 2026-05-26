@@ -639,6 +639,70 @@
   text-decoration: underline;
 }
 
+/* Multi-item pill hover tooltip */
+.duePillMulti {
+  overflow: visible;
+}
+
+/* Bridge pseudo-element fills the gap between pill top and hover panel bottom */
+.duePillMulti::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  height: 10px;
+}
+
+.duePillHoverPanel {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  background: var(--bg);
+  border: 1px solid #EBEBEA;
+  border-radius: 12px;
+  padding: 8px 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  min-width: 160px;
+  max-width: 240px;
+  z-index: 100;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease, transform 150ms ease;
+  transform: translateY(4px);
+}
+
+.duePillMulti:hover .duePillHoverPanel {
+  opacity: 1;
+  pointer-events: all;
+  transform: translateY(0);
+}
+
+.duePillHoverRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.duePillHoverRow + .duePillHoverRow {
+  border-top: 1px solid var(--border);
+}
+
+.duePillHoverDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+.duePillHoverName {
+  font-size: 12px;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
 /* Quick-add slot modal */
 .slotArea {
   cursor: pointer;
