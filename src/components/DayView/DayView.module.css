@@ -103,11 +103,6 @@
   color: var(--text-muted);
 }
 
-.dayColSelected .dayAbbr {
-  color: var(--accent);
-  font-weight: 600;
-}
-
 .dayNum {
   font-size: 18px;
   font-weight: 600;
@@ -115,7 +110,7 @@
 }
 
 .dayColSelected .dayNum {
-  background: var(--accent);
+  background: #5B6AF0;
   color: oklch(99% 0.003 265);
   border-radius: 50%;
   width: 34px;
@@ -128,8 +123,8 @@
 
 .dayBadge {
   font-size: 9px;
-  background: var(--accent);
-  color: #fff;
+  background: oklch(91% 0.012 265);
+  color: oklch(46% 0.018 265);
   border-radius: 8px;
   padding: 0 5px;
   min-width: 14px;
@@ -137,10 +132,6 @@
   line-height: 14px;
   height: 14px;
   white-space: nowrap;
-}
-
-.dayColSelected .dayBadge {
-  background: rgba(255, 255, 255, 0.35);
 }
 
 /* ── Main layout ─────────────────────────────────────────────────────────── */
