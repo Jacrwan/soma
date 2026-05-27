@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import DOMPurify from 'dompurify';
 import { getAssignmentDetails, AssignmentDetails } from '../../lib/canvas';
 import { storage } from '../../lib/storage';
 import styles from './AssignmentDetail.module.css';
@@ -10,10 +11,18 @@ interface Props {
 }
 
 function sanitizeHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/on\w+="[^"]*"/gi, '')
-    .replace(/on\w+='[^']*'/gi, '');
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: [
+      'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'strike',
+      'ul', 'ol', 'li', 'blockquote', 'pre', 'code',
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'a', 'span', 'div', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
+      'img',
+    ],
+    ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'class', 'style'],
+    ALLOW_DATA_ATTR: false,
+    FORCE_BODY: true,
+  });
 }
 
 function fmtSize(bytes: number): string {
@@ -120,6 +129,7 @@ export default function AssignmentDetail({ courseId, assignmentId, onClose }: Pr
                     src={pdfUrl}
                     className={styles.pdfViewer}
                     title="PDF viewer"
+                    sandbox="allow-scripts allow-same-origin"
                   />
                 )}
               </div>

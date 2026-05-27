@@ -810,7 +810,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                               <div className={styles.weekViewChipPanelMeta}>Due {dueFmt}</div>
                               <div className={styles.weekViewChipPanelCourse}>{a.courseName}</div>
                               {a.htmlUrl && (
-                                <a className={styles.weekViewChipPanelLink} href={a.htmlUrl} target="_blank" rel="noreferrer">
+                                <a className={styles.weekViewChipPanelLink} href={a.htmlUrl} target="_blank" rel="noopener noreferrer">
                                   Open in Canvas ↗
                                 </a>
                               )}

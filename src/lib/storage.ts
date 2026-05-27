@@ -126,7 +126,6 @@ const KEYS = {
   cachedAnnouncements: 'soma_cached_announcements',
   cachedModules: 'soma_cached_modules',
   cacheTimestamp: 'soma_canvas_cache_timestamp',
-  anthropicKey: 'anthropic_api_key',
   googleClientId: 'soma_google_client_id',
   googleEvents: 'soma_google_events',
   googleCacheTimestamp: 'soma_google_cache_timestamp',
@@ -225,10 +224,6 @@ export const storage = {
 
   getCanvasCourseNames: (): string[] => get(KEYS.canvasCourseNames, []),
   setCanvasCourseNames: (v: string[]) => set(KEYS.canvasCourseNames, v),
-
-  // ── Anthropic (localStorage) ─────────────────────────────────────────
-  getAnthropicKey: (): string => get(KEYS.anthropicKey, ''),
-  setAnthropicKey: (v: string) => set(KEYS.anthropicKey, v),
 
   // ── Google Calendar (localStorage) ──────────────────────────────────
   getGoogleToken: (): string => _googleToken,

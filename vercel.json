@@ -7,10 +7,12 @@
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "Content-Security-Policy", "value": "default-src 'self'; connect-src 'self' https://*.supabase.co https://api.anthropic.com https://*.instructure.com https://www.googleapis.com https://api.stripe.com; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; frame-src https://js.stripe.com https://hooks.stripe.com;" },
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; connect-src 'self' https://*.supabase.co https://api.anthropic.com https://*.instructure.com https://www.googleapis.com https://api.stripe.com; script-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://js.stripe.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; font-src https://fonts.gstatic.com; frame-src https://js.stripe.com https://hooks.stripe.com https://*.instructure.com; img-src 'self' data: https://*.instructure.com https://*.amazonaws.com; object-src 'none'; base-uri 'self'; form-action 'self' https://checkout.stripe.com;" },
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "X-Frame-Options", "value": "DENY" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "X-XSS-Protection", "value": "1; mode=block" },
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
       ]
     }
   ]

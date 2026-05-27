@@ -1,3 +1,4 @@
+import { supabase } from './supabase';
 import { CanvasCourse, CanvasAssignment, CanvasAnnouncement, CanvasModule, CanvasGrade } from '../types';
 
 const DEV_BASE = '/canvas-api';
@@ -13,6 +14,11 @@ export function stripHtml(html: string): string {
     .trim();
 }
 
+async function supabaseToken(): Promise<string> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return session?.access_token ?? '';
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function canvasFetch(token: string, baseUrl: string, path: string): Promise<any[]> {
   let res: Response;
@@ -21,9 +27,13 @@ export async function canvasFetch(token: string, baseUrl: string, path: string):
       headers: { Authorization: `Bearer ${token}` },
     });
   } else {
+    const sbToken = await supabaseToken();
     res = await fetch('/api/canvas', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${sbToken}`,
+      },
       body: JSON.stringify({ canvasUrl: baseUrl, token, endpoint: path }),
     });
   }
@@ -289,9 +299,13 @@ export async function getAssignmentDetails(
   if (import.meta.env.DEV) {
     res = await fetch(`${DEV_BASE}${path}`, { headers: { Authorization: `Bearer ${token}` } });
   } else {
+    const sbToken = await supabaseToken();
     res = await fetch('/api/canvas', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${sbToken}`,
+      },
       body: JSON.stringify({ canvasUrl: baseUrl, token, endpoint: path }),
     });
   }

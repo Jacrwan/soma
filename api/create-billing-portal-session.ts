@@ -21,8 +21,9 @@ export default async function handler(req: any, res: any) {
   if (applyCors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const token = (req.headers['authorization'] as string | undefined)?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'No token' });
+  const authHeader = req.headers['authorization'] as string | undefined;
+  if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'No token' });
+  const token = authHeader.slice(7);
 
   const supabaseUrl = process.env.VITE_SUPABASE_URL ?? '';
   const serviceKey  = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
@@ -50,7 +51,8 @@ export default async function handler(req: any, res: any) {
   }
 
   const stripe = new Stripe(stripeKey);
-  const origin = (req.headers['origin'] as string | undefined) ?? 'https://somastudy.app';
+  const rawOrigin = req.headers['origin'] as string | undefined;
+  const origin = rawOrigin && ALLOWED_ORIGINS.includes(rawOrigin) ? rawOrigin : 'https://somastudy.app';
 
   const portalSession = await stripe.billingPortal.sessions.create({
     customer: sub.stripe_customer_id,

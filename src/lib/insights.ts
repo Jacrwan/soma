@@ -121,7 +121,6 @@ export function getWeeklyStudyTime(weekOffset = 0): { day: string; minutes: numb
       return { day, minutes: 0 };
     }
   });
-  console.log('[insights] getWeeklyStudyTime:', result);
   return result;
 }
 
@@ -152,7 +151,6 @@ export function getSubjectBreakdown(): { subjectName: string; minutes: number; c
     }))
     .sort((a, b) => b.minutes - a.minutes);
 
-  console.log('[insights] getSubjectBreakdown:', result);
   return result;
 }
 
@@ -172,7 +170,6 @@ export function getEstimatedVsActual(): { text: string; estimated: number; actua
     })
     .filter(row => row.actual > 0);
 
-  console.log('[insights] getEstimatedVsActual:', result);
   return result;
 }
 
@@ -194,6 +191,5 @@ export function getStudyStreak(): number {
     }
   }
 
-  console.log('[insights] getStudyStreak:', streak);
   return streak;
 }
