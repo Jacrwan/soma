@@ -226,16 +226,29 @@ export default function SettingsTab() {
   }
 
   async function connectCanvas() {
-    const url = canvasUrlInput.trim().replace(/\/$/, '');
     const tk = canvasTokenInput.trim();
-    if (!url || !tk) return;
+    if (!canvasUrlInput.trim() || !tk) return;
     setCanvasConnecting(true);
     setCanvasError('');
     try {
-      const base = import.meta.env.DEV ? '/canvas-api' : url;
-      const res = await fetch(`${base}/api/v1/courses?per_page=1`, {
-        headers: { Authorization: `Bearer ${tk}` },
-      });
+      const url = new URL(canvasUrlInput.trim()).origin;
+      let res: Response;
+      if (import.meta.env.DEV) {
+        res = await fetch('/canvas-api/api/v1/courses?per_page=1', {
+          headers: { Authorization: `Bearer ${tk}` },
+        });
+      } else {
+        const { data: { session } } = await supabase.auth.getSession();
+        const sbToken = session?.access_token ?? '';
+        res = await fetch('/api/canvas', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${sbToken}`,
+          },
+          body: JSON.stringify({ canvasUrl: url, token: tk, endpoint: '/api/v1/courses?per_page=1' }),
+        });
+      }
       if (!res.ok) throw new Error('bad');
       storage.setCanvasToken(tk);
       storage.setCanvasBaseUrl(url);
@@ -737,6 +750,9 @@ export default function SettingsTab() {
               onChange={e => setCanvasUrlInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') connectCanvas(); if (e.key === 'Escape') setShowCanvasModal(false); }}
             />
+          </div>
+          <div className={styles.modalHint}>
+            Use your Canvas root URL, like https://school.instructure.com, https://canvas.school.edu, or a branded Canvas domain.
           </div>
           <div className={styles.modalField}>
             <label className={styles.modalLabel}>API Token</label>

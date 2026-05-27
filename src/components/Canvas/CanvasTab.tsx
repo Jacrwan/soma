@@ -3,6 +3,7 @@ import { storage } from '../../lib/storage';
 import { CanvasCourse, CanvasAssignment, CanvasAnnouncement, Subject, Todo } from '../../types';
 import { getCourses, getActiveAssignments, getAssignments, getAnnouncements, getModules, getGrades } from '../../lib/canvas';
 import { sendMessage } from '../../lib/ai';
+import { supabase } from '../../lib/supabase';
 import { CanvasGrade } from '../../types';
 import AssignmentDetail from './AssignmentDetail';
 import { SkeletonBlock } from '../UI/Skeleton';
@@ -454,21 +455,26 @@ export default function CanvasTab() {
   }
 
   async function handleConnect() {
-    const url = setupUrl.trim().replace(/\/$/, '');
     const tk = setupToken.trim();
-    if (!url || !tk) return;
+    if (!setupUrl.trim() || !tk) return;
     setConnectLoading(true);
     setConnectError('');
     try {
+      const url = new URL(setupUrl.trim()).origin;
       let res: Response;
       if (import.meta.env.DEV) {
         res = await fetch(`/canvas-api/api/v1/courses?per_page=1`, {
           headers: { Authorization: `Bearer ${tk}` },
         });
       } else {
+        const { data: { session } } = await supabase.auth.getSession();
+        const sbToken = session?.access_token ?? '';
         res = await fetch('/api/canvas', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${sbToken}`,
+          },
           body: JSON.stringify({ canvasUrl: url, token: tk, endpoint: '/api/v1/courses?per_page=1' }),
         });
       }
@@ -642,6 +648,9 @@ Rules:
               value={setupUrl}
               onChange={e => setSetupUrl(e.target.value)}
             />
+          </div>
+          <div className={styles.setupHint}>
+            Use your Canvas root URL, like https://school.instructure.com, https://canvas.school.edu, or a branded Canvas domain.
           </div>
           <div className={styles.setupField}>
             <label className={styles.setupLabel}>API Token</label>
