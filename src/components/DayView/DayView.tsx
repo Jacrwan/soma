@@ -88,6 +88,16 @@ function isOnDate(iso: string, date: Date): boolean {
   return isSameDay(new Date(iso), date);
 }
 
+interface TaskSession {
+  id: string;
+  subject_id: string;
+  task_text: string | null;
+  start_time: string;
+  end_time: string;
+  duration_seconds: number;
+  date: string;
+}
+
 function subjectSecsFromSessions(subjectId: string, date: Date): number {
   return storage.getTimerSessions()
     .filter(s => s.subjectId === subjectId && isOnDate(s.startTime, date))
@@ -460,6 +470,9 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [deadlineDetail, setDeadlineDetail] = useState<{ courseId: number; assignmentId: number } | null>(null);
   const [elapsedBySubject, setElapsedBySubject] = useState<Record<string, number>>({});
   const [missedBlockIds, setMissedBlockIds] = useState<Set<string>>(new Set());
+  const [taskSessions, setTaskSessions] = useState<TaskSession[]>([]);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editingSessionMins, setEditingSessionMins] = useState('');
   const [briefCollapsed, setBriefCollapsed] = useState<boolean>(() => {
     const s = localStorage.getItem('soma_brief_collapsed');
     return s === null ? true : s === 'true';
@@ -623,6 +636,27 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     window.addEventListener('soma_gcal_updated', loadGcal);
     return () => window.removeEventListener('soma_gcal_updated', loadGcal);
   }, [selectedDate]);
+
+  const loadTaskSessions = useCallback(async (todo: Todo) => {
+    if (!todo.subjectId) { setTaskSessions([]); return; }
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setTaskSessions([]); return; }
+      const { data } = await supabase
+        .from('timer_sessions')
+        .select('id, subject_id, task_text, start_time, end_time, duration_seconds, date')
+        .eq('user_id', user.id)
+        .eq('task_text', todo.text)
+        .eq('subject_id', todo.subjectId)
+        .order('start_time', { ascending: false });
+      setTaskSessions(data ?? []);
+    } catch { setTaskSessions([]); }
+  }, []);
+
+  useEffect(() => {
+    if (taskModal?.editingTodo) void loadTaskSessions(taskModal.editingTodo);
+    else setTaskSessions([]);
+  }, [taskModal?.editingTodo?.id, loadTaskSessions]);
 
   useEffect(() => {
     function onTimerStopped() {
@@ -896,6 +930,44 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       [block.subjectId]: Math.max(0, (prev[block.subjectId] ?? 0) - Math.round(linked.durationSeconds / 60)),
     }));
     setBlockModal(null);
+  }
+
+  async function saveSessionDuration(session: TaskSession, newMins: number) {
+    const newSecs = Math.max(1, newMins) * 60;
+    const { error } = await supabase
+      .from('timer_sessions')
+      .update({ duration_seconds: newSecs })
+      .eq('id', session.id);
+    if (error) return;
+    storage.setTimerSessions(
+      storage.getTimerSessions().map(s => s.id === session.id ? { ...s, durationSeconds: newSecs } : s)
+    );
+    if (session.date === toISODateString(selectedDate)) {
+      const delta = newMins - Math.round(session.duration_seconds / 60);
+      setElapsedBySubject(prev => ({
+        ...prev,
+        [session.subject_id]: Math.max(0, (prev[session.subject_id] ?? 0) + delta),
+      }));
+    }
+    setEditingSessionId(null);
+    if (taskModal?.editingTodo) void loadTaskSessions(taskModal.editingTodo);
+  }
+
+  async function deleteTaskSession(session: TaskSession) {
+    const { error } = await supabase
+      .from('timer_sessions')
+      .delete()
+      .eq('id', session.id);
+    if (error) return;
+    storage.setTimerSessions(storage.getTimerSessions().filter(s => s.id !== session.id));
+    if (session.date === toISODateString(selectedDate)) {
+      const mins = Math.round(session.duration_seconds / 60);
+      setElapsedBySubject(prev => ({
+        ...prev,
+        [session.subject_id]: Math.max(0, (prev[session.subject_id] ?? 0) - mins),
+      }));
+    }
+    if (taskModal?.editingTodo) void loadTaskSessions(taskModal.editingTodo);
   }
 
   function openBlockEdit(block: TimeBlock) {
@@ -2157,6 +2229,65 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               )}
               <button className={styles.taskModalCancel} onClick={() => setTaskModal(null)}>Cancel</button>
             </div>
+            {taskModal.editingTodo && (
+              <div className={styles.sessionSection}>
+                <div className={styles.sessionSectionTitle}>Study Sessions</div>
+                {taskSessions.length === 0
+                  ? <div className={styles.sessionEmpty}>No sessions logged yet</div>
+                  : taskSessions.map(s => {
+                    const fmtHm = (iso: string) => {
+                      const d = new Date(iso);
+                      const h = d.getHours(), m = d.getMinutes();
+                      return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+                    };
+                    const totalMins = Math.round(s.duration_seconds / 60);
+                    const durLabel = totalMins >= 60
+                      ? `${Math.floor(totalMins / 60)}h${totalMins % 60 > 0 ? ` ${totalMins % 60}m` : ''}`
+                      : `${totalMins}m`;
+                    const dateLabel = new Date(s.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    const isEditing = editingSessionId === s.id;
+                    return (
+                      <div key={s.id} className={styles.sessionRow}>
+                        <span className={styles.sessionDate}>{dateLabel}</span>
+                        <span className={styles.sessionTime}>{fmtHm(s.start_time)} – {fmtHm(s.end_time)}</span>
+                        {isEditing ? (
+                          <span className={styles.sessionEditWrap}>
+                            <input
+                              className={styles.sessionEditInput}
+                              type="number"
+                              min={1}
+                              value={editingSessionMins}
+                              autoFocus
+                              onChange={e => setEditingSessionMins(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') void saveSessionDuration(s, Number(editingSessionMins));
+                                if (e.key === 'Escape') setEditingSessionId(null);
+                              }}
+                            />
+                            <span className={styles.sessionEditUnit}>min</span>
+                            <button className={styles.sessionSaveBtn} onClick={() => void saveSessionDuration(s, Number(editingSessionMins))}>Save</button>
+                          </span>
+                        ) : (
+                          <span className={styles.sessionDur}>{durLabel}</span>
+                        )}
+                        <span className={styles.sessionRowActions}>
+                          <button
+                            className={styles.sessionIconBtn}
+                            title="Edit duration"
+                            onClick={() => { setEditingSessionId(s.id); setEditingSessionMins(String(totalMins)); }}
+                          >✎</button>
+                          <button
+                            className={`${styles.sessionIconBtn} ${styles.sessionIconBtnDanger}`}
+                            title="Delete session"
+                            onClick={() => void deleteTaskSession(s)}
+                          >×</button>
+                        </span>
+                      </div>
+                    );
+                  })
+                }
+              </div>
+            )}
             {taskModal.editingTodo && (
               <button
                 className={styles.taskModalDelete}

@@ -2495,6 +2495,123 @@
   border-color: oklch(84% 0.007 265);
 }
 
+/* ── Study Sessions section ─────────────────────────────────────────────── */
+
+.sessionSection {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.sessionSectionTitle {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.sessionEmpty {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 4px 0 2px;
+}
+
+.sessionRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.sessionRow:last-child { border-bottom: none; }
+
+.sessionDate {
+  color: var(--text-secondary);
+  min-width: 48px;
+  flex-shrink: 0;
+}
+
+.sessionTime {
+  color: var(--text-secondary);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sessionDur {
+  color: var(--text-primary);
+  font-weight: 600;
+  min-width: 44px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.sessionEditWrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.sessionEditInput {
+  width: 52px;
+  padding: 3px 6px;
+  border: 1.5px solid var(--accent);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+
+.sessionEditUnit {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.sessionSaveBtn {
+  padding: 3px 8px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.sessionRowActions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.sessionIconBtn {
+  background: none;
+  border: none;
+  padding: 2px 5px;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: color 0.12s, background 0.12s;
+  line-height: 1;
+}
+
+.sessionIconBtn:hover { color: var(--text-primary); background: var(--bg-tertiary); }
+
+.sessionIconBtnDanger:hover { color: var(--danger); background: transparent; }
+
+/* ── ─────────────────────────────────────────────────────────────────────── */
+
 .taskModalDelete {
   display: block;
   width: auto;
