@@ -416,6 +416,15 @@ export const storage = {
       .eq('subject_id', subjectId);
   },
 
+  async deleteTimerSessionsBySubject(subjectId: string): Promise<void> {
+    const id = await uid();
+    await supabase
+      .from('timer_sessions')
+      .delete()
+      .eq('user_id', id)
+      .eq('subject_id', subjectId);
+  },
+
   async saveTimerSession(session: TimerSession, subjectName: string): Promise<void> {
     const id = await uid();
     await supabase.from('timer_sessions').insert({

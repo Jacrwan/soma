@@ -9,6 +9,7 @@ export interface Subject {
   totalTimeToday: number; // seconds
   archived?: boolean;
   order?: number;
+  source?: 'manual' | 'canvas';
 }
 
 export interface TimeBlock {

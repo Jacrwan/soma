@@ -2029,6 +2029,26 @@
   padding: var(--space-md) 0;
 }
 
+.addSubjectBtn {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  margin-top: 4px;
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.addSubjectBtn:hover {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
 /* ── Mobile layout ─────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {

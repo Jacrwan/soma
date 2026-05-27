@@ -474,6 +474,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingSessionMins, setEditingSessionMins] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<{ todo: Todo; deleteSessions: boolean; deletePastBlocks: boolean } | null>(null);
+  const [deleteSubjectConfirm, setDeleteSubjectConfirm] = useState<{ subject: Subject; deleteSessions: boolean; deleteBlocks: boolean } | null>(null);
   const [briefCollapsed, setBriefCollapsed] = useState<boolean>(() => {
     const s = localStorage.getItem('soma_brief_collapsed');
     return s === null ? true : s === 'true';
@@ -1117,6 +1118,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       name: addSubjectForm.name.trim(),
       color: addSubjectForm.color,
       totalTimeToday: 0,
+      source: 'manual',
     };
     const updated = [...subjects, s];
     storage.setSubjects(updated);
@@ -1136,10 +1138,50 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   }
 
   function deleteSubject(id: string) {
+    const subject = subjects.find(s => s.id === id);
+    if (subject?.source === 'manual') {
+      setDeleteSubjectConfirm({ subject, deleteSessions: false, deleteBlocks: false });
+      return;
+    }
+    // Canvas/legacy subjects: immediate removal (no linked sessions to clean up)
     const updated = subjects.filter(s => s.id !== id);
     storage.setSubjects(updated);
     setSubjects(updated);
     setEditSubject(null);
+  }
+
+  async function confirmDeleteSubject() {
+    const dc = deleteSubjectConfirm;
+    if (!dc) return;
+    const { subject, deleteSessions, deleteBlocks } = dc;
+    setDeleteSubjectConfirm(null);
+    setEditSubject(null);
+
+    const updatedSubjects = subjects.filter(s => s.id !== subject.id);
+    storage.setSubjects(updatedSubjects);
+    setSubjects(updatedSubjects);
+
+    const nowMs = Date.now();
+    const allBlocks = storage.getTimeBlocks();
+    const subjectBlocks = allBlocks.filter(b => b.subjectId === subject.id);
+    const futureBlocks = subjectBlocks.filter(b => new Date(b.startTime).getTime() > nowMs);
+    const pastBlocks   = subjectBlocks.filter(b => new Date(b.startTime).getTime() <= nowMs);
+    const blocksToRemove = new Set(futureBlocks.map(b => b.id));
+    if (deleteBlocks) pastBlocks.forEach(b => blocksToRemove.add(b.id));
+
+    if (blocksToRemove.size > 0) {
+      const remaining = allBlocks.filter(b => !blocksToRemove.has(b.id));
+      storage.setTimeBlocks(remaining);
+      setBlocks(remaining.filter(b => isOnDate(b.startTime, selectedDate)));
+      for (const b of subjectBlocks) {
+        if (blocksToRemove.has(b.id)) void storage.deleteScheduleBlock(b.id).catch(() => {});
+      }
+    }
+
+    if (deleteSessions) {
+      storage.setTimerSessions(storage.getTimerSessions().filter(s => s.subjectId !== subject.id));
+      void storage.deleteTimerSessionsBySubject(subject.id).catch(() => {});
+    }
   }
 
   function setTodoStatus(id: string, status: Todo['status']) {
@@ -2249,6 +2291,11 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
           );
         })()}
 
+        <button
+          className={styles.addSubjectBtn}
+          onClick={() => { setAddSubjectForm({ name: '', color: COLORS[0] }); setShowAddSubject(true); }}
+        >+ New subject</button>
+
         </>
         )}
       </div>
@@ -2507,6 +2554,40 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             <div className={styles.modalActions}>
               <button className={`${styles.btn} ${styles.btnDanger}`} onClick={() => void confirmDeleteTodo()}>Delete</button>
               <button className={styles.btn} onClick={() => setDeleteConfirm(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Subject Confirmation ── */}
+      {deleteSubjectConfirm && (
+        <div className={styles.modalOverlay} onClick={() => setDeleteSubjectConfirm(null)}>
+          <div className={styles.modalBox} onClick={e => e.stopPropagation()}>
+            <span className={styles.modalTitle}>Delete subject?</span>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
+              "{deleteSubjectConfirm.subject.name}" will be permanently removed. Future scheduled blocks will always be deleted.
+            </p>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, cursor: 'pointer', userSelect: 'none' }}>
+              <input
+                type="checkbox"
+                checked={deleteSubjectConfirm.deleteSessions}
+                onChange={e => setDeleteSubjectConfirm(dc => dc && ({ ...dc, deleteSessions: e.target.checked }))}
+                style={{ marginTop: 2, flexShrink: 0 }}
+              />
+              Also delete all study sessions and logged time for this subject
+            </label>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, cursor: 'pointer', userSelect: 'none' }}>
+              <input
+                type="checkbox"
+                checked={deleteSubjectConfirm.deleteBlocks}
+                onChange={e => setDeleteSubjectConfirm(dc => dc && ({ ...dc, deleteBlocks: e.target.checked }))}
+                style={{ marginTop: 2, flexShrink: 0 }}
+              />
+              Also delete past scheduled blocks for this subject
+            </label>
+            <div className={styles.modalActions}>
+              <button className={`${styles.btn} ${styles.btnDanger}`} onClick={() => void confirmDeleteSubject()}>Delete</button>
+              <button className={styles.btn} onClick={() => setDeleteSubjectConfirm(null)}>Cancel</button>
             </div>
           </div>
         </div>
