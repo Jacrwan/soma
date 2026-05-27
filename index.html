@@ -8,6 +8,18 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet">
     <title>Soma</title>
+    <script>
+      (function() {
+        try {
+          var s = JSON.parse(localStorage.getItem('soma_settings') || '{}');
+          var theme = s.theme || 'dark';
+          document.documentElement.dataset.theme = theme;
+          if (theme === 'dark') {
+            document.documentElement.style.background = 'oklch(13% 0.009 265)';
+          }
+        } catch(e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
