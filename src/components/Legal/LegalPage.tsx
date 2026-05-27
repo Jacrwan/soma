@@ -47,10 +47,10 @@ function Privacy() {
             stored in Supabase.
           </li>
           <li>
-            <strong>Canvas data</strong> — your Canvas access token, course list, assignments,
-            grades, and announcements. This data is fetched from your school's Canvas instance and
-            cached locally in your browser. Canvas tokens are sent through a Vercel serverless
-            function acting as a proxy; they are not stored on our servers.
+            <strong>Canvas data</strong> — your course list, assignments, grades, and announcements.
+            This data is fetched from your school's Canvas instance and cached locally in your
+            browser. Your Canvas API token stays in your browser; when a Canvas request is made,
+            the token is sent through a Vercel serverless proxy but is not stored on our servers.
           </li>
           <li>
             <strong>Google Calendar data</strong> — your Google OAuth token and calendar events,

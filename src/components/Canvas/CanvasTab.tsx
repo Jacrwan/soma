@@ -638,7 +638,7 @@ Rules:
             <label className={styles.setupLabel}>Canvas URL</label>
             <input
               className={styles.setupInput}
-              placeholder="https://canvas.instructure.com"
+              placeholder="https://school.instructure.com"
               value={setupUrl}
               onChange={e => setSetupUrl(e.target.value)}
             />
@@ -666,6 +666,9 @@ Rules:
             <strong>How to get your token:</strong><br />
             Canvas → Account → Settings →<br />
             Approved Integrations → New Access Token
+          </div>
+          <div className={styles.setupHint}>
+            Soma does not store your Canvas API token on our servers. It stays in your browser and is only used for read-only Canvas requests.
           </div>
         </div>
       </div>

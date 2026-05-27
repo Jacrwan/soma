@@ -739,9 +739,10 @@ export default function SettingsTab() {
             />
           </div>
           <div className={styles.modalField}>
-            <label className={styles.modalLabel}>Access token</label>
+            <label className={styles.modalLabel}>API Token</label>
             <input
               className={styles.modalInput}
+              type="password"
               placeholder="Paste your token"
               value={canvasTokenInput}
               onChange={e => setCanvasTokenInput(e.target.value)}
@@ -750,7 +751,12 @@ export default function SettingsTab() {
           </div>
           {canvasError && <span className={styles.modalError}>{canvasError}</span>}
           <div className={styles.modalHint}>
-            In Canvas: Account → Settings → Approved Integrations → New Access Token
+            <strong>How to get your token:</strong><br />
+            Canvas → Account → Settings →<br />
+            Approved Integrations → New Access Token
+          </div>
+          <div className={styles.modalHint}>
+            Soma does not store your Canvas API token on our servers. It stays in your browser and is only used for read-only Canvas requests.
           </div>
           <div className={styles.modalActions}>
             <button

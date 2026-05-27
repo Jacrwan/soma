@@ -5,7 +5,7 @@ const UNIVERSITY_LOGOS = [
   { name: 'Cornell University', src: '/university-logos/cornell.svg', shape: 'mark' },
   { name: 'UC Berkeley', src: '/university-logos/uc-berkeley.svg', shape: 'mark' },
   { name: 'UCLA', src: '/university-logos/ucla.svg', shape: 'mark' },
-  { name: 'UC San Diego', src: '/university-logos/ucsd.svg', shape: 'mark' },
+  { name: 'UC San Diego', src: '/university-logos/ucsd.png', shape: 'wide' },
   { name: 'Emory University', src: '/university-logos/emory.svg', shape: 'wide' },
   { name: 'Carnegie Mellon University', src: '/university-logos/carnegie-mellon.png', shape: 'mark' },
   { name: 'Georgia Tech', src: '/university-logos/georgia-tech.svg', shape: 'mark' },
@@ -761,6 +761,12 @@ nav.scrolled {
 }
 .how-title { font-size: 18px; font-weight: 600; color: var(--text); margin-bottom: 10px; }
 .how-body  { font-size: 14px; color: var(--text-dim); line-height: 1.65; }
+.how-note {
+  margin-top: 14px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
 
 .cta-wrap {
   padding: 40px 56px 80px;
@@ -1283,7 +1289,8 @@ export default function LandingPage() {
           <div className="how-step">
             <div className="how-num">01</div>
             <div className="how-title">Connect Canvas</div>
-            <p className="how-body">Paste your school's Canvas URL and access token. Soma reads your courses, assignments, and due dates — nothing to enter by hand.</p>
+            <p className="how-body">Paste your school's Canvas URL and API token. Soma reads your courses, assignments, and due dates — nothing to enter by hand.</p>
+            <p className="how-note">Soma does not store your Canvas API token on our servers. It stays in your browser and is only used for read-only Canvas requests.</p>
           </div>
           <div className="how-step">
             <div className="how-num">02</div>
