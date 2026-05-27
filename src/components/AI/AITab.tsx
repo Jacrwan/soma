@@ -652,7 +652,11 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
 
   const activeSession = sessions.find(s => s.id === activeSessionId);
 
-  if (subscription.status !== 'loading' && !hasAIAccess(subscription.status)) {
+  if (subscription.status === 'loading') {
+    return <div className={styles.layout} />;
+  }
+
+  if (!hasAIAccess(subscription.status)) {
     return <AILockedScreen />;
   }
 
