@@ -4,7 +4,7 @@
   justify-content: center;
   min-height: 100vh;
   background: #0A0B0F;
-  font-family: var(--font-ui);
+  font-family: 'DM Sans', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -23,12 +23,12 @@
 }
 
 .wordmark {
-  font-family: var(--font-brand);
+  font-family: 'Jost', sans-serif;
   font-weight: 300;
   font-size: 22px;
   color: #F0EEE8;
   text-align: center;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.5px;
   user-select: none;
   text-decoration: none;
   display: block;

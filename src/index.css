@@ -31,9 +31,6 @@
   --space-md: 16px;
   --space-lg: 24px;
   --space-xl: 40px;
-
-  --font-brand: 'Josefin Sans', sans-serif;
-  --font-ui: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 /* ── Dark mode — dark gray palette ── */
@@ -62,7 +59,7 @@ html[data-theme="dark"] {
 }
 
 body {
-  font-family: var(--font-ui);
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg);
   color: var(--text-primary);
   font-size: 14px;

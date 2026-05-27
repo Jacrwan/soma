@@ -39,7 +39,7 @@
   text-align: left;
   width: 100%;
   transition: color 0.1s, background 0.1s;
-  font-family: var(--font-ui);
+  font-family: 'DM Sans', inherit;
 }
 
 .settingsNavItem:hover {

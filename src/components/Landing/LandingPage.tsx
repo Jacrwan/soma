@@ -17,25 +17,21 @@ const LANDING_CSS = `
 html { scroll-behavior: smooth; }
 
 :root {
-  --bg:          #090A14;
-  --surface:     #0D0F1C;
-  --surface-2:   #121425;
+  --bg:          #0A0B0F;
+  --surface:     #0F1117;
+  --surface-2:   #161820;
   --accent:      #5B6AF0;
   --warm:        #F0A05B;
   --text:        #F0EEE8;
   --text-dim:    #8A8A9E;
   --text-muted:  #5A5A6E;
-  --border:      oklch(20% 0.014 265);
-  --border-sub:  oklch(14% 0.012 265);
-  --font-brand:  'Josefin Sans', sans-serif;
-  --font-ui:     'DM Sans', system-ui, sans-serif;
+  --border:      oklch(20% 0.012 265);
+  --border-sub:  oklch(14% 0.01 265);
 }
 
 body {
-  font-family: var(--font-ui);
+  font-family: 'DM Sans', system-ui, sans-serif;
   background: var(--bg);
-  background-image: radial-gradient(rgba(255,255,255,0.028) 1px, transparent 1px);
-  background-size: 44px 44px;
   color: var(--text);
   line-height: 1.6;
   overflow-x: hidden;
@@ -62,12 +58,12 @@ nav.scrolled {
 }
 
 .nav-wordmark {
-  font-family: var(--font-brand);
-  font-size: 20px;
+  font-family: 'Jost', sans-serif;
+  font-size: 22px;
   font-weight: 300;
   color: var(--text);
   text-decoration: none;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.5px;
 }
 
 .nav-right { display: flex; align-items: center; gap: 28px; }
@@ -126,31 +122,30 @@ nav.scrolled {
 .hero-text { max-width: 520px; }
 
 .hero-eyebrow {
-  font-family: var(--font-brand);
-  font-size: 10px;
-  font-weight: 400;
-  letter-spacing: 0.22em;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
   color: var(--accent);
-  margin-bottom: 32px;
+  margin-bottom: 30px;
   opacity: 0;
   transform: translateY(14px);
   animation: fadeUp 0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.1s forwards;
 }
 
 .hero-headline {
-  font-family: var(--font-brand);
+  font-family: 'Playfair Display', serif;
   line-height: 1.08;
-  margin-bottom: 32px;
-  letter-spacing: 0.04em;
+  margin-bottom: 28px;
+  letter-spacing: -0.015em;
 }
 
 .hero-line-1 {
   display: block;
-  font-size: clamp(26px, 3.5vw, 48px);
-  font-weight: 300;
-  color: var(--text-dim);
-  margin-bottom: 6px;
+  font-size: clamp(28px, 4vw, 52px);
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 4px;
   opacity: 0;
   transform: translateY(20px);
   animation: fadeUp 0.7s cubic-bezier(0.22, 1, 0.36, 1) 0.22s forwards;
@@ -158,10 +153,10 @@ nav.scrolled {
 
 .hero-line-2 {
   display: block;
-  font-size: clamp(36px, 5.5vw, 68px);
-  font-weight: 100;
+  font-size: clamp(40px, 6vw, 76px);
+  font-weight: 700;
+  font-style: italic;
   color: var(--text);
-  letter-spacing: 0.1em;
   opacity: 0;
   transform: translateY(20px);
   animation: fadeUp 0.75s cubic-bezier(0.22, 1, 0.36, 1) 0.38s forwards;
@@ -483,22 +478,21 @@ nav.scrolled {
 .feature:nth-child(even) .feat-vis   { order: 1; }
 
 .feat-kicker {
-  font-family: var(--font-brand);
   font-size: 10px;
-  font-weight: 400;
-  letter-spacing: 0.2em;
+  font-weight: 600;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--accent);
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 .feat-headline {
-  font-family: var(--font-brand);
-  font-size: clamp(22px, 2.6vw, 38px);
-  font-weight: 300;
-  line-height: 1.2;
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(26px, 3vw, 42px);
+  font-weight: 700;
+  line-height: 1.15;
   color: var(--text);
   margin-bottom: 18px;
-  letter-spacing: 0.04em;
+  letter-spacing: -0.01em;
 }
 .feat-body {
   font-size: 16px;
@@ -757,13 +751,13 @@ nav.scrolled {
 .how-step:nth-child(3) { transition-delay: 0.2s; padding-right: 0; }
 .how-step.vis { opacity: 1; transform: translateY(0); }
 .how-num {
-  font-family: var(--font-brand);
+  font-family: 'Playfair Display', serif;
   font-size: 52px;
-  font-weight: 100;
+  font-weight: 700;
   color: var(--border);
   line-height: 1;
   margin-bottom: 26px;
-  letter-spacing: 0.12em;
+  letter-spacing: -0.02em;
 }
 .how-title { font-size: 18px; font-weight: 600; color: var(--text); margin-bottom: 10px; }
 .how-body  { font-size: 14px; color: var(--text-dim); line-height: 1.65; }
@@ -798,12 +792,12 @@ nav.scrolled {
   pointer-events: none;
 }
 .cta-headline {
-  font-family: var(--font-brand);
-  font-size: clamp(28px, 4vw, 50px);
-  font-weight: 300;
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(30px, 4vw, 54px);
+  font-weight: 700;
   color: var(--text);
   margin-bottom: 14px;
-  letter-spacing: 0.08em;
+  letter-spacing: -0.01em;
   position: relative;
   z-index: 1;
 }
@@ -843,11 +837,11 @@ nav.scrolled {
   flex-wrap: wrap;
 }
 .footer-wordmark {
-  font-family: var(--font-brand);
+  font-family: 'Jost', sans-serif;
   font-size: 18px;
   font-weight: 300;
   color: var(--text);
-  letter-spacing: 0.14em;
+  letter-spacing: 0.5px;
   margin-bottom: 5px;
 }
 .footer-copy { font-size: 11px; color: var(--text-muted); max-width: 380px; line-height: 1.55; }
@@ -912,7 +906,7 @@ export default function LandingPage() {
     p2.rel = 'preconnect'; p2.href = 'https://fonts.gstatic.com'; p2.crossOrigin = 'anonymous';
     const font = document.createElement('link');
     font.rel = 'stylesheet';
-    font.href = 'https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=Josefin+Sans:wght@100;300;400&display=swap';
+    font.href = 'https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,500;1,700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap';
     [p1, p2, font].forEach(l => { links.push(l); document.head.appendChild(l); });
     return () => links.forEach(l => document.head.removeChild(l));
   }, []);

@@ -46,11 +46,10 @@
 }
 
 .pageTitle {
-  font-family: var(--font-brand);
-  font-size: 34px;
-  font-weight: 300;
+  font-family: 'DM Serif Display', serif;
+  font-size: 38px;
+  font-weight: 400;
   line-height: 1;
-  letter-spacing: 0.08em;
   color: var(--text-primary);
   margin: 0;
 }
@@ -526,10 +525,9 @@
 }
 
 .streakBigNum {
-  font-family: var(--font-brand);
+  font-family: 'DM Serif Display', serif;
   font-size: 48px;
-  font-weight: 100;
-  letter-spacing: 0.06em;
+  font-weight: 400;
   color: var(--warm);
   line-height: 0.95;
 }
@@ -762,7 +760,7 @@
   }
 
   .pageTitle {
-    font-size: 28px;
+    font-size: 32px;
   }
 
   .summaryRail {
