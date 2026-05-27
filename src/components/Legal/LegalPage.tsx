@@ -243,12 +243,12 @@ function Terms() {
       </div>
 
       <div className={styles.section}>
-        <h2>3. Free tier and Soma Pro</h2>
+        <h2>3. Free tier and Soma Premium</h2>
         <p>
           Soma has a free tier that provides access to day view, canvas sync, calendar, and
-          insights. AI features require <strong>Soma Pro</strong>, available at{' '}
+          insights. AI features require <strong>Soma Premium</strong>, available at{' '}
           <strong>$5.99 USD per month</strong> or <strong>$47.88 USD per year</strong> ($3.99/mo).
-          Soma Pro begins with a <strong>30-day free trial</strong> — no charge during the trial
+          Soma Premium begins with a <strong>30-day free trial</strong> — no charge during the trial
           period. After the trial, your subscription renews automatically on your chosen billing
           cycle until you cancel. See our{' '}
           <Link to="/billing">Billing & Subscription</Link> page for full details.
@@ -400,11 +400,11 @@ function Billing() {
       <div className={styles.divider} />
 
       <div className={styles.section}>
-        <h2>Free tier and Soma Pro</h2>
+        <h2>Free tier and Soma Premium</h2>
         <p>
           Soma has a <strong>free tier</strong> that includes day view, canvas sync, calendar
           integration, insights, and manual todos and scheduling. <strong>AI features</strong>{' '}
-          (AI chat, schedule generation, and todo generation) require <strong>Soma Pro</strong>.
+          (AI chat, schedule generation, and todo generation) require <strong>Soma Premium</strong>.
         </p>
         <div className={styles.tableWrap}>
           <table className={styles.table}>
@@ -434,7 +434,7 @@ function Billing() {
       <div className={styles.section}>
         <h2>Free trial</h2>
         <p>
-          Soma Pro begins with a <strong>30-day free trial</strong>. You will not be charged
+          Soma Premium begins with a <strong>30-day free trial</strong>. You will not be charged
           during the trial period. A valid payment method is required to start the trial. If you
           cancel before the trial ends, you will not be charged. Each account is eligible for one
           free trial.

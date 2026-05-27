@@ -67,7 +67,7 @@ export default async function handler(req: any, res: any) {
       stripe_customer_id: sub.customer as string,
       stripe_subscription_id: sub.id,
       status: sub.status,
-      plan: 'pro',
+      plan: 'premium',
       trial_ends_at: trialEnd,
       current_period_end: periodEnd,
       cancel_at_period_end: sub.cancel_at_period_end,

@@ -421,7 +421,7 @@ function AILockedScreen() {
         <svg className={styles.lockedIcon} width="28" height="28" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M7 1L8.1 5.9L13 7L8.1 8.1L7 13L5.9 8.1L1 7L5.9 5.9Z"/>
         </svg>
-        <h2 className={styles.lockedTitle}>AI planning is included with Soma Pro</h2>
+        <h2 className={styles.lockedTitle}>AI planning is included with Soma Premium</h2>
         <p className={styles.lockedDesc}>
           Get AI-powered scheduling, todo generation, and study planning.
           Start your <strong>1-month free trial</strong> — no charge today.

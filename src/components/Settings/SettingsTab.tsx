@@ -399,7 +399,7 @@ export default function SettingsTab() {
                 }`}>
                   {subscription.status === 'loading'  ? '—' :
                    subscription.status === 'trialing' ? 'Trial' :
-                   subscription.status === 'active'   ? 'Pro' :
+                   subscription.status === 'active'   ? 'Premium' :
                    subscription.status === 'canceled' ? 'Canceled' :
                    subscription.status === 'past_due' ? 'Past due' :
                    'Free'}
