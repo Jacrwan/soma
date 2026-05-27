@@ -2572,25 +2572,6 @@
   margin-bottom: 8px;
 }
 
-.blockModalMarkStudiedBtn {
-  flex: 1;
-  padding: 10px;
-  background: oklch(55% 0.18 145 / 0.12);
-  border: 1.5px solid oklch(60% 0.16 145 / 0.5);
-  border-radius: 9px;
-  color: var(--success);
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-
-.blockModalMarkStudiedBtn:hover {
-  background: var(--success);
-  border-color: var(--success);
-  color: #fff;
-}
-
 .blockModalEditBtn {
   flex: 1;
   padding: 10px;
