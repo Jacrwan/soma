@@ -58,12 +58,12 @@ nav.scrolled {
 }
 
 .nav-wordmark {
-  font-family: 'Playfair Display', serif;
+  font-family: 'Jost', sans-serif;
   font-size: 22px;
-  font-weight: 700;
+  font-weight: 300;
   color: var(--text);
   text-decoration: none;
-  letter-spacing: -0.01em;
+  letter-spacing: 0.5px;
 }
 
 .nav-right { display: flex; align-items: center; gap: 28px; }
@@ -837,10 +837,11 @@ nav.scrolled {
   flex-wrap: wrap;
 }
 .footer-wordmark {
-  font-family: 'Playfair Display', serif;
+  font-family: 'Jost', sans-serif;
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 300;
   color: var(--text);
+  letter-spacing: 0.5px;
   margin-bottom: 5px;
 }
 .footer-copy { font-size: 11px; color: var(--text-muted); max-width: 380px; line-height: 1.55; }

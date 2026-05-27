@@ -23,11 +23,12 @@
 }
 
 .wordmark {
-  font-family: 'DM Serif Display', serif;
+  font-family: 'Jost', sans-serif;
+  font-weight: 300;
   font-size: 22px;
   color: #F0EEE8;
   text-align: center;
-  letter-spacing: -0.2px;
+  letter-spacing: 0.5px;
   user-select: none;
   text-decoration: none;
   display: block;
