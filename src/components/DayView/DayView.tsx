@@ -2292,7 +2292,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
         })()}
 
         <button
-          className={styles.addSubjectBtn}
+          className={styles.newSubjectListBtn}
           onClick={() => { setAddSubjectForm({ name: '', color: COLORS[0] }); setShowAddSubject(true); }}
         >+ New subject</button>
 
@@ -2456,7 +2456,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                     const dateLabel = new Date(s.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                     const isEditing = editingSessionId === s.id;
                     return (
-                      <div key={s.id} className={styles.sessionRow}>
+                      <div key={s.id} className={`${styles.sessionRow}${isEditing ? ` ${styles.sessionRowActive}` : ''}`}>
                         <span className={styles.sessionDate}>{dateLabel}</span>
                         <span className={styles.sessionTime}>{fmtHm(s.start_time)} – {fmtHm(s.end_time)}</span>
                         {isEditing ? (
@@ -2596,33 +2596,38 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
       {/* ── Add Subject Modal ── */}
       {showAddSubject && (
         <div className={styles.modalOverlay} onClick={() => setShowAddSubject(false)}>
-          <div className={styles.modalBox} onClick={e => e.stopPropagation()}>
-            <span className={styles.modalTitle}>Add Subject</span>
+          <div className={styles.taskModalBox} style={{ width: 360 }} onClick={e => e.stopPropagation()}>
+            <div className={styles.taskModalHeader}>
+              <span className={styles.taskModalTitle}>New Subject</span>
+            </div>
             <input
-              className={styles.modalInput}
+              className={styles.taskModalInput}
               placeholder="Subject name"
               value={addSubjectForm.name}
               autoFocus
               onChange={e => setAddSubjectForm(f => ({ ...f, name: e.target.value }))}
               onKeyDown={e => { if (e.key === 'Enter') saveNewSubject(); if (e.key === 'Escape') setShowAddSubject(false); }}
             />
-            <div className={styles.colorPicker}>
-              {COLORS.map(c => (
-                <button
-                  key={c}
-                  className={`${styles.colorCircle}${addSubjectForm.color === c ? ` ${styles.colorCircleSelected}` : ''}`}
-                  style={{ background: c }}
-                  onClick={() => setAddSubjectForm(f => ({ ...f, color: c }))}
-                />
-              ))}
+            <div className={styles.taskModalField}>
+              <label className={styles.taskModalLabel}>Color</label>
+              <div className={styles.colorPicker}>
+                {COLORS.map(c => (
+                  <button
+                    key={c}
+                    className={`${styles.colorCircle}${addSubjectForm.color === c ? ` ${styles.colorCircleSelected}` : ''}`}
+                    style={{ background: c }}
+                    onClick={() => setAddSubjectForm(f => ({ ...f, color: c }))}
+                  />
+                ))}
+              </div>
             </div>
-            <div className={styles.modalActions}>
+            <div className={styles.taskModalActions}>
               <button
-                className={`${styles.btn} ${styles.btnAccent}`}
+                className={styles.taskModalSubmit}
                 onClick={saveNewSubject}
                 disabled={!addSubjectForm.name.trim()}
-              >Save</button>
-              <button className={styles.btn} onClick={() => setShowAddSubject(false)}>Cancel</button>
+              >Save subject</button>
+              <button className={styles.taskModalCancel} onClick={() => setShowAddSubject(false)}>Cancel</button>
             </div>
           </div>
         </div>

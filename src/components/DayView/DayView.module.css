@@ -2029,24 +2029,26 @@
   padding: var(--space-md) 0;
 }
 
-.addSubjectBtn {
+.newSubjectListBtn {
   display: block;
   width: 100%;
-  padding: 8px 12px;
+  padding: 9px 12px;
   margin-top: 4px;
   background: none;
-  border: 1px dashed var(--border);
+  border: 1px solid oklch(92% 0.006 265);
   border-radius: 8px;
-  color: var(--text-muted);
-  font-size: 13px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
   text-align: left;
+  font-family: inherit;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
-.addSubjectBtn:hover {
-  background: var(--bg-secondary);
+.newSubjectListBtn:hover {
+  background: oklch(97% 0.004 265);
   color: var(--text-primary);
-  border-color: var(--text-muted);
+  border-color: oklch(85% 0.01 265);
 }
 
 /* ── Mobile layout ─────────────────────────────────────────────────────── */
@@ -2534,15 +2536,16 @@
 
 .sessionEmpty {
   font-size: 13px;
+  font-style: italic;
   color: var(--text-muted);
-  padding: 4px 0 2px;
+  padding: 10px 0 6px;
 }
 
 .sessionRow {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 0;
+  padding: 7px 0;
   border-bottom: 1px solid var(--border);
   font-size: 13px;
 }
@@ -2612,18 +2615,26 @@
   gap: 2px;
   flex-shrink: 0;
   margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.sessionRow:hover .sessionRowActions,
+.sessionRowActive .sessionRowActions {
+  opacity: 1;
 }
 
 .sessionIconBtn {
   background: none;
   border: none;
-  padding: 2px 5px;
+  padding: 3px 6px;
   color: var(--text-muted);
   font-size: 14px;
   cursor: pointer;
   border-radius: 4px;
   transition: color 0.12s, background 0.12s;
   line-height: 1;
+  font-family: inherit;
 }
 
 .sessionIconBtn:hover { color: var(--text-primary); background: var(--bg-tertiary); }
