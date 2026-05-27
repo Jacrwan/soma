@@ -787,16 +787,6 @@ nav.scrolled {
   position: relative;
   overflow: hidden;
 }
-.cta-glow {
-  position: absolute;
-  bottom: -80px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 480px;
-  height: 220px;
-  background: radial-gradient(ellipse at center, oklch(72% 0.15 50 / 0.18) 0%, transparent 68%);
-  pointer-events: none;
-}
 .cta-headline {
   font-family: 'Playfair Display', serif;
   font-size: clamp(30px, 4vw, 54px);
@@ -1307,7 +1297,6 @@ export default function LandingPage() {
 
       <div className="cta-wrap">
         <div className="cta-inner">
-          <div className="cta-glow" />
           <h2 className="cta-headline">Ready to actually get things done?</h2>
           <p className="cta-sub">Join students who study smarter with Soma.</p>
           <a href="/signup" className="btn-cta">Get started free</a>
