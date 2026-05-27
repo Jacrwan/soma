@@ -515,6 +515,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const dragTodoGroupIdRef = useRef<string | null>(null);
   const dragTodoOverIndexRef = useRef<number | null>(null);
   const todosRef = useRef<Todo[]>([]);
+  const blocksRef = useRef<TimeBlock[]>([]);
   const selectedDateKeyRef = useRef<string>('');
   const computeIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const computeRef = useRef<(() => Promise<void>) | null>(null);
@@ -540,6 +541,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     const tick = () => {
       const now = new Date();
       setCurrentMinutes(now.getHours() * 60 + now.getMinutes());
+      setMissedBlockIds(computeMissedBlockIds(blocksRef.current, storage.getTimerSessions(), now));
     };
     tick();
     const id = setInterval(tick, 1_000);
@@ -695,8 +697,9 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     return () => window.removeEventListener('soma_timer_stopped', onTimerStopped);
   }, [selectedDate]);
 
-  // FIX 1: stretch a scheduled block back to the timer's actual start when the timer
-  // begins ≤60 min before the block, so the visual block covers the full study period.
+  // Merge a running timer into a matching scheduled block in two cases:
+  // Case 1: timer started ≤60 min before block start — stretch block startTime back
+  // Case 2: timer started mid-block (block already in progress) — mark for replacement on stop
   useEffect(() => {
     const session = timerCtx.activeSession;
     if (!session) {
@@ -713,12 +716,15 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       if (b.task !== session.task) return false;
       const blockStartMs = new Date(b.startTime).getTime();
       const blockEndMs = new Date(b.endTime).getTime();
-      if (now < blockStartMs) return false;      // block hasn't started yet
-      if (timerStartMs >= blockStartMs) return false; // timer started after block — no need to stretch
-      if (blockStartMs - timerStartMs > 60 * 60 * 1000) return false; // > 60 min gap
       if (b.startTime.slice(0, 10) !== todayStr) return false;
-      // Ensure timer overlaps or leads into the block
-      return timerStartMs < blockEndMs;
+      if (now < blockStartMs) return false; // block hasn't started yet
+      if (timerStartMs < blockStartMs) {
+        // Case 1: timer started before block — stretch if within 60 min
+        if (blockStartMs - timerStartMs > 60 * 60 * 1000) return false;
+        return timerStartMs < blockEndMs;
+      }
+      // Case 2: timer started mid-block — only attach if block is still ongoing
+      return now < blockEndMs;
     });
 
     if (!candidate) {
@@ -726,28 +732,34 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       return;
     }
 
-    if (mergedBlockIdRef.current === candidate.id) return; // already stretched
+    if (mergedBlockIdRef.current === candidate.id) return; // already merged
 
     mergedBlockIdRef.current = candidate.id;
-    const timerStartISO = toLocalISO(new Date(timerStartMs));
-    const updatedBlocks = storage.getTimeBlocks().map(b =>
-      b.id === candidate.id ? { ...b, startTime: timerStartISO } : b,
-    );
-    storage.setTimeBlocks(updatedBlocks);
-    setBlocks(updatedBlocks.filter(b => isOnDate(b.startTime, selectedDate)));
 
-    const subjectName = subjects.find(s => s.id === candidate.subjectId)?.name ?? null;
-    const subjectColor = subjects.find(s => s.id === candidate.subjectId)?.color ?? null;
-    void storage.saveScheduleBlock({
-      id: candidate.id,
-      date: todayStr,
-      subject_id: candidate.subjectId,
-      subject_name: subjectName,
-      task_name: candidate.task ?? null,
-      start_time: timerStartISO,
-      end_time: candidate.endTime,
-      color: subjectColor,
-    }).catch(() => {});
+    // Case 1 only: stretch the block's startTime back to the timer's actual start
+    if (timerStartMs < new Date(candidate.startTime).getTime()) {
+      const timerStartISO = toLocalISO(new Date(timerStartMs));
+      const updatedBlocks = storage.getTimeBlocks().map(b =>
+        b.id === candidate.id ? { ...b, startTime: timerStartISO } : b,
+      );
+      storage.setTimeBlocks(updatedBlocks);
+      setBlocks(updatedBlocks.filter(b => isOnDate(b.startTime, selectedDate)));
+
+      const subjectName = subjects.find(s => s.id === candidate.subjectId)?.name ?? null;
+      const subjectColor = subjects.find(s => s.id === candidate.subjectId)?.color ?? null;
+      void storage.saveScheduleBlock({
+        id: candidate.id,
+        date: todayStr,
+        subject_id: candidate.subjectId,
+        subject_name: subjectName,
+        task_name: candidate.task ?? null,
+        start_time: timerStartISO,
+        end_time: candidate.endTime,
+        color: subjectColor,
+      }).catch(() => {});
+    }
+    // Case 2: block is already correct visually — mergedBlockIdRef is set so
+    // onTimerStopped will delete the scheduled block and the timer block replaces it
   }, [timerCtx.activeSession, blocks, selectedDate, subjects]);
 
   useEffect(() => {
@@ -1599,6 +1611,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
   dragTodoGroupIdRef.current = dragTodoGroupId;
   dragTodoOverIndexRef.current = dragTodoOverIndex;
   todosRef.current = todos;
+  blocksRef.current = blocks;
   selectedDateKeyRef.current = selectedDateKey;
 
   // Live preview order while dragging
