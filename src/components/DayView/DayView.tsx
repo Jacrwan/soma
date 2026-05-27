@@ -516,6 +516,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const selectedDateKeyRef = useRef<string>('');
   const computeIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const prevLogicalTodayStrRef = useRef<string>(toISODateString(logicalToday()));
+  const mergedBlockIdRef = useRef<string | null>(null);
 
   // Sync week view when selectedDate changes from an external source (e.g. CalendarTab)
   useEffect(() => {
@@ -660,6 +661,22 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
 
   useEffect(() => {
     function onTimerStopped() {
+      // FIX 1: if we stretched a scheduled block to match the timer start, remove it now
+      // (the new timer block created by stopSession replaces it)
+      if (mergedBlockIdRef.current) {
+        const mergedId = mergedBlockIdRef.current;
+        mergedBlockIdRef.current = null;
+        const allBlocks = storage.getTimeBlocks().filter(b => b.id !== mergedId);
+        storage.setTimeBlocks(allBlocks);
+        const updatedBlocks = allBlocks.filter(b => isOnDate(b.startTime, selectedDate));
+        setBlocks(updatedBlocks);
+        setSubjects(storage.getSubjects().map(s => ({
+          ...s,
+          totalTimeToday: subjectSecsFromSessions(s.id, selectedDate),
+        })));
+        setMissedBlockIds(computeMissedBlockIds(updatedBlocks, storage.getTimerSessions(), new Date()));
+        return;
+      }
       const updatedBlocks = storage.getTimeBlocks().filter(b => isOnDate(b.startTime, selectedDate));
       setBlocks(updatedBlocks);
       setSubjects(storage.getSubjects().map(s => ({
@@ -671,6 +688,61 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     window.addEventListener('soma_timer_stopped', onTimerStopped);
     return () => window.removeEventListener('soma_timer_stopped', onTimerStopped);
   }, [selectedDate]);
+
+  // FIX 1: stretch a scheduled block back to the timer's actual start when the timer
+  // begins ≤60 min before the block, so the visual block covers the full study period.
+  useEffect(() => {
+    const session = timerCtx.activeSession;
+    if (!session) {
+      mergedBlockIdRef.current = null;
+      return;
+    }
+    const timerStartMs = new Date(session.sessionStartTimeISO).getTime();
+    const now = Date.now();
+    const todayStr = toISODateString(new Date());
+
+    const candidate = blocks.find(b => {
+      if (b.timerSessionId) return false;
+      if (b.subjectId !== session.subject.id) return false;
+      if (b.task !== session.task) return false;
+      const blockStartMs = new Date(b.startTime).getTime();
+      const blockEndMs = new Date(b.endTime).getTime();
+      if (now < blockStartMs) return false;      // block hasn't started yet
+      if (timerStartMs >= blockStartMs) return false; // timer started after block — no need to stretch
+      if (blockStartMs - timerStartMs > 60 * 60 * 1000) return false; // > 60 min gap
+      if (b.startTime.slice(0, 10) !== todayStr) return false;
+      // Ensure timer overlaps or leads into the block
+      return timerStartMs < blockEndMs;
+    });
+
+    if (!candidate) {
+      mergedBlockIdRef.current = null;
+      return;
+    }
+
+    if (mergedBlockIdRef.current === candidate.id) return; // already stretched
+
+    mergedBlockIdRef.current = candidate.id;
+    const timerStartISO = toLocalISO(new Date(timerStartMs));
+    const updatedBlocks = storage.getTimeBlocks().map(b =>
+      b.id === candidate.id ? { ...b, startTime: timerStartISO } : b,
+    );
+    storage.setTimeBlocks(updatedBlocks);
+    setBlocks(updatedBlocks.filter(b => isOnDate(b.startTime, selectedDate)));
+
+    const subjectName = subjects.find(s => s.id === candidate.subjectId)?.name ?? null;
+    const subjectColor = subjects.find(s => s.id === candidate.subjectId)?.color ?? null;
+    void storage.saveScheduleBlock({
+      id: candidate.id,
+      date: todayStr,
+      subject_id: candidate.subjectId,
+      subject_name: subjectName,
+      task_name: candidate.task ?? null,
+      start_time: timerStartISO,
+      end_time: candidate.endTime,
+      color: subjectColor,
+    }).catch(() => {});
+  }, [timerCtx.activeSession, blocks, selectedDate, subjects]);
 
   useEffect(() => {
     const COURSE_COLORS = [
@@ -1066,6 +1138,45 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
         assignmentStatus = 'not_started';
       }
       storage.setAssignmentStatus({ ...storage.getAssignmentStatus(), [String(todo.assignmentId)]: assignmentStatus });
+    }
+
+    // FIX 2 + 3: when marking done, truncate the active block and remove future blocks today
+    if (status === 'done' && todo) {
+      const nowMs = Date.now();
+      const todayStr = toISODateString(new Date());
+      const allBlocks = storage.getTimeBlocks();
+      const todoBlocks = allBlocks.filter(b =>
+        b.subjectId === todo.subjectId &&
+        b.task === todo.text &&
+        b.startTime.slice(0, 10) === todayStr,
+      );
+
+      let needsUpdate = false;
+      const updatedBlocks = allBlocks.map(b => {
+        if (!todoBlocks.some(tb => tb.id === b.id)) return b;
+        const blockStartMs = new Date(b.startTime).getTime();
+        const blockEndMs = new Date(b.endTime).getTime();
+        // Active block: currently in progress — truncate endTime to now
+        if (blockStartMs <= nowMs && blockEndMs > nowMs) {
+          needsUpdate = true;
+          return { ...b, endTime: toLocalISO(new Date(nowMs)) };
+        }
+        return b;
+      });
+
+      // Delete all future same-day blocks for this todo (start > now)
+      const blocksToDelete = todoBlocks.filter(b => new Date(b.startTime).getTime() > nowMs);
+      const finalBlocks = updatedBlocks.filter(b => !blocksToDelete.some(d => d.id === b.id));
+
+      if (needsUpdate || blocksToDelete.length > 0) {
+        storage.setTimeBlocks(finalBlocks);
+        setBlocks(finalBlocks.filter(b => isOnDate(b.startTime, selectedDate)));
+
+        // FIX 3: also delete future blocks from Supabase schedule_blocks
+        for (const b of blocksToDelete) {
+          void storage.deleteScheduleBlock(b.id).catch(() => {});
+        }
+      }
     }
   }
 
