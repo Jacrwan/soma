@@ -154,11 +154,6 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       estimatedMinutes: matchedTodo?.estimatedMinutes,
     });
 
-    const updatedSubjects = storage.getSubjects().map(s =>
-      s.id === session.subject.id ? { ...s, totalTimeToday: s.totalTimeToday + durationSeconds } : s,
-    );
-    storage.setSubjects(updatedSubjects);
-
     const newBlock: TimeBlock = {
       id: crypto.randomUUID(),
       subjectId: session.subject.id,

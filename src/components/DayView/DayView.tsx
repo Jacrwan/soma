@@ -87,10 +87,30 @@ function isOnDate(iso: string, date: Date): boolean {
   return isSameDay(new Date(iso), date);
 }
 
-function subjectSecsFromSessions(subjectId: string, date: Date): number {
-  return storage.getTimerSessions()
-    .filter(s => s.subjectId === subjectId && isOnDate(s.startTime, date))
-    .reduce((acc, s) => acc + s.durationSeconds, 0);
+type BlockState = 'upcoming' | 'in_progress' | 'completed' | 'missed';
+
+function computeBlockStates(blocks: TimeBlock[], sessions: TimerSession[], now: Date): Map<string, BlockState> {
+  const nowMs = now.getTime();
+  const states = new Map<string, BlockState>();
+  for (const block of blocks) {
+    const startMs = new Date(block.startTime).getTime();
+    const endMs = new Date(block.endTime).getTime();
+    const covered = sessions.some(s =>
+      s.subjectId === block.subjectId &&
+      new Date(s.startTime).getTime() < endMs &&
+      new Date(s.endTime).getTime() > startMs,
+    );
+    if (covered) {
+      states.set(block.id, 'completed');
+    } else if (nowMs >= startMs && nowMs < endMs) {
+      states.set(block.id, 'in_progress');
+    } else if (endMs <= nowMs) {
+      states.set(block.id, 'missed');
+    } else {
+      states.set(block.id, 'upcoming');
+    }
+  }
+  return states;
 }
 
 function dayKey(date: Date): string {
@@ -172,35 +192,6 @@ function fmtElapsed(minutes: number): string {
   return `${h}h ${m}m`;
 }
 
-function computeElapsedTime(blocks: TimeBlock[], now: Date, viewDate: Date): Record<string, number> {
-  const nowMs = now.getTime();
-  const result: Record<string, number> = {};
-  for (const block of blocks) {
-    const blockStart = new Date(block.startTime);
-    const blockEnd = new Date(block.endTime);
-    // Blocks starting before START_HOUR belong to viewDate+1 (after-midnight wrap)
-    const effectiveDate = blockStart.getHours() < START_HOUR ? addDays(viewDate, 1) : viewDate;
-    const startMs = new Date(
-      effectiveDate.getFullYear(), effectiveDate.getMonth(), effectiveDate.getDate(),
-      blockStart.getHours(), blockStart.getMinutes(), blockStart.getSeconds(),
-    ).getTime();
-    const endMs = new Date(
-      effectiveDate.getFullYear(), effectiveDate.getMonth(), effectiveDate.getDate(),
-      blockEnd.getHours(), blockEnd.getMinutes(), blockEnd.getSeconds(),
-    ).getTime();
-    let elapsedMs: number;
-    if (nowMs <= startMs) {
-      elapsedMs = 0;
-    } else if (nowMs >= endMs) {
-      elapsedMs = endMs - startMs;
-    } else {
-      elapsedMs = nowMs - startMs;
-    }
-    const minutes = Math.floor(Math.max(0, elapsedMs) / 60_000);
-    result[block.subjectId] = (result[block.subjectId] ?? 0) + minutes;
-  }
-  return result;
-}
 
 interface BlockEditForm {
   task: string;
@@ -322,23 +313,6 @@ function laneStyle(lane = 0, lanes = 1, gapPx = 4): CSSProperties {
   };
 }
 
-function computeMissedBlockIds(blocks: TimeBlock[], sessions: TimerSession[], now: Date): Set<string> {
-  const nowMs = now.getTime();
-  const missed = new Set<string>();
-  for (const block of blocks) {
-    if (block.timerSessionId) continue;
-    if (new Date(block.endTime).getTime() >= nowMs) continue;
-    const blockStartMs = new Date(block.startTime).getTime();
-    const blockEndMs = new Date(block.endTime).getTime();
-    const covered = sessions.some(s =>
-      s.subjectId === block.subjectId &&
-      new Date(s.startTime).getTime() < blockEndMs &&
-      new Date(s.endTime).getTime() > blockStartMs,
-    );
-    if (!covered) missed.add(block.id);
-  }
-  return missed;
-}
 
 function groupShortBlocks(shortBlocks: TimeBlock[]): DotGroup[] {
   const bySubject = new Map<string, TimeBlock[]>();
@@ -458,7 +432,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [dueAssignments, setDueAssignments] = useState<{ assignment: CanvasAssignment; course: CanvasCourse | undefined; color: string }[]>([]);
   const [deadlineDetail, setDeadlineDetail] = useState<{ courseId: number; assignmentId: number } | null>(null);
   const [elapsedBySubject, setElapsedBySubject] = useState<Record<string, number>>({});
-  const [missedBlockIds, setMissedBlockIds] = useState<Set<string>>(new Set());
+  const [blockStates, setBlockStates] = useState<Map<string, BlockState>>(new Map());
   const [briefCollapsed, setBriefCollapsed] = useState<boolean>(() => {
     const s = localStorage.getItem('soma_brief_collapsed');
     return s === null ? true : s === 'true';
@@ -531,39 +505,33 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   useEffect(() => {
     const blocksForDate = storage.getTimeBlocks().filter(b => isOnDate(b.startTime, selectedDate));
     setBlocks(blocksForDate);
-    setSubjects(prev => prev.map(s => ({
-      ...s,
-      totalTimeToday: subjectSecsFromSessions(s.id, selectedDate),
-    })));
+  }, [selectedDate]);
+
+  const compute = useCallback(async () => {
+    const now = new Date();
+    const dateStr = toISODateString(selectedDate);
+    const dateBlocks = storage.getTimeBlocks().filter(b => isOnDate(b.startTime, selectedDate));
+    const sessions = await storage.getSessionsForDate(dateStr);
+
+    const sessionElapsed: Record<string, number> = {};
+    for (const s of sessions) {
+      sessionElapsed[s.subjectId] = (sessionElapsed[s.subjectId] ?? 0) + Math.round(s.durationSeconds / 60);
+    }
+    setElapsedBySubject(sessionElapsed);
+    setBlockStates(computeBlockStates(dateBlocks, sessions, now));
   }, [selectedDate]);
 
   useEffect(() => {
     const dateStr = toISODateString(selectedDate);
     const todayStr = toISODateString(logicalToday());
-
-    function compute() {
-      const now = new Date();
-      const dateBlocks = storage.getTimeBlocks().filter(b => isOnDate(b.startTime, selectedDate));
-      const sessions = storage.getTimerSessions();
-
-      const sessionElapsed: Record<string, number> = {};
-      for (const s of sessions) {
-        if (isOnDate(s.startTime, selectedDate)) {
-          sessionElapsed[s.subjectId] = (sessionElapsed[s.subjectId] ?? 0) + Math.round(s.durationSeconds / 60);
-        }
-      }
-      setElapsedBySubject(sessionElapsed);
-      setMissedBlockIds(computeMissedBlockIds(dateBlocks, sessions, now));
-    }
-
-    compute();
+    void compute();
     if (dateStr !== todayStr) return;
     clearInterval(computeIntervalRef.current);
-    computeIntervalRef.current = setInterval(compute, 60_000);
+    computeIntervalRef.current = setInterval(() => { void compute(); }, 60_000);
     return () => { clearInterval(computeIntervalRef.current); };
-  }, [selectedDate, blocks]);
+  }, [selectedDate, blocks, compute]);
 
-  // Detect midnight crossing: flush elapsed for old day, auto-advance to new day
+  // Detect midnight crossing: auto-advance to new day
   useEffect(() => {
     const id = setInterval(() => {
       const newTodayStr = toISODateString(logicalToday());
@@ -571,11 +539,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       const oldDateStr = prevLogicalTodayStrRef.current;
       prevLogicalTodayStrRef.current = newTodayStr;
       const oldDate = new Date(`${oldDateStr}T00:00:00`);
-      const oldBlocks = storage.getTimeBlocks().filter(b => isOnDate(b.startTime, oldDate));
-      localStorage.setItem(
-        `soma_elapsed_${oldDateStr}`,
-        JSON.stringify(computeElapsedTime(oldBlocks, new Date(), oldDate)),
-      );
       if (isSameDay(selectedDate, oldDate)) onSelectDate(logicalToday());
     }, 30_000);
     return () => clearInterval(id);
@@ -593,17 +556,12 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
 
   useEffect(() => {
     function onTimerStopped() {
-      const updatedBlocks = storage.getTimeBlocks().filter(b => isOnDate(b.startTime, selectedDate));
-      setBlocks(updatedBlocks);
-      setSubjects(storage.getSubjects().map(s => ({
-        ...s,
-        totalTimeToday: subjectSecsFromSessions(s.id, selectedDate),
-      })));
-      setMissedBlockIds(computeMissedBlockIds(updatedBlocks, storage.getTimerSessions(), new Date()));
+      setBlocks(storage.getTimeBlocks().filter(b => isOnDate(b.startTime, selectedDate)));
+      void compute();
     }
     window.addEventListener('soma_timer_stopped', onTimerStopped);
     return () => window.removeEventListener('soma_timer_stopped', onTimerStopped);
-  }, [selectedDate]);
+  }, [selectedDate, compute]);
 
   useEffect(() => {
     const COURSE_COLORS = [
@@ -836,15 +794,10 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       durationSeconds,
       linkedBlockId: block.id,
     };
-    const allSessions = storage.getTimerSessions();
-    storage.setTimerSessions([...allSessions, session]);
+    storage.setTimerSessions([...storage.getTimerSessions(), session]);
     const subjectName = subjects.find(s => s.id === block.subjectId)?.name ?? '';
-    void storage.saveTimerSession(session, subjectName);
-    setMissedBlockIds(prev => { const next = new Set(prev); next.delete(block.id); return next; });
-    setElapsedBySubject(prev => ({
-      ...prev,
-      [block.subjectId]: (prev[block.subjectId] ?? 0) + Math.round(durationSeconds / 60),
-    }));
+    void storage.saveTimerSession(session, subjectName).then(() => void compute());
+    void compute();
     setBlockModal(null);
   }
 
@@ -882,14 +835,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     };
     const allBlocks = storage.getTimeBlocks().map(b => b.id === updated.id ? updated : b);
     storage.setTimeBlocks(allBlocks);
-    const blocksForDate = allBlocks.filter(b => isOnDate(b.startTime, selectedDate));
-    setBlocks(blocksForDate);
-    const updatedSubjects = subjects.map(s => ({
-      ...s,
-      totalTimeToday: subjectSecsFromSessions(s.id, selectedDate),
-    }));
-    storage.setSubjects(updatedSubjects);
-    setSubjects(updatedSubjects);
+    setBlocks(allBlocks.filter(b => isOnDate(b.startTime, selectedDate)));
     setBlockModal({ block: updated, subject: blockModal.subject });
     setBlockEditMode(false);
   }
@@ -1613,7 +1559,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                   return (
                     <div
                       key={block.id}
-                      className={`${styles.block}${missedBlockIds.has(block.id) ? ` ${styles.blockMissed}` : ''}`}
+                      className={`${styles.block}${blockStates.get(block.id) === 'missed' ? ` ${styles.blockMissed}` : ''}`}
                       style={{
                         top: blockTopPx,
                         height,
@@ -2285,7 +2231,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                   </div>
                 </div>
                 <div className={styles.blockModalActions}>
-                  {missedBlockIds.has(blockModal.block.id) && (
+                  {blockStates.get(blockModal.block.id) === 'missed' && (
                     <button className={styles.blockModalMarkStudiedBtn} onClick={() => markAsStudied(blockModal.block)}>Mark as studied</button>
                   )}
                   <button className={styles.blockModalEditBtn} onClick={() => openBlockEdit(blockModal.block)}>Edit</button>

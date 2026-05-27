@@ -122,17 +122,6 @@ function computeStreak(daysWithData: Set<string>): number {
   return streak;
 }
 
-function lsElapsedMinutesForDays(days: string[]): { day: string; minutes: number }[] {
-  return days.map(day => {
-    const raw = localStorage.getItem(`soma_elapsed_${day}`);
-    if (!raw) return { day, minutes: 0 };
-    try {
-      const data: Record<string, number> = JSON.parse(raw);
-      return { day, minutes: Math.round(Object.values(data).reduce((s, m) => s + m, 0)) };
-    } catch { return { day, minutes: 0 }; }
-  });
-}
-
 export async function getWeeklyStudyTime(weekOffset = 0): Promise<{ day: string; minutes: number }[]> {
   const days = last7DayKeys(weekOffset);
   try {
@@ -153,7 +142,7 @@ export async function getWeeklyStudyTime(weekOffset = 0): Promise<{ day: string;
       }
     }
   } catch { /* fall through */ }
-  return lsElapsedMinutesForDays(days);
+  return days.map(day => ({ day, minutes: 0 }));
 }
 
 export async function getSubjectBreakdown(): Promise<{ subjectName: string; minutes: number; color: string }[]> {
@@ -189,23 +178,7 @@ export async function getSubjectBreakdown(): Promise<{ subjectName: string; minu
       }
     }
   } catch { /* fall through */ }
-  // Fallback: soma_elapsed_* keys
-  const minutesById = new Map<string, number>();
-  for (const day of days) {
-    const raw = localStorage.getItem(`soma_elapsed_${day}`);
-    if (!raw) continue;
-    try {
-      const data: Record<string, number> = JSON.parse(raw);
-      for (const [id, m] of Object.entries(data)) minutesById.set(id, (minutesById.get(id) ?? 0) + m);
-    } catch { /* skip */ }
-  }
-  return [...minutesById.entries()]
-    .map(([id, minutes]) => ({
-      subjectName: subjectMap.get(id)?.name ?? 'Unknown',
-      color: subjectMap.get(id)?.color ?? '#91a7ff',
-      minutes: Math.round(minutes),
-    }))
-    .sort((a, b) => b.minutes - a.minutes);
+  return [];
 }
 
 export async function getEstimatedVsActual(): Promise<{ text: string; estimated: number; actual: number }[]> {
@@ -288,15 +261,5 @@ export async function getHeatmapMinutes(year: number, month: number): Promise<Re
       }
     }
   } catch { /* fall through */ }
-  // Fallback: soma_elapsed_* keys
-  const byDay: Record<number, number> = {};
-  for (let d = 1; d <= daysInMonth; d++) {
-    const raw = localStorage.getItem(`soma_elapsed_${year}-${pad(month + 1)}-${pad(d)}`);
-    if (!raw) continue;
-    try {
-      const data: Record<string, number> = JSON.parse(raw);
-      byDay[d] = Math.round(Object.values(data).reduce((s, m) => s + m, 0));
-    } catch { /* skip */ }
-  }
-  return byDay;
+  return {};
 }
