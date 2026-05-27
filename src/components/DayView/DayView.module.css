@@ -2523,6 +2523,9 @@
   margin-top: 20px;
   padding-top: 16px;
   border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .sessionSectionTitle {
@@ -2531,36 +2534,47 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
-  margin-bottom: 10px;
+  margin-bottom: 4px;
 }
 
 .sessionEmpty {
   font-size: 13px;
   font-style: italic;
   color: var(--text-muted);
-  padding: 10px 0 6px;
+  padding: 6px 2px 4px;
 }
 
 .sessionRow {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 0;
-  border-bottom: 1px solid var(--border);
+  gap: 10px;
+  padding: 10px 12px;
+  background: oklch(97% 0.004 265);
+  border: 1px solid oklch(91% 0.006 265);
+  border-radius: 10px;
   font-size: 13px;
+  transition: background 0.15s, border-color 0.15s;
 }
 
-.sessionRow:last-child { border-bottom: none; }
+.sessionRow:hover {
+  background: oklch(96% 0.005 265);
+  border-color: oklch(87% 0.008 265);
+}
 
 .sessionDate {
-  color: var(--text-secondary);
-  min-width: 48px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  min-width: 42px;
   flex-shrink: 0;
 }
 
 .sessionTime {
   color: var(--text-secondary);
   flex: 1;
+  font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2569,6 +2583,7 @@
 .sessionDur {
   color: var(--text-primary);
   font-weight: 600;
+  font-size: 14px;
   min-width: 44px;
   text-align: right;
   flex-shrink: 0;
@@ -2831,6 +2846,10 @@
 [data-theme="dark"] .modalInput { background: var(--bg); border-color: var(--border); }
 [data-theme="dark"] .taskModalBox { background: var(--bg-secondary); }
 [data-theme="dark"] .taskModalStart { background: var(--bg); }
+
+/* Session cards in dark mode */
+[data-theme="dark"] .sessionRow { background: var(--bg); border-color: var(--border); }
+[data-theme="dark"] .sessionRow:hover { background: var(--bg-tertiary); border-color: oklch(35% 0.008 265); }
 
 /* Generic btn */
 [data-theme="dark"] .btn { background: var(--bg-secondary); border-color: var(--border); }
