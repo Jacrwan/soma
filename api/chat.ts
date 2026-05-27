@@ -3,6 +3,28 @@ import { createClient } from '@supabase/supabase-js';
 
 export const config = { api: { bodyParser: { sizeLimit: '1mb' } } };
 
+const TRIAL_MS     = 21 * 86_400_000;
+const EXTENSION_MS =  7 * 86_400_000;
+
+function computeStatus(row: {
+  status: string;
+  trial_start: string | null;
+  extension_start: string | null;
+}): string {
+  const now = Date.now();
+  if (row.status === 'trialing' && row.trial_start) {
+    return now > new Date(row.trial_start).getTime() + TRIAL_MS
+      ? 'trial_expired'
+      : 'trialing';
+  }
+  if (row.status === 'trial_extended' && row.extension_start) {
+    return now > new Date(row.extension_start).getTime() + EXTENSION_MS
+      ? 'trial_extension_expired'
+      : 'trial_extended';
+  }
+  return row.status;
+}
+
 const ALLOWED_ORIGINS = [
   'https://somastudy.app',
   ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:5173'] : []),
@@ -58,11 +80,12 @@ async function verifyUserAndSubscription(
 
   const { data: sub } = await admin
     .from('subscriptions')
-    .select('status')
+    .select('status, trial_start, extension_start')
     .eq('user_id', user.id)
     .single();
 
-  const hasAccess = sub?.status === 'trialing' || sub?.status === 'active';
+  const status = sub ? computeStatus(sub) : 'free';
+  const hasAccess = status === 'trialing' || status === 'trial_extended' || status === 'active';
   if (!hasAccess) {
     return { ok: false, status: 402, error: 'subscription_required' };
   }

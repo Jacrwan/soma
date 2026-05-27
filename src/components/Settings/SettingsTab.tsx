@@ -392,16 +392,20 @@ export default function SettingsTab() {
               <div className={styles.subRow}>
                 <span className={styles.subLabel}>Plan</span>
                 <span className={`${styles.subBadge} ${
-                  subscription.status === 'trialing' ? styles.subBadgeTrial :
-                  subscription.status === 'active'   ? styles.subBadgeActive :
-                  subscription.status === 'loading'  ? styles.subBadgeLoading :
+                  subscription.status === 'trialing'                 ? styles.subBadgeTrial :
+                  subscription.status === 'trial_extended'           ? styles.subBadgeTrial :
+                  subscription.status === 'active'                   ? styles.subBadgeActive :
+                  subscription.status === 'loading'                  ? styles.subBadgeLoading :
                   styles.subBadgeFree
                 }`}>
-                  {subscription.status === 'loading'  ? '—' :
-                   subscription.status === 'trialing' ? 'Trial' :
-                   subscription.status === 'active'   ? 'Premium' :
-                   subscription.status === 'canceled' ? 'Canceled' :
-                   subscription.status === 'past_due' ? 'Past due' :
+                  {subscription.status === 'loading'                  ? '—' :
+                   subscription.status === 'trialing'                 ? 'Free trial' :
+                   subscription.status === 'trial_expired'            ? 'Trial ended' :
+                   subscription.status === 'trial_extended'           ? 'Extended trial' :
+                   subscription.status === 'trial_extension_expired'  ? 'Trial ended' :
+                   subscription.status === 'active'                   ? 'Premium' :
+                   subscription.status === 'canceled'                 ? 'Canceled' :
+                   subscription.status === 'past_due'                 ? 'Past due' :
                    'Free'}
                 </span>
               </div>
@@ -411,6 +415,15 @@ export default function SettingsTab() {
                   <span className={styles.subLabel}>Trial ends</span>
                   <span className={styles.subValue}>
                     {new Date(subscription.trialEndsAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  </span>
+                </div>
+              )}
+
+              {subscription.status === 'trial_extended' && subscription.extensionEndsAt && (
+                <div className={styles.subRow}>
+                  <span className={styles.subLabel}>Extension ends</span>
+                  <span className={styles.subValue}>
+                    {new Date(subscription.extensionEndsAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                   </span>
                 </div>
               )}
@@ -434,16 +447,19 @@ export default function SettingsTab() {
             </div>
 
             <div className={styles.subActions}>
-              {!hasAIAccess(subscription.status) && subscription.status !== 'loading' && (
-                <button
-                  className={styles.subBtnPrimary}
-                  onClick={() => navigate('/pricing')}
-                >
-                  Start free trial
+              {subscription.status === 'free' && (
+                <button className={styles.subBtnPrimary} onClick={() => navigate('/pricing')}>
+                  Start free 3-week trial
                 </button>
               )}
 
-              {(subscription.status === 'trialing' || subscription.status === 'active') && (
+              {(subscription.status === 'trial_expired' || subscription.status === 'trial_extension_expired') && (
+                <button className={styles.subBtnPrimary} onClick={() => navigate('/pricing')}>
+                  {subscription.status === 'trial_expired' ? 'Get 7 more days free' : 'Subscribe — $4.99/mo'}
+                </button>
+              )}
+
+              {(subscription.status === 'trial_extended' || subscription.status === 'active') && (
                 <button
                   className={styles.subBtn}
                   disabled={subLoading}

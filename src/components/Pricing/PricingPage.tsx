@@ -1,15 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { startCheckout } from '../../lib/subscription';
+import { useSubscription, startTrial, startCheckout } from '../../lib/subscription';
 import styles from './PricingPage.module.css';
 
-const MONTHLY_PRICE        = '$4.99';
-const MONTHLY_ORIGINAL     = '$7.99';
-const ANNUAL_PRICE         = '$49.99';
-const ANNUAL_ORIGINAL      = '$95.88';
-const ANNUAL_PER_MONTH     = '$4.17';
-const ANNUAL_SAVINGS       = '48%';
+const MONTHLY_PRICE    = '$4.99';
+const ANNUAL_PRICE     = '$49.99';
+const ANNUAL_PER_MONTH = '$4.17';
+const ANNUAL_SAVINGS   = '48%';
 
 function CheckIcon() {
   return (
@@ -38,12 +36,13 @@ const PREMIUM_FEATURES = [
 type Plan = 'monthly' | 'yearly';
 
 export default function PricingPage() {
-  const navigate = useNavigate();
-  const [plan, setPlan] = useState<Plan>('monthly');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const navigate   = useNavigate();
+  const subscription = useSubscription();
+  const [plan, setPlan]         = useState<Plan>('monthly');
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState<string | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
-  const [backTo, setBackTo] = useState('/');
+  const [backTo, setBackTo]     = useState('/');
 
   useEffect(() => {
     document.title = 'Soma — Pricing';
@@ -55,25 +54,53 @@ export default function PricingPage() {
     return () => { document.title = 'Soma'; };
   }, []);
 
+  // Redirect users who already have access
+  useEffect(() => {
+    const s = subscription.status;
+    if (s === 'loading') return;
+    if (s === 'trialing' || s === 'trial_extended' || s === 'active') {
+      navigate('/settings', { replace: true });
+    }
+  }, [subscription.status, navigate]);
+
+  const isTrialExpired = subscription.status === 'trial_expired' || subscription.status === 'trial_extension_expired';
+
   async function handleCta() {
-    if (isLoggedIn === null) return;
+    if (isLoggedIn === null || subscription.status === 'loading') return;
+
     if (!isLoggedIn) {
       navigate('/signup');
       return;
     }
+
     setLoading(true);
     setError(null);
     try {
-      await startCheckout(plan);
-    } catch (e: any) {
-      if (e?.message === 'Already subscribed') {
-        navigate('/settings');
-        return;
+      if (isTrialExpired) {
+        // Trial ended — go to Stripe extension checkout (always monthly)
+        await startCheckout();
+      } else {
+        // Free user — start the no-Stripe 3-week trial immediately
+        await startTrial();
+        navigate('/ai');
       }
-      setError('Something went wrong. Please try again.');
+    } catch (e: any) {
+      setError(e?.message === 'Already extended' ? 'You've already used your extension.'
+             : e?.message === 'Already subscribed' ? 'You're already subscribed.'
+             : 'Something went wrong. Please try again.');
       setLoading(false);
     }
   }
+
+  const ctaLabel = isTrialExpired
+    ? 'Get 7 more days free'
+    : loading ? 'Starting…' : 'Start free 3-week trial';
+
+  const ctaMeta = isTrialExpired
+    ? '$4.99/month after 7-day extension · Cancel anytime'
+    : plan === 'monthly'
+      ? `${MONTHLY_PRICE}/month after trial · Cancel anytime`
+      : `${ANNUAL_PRICE}/year after trial · Cancel anytime`;
 
   return (
     <div className={styles.wrap}>
@@ -89,25 +116,36 @@ export default function PricingPage() {
 
       <div className={styles.page}>
         <p className={styles.eyebrow}>Soma Premium</p>
-        <h1 className={styles.headline}>Start 1 month free</h1>
-        <p className={styles.sub}>No charge today. Cancel anytime before your trial ends.</p>
+        {isTrialExpired ? (
+          <>
+            <h1 className={styles.headline}>Your free trial has ended</h1>
+            <p className={styles.sub}>Add a payment method to get 7 more days free, then $4.99/mo.</p>
+          </>
+        ) : (
+          <>
+            <h1 className={styles.headline}>Start 3 weeks free</h1>
+            <p className={styles.sub}>No charge today. Cancel anytime before your trial ends.</p>
+          </>
+        )}
 
-        {/* Plan toggle */}
-        <div className={styles.toggle}>
-          <button
-            className={`${styles.toggleBtn}${plan === 'monthly' ? ` ${styles.toggleBtnActive}` : ''}`}
-            onClick={() => setPlan('monthly')}
-          >
-            Monthly
-          </button>
-          <button
-            className={`${styles.toggleBtn}${plan === 'yearly' ? ` ${styles.toggleBtnActive}` : ''}`}
-            onClick={() => setPlan('yearly')}
-          >
-            Annual
-            <span className={styles.saveBadge}>Save {ANNUAL_SAVINGS}</span>
-          </button>
-        </div>
+        {/* Plan toggle — shown for free users choosing post-trial billing */}
+        {!isTrialExpired && (
+          <div className={styles.toggle}>
+            <button
+              className={`${styles.toggleBtn}${plan === 'monthly' ? ` ${styles.toggleBtnActive}` : ''}`}
+              onClick={() => setPlan('monthly')}
+            >
+              Monthly
+            </button>
+            <button
+              className={`${styles.toggleBtn}${plan === 'yearly' ? ` ${styles.toggleBtnActive}` : ''}`}
+              onClick={() => setPlan('yearly')}
+            >
+              Annual
+              <span className={styles.saveBadge}>Save {ANNUAL_SAVINGS}</span>
+            </button>
+          </div>
+        )}
 
         {/* Free tier */}
         <div className={styles.card}>
@@ -129,21 +167,26 @@ export default function PricingPage() {
         <div className={`${styles.card} ${styles.cardPro}`}>
           <div className={styles.cardHeader}>
             <span className={`${styles.planName} ${styles.planNamePro}`}>Premium</span>
-            {plan === 'monthly' ? (
+            {isTrialExpired ? (
               <>
-                <span className={styles.priceOriginal}>{MONTHLY_ORIGINAL}</span>
+                <span className={styles.price}>{MONTHLY_PRICE}</span>
+                <span className={styles.priceSub}>/mo</span>
+              </>
+            ) : plan === 'monthly' ? (
+              <>
                 <span className={styles.price}>{MONTHLY_PRICE}</span>
                 <span className={styles.priceSub}>/mo</span>
               </>
             ) : (
               <>
-                <span className={styles.priceOriginal}>{ANNUAL_ORIGINAL}</span>
                 <span className={styles.price}>{ANNUAL_PRICE}</span>
                 <span className={styles.priceSub}>/yr</span>
                 <span className={styles.priceEquiv}>{ANNUAL_PER_MONTH}/mo</span>
               </>
             )}
-            <span className={styles.trial}>30-day free trial</span>
+            <span className={styles.trial}>
+              {isTrialExpired ? '7-day extension' : '3-week free trial'}
+            </span>
           </div>
           <div className={styles.featureList}>
             {PREMIUM_FEATURES.map(f => (
@@ -160,15 +203,11 @@ export default function PricingPage() {
           <button
             className={styles.ctaBtn}
             onClick={handleCta}
-            disabled={loading || isLoggedIn === null}
+            disabled={loading || isLoggedIn === null || subscription.status === 'loading'}
           >
-            {loading ? 'Loading…' : 'Start free trial'}
+            {loading ? 'Loading…' : ctaLabel}
           </button>
-          <p className={styles.ctaMeta}>
-            {plan === 'monthly'
-              ? `${MONTHLY_PRICE}/month after trial · Cancel anytime`
-              : `${ANNUAL_PRICE}/year after trial · Cancel anytime`}
-          </p>
+          <p className={styles.ctaMeta}>{ctaMeta}</p>
           {!isLoggedIn && isLoggedIn !== null && (
             <p className={styles.loginNote}>
               Already have an account? <Link to="/login">Sign in</Link>

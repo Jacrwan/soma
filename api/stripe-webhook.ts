@@ -55,24 +55,50 @@ export default async function handler(req: any, res: any) {
   async function upsertSubscription(sub: Stripe.Subscription) {
     const userId = await resolveUserId(sub);
     if (!userId) {
-      console.warn('[stripe-webhook] could not resolve supabase_user_id for subscription', sub.id);
+      console.warn('[stripe-webhook] could not resolve supabase_user_id for subscription');
       return;
     }
 
-    const trialEnd  = sub.trial_end  ? new Date(sub.trial_end  * 1000).toISOString() : null;
-    const periodEnd = sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null;
+    // Fetch existing row to preserve free-trial timestamps and detect extension flow
+    const { data: existing } = await admin
+      .from('subscriptions')
+      .select('trial_start, extension_start')
+      .eq('user_id', userId)
+      .single();
 
-    await admin.from('subscriptions').upsert({
+    const hadFreeTrial = !!existing?.trial_start;
+    const now = new Date().toISOString();
+    const periodEnd = sub.current_period_end
+      ? new Date(sub.current_period_end * 1000).toISOString()
+      : null;
+
+    // If user went through the free trial and Stripe says "trialing" → this is the 7-day extension
+    const storedStatus = hadFreeTrial && sub.status === 'trialing'
+      ? 'trial_extended'
+      : sub.status;
+
+    const payload: Record<string, unknown> = {
       user_id: userId,
       stripe_customer_id: sub.customer as string,
       stripe_subscription_id: sub.id,
-      status: sub.status,
+      status: storedStatus,
       plan: 'premium',
-      trial_ends_at: trialEnd,
       current_period_end: periodEnd,
       cancel_at_period_end: sub.cancel_at_period_end,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'user_id' });
+      updated_at: now,
+    };
+
+    // Always preserve trial_start — never overwrite it with null
+    if (existing?.trial_start) payload.trial_start = existing.trial_start;
+
+    // Set extension_start the first time the extension is activated
+    if (hadFreeTrial && sub.status === 'trialing' && !existing?.extension_start) {
+      payload.extension_start = now;
+    } else if (existing?.extension_start) {
+      payload.extension_start = existing.extension_start;
+    }
+
+    await admin.from('subscriptions').upsert(payload, { onConflict: 'user_id' });
   }
 
   switch (event.type) {

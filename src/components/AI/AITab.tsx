@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
 import { friendlyError } from '../../lib/errors';
-import { useSubscription, hasAIAccess } from '../../lib/subscription';
+import { useSubscription, hasAIAccess, startTrial, startCheckout } from '../../lib/subscription';
 import { TimeBlock, Subject, Todo, ChatMessage, ChatSession, AiTodo } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
 import { SkeletonBlock } from '../UI/Skeleton';
@@ -412,24 +412,90 @@ function SessionRow({ session, isActive, isConfirming, onSelect, onDeleteClick, 
 
 // ── Locked screen ───────────────────────────────────────────────────────────
 
-function AILockedScreen() {
+function AILockedScreen({ status }: { status: string }) {
   const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const starIcon = (
+    <svg className={styles.lockedIcon} width="28" height="28" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 1L8.1 5.9L13 7L8.1 8.1L7 13L5.9 8.1L1 7L5.9 5.9Z"/>
+    </svg>
+  );
+
+  // Trial ended — offer 7-day payment extension
+  if (status === 'trial_expired') {
+    async function handleExtend() {
+      setLoading(true);
+      setError('');
+      try { await startCheckout(); }
+      catch (e: any) { setError(e?.message ?? 'Something went wrong.'); setLoading(false); }
+    }
+    return (
+      <div className={styles.lockedLayout}>
+        <div className={styles.lockedCard}>
+          {starIcon}
+          <h2 className={styles.lockedTitle}>Your free trial has ended</h2>
+          <p className={styles.lockedDesc}>
+            Add a payment method to get <strong>7 more days free</strong>, then $4.99/mo after that. Cancel anytime.
+          </p>
+          {error && <p className={styles.lockedError}>{error}</p>}
+          <button className={styles.lockedBtn} onClick={handleExtend} disabled={loading}>
+            {loading ? 'Loading…' : 'Get 7 more days free'}
+          </button>
+          <p className={styles.lockedMeta}>$4.99/mo after trial · Cancel anytime</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Extension expired — full subscription required
+  if (status === 'trial_extension_expired') {
+    return (
+      <div className={styles.lockedLayout}>
+        <div className={styles.lockedCard}>
+          {starIcon}
+          <h2 className={styles.lockedTitle}>Your extended trial has ended</h2>
+          <p className={styles.lockedDesc}>
+            Subscribe to Soma Premium to continue using AI features.
+          </p>
+          <button className={styles.lockedBtn} onClick={() => navigate('/pricing')}>
+            Subscribe — $4.99/mo
+          </button>
+          <p className={styles.lockedMeta}>Cancel anytime</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Free user — start the 3-week trial
+  async function handleStartTrial() {
+    setLoading(true);
+    setError('');
+    try {
+      await startTrial();
+      // Reload subscription state by navigating back to same page
+      navigate(0 as any);
+    } catch (e: any) {
+      setError(e?.message ?? 'Something went wrong.');
+      setLoading(false);
+    }
+  }
 
   return (
     <div className={styles.lockedLayout}>
       <div className={styles.lockedCard}>
-        <svg className={styles.lockedIcon} width="28" height="28" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M7 1L8.1 5.9L13 7L8.1 8.1L7 13L5.9 8.1L1 7L5.9 5.9Z"/>
-        </svg>
+        {starIcon}
         <h2 className={styles.lockedTitle}>AI planning is included with Soma Premium</h2>
         <p className={styles.lockedDesc}>
           Get AI-powered scheduling, todo generation, and study planning.
-          Start your <strong>1-month free trial</strong> — no charge today.
+          Start your <strong>3-week free trial</strong> — no charge today.
         </p>
-        <button className={styles.lockedBtn} onClick={() => navigate('/pricing')}>
-          See plans
+        {error && <p className={styles.lockedError}>{error}</p>}
+        <button className={styles.lockedBtn} onClick={handleStartTrial} disabled={loading}>
+          {loading ? 'Starting…' : 'Start free trial'}
         </button>
-        <p className={styles.lockedMeta}>From $3.99/mo · Cancel anytime</p>
+        <p className={styles.lockedMeta}>$4.99/mo after trial · Cancel anytime</p>
       </div>
     </div>
   );
@@ -680,7 +746,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   }
 
   if (!hasAIAccess(subscription.status)) {
-    return <AILockedScreen />;
+    return <AILockedScreen status={subscription.status} />;
   }
 
   return (

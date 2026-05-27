@@ -5,6 +5,9 @@ export type SubscriptionStatus =
   | 'loading'
   | 'free'
   | 'trialing'
+  | 'trial_expired'
+  | 'trial_extended'
+  | 'trial_extension_expired'
   | 'active'
   | 'past_due'
   | 'canceled'
@@ -12,22 +15,30 @@ export type SubscriptionStatus =
 
 export interface SubscriptionInfo {
   status: SubscriptionStatus;
+  trialStart: string | null;
   trialEndsAt: string | null;
+  extensionStart: string | null;
+  extensionEndsAt: string | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
 }
 
 export function hasAIAccess(status: SubscriptionStatus): boolean {
-  return status === 'trialing' || status === 'active';
+  return status === 'trialing' || status === 'trial_extended' || status === 'active';
 }
 
+const EMPTY: SubscriptionInfo = {
+  status: 'loading',
+  trialStart: null,
+  trialEndsAt: null,
+  extensionStart: null,
+  extensionEndsAt: null,
+  currentPeriodEnd: null,
+  cancelAtPeriodEnd: false,
+};
+
 export function useSubscription(): SubscriptionInfo {
-  const [info, setInfo] = useState<SubscriptionInfo>({
-    status: 'loading',
-    trialEndsAt: null,
-    currentPeriodEnd: null,
-    cancelAtPeriodEnd: false,
-  });
+  const [info, setInfo] = useState<SubscriptionInfo>(EMPTY);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,15 +47,16 @@ export function useSubscription(): SubscriptionInfo {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       if (!token) {
-        if (!cancelled) setInfo(s => ({ ...s, status: 'free' }));
+        if (!cancelled) setInfo({ ...EMPTY, status: 'free' });
         return;
       }
 
       const devEmail = import.meta.env.VITE_DEVELOPER_EMAIL as string | undefined;
       if (devEmail && session.user?.email === devEmail) {
-        if (!cancelled) setInfo({ status: 'active', trialEndsAt: null, currentPeriodEnd: null, cancelAtPeriodEnd: false });
+        if (!cancelled) setInfo({ ...EMPTY, status: 'active' });
         return;
       }
+
       try {
         const res = await fetch('/api/subscription', {
           headers: { Authorization: `Bearer ${token}` },
@@ -54,13 +66,16 @@ export function useSubscription(): SubscriptionInfo {
         if (!cancelled) {
           setInfo({
             status: (data.status as SubscriptionStatus) ?? 'free',
+            trialStart: data.trialStart ?? null,
             trialEndsAt: data.trialEndsAt ?? null,
+            extensionStart: data.extensionStart ?? null,
+            extensionEndsAt: data.extensionEndsAt ?? null,
             currentPeriodEnd: data.currentPeriodEnd ?? null,
             cancelAtPeriodEnd: data.cancelAtPeriodEnd ?? false,
           });
         }
       } catch {
-        if (!cancelled) setInfo(s => ({ ...s, status: 'free' }));
+        if (!cancelled) setInfo({ ...EMPTY, status: 'free' });
       }
     }
 
@@ -71,7 +86,25 @@ export function useSubscription(): SubscriptionInfo {
   return info;
 }
 
-export async function startCheckout(plan: 'monthly' | 'yearly' = 'monthly'): Promise<void> {
+export async function startTrial(): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error('Not authenticated');
+
+  const res = await fetch('/api/start-trial', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(body.error ?? 'Failed to start trial');
+  }
+}
+
+// Extension checkout — called after the 21-day free trial expires.
+// Always monthly ($4.99/mo) with a 7-day free extension.
+export async function startCheckout(): Promise<void> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   if (!token) throw new Error('Not authenticated');
@@ -82,7 +115,7 @@ export async function startCheckout(plan: 'monthly' | 'yearly' = 'monthly'): Pro
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ plan }),
+    body: JSON.stringify({}),
   });
 
   if (!res.ok) {

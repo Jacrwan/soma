@@ -1,4 +1,8 @@
+/// <reference types="node" />
 import { createClient } from '@supabase/supabase-js';
+
+const TRIAL_MS     = 21 * 86_400_000;
+const EXTENSION_MS =  7 * 86_400_000;
 
 const ALLOWED_ORIGINS = [
   'https://somastudy.app',
@@ -9,11 +13,31 @@ function applyCors(req: any, res: any): boolean {
   const origin = req.headers['origin'] as string | undefined;
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') { res.status(204).end(); return true; }
   return false;
+}
+
+function computeStatus(row: {
+  status: string;
+  trial_start: string | null;
+  extension_start: string | null;
+}): string {
+  const now = Date.now();
+  if (row.status === 'trialing' && row.trial_start) {
+    return now > new Date(row.trial_start).getTime() + TRIAL_MS
+      ? 'trial_expired'
+      : 'trialing';
+  }
+  if (row.status === 'trial_extended' && row.extension_start) {
+    return now > new Date(row.extension_start).getTime() + EXTENSION_MS
+      ? 'trial_extension_expired'
+      : 'trial_extended';
+  }
+  return row.status;
 }
 
 export default async function handler(req: any, res: any) {
@@ -37,16 +61,27 @@ export default async function handler(req: any, res: any) {
 
   const { data: sub } = await admin
     .from('subscriptions')
-    .select('status, plan, trial_ends_at, current_period_end, cancel_at_period_end')
+    .select('status, trial_start, extension_start, current_period_end, cancel_at_period_end')
     .eq('user_id', user.id)
     .single();
 
   if (!sub) return res.json({ status: 'free' });
 
+  const status = computeStatus(sub);
+
+  const trialEndsAt = sub.trial_start
+    ? new Date(new Date(sub.trial_start).getTime() + TRIAL_MS).toISOString()
+    : null;
+  const extensionEndsAt = sub.extension_start
+    ? new Date(new Date(sub.extension_start).getTime() + EXTENSION_MS).toISOString()
+    : null;
+
   return res.json({
-    status: sub.status,
-    plan: sub.plan,
-    trialEndsAt: sub.trial_ends_at,
+    status,
+    trialStart: sub.trial_start,
+    trialEndsAt,
+    extensionStart: sub.extension_start,
+    extensionEndsAt,
     currentPeriodEnd: sub.current_period_end,
     cancelAtPeriodEnd: sub.cancel_at_period_end,
   });

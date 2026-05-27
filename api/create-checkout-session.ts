@@ -1,5 +1,8 @@
+/// <reference types="node" />
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+
+const TRIAL_MS = 21 * 86_400_000; // 21 days in ms
 
 const ALLOWED_ORIGINS = [
   'https://somastudy.app',
@@ -10,6 +13,7 @@ function applyCors(req: any, res: any): boolean {
   const origin = req.headers['origin'] as string | undefined;
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
   }
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -25,17 +29,10 @@ export default async function handler(req: any, res: any) {
   if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'No token' });
   const token = authHeader.slice(7);
 
-  const { plan } = (req.body ?? {}) as { plan?: string };
-  if (plan !== 'monthly' && plan !== 'yearly') {
-    return res.status(400).json({ error: 'plan must be "monthly" or "yearly"' });
-  }
-
   const supabaseUrl    = process.env.VITE_SUPABASE_URL ?? '';
   const serviceKey     = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
   const stripeKey      = process.env.STRIPE_SECRET_KEY ?? '';
-  const monthlyPriceId = process.env.STRIPE_PRICE_ID_MONTHLY ?? '';
-  const yearlyPriceId  = process.env.STRIPE_PRICE_ID_YEARLY ?? '';
-  const priceId        = plan === 'yearly' ? yearlyPriceId : monthlyPriceId;
+  const priceId        = process.env.STRIPE_PRICE_ID_MONTHLY ?? '';
 
   if (!supabaseUrl || !serviceKey || !stripeKey || !priceId) {
     return res.status(500).json({ error: 'Server not configured' });
@@ -48,15 +45,30 @@ export default async function handler(req: any, res: any) {
   const { data: { user }, error } = await admin.auth.getUser(token);
   if (error || !user) return res.status(401).json({ error: 'Invalid token' });
 
-  // Block duplicate trials
   const { data: sub } = await admin
     .from('subscriptions')
-    .select('status, stripe_customer_id')
+    .select('status, trial_start, extension_start, stripe_customer_id')
     .eq('user_id', user.id)
     .single();
 
-  if (sub?.status === 'trialing' || sub?.status === 'active') {
+  // Must have completed a free trial first
+  if (!sub?.trial_start) {
+    return res.status(409).json({ error: 'Start your free trial first' });
+  }
+
+  // One extension per user, ever
+  if (sub.extension_start) {
+    return res.status(409).json({ error: 'Already extended' });
+  }
+
+  // Block if already on an active paid subscription
+  if (sub.status === 'active') {
     return res.status(409).json({ error: 'Already subscribed' });
+  }
+
+  // Free trial must have actually expired
+  if (Date.now() < new Date(sub.trial_start).getTime() + TRIAL_MS) {
+    return res.status(409).json({ error: 'Free trial has not ended yet' });
   }
 
   const stripe = new Stripe(stripeKey);
@@ -78,10 +90,10 @@ export default async function handler(req: any, res: any) {
     payment_method_collection: 'always',
     line_items: [{ price: priceId, quantity: 1 }],
     subscription_data: {
-      trial_period_days: 30,
+      trial_period_days: 7,
       metadata: { supabase_user_id: user.id },
     },
-    success_url: `${origin}/settings?subscription=success`,
+    success_url: `${origin}/settings?subscription=extended`,
     cancel_url: `${origin}/pricing`,
   });
 
