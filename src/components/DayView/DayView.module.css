@@ -410,6 +410,11 @@
   filter: brightness(0.96);
 }
 
+.blockMissed {
+  opacity: 0.38;
+  border-left-style: dashed;
+}
+
 .blockSubject {
   font-weight: 600;
   font-size: 12px;

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
 import { storage, inferSubjectId } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
-import { Subject, TimeBlock, SubjectColor, Todo, GoogleCalendarEvent, CanvasAssignment, CanvasCourse } from '../../types';
+import { Subject, TimeBlock, TimerSession, SubjectColor, Todo, GoogleCalendarEvent, CanvasAssignment, CanvasCourse } from '../../types';
 import { useTimerContext } from '../../contexts/TimerContext';
 import AssignmentDetail from '../Canvas/AssignmentDetail';
 import { SkeletonBlock } from '../UI/Skeleton';
@@ -322,6 +322,24 @@ function laneStyle(lane = 0, lanes = 1, gapPx = 4): CSSProperties {
   };
 }
 
+function computeMissedBlockIds(blocks: TimeBlock[], sessions: TimerSession[], now: Date): Set<string> {
+  const nowMs = now.getTime();
+  const missed = new Set<string>();
+  for (const block of blocks) {
+    if (block.timerSessionId) continue;
+    if (new Date(block.endTime).getTime() >= nowMs) continue;
+    const blockStartMs = new Date(block.startTime).getTime();
+    const blockEndMs = new Date(block.endTime).getTime();
+    const covered = sessions.some(s =>
+      s.subjectId === block.subjectId &&
+      new Date(s.startTime).getTime() < blockEndMs &&
+      new Date(s.endTime).getTime() > blockStartMs,
+    );
+    if (!covered) missed.add(block.id);
+  }
+  return missed;
+}
+
 function groupShortBlocks(shortBlocks: TimeBlock[]): DotGroup[] {
   const bySubject = new Map<string, TimeBlock[]>();
   for (const b of shortBlocks) {
@@ -440,6 +458,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [dueAssignments, setDueAssignments] = useState<{ assignment: CanvasAssignment; course: CanvasCourse | undefined; color: string }[]>([]);
   const [deadlineDetail, setDeadlineDetail] = useState<{ courseId: number; assignmentId: number } | null>(null);
   const [elapsedBySubject, setElapsedBySubject] = useState<Record<string, number>>({});
+  const [missedBlockIds, setMissedBlockIds] = useState<Set<string>>(new Set());
   const [briefCollapsed, setBriefCollapsed] = useState<boolean>(() => {
     const s = localStorage.getItem('soma_brief_collapsed');
     return s === null ? true : s === 'true';
@@ -538,6 +557,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       }
 
       setElapsedBySubject(combined);
+      setMissedBlockIds(computeMissedBlockIds(dateBlocks, storage.getTimerSessions(), now));
       // Guard: discard the write if selectedDate has changed since this effect started
       if (selectedDateKeyRef.current !== dateStr) return;
       localStorage.setItem(`soma_elapsed_${dateStr}`, JSON.stringify(sameDayResult));
@@ -587,6 +607,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
         ...s,
         totalTimeToday: subjectSecsFromSessions(s.id, selectedDate),
       })));
+      setMissedBlockIds(computeMissedBlockIds(updatedBlocks, storage.getTimerSessions(), new Date()));
     }
     window.addEventListener('soma_timer_stopped', onTimerStopped);
     return () => window.removeEventListener('soma_timer_stopped', onTimerStopped);
@@ -1575,7 +1596,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                   return (
                     <div
                       key={block.id}
-                      className={styles.block}
+                      className={`${styles.block}${missedBlockIds.has(block.id) ? ` ${styles.blockMissed}` : ''}`}
                       style={{
                         top: blockTopPx,
                         height,
