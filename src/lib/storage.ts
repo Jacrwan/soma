@@ -372,6 +372,63 @@ export const storage = {
     await supabase.from('schedule_blocks').delete().eq('id', blockId).eq('user_id', id);
   },
 
+  // ── Active timer (Supabase) ──────────────────────────────────────────
+  async getActiveTimer(): Promise<{
+    subject_id: string;
+    subject_name: string | null;
+    task_text: string | null;
+    session_start_time: string;
+    start_time: string;
+    accumulated_seconds: number;
+    is_paused: boolean;
+  } | null> {
+    const id = await uid();
+    const { data } = await supabase
+      .from('active_timer')
+      .select('subject_id, subject_name, task_text, session_start_time, start_time, accumulated_seconds, is_paused')
+      .eq('user_id', id)
+      .single();
+    return data ?? null;
+  },
+
+  async upsertActiveTimer(row: {
+    subject_id: string;
+    subject_name: string | null;
+    task_text: string | null;
+    session_start_time: string;
+    start_time: string;
+    accumulated_seconds: number;
+    is_paused: boolean;
+  }): Promise<void> {
+    const id = await uid();
+    await supabase.from('active_timer').upsert({
+      user_id: id,
+      ...row,
+      updated_at: new Date().toISOString(),
+    });
+  },
+
+  async deleteActiveTimer(): Promise<void> {
+    const id = await uid();
+    await supabase.from('active_timer').delete().eq('user_id', id);
+  },
+
+  // ── Timer sessions (Supabase) ────────────────────────────────────────
+  async saveTimerSession(session: TimerSession, subjectName: string): Promise<void> {
+    const id = await uid();
+    await supabase.from('timer_sessions').insert({
+      id: session.id,
+      user_id: id,
+      subject_id: session.subjectId,
+      subject_name: subjectName,
+      task_text: session.task || null,
+      start_time: session.startTime,
+      end_time: session.endTime,
+      duration_seconds: session.durationSeconds,
+      date: session.startTime.slice(0, 10),
+    });
+  },
+
   // ── Elapsed time (Supabase) ──────────────────────────────────────────
   async getElapsed(date: string): Promise<Record<string, number>> {
     const id = await uid();

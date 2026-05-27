@@ -30,15 +30,22 @@ function isToday(iso: string) {
     && d.getDate() === n.getDate();
 }
 
+export interface ResumeData {
+  elapsedSeconds: number;
+  sessionStartTimeISO: string;
+  isPaused: boolean;
+}
+
 interface Props {
   subject: Subject;
   onClose: () => void;
   onSessionSaved: (updatedSubjects: Subject[], updatedBlocks: TimeBlock[]) => void;
   onRunningChange?: (isRunning: boolean) => void;
   initialTask?: string;
+  resumeData?: ResumeData;
 }
 
-export default function TimerOverlay({ subject, onClose, onSessionSaved, onRunningChange, initialTask }: Props) {
+export default function TimerOverlay({ subject, onClose, onSessionSaved, onRunningChange, initialTask, resumeData }: Props) {
   const [task, setTask] = useState(initialTask ?? '');
   const [step, setStep] = useState<'input' | 'running'>('input');
   const [isStopping, setIsStopping] = useState(false);
@@ -47,8 +54,20 @@ export default function TimerOverlay({ subject, onClose, onSessionSaved, onRunni
   const startTimeRef = useRef<string | null>(null);
   const elapsedRef = useRef(0);
   const stopTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const resumeDataRef = useRef(resumeData);
 
   useEffect(() => { elapsedRef.current = elapsed; }, [elapsed]);
+
+  // Auto-resume from Supabase active_timer on mount
+  useEffect(() => {
+    const rd = resumeDataRef.current;
+    if (!rd) return;
+    startTimeRef.current = rd.sessionStartTimeISO;
+    start(rd.elapsedSeconds);
+    if (rd.isPaused) pause();
+    setStep('running');
+    onRunningChange?.(!rd.isPaused);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Lock scroll only during input modal
   useEffect(() => {
@@ -67,10 +86,48 @@ export default function TimerOverlay({ subject, onClose, onSessionSaved, onRunni
     const preSeconds = parsePreElapsed(preElapsedInput);
     const now = new Date();
     const adjustedStart = new Date(now.getTime() - preSeconds * 1000);
-    startTimeRef.current = toLocalISO(adjustedStart);
+    const sessionStartISO = toLocalISO(adjustedStart);
+    startTimeRef.current = sessionStartISO;
     start(preSeconds);
     setStep('running');
     onRunningChange?.(true);
+    void storage.upsertActiveTimer({
+      subject_id: subject.id,
+      subject_name: subject.name,
+      task_text: task || null,
+      session_start_time: sessionStartISO,
+      start_time: toLocalISO(now),
+      accumulated_seconds: preSeconds,
+      is_paused: false,
+    }).catch(() => {});
+  }
+
+  function handlePause() {
+    pause();
+    const acc = elapsedRef.current;
+    void storage.upsertActiveTimer({
+      subject_id: subject.id,
+      subject_name: subject.name,
+      task_text: task || null,
+      session_start_time: startTimeRef.current ?? toLocalISO(new Date()),
+      start_time: toLocalISO(new Date()),
+      accumulated_seconds: acc,
+      is_paused: true,
+    }).catch(() => {});
+  }
+
+  function handleResume() {
+    resume();
+    const acc = elapsedRef.current;
+    void storage.upsertActiveTimer({
+      subject_id: subject.id,
+      subject_name: subject.name,
+      task_text: task || null,
+      session_start_time: startTimeRef.current ?? toLocalISO(new Date()),
+      start_time: toLocalISO(new Date()),
+      accumulated_seconds: acc,
+      is_paused: false,
+    }).catch(() => {});
   }
 
   function handleStop() {
@@ -94,6 +151,8 @@ export default function TimerOverlay({ subject, onClose, onSessionSaved, onRunni
       durationSeconds,
     };
     storage.setTimerSessions([...storage.getTimerSessions(), session]);
+    void storage.saveTimerSession(session, subject.name).catch(() => {});
+    void storage.deleteActiveTimer().catch(() => {});
 
     const matchedTodo = storage.getTodos().find(t => t.text === task && t.subjectId === subject.id);
     updateAIMemory({
@@ -179,7 +238,7 @@ export default function TimerOverlay({ subject, onClose, onSessionSaved, onRunni
         <button
           className={styles.bannerBtn}
           title={isPaused || !isRunning ? 'Resume' : 'Pause'}
-          onClick={() => isPaused || !isRunning ? resume() : pause()}
+          onClick={() => isPaused || !isRunning ? handleResume() : handlePause()}
         >
           {isPaused || !isRunning ? '▶' : '⏸'}
         </button>
