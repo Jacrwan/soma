@@ -387,7 +387,7 @@ export const storage = {
       .from('active_timer')
       .select('subject_id, subject_name, task_text, session_start_time, start_time, accumulated_seconds, is_paused')
       .eq('user_id', id)
-      .single();
+      .maybeSingle();
     return data ?? null;
   },
 
