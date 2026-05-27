@@ -1,5 +1,15 @@
 import { useEffect, useRef } from 'react';
 
+const UNIVERSITY_LOGOS = [
+  { name: 'Stanford University', src: '/university-logos/stanford.svg', shape: 'mark' },
+  { name: 'Cornell University', src: '/university-logos/cornell.svg', shape: 'mark' },
+  { name: 'UC Berkeley', src: '/university-logos/uc-berkeley.svg', shape: 'mark' },
+  { name: 'Emory University', src: '/university-logos/emory.svg', shape: 'wide' },
+  { name: 'Carnegie Mellon University', src: '/university-logos/carnegie-mellon.png', shape: 'mark' },
+  { name: 'Georgia Tech', src: '/university-logos/georgia-tech.svg', shape: 'mark' },
+] as const;
+const UNIVERSITY_LOGO_COPIES = [0, 1, 2, 3, 4, 5] as const;
+
 const LANDING_CSS = `
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { scroll-behavior: smooth; }
@@ -341,6 +351,71 @@ nav.scrolled {
   background: oklch(60% 0.22 25);
 }
 
+.university-trust {
+  position: relative;
+  padding: 42px 0 0;
+  background: linear-gradient(180deg, var(--bg) 0%, oklch(8% 0.012 265) 100%);
+}
+.university-trust-inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 56px 18px;
+  display: flex;
+  justify-content: center;
+}
+.university-trust-copy {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.university-logo-marquee {
+  overflow: hidden;
+  padding: 0 0 34px;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 10%, #000 90%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 10%, #000 90%, transparent 100%);
+}
+.university-logo-track {
+  display: flex;
+  width: max-content;
+  animation: universityLogoMarquee 38s linear infinite;
+}
+.university-logo-set {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 7px;
+}
+.university-logo-card {
+  width: 154px;
+  height: 78px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid oklch(30% 0.016 265 / 0.78);
+  background: linear-gradient(180deg, oklch(17% 0.017 265 / 0.94), oklch(12.5% 0.014 265 / 0.98));
+  box-shadow: inset 0 1px 0 oklch(100% 0 0 / 0.06), 0 18px 34px oklch(3% 0.008 265 / 0.24);
+}
+.university-logo-card.is-wide {
+  width: 222px;
+}
+.university-logo-card img {
+  display: block;
+  max-width: 122px;
+  max-height: 62px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 14px oklch(3% 0.01 265 / 0.28));
+}
+.university-logo-card.is-wide img {
+  max-width: 176px;
+  max-height: 42px;
+}
+
 .marquee-wrap {
   border-top: 1px solid var(--border-sub);
   border-bottom: 1px solid var(--border-sub);
@@ -375,6 +450,10 @@ nav.scrolled {
 @keyframes marquee {
   from { transform: translateX(0); }
   to   { transform: translateX(-50%); }
+}
+@keyframes universityLogoMarquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-16.6667%); }
 }
 
 #features { padding: 80px 0 40px; }
@@ -776,6 +855,14 @@ nav.scrolled {
   .hero-inner { grid-template-columns: 1fr; padding: 100px 28px 64px; gap: 0; }
   .hero-visual { display: none; }
   .hero-text { max-width: 100%; }
+  .university-trust { padding-top: 28px; }
+  .university-trust-inner { justify-content: flex-start; padding: 0 28px 14px; }
+  .university-logo-marquee { padding-bottom: 28px; }
+  .university-logo-track { animation-duration: 30s; }
+  .university-logo-card { width: 126px; height: 66px; }
+  .university-logo-card.is-wide { width: 182px; }
+  .university-logo-card img { max-width: 98px; max-height: 52px; }
+  .university-logo-card.is-wide img { max-width: 142px; max-height: 36px; }
   .marquee-wrap { display: none; }
   .feature { grid-template-columns: 1fr; padding: 56px 28px; gap: 36px; }
   .feature:nth-child(even) .feat-text { order: 0; }
@@ -1016,6 +1103,25 @@ export default function LandingPage() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="university-trust" aria-label="Trusted by students from universities">
+        <div className="university-trust-inner">
+          <p className="university-trust-copy">Trusted by students from</p>
+        </div>
+        <div className="university-logo-marquee">
+          <div className="university-logo-track">
+            {UNIVERSITY_LOGO_COPIES.map((setIndex) => (
+              <div className="university-logo-set" aria-hidden={setIndex > 0} key={setIndex}>
+                {UNIVERSITY_LOGOS.map((university) => (
+                  <span className={`university-logo-card is-${university.shape}`} key={`${setIndex}-${university.name}`}>
+                    <img src={university.src} alt={setIndex === 0 ? university.name : ''} />
+                  </span>
+                ))}
+              </div>
+            ))}
           </div>
         </div>
       </section>

@@ -91,10 +91,45 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
+function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 15 15"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {direction === 'left' ? <path d="M9 3.5 5 7.5 9 11.5" /> : <path d="M6 3.5 10 7.5 6 11.5" />}
+    </svg>
+  );
+}
+
 function InsightsSkeleton() {
   const BAR_HEIGHTS = [55, 80, 40, 100, 70, 30, 90];
   return (
     <div className={styles.page}>
+      <header className={styles.pageHeader}>
+        <div>
+          <SkeletonBlock width={110} height={32} />
+          <div style={{ marginTop: 10 }}>
+            <SkeletonBlock width={260} height={12} />
+          </div>
+        </div>
+        <div className={styles.summaryRail}>
+          {[0, 1, 2].map(i => (
+            <div key={i} className={styles.summaryItem}>
+              <SkeletonBlock width={62} height={10} />
+              <SkeletonBlock width={74} height={20} />
+            </div>
+          ))}
+        </div>
+      </header>
+
       {/* Full-width: bar chart */}
       <section className={`${styles.section} ${styles.spanFull}`}>
         <div style={{ height: 20, width: 120, marginBottom: 18 }}>
@@ -167,6 +202,14 @@ export default function InsightsTab() {
   const subjectNameMap = useMemo(() => new Map(subjects.map(s => [s.id, s.name])), [subjects]);
 
   const maxWeeklyMinutes = Math.max(...weekly.map(d => d.minutes), 1);
+  const totalWeeklyMinutes = useMemo(
+    () => weekly.reduce((sum, d) => sum + d.minutes, 0),
+    [weekly]
+  );
+  const bestDay = useMemo(
+    () => weekly.reduce((best, d) => d.minutes > best.minutes ? d : best, weekly[0] ?? { day: '', minutes: 0 }),
+    [weekly]
+  );
 
   const maxPeakMinutes = aiMemory
     ? Math.max(...PEAK_HOURS.map(h => aiMemory.peakHours[h] ?? 0), 1)
@@ -230,6 +273,26 @@ export default function InsightsTab() {
 
   return (
     <div className={styles.page}>
+      <header className={styles.pageHeader}>
+        <div className={styles.pageTitleBlock}>
+          <h1 className={styles.pageTitle}>Insights</h1>
+          <p className={styles.pageSubtitle}>Your study rhythm, organized by time, subject, and follow-through.</p>
+        </div>
+        <div className={styles.summaryRail} aria-label="Insights summary">
+          <div className={styles.summaryItem} style={{ '--stat-accent': 'oklch(58% 0.2 266)' } as React.CSSProperties}>
+            <span className={styles.summaryLabel}>This week</span>
+            <span className={styles.summaryValue}>{formatHours(totalWeeklyMinutes) || '0m'}</span>
+          </div>
+          <div className={styles.summaryItem} style={{ '--stat-accent': 'oklch(62% 0.17 145)' } as React.CSSProperties}>
+            <span className={styles.summaryLabel}>Best day</span>
+            <span className={styles.summaryValue}>{bestDay.minutes > 0 ? dayLabel(bestDay.day) : 'None'}</span>
+          </div>
+          <div className={styles.summaryItem} style={{ '--stat-accent': 'oklch(68% 0.16 52)' } as React.CSSProperties}>
+            <span className={styles.summaryLabel}>Top subject</span>
+            <span className={styles.summaryValue}>{breakdown[0]?.subjectName ?? 'None'}</span>
+          </div>
+        </div>
+      </header>
 
       {/* ── Study time — full width ── */}
       <section className={`${styles.section} ${styles.spanFull}`}>
@@ -238,7 +301,7 @@ export default function InsightsTab() {
             className={styles.weekNavBtn}
             onClick={() => setWeekOffset(o => o - 1)}
             aria-label="Previous week"
-          >‹</button>
+          ><ChevronIcon direction="left" /></button>
           <div className={styles.weekNavCenter}>
             <h2 className={`${styles.sectionTitle} ${styles.sectionTitleStudy}`}>Study time</h2>
             <span className={styles.weekRange}>{fmtDateRange(weekOffset)}</span>
@@ -248,7 +311,7 @@ export default function InsightsTab() {
             onClick={() => setWeekOffset(o => o + 1)}
             disabled={weekOffset >= 0}
             aria-label="Next week"
-          >›</button>
+          ><ChevronIcon direction="right" /></button>
         </div>
         <div className={styles.chart}>
           {weekly.map(({ day, minutes }) => {
@@ -259,7 +322,10 @@ export default function InsightsTab() {
                 <span className={styles.barValue}>
                   {showLabel ? formatHours(minutes) : ''}
                 </span>
-                <div className={`${styles.barTrack}${minutes === 0 ? ` ${styles.barTrackEmpty}` : ''}`}>
+                <div
+                  className={`${styles.barTrack}${minutes === 0 ? ` ${styles.barTrackEmpty}` : ''}`}
+                  title={minutes > 0 ? `${formatHours(minutes)} studied` : 'No study time'}
+                >
                   <div
                     className={`${styles.bar}${isPeak ? ` ${styles.barPeak}` : ''}`}
                     style={{ height: `${(minutes / maxWeeklyMinutes) * 100}%` }}
@@ -282,19 +348,26 @@ export default function InsightsTab() {
           <EmptyState message="No study sessions recorded yet." />
         ) : (
           <div className={styles.donutWrap}>
-            <svg viewBox="0 0 130 130" width="130" height="130" aria-hidden="true">
-              {donutSlices.map((slice, i) => (
-                <circle
-                  key={i}
-                  cx="65" cy="65" r={DONUT_R}
-                  fill="none"
-                  stroke={slice.color}
-                  strokeWidth={DONUT_STROKE}
-                  strokeDasharray={`${slice.arc} ${DONUT_C}`}
-                  transform={`rotate(${slice.startAngle} 65 65)`}
-                />
-              ))}
-            </svg>
+            <div className={styles.donutFigure}>
+              <svg className={styles.donutSvg} viewBox="0 0 130 130" width="130" height="130" aria-hidden="true">
+                <circle className={styles.donutBase} cx="65" cy="65" r={DONUT_R} fill="none" strokeWidth={DONUT_STROKE} />
+                {donutSlices.map((slice, i) => (
+                  <circle
+                    key={i}
+                    cx="65" cy="65" r={DONUT_R}
+                    fill="none"
+                    stroke={slice.color}
+                    strokeWidth={DONUT_STROKE}
+                    strokeDasharray={`${slice.arc} ${DONUT_C}`}
+                    transform={`rotate(${slice.startAngle} 65 65)`}
+                  />
+                ))}
+              </svg>
+              <div className={styles.donutCenter}>
+                <span>{formatHours(totalBreakdownMinutes) || '0m'}</span>
+                <small>Total</small>
+              </div>
+            </div>
             <div className={styles.donutLegend}>
               {donutSlices.map((slice, i) => (
                 <div key={i} className={styles.donutLegendItem}>
@@ -315,6 +388,12 @@ export default function InsightsTab() {
           <EmptyState message="Complete todos with time estimates to see this data." />
         ) : (
           <div className={styles.evaList}>
+            <div className={styles.evaHeader}>
+              <span>Task</span>
+              <span>Est.</span>
+              <span>Actual</span>
+              <span>Delta</span>
+            </div>
             {estimated.map(({ text, estimated: est, actual }) => {
               const delta = formatDelta(est, actual);
               return (
@@ -365,7 +444,7 @@ export default function InsightsTab() {
               className={styles.heatmapNavBtn}
               onClick={() => setCalendarOffset(o => o - 1)}
               aria-label="Previous month"
-            >‹</button>
+            ><ChevronIcon direction="left" /></button>
             <span className={styles.heatmapTitle}>
               {new Date(heatmapData.year, heatmapData.month).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
             </span>
@@ -374,7 +453,7 @@ export default function InsightsTab() {
               onClick={() => setCalendarOffset(o => o + 1)}
               disabled={calendarOffset >= 0}
               aria-label="Next month"
-            >›</button>
+            ><ChevronIcon direction="right" /></button>
           </div>
           <div className={styles.heatmapDow}>
             {['M','T','W','T','F','S','S'].map((d, i) => (
@@ -397,7 +476,7 @@ export default function InsightsTab() {
                     styles[`heatLevel${level}` as keyof typeof styles],
                     isToday ? styles.heatmapCellToday : '',
                   ].filter(Boolean).join(' ')}
-                  title={minutes > 0 ? `${minutes}m studied` : undefined}
+                  title={minutes > 0 ? `${minutes}m studied` : 'No study time'}
                 >
                   <span className={[styles.heatmapDayNum, isDark ? styles.heatmapDayNumDark : ''].filter(Boolean).join(' ')}>
                     {day}
@@ -435,7 +514,7 @@ export default function InsightsTab() {
                 const abs = Math.abs(avgDelta);
                 const label = avgDelta > 0 ? `+${abs}m over` : `${abs}m under`;
                 return (
-                  <div key={name} className={styles.evaRow}>
+                  <div key={name} className={`${styles.evaRow} ${styles.evaRowCompact}`}>
                     <span className={styles.evaText}>{name}</span>
                     <span className={avgDelta > 0 ? styles.evaOver : styles.evaUnder}>{label}</span>
                   </div>
@@ -457,7 +536,7 @@ export default function InsightsTab() {
               const isTop = top3PeakHours.includes(h);
               return (
                 <div key={h} className={styles.peakCol}>
-                  <div className={styles.peakTrack}>
+                  <div className={styles.peakTrack} title={minutes > 0 ? `${formatHours(minutes)} at ${hourLabel(h)}` : `No study time at ${hourLabel(h)}`}>
                     <div
                       className={`${styles.peakBar}${isTop ? ` ${styles.peakBarTop}` : ''}`}
                       style={{ height: `${(minutes / maxPeakMinutes) * 100}%` }}
@@ -490,9 +569,9 @@ export default function InsightsTab() {
           ) : (
             <div className={styles.evaList}>
               {rows.map(({ name, avg }) => (
-                <div key={name} className={styles.evaRow}>
+                <div key={name} className={`${styles.evaRow} ${styles.evaRowCompact}`}>
                   <span className={styles.evaText}>{name}</span>
-                  <span className={styles.evaEst}>{formatHours(avg)} avg / session</span>
+                  <span className={styles.evaEst}>{formatHours(avg) || '0m'} avg / session</span>
                 </div>
               ))}
             </div>
