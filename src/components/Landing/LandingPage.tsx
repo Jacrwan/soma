@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 const UNIVERSITY_LOGOS = [
   { name: 'Stanford University', src: '/university-logos/stanford.svg', shape: 'mark' },
   { name: 'Cornell University', src: '/university-logos/cornell.svg', shape: 'mark' },
-  { name: 'UC Berkeley', src: '/university-logos/uc-berkeley.svg', shape: 'mark' },
+  // { name: 'UC Berkeley', src: '/university-logos/uc-berkeley.svg', shape: 'mark' },
   // { name: 'UCLA', src: '/university-logos/ucla.svg', shape: 'mark' },
   // { name: 'UC San Diego', src: '/university-logos/ucsd.png', shape: 'wide' },
   { name: 'Emory University', src: '/university-logos/emory.svg', shape: 'wide' },
