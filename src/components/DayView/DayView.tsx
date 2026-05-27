@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, type CSSProperties } from 're
 import { storage, inferSubjectId } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
 import { Subject, TimeBlock, SubjectColor, Todo, GoogleCalendarEvent, CanvasAssignment, CanvasCourse } from '../../types';
-import TimerOverlay from '../Timer/TimerOverlay';
+import TimerOverlay, { ResumeData } from '../Timer/TimerOverlay';
 import AssignmentDetail from '../Canvas/AssignmentDetail';
 import { SkeletonBlock } from '../UI/Skeleton';
 import styles from './DayView.module.css';
@@ -441,6 +441,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [dueAssignments, setDueAssignments] = useState<{ assignment: CanvasAssignment; course: CanvasCourse | undefined; color: string }[]>([]);
   const [deadlineDetail, setDeadlineDetail] = useState<{ courseId: number; assignmentId: number } | null>(null);
   const [timerRunning, setTimerRunning] = useState(false);
+  const [timerResumeData, setTimerResumeData] = useState<ResumeData | undefined>(undefined);
   const [elapsedBySubject, setElapsedBySubject] = useState<Record<string, number>>({});
   const [briefCollapsed, setBriefCollapsed] = useState<boolean>(() => {
     const s = localStorage.getItem('soma_brief_collapsed');
@@ -501,6 +502,24 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     }
     setSubjects(visibleSubjects);
     setRightReady(true);
+
+    // Recover any in-progress timer from Supabase
+    storage.getActiveTimer().then(row => {
+      if (!row) return;
+      const subj = visibleSubjects.find(s => s.id === row.subject_id)
+        ?? storage.getSubjects().find(s => s.id === row.subject_id);
+      if (!subj) {
+        void storage.deleteActiveTimer().catch(() => {});
+        return;
+      }
+      const elapsed = row.is_paused
+        ? row.accumulated_seconds
+        : row.accumulated_seconds + Math.floor((Date.now() - new Date(row.start_time).getTime()) / 1000);
+      setTimerResumeData({ elapsedSeconds: elapsed, sessionStartTimeISO: row.session_start_time, isPaused: row.is_paused });
+      setInitialTimerTask(row.task_text ?? '');
+      setTimerSubject(subj);
+    }).catch(() => {});
+
     const tick = () => {
       const now = new Date();
       setCurrentMinutes(now.getHours() * 60 + now.getMinutes());
@@ -1922,10 +1941,11 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
       {timerSubject && (
         <TimerOverlay
           subject={timerSubject}
-          onClose={() => { setTimerSubject(null); setInitialTimerTask(''); }}
+          onClose={() => { setTimerSubject(null); setInitialTimerTask(''); setTimerResumeData(undefined); }}
           onSessionSaved={handleSessionSaved}
           onRunningChange={handleRunningChange}
           initialTask={initialTimerTask}
+          resumeData={timerResumeData}
         />
       )}
 
