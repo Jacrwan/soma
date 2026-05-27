@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
 import { storage, inferSubjectId } from '../../lib/storage';
+import { supabase } from '../../lib/supabase';
 import { sendMessage } from '../../lib/ai';
 import { Subject, TimeBlock, TimerSession, SubjectColor, Todo, GoogleCalendarEvent, CanvasAssignment, CanvasCourse } from '../../types';
 import { useTimerContext } from '../../contexts/TimerContext';
@@ -542,7 +543,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     const nextDateStr = toISODateString(addDays(selectedDate, 1));
     const todayStr = toISODateString(logicalToday());
 
-    function compute() {
+    async function compute() {
       const now = new Date();
       const dateBlocks = storage.getTimeBlocks().filter(b => isOnDate(b.startTime, selectedDate));
       const sameDayBlocks = dateBlocks.filter(b => new Date(b.startTime).getHours() >= START_HOUR);
@@ -551,12 +552,36 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       const sameDayResult = computeElapsedTime(sameDayBlocks, now, selectedDate);
       const nextDayResult = computeElapsedTime(nextDayBlocks, now, selectedDate);
 
-      const combined: Record<string, number> = { ...sameDayResult };
-      for (const [id, mins] of Object.entries(nextDayResult)) {
-        combined[id] = (combined[id] ?? 0) + mins;
+      // Query Supabase for session-based elapsed time; fall back to wall-clock on error
+      let elapsed: Record<string, number> | null = null;
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data, error } = await supabase
+            .from('timer_sessions')
+            .select('subject_id, duration_seconds, id')
+            .eq('user_id', user.id)
+            .eq('date', dateStr);
+          if (!error && data) {
+            const dbIds = new Set(data.map(r => r.id as string));
+            // Merge any sessions written to localStorage but not yet in Supabase
+            const unsynced = storage.getTimerSessions()
+              .filter(s => s.startTime.slice(0, 10) === dateStr && !dbIds.has(s.id));
+            elapsed = {};
+            for (const r of data) elapsed[r.subject_id] = (elapsed[r.subject_id] ?? 0) + Math.round(r.duration_seconds / 60);
+            for (const s of unsynced) elapsed[s.subjectId] = (elapsed[s.subjectId] ?? 0) + Math.round(s.durationSeconds / 60);
+          }
+        }
+      } catch { /* fall through */ }
+
+      if (!elapsed) {
+        // Fallback: wall-clock accumulation when Supabase is unavailable
+        const combined: Record<string, number> = { ...sameDayResult };
+        for (const [id, mins] of Object.entries(nextDayResult)) combined[id] = (combined[id] ?? 0) + mins;
+        elapsed = combined;
       }
 
-      setElapsedBySubject(combined);
+      setElapsedBySubject(elapsed);
       setMissedBlockIds(computeMissedBlockIds(dateBlocks, storage.getTimerSessions(), now));
       // Guard: discard the write if selectedDate has changed since this effect started
       if (selectedDateKeyRef.current !== dateStr) return;
@@ -564,10 +589,10 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       localStorage.setItem(`soma_elapsed_${nextDateStr}`, JSON.stringify(nextDayResult));
     }
 
-    compute();
+    void compute();
     if (dateStr !== todayStr) return;
     clearInterval(computeIntervalRef.current);
-    computeIntervalRef.current = setInterval(compute, 60_000);
+    computeIntervalRef.current = setInterval(() => void compute(), 60_000);
     return () => { clearInterval(computeIntervalRef.current); };
   }, [selectedDate, blocks]);
 
