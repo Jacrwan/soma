@@ -1,5 +1,6 @@
 /// <reference types="node" />
 import { createClient } from '@supabase/supabase-js';
+import { isRateLimited } from './_rateLimit';
 
 const TRIAL_MS     = 21 * 86_400_000;
 const EXTENSION_MS =  7 * 86_400_000;
@@ -43,6 +44,9 @@ function computeStatus(row: {
 export default async function handler(req: any, res: any) {
   if (applyCors(req, res)) return;
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+  if (isRateLimited(req, 'subscription', { max: 30, windowMs: 60_000 })) {
+    return res.status(429).json({ error: 'Too many requests' });
+  }
 
   const authHeader = req.headers['authorization'] as string | undefined;
   if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'No token' });

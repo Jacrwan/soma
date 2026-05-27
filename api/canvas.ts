@@ -1,5 +1,6 @@
 /// <reference types="node" />
 import { createClient } from '@supabase/supabase-js';
+import { isRateLimited } from './_rateLimit';
 
 const ALLOWED_ORIGINS = [
   'https://somastudy.app',
@@ -32,6 +33,9 @@ function applyCors(req: any, res: any): boolean {
 export default async function handler(req: any, res: any) {
   if (applyCors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (isRateLimited(req, 'canvas', { max: 60, windowMs: 60_000 })) {
+    return res.status(429).json({ error: 'Too many requests' });
+  }
 
   // ── Supabase auth gate ────────────────────────────────────────────────────
   const authHeader = req.headers['authorization'] as string | undefined;
