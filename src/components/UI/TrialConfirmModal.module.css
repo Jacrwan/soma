@@ -1,0 +1,121 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 24px;
+  backdrop-filter: blur(2px);
+}
+
+.sheet {
+  background: var(--bg, #161616);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 28px 28px 24px;
+  max-width: 400px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.icon {
+  color: var(--accent, #5b6af0);
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary, #e8e8e4);
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.featureList {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.featureItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--text-secondary, #a0a0a0);
+  line-height: 1.45;
+}
+
+.check {
+  color: var(--accent, #5b6af0);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.terms {
+  font-size: 12px;
+  color: var(--text-muted, #6b6b6b);
+  line-height: 1.55;
+  margin: 0 0 20px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+}
+
+.terms strong {
+  color: var(--text-secondary, #a0a0a0);
+}
+
+.error {
+  font-size: 13px;
+  color: var(--danger, #e05b5b);
+  margin: 0 0 12px;
+}
+
+.confirmBtn {
+  width: 100%;
+  padding: 13px;
+  background: var(--accent, #5b6af0);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  font-family: inherit;
+  margin-bottom: 10px;
+}
+
+.confirmBtn:hover:not(:disabled) { opacity: 0.88; }
+.confirmBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.cancelLink {
+  all: unset;
+  display: block;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted, #6b6b6b);
+  cursor: pointer;
+  padding: 4px;
+  transition: color 0.15s;
+}
+
+.cancelLink:hover:not(:disabled) { color: var(--text-secondary, #a0a0a0); }
+.cancelLink:disabled { opacity: 0.4; cursor: not-allowed; }

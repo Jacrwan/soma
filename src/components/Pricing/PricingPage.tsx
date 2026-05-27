@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useSubscription, startTrial, startCheckout } from '../../lib/subscription';
+import TrialConfirmModal from '../UI/TrialConfirmModal';
 import styles from './PricingPage.module.css';
 
 const MONTHLY_PRICE    = '$4.99';
@@ -41,6 +42,7 @@ export default function PricingPage() {
   const [plan, setPlan]         = useState<Plan>('monthly');
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
   const [backTo, setBackTo]     = useState('/');
 
@@ -73,21 +75,33 @@ export default function PricingPage() {
       return;
     }
 
+    if (isTrialExpired) {
+      // Trial ended — go straight to Stripe extension checkout
+      setLoading(true);
+      setError(null);
+      try {
+        await startCheckout();
+      } catch (e: any) {
+        setError(e?.message === 'Already extended' ? "You've already used your extension."
+               : e?.message === 'Already subscribed' ? "You're already subscribed."
+               : 'Something went wrong. Please try again.');
+        setLoading(false);
+      }
+    } else {
+      // Free user — show confirmation modal first
+      setError(null);
+      setShowModal(true);
+    }
+  }
+
+  async function handleConfirmTrial() {
     setLoading(true);
     setError(null);
     try {
-      if (isTrialExpired) {
-        // Trial ended — go to Stripe extension checkout (always monthly)
-        await startCheckout();
-      } else {
-        // Free user — start the no-Stripe 3-week trial immediately
-        await startTrial();
-        navigate('/ai');
-      }
+      await startTrial();
+      navigate('/ai');
     } catch (e: any) {
-      setError(e?.message === 'Already extended' ? "You've already used your extension."
-             : e?.message === 'Already subscribed' ? "You're already subscribed."
-             : 'Something went wrong. Please try again.');
+      setError('Something went wrong. Please try again.');
       setLoading(false);
     }
   }
@@ -215,6 +229,15 @@ export default function PricingPage() {
           )}
         </div>
       </div>
+
+      {showModal && (
+        <TrialConfirmModal
+          onConfirm={handleConfirmTrial}
+          onCancel={() => setShowModal(false)}
+          loading={loading}
+          error={error ?? undefined}
+        />
+      )}
     </div>
   );
 }

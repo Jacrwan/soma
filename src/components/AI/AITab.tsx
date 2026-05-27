@@ -7,6 +7,7 @@ import { useSubscription, hasAIAccess, startTrial, startCheckout } from '../../l
 import { TimeBlock, Subject, Todo, ChatMessage, ChatSession, AiTodo } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
 import { SkeletonBlock } from '../UI/Skeleton';
+import TrialConfirmModal from '../UI/TrialConfirmModal';
 import styles from './AITab.module.css';
 
 function SessionListSkeleton() {
@@ -468,13 +469,14 @@ function AILockedScreen({ status }: { status: string }) {
     );
   }
 
-  // Free user — start the 3-week trial
-  async function handleStartTrial() {
+  // Free user — confirm then start the 3-week trial
+  const [showModal, setShowModal] = useState(false);
+
+  async function handleConfirm() {
     setLoading(true);
     setError('');
     try {
       await startTrial();
-      // Reload subscription state by navigating back to same page
       navigate(0 as any);
     } catch (e: any) {
       setError(e?.message ?? 'Something went wrong.');
@@ -483,21 +485,30 @@ function AILockedScreen({ status }: { status: string }) {
   }
 
   return (
-    <div className={styles.lockedLayout}>
-      <div className={styles.lockedCard}>
-        {starIcon}
-        <h2 className={styles.lockedTitle}>AI planning is included with Soma Premium</h2>
-        <p className={styles.lockedDesc}>
-          Get AI-powered scheduling, todo generation, and study planning.
-          Start your <strong>3-week free trial</strong> — no charge today.
-        </p>
-        {error && <p className={styles.lockedError}>{error}</p>}
-        <button className={styles.lockedBtn} onClick={handleStartTrial} disabled={loading}>
-          {loading ? 'Starting…' : 'Start free trial'}
-        </button>
-        <p className={styles.lockedMeta}>$4.99/mo after trial · Cancel anytime</p>
+    <>
+      {showModal && (
+        <TrialConfirmModal
+          onConfirm={handleConfirm}
+          onCancel={() => setShowModal(false)}
+          loading={loading}
+          error={error}
+        />
+      )}
+      <div className={styles.lockedLayout}>
+        <div className={styles.lockedCard}>
+          {starIcon}
+          <h2 className={styles.lockedTitle}>AI planning is included with Soma Premium</h2>
+          <p className={styles.lockedDesc}>
+            Get AI-powered scheduling, todo generation, and study planning.
+            Start your <strong>3-week free trial</strong> — no charge today.
+          </p>
+          <button className={styles.lockedBtn} onClick={() => setShowModal(true)}>
+            Start free trial
+          </button>
+          <p className={styles.lockedMeta}>$4.99/mo after trial · Cancel anytime</p>
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
