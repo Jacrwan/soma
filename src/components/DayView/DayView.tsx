@@ -517,6 +517,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const todosRef = useRef<Todo[]>([]);
   const selectedDateKeyRef = useRef<string>('');
   const computeIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const computeRef = useRef<(() => Promise<void>) | null>(null);
   const prevLogicalTodayStrRef = useRef<string>(toISODateString(logicalToday()));
   const mergedBlockIdRef = useRef<string | null>(null);
 
@@ -605,6 +606,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       localStorage.setItem(`soma_elapsed_${nextDateStr}`, JSON.stringify(nextDayResult));
     }
 
+    computeRef.current = compute;
     void compute();
     if (dateStr !== todayStr) return;
     clearInterval(computeIntervalRef.current);
@@ -677,6 +679,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
           totalTimeToday: subjectSecsFromSessions(s.id, selectedDate),
         })));
         setMissedBlockIds(computeMissedBlockIds(updatedBlocks, storage.getTimerSessions(), new Date()));
+        void computeRef.current?.();
         return;
       }
       const updatedBlocks = storage.getTimeBlocks().filter(b => isOnDate(b.startTime, selectedDate));
@@ -686,6 +689,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
         totalTimeToday: subjectSecsFromSessions(s.id, selectedDate),
       })));
       setMissedBlockIds(computeMissedBlockIds(updatedBlocks, storage.getTimerSessions(), new Date()));
+      void computeRef.current?.();
     }
     window.addEventListener('soma_timer_stopped', onTimerStopped);
     return () => window.removeEventListener('soma_timer_stopped', onTimerStopped);
@@ -972,6 +976,13 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     if (linked) {
       storage.setTimerSessions(storage.getTimerSessions().filter(s => s.id !== linked.id));
       void storage.deleteTimerSession(linked.id).catch(() => {});
+      if (isOnDate(linked.startTime, selectedDate)) {
+        const mins = Math.round(linked.durationSeconds / 60);
+        setElapsedBySubject(prev => ({
+          ...prev,
+          [linked.subjectId]: Math.max(0, (prev[linked.subjectId] ?? 0) - mins),
+        }));
+      }
     }
   }
 
@@ -1181,6 +1192,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     if (deleteSessions) {
       storage.setTimerSessions(storage.getTimerSessions().filter(s => s.subjectId !== subject.id));
       void storage.deleteTimerSessionsBySubject(subject.id).catch(() => {});
+      setElapsedBySubject(prev => { const next = { ...prev }; delete next[subject.id]; return next; });
     }
   }
 
@@ -1280,11 +1292,20 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
 
     // Optional: delete timer sessions
     if (deleteSessions && todo.subjectId && todo.text) {
-      const remainingSessions = storage.getTimerSessions().filter(
+      const allSessions = storage.getTimerSessions();
+      const deletedMins = allSessions
+        .filter(s => s.task === todo.text && s.subjectId === todo.subjectId && isOnDate(s.startTime, selectedDate))
+        .reduce((sum, s) => sum + Math.round(s.durationSeconds / 60), 0);
+      storage.setTimerSessions(allSessions.filter(
         s => !(s.task === todo.text && s.subjectId === todo.subjectId),
-      );
-      storage.setTimerSessions(remainingSessions);
+      ));
       void storage.deleteTimerSessionsByTask(todo.text, todo.subjectId).catch(() => {});
+      if (deletedMins > 0) {
+        setElapsedBySubject(prev => ({
+          ...prev,
+          [todo.subjectId!]: Math.max(0, (prev[todo.subjectId!] ?? 0) - deletedMins),
+        }));
+      }
     }
   }
 
