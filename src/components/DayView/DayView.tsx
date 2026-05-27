@@ -539,29 +539,21 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
 
   useEffect(() => {
     const dateStr = toISODateString(selectedDate);
-    const nextDateStr = toISODateString(addDays(selectedDate, 1));
     const todayStr = toISODateString(logicalToday());
 
     function compute() {
       const now = new Date();
       const dateBlocks = storage.getTimeBlocks().filter(b => isOnDate(b.startTime, selectedDate));
-      const sameDayBlocks = dateBlocks.filter(b => new Date(b.startTime).getHours() >= START_HOUR);
-      const nextDayBlocks = dateBlocks.filter(b => new Date(b.startTime).getHours() < START_HOUR);
+      const sessions = storage.getTimerSessions();
 
-      const sameDayResult = computeElapsedTime(sameDayBlocks, now, selectedDate);
-      const nextDayResult = computeElapsedTime(nextDayBlocks, now, selectedDate);
-
-      const combined: Record<string, number> = { ...sameDayResult };
-      for (const [id, mins] of Object.entries(nextDayResult)) {
-        combined[id] = (combined[id] ?? 0) + mins;
+      const sessionElapsed: Record<string, number> = {};
+      for (const s of sessions) {
+        if (isOnDate(s.startTime, selectedDate)) {
+          sessionElapsed[s.subjectId] = (sessionElapsed[s.subjectId] ?? 0) + Math.round(s.durationSeconds / 60);
+        }
       }
-
-      setElapsedBySubject(combined);
-      setMissedBlockIds(computeMissedBlockIds(dateBlocks, storage.getTimerSessions(), now));
-      // Guard: discard the write if selectedDate has changed since this effect started
-      if (selectedDateKeyRef.current !== dateStr) return;
-      localStorage.setItem(`soma_elapsed_${dateStr}`, JSON.stringify(sameDayResult));
-      localStorage.setItem(`soma_elapsed_${nextDateStr}`, JSON.stringify(nextDayResult));
+      setElapsedBySubject(sessionElapsed);
+      setMissedBlockIds(computeMissedBlockIds(dateBlocks, sessions, now));
     }
 
     compute();
@@ -829,6 +821,31 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     setBlocks(prev => prev.filter(b => b.id !== id));
     setBlockModal(null);
     setBlockEditMode(false);
+  }
+
+  function markAsStudied(block: TimeBlock) {
+    const durationSeconds = Math.round(
+      (new Date(block.endTime).getTime() - new Date(block.startTime).getTime()) / 1000
+    );
+    const session: TimerSession = {
+      id: crypto.randomUUID(),
+      subjectId: block.subjectId,
+      task: block.task,
+      startTime: block.startTime,
+      endTime: block.endTime,
+      durationSeconds,
+      linkedBlockId: block.id,
+    };
+    const allSessions = storage.getTimerSessions();
+    storage.setTimerSessions([...allSessions, session]);
+    const subjectName = subjects.find(s => s.id === block.subjectId)?.name ?? '';
+    void storage.saveTimerSession(session, subjectName);
+    setMissedBlockIds(prev => { const next = new Set(prev); next.delete(block.id); return next; });
+    setElapsedBySubject(prev => ({
+      ...prev,
+      [block.subjectId]: (prev[block.subjectId] ?? 0) + Math.round(durationSeconds / 60),
+    }));
+    setBlockModal(null);
   }
 
   function openBlockEdit(block: TimeBlock) {
@@ -2268,6 +2285,9 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                   </div>
                 </div>
                 <div className={styles.blockModalActions}>
+                  {missedBlockIds.has(blockModal.block.id) && (
+                    <button className={styles.blockModalMarkStudiedBtn} onClick={() => markAsStudied(blockModal.block)}>Mark as studied</button>
+                  )}
                   <button className={styles.blockModalEditBtn} onClick={() => openBlockEdit(blockModal.block)}>Edit</button>
                   <button className={styles.blockModalDeleteBtn} onClick={() => deleteBlock(blockModal.block.id)}>Delete</button>
                 </div>
