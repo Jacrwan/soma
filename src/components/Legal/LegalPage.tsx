@@ -12,7 +12,7 @@ export type LegalType =
   | 'contact'
   | 'ai';
 
-const UPDATED = 'May 25, 2026';
+const UPDATED = 'May 26, 2026';
 
 function Privacy() {
   return (
@@ -243,12 +243,15 @@ function Terms() {
       </div>
 
       <div className={styles.section}>
-        <h2>3. Subscription and payment</h2>
+        <h2>3. Free tier and Soma Pro</h2>
         <p>
-          Soma is offered on a subscription basis at <strong>$6.00 USD per month</strong>. Your
-          subscription automatically renews each month until you cancel. See our{' '}
-          <Link to="/billing">Billing & Subscription</Link> page for full details on billing
-          cycles, cancellation, and failed payments.
+          Soma has a free tier that provides access to day view, canvas sync, calendar, and
+          insights. AI features require <strong>Soma Pro</strong>, available at{' '}
+          <strong>$5.99 USD per month</strong> or <strong>$47.88 USD per year</strong> ($3.99/mo).
+          Soma Pro begins with a <strong>30-day free trial</strong> — no charge during the trial
+          period. After the trial, your subscription renews automatically on your chosen billing
+          cycle until you cancel. See our{' '}
+          <Link to="/billing">Billing & Subscription</Link> page for full details.
         </p>
       </div>
 
@@ -397,19 +400,54 @@ function Billing() {
       <div className={styles.divider} />
 
       <div className={styles.section}>
-        <h2>Subscription price</h2>
+        <h2>Free tier and Soma Pro</h2>
         <p>
-          Soma costs <strong>$6.00 USD per month</strong>. This gives you full access to all
-          features — day view, canvas sync, AI assistant, calendar integration, and insights.
+          Soma has a <strong>free tier</strong> that includes day view, canvas sync, calendar
+          integration, insights, and manual todos and scheduling. <strong>AI features</strong>{' '}
+          (AI chat, schedule generation, and todo generation) require <strong>Soma Pro</strong>.
+        </p>
+        <div className={styles.tableWrap}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>Plan</th>
+                <th>Price</th>
+                <th>Equivalent</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Monthly</td>
+                <td>$5.99 / month</td>
+                <td>—</td>
+              </tr>
+              <tr>
+                <td>Annual</td>
+                <td>$47.88 / year</td>
+                <td>$3.99 / month (save 33%)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className={styles.section}>
+        <h2>Free trial</h2>
+        <p>
+          Soma Pro begins with a <strong>30-day free trial</strong>. You will not be charged
+          during the trial period. A valid payment method is required to start the trial. If you
+          cancel before the trial ends, you will not be charged. Each account is eligible for one
+          free trial.
         </p>
       </div>
 
       <div className={styles.section}>
         <h2>Billing cycle and auto-renewal</h2>
         <p>
-          Your subscription begins on the day you subscribe and renews automatically every 30 days
-          at the same price. You will be charged to the payment method on file at the start of
-          each billing period.
+          Your subscription begins on the day your free trial ends and renews automatically at
+          the end of each billing period — monthly (every 30 days) or annually (every 365 days),
+          depending on the plan you chose at checkout. You will be charged to the payment method
+          on file at the start of each renewal period.
         </p>
       </div>
 
@@ -418,20 +456,20 @@ function Billing() {
         <p>
           You can cancel your subscription at any time from <strong>Settings → Subscription</strong>{' '}
           in the app. Cancellation takes effect at the end of your current billing period — you
-          keep access until then. No partial-month refunds are issued unless you qualify under our{' '}
-          <Link to="/refund">Refund Policy</Link>.
+          keep AI access until then. No partial refunds are issued for unused time in a billing
+          period unless you qualify under our <Link to="/refund">Refund Policy</Link>.
         </p>
       </div>
 
       <div className={styles.section}>
         <h2>What happens when you cancel</h2>
         <ul>
-          <li>Your access continues until the end of the paid period.</li>
+          <li>Your access to AI features continues until the end of the paid period.</li>
           <li>
-            After that, your account is downgraded. Your data is retained for 30 days before
-            deletion, giving you time to resubscribe.
+            After that, your account reverts to the free tier. Your data (todos, schedule, settings)
+            is fully retained — you keep access to all free features.
           </li>
-          <li>You can resubscribe at any time to restore access.</li>
+          <li>You can resubscribe at any time to restore AI access.</li>
         </ul>
       </div>
 
@@ -510,10 +548,10 @@ function Refund() {
       </div>
 
       <div className={styles.section}>
-        <h2>Renewals and subsequent months</h2>
+        <h2>Renewals</h2>
         <p>
-          Refunds are not issued for subsequent monthly renewals. If you no longer want to be
-          charged, cancel your subscription before your next billing date from{' '}
+          Refunds are not issued for subsequent billing renewals (monthly or annual). If you no
+          longer want to be charged, cancel your subscription before your next billing date from{' '}
           <strong>Settings → Subscription</strong>.
         </p>
       </div>

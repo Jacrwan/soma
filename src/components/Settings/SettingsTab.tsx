@@ -1,23 +1,29 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { storage, SomaSettings } from '../../lib/storage';
 import { applyTheme } from '../../App';
 import { resetTimeAccuracy, resetPeakHours, resetSubjectPacing } from '../../lib/insights';
 import { supabase } from '../../lib/supabase';
 import { friendlyError } from '../../lib/errors';
+import { useSubscription, hasAIAccess, openBillingPortal } from '../../lib/subscription';
 import styles from './SettingsTab.module.css';
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 type Day = typeof DAYS[number];
 type HoursCategory = 'schoolHours' | 'workHours' | 'personalHours';
-type Section = 'profile' | 'appearance' | 'availability' | 'study' | 'ai' | 'memory' | 'integrations';
+type Section = 'profile' | 'subscription' | 'appearance' | 'availability' | 'study' | 'ai' | 'memory' | 'integrations';
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 export default function SettingsTab() {
+  const navigate = useNavigate();
   const [settings, setSettings] = useState<SomaSettings>(() => storage.getSomaSettings());
   const [activeSection, setActiveSection] = useState<Section>('profile');
+  const subscription = useSubscription();
+  const [subLoading, setSubLoading] = useState(false);
+  const [subError, setSubError] = useState<string | null>(null);
 
   // Profile state
   const [profileEmail, setProfileEmail]       = useState('');
@@ -273,6 +279,7 @@ export default function SettingsTab() {
 
   const navItems: [Section, string][] = [
     ['profile',       'Profile'],
+    ['subscription',  'Subscription'],
     ['appearance',    'Appearance'],
     ['availability',  'Availability'],
     ['study',         'Study Preferences'],
@@ -373,6 +380,83 @@ export default function SettingsTab() {
                   {deleteLoading ? 'Deleting…' : 'Delete account'}
                 </button>
               </div>
+            </div>
+          </section>
+        )}
+
+        {activeSection === 'subscription' && (
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>Subscription</h2>
+
+            <div className={styles.subBlock}>
+              <div className={styles.subRow}>
+                <span className={styles.subLabel}>Plan</span>
+                <span className={`${styles.subBadge} ${
+                  subscription.status === 'trialing' ? styles.subBadgeTrial :
+                  subscription.status === 'active'   ? styles.subBadgeActive :
+                  subscription.status === 'loading'  ? styles.subBadgeLoading :
+                  styles.subBadgeFree
+                }`}>
+                  {subscription.status === 'loading'  ? '—' :
+                   subscription.status === 'trialing' ? 'Trial' :
+                   subscription.status === 'active'   ? 'Pro' :
+                   subscription.status === 'canceled' ? 'Canceled' :
+                   subscription.status === 'past_due' ? 'Past due' :
+                   'Free'}
+                </span>
+              </div>
+
+              {subscription.status === 'trialing' && subscription.trialEndsAt && (
+                <div className={styles.subRow}>
+                  <span className={styles.subLabel}>Trial ends</span>
+                  <span className={styles.subValue}>
+                    {new Date(subscription.trialEndsAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  </span>
+                </div>
+              )}
+
+              {subscription.status === 'active' && subscription.currentPeriodEnd && (
+                <div className={styles.subRow}>
+                  <span className={styles.subLabel}>
+                    {subscription.cancelAtPeriodEnd ? 'Access ends' : 'Renews'}
+                  </span>
+                  <span className={styles.subValue}>
+                    {new Date(subscription.currentPeriodEnd).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                  </span>
+                </div>
+              )}
+
+              {subscription.cancelAtPeriodEnd && (
+                <p className={styles.subNote}>Your subscription is set to cancel at the end of the billing period.</p>
+              )}
+
+              {subError && <p className={styles.subError}>{subError}</p>}
+            </div>
+
+            <div className={styles.subActions}>
+              {!hasAIAccess(subscription.status) && subscription.status !== 'loading' && (
+                <button
+                  className={styles.subBtnPrimary}
+                  onClick={() => navigate('/pricing')}
+                >
+                  Start free trial
+                </button>
+              )}
+
+              {(subscription.status === 'trialing' || subscription.status === 'active') && (
+                <button
+                  className={styles.subBtn}
+                  disabled={subLoading}
+                  onClick={async () => {
+                    setSubLoading(true);
+                    setSubError(null);
+                    try { await openBillingPortal(); }
+                    catch { setSubError('Could not open billing portal.'); setSubLoading(false); }
+                  }}
+                >
+                  {subLoading ? 'Loading…' : 'Manage subscription'}
+                </button>
+              )}
             </div>
           </section>
         )}

@@ -12,6 +12,7 @@ import SettingsTab from './components/Settings/SettingsTab';
 import { storage } from './lib/storage';
 import LandingPage from './components/Landing/LandingPage';
 import LegalPage from './components/Legal/LegalPage';
+import PricingPage from './components/Pricing/PricingPage';
 import styles from './App.module.css';
 
 // ── Error boundary ────────────────────────────────────────────────────────
@@ -261,6 +262,9 @@ export default function App() {
       {/* Auth routes */}
       <Route path="/login"  element={user ? <Navigate to="/day-view" replace /> : <AuthScreen initialMode="login"  />} />
       <Route path="/signup" element={user ? <Navigate to="/day-view" replace /> : <AuthScreen initialMode="signup" />} />
+
+      {/* Pricing */}
+      <Route path="/pricing" element={<PricingPage />} />
 
       {/* Legal routes — publicly accessible, no auth required */}
       <Route path="/privacy"       element={<LegalPage type="privacy"       />} />

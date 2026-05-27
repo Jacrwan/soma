@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
 import { friendlyError } from '../../lib/errors';
+import { useSubscription, hasAIAccess } from '../../lib/subscription';
 import { TimeBlock, Subject, Todo, ChatMessage, ChatSession, AiTodo } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
 import { SkeletonBlock } from '../UI/Skeleton';
@@ -408,9 +410,36 @@ function SessionRow({ session, isActive, isConfirming, onSelect, onDeleteClick, 
   );
 }
 
+// ── Locked screen ───────────────────────────────────────────────────────────
+
+function AILockedScreen() {
+  const navigate = useNavigate();
+
+  return (
+    <div className={styles.lockedLayout}>
+      <div className={styles.lockedCard}>
+        <svg className={styles.lockedIcon} width="28" height="28" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M7 1L8.1 5.9L13 7L8.1 8.1L7 13L5.9 8.1L1 7L5.9 5.9Z"/>
+        </svg>
+        <h2 className={styles.lockedTitle}>AI planning is included with Soma Pro</h2>
+        <p className={styles.lockedDesc}>
+          Get AI-powered scheduling, todo generation, and study planning.
+          Start your <strong>1-month free trial</strong> — no charge today.
+        </p>
+        <button className={styles.lockedBtn} onClick={() => navigate('/pricing')}>
+          See plans
+        </button>
+        <p className={styles.lockedMeta}>From $3.99/mo · Cancel anytime</p>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ──────────────────────────────────────────────────────────
 
 export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void }) {
+  const subscription = useSubscription();
+
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
     let s = storage.getChatSessions();
     s = migrateLegacy(s);
@@ -559,10 +588,13 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
         id: crypto.randomUUID(), role: 'assistant', content: response, scheduleBlocks, todos,
       };
       updateSession(activeSessionId, s => ({ ...s, messages: [...s.messages, assistantMsg] }));
-    } catch {
+    } catch (err: any) {
+      const content = err?.message === 'subscription_required'
+        ? 'Your subscription has expired. Visit Settings → Subscription to manage your plan.'
+        : friendlyError('ai');
       const errorMsg: ChatMessage = {
         id: crypto.randomUUID(), role: 'assistant',
-        content: friendlyError('ai'),
+        content,
       };
       updateSession(activeSessionId, s => ({ ...s, messages: [...s.messages, errorMsg] }));
     } finally {
@@ -619,6 +651,10 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   }
 
   const activeSession = sessions.find(s => s.id === activeSessionId);
+
+  if (subscription.status !== 'loading' && !hasAIAccess(subscription.status)) {
+    return <AILockedScreen />;
+  }
 
   return (
     <div className={styles.layout}>

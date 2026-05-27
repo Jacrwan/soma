@@ -1,4 +1,5 @@
 /// <reference types="node" />
+import { createClient } from '@supabase/supabase-js';
 
 export const config = { api: { bodyParser: { sizeLimit: '1mb' } } };
 
@@ -7,7 +8,6 @@ const ALLOWED_ORIGINS = [
   ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:5173'] : []),
 ];
 
-// Rate limit: 20 requests per IP per 60 seconds
 const rateLimitMap = new Map<string, number[]>();
 
 function isRateLimited(ip: string): boolean {
@@ -27,7 +27,7 @@ function applyCors(req: any, res: any): boolean {
     res.setHeader('Access-Control-Allow-Origin', origin);
   }
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') {
     res.status(204).end();
     return true;
@@ -35,11 +35,39 @@ function applyCors(req: any, res: any): boolean {
   return false;
 }
 
+async function verifyUserAndSubscription(
+  token: string,
+): Promise<{ ok: true; userId: string } | { ok: false; status: number; error: string }> {
+  const supabaseUrl = process.env.VITE_SUPABASE_URL ?? '';
+  const serviceKey  = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+  if (!supabaseUrl || !serviceKey) {
+    return { ok: false, status: 500, error: 'Server not configured' };
+  }
+
+  const admin = createClient(supabaseUrl, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  const { data: { user }, error } = await admin.auth.getUser(token);
+  if (error || !user) return { ok: false, status: 401, error: 'Invalid token' };
+
+  const { data: sub } = await admin
+    .from('subscriptions')
+    .select('status')
+    .eq('user_id', user.id)
+    .single();
+
+  const hasAccess = sub?.status === 'trialing' || sub?.status === 'active';
+  if (!hasAccess) {
+    return { ok: false, status: 402, error: 'subscription_required' };
+  }
+
+  return { ok: true, userId: user.id };
+}
+
 export default async function handler(req: any, res: any) {
   const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? 'unknown';
-  const authHeader = req.headers['authorization'] as string | undefined;
-  const userId = authHeader?.startsWith('Bearer ') ? '[present]' : '[absent]';
-  const logBase = { timestamp: new Date().toISOString(), method: req.method, endpoint: '/api/chat', userId, ip };
+  const logBase = { timestamp: new Date().toISOString(), method: req.method, endpoint: '/api/chat', ip };
   console.log(JSON.stringify(logBase));
 
   if (applyCors(req, res)) return;
@@ -50,6 +78,17 @@ export default async function handler(req: any, res: any) {
 
   if (isRateLimited(ip)) {
     return res.status(429).json({ error: 'Too many requests' });
+  }
+
+  const authHeader = req.headers['authorization'] as string | undefined;
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  const authResult = await verifyUserAndSubscription(token);
+  if (!authResult.ok) {
+    return res.status(authResult.status).json({ error: authResult.error });
   }
 
   const { messages, systemPrompt } = req.body ?? {};

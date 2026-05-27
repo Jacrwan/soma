@@ -829,6 +829,122 @@
 [data-theme="dark"] .blockedTag { background: var(--bg-secondary); border-color: var(--border); }
 [data-theme="dark"] .tagRemove { background: var(--bg-tertiary); }
 
+/* ── Subscription section ── */
+
+.subBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.subRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.subLabel {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.subValue {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.subBadge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 20px;
+}
+
+.subBadgeFree {
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+}
+
+.subBadgeTrial {
+  color: oklch(55% 0.2 265);
+  background: oklch(55% 0.2 265 / 0.1);
+  border: 1px solid oklch(55% 0.2 265 / 0.25);
+}
+
+.subBadgeActive {
+  color: oklch(52% 0.15 155);
+  background: oklch(94% 0.06 155);
+  border: 1px solid oklch(84% 0.08 155);
+}
+
+.subBadgeLoading {
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+}
+
+.subNote {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.subError {
+  font-size: 12px;
+  color: var(--danger);
+  margin: 0;
+}
+
+.subActions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.subBtnPrimary {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  padding: 8px 18px;
+  cursor: pointer;
+  transition: opacity 0.12s;
+  font-family: inherit;
+}
+
+.subBtnPrimary:hover:not(:disabled) { opacity: 0.88; }
+.subBtnPrimary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.subBtn {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+  font-family: inherit;
+}
+
+.subBtn:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: oklch(76% 0.06 265);
+}
+
+.subBtn:disabled { opacity: 0.45; cursor: not-allowed; }
+
 /* ── Reduced motion ── */
 
 @media (prefers-reduced-motion: reduce) {
