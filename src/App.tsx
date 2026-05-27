@@ -13,6 +13,7 @@ import { storage } from './lib/storage';
 import LandingPage from './components/Landing/LandingPage';
 import LegalPage from './components/Legal/LegalPage';
 import PricingPage from './components/Pricing/PricingPage';
+import { SkeletonBlock } from './components/UI/Skeleton';
 import styles from './App.module.css';
 
 // ── Error boundary ────────────────────────────────────────────────────────
@@ -65,6 +66,35 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
     }
     return this.props.children;
   }
+}
+
+// ── Auth loading skeleton ─────────────────────────────────────────────────
+function AppSkeleton() {
+  return (
+    <div className={styles.app}>
+      <nav className={styles.sidebar}>
+        <div className={styles.brand}>Soma</div>
+        <div className={styles.navItems}>
+          {[100, 80, 90, 50, 85].map((w, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, height: 40, padding: '0 20px' }}>
+              <SkeletonBlock width={15} height={15} borderRadius={4} />
+              <SkeletonBlock width={w} height={13} />
+            </div>
+          ))}
+        </div>
+      </nav>
+      <div className={styles.contentCol}>
+        <main className={styles.main} style={{ padding: '32px 40px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <SkeletonBlock width={200} height={22} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {[320, 280, 300, 250, 290].map((w, i) => (
+              <SkeletonBlock key={i} width={w} height={14} />
+            ))}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
 }
 
 // ── App shell layout (sidebar + footer + outlet) ─────────────────────────
@@ -247,7 +277,7 @@ export default function App() {
     navigate('/');
   }
 
-  if (!authReady) return null;
+  if (!authReady) return <AppSkeleton />;
 
   const shell = (
     <AppShell user={user} onLogout={handleLogout} />

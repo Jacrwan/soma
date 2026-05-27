@@ -653,7 +653,30 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   const activeSession = sessions.find(s => s.id === activeSessionId);
 
   if (subscription.status === 'loading') {
-    return <div className={styles.layout} />;
+    return (
+      <div className={styles.layout}>
+        <div className={styles.sidebar}>
+          <div className={styles.sidebarHeader}>
+            <SkeletonBlock width={60} height={13} />
+          </div>
+          <SessionListSkeleton />
+        </div>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '32px 40px', gap: 20 }}>
+          <div style={{ alignSelf: 'flex-start', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <SkeletonBlock width={260} height={14} borderRadius={10} />
+            <SkeletonBlock width={180} height={14} borderRadius={10} />
+          </div>
+          <div style={{ alignSelf: 'flex-end', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <SkeletonBlock width={200} height={14} borderRadius={10} />
+          </div>
+          <div style={{ alignSelf: 'flex-start', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <SkeletonBlock width={300} height={14} borderRadius={10} />
+            <SkeletonBlock width={220} height={14} borderRadius={10} />
+            <SkeletonBlock width={160} height={14} borderRadius={10} />
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!hasAIAccess(subscription.status)) {
