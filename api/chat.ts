@@ -51,6 +51,11 @@ async function verifyUserAndSubscription(
   const { data: { user }, error } = await admin.auth.getUser(token);
   if (error || !user) return { ok: false, status: 401, error: 'Invalid token' };
 
+  const devEmail = process.env.DEVELOPER_EMAIL;
+  if (devEmail && user.email === devEmail) {
+    return { ok: true, userId: user.id };
+  }
+
   const { data: sub } = await admin
     .from('subscriptions')
     .select('status')

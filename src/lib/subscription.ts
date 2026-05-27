@@ -39,6 +39,12 @@ export function useSubscription(): SubscriptionInfo {
         if (!cancelled) setInfo(s => ({ ...s, status: 'free' }));
         return;
       }
+
+      const devEmail = import.meta.env.VITE_DEVELOPER_EMAIL as string | undefined;
+      if (devEmail && session.user?.email === devEmail) {
+        if (!cancelled) setInfo({ status: 'active', trialEndsAt: null, currentPeriodEnd: null, cancelAtPeriodEnd: false });
+        return;
+      }
       try {
         const res = await fetch('/api/subscription', {
           headers: { Authorization: `Bearer ${token}` },
