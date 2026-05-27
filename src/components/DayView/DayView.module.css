@@ -2643,6 +2643,10 @@
 [data-theme="dark"] .btn { background: var(--bg-secondary); border-color: var(--border); }
 [data-theme="dark"] .btn:hover { background: var(--bg-tertiary); }
 
+/* Block modal info panel */
+[data-theme="dark"] .blockModalInfo { background: var(--bg); border-color: var(--border); }
+[data-theme="dark"] .subjectModalDestructive { border-color: var(--border); }
+
 /* Subject group divider lines */
 [data-theme="dark"] .subjectGroup { border-color: var(--border); }
 
