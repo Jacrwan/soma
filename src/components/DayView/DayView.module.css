@@ -2643,6 +2643,32 @@
 [data-theme="dark"] .btn { background: var(--bg-secondary); border-color: var(--border); }
 [data-theme="dark"] .btn:hover { background: var(--bg-tertiary); }
 
+/* Subject group divider lines */
+[data-theme="dark"] .subjectGroup { border-color: var(--border); }
+
+/* Hover over task row */
+[data-theme="dark"] .todoItem:hover { background: var(--bg-secondary); }
+
+/* Edit subject input */
+[data-theme="dark"] .editSubjectInput { background: var(--bg); border-color: var(--border); color: var(--text-primary); }
+[data-theme="dark"] .editSubjectInput:focus { background: var(--bg-secondary); }
+
+/* Task modal inputs */
+[data-theme="dark"] .taskModalInput { background: var(--bg); border-color: var(--border); color: var(--text-primary); }
+[data-theme="dark"] .taskModalInput:focus { background: var(--bg-secondary); border-color: var(--accent); }
+[data-theme="dark"] .taskModalTextarea { background: var(--bg); border-color: var(--border); color: var(--text-primary); }
+[data-theme="dark"] .taskModalTextarea:focus { background: var(--bg-secondary); border-color: var(--accent); }
+
+/* Schedule expanded (Start/Duration/Pin section) */
+[data-theme="dark"] .scheduleExpanded { background: var(--bg); border-color: var(--border); }
+
+/* Status / todo / pin popovers */
+[data-theme="dark"] .statusPopover { background: var(--bg-secondary); border-color: var(--border); }
+[data-theme="dark"] .todoPopover { background: var(--bg-secondary); border-color: var(--border); }
+[data-theme="dark"] .pinPopover { background: var(--bg-secondary); border-color: var(--border); }
+[data-theme="dark"] .pinTimeInput { background: var(--bg); border-color: var(--border); color: var(--text-primary); }
+[data-theme="dark"] .pinTimeInput:focus { background: var(--bg-secondary); }
+
 /* ── Reduced motion ────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
