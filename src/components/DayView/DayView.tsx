@@ -957,10 +957,21 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const showCurrentTime = isViewingToday;
 
   function deleteBlock(id: string) {
+    // Remove from localStorage + React state
     storage.setTimeBlocks(storage.getTimeBlocks().filter(b => b.id !== id));
     setBlocks(prev => prev.filter(b => b.id !== id));
     setBlockModal(null);
     setBlockEditMode(false);
+
+    // Delete from Supabase schedule_blocks
+    void storage.deleteScheduleBlock(id).catch(() => {});
+
+    // Delete any block-linked timer session (linkedBlockId set = created via Mark as completed, not the real timer)
+    const linked = storage.getTimerSessions().find(s => s.linkedBlockId === id);
+    if (linked) {
+      storage.setTimerSessions(storage.getTimerSessions().filter(s => s.id !== linked.id));
+      void storage.deleteTimerSession(linked.id).catch(() => {});
+    }
   }
 
   function markAsStudied(block: TimeBlock) {
@@ -2667,9 +2678,17 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                   const isPast = new Date(blockModal.block.endTime).getTime() < Date.now();
                   const isMissed = missedBlockIds.has(blockModal.block.id);
                   const isManuallyCompleted = storage.getTimerSessions().some(s => s.linkedBlockId === blockModal.block.id);
-                  if (isPast && isMissed) return (
-                    <button className={styles.blockModalMarkStudiedBtn} onClick={() => markAsStudied(blockModal.block)}>Mark as completed</button>
+                  const hasMatchingTodo = todos.some(t =>
+                    t.subjectId === blockModal.block.subjectId && t.text === blockModal.block.task
                   );
+                  if (isPast && isMissed) {
+                    if (!hasMatchingTodo) return (
+                      <button className={styles.blockModalDeleteBtn} onClick={() => { deleteBlock(blockModal.block.id); setBlockModal(null); }}>Delete block</button>
+                    );
+                    return (
+                      <button className={styles.blockModalMarkStudiedBtn} onClick={() => markAsStudied(blockModal.block)}>Mark as completed</button>
+                    );
+                  }
                   if (isPast && isManuallyCompleted) return (
                     <button className={styles.blockModalUnmarkBtn} onClick={() => unmarkAsStudied(blockModal.block)}>Mark as missed</button>
                   );
