@@ -964,9 +964,16 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   }
 
   function markAsStudied(block: TimeBlock) {
+    console.log('[markAsStudied] called — block.id:', block.id, 'task:', block.task);
     const allSessions = storage.getTimerSessions();
-    // Guard: don't create a duplicate if already manually marked
-    if (allSessions.some(s => s.linkedBlockId === block.id)) return;
+    const existing = allSessions.find(s => s.linkedBlockId === block.id);
+    if (existing) {
+      console.warn('[markAsStudied] duplicate guard fired — session already exists:', existing.id, '— skipping insert but still syncing state');
+      // Session already exists; ensure React state reflects it (fixes stale missedBlockIds)
+      setMissedBlockIds(prev => { const next = new Set(prev); next.delete(block.id); return next; });
+      setBlockModal(null);
+      return;
+    }
     const durationSeconds = Math.max(
       Math.round((new Date(block.endTime).getTime() - new Date(block.startTime).getTime()) / 1000),
       1,
@@ -982,13 +989,16 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     };
     storage.setTimerSessions([...allSessions, session]);
     const subjectName = subjects.find(s => s.id === block.subjectId)?.name ?? '';
-    void storage.saveTimerSession(session, subjectName).catch(() => {});
+    void storage.saveTimerSession(session, subjectName).catch(err => {
+      console.error('[markAsStudied] Supabase saveTimerSession failed:', err);
+    });
     setMissedBlockIds(prev => { const next = new Set(prev); next.delete(block.id); return next; });
     setElapsedBySubject(prev => ({
       ...prev,
       [block.subjectId]: (prev[block.subjectId] ?? 0) + Math.round(durationSeconds / 60),
     }));
     setBlockModal(null);
+    console.log('[markAsStudied] done — session created, durationSeconds:', durationSeconds);
   }
 
   function unmarkAsStudied(block: TimeBlock) {
