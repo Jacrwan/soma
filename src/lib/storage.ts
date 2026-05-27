@@ -429,26 +429,23 @@ export const storage = {
     });
   },
 
-  // ── Timer sessions (Supabase, date-scoped) ──────────────────────────
-  async getSessionsForDate(date: string): Promise<TimerSession[]> {
-    const lsSessions = storage.getTimerSessions().filter(s => s.startTime.slice(0, 10) === date);
+  // ── Elapsed time (Supabase) ──────────────────────────────────────────
+  async getElapsed(date: string): Promise<Record<string, number>> {
     const id = await uid();
-    const { data, error } = await supabase
-      .from('timer_sessions')
-      .select('id, subject_id, task_text, start_time, end_time, duration_seconds')
+    const { data } = await supabase
+      .from('elapsed_time')
+      .select('subject_id, minutes')
       .eq('user_id', id)
       .eq('date', date);
-    if (error || !data) return lsSessions;
-    const dbSessions: TimerSession[] = data.map(r => ({
-      id: r.id,
-      subjectId: r.subject_id,
-      task: r.task_text ?? '',
-      startTime: r.start_time,
-      endTime: r.end_time,
-      durationSeconds: r.duration_seconds,
-    }));
-    const dbIds = new Set(dbSessions.map(s => s.id));
-    return [...dbSessions, ...lsSessions.filter(s => !dbIds.has(s.id))];
+    return Object.fromEntries((data ?? []).map(r => [r.subject_id, r.minutes]));
+  },
+
+  async saveElapsed(date: string, subjectId: string, minutes: number): Promise<void> {
+    const id = await uid();
+    await supabase.from('elapsed_time').upsert(
+      { user_id: id, date, subject_id: subjectId, minutes },
+      { onConflict: 'user_id,date,subject_id' },
+    );
   },
 
   // ── Settings (Supabase) ──────────────────────────────────────────────
