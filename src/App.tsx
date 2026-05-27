@@ -10,6 +10,8 @@ import CalendarTab from './components/Calendar/CalendarTab';
 import InsightsTab from './components/Insights/InsightsTab';
 import SettingsTab from './components/Settings/SettingsTab';
 import { storage } from './lib/storage';
+import { TimerProvider } from './contexts/TimerContext';
+import TimerOverlay from './components/Timer/TimerOverlay';
 import LandingPage from './components/Landing/LandingPage';
 import LegalPage from './components/Legal/LegalPage';
 import PricingPage from './components/Pricing/PricingPage';
@@ -110,7 +112,7 @@ function AppShell({ user, onLogout }: {
 
   const p = location.pathname;
 
-  // Google OAuth implicit-flow redirect
+  // Google OAuth implicit-flow redirect (must be after early-return guard)
   useEffect(() => {
     const hash = window.location.hash;
     if (!hash || !hash.includes('access_token')) return;
@@ -147,7 +149,9 @@ function AppShell({ user, onLogout }: {
   }
 
   return (
+    <TimerProvider>
     <div className={styles.app}>
+      <TimerOverlay />
       <nav className={styles.sidebar}>
         <div className={styles.brand}>Soma</div>
 
@@ -236,6 +240,7 @@ function AppShell({ user, onLogout }: {
       </div>
 
     </div>
+    </TimerProvider>
   );
 }
 

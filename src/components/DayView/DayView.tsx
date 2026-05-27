@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, type CSSProperties } from 're
 import { storage, inferSubjectId } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
 import { Subject, TimeBlock, SubjectColor, Todo, GoogleCalendarEvent, CanvasAssignment, CanvasCourse } from '../../types';
-import TimerOverlay, { ResumeData } from '../Timer/TimerOverlay';
+import { useTimerContext } from '../../contexts/TimerContext';
 import AssignmentDetail from '../Canvas/AssignmentDetail';
 import { SkeletonBlock } from '../UI/Skeleton';
 import styles from './DayView.module.css';
@@ -405,7 +405,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [blockEditForm, setBlockEditForm] = useState<BlockEditForm>({
     task: '', startHour: 9, startMinute: 0, startAmPm: 'AM', endHour: 10, endMinute: 0, endAmPm: 'AM',
   });
-  const [timerSubject, setTimerSubject] = useState<Subject | null>(null);
+  const timerCtx = useTimerContext();
   const [showAddSubject, setShowAddSubject] = useState(false);
   const [todos, setTodos] = useState<Todo[]>(() => {
     const existing = storage.getTodos();
@@ -434,14 +434,11 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [pinForm, setPinForm] = useState<{ hour: number; minute: number; ampm: 'AM' | 'PM'; durationHours: number; durationMinutes: number }>(
     { hour: 9, minute: 0, ampm: 'AM', durationHours: 1, durationMinutes: 0 }
   );
-  const [initialTimerTask, setInitialTimerTask] = useState('');
   const [addSubjectForm, setAddSubjectForm] = useState<AddSubjectForm>({ name: '', color: COLORS[0] });
   const [editSubject, setEditSubject] = useState<SubjectEditState | null>(null);
   const [gcalEvents, setGcalEvents] = useState<GoogleCalendarEvent[]>([]);
   const [dueAssignments, setDueAssignments] = useState<{ assignment: CanvasAssignment; course: CanvasCourse | undefined; color: string }[]>([]);
   const [deadlineDetail, setDeadlineDetail] = useState<{ courseId: number; assignmentId: number } | null>(null);
-  const [timerRunning, setTimerRunning] = useState(false);
-  const [timerResumeData, setTimerResumeData] = useState<ResumeData | undefined>(undefined);
   const [elapsedBySubject, setElapsedBySubject] = useState<Record<string, number>>({});
   const [briefCollapsed, setBriefCollapsed] = useState<boolean>(() => {
     const s = localStorage.getItem('soma_brief_collapsed');
@@ -502,23 +499,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     }
     setSubjects(visibleSubjects);
     setRightReady(true);
-
-    // Recover any in-progress timer from Supabase
-    storage.getActiveTimer().then(row => {
-      if (!row) return;
-      const subj = visibleSubjects.find(s => s.id === row.subject_id)
-        ?? storage.getSubjects().find(s => s.id === row.subject_id);
-      if (!subj) {
-        void storage.deleteActiveTimer().catch(() => {});
-        return;
-      }
-      const elapsed = row.is_paused
-        ? row.accumulated_seconds
-        : row.accumulated_seconds + Math.floor((Date.now() - new Date(row.start_time).getTime()) / 1000);
-      setTimerResumeData({ elapsedSeconds: elapsed, sessionStartTimeISO: row.session_start_time, isPaused: row.is_paused });
-      setInitialTimerTask(row.task_text ?? '');
-      setTimerSubject(subj);
-    }).catch(() => {});
 
     const tick = () => {
       const now = new Date();
@@ -597,6 +577,19 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     loadGcal();
     window.addEventListener('soma_gcal_updated', loadGcal);
     return () => window.removeEventListener('soma_gcal_updated', loadGcal);
+  }, [selectedDate]);
+
+  useEffect(() => {
+    function onTimerStopped() {
+      const updatedBlocks = storage.getTimeBlocks().filter(b => isOnDate(b.startTime, selectedDate));
+      setBlocks(updatedBlocks);
+      setSubjects(storage.getSubjects().map(s => ({
+        ...s,
+        totalTimeToday: subjectSecsFromSessions(s.id, selectedDate),
+      })));
+    }
+    window.addEventListener('soma_timer_stopped', onTimerStopped);
+    return () => window.removeEventListener('soma_timer_stopped', onTimerStopped);
   }, [selectedDate]);
 
   useEffect(() => {
@@ -895,15 +888,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     setEditSubject(null);
   }
 
-  function handleSessionSaved(updatedSubjects: Subject[], updatedBlocks: TimeBlock[]) {
-    setSubjects(updatedSubjects);
-    setBlocks(updatedBlocks.filter(b => isOnDate(b.startTime, selectedDate)));
-  }
-
-  function handleRunningChange(isRunning: boolean) {
-    setTimerRunning(isRunning);
-  }
-
   function setTodoStatus(id: string, status: Todo['status']) {
     const updated = todos.map(t => t.id === id ? { ...t, status } : t);
     storage.setTodos(updated);
@@ -1117,10 +1101,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     setTaskModal(null);
     if (startTimer && taskModal.subjectId) {
       const subject = subjects.find(s => s.id === taskModal.subjectId);
-      if (subject) {
-        setInitialTimerTask(text);
-        setTimerSubject(subject);
-      }
+      if (subject) timerCtx.openInputModal(subject, text);
     }
   }
 
@@ -1136,8 +1117,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     const subject = subjects.find(s => s.id === todo.subjectId);
     if (!subject) return;
     setTodoStatus(todo.id, 'in_progress');
-    setInitialTimerTask(todo.text);
-    setTimerSubject(subject);
+    timerCtx.openInputModal(subject, todo.text);
   }
 
   function getActualMinutesForTodo(todo: Todo): number {
@@ -1444,7 +1424,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
   return (
     <>
     <div className={styles.wrapper}>
-      {timerRunning && <div className={styles.focusBannerSpacer} />}
+      {timerCtx.activeSession && <div className={styles.focusBannerSpacer} />}
       {/* ── Date bar ── */}
       <div
         className={styles.dateBar}
@@ -1790,8 +1770,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                             onClick={() => {
                               setSubjectPickerMode(null);
                               if (subjectPickerMode === 'timer') {
-                                setInitialTimerTask('');
-                                setTimerSubject(subject);
+                                timerCtx.openInputModal(subject);
                               } else {
                                 startAdding(subject.id);
                               }
@@ -1936,18 +1915,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
         </>
         )}
       </div>
-
-      {/* ── Timer Overlay ── */}
-      {timerSubject && (
-        <TimerOverlay
-          subject={timerSubject}
-          onClose={() => { setTimerSubject(null); setInitialTimerTask(''); setTimerResumeData(undefined); }}
-          onSessionSaved={handleSessionSaved}
-          onRunningChange={handleRunningChange}
-          initialTask={initialTimerTask}
-          resumeData={timerResumeData}
-        />
-      )}
 
       {/* ── Task Creation Modal ── */}
       {taskModal && (
