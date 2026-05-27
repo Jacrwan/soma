@@ -831,6 +831,48 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     setBlockEditMode(false);
   }
 
+  function markAsStudied(block: TimeBlock) {
+    const allSessions = storage.getTimerSessions();
+    // Guard: don't create a duplicate if already manually marked
+    if (allSessions.some(s => s.linkedBlockId === block.id)) return;
+    const durationSeconds = Math.max(
+      Math.round((new Date(block.endTime).getTime() - new Date(block.startTime).getTime()) / 1000),
+      1,
+    );
+    const session: TimerSession = {
+      id: crypto.randomUUID(),
+      subjectId: block.subjectId,
+      task: block.task,
+      startTime: block.startTime,
+      endTime: block.endTime,
+      durationSeconds,
+      linkedBlockId: block.id,
+    };
+    storage.setTimerSessions([...allSessions, session]);
+    const subjectName = subjects.find(s => s.id === block.subjectId)?.name ?? '';
+    void storage.saveTimerSession(session, subjectName).catch(() => {});
+    setMissedBlockIds(prev => { const next = new Set(prev); next.delete(block.id); return next; });
+    setElapsedBySubject(prev => ({
+      ...prev,
+      [block.subjectId]: (prev[block.subjectId] ?? 0) + Math.round(durationSeconds / 60),
+    }));
+    setBlockModal(null);
+  }
+
+  function unmarkAsStudied(block: TimeBlock) {
+    const allSessions = storage.getTimerSessions();
+    const linked = allSessions.find(s => s.linkedBlockId === block.id);
+    if (!linked) return;
+    storage.setTimerSessions(allSessions.filter(s => s.id !== linked.id));
+    void storage.deleteTimerSession(linked.id).catch(() => {});
+    setMissedBlockIds(prev => new Set([...prev, block.id]));
+    setElapsedBySubject(prev => ({
+      ...prev,
+      [block.subjectId]: Math.max(0, (prev[block.subjectId] ?? 0) - Math.round(linked.durationSeconds / 60)),
+    }));
+    setBlockModal(null);
+  }
+
   function openBlockEdit(block: TimeBlock) {
     const toForm = (d: Date) => {
       const h24 = d.getHours(), m = d.getMinutes();
@@ -2267,6 +2309,18 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                     </span>
                   </div>
                 </div>
+                {(() => {
+                  const isPast = new Date(blockModal.block.endTime).getTime() < Date.now();
+                  const isMissed = missedBlockIds.has(blockModal.block.id);
+                  const isManuallyCompleted = storage.getTimerSessions().some(s => s.linkedBlockId === blockModal.block.id);
+                  if (isPast && isMissed) return (
+                    <button className={styles.blockModalMarkStudiedBtn} onClick={() => markAsStudied(blockModal.block)}>Mark as completed</button>
+                  );
+                  if (isPast && isManuallyCompleted) return (
+                    <button className={styles.blockModalUnmarkBtn} onClick={() => unmarkAsStudied(blockModal.block)}>Mark as missed</button>
+                  );
+                  return null;
+                })()}
                 <div className={styles.blockModalActions}>
                   <button className={styles.blockModalEditBtn} onClick={() => openBlockEdit(blockModal.block)}>Edit</button>
                   <button className={styles.blockModalDeleteBtn} onClick={() => deleteBlock(blockModal.block.id)}>Delete</button>

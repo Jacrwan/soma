@@ -2572,6 +2572,46 @@
   margin-bottom: 8px;
 }
 
+.blockModalMarkStudiedBtn {
+  width: 100%;
+  padding: 10px;
+  background: oklch(55% 0.18 145 / 0.12);
+  border: 1.5px solid oklch(60% 0.16 145 / 0.5);
+  border-radius: 9px;
+  color: var(--success);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  margin-bottom: 8px;
+}
+
+.blockModalMarkStudiedBtn:hover {
+  background: var(--success);
+  border-color: var(--success);
+  color: #fff;
+}
+
+.blockModalUnmarkBtn {
+  width: 100%;
+  padding: 10px;
+  background: oklch(52% 0.2 25 / 0.08);
+  border: 1.5px solid oklch(62% 0.18 25 / 0.4);
+  border-radius: 9px;
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  margin-bottom: 8px;
+}
+
+.blockModalUnmarkBtn:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
 .blockModalEditBtn {
   flex: 1;
   padding: 10px;
