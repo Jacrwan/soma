@@ -85,8 +85,8 @@ export default function PricingPage() {
         navigate('/ai');
       }
     } catch (e: any) {
-      setError(e?.message === 'Already extended' ? 'You've already used your extension.'
-             : e?.message === 'Already subscribed' ? 'You're already subscribed.'
+      setError(e?.message === 'Already extended' ? "You've already used your extension."
+             : e?.message === 'Already subscribed' ? "You're already subscribed."
              : 'Something went wrong. Please try again.');
       setLoading(false);
     }

@@ -5,7 +5,7 @@ import { applyTheme } from '../../App';
 import { resetTimeAccuracy, resetPeakHours, resetSubjectPacing } from '../../lib/insights';
 import { supabase } from '../../lib/supabase';
 import { friendlyError } from '../../lib/errors';
-import { useSubscription, hasAIAccess, openBillingPortal } from '../../lib/subscription';
+import { useSubscription, openBillingPortal } from '../../lib/subscription';
 import styles from './SettingsTab.module.css';
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
