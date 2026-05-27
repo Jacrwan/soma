@@ -2214,21 +2214,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               </>
             )}
 
-            <div className={styles.taskModalActions}>
-              <button
-                className={styles.taskModalSubmit}
-                onClick={() => saveTaskFromModal(false)}
-                disabled={!taskForm.text.trim()}
-              >{taskModal.editingTodo ? 'Save Changes' : 'Add Task'}</button>
-              {!taskModal.editingTodo && taskModal.subjectId && (
-                <button
-                  className={styles.taskModalStart}
-                  onClick={() => saveTaskFromModal(true)}
-                  disabled={!taskForm.text.trim()}
-                >Add & Start Timer</button>
-              )}
-              <button className={styles.taskModalCancel} onClick={() => setTaskModal(null)}>Cancel</button>
-            </div>
             {taskModal.editingTodo && (
               <div className={styles.sessionSection}>
                 <div className={styles.sessionSectionTitle}>Study Sessions</div>
@@ -2288,6 +2273,21 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                 }
               </div>
             )}
+            <div className={styles.taskModalActions}>
+              <button
+                className={styles.taskModalSubmit}
+                onClick={() => saveTaskFromModal(false)}
+                disabled={!taskForm.text.trim()}
+              >{taskModal.editingTodo ? 'Save Changes' : 'Add Task'}</button>
+              {!taskModal.editingTodo && taskModal.subjectId && (
+                <button
+                  className={styles.taskModalStart}
+                  onClick={() => saveTaskFromModal(true)}
+                  disabled={!taskForm.text.trim()}
+                >Add & Start Timer</button>
+              )}
+              <button className={styles.taskModalCancel} onClick={() => setTaskModal(null)}>Cancel</button>
+            </div>
             {taskModal.editingTodo && (
               <button
                 className={styles.taskModalDelete}
