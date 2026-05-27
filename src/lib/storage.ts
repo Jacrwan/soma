@@ -419,6 +419,16 @@ export const storage = {
     await supabase.from('timer_sessions').delete().eq('id', sessionId).eq('user_id', id);
   },
 
+  async deleteTimerSessionsByTask(taskText: string, subjectId: string): Promise<void> {
+    const id = await uid();
+    await supabase
+      .from('timer_sessions')
+      .delete()
+      .eq('user_id', id)
+      .eq('task_text', taskText)
+      .eq('subject_id', subjectId);
+  },
+
   async saveTimerSession(session: TimerSession, subjectName: string): Promise<void> {
     const id = await uid();
     await supabase.from('timer_sessions').insert({

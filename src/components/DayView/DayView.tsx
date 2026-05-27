@@ -473,6 +473,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [taskSessions, setTaskSessions] = useState<TaskSession[]>([]);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingSessionMins, setEditingSessionMins] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState<{ todo: Todo; deleteSessions: boolean; deletePastBlocks: boolean } | null>(null);
   const [briefCollapsed, setBriefCollapsed] = useState<boolean>(() => {
     const s = localStorage.getItem('soma_brief_collapsed');
     return s === null ? true : s === 'true';
@@ -1177,6 +1178,50 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
           void storage.deleteScheduleBlock(b.id).catch(() => {});
         }
       }
+    }
+  }
+
+  async function confirmDeleteTodo() {
+    const dc = deleteConfirm;
+    if (!dc) return;
+    const { todo, deleteSessions, deletePastBlocks } = dc;
+    setDeleteConfirm(null);
+
+    // Always: remove the todo
+    const updatedTodos = todos.filter(t => t.id !== todo.id);
+    storage.setTodos(updatedTodos);
+    setTodos(updatedTodos);
+    void storage.deleteTodo(todo.id).catch(() => {});
+
+    const nowMs = Date.now();
+    const allBlocks = storage.getTimeBlocks();
+    const todoBlocks = allBlocks.filter(b =>
+      b.subjectId === todo.subjectId && b.task === todo.text,
+    );
+
+    // Always: delete future scheduled blocks
+    const futureBlocks = todoBlocks.filter(b => new Date(b.startTime).getTime() > nowMs);
+    const pastBlocks   = todoBlocks.filter(b => new Date(b.startTime).getTime() <= nowMs);
+
+    const blocksToRemove = new Set(futureBlocks.map(b => b.id));
+    if (deletePastBlocks) pastBlocks.forEach(b => blocksToRemove.add(b.id));
+
+    if (blocksToRemove.size > 0) {
+      const remaining = allBlocks.filter(b => !blocksToRemove.has(b.id));
+      storage.setTimeBlocks(remaining);
+      setBlocks(remaining.filter(b => isOnDate(b.startTime, selectedDate)));
+      for (const b of todoBlocks) {
+        if (blocksToRemove.has(b.id)) void storage.deleteScheduleBlock(b.id).catch(() => {});
+      }
+    }
+
+    // Optional: delete timer sessions
+    if (deleteSessions && todo.subjectId && todo.text) {
+      const remainingSessions = storage.getTimerSessions().filter(
+        s => !(s.task === todo.text && s.subjectId === todo.subjectId),
+      );
+      storage.setTimerSessions(remainingSessions);
+      void storage.deleteTimerSessionsByTask(todo.text, todo.subjectId).catch(() => {});
     }
   }
 
@@ -2403,13 +2448,45 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               <button
                 className={styles.taskModalDelete}
                 onClick={() => {
-                  const updated = todos.filter(t => t.id !== taskModal.editingTodo!.id);
-                  storage.setTodos(updated);
-                  setTodos(updated);
+                  setDeleteConfirm({ todo: taskModal.editingTodo!, deleteSessions: false, deletePastBlocks: false });
                   setTaskModal(null);
                 }}
               >Delete task</button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Todo Confirmation ── */}
+      {deleteConfirm && (
+        <div className={styles.modalOverlay} onClick={() => setDeleteConfirm(null)}>
+          <div className={styles.modalBox} onClick={e => e.stopPropagation()}>
+            <span className={styles.modalTitle}>Delete task?</span>
+            <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: 0 }}>
+              "{deleteConfirm.todo.text}" will be permanently removed.
+            </p>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, cursor: 'pointer', userSelect: 'none' }}>
+              <input
+                type="checkbox"
+                checked={deleteConfirm.deleteSessions}
+                onChange={e => setDeleteConfirm(dc => dc && ({ ...dc, deleteSessions: e.target.checked }))}
+                style={{ marginTop: 2, flexShrink: 0 }}
+              />
+              Also delete past study sessions and logged time for this task
+            </label>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13, cursor: 'pointer', userSelect: 'none' }}>
+              <input
+                type="checkbox"
+                checked={deleteConfirm.deletePastBlocks}
+                onChange={e => setDeleteConfirm(dc => dc && ({ ...dc, deletePastBlocks: e.target.checked }))}
+                style={{ marginTop: 2, flexShrink: 0 }}
+              />
+              Also delete past scheduled blocks for this task
+            </label>
+            <div className={styles.modalActions}>
+              <button className={`${styles.btn} ${styles.btnDanger}`} onClick={() => void confirmDeleteTodo()}>Delete</button>
+              <button className={styles.btn} onClick={() => setDeleteConfirm(null)}>Cancel</button>
+            </div>
           </div>
         </div>
       )}

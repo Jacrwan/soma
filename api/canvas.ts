@@ -144,15 +144,27 @@ export default async function handler(req: any, res: any) {
 
   try {
     const targetUrl = `${parsedUrl.origin}${ep}`;
+    console.log('[canvas proxy] →', targetUrl);
+
     const upstream = await fetch(targetUrl, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    const data = await upstream.json();
+    console.log('[canvas proxy] ←', upstream.status, upstream.statusText, targetUrl);
+
+    const responseText = await upstream.text();
+    if (!upstream.ok) {
+      console.error('[canvas proxy] error body:', responseText.slice(0, 500));
+    }
+
+    let data: unknown;
+    try { data = JSON.parse(responseText); } catch { data = { raw: responseText }; }
+
     const link = upstream.headers.get('Link');
     if (link) res.setHeader('Link', link);
     res.status(upstream.status).json(data);
-  } catch {
+  } catch (err) {
+    console.error('[canvas proxy] fetch threw:', err);
     res.status(500).json({ error: 'Canvas request failed' });
   }
 }
