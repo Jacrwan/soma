@@ -4,10 +4,12 @@ import { supabase } from '../../lib/supabase';
 import { startCheckout } from '../../lib/subscription';
 import styles from './PricingPage.module.css';
 
-const MONTHLY_PRICE     = '$5.99';
-const ANNUAL_PRICE      = '$47.88';
-const ANNUAL_PER_MONTH  = '$3.99';
-const ANNUAL_SAVINGS    = '33%';
+const MONTHLY_PRICE        = '$4.99';
+const MONTHLY_ORIGINAL     = '$7.99';
+const ANNUAL_PRICE         = '$49.99';
+const ANNUAL_ORIGINAL      = '$95.88';
+const ANNUAL_PER_MONTH     = '$4.17';
+const ANNUAL_SAVINGS       = '48%';
 
 function CheckIcon() {
   return (
@@ -25,7 +27,7 @@ const FREE_FEATURES = [
   'Manual todos & study timer',
 ];
 
-const PRO_FEATURES = [
+const PREMIUM_FEATURES = [
   'Everything in Free',
   'AI chat assistant',
   'AI schedule generation',
@@ -86,7 +88,7 @@ export default function PricingPage() {
       </div>
 
       <div className={styles.page}>
-        <p className={styles.eyebrow}>Soma Pro</p>
+        <p className={styles.eyebrow}>Soma Premium</p>
         <h1 className={styles.headline}>Start 1 month free</h1>
         <p className={styles.sub}>No charge today. Cancel anytime before your trial ends.</p>
 
@@ -123,17 +125,19 @@ export default function PricingPage() {
           </div>
         </div>
 
-        {/* Pro tier */}
+        {/* Premium tier */}
         <div className={`${styles.card} ${styles.cardPro}`}>
           <div className={styles.cardHeader}>
-            <span className={`${styles.planName} ${styles.planNamePro}`}>Pro</span>
+            <span className={`${styles.planName} ${styles.planNamePro}`}>Premium</span>
             {plan === 'monthly' ? (
               <>
+                <span className={styles.priceOriginal}>{MONTHLY_ORIGINAL}</span>
                 <span className={styles.price}>{MONTHLY_PRICE}</span>
                 <span className={styles.priceSub}>/mo</span>
               </>
             ) : (
               <>
+                <span className={styles.priceOriginal}>{ANNUAL_ORIGINAL}</span>
                 <span className={styles.price}>{ANNUAL_PRICE}</span>
                 <span className={styles.priceSub}>/yr</span>
                 <span className={styles.priceEquiv}>{ANNUAL_PER_MONTH}/mo</span>
@@ -142,7 +146,7 @@ export default function PricingPage() {
             <span className={styles.trial}>30-day free trial</span>
           </div>
           <div className={styles.featureList}>
-            {PRO_FEATURES.map(f => (
+            {PREMIUM_FEATURES.map(f => (
               <div key={f} className={`${styles.featureItem} ${styles.featureItemPro}`}>
                 <CheckIcon />
                 {f}

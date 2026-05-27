@@ -167,6 +167,14 @@
   letter-spacing: -0.02em;
 }
 
+.priceOriginal {
+  font-size: 16px;
+  color: #4b4b4b;
+  text-decoration: line-through;
+  text-decoration-color: #4b4b4b;
+  margin-right: 2px;
+}
+
 .priceSub {
   font-size: 13px;
   color: #6b6b6b;
