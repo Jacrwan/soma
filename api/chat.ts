@@ -96,8 +96,7 @@ async function verifyUserAndSubscription(
 
 export default async function handler(req: any, res: any) {
   const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? 'unknown';
-  const logBase = { timestamp: new Date().toISOString(), method: req.method, endpoint: '/api/chat', ip };
-  console.log(JSON.stringify(logBase));
+  console.log(JSON.stringify({ timestamp: new Date().toISOString(), method: req.method, endpoint: '/api/chat' }));
 
   if (applyCors(req, res)) return;
 
@@ -156,12 +155,12 @@ export default async function handler(req: any, res: any) {
 
     const data = await response.json();
     if (!response.ok) {
-      console.error(JSON.stringify({ ...logBase, event: 'upstream_error', status: response.status }));
+      console.error(JSON.stringify({ endpoint: '/api/chat', event: 'upstream_error', status: response.status }));
       return res.status(500).json({ error: 'AI request failed' });
     }
     res.json(data);
   } catch (err: any) {
-    console.error(JSON.stringify({ ...logBase, event: 'error', message: err?.message }));
+    console.error(JSON.stringify({ endpoint: '/api/chat', event: 'error', message: err?.message }));
     res.status(500).json({ error: 'AI request failed' });
   }
 }

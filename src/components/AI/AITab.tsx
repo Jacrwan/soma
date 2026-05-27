@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
+import DOMPurify from 'dompurify';
 import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
@@ -116,11 +117,12 @@ function stripTags(content: string) {
 }
 
 function formatMessage(content: string): string {
-  return content
+  const escaped = content
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/\*\*(.+?)\*\*/gs, '<strong>$1</strong>');
+  return DOMPurify.sanitize(escaped, { ALLOWED_TAGS: ['strong'], ALLOWED_ATTR: [] });
 }
 
 function parseScheduleBlocks(content: string): TimeBlock[] | null {
