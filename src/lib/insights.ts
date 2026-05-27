@@ -2,93 +2,6 @@ import { storage } from './storage';
 import { supabase } from './supabase';
 import { Subject } from '../types';
 
-const AI_MEMORY_KEY = 'soma_ai_memory';
-
-interface AIMemoryStore {
-  subjectTimeDeltas: Record<string, { totalEstimated: number; totalActual: number; sampleCount: number }>;
-  peakHours: Record<number, number>;
-  subjectAverageDuration: Record<string, { avg: number; count: number }>;
-}
-
-export interface AIMemory {
-  subjectTimeDeltas: Record<string, { totalEstimated: number; totalActual: number; sampleCount: number }>;
-  peakHours: Record<number, number>;
-  subjectAverageDuration: Record<string, number>;
-}
-
-function loadAIMemoryStore(): AIMemoryStore {
-  const raw = localStorage.getItem(AI_MEMORY_KEY);
-  if (!raw) return { subjectTimeDeltas: {}, peakHours: {}, subjectAverageDuration: {} };
-  try { return JSON.parse(raw); } catch { return { subjectTimeDeltas: {}, peakHours: {}, subjectAverageDuration: {} }; }
-}
-
-export function getAIMemory(): AIMemory | null {
-  const store = loadAIMemoryStore();
-  const hasAny =
-    Object.keys(store.subjectTimeDeltas).length > 0 ||
-    Object.keys(store.peakHours).length > 0 ||
-    Object.keys(store.subjectAverageDuration).length > 0;
-  if (!hasAny) return null;
-  return {
-    subjectTimeDeltas: store.subjectTimeDeltas,
-    peakHours: store.peakHours,
-    subjectAverageDuration: Object.fromEntries(
-      Object.entries(store.subjectAverageDuration).map(([id, { avg }]) => [id, avg])
-    ),
-  };
-}
-
-export function updateAIMemory(session: {
-  subjectId: string;
-  startHour: number;
-  durationMinutes: number;
-  estimatedMinutes?: number;
-}): void {
-  if (!storage.getSomaSettings().aiMemory.enabled) return;
-  const store = loadAIMemoryStore();
-
-  // peak hours
-  store.peakHours[session.startHour] = (store.peakHours[session.startHour] ?? 0) + session.durationMinutes;
-
-  // subject average duration (rolling)
-  const prev = store.subjectAverageDuration[session.subjectId] ?? { avg: 0, count: 0 };
-  const newCount = prev.count + 1;
-  store.subjectAverageDuration[session.subjectId] = {
-    avg: (prev.avg * prev.count + session.durationMinutes) / newCount,
-    count: newCount,
-  };
-
-  // estimated vs actual delta (only when estimated is provided)
-  if (session.estimatedMinutes != null && session.estimatedMinutes > 0) {
-    const prevDelta = store.subjectTimeDeltas[session.subjectId] ?? { totalEstimated: 0, totalActual: 0, sampleCount: 0 };
-    store.subjectTimeDeltas[session.subjectId] = {
-      totalEstimated: prevDelta.totalEstimated + session.estimatedMinutes,
-      totalActual: prevDelta.totalActual + session.durationMinutes,
-      sampleCount: prevDelta.sampleCount + 1,
-    };
-  }
-
-  localStorage.setItem(AI_MEMORY_KEY, JSON.stringify(store));
-}
-
-export function resetTimeAccuracy(): void {
-  const store = loadAIMemoryStore();
-  store.subjectTimeDeltas = {};
-  localStorage.setItem(AI_MEMORY_KEY, JSON.stringify(store));
-}
-
-export function resetPeakHours(): void {
-  const store = loadAIMemoryStore();
-  store.peakHours = {};
-  localStorage.setItem(AI_MEMORY_KEY, JSON.stringify(store));
-}
-
-export function resetSubjectPacing(): void {
-  const store = loadAIMemoryStore();
-  store.subjectAverageDuration = {};
-  localStorage.setItem(AI_MEMORY_KEY, JSON.stringify(store));
-}
-
 function dateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
@@ -96,7 +9,6 @@ function dateKey(date: Date): string {
 function blockDateKey(isoTime: string): string {
   return dateKey(new Date(isoTime));
 }
-
 
 function last7DayKeys(weekOffset = 0): string[] {
   const keys: string[] = [];
@@ -299,4 +211,123 @@ export async function getHeatmapMinutes(year: number, month: number): Promise<Re
     } catch { /* skip */ }
   }
   return byDay;
+}
+
+export async function getPeakHours(): Promise<Record<number, number>> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data, error } = await supabase
+        .from('timer_sessions')
+        .select('start_time, duration_seconds')
+        .eq('user_id', user.id);
+      if (!error && data) {
+        const byHour: Record<number, number> = {};
+        for (const row of data) {
+          if (!row.start_time) continue;
+          const hour = new Date(row.start_time).getHours();
+          byHour[hour] = (byHour[hour] ?? 0) + Math.round(row.duration_seconds / 60);
+        }
+        return byHour;
+      }
+    }
+  } catch { /* fall through */ }
+  // Fallback: localStorage timer sessions
+  const byHour: Record<number, number> = {};
+  for (const s of storage.getTimerSessions()) {
+    const hour = new Date(s.startTime).getHours();
+    byHour[hour] = (byHour[hour] ?? 0) + Math.round(s.durationSeconds / 60);
+  }
+  return byHour;
+}
+
+export async function getSubjectPacing(): Promise<Record<string, number>> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data, error } = await supabase
+        .from('timer_sessions')
+        .select('subject_id, duration_seconds')
+        .eq('user_id', user.id);
+      if (!error && data) {
+        const bySubject: Record<string, { total: number; count: number }> = {};
+        for (const row of data) {
+          if (!row.subject_id) continue;
+          const prev = bySubject[row.subject_id] ?? { total: 0, count: 0 };
+          bySubject[row.subject_id] = { total: prev.total + row.duration_seconds, count: prev.count + 1 };
+        }
+        return Object.fromEntries(
+          Object.entries(bySubject).map(([id, { total, count }]) => [id, Math.round(total / count / 60)])
+        );
+      }
+    }
+  } catch { /* fall through */ }
+  // Fallback: localStorage timer sessions
+  const bySubject: Record<string, { total: number; count: number }> = {};
+  for (const s of storage.getTimerSessions()) {
+    const prev = bySubject[s.subjectId] ?? { total: 0, count: 0 };
+    bySubject[s.subjectId] = { total: prev.total + s.durationSeconds, count: prev.count + 1 };
+  }
+  return Object.fromEntries(
+    Object.entries(bySubject).map(([id, { total, count }]) => [id, Math.round(total / count / 60)])
+  );
+}
+
+export async function getTimeAccuracy(): Promise<Record<string, { avgDeltaMinutes: number; sampleCount: number }>> {
+  const todos = storage.getTodos().filter(t => (t.estimatedMinutes ?? 0) > 0);
+  if (todos.length === 0) return {};
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data, error } = await supabase
+        .from('timer_sessions')
+        .select('task_text, subject_id, duration_seconds')
+        .eq('user_id', user.id)
+        .not('task_text', 'is', null);
+      if (!error && data) {
+        const byTask = new Map<string, number>();
+        for (const row of data) {
+          if (!row.task_text) continue;
+          const key = `${row.task_text}||${row.subject_id ?? ''}`;
+          byTask.set(key, (byTask.get(key) ?? 0) + row.duration_seconds);
+        }
+        return buildTimeAccuracy(todos, (todo) => {
+          const key = `${todo.text}||${todo.subjectId ?? ''}`;
+          return Math.floor((byTask.get(key) ?? 0) / 60);
+        });
+      }
+    }
+  } catch { /* fall through */ }
+  // Fallback: localStorage timer sessions
+  const sessions = storage.getTimerSessions();
+  return buildTimeAccuracy(todos, (todo) =>
+    Math.floor(
+      sessions
+        .filter(s => s.task === todo.text && s.subjectId === todo.subjectId)
+        .reduce((sum, s) => sum + s.durationSeconds, 0) / 60
+    )
+  );
+}
+
+function buildTimeAccuracy(
+  todos: ReturnType<typeof storage.getTodos>,
+  getActualMinutes: (todo: (typeof todos)[number]) => number,
+): Record<string, { avgDeltaMinutes: number; sampleCount: number }> {
+  const bySubject: Record<string, { totalDelta: number; count: number }> = {};
+  for (const todo of todos) {
+    const actual = getActualMinutes(todo);
+    if (actual === 0) continue;
+    const id = todo.subjectId ?? '';
+    const prev = bySubject[id] ?? { totalDelta: 0, count: 0 };
+    bySubject[id] = {
+      totalDelta: prev.totalDelta + (actual - todo.estimatedMinutes!),
+      count: prev.count + 1,
+    };
+  }
+  return Object.fromEntries(
+    Object.entries(bySubject).map(([id, { totalDelta, count }]) => [
+      id,
+      { avgDeltaMinutes: Math.round(totalDelta / count), sampleCount: count },
+    ])
+  );
 }

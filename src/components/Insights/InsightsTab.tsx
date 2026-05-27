@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { getWeeklyStudyTime, getSubjectBreakdown, getEstimatedVsActual, getStudyStreak, getHeatmapMinutes, getAIMemory } from '../../lib/insights';
+import { getWeeklyStudyTime, getSubjectBreakdown, getEstimatedVsActual, getStudyStreak, getHeatmapMinutes, getPeakHours, getSubjectPacing, getTimeAccuracy } from '../../lib/insights';
 import { storage } from '../../lib/storage';
 import { SkeletonBlock } from '../UI/Skeleton';
 import styles from './InsightsTab.module.css';
@@ -202,6 +202,9 @@ export default function InsightsTab() {
   const [estimated, setEstimated] = useState<EstimatedItem[]>([]);
   const [streak, setStreak] = useState(0);
   const [heatmapMinutesMap, setHeatmapMinutesMap] = useState<Record<number, number>>({});
+  const [peakHoursData, setPeakHoursData] = useState<Record<number, number>>({});
+  const [subjectPacingData, setSubjectPacingData] = useState<Record<string, number>>({});
+  const [timeAccuracyData, setTimeAccuracyData] = useState<Record<string, { avgDeltaMinutes: number; sampleCount: number }>>({});
 
   useEffect(() => { getWeeklyStudyTime(weekOffset).then(setWeekly); }, [weekOffset]);
   useEffect(() => { getSubjectBreakdown().then(setBreakdown); }, []);
@@ -212,8 +215,10 @@ export default function InsightsTab() {
     const target = new Date(now.getFullYear(), now.getMonth() + calendarOffset, 1);
     getHeatmapMinutes(target.getFullYear(), target.getMonth()).then(setHeatmapMinutesMap);
   }, [calendarOffset]);
+  useEffect(() => { getPeakHours().then(setPeakHoursData); }, []);
+  useEffect(() => { getSubjectPacing().then(setSubjectPacingData); }, []);
+  useEffect(() => { getTimeAccuracy().then(setTimeAccuracyData); }, []);
 
-  const aiMemory = useMemo(() => getAIMemory(), []);
   const subjects = useMemo(() => storage.getSubjects(), []);
   const subjectNameMap = useMemo(() => new Map(subjects.map(s => [s.id, s.name])), [subjects]);
 
@@ -227,16 +232,12 @@ export default function InsightsTab() {
     [weekly]
   );
 
-  const maxPeakMinutes = aiMemory
-    ? Math.max(...PEAK_HOURS.map(h => aiMemory.peakHours[h] ?? 0), 1)
-    : 1;
-  const top3PeakHours = aiMemory
-    ? PEAK_HOURS
-        .map(h => ({ h, m: aiMemory.peakHours[h] ?? 0 }))
-        .sort((a, b) => b.m - a.m)
-        .slice(0, 3)
-        .map(x => x.h)
-    : [];
+  const maxPeakMinutes = Math.max(...PEAK_HOURS.map(h => peakHoursData[h] ?? 0), 1);
+  const top3PeakHours = PEAK_HOURS
+    .map(h => ({ h, m: peakHoursData[h] ?? 0 }))
+    .sort((a, b) => b.m - a.m)
+    .slice(0, 3)
+    .map(x => x.h);
 
   const totalBreakdownMinutes = useMemo(
     () => breakdown.reduce((s, d) => s + d.minutes, 0),
@@ -504,14 +505,12 @@ export default function InsightsTab() {
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Time accuracy</h2>
-        {!aiMemory ? (
-          <EmptyState message="Complete more tasks to unlock AI insights." />
-        ) : (() => {
-          const rows = Object.entries(aiMemory.subjectTimeDeltas)
+        {(() => {
+          const rows = Object.entries(timeAccuracyData)
             .filter(([, d]) => d.sampleCount >= 3)
             .map(([id, d]) => ({
               name: subjectNameMap.get(id) ?? 'Unknown',
-              avgDelta: Math.round((d.totalActual - d.totalEstimated) / d.sampleCount),
+              avgDelta: d.avgDeltaMinutes,
             }));
           return rows.length === 0 ? (
             <EmptyState message="Complete at least 3 timed todos per subject to see accuracy." />
@@ -534,12 +533,12 @@ export default function InsightsTab() {
 
       <section className={`${styles.section} ${styles.spanFull}`}>
         <h2 className={styles.sectionTitle}>Peak study hours</h2>
-        {!aiMemory ? (
-          <EmptyState message="Complete more tasks to unlock AI insights." />
+        {maxPeakMinutes === 1 && PEAK_HOURS.every(h => !peakHoursData[h]) ? (
+          <EmptyState message="No study sessions recorded yet." />
         ) : (
           <div className={styles.peakChart}>
             {PEAK_HOURS.map(h => {
-              const minutes = aiMemory.peakHours[h] ?? 0;
+              const minutes = peakHoursData[h] ?? 0;
               const isTop = top3PeakHours.includes(h);
               return (
                 <div key={h} className={styles.peakCol}>
@@ -561,13 +560,11 @@ export default function InsightsTab() {
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Subject pacing</h2>
-        {!aiMemory ? (
-          <EmptyState message="Complete more tasks to unlock AI insights." />
-        ) : (() => {
-          const rows = Object.entries(aiMemory.subjectAverageDuration)
+        {(() => {
+          const rows = Object.entries(subjectPacingData)
             .map(([id, avg]) => ({
               name: subjectNameMap.get(id) ?? 'Unknown',
-              avg: Math.round(avg),
+              avg,
             }))
             .filter(r => r.avg > 0)
             .sort((a, b) => b.avg - a.avg);

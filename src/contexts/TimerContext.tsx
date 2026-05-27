@@ -1,7 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { type Subject, type TimeBlock, type TimerSession } from '../types';
 import { storage } from '../lib/storage';
-import { updateAIMemory } from '../lib/insights';
 import { useTimer } from '../hooks/useTimer';
 
 function toLocalISO(date: Date): string {
@@ -143,16 +142,6 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     storage.setTimerSessions([...storage.getTimerSessions(), timerSession]);
     void storage.saveTimerSession(timerSession, session.subject.name).catch(() => {});
     void storage.deleteActiveTimer().catch(() => {});
-
-    const matchedTodo = storage.getTodos().find(
-      t => t.text === session.task && t.subjectId === session.subject.id,
-    );
-    updateAIMemory({
-      subjectId: session.subject.id,
-      startHour: new Date(session.sessionStartTimeISO).getHours(),
-      durationMinutes: Math.round(durationSeconds / 60),
-      estimatedMinutes: matchedTodo?.estimatedMinutes,
-    });
 
     const updatedSubjects = storage.getSubjects().map(s =>
       s.id === session.subject.id ? { ...s, totalTimeToday: s.totalTimeToday + durationSeconds } : s,

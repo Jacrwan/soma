@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { storage, SomaSettings } from '../../lib/storage';
 import { applyTheme } from '../../App';
-import { resetTimeAccuracy, resetPeakHours, resetSubjectPacing } from '../../lib/insights';
 import { supabase } from '../../lib/supabase';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, openBillingPortal } from '../../lib/subscription';
@@ -11,7 +10,7 @@ import styles from './SettingsTab.module.css';
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 type Day = typeof DAYS[number];
 type HoursCategory = 'schoolHours' | 'workHours' | 'personalHours';
-type Section = 'profile' | 'subscription' | 'appearance' | 'availability' | 'study' | 'ai' | 'memory' | 'integrations';
+type Section = 'profile' | 'subscription' | 'appearance' | 'availability' | 'study' | 'ai' | 'integrations';
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -297,7 +296,6 @@ export default function SettingsTab() {
     ['availability',  'Availability'],
     ['study',         'Study Preferences'],
     ['ai',            'AI Behavior'],
-    ['memory',        'AI Memory'],
     ['integrations',  'Integrations'],
   ];
 
@@ -644,45 +642,6 @@ export default function SettingsTab() {
                     className={`${styles.segBtn}${settings.aiPrefs.defaultOutput === 'todos' ? ` ${styles.segBtnActive}` : ''}`}
                     onClick={() => save({ ...settings, aiPrefs: { ...settings.aiPrefs, defaultOutput: 'todos' } })}
                   >Todos</button>
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {activeSection === 'memory' && (
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>AI Memory</h2>
-            <div className={styles.prefGrid}>
-              <div className={styles.prefRow}>
-                <label className={styles.prefLabel}>Enable AI learning</label>
-                <div className={styles.segment}>
-                  <button
-                    className={`${styles.segBtn}${settings.aiMemory.enabled ? ` ${styles.segBtnActive}` : ''}`}
-                    onClick={() => save({ ...settings, aiMemory: { enabled: true } })}
-                  >On</button>
-                  <button
-                    className={`${styles.segBtn}${!settings.aiMemory.enabled ? ` ${styles.segBtnActive}` : ''}`}
-                    onClick={() => save({ ...settings, aiMemory: { enabled: false } })}
-                  >Off</button>
-                </div>
-              </div>
-
-              <div className={styles.resetGroup}>
-                <span className={styles.resetGroupLabel}>Reset stored data</span>
-                <div className={styles.resetBtns}>
-                  <button
-                    className={styles.resetBtn}
-                    onClick={() => { if (window.confirm('Reset time accuracy data? This cannot be undone.')) resetTimeAccuracy(); }}
-                  >Time accuracy</button>
-                  <button
-                    className={styles.resetBtn}
-                    onClick={() => { if (window.confirm('Reset peak hours data? This cannot be undone.')) resetPeakHours(); }}
-                  >Peak hours</button>
-                  <button
-                    className={styles.resetBtn}
-                    onClick={() => { if (window.confirm('Reset subject pacing data? This cannot be undone.')) resetSubjectPacing(); }}
-                  >Subject pacing</button>
                 </div>
               </div>
             </div>

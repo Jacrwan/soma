@@ -37,18 +37,9 @@ export interface SomaSettings {
     verbosity: 'concise' | 'detailed';
     defaultOutput: 'schedule' | 'todos';
   };
-  aiMemory: {
-    enabled: boolean;
-  };
   theme: 'dark' | 'light';
   canvasToken?: string;
   googleToken?: string;
-}
-
-export interface AIMemoryStore {
-  subjectTimeDeltas: Record<string, { totalEstimated: number; totalActual: number; sampleCount: number }>;
-  peakHours: Record<number, number>;
-  subjectAverageDuration: Record<string, { avg: number; count: number }>;
 }
 
 export interface ScheduleBlock {
@@ -106,9 +97,6 @@ const DEFAULT_SETTINGS: SomaSettings = {
   aiPrefs: {
     verbosity: 'concise',
     defaultOutput: 'schedule',
-  },
-  aiMemory: {
-    enabled: true,
   },
   theme: 'dark',
 };
@@ -298,7 +286,6 @@ export const storage = {
           ...DEFAULT_SETTINGS,
           studyPrefs: (raw.studyPrefs as SomaSettings['studyPrefs']) ?? DEFAULT_SETTINGS.studyPrefs,
           aiPrefs: (raw.aiPrefs as SomaSettings['aiPrefs']) ?? DEFAULT_SETTINGS.aiPrefs,
-          aiMemory: (raw.aiMemory as SomaSettings['aiMemory']) ?? DEFAULT_SETTINGS.aiMemory,
           personalHours: raw.availability as WeekSchedule,
           schoolHours: emptyWeek(),
           workHours: emptyWeek(),
@@ -480,20 +467,4 @@ export const storage = {
     await supabase.from('settings').upsert({ user_id: id, data: settings });
   },
 
-  // ── AI memory (Supabase) ─────────────────────────────────────────────
-  async getAIMemory(): Promise<AIMemoryStore | null> {
-    const id = await uid();
-    const { data } = await supabase
-      .from('ai_memory')
-      .select('data')
-      .eq('user_id', id)
-      .single();
-    if (!data?.data) return null;
-    return data.data as AIMemoryStore;
-  },
-
-  async saveAIMemory(memoryData: AIMemoryStore): Promise<void> {
-    const id = await uid();
-    await supabase.from('ai_memory').upsert({ user_id: id, data: memoryData });
-  },
 };
