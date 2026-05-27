@@ -19,13 +19,13 @@
 }
 
 .brand {
-  font-family: 'Jost', sans-serif;
+  font-family: var(--font-brand);
   font-weight: 300;
   font-size: 18px;
   color: var(--nav-active);
   padding: 28px 20px 16px;
   flex-shrink: 0;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.12em;
   user-select: none;
 }
 
@@ -56,7 +56,7 @@
   width: 100%;
   position: relative;
   white-space: nowrap;
-  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-ui);
   flex-shrink: 0;
 }
 
