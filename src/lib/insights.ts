@@ -1,4 +1,5 @@
 import { storage } from './storage';
+import { supabase } from './supabase';
 import { Subject } from '../types';
 
 const AI_MEMORY_KEY = 'soma_ai_memory';
@@ -108,88 +109,194 @@ function last7DayKeys(weekOffset = 0): string[] {
   return keys;
 }
 
-export function getWeeklyStudyTime(weekOffset = 0): { day: string; minutes: number }[] {
-  const days = last7DayKeys(weekOffset);
-  const result = days.map(day => {
+function computeStreak(daysWithData: Set<string>): number {
+  let streak = 0;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  for (let i = 0; ; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    if (daysWithData.has(dateKey(d))) streak++;
+    else break;
+  }
+  return streak;
+}
+
+function lsElapsedMinutesForDays(days: string[]): { day: string; minutes: number }[] {
+  return days.map(day => {
     const raw = localStorage.getItem(`soma_elapsed_${day}`);
     if (!raw) return { day, minutes: 0 };
     try {
       const data: Record<string, number> = JSON.parse(raw);
-      const minutes = Math.round(Object.values(data).reduce((sum, m) => sum + m, 0));
-      return { day, minutes };
-    } catch {
-      return { day, minutes: 0 };
-    }
+      return { day, minutes: Math.round(Object.values(data).reduce((s, m) => s + m, 0)) };
+    } catch { return { day, minutes: 0 }; }
   });
-  return result;
 }
 
-export function getSubjectBreakdown(): { subjectName: string; minutes: number; color: string }[] {
+export async function getWeeklyStudyTime(weekOffset = 0): Promise<{ day: string; minutes: number }[]> {
+  const days = last7DayKeys(weekOffset);
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data, error } = await supabase
+        .from('timer_sessions')
+        .select('date, duration_seconds')
+        .eq('user_id', user.id)
+        .gte('date', days[0])
+        .lte('date', days[days.length - 1]);
+      if (!error) {
+        const byDay = new Map<string, number>();
+        for (const row of data ?? []) {
+          byDay.set(row.date, (byDay.get(row.date) ?? 0) + row.duration_seconds);
+        }
+        return days.map(day => ({ day, minutes: Math.round((byDay.get(day) ?? 0) / 60) }));
+      }
+    }
+  } catch { /* fall through */ }
+  return lsElapsedMinutesForDays(days);
+}
+
+export async function getSubjectBreakdown(): Promise<{ subjectName: string; minutes: number; color: string }[]> {
   const subjects = storage.getSubjects();
   const subjectMap = new Map<string, Subject>(subjects.map(s => [s.id, s]));
   const days = last7DayKeys();
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data, error } = await supabase
+        .from('timer_sessions')
+        .select('subject_id, subject_name, duration_seconds')
+        .eq('user_id', user.id)
+        .gte('date', days[0])
+        .lte('date', days[days.length - 1]);
+      if (!error) {
+        const bySubject = new Map<string, { seconds: number; name: string }>();
+        for (const row of data ?? []) {
+          const prev = bySubject.get(row.subject_id);
+          bySubject.set(row.subject_id, {
+            seconds: (prev?.seconds ?? 0) + row.duration_seconds,
+            name: prev?.name ?? row.subject_name ?? 'Unknown',
+          });
+        }
+        return [...bySubject.entries()]
+          .map(([id, { seconds, name }]) => ({
+            subjectName: subjectMap.get(id)?.name ?? name,
+            color: subjectMap.get(id)?.color ?? '#91a7ff',
+            minutes: Math.round(seconds / 60),
+          }))
+          .filter(r => r.minutes > 0)
+          .sort((a, b) => b.minutes - a.minutes);
+      }
+    }
+  } catch { /* fall through */ }
+  // Fallback: soma_elapsed_* keys
   const minutesById = new Map<string, number>();
-
   for (const day of days) {
     const raw = localStorage.getItem(`soma_elapsed_${day}`);
     if (!raw) continue;
     try {
       const data: Record<string, number> = JSON.parse(raw);
-      for (const [subjectId, minutes] of Object.entries(data)) {
-        minutesById.set(subjectId, (minutesById.get(subjectId) ?? 0) + minutes);
-      }
-    } catch {
-      // skip corrupt entry
-    }
+      for (const [id, m] of Object.entries(data)) minutesById.set(id, (minutesById.get(id) ?? 0) + m);
+    } catch { /* skip */ }
   }
-
-  const result = [...minutesById.entries()]
+  return [...minutesById.entries()]
     .map(([id, minutes]) => ({
       subjectName: subjectMap.get(id)?.name ?? 'Unknown',
       color: subjectMap.get(id)?.color ?? '#91a7ff',
       minutes: Math.round(minutes),
     }))
     .sort((a, b) => b.minutes - a.minutes);
-
-  return result;
 }
 
-export function getEstimatedVsActual(): { text: string; estimated: number; actual: number }[] {
-  const todos = storage.getTodos();
+export async function getEstimatedVsActual(): Promise<{ text: string; estimated: number; actual: number }[]> {
+  const todos = storage.getTodos().filter(t => (t.estimatedMinutes ?? 0) > 0);
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data, error } = await supabase
+        .from('timer_sessions')
+        .select('task_text, subject_id, duration_seconds')
+        .eq('user_id', user.id)
+        .not('task_text', 'is', null);
+      if (!error) {
+        const byTask = new Map<string, number>();
+        for (const row of data ?? []) {
+          if (!row.task_text) continue;
+          const key = `${row.task_text}||${row.subject_id ?? ''}`;
+          byTask.set(key, (byTask.get(key) ?? 0) + row.duration_seconds);
+        }
+        return todos
+          .map(t => {
+            const key = `${t.text}||${t.subjectId ?? ''}`;
+            const actual = Math.floor((byTask.get(key) ?? 0) / 60);
+            return { text: t.text, estimated: t.estimatedMinutes!, actual };
+          })
+          .filter(r => r.actual > 0);
+      }
+    }
+  } catch { /* fall through */ }
+  // Fallback: localStorage soma_sessions
   const sessions = storage.getTimerSessions();
-
-  const result = todos
-    .filter(t => t.estimatedMinutes != null && t.estimatedMinutes > 0)
-    .map(t => {
-      const actual = Math.floor(
+  return todos
+    .map(t => ({
+      text: t.text,
+      estimated: t.estimatedMinutes!,
+      actual: Math.floor(
         sessions
           .filter(s => s.task === t.text && s.subjectId === t.subjectId)
           .reduce((sum, s) => sum + s.durationSeconds, 0) / 60
-      );
-      return { text: t.text, estimated: t.estimatedMinutes!, actual };
-    })
-    .filter(row => row.actual > 0);
-
-  return result;
+      ),
+    }))
+    .filter(r => r.actual > 0);
 }
 
-export function getStudyStreak(): number {
-  const blocks = storage.getTimeBlocks();
-  const daysWithBlocks = new Set(blocks.map(b => blockDateKey(b.startTime)));
-
-  let streak = 0;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  for (let i = 0; ; i++) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    if (daysWithBlocks.has(dateKey(d))) {
-      streak++;
-    } else {
-      break;
+export async function getStudyStreak(): Promise<number> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data, error } = await supabase
+        .from('timer_sessions')
+        .select('date')
+        .eq('user_id', user.id);
+      if (!error) return computeStreak(new Set((data ?? []).map(r => r.date as string)));
     }
-  }
+  } catch { /* fall through */ }
+  return computeStreak(new Set(storage.getTimeBlocks().map(b => blockDateKey(b.startTime))));
+}
 
-  return streak;
+export async function getHeatmapMinutes(year: number, month: number): Promise<Record<number, number>> {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const startDate = `${year}-${pad(month + 1)}-01`;
+  const endDate   = `${year}-${pad(month + 1)}-${pad(daysInMonth)}`;
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data, error } = await supabase
+        .from('timer_sessions')
+        .select('date, duration_seconds')
+        .eq('user_id', user.id)
+        .gte('date', startDate)
+        .lte('date', endDate);
+      if (!error) {
+        const byDay: Record<number, number> = {};
+        for (const row of data ?? []) {
+          const d = parseInt(row.date.slice(8), 10);
+          byDay[d] = (byDay[d] ?? 0) + Math.round(row.duration_seconds / 60);
+        }
+        return byDay;
+      }
+    }
+  } catch { /* fall through */ }
+  // Fallback: soma_elapsed_* keys
+  const byDay: Record<number, number> = {};
+  for (let d = 1; d <= daysInMonth; d++) {
+    const raw = localStorage.getItem(`soma_elapsed_${year}-${pad(month + 1)}-${pad(d)}`);
+    if (!raw) continue;
+    try {
+      const data: Record<string, number> = JSON.parse(raw);
+      byDay[d] = Math.round(Object.values(data).reduce((s, m) => s + m, 0));
+    } catch { /* skip */ }
+  }
+  return byDay;
 }

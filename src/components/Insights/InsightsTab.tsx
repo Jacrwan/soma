@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { getWeeklyStudyTime, getSubjectBreakdown, getEstimatedVsActual, getStudyStreak, getAIMemory } from '../../lib/insights';
+import { getWeeklyStudyTime, getSubjectBreakdown, getEstimatedVsActual, getStudyStreak, getHeatmapMinutes, getAIMemory } from '../../lib/insights';
 import { storage } from '../../lib/storage';
 import { SkeletonBlock } from '../UI/Skeleton';
 import styles from './InsightsTab.module.css';
@@ -193,10 +193,26 @@ export default function InsightsTab() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
-  const weekly = useMemo(() => getWeeklyStudyTime(weekOffset), [weekOffset]);
-  const breakdown = useMemo(() => getSubjectBreakdown(), []);
-  const estimated = useMemo(() => getEstimatedVsActual(), []);
-  const streak = useMemo(() => getStudyStreak(), []);
+  type WeeklyDay = { day: string; minutes: number };
+  type BreakdownItem = { subjectName: string; minutes: number; color: string };
+  type EstimatedItem = { text: string; estimated: number; actual: number };
+
+  const [weekly, setWeekly] = useState<WeeklyDay[]>([]);
+  const [breakdown, setBreakdown] = useState<BreakdownItem[]>([]);
+  const [estimated, setEstimated] = useState<EstimatedItem[]>([]);
+  const [streak, setStreak] = useState(0);
+  const [heatmapMinutesMap, setHeatmapMinutesMap] = useState<Record<number, number>>({});
+
+  useEffect(() => { getWeeklyStudyTime(weekOffset).then(setWeekly); }, [weekOffset]);
+  useEffect(() => { getSubjectBreakdown().then(setBreakdown); }, []);
+  useEffect(() => { getEstimatedVsActual().then(setEstimated); }, []);
+  useEffect(() => { getStudyStreak().then(setStreak); }, []);
+  useEffect(() => {
+    const now = new Date();
+    const target = new Date(now.getFullYear(), now.getMonth() + calendarOffset, 1);
+    getHeatmapMinutes(target.getFullYear(), target.getMonth()).then(setHeatmapMinutesMap);
+  }, [calendarOffset]);
+
   const aiMemory = useMemo(() => getAIMemory(), []);
   const subjects = useMemo(() => storage.getSubjects(), []);
   const subjectNameMap = useMemo(() => new Map(subjects.map(s => [s.id, s.name])), [subjects]);
@@ -253,21 +269,12 @@ export default function InsightsTab() {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const cells: { day: number; minutes: number; isToday: boolean }[] = [];
     for (let d = 1; d <= daysInMonth; d++) {
-      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const raw = localStorage.getItem(`soma_elapsed_${dateStr}`);
-      let minutes = 0;
-      if (raw) {
-        try {
-          const data: Record<string, number> = JSON.parse(raw);
-          minutes = Math.round(Object.values(data).reduce((sum, m) => sum + m, 0));
-        } catch {}
-      }
       const isToday = year === now.getFullYear() && month === now.getMonth() && d === now.getDate();
-      cells.push({ day: d, minutes, isToday });
+      cells.push({ day: d, minutes: heatmapMinutesMap[d] ?? 0, isToday });
     }
     const firstDow = new Date(year, month, 1).getDay();
     return { cells, firstDayOfWeekMon: (firstDow + 6) % 7, year, month };
-  }, [calendarOffset]);
+  }, [calendarOffset, heatmapMinutesMap]);
 
   if (!mounted) return <InsightsSkeleton />;
 

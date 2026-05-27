@@ -46,7 +46,7 @@ export default async function handler(req: any, res: any) {
   }
 
   // Delete user rows from all tables
-  for (const table of ['todos', 'schedule_blocks', 'elapsed_time', 'settings', 'ai_memory', 'subscriptions']) {
+  for (const table of ['todos', 'schedule_blocks', 'elapsed_time', 'settings', 'ai_memory', 'subscriptions', 'timer_sessions', 'active_timer', 'time_blocks']) {
     await admin.from(table).delete().eq('user_id', uid);
   }
 
