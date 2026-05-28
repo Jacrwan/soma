@@ -701,6 +701,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   // Case 1: timer started ≤60 min before block start — stretch block startTime back
   // Case 2: timer started mid-block (block already in progress) — mark for replacement on stop
   useEffect(() => {
+    console.log('[merge] effect fired, activeSession:', timerCtx.activeSession?.task ?? 'null');
     const session = timerCtx.activeSession;
     if (!session) {
       mergedBlockIdRef.current = null;
