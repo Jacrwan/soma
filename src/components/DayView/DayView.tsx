@@ -1025,6 +1025,13 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
         [session.subject_id]: Math.max(0, (prev[session.subject_id] ?? 0) - mins),
       }));
     }
+    const linkedBlock = storage.getTimeBlocks().find(b => b.timerSessionId === session.id);
+    if (linkedBlock) {
+      const remaining = storage.getTimeBlocks().filter(b => b.timerSessionId !== session.id);
+      storage.setTimeBlocks(remaining);
+      setBlocks(remaining.filter(b => isOnDate(b.startTime, selectedDate)));
+      void storage.deleteScheduleBlock(linkedBlock.id).catch(() => {});
+    }
     if (taskModal?.editingTodo) void loadTaskSessions(taskModal.editingTodo);
   }
 
