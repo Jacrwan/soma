@@ -398,6 +398,7 @@ export default function CanvasTab() {
     try {
       const fetched = await getIcalAssignments(icalUrl);
       storage.setCachedIcalAssignments(fetched);
+      storage.setCachedAssignments(fetched);
       storage.setCacheTimestamp(Date.now());
       setAssignments(fetched);
       setLastSynced(Date.now());
@@ -555,6 +556,7 @@ export default function CanvasTab() {
       const fetched = await getIcalAssignments(url);
       storage.setCanvasIcalUrl(url);
       storage.setCachedIcalAssignments(fetched);
+      storage.setCachedAssignments(fetched);
       storage.setCacheTimestamp(Date.now());
       setIcalUrl(url);
       setAssignments(fetched);
@@ -866,7 +868,7 @@ Rules:
             title="Refresh"
           >{icalSyncing || syncing ? '…' : '↻'}</button>
         </div>
-        <button className={styles.disconnectLink} onClick={isIcalConnected ? () => { storage.setCanvasIcalUrl(''); storage.setCachedIcalAssignments([]); setIcalUrl(''); setAssignments([]); } : handleDisconnect}>Disconnect</button>
+        <button className={styles.disconnectLink} onClick={isIcalConnected ? () => { storage.setCanvasIcalUrl(''); storage.setCachedIcalAssignments([]); storage.setCachedAssignments([]); setIcalUrl(''); setAssignments([]); } : handleDisconnect}>Disconnect</button>
       </div>
 
       {canvasView === 'grades' && (

@@ -283,6 +283,7 @@ export default function SettingsTab() {
       const fetched = await getIcalAssignments(url);
       storage.setCanvasIcalUrl(url);
       storage.setCachedIcalAssignments(fetched);
+      storage.setCachedAssignments(fetched);
       storage.setCacheTimestamp(Date.now());
       setCanvasIcalUrl(url);
       setShowCanvasModal(false);
@@ -297,6 +298,7 @@ export default function SettingsTab() {
   function disconnectIcal() {
     storage.setCanvasIcalUrl('');
     storage.setCachedIcalAssignments([]);
+    if (!storage.getCanvasToken()) storage.setCachedAssignments([]);
     setCanvasIcalUrl('');
   }
 

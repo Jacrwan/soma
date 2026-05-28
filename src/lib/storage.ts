@@ -205,7 +205,10 @@ export const storage = {
   },
 
   getCachedIcalAssignments: () => get<import('../types').CanvasAssignment[]>(KEYS.cachedIcalAssignments, []),
-  setCachedIcalAssignments: (v: import('../types').CanvasAssignment[]) => set(KEYS.cachedIcalAssignments, v),
+  setCachedIcalAssignments: (v: import('../types').CanvasAssignment[]) => {
+    set(KEYS.cachedIcalAssignments, v);
+    if (!_canvasToken) set(KEYS.cachedAssignments, v);
+  },
 
   getAssignmentStatus: (): Record<number, string> => get(KEYS.assignmentStatus, {}),
   setAssignmentStatus: (v: Record<number, string>) => set(KEYS.assignmentStatus, v),
@@ -216,7 +219,13 @@ export const storage = {
   getCachedCourses: (): CanvasCourse[] => get(KEYS.cachedCourses, []),
   setCachedCourses: (v: CanvasCourse[]) => set(KEYS.cachedCourses, v),
 
-  getCachedAssignments: (): CanvasAssignment[] => get(KEYS.cachedAssignments, []),
+  getCachedAssignments: (): CanvasAssignment[] => {
+    const iCalAssignments = _canvasIcalUrl
+      ? get<CanvasAssignment[]>(KEYS.cachedIcalAssignments, [])
+      : [];
+    if (!_canvasToken && iCalAssignments.length > 0) return iCalAssignments;
+    return get(KEYS.cachedAssignments, []);
+  },
   setCachedAssignments: (v: CanvasAssignment[]) => set(KEYS.cachedAssignments, v),
 
   getCachedAnnouncements: (): CanvasAnnouncement[] => get(KEYS.cachedAnnouncements, []),
