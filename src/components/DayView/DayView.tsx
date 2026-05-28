@@ -710,7 +710,23 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     const now = Date.now();
     const todayStr = toISODateString(new Date());
 
+    console.log('[merge] activeSession:', JSON.stringify({
+      task: session.task,
+      subjectId: session.subject.id,
+      startTime: session.sessionStartTimeISO,
+    }));
+
     const candidate = blocks.find(b => {
+      console.log('[merge] evaluating block:', JSON.stringify({
+        task: b.task,
+        subjectId: b.subjectId,
+        startTime: b.startTime,
+        endTime: b.endTime,
+        timerSessionId: b.timerSessionId,
+        taskMatch: b.task === session.task,
+        subjectMatch: b.subjectId === session.subject.id,
+        taskLengths: [b.task?.length, session.task?.length],
+      }));
       if (b.timerSessionId) return false;
       if (b.subjectId !== session.subject.id) return false;
       if (b.task !== session.task) return false;
