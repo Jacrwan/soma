@@ -44,9 +44,12 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
   const [pendingSession, setPendingSession] = useState<{ subject: Subject; initialTask: string } | null>(null);
 
-  const elapsedRef        = useRef(0);
-  const activeSessionRef  = useRef<ActiveSession | null>(null);
-  const mergedBlockIdRef  = useRef<string | null>(null);
+  const elapsedRef             = useRef(0);
+  const activeSessionRef       = useRef<ActiveSession | null>(null);
+  const mergedBlockIdRef       = useRef<string | null>(null);
+  // Behavior 2: track a recent block to extend on continuation
+  const continuationBlockIdRef = useRef<string | null>(null);
+  const pauseDurationRef       = useRef<number>(0);
 
   useEffect(() => { elapsedRef.current = elapsed; }, [elapsed]);
   useEffect(() => { activeSessionRef.current = activeSession; }, [activeSession]);
@@ -74,7 +77,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
 
   // Merge running timer into a matching scheduled block (runs globally, not per-tab).
   // Case 1: timer started ≤60 min before block — stretch block startTime back.
-  // Case 2: timer started mid-block — mark for replacement on stop, no visual change needed.
+  // Case 2: timer started mid-block — split: pre-portion becomes missed block, timer attaches to remainder.
   useEffect(() => {
     if (!activeSession) {
       mergedBlockIdRef.current = null;
@@ -105,6 +108,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     mergedBlockIdRef.current = candidate.id;
 
     if (timerStartMs < new Date(candidate.startTime).getTime()) {
+      // Case 1: early start — stretch block startTime back to timer start
       const timerStartISO = toLocalISO(new Date(timerStartMs));
       storage.setTimeBlocks(blocks.map((b: import('../types').TimeBlock) =>
         b.id === candidate.id ? { ...b, startTime: timerStartISO } : b,
@@ -120,6 +124,46 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         end_time: candidate.endTime,
         color: activeSession.subject.color,
       }).catch(() => {});
+    } else {
+      // Case 2: late start — split block at timer start time
+      // The portion before timerStart becomes a separate block (will be detected as missed).
+      // The original block's startTime is trimmed to timerStart.
+      const timerStartISO = toLocalISO(new Date(timerStartMs));
+      const preBlock: TimeBlock = {
+        id: crypto.randomUUID(),
+        subjectId: candidate.subjectId,
+        task: candidate.task ?? '',
+        startTime: candidate.startTime,
+        endTime: timerStartISO,
+        source: candidate.source,
+      };
+      const updatedBlocks = blocks.map((b: import('../types').TimeBlock) =>
+        b.id === candidate.id ? { ...b, startTime: timerStartISO } : b,
+      );
+      storage.setTimeBlocks([...updatedBlocks, preBlock]);
+      window.dispatchEvent(new CustomEvent('soma_merge_applied'));
+      // Update original block's start in Supabase
+      void storage.saveScheduleBlock({
+        id: candidate.id,
+        date: todayStr,
+        subject_id: candidate.subjectId,
+        subject_name: activeSession.subject.name,
+        task_name: candidate.task ?? null,
+        start_time: timerStartISO,
+        end_time: candidate.endTime,
+        color: activeSession.subject.color,
+      }).catch(() => {});
+      // Persist pre-block to Supabase
+      void storage.saveScheduleBlock({
+        id: preBlock.id,
+        date: todayStr,
+        subject_id: candidate.subjectId,
+        subject_name: activeSession.subject.name,
+        task_name: candidate.task ?? null,
+        start_time: candidate.startTime,
+        end_time: timerStartISO,
+        color: activeSession.subject.color,
+      }).catch(() => {});
     }
   }, [activeSession]);
 
@@ -132,7 +176,29 @@ export function TimerProvider({ children }: { children: ReactNode }) {
 
   const startSession = useCallback((subject: Subject, task: string, preSeconds: number) => {
     const now = new Date();
-    const sessionStartISO = toLocalISO(new Date(now.getTime() - preSeconds * 1000));
+    const sessionStartMs = now.getTime() - preSeconds * 1000;
+    const sessionStartISO = toLocalISO(new Date(sessionStartMs));
+
+    // Behavior 2: detect continuation — same subject+task, last session ended ≤60s ago
+    continuationBlockIdRef.current = null;
+    pauseDurationRef.current = 0;
+    const recentSessions = storage.getTimerSessions()
+      .filter(s => s.subjectId === subject.id && s.task === task);
+    if (recentSessions.length > 0) {
+      const lastSession = recentSessions.reduce<TimerSession>(
+        (best, s) => s.endTime > best.endTime ? s : best,
+        recentSessions[0],
+      );
+      const gapMs = sessionStartMs - new Date(lastSession.endTime).getTime();
+      if (gapMs >= 0 && gapMs <= 60_000) {
+        const linkedBlock = storage.getTimeBlocks().find(b => b.timerSessionId === lastSession.id);
+        if (linkedBlock) {
+          continuationBlockIdRef.current = linkedBlock.id;
+          pauseDurationRef.current = Math.round(gapMs / 1000);
+        }
+      }
+    }
+
     const session: ActiveSession = { subject, task, sessionStartTimeISO: sessionStartISO };
     setActiveSession(session);
     setPendingSession(null);
@@ -188,6 +254,12 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     const endTime = toLocalISO(new Date());
     const durationSeconds = elapsedRef.current;
 
+    // Capture continuation state before clearing refs
+    const continuationBlockId = continuationBlockIdRef.current;
+    continuationBlockIdRef.current = null;
+    const pauseDuration = pauseDurationRef.current;
+    pauseDurationRef.current = 0;
+
     const timerSession: TimerSession = {
       id: crypto.randomUUID(),
       subjectId: session.subject.id,
@@ -195,6 +267,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       startTime: session.sessionStartTimeISO,
       endTime,
       durationSeconds,
+      ...(pauseDuration > 0 ? { pauseDurationSeconds: pauseDuration } : {}),
     };
     storage.setTimerSessions([...storage.getTimerSessions(), timerSession]);
     void storage.saveTimerSession(timerSession, session.subject.name).catch(() => {});
@@ -204,6 +277,17 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       s.id === session.subject.id ? { ...s, totalTimeToday: s.totalTimeToday + durationSeconds } : s,
     );
     storage.setSubjects(updatedSubjects);
+
+    // Behavior 2: continuation — extend the existing block instead of creating a new one
+    if (continuationBlockId) {
+      const allBlocks = storage.getTimeBlocks();
+      storage.setTimeBlocks(allBlocks.map(b =>
+        b.id === continuationBlockId ? { ...b, endTime } : b,
+      ));
+      mergedBlockIdRef.current = null;
+      window.dispatchEvent(new CustomEvent('soma_timer_stopped', { detail: { mergedBlockId: null, stopTime: endTime } }));
+      return;
+    }
 
     const newBlock: TimeBlock = {
       id: crypto.randomUUID(),
@@ -218,7 +302,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
 
     const mergedBlockId = mergedBlockIdRef.current;
     mergedBlockIdRef.current = null;
-    window.dispatchEvent(new CustomEvent('soma_timer_stopped', { detail: { mergedBlockId } }));
+    window.dispatchEvent(new CustomEvent('soma_timer_stopped', { detail: { mergedBlockId, stopTime: endTime } }));
   }, [stop]);
 
   return (

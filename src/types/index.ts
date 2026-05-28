@@ -30,6 +30,7 @@ export interface TimerSession {
   endTime: string;
   durationSeconds: number;
   linkedBlockId?: string;
+  pauseDurationSeconds?: number;
 }
 
 export interface CanvasAssignment {

@@ -666,11 +666,46 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
 
   useEffect(() => {
     function onTimerStopped(e: Event) {
-      const mergedId = (e as CustomEvent<{ mergedBlockId: string | null }>).detail?.mergedBlockId ?? null;
+      const detail = (e as CustomEvent<{ mergedBlockId: string | null; stopTime?: string }>).detail;
+      const mergedId = detail?.mergedBlockId ?? null;
+      const stopTime = detail?.stopTime ?? null;
+
       if (mergedId) {
-        const allBlocks = storage.getTimeBlocks().filter(b => b.id !== mergedId);
-        storage.setTimeBlocks(allBlocks);
-        const updatedBlocks = allBlocks.filter(b => isOnDate(b.startTime, selectedDate));
+        const allBlocks = storage.getTimeBlocks();
+        const mergedBlock = allBlocks.find(b => b.id === mergedId);
+
+        // Behavior 1: partial study — if timer stopped before block ends, trim the block
+        if (mergedBlock && stopTime && stopTime < mergedBlock.endTime) {
+          const trimmed = allBlocks.map(b =>
+            b.id === mergedId ? { ...b, startTime: stopTime } : b,
+          );
+          storage.setTimeBlocks(trimmed);
+          const subj = storage.getSubjects().find(s => s.id === mergedBlock.subjectId);
+          void storage.saveScheduleBlock({
+            id: mergedId,
+            date: mergedBlock.startTime.slice(0, 10),
+            subject_id: mergedBlock.subjectId,
+            subject_name: subj?.name ?? null,
+            task_name: mergedBlock.task ?? null,
+            start_time: stopTime,
+            end_time: mergedBlock.endTime,
+            color: subj?.color ?? null,
+          }).catch(() => {});
+          const updatedBlocks = trimmed.filter(b => isOnDate(b.startTime, selectedDate));
+          setBlocks(updatedBlocks);
+          setSubjects(storage.getSubjects().map(s => ({
+            ...s,
+            totalTimeToday: subjectSecsFromSessions(s.id, selectedDate),
+          })));
+          setMissedBlockIds(computeMissedBlockIds(updatedBlocks, storage.getTimerSessions(), new Date()));
+          void computeRef.current?.();
+          return;
+        }
+
+        // Timer covered full block — delete it entirely
+        const remaining = allBlocks.filter(b => b.id !== mergedId);
+        storage.setTimeBlocks(remaining);
+        const updatedBlocks = remaining.filter(b => isOnDate(b.startTime, selectedDate));
         setBlocks(updatedBlocks);
         setSubjects(storage.getSubjects().map(s => ({
           ...s,
@@ -680,6 +715,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
         void computeRef.current?.();
         return;
       }
+
       const updatedBlocks = storage.getTimeBlocks().filter(b => isOnDate(b.startTime, selectedDate));
       setBlocks(updatedBlocks);
       setSubjects(storage.getSubjects().map(s => ({
