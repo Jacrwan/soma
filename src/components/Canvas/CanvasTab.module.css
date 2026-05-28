@@ -22,6 +22,40 @@
   font-weight: 600;
 }
 
+.setupTabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+
+.setupTab {
+  min-height: 34px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.setupTabActive {
+  background: var(--bg);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.setupBadge {
+  display: block;
+  margin-top: 1px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
 .setupField {
   display: flex;
   flex-direction: column;
@@ -81,6 +115,12 @@
   line-height: 1.6;
   border-top: 1px solid var(--border);
   padding-top: var(--space-sm);
+}
+
+.setupHintNoBorder {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
 }
 
 /* ── Main layout ───────────────────────────────────────────────────────── */
