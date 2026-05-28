@@ -389,7 +389,7 @@ export default function CanvasTab() {
     }
   }, []);
 
-  async function loadIcalData(force = false) {
+  async function loadIcalData() {
     if (!icalUrl) return;
     setIcalSyncing(true);
     setIcalError('');
