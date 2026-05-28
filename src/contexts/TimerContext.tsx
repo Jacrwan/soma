@@ -53,6 +53,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
 
   // Recover any in-progress timer from Supabase on app load
   useEffect(() => {
+    void storage.cleanupTestBlocks('Semester II Graded Assignments').catch(() => {});
     storage.getActiveTimer().then(row => {
       if (!row) return;
       const subj = storage.getSubjects().find(s => s.id === row.subject_id);
@@ -96,7 +97,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         if (blockStartMs - timerStartMs > 60 * 60 * 1000) return false;
         return timerStartMs < blockEndMs;
       }
-      return now < blockEndMs;
+      return timerStartMs < blockEndMs;
     });
 
     if (!candidate || mergedBlockIdRef.current === candidate.id) return;

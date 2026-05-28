@@ -476,4 +476,14 @@ export const storage = {
     await supabase.from('settings').upsert({ user_id: id, data: settings });
   },
 
+  async cleanupTestBlocks(taskName: string): Promise<void> {
+    const allBlocks = storage.getTimeBlocks();
+    const toDelete = allBlocks.filter(b => b.task === taskName && b.timerSessionId);
+    if (toDelete.length === 0) return;
+    storage.setTimeBlocks(allBlocks.filter(b => !(b.task === taskName && b.timerSessionId)));
+    const id = await uid();
+    const ids = toDelete.map(b => b.id);
+    await supabase.from('schedule_blocks').delete().in('id', ids).eq('user_id', id);
+  },
+
 };
