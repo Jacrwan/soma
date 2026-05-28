@@ -138,6 +138,11 @@
   color: var(--text-muted);
 }
 
+.syncError {
+  font-size: 11px;
+  color: var(--danger);
+}
+
 .refreshBtn {
   background: none;
   border: none;

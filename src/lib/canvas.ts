@@ -343,3 +343,23 @@ export async function getModules(
     courseId,
   }));
 }
+
+// ── Canvas iCal feed ─────────────────────────────────────────────────────────
+
+export async function getIcalAssignments(icalUrl: string): Promise<CanvasAssignment[]> {
+  const sbToken = await supabaseToken();
+  const res = await fetch('/api/canvas-ical', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${sbToken}`,
+    },
+    body: JSON.stringify({ icalUrl }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    throw new Error(err.error ?? `HTTP ${res.status}`);
+  }
+  const { assignments } = await res.json();
+  return assignments as CanvasAssignment[];
+}

@@ -558,6 +558,48 @@
   color: var(--text-primary);
 }
 
+.modalTabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.modalTab {
+  flex: 1;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.modalTab:hover { color: var(--text-primary); }
+
+.modalTabActive {
+  background: var(--bg);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px oklch(0% 0 0 / 0.1);
+}
+
+.modalTabBadge {
+  font-size: 10px;
+  font-weight: 600;
+  background: oklch(55% 0.22 266 / 0.15);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
 .modalField {
   display: flex;
   flex-direction: column;

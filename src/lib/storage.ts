@@ -39,6 +39,7 @@ export interface SomaSettings {
   };
   theme: 'dark' | 'light';
   canvasToken?: string;
+  canvasIcalUrl?: string;
   googleToken?: string;
 }
 
@@ -114,6 +115,8 @@ const KEYS = {
   cachedAnnouncements: 'soma_cached_announcements',
   cachedModules: 'soma_cached_modules',
   cacheTimestamp: 'soma_canvas_cache_timestamp',
+  canvasIcalUrl: 'soma_canvas_ical_url',
+  cachedIcalAssignments: 'soma_ical_assignments',
   googleClientId: 'soma_google_client_id',
   googleEvents: 'soma_google_events',
   googleCacheTimestamp: 'soma_google_cache_timestamp',
@@ -140,6 +143,7 @@ async function uid(): Promise<string> {
 // In-memory token cache — populated by loadTokens() at auth time.
 // Never written to localStorage; source of truth is Supabase settings.
 let _canvasToken = '';
+let _canvasIcalUrl = '';
 let _googleToken = '';
 
 // ── Utility ───────────────────────────────────────────────────────────────
@@ -189,6 +193,20 @@ export const storage = {
   getCanvasBaseUrl: (): string => get(KEYS.canvasBaseUrl, ''),
   setCanvasBaseUrl: (v: string) => set(KEYS.canvasBaseUrl, v),
 
+  getCanvasIcalUrl: (): string => _canvasIcalUrl,
+  setCanvasIcalUrl: (v: string): void => {
+    _canvasIcalUrl = v;
+    void (async () => {
+      try {
+        const s = await storage.getSettings();
+        await storage.saveSettings({ ...s, canvasIcalUrl: v });
+      } catch (err) { console.error('[storage] ical url persist failed:', err); }
+    })();
+  },
+
+  getCachedIcalAssignments: () => get<import('../types').CanvasAssignment[]>(KEYS.cachedIcalAssignments, []),
+  setCachedIcalAssignments: (v: import('../types').CanvasAssignment[]) => set(KEYS.cachedIcalAssignments, v),
+
   getAssignmentStatus: (): Record<number, string> => get(KEYS.assignmentStatus, {}),
   setAssignmentStatus: (v: Record<number, string>) => set(KEYS.assignmentStatus, v),
 
@@ -231,6 +249,7 @@ export const storage = {
     try {
       const s = await storage.getSettings();
       _canvasToken = s.canvasToken ?? '';
+      _canvasIcalUrl = s.canvasIcalUrl ?? '';
       _googleToken = s.googleToken ?? '';
       // One-time migration: move plaintext tokens out of localStorage
       const migrateKey = (key: string): string => {

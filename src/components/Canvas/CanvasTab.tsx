@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { storage } from '../../lib/storage';
 import { CanvasCourse, CanvasAssignment, CanvasAnnouncement, Subject, Todo } from '../../types';
-import { getCourses, getActiveAssignments, getAssignments, getAnnouncements, getModules, getGrades } from '../../lib/canvas';
+import { getCourses, getActiveAssignments, getAssignments, getAnnouncements, getModules, getGrades, getIcalAssignments } from '../../lib/canvas';
 import { sendMessage } from '../../lib/ai';
 import { supabase } from '../../lib/supabase';
 import { CanvasGrade } from '../../types';
@@ -325,13 +325,22 @@ export default function CanvasTab() {
   const [initialStudyPlan] = useState(() => getCachedStudyPlan());
   const [token, setToken] = useState(() => storage.getCanvasToken());
   const [baseUrl, setBaseUrl] = useState(() => storage.getCanvasBaseUrl());
+  const [icalUrl, setIcalUrl] = useState(() => storage.getCanvasIcalUrl());
   const [setupUrl, setSetupUrl] = useState('');
   const [setupToken, setSetupToken] = useState('');
   const [connectLoading, setConnectLoading] = useState(false);
   const [connectError, setConnectError] = useState('');
+  const [icalSyncing, setIcalSyncing] = useState(false);
+  const [icalError, setIcalError] = useState('');
 
   const [courses, setCourses] = useState<CanvasCourse[]>(() => storage.getCachedCourses());
-  const [assignments, setAssignments] = useState<CanvasAssignment[]>(() => storage.getCachedAssignments());
+  const [assignments, setAssignments] = useState<CanvasAssignment[]>(() => {
+    const token = storage.getCanvasToken();
+    const ical = storage.getCanvasIcalUrl();
+    if (token) return storage.getCachedAssignments();
+    if (ical) return storage.getCachedIcalAssignments();
+    return storage.getCachedAssignments();
+  });
   const [announcements, setAnnouncements] = useState<CanvasAnnouncement[]>(
     () => storage.getCachedAnnouncements(),
   );
@@ -360,16 +369,60 @@ export default function CanvasTab() {
   const [createdStudyTasks, setCreatedStudyTasks] = useState<Record<number, boolean>>({});
 
   const isConnected = !!token && !!baseUrl;
+  const isIcalConnected = !!icalUrl && !isConnected;
 
   useEffect(() => {
-    if (!isConnected) return;
-    const hasCachedAssignments = storage.getCachedAssignments().length > 0;
-    const cacheTs = storage.getCacheTimestamp();
-    const cacheFresh = !!cacheTs && Date.now() - cacheTs < CACHE_MAX_AGE;
-    if (!hasCachedAssignments || !cacheFresh) {
-      loadData(token, baseUrl, false, { includeHistory: false });
+    if (isConnected) {
+      const hasCachedAssignments = storage.getCachedAssignments().length > 0;
+      const cacheTs = storage.getCacheTimestamp();
+      const cacheFresh = !!cacheTs && Date.now() - cacheTs < CACHE_MAX_AGE;
+      if (!hasCachedAssignments || !cacheFresh) {
+        loadData(token, baseUrl, false, { includeHistory: false });
+      }
+    } else if (isIcalConnected) {
+      const cached = storage.getCachedIcalAssignments();
+      const cacheTs = storage.getCacheTimestamp();
+      const cacheFresh = !!cacheTs && Date.now() - cacheTs < CACHE_MAX_AGE;
+      if (cached.length === 0 || !cacheFresh) {
+        loadIcalData();
+      }
     }
   }, []);
+
+  async function loadIcalData(force = false) {
+    if (!icalUrl) return;
+    setIcalSyncing(true);
+    setIcalError('');
+    try {
+      const fetched = await getIcalAssignments(icalUrl);
+      storage.setCachedIcalAssignments(fetched);
+      storage.setCacheTimestamp(Date.now());
+      setAssignments(fetched);
+      setLastSynced(Date.now());
+      // Sync course names to subjects
+      const courseNames = [...new Set(fetched.map(a => a.courseName).filter(Boolean))];
+      const existing = storage.getSubjects();
+      let subjects = [...existing];
+      let changed = false;
+      for (const name of courseNames) {
+        if (!subjects.find(s => s.name === name)) {
+          subjects = [...subjects, {
+            id: crypto.randomUUID(),
+            name,
+            color: COURSE_COLORS[subjects.length % COURSE_COLORS.length] as Subject['color'],
+            totalTimeToday: 0,
+            source: 'canvas' as const,
+          }];
+          changed = true;
+        }
+      }
+      if (changed) storage.setSubjects(subjects);
+    } catch (e: unknown) {
+      setIcalError(e instanceof Error ? e.message : 'Failed to sync calendar feed');
+    } finally {
+      setIcalSyncing(false);
+    }
+  }
 
   async function refreshSecondaryData(tk: string, url: string, coursesData: CanvasCourse[]) {
     const [announcementGroups, moduleGroups] = await Promise.all([
@@ -634,8 +687,11 @@ Rules:
     setCreatedStudyTasks(prev => ({ ...prev, [item.assignmentId]: true }));
   }
 
+  // ── iCal-connected view — skip setup card, go straight to main ──────────
+  if (isIcalConnected) {
+    // Fall through to main view below — assignments state already loaded from iCal cache
+  } else if (!isConnected) {
   // ── Setup card ──────────────────────────────────────────────────────────
-  if (!isConnected) {
     return (
       <div className={styles.setupOverlay}>
         <div className={styles.setupCard}>
@@ -685,6 +741,7 @@ Rules:
   }
 
   // ── Main view ────────────────────────────────────────────────────────────
+  // (reached when isConnected OR isIcalConnected)
   const courseColorMap = Object.fromEntries(
     courses.map((c, i) => [c.id, COURSE_COLORS[i % COURSE_COLORS.length]]),
   );
@@ -731,16 +788,19 @@ Rules:
         </div>
         <div className={styles.syncRow}>
           {lastSynced && (
-            <span className={styles.syncLabel}>Last synced: {fmtSynced(lastSynced)}</span>
+            <span className={styles.syncLabel}>
+              {isIcalConnected ? '📅 Calendar Feed · ' : ''}Last synced: {fmtSynced(lastSynced)}
+            </span>
           )}
+          {icalError && <span className={styles.syncError}>{icalError}</span>}
           <button
             className={styles.refreshBtn}
-            onClick={() => canvasView === 'grades' ? loadGrades() : loadData(token, baseUrl, true)}
-            disabled={syncing || loading || gradesLoading}
+            onClick={() => isIcalConnected ? loadIcalData(true) : canvasView === 'grades' ? loadGrades() : loadData(token, baseUrl, true)}
+            disabled={syncing || loading || gradesLoading || icalSyncing}
             title="Refresh"
-          >↻</button>
+          >{icalSyncing || syncing ? '…' : '↻'}</button>
         </div>
-        <button className={styles.disconnectLink} onClick={handleDisconnect}>Disconnect</button>
+        <button className={styles.disconnectLink} onClick={isIcalConnected ? () => { storage.setCanvasIcalUrl(''); storage.setCachedIcalAssignments([]); setIcalUrl(''); setAssignments([]); } : handleDisconnect}>Disconnect</button>
       </div>
 
       {canvasView === 'grades' && (
