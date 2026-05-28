@@ -795,7 +795,7 @@ Rules:
           {icalError && <span className={styles.syncError}>{icalError}</span>}
           <button
             className={styles.refreshBtn}
-            onClick={() => isIcalConnected ? loadIcalData(true) : canvasView === 'grades' ? loadGrades() : loadData(token, baseUrl, true)}
+            onClick={() => isIcalConnected ? loadIcalData() : canvasView === 'grades' ? loadGrades() : loadData(token, baseUrl, true)}
             disabled={syncing || loading || gradesLoading || icalSyncing}
             title="Refresh"
           >{icalSyncing || syncing ? '…' : '↻'}</button>
