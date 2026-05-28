@@ -5,6 +5,7 @@ import { applyTheme } from '../../App';
 import { supabase } from '../../lib/supabase';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, openBillingPortal } from '../../lib/subscription';
+import { getIcalAssignments } from '../../lib/canvas';
 import styles from './SettingsTab.module.css';
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
@@ -279,21 +280,10 @@ export default function SettingsTab() {
     setCanvasConnecting(true);
     setCanvasError('');
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const sbToken = session?.access_token ?? '';
-      const res = await fetch('/api/canvas-ical', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${sbToken}`,
-        },
-        body: JSON.stringify({ icalUrl: url }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Invalid feed URL' }));
-        throw new Error(err.error ?? 'Invalid feed URL');
-      }
+      const fetched = await getIcalAssignments(url);
       storage.setCanvasIcalUrl(url);
+      storage.setCachedIcalAssignments(fetched);
+      storage.setCacheTimestamp(Date.now());
       setCanvasIcalUrl(url);
       setShowCanvasModal(false);
       setCanvasIcalInput('');

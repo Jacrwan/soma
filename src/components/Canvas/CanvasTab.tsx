@@ -552,21 +552,7 @@ export default function CanvasTab() {
     setConnectLoading(true);
     setConnectError('');
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const sbToken = session?.access_token ?? '';
-      const res = await fetch('/api/canvas-ical', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${sbToken}`,
-        },
-        body: JSON.stringify({ icalUrl: url }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Invalid calendar feed URL.' }));
-        throw new Error(err.error ?? 'Invalid calendar feed URL.');
-      }
-      const { assignments: fetched = [] } = await res.json();
+      const fetched = await getIcalAssignments(url);
       storage.setCanvasIcalUrl(url);
       storage.setCachedIcalAssignments(fetched);
       storage.setCacheTimestamp(Date.now());

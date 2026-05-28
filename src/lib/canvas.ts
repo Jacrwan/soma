@@ -356,10 +356,19 @@ export async function getIcalAssignments(icalUrl: string): Promise<CanvasAssignm
     },
     body: JSON.stringify({ icalUrl }),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-    throw new Error(err.error ?? `HTTP ${res.status}`);
+
+  const raw = await res.text();
+  let data: { assignments?: CanvasAssignment[]; error?: string } = {};
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    data = { error: raw || `HTTP ${res.status}` };
   }
-  const { assignments } = await res.json();
-  return assignments as CanvasAssignment[];
+
+  if (!res.ok) {
+    const message = data.error || `Calendar feed request failed (${res.status})`;
+    throw new Error(message);
+  }
+
+  return data.assignments ?? [];
 }

@@ -40,6 +40,32 @@ function isPrivateIp(address: string): boolean {
   return true;
 }
 
+function applyCors(req: any, res: any): boolean {
+  const origin = req.headers['origin'] as string | undefined;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return true;
+  }
+  return false;
+}
+
+async function isPublicHost(hostname: string): Promise<boolean> {
+  if (net.isIP(hostname)) return !isPrivateIp(hostname);
+
+  try {
+    const records = await dns.lookup(hostname, { all: true, verbatim: true });
+    return records.length > 0 && records.every(record => !isPrivateIp(record.address));
+  } catch {
+    return false;
+  }
+}
+
 // ── iCal parser ──────────────────────────────────────────────────────────────
 
 function unfold(raw: string): string {
@@ -171,26 +197,8 @@ function parseSummary(summary: string): { courseName: string; assignmentName: st
 
 // ── Handler ──────────────────────────────────────────────────────────────────
 
-export default async function handler(
-  req: { method?: string; body: unknown; headers: Record<string, string | string[] | undefined> },
-  res: { status: (c: number) => { json: (b: unknown) => void; end: () => void } },
-) {
-  const origin = req.headers['origin'] as string | undefined;
-  if (origin && ALLOWED_ORIGINS.includes(origin)) {
-    res.status(200); // set CORS headers below
-  }
-
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0],
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  };
-
-  if (req.method === 'OPTIONS') {
-    Object.entries(corsHeaders).forEach(([k, v]) => res.status(204));
-    return res.status(204).end();
-  }
-
+export default async function handler(req: any, res: any) {
+  if (applyCors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   // Auth
@@ -198,19 +206,31 @@ export default async function handler(
   const sbToken = authHeader?.replace('Bearer ', '') ?? '';
   if (!sbToken) return res.status(401).json({ error: 'Unauthorized' });
 
+  const supabaseUrl = process.env.VITE_SUPABASE_URL ?? process.env.SUPABASE_URL ?? '';
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+  if (!supabaseUrl || !serviceKey) {
+    return res.status(500).json({ error: 'Server not configured' });
+  }
+
   const supabase = createClient(
-    process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    supabaseUrl,
+    serviceKey,
+    { auth: { autoRefreshToken: false, persistSession: false } },
   );
   const { data: { user }, error: authError } = await supabase.auth.getUser(sbToken);
   if (authError || !user) return res.status(401).json({ error: 'Unauthorized' });
 
   // Rate limiting
-  const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? 'unknown';
-  if (isRateLimited(ip, 30, 60_000)) return res.status(429).json({ error: 'Rate limited' });
+  if (isRateLimited(req, 'canvas-ical', { max: 30, windowMs: 60_000 })) {
+    return res.status(429).json({ error: 'Rate limited' });
+  }
 
   // Parse body
-  const body = req.body as Record<string, unknown>;
+  let body = req.body as Record<string, unknown> | string | undefined;
+  if (typeof body === 'string') {
+    try { body = JSON.parse(body) as Record<string, unknown>; } catch { body = {}; }
+  }
+  body = body ?? {};
   const icalUrl = typeof body?.icalUrl === 'string' ? body.icalUrl.trim() : '';
   if (!icalUrl) return res.status(400).json({ error: 'icalUrl is required' });
 
@@ -231,14 +251,8 @@ export default async function handler(
   }
 
   // DNS / SSRF check
-  try {
-    const addresses = await dns.resolve4(parsedUrl.hostname).catch(() => [] as string[]);
-    const v6 = await dns.resolve6(parsedUrl.hostname).catch(() => [] as string[]);
-    const all = [...addresses, ...v6];
-    if (all.length === 0) return res.status(400).json({ error: 'Could not resolve hostname' });
-    if (all.some(isPrivateIp)) return res.status(400).json({ error: 'Disallowed IP range' });
-  } catch {
-    return res.status(400).json({ error: 'DNS resolution failed' });
+  if (!await isPublicHost(parsedUrl.hostname)) {
+    return res.status(400).json({ error: 'Calendar feed host must resolve to a public IP address' });
   }
 
   // Fetch iCal
@@ -251,6 +265,7 @@ export default async function handler(
     if (!fetchRes.ok) return res.status(502).json({ error: `Calendar feed returned ${fetchRes.status}` });
     icalText = await fetchRes.text();
   } catch (e) {
+    console.error('[canvas-ical] fetch failed:', e);
     return res.status(502).json({ error: 'Failed to fetch calendar feed' });
   }
 
