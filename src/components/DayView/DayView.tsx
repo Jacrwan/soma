@@ -2113,7 +2113,10 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                     {items.map(({ assignment: a, color: c }) => (
                       <div key={a.id} className={styles.duePillHoverRow}>
                         <span className={styles.duePillHoverDot} style={{ background: c }} />
-                        <span className={styles.duePillHoverName}>{a.name}</span>
+                        <span className={styles.duePillHoverName}>
+                          {a.name}
+                          {a.courseName && <span className={styles.duePillHoverCourse}>{a.courseName}</span>}
+                        </span>
                         {a.htmlUrl && (
                           <a className={styles.duePillHoverLink} href={a.htmlUrl} target="_blank" rel="noreferrer">↗</a>
                         )}

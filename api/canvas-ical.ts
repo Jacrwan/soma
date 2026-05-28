@@ -184,15 +184,22 @@ function extractIds(event: IcalEvent): { assignmentId: number; courseId: number 
 }
 
 function parseSummary(summary: string): { courseName: string; assignmentName: string } {
-  // Canvas format: "Course Name: Assignment Name" or just "Assignment Name"
+  // Canvas often formats feed summaries as:
+  // "Assignment [Course Name]" or "Assignment Group: Assignment [Course Name]".
+  // Prefer the bracketed class name over the prefix so groups like "Extra Credit"
+  // do not become fake courses.
   const colonIdx = summary.indexOf(': ');
-  if (colonIdx > 0 && colonIdx < summary.length - 2) {
-    return {
-      courseName: summary.slice(0, colonIdx).trim(),
-      assignmentName: summary.slice(colonIdx + 2).trim(),
-    };
+  const rawCourseName = colonIdx > 0 ? summary.slice(0, colonIdx).trim() : '';
+  let assignmentName = colonIdx > 0 ? summary.slice(colonIdx + 2).trim() : summary.trim();
+  let courseName = rawCourseName;
+
+  const bracketMatch = assignmentName.match(/\s+\[([^\]]+)\]\s*$/);
+  if (bracketMatch) {
+    courseName = bracketMatch[1].trim();
+    assignmentName = assignmentName.slice(0, bracketMatch.index).trim();
   }
-  return { courseName: '', assignmentName: summary.trim() };
+
+  return { courseName, assignmentName };
 }
 
 // ── Handler ──────────────────────────────────────────────────────────────────
@@ -292,10 +299,11 @@ export default async function handler(req: any, res: any) {
     .map(e => {
       const { assignmentId, courseId } = extractIds(e);
       const { courseName, assignmentName } = parseSummary(e.summary);
+      const resolvedCourseId = courseId || simpleHash(`course:${courseName || 'Canvas'}`);
       return {
         id: assignmentId,
         name: assignmentName || e.summary,
-        courseId,
+        courseId: resolvedCourseId,
         courseName,
         dueAt: e.due || e.dtstart,
         htmlUrl: e.url,

@@ -729,11 +729,20 @@
 }
 
 .duePillHoverName {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   font-size: 13px;
   color: var(--text-primary);
   white-space: normal;
   word-break: break-word;
   flex: 1;
+}
+
+.duePillHoverCourse {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.25;
 }
 
 .duePillHoverLink {

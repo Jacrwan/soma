@@ -135,6 +135,19 @@ function set(key: string, value: unknown) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+function coursesFromAssignments(assignments: CanvasAssignment[]): CanvasCourse[] {
+  const byId = new Map<number, CanvasCourse>();
+  for (const assignment of assignments) {
+    if (!assignment.courseName) continue;
+    byId.set(assignment.courseId, {
+      id: assignment.courseId,
+      name: assignment.courseName,
+      courseCode: assignment.courseName,
+    });
+  }
+  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 async function uid(): Promise<string> {
   const { data: { user } } = await supabase.auth.getUser();
   return user!.id;
@@ -207,7 +220,10 @@ export const storage = {
   getCachedIcalAssignments: () => get<import('../types').CanvasAssignment[]>(KEYS.cachedIcalAssignments, []),
   setCachedIcalAssignments: (v: import('../types').CanvasAssignment[]) => {
     set(KEYS.cachedIcalAssignments, v);
-    if (!_canvasToken) set(KEYS.cachedAssignments, v);
+    if (!_canvasToken) {
+      set(KEYS.cachedAssignments, v);
+      set(KEYS.cachedCourses, coursesFromAssignments(v));
+    }
   },
 
   getAssignmentStatus: (): Record<number, string> => get(KEYS.assignmentStatus, {}),
