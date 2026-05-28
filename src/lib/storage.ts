@@ -148,6 +148,25 @@ function coursesFromAssignments(assignments: CanvasAssignment[]): CanvasCourse[]
   return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
+function normalizeIcalAssignment(a: CanvasAssignment): CanvasAssignment {
+  const bracketMatch = a.name.match(/\s+\[([^\]]+)\]\s*$/);
+  if (!bracketMatch) return a;
+
+  const courseName = bracketMatch[1].trim();
+  const name = a.name.slice(0, bracketMatch.index).trim();
+  if (!courseName || !name) return a;
+
+  return {
+    ...a,
+    name,
+    courseName,
+  };
+}
+
+function normalizeIcalAssignments(assignments: CanvasAssignment[]): CanvasAssignment[] {
+  return assignments.map(normalizeIcalAssignment);
+}
+
 async function uid(): Promise<string> {
   const { data: { user } } = await supabase.auth.getUser();
   return user!.id;
@@ -217,12 +236,15 @@ export const storage = {
     })();
   },
 
-  getCachedIcalAssignments: () => get<import('../types').CanvasAssignment[]>(KEYS.cachedIcalAssignments, []),
+  getCachedIcalAssignments: () => normalizeIcalAssignments(
+    get<import('../types').CanvasAssignment[]>(KEYS.cachedIcalAssignments, []),
+  ),
   setCachedIcalAssignments: (v: import('../types').CanvasAssignment[]) => {
-    set(KEYS.cachedIcalAssignments, v);
+    const normalized = normalizeIcalAssignments(v);
+    set(KEYS.cachedIcalAssignments, normalized);
     if (!_canvasToken) {
-      set(KEYS.cachedAssignments, v);
-      set(KEYS.cachedCourses, coursesFromAssignments(v));
+      set(KEYS.cachedAssignments, normalized);
+      set(KEYS.cachedCourses, coursesFromAssignments(normalized));
     }
   },
 
@@ -237,12 +259,12 @@ export const storage = {
 
   getCachedAssignments: (): CanvasAssignment[] => {
     const iCalAssignments = _canvasIcalUrl
-      ? get<CanvasAssignment[]>(KEYS.cachedIcalAssignments, [])
+      ? normalizeIcalAssignments(get<CanvasAssignment[]>(KEYS.cachedIcalAssignments, []))
       : [];
     if (!_canvasToken && iCalAssignments.length > 0) return iCalAssignments;
-    return get(KEYS.cachedAssignments, []);
+    return normalizeIcalAssignments(get(KEYS.cachedAssignments, []));
   },
-  setCachedAssignments: (v: CanvasAssignment[]) => set(KEYS.cachedAssignments, v),
+  setCachedAssignments: (v: CanvasAssignment[]) => set(KEYS.cachedAssignments, normalizeIcalAssignments(v)),
 
   getCachedAnnouncements: (): CanvasAnnouncement[] => get(KEYS.cachedAnnouncements, []),
   setCachedAnnouncements: (v: CanvasAnnouncement[]) => set(KEYS.cachedAnnouncements, v),
