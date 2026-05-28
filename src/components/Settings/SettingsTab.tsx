@@ -52,13 +52,31 @@ export default function SettingsTab() {
   // Google Calendar integration state
   const [gcalToken, setGcalToken] = useState(() => storage.getGoogleToken());
 
-  // On mount (and after OAuth redirect back), pull provider_token from session
+  // Google Docs integration state
+  const [gdocsToken, setGdocsToken] = useState(() => storage.getGoogleDocsToken());
+
+  // On mount (and after OAuth redirect back), pull provider_token from session.
+  // Uses ?source=gcal / ?source=gdocs to distinguish which token to save.
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const source = params.get('source');
+
     supabase.auth.getSession().then(({ data }) => {
       const pt = data.session?.provider_token;
-      if (pt) {
+      if (!pt) return;
+
+      if (source === 'gdocs') {
+        storage.setGoogleDocsToken(pt);
+        setGdocsToken(pt);
+        const url = new URL(window.location.href);
+        url.searchParams.delete('source');
+        window.history.replaceState({}, '', url.toString());
+      } else if (source === 'gcal') {
         storage.setGoogleToken(pt);
         setGcalToken(pt);
+        const url = new URL(window.location.href);
+        url.searchParams.delete('source');
+        window.history.replaceState({}, '', url.toString());
       }
     });
   }, []);
@@ -303,11 +321,13 @@ export default function SettingsTab() {
   }
 
   async function connectGcal() {
+    const redirectUrl = new URL(window.location.origin + '/settings');
+    redirectUrl.searchParams.set('source', 'gcal');
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         scopes: 'https://www.googleapis.com/auth/calendar.readonly',
-        redirectTo: window.location.href,
+        redirectTo: redirectUrl.toString(),
         queryParams: { access_type: 'offline', prompt: 'consent' },
       },
     });
@@ -319,6 +339,24 @@ export default function SettingsTab() {
     storage.setGoogleCacheTimestamp(0);
     setGcalToken('');
     window.dispatchEvent(new CustomEvent('soma_gcal_updated'));
+  }
+
+  async function connectGdocs() {
+    const redirectUrl = new URL(window.location.origin + '/settings');
+    redirectUrl.searchParams.set('source', 'gdocs');
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        scopes: 'https://www.googleapis.com/auth/documents',
+        redirectTo: redirectUrl.toString(),
+        queryParams: { access_type: 'offline', prompt: 'consent' },
+      },
+    });
+  }
+
+  function disconnectGdocs() {
+    storage.setGoogleDocsToken('');
+    setGdocsToken('');
   }
 
   const navItems: [Section, string][] = [
@@ -734,6 +772,23 @@ export default function SettingsTab() {
                     </>
                   ) : (
                     <button className={styles.connectBtn} onClick={connectGcal}>Connect</button>
+                  )}
+                </div>
+              </div>
+
+              <div className={styles.integrationRow}>
+                <div className={styles.integrationInfo}>
+                  <span className={styles.integrationLabel}>Google Docs</span>
+                  <span className={styles.integrationDescription}>Save AI responses directly to a Google Doc</span>
+                </div>
+                <div className={styles.integrationActions}>
+                  {gdocsToken ? (
+                    <>
+                      <span className={styles.connectedBadge}>Connected</span>
+                      <button className={styles.disconnectBtn} onClick={disconnectGdocs}>Disconnect</button>
+                    </>
+                  ) : (
+                    <button className={styles.connectBtn} onClick={connectGdocs}>Connect</button>
                   )}
                 </div>
               </div>

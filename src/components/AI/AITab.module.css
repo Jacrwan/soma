@@ -463,6 +463,49 @@
   background: var(--accent-hover);
 }
 
+/* ── Google Docs action ────────────────────────────────────────────────── */
+
+.docActionRow {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+}
+
+.saveDocBtn {
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.12s;
+}
+
+.saveDocBtn:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.saveDocBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.docLink {
+  font-size: 11px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.docLink:hover {
+  text-decoration: underline;
+}
+
+.docError {
+  font-size: 11px;
+  color: var(--danger);
+}
+
 /* ── Input row ─────────────────────────────────────────────────────────── */
 
 .inputRow {

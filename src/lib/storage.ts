@@ -41,6 +41,7 @@ export interface SomaSettings {
   canvasToken?: string;
   canvasIcalUrl?: string;
   googleToken?: string;
+  googleDocsToken?: string;
 }
 
 export interface ScheduleBlock {
@@ -177,6 +178,7 @@ async function uid(): Promise<string> {
 let _canvasToken = '';
 let _canvasIcalUrl = '';
 let _googleToken = '';
+let _googleDocsToken = '';
 
 // ── Utility ───────────────────────────────────────────────────────────────
 
@@ -290,6 +292,18 @@ export const storage = {
     })();
   },
 
+  // ── Google Docs ──────────────────────────────────────────────────────
+  getGoogleDocsToken: (): string => _googleDocsToken,
+  setGoogleDocsToken: (v: string): void => {
+    _googleDocsToken = v;
+    void (async () => {
+      try {
+        const s = await storage.getSettings();
+        await storage.saveSettings({ ...s, googleDocsToken: v });
+      } catch (err) { console.error('[storage] google docs token persist failed:', err); }
+    })();
+  },
+
   // Call once after auth resolves. Populates the in-memory token cache from
   // Supabase and performs a one-time migration away from localStorage.
   async loadTokens(): Promise<void> {
@@ -298,6 +312,7 @@ export const storage = {
       _canvasToken = s.canvasToken ?? '';
       _canvasIcalUrl = s.canvasIcalUrl ?? '';
       _googleToken = s.googleToken ?? '';
+      _googleDocsToken = s.googleDocsToken ?? '';
       // One-time migration: move plaintext tokens out of localStorage
       const migrateKey = (key: string): string => {
         const raw = localStorage.getItem(key);

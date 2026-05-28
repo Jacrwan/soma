@@ -3,6 +3,7 @@ import DOMPurify from 'dompurify';
 import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
+import { createGoogleDoc } from '../../lib/googleDocs';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, hasAIAccess, startTrial, startCheckout } from '../../lib/subscription';
 import { TimeBlock, Subject, Todo, ChatMessage, ChatSession, AiTodo } from '../../types';
@@ -545,6 +546,36 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const subjects = storage.getSubjects();
 
+  const [gdocsToken, setGdocsToken] = useState(() => storage.getGoogleDocsToken());
+  const [docUrls, setDocUrls] = useState<Record<string, string>>({});
+  const [docLoadingId, setDocLoadingId] = useState<string | null>(null);
+  const [docErrors, setDocErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    const handler = () => setGdocsToken(storage.getGoogleDocsToken());
+    window.addEventListener('soma_gdocs_updated', handler);
+    return () => window.removeEventListener('soma_gdocs_updated', handler);
+  }, []);
+
+  async function saveToDoc(msgId: string, content: string) {
+    const token = storage.getGoogleDocsToken();
+    if (!token) return;
+    setDocLoadingId(msgId);
+    setDocErrors(prev => { const next = { ...prev }; delete next[msgId]; return next; });
+    try {
+      const title = content.replace(/\s+/g, ' ').trim().slice(0, 60) || 'Soma AI Response';
+      const { docUrl } = await createGoogleDoc(token, title, content);
+      setDocUrls(prev => ({ ...prev, [msgId]: docUrl }));
+    } catch (err: any) {
+      const msg = err?.message === 'google_token_expired'
+        ? 'Google Docs token expired — reconnect in Settings.'
+        : 'Could not create doc. Try again.';
+      setDocErrors(prev => ({ ...prev, [msgId]: msg }));
+    } finally {
+      setDocLoadingId(null);
+    }
+  }
+
   const systemPromptCache = useRef<{ prompt: string; canvasTs: number | null; dateKey: string } | null>(null);
 
   function getCachedSystemPrompt(): string {
@@ -826,6 +857,31 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
                   onAccept={() => acceptTodos(msg.id, msg.todos!)}
                   onDismiss={() => dismissTodos(msg.id)}
                 />
+              )}
+              {msg.role === 'assistant' && gdocsToken && (
+                <div className={styles.docActionRow}>
+                  {docUrls[msg.id] ? (
+                    <a
+                      className={styles.docLink}
+                      href={docUrls[msg.id]}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Opened in Google Docs ↗
+                    </a>
+                  ) : (
+                    <button
+                      className={styles.saveDocBtn}
+                      disabled={docLoadingId === msg.id}
+                      onClick={() => saveToDoc(msg.id, stripTags(msg.content))}
+                    >
+                      {docLoadingId === msg.id ? 'Saving…' : 'Save to Google Doc'}
+                    </button>
+                  )}
+                  {docErrors[msg.id] && (
+                    <span className={styles.docError}>{docErrors[msg.id]}</span>
+                  )}
+                </div>
               )}
             </div>
           ))}
