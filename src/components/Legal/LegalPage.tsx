@@ -651,7 +651,8 @@ function Contact() {
   return (
     <div className={styles.body}>
       <div className={styles.section}>
-        <p>Contact information coming soon.</p>
+        <p>For any questions, support requests, or feedback, reach us at:</p>
+        <p><a href="mailto:somastudyapp@gmail.com">somastudyapp@gmail.com</a></p>
       </div>
     </div>
   );
