@@ -7,6 +7,10 @@ function toLocalISO(date: Date): string {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, -1);
 }
 
+function toDateStr(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 export interface ActiveSession {
   subject: Subject;
   task: string;
@@ -42,6 +46,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
 
   const elapsedRef        = useRef(0);
   const activeSessionRef  = useRef<ActiveSession | null>(null);
+  const mergedBlockIdRef  = useRef<string | null>(null);
 
   useEffect(() => { elapsedRef.current = elapsed; }, [elapsed]);
   useEffect(() => { activeSessionRef.current = activeSession; }, [activeSession]);
@@ -65,6 +70,57 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       if (row.is_paused) pause();
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Merge running timer into a matching scheduled block (runs globally, not per-tab).
+  // Case 1: timer started ≤60 min before block — stretch block startTime back.
+  // Case 2: timer started mid-block — mark for replacement on stop, no visual change needed.
+  useEffect(() => {
+    if (!activeSession) {
+      mergedBlockIdRef.current = null;
+      return;
+    }
+    const timerStartMs = new Date(activeSession.sessionStartTimeISO).getTime();
+    const now = Date.now();
+    const todayStr = toDateStr(new Date());
+    const blocks = storage.getTimeBlocks();
+
+    const candidate = blocks.find((b: import('../types').TimeBlock) => {
+      if (b.timerSessionId) return false;
+      if (b.subjectId !== activeSession.subject.id) return false;
+      if (b.task !== activeSession.task) return false;
+      const blockStartMs = new Date(b.startTime).getTime();
+      const blockEndMs = new Date(b.endTime).getTime();
+      if (b.startTime.slice(0, 10) !== todayStr) return false;
+      if (now < blockStartMs) return false;
+      if (timerStartMs < blockStartMs) {
+        if (blockStartMs - timerStartMs > 60 * 60 * 1000) return false;
+        return timerStartMs < blockEndMs;
+      }
+      return now < blockEndMs;
+    });
+
+    if (!candidate || mergedBlockIdRef.current === candidate.id) return;
+
+    mergedBlockIdRef.current = candidate.id;
+
+    if (timerStartMs < new Date(candidate.startTime).getTime()) {
+      const timerStartISO = toLocalISO(new Date(timerStartMs));
+      storage.setTimeBlocks(blocks.map((b: import('../types').TimeBlock) =>
+        b.id === candidate.id ? { ...b, startTime: timerStartISO } : b,
+      ));
+      window.dispatchEvent(new CustomEvent('soma_merge_applied'));
+      void storage.saveScheduleBlock({
+        id: candidate.id,
+        date: todayStr,
+        subject_id: candidate.subjectId,
+        subject_name: activeSession.subject.name,
+        task_name: candidate.task ?? null,
+        start_time: timerStartISO,
+        end_time: candidate.endTime,
+        color: activeSession.subject.color,
+      }).catch(() => {});
+    }
+  }, [activeSession]);
 
   const openInputModal = useCallback((subject: Subject, initialTask = '') => {
     if (activeSessionRef.current) return;
@@ -159,7 +215,9 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     };
     storage.setTimeBlocks([...storage.getTimeBlocks(), newBlock]);
 
-    window.dispatchEvent(new CustomEvent('soma_timer_stopped'));
+    const mergedBlockId = mergedBlockIdRef.current;
+    mergedBlockIdRef.current = null;
+    window.dispatchEvent(new CustomEvent('soma_timer_stopped', { detail: { mergedBlockId } }));
   }, [stop]);
 
   return (

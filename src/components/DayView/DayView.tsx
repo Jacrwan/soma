@@ -520,7 +520,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const computeIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const computeRef = useRef<(() => Promise<void>) | null>(null);
   const prevLogicalTodayStrRef = useRef<string>(toISODateString(logicalToday()));
-  const mergedBlockIdRef = useRef<string | null>(null);
 
   // Sync week view when selectedDate changes from an external source (e.g. CalendarTab)
   useEffect(() => {
@@ -666,12 +665,9 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   }, [taskModal?.editingTodo?.id, loadTaskSessions]);
 
   useEffect(() => {
-    function onTimerStopped() {
-      // FIX 1: if we stretched a scheduled block to match the timer start, remove it now
-      // (the new timer block created by stopSession replaces it)
-      if (mergedBlockIdRef.current) {
-        const mergedId = mergedBlockIdRef.current;
-        mergedBlockIdRef.current = null;
+    function onTimerStopped(e: Event) {
+      const mergedId = (e as CustomEvent<{ mergedBlockId: string | null }>).detail?.mergedBlockId ?? null;
+      if (mergedId) {
         const allBlocks = storage.getTimeBlocks().filter(b => b.id !== mergedId);
         storage.setTimeBlocks(allBlocks);
         const updatedBlocks = allBlocks.filter(b => isOnDate(b.startTime, selectedDate));
@@ -693,91 +689,18 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       setMissedBlockIds(computeMissedBlockIds(updatedBlocks, storage.getTimerSessions(), new Date()));
       void computeRef.current?.();
     }
+    function onMergeApplied() {
+      setBlocks(storage.getTimeBlocks().filter(b => isOnDate(b.startTime, selectedDate)));
+    }
+
     window.addEventListener('soma_timer_stopped', onTimerStopped);
-    return () => window.removeEventListener('soma_timer_stopped', onTimerStopped);
+    window.addEventListener('soma_merge_applied', onMergeApplied);
+    return () => {
+      window.removeEventListener('soma_timer_stopped', onTimerStopped);
+      window.removeEventListener('soma_merge_applied', onMergeApplied);
+    };
   }, [selectedDate]);
 
-  // Merge a running timer into a matching scheduled block in two cases:
-  // Case 1: timer started ≤60 min before block start — stretch block startTime back
-  // Case 2: timer started mid-block (block already in progress) — mark for replacement on stop
-  useEffect(() => {
-    console.log('[merge] effect fired, activeSession:', timerCtx.activeSession?.task ?? 'null');
-    const session = timerCtx.activeSession;
-    if (!session) {
-      mergedBlockIdRef.current = null;
-      return;
-    }
-    const timerStartMs = new Date(session.sessionStartTimeISO).getTime();
-    const now = Date.now();
-    const todayStr = toISODateString(new Date());
-
-    console.log('[merge] activeSession:', JSON.stringify({
-      task: session.task,
-      subjectId: session.subject.id,
-      startTime: session.sessionStartTimeISO,
-    }));
-
-    const candidate = blocks.find(b => {
-      console.log('[merge] evaluating block:', JSON.stringify({
-        task: b.task,
-        subjectId: b.subjectId,
-        startTime: b.startTime,
-        endTime: b.endTime,
-        timerSessionId: b.timerSessionId,
-        taskMatch: b.task === session.task,
-        subjectMatch: b.subjectId === session.subject.id,
-        taskLengths: [b.task?.length, session.task?.length],
-      }));
-      if (b.timerSessionId) return false;
-      if (b.subjectId !== session.subject.id) return false;
-      if (b.task !== session.task) return false;
-      const blockStartMs = new Date(b.startTime).getTime();
-      const blockEndMs = new Date(b.endTime).getTime();
-      if (b.startTime.slice(0, 10) !== todayStr) return false;
-      if (now < blockStartMs) return false; // block hasn't started yet
-      if (timerStartMs < blockStartMs) {
-        // Case 1: timer started before block — stretch if within 60 min
-        if (blockStartMs - timerStartMs > 60 * 60 * 1000) return false;
-        return timerStartMs < blockEndMs;
-      }
-      // Case 2: timer started mid-block — only attach if block is still ongoing
-      return now < blockEndMs;
-    });
-
-    if (!candidate) {
-      mergedBlockIdRef.current = null;
-      return;
-    }
-
-    if (mergedBlockIdRef.current === candidate.id) return; // already merged
-
-    mergedBlockIdRef.current = candidate.id;
-
-    // Case 1 only: stretch the block's startTime back to the timer's actual start
-    if (timerStartMs < new Date(candidate.startTime).getTime()) {
-      const timerStartISO = toLocalISO(new Date(timerStartMs));
-      const updatedBlocks = storage.getTimeBlocks().map(b =>
-        b.id === candidate.id ? { ...b, startTime: timerStartISO } : b,
-      );
-      storage.setTimeBlocks(updatedBlocks);
-      setBlocks(updatedBlocks.filter(b => isOnDate(b.startTime, selectedDate)));
-
-      const subjectName = subjects.find(s => s.id === candidate.subjectId)?.name ?? null;
-      const subjectColor = subjects.find(s => s.id === candidate.subjectId)?.color ?? null;
-      void storage.saveScheduleBlock({
-        id: candidate.id,
-        date: todayStr,
-        subject_id: candidate.subjectId,
-        subject_name: subjectName,
-        task_name: candidate.task ?? null,
-        start_time: timerStartISO,
-        end_time: candidate.endTime,
-        color: subjectColor,
-      }).catch(() => {});
-    }
-    // Case 2: block is already correct visually — mergedBlockIdRef is set so
-    // onTimerStopped will delete the scheduled block and the timer block replaces it
-  }, [timerCtx.activeSession, blocks, selectedDate, subjects]);
 
   useEffect(() => {
     const COURSE_COLORS = [
