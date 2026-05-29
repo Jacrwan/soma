@@ -1,0 +1,345 @@
+.container {
+  height: 100%;
+  overflow-y: auto;
+  padding: 32px 40px 60px;
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.header {
+  margin-bottom: 24px;
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* ── Connect-Drive banner ── */
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 24px;
+}
+
+.bannerBtn {
+  background: var(--accent);
+  color: oklch(99% 0.003 265);
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-family: inherit;
+}
+
+/* ── Sections ── */
+.section {
+  margin-bottom: 28px;
+}
+
+.stepLabel {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+/* ── Template grid ── */
+.templateGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.templateCard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 16px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: border-color 0.12s, background 0.12s, transform 0.08s;
+}
+
+.templateCard:hover {
+  border-color: var(--accent);
+  background: var(--bg-secondary);
+}
+
+.templateCardActive {
+  border-color: var(--accent);
+  background: oklch(55% 0.22 266 / 0.06);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.templateIcon { font-size: 22px; }
+
+.templateLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.templateDesc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.templateBadge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+/* ── Source segment ── */
+.segment {
+  display: inline-flex;
+  gap: 2px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 2px;
+  margin-bottom: 12px;
+}
+
+.segBtn {
+  border: none;
+  background: none;
+  padding: 6px 14px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s, color 0.12s;
+}
+
+.segBtnActive {
+  background: var(--bg);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px oklch(0% 0 0 / 0.1);
+}
+
+.sourceInput {
+  margin-bottom: 12px;
+}
+
+.input {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--text-primary);
+  outline: none;
+  font-family: inherit;
+}
+
+.input:focus { border-color: var(--accent); }
+
+.textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--text-primary);
+  outline: none;
+  font-family: inherit;
+  resize: vertical;
+  margin-bottom: 16px;
+}
+
+.textarea:focus { border-color: var(--accent); }
+
+.fileRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fileChip {
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 4px 10px;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.emptyNote {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* ── Buttons ── */
+.generateRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.primaryBtn {
+  background: var(--accent);
+  color: oklch(99% 0.003 265);
+  border: none;
+  border-radius: 10px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+
+.primaryBtn:hover:not(:disabled) { background: var(--accent-hover); }
+
+.primaryBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.secondaryBtn {
+  background: var(--bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.12s;
+}
+
+.secondaryBtn:hover { border-color: var(--accent); }
+
+.error {
+  font-size: 13px;
+  color: var(--danger);
+}
+
+/* ── Results ── */
+.resultList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.resultCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.resultIcon { font-size: 20px; flex-shrink: 0; }
+
+.resultInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.resultTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.resultStatus {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.openBtn {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  transition: background 0.12s;
+}
+
+.openBtn:hover { background: oklch(55% 0.22 266 / 0.08); }
+
+/* ── Gate ── */
+.gateCard {
+  max-width: 420px;
+  margin: 80px auto;
+  text-align: center;
+  padding: 32px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.gateTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 8px;
+}
+
+.gateText {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 0 0 20px;
+}

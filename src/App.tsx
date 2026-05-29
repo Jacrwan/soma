@@ -6,6 +6,7 @@ import AuthScreen from './components/Auth/AuthScreen';
 import DayView from './components/DayView/DayView';
 import CanvasTab from './components/Canvas/CanvasTab';
 import AITab from './components/AI/AITab';
+import CreateTab from './components/Create/CreateTab';
 import CalendarTab from './components/Calendar/CalendarTab';
 import InsightsTab from './components/Insights/InsightsTab';
 import SettingsTab from './components/Settings/SettingsTab';
@@ -137,6 +138,7 @@ function AppShell({ user, onLogout }: {
       '/day-view':  'Soma — Day View',
       '/canvas':    'Soma — Canvas',
       '/ai':        'Soma — AI',
+      '/create':    'Soma — Create',
       '/calendar':  'Soma — Calendar',
       '/insights':  'Soma — Insights',
       '/settings':  'Soma — Settings',
@@ -188,6 +190,13 @@ function AppShell({ user, onLogout }: {
               <path d="M7 1L8.1 5.9L13 7L8.1 8.1L7 13L5.9 8.1L1 7L5.9 5.9Z"/>
             </svg>
             AI
+          </button>
+
+          <button className={nav('/create')} onClick={() => navigate('/create')}>
+            <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M7 1v12M1 7h12"/>
+            </svg>
+            Create
           </button>
 
           <button className={nav('/insights')} onClick={() => navigate('/insights')}>
@@ -322,6 +331,7 @@ export default function App() {
           />
         } />
         <Route path="/ai"       element={<AITab onSwitchToToday={() => navigate('/day-view')} />} />
+        <Route path="/create"   element={<CreateTab />} />
         <Route path="/insights" element={<InsightsTab />} />
         <Route path="/settings" element={<SettingsTab />} />
         {/* Unknown app routes → day view */}

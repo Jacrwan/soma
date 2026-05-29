@@ -3,7 +3,8 @@ import DOMPurify from 'dompurify';
 import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
-import { createGoogleDoc, createGoogleSlides, SlideSpec } from '../../lib/googleDocs';
+import { createGoogleDoc, createGoogleSlides } from '../../lib/googleDocs';
+import { parseCreateDoc, parseCreateSlides } from '../../lib/aiArtifacts';
 import { readDriveFile, extractDriveFileId, stripGoogleFileUrl, fileTypeLabel, DriveFile } from '../../lib/googleDrive';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, hasAIAccess, startTrial, startCheckout } from '../../lib/subscription';
@@ -119,45 +120,6 @@ function stripTags(content: string) {
     .replace(/<createDoc\b[\s\S]*?<\/createDoc>/g, '')
     .replace(/<createSlides\b[\s\S]*?<\/createSlides>/g, '')
     .trim();
-}
-
-interface CreateDocSpec { title: string; content: string }
-
-function parseCreateDoc(content: string): CreateDocSpec | null {
-  const match = content.match(/<createDoc\s+title="([^"]*)">([\s\S]*?)<\/createDoc>/);
-  if (!match) return null;
-  const title = match[1].trim() || 'Soma Notes';
-  const body = match[2].trim();
-  if (!body) return null;
-  return { title, content: body };
-}
-
-interface CreateSlidesSpec { title: string; slides: SlideSpec[] }
-
-function parseCreateSlides(content: string): CreateSlidesSpec | null {
-  const match = content.match(/<createSlides\s+title="([^"]*)">([\s\S]*?)<\/createSlides>/);
-  if (!match) return null;
-  const title = match[1].trim() || 'Soma Presentation';
-  const body = match[2].trim();
-  // Body format: "== Slide title" lines followed by "- bullet" lines
-  const slides: SlideSpec[] = [];
-  let current: SlideSpec | null = null;
-  for (const rawLine of body.split('\n')) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    if (line.startsWith('==')) {
-      if (current) slides.push(current);
-      current = { title: line.replace(/^==\s*/, '').trim(), bullets: [] };
-    } else if (line.startsWith('-') || line.startsWith('•') || line.startsWith('*')) {
-      if (current) current.bullets.push(line.replace(/^[-•*]\s*/, '').trim());
-    } else if (current) {
-      // Loose line under a slide — treat as a bullet
-      current.bullets.push(line);
-    }
-  }
-  if (current) slides.push(current);
-  const cleaned = slides.filter(s => s.title || s.bullets.length > 0);
-  return cleaned.length > 0 ? { title, slides: cleaned } : null;
 }
 
 function formatMessage(content: string): string {
