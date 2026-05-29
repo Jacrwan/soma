@@ -3,7 +3,7 @@ import DOMPurify from 'dompurify';
 import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
-import { createGoogleDoc } from '../../lib/googleDocs';
+import { createGoogleDoc, readGoogleDoc } from '../../lib/googleDocs';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, hasAIAccess, startTrial, startCheckout } from '../../lib/subscription';
 import { TimeBlock, Subject, Todo, ChatMessage, ChatSession, AiTodo } from '../../types';
@@ -108,6 +108,17 @@ function fmtTime12(iso: string): string {
   const m = String(d.getMinutes()).padStart(2, '0');
   const ampm = d.getHours() >= 12 ? 'PM' : 'AM';
   return `${h}:${m} ${ampm}`;
+}
+
+function extractGoogleDocId(text: string): string | null {
+  const match = text.match(/docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]+)/);
+  return match?.[1] ?? null;
+}
+
+function stripGoogleDocUrl(text: string): string {
+  return text
+    .replace(/https?:\/\/docs\.google\.com\/document\/d\/[a-zA-Z0-9_-]+[^\s]*/g, '')
+    .trim();
 }
 
 function stripTags(content: string) {
@@ -550,6 +561,13 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   const [docUrls, setDocUrls] = useState<Record<string, string>>({});
   const [docLoadingId, setDocLoadingId] = useState<string | null>(null);
   const [docErrors, setDocErrors] = useState<Record<string, string>>({});
+  const [saveAsDocMode, setSaveAsDocMode] = useState(false);
+
+  // Attached Google Doc (read from URL pasted in chat)
+  interface AttachedDoc { id: string; title: string; content: string }
+  const [attachedDoc, setAttachedDoc] = useState<AttachedDoc | null>(null);
+  const [attachDocLoading, setAttachDocLoading] = useState(false);
+  const [attachDocError, setAttachDocError] = useState('');
 
   useEffect(() => {
     const handler = () => setGdocsToken(storage.getGoogleDocsToken());
@@ -679,16 +697,37 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     const session = sessions.find(s => s.id === activeSessionId);
     if (!session) return;
 
-    const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: text };
+    // Build display content (shown in chat bubble) — short, no raw doc dump
+    const displayContent = attachedDoc
+      ? `📄 **${attachedDoc.title}**\n\n${text}`
+      : text;
+
+    // Build API content — includes the full doc for the AI's context
+    const MAX_DOC_CHARS = 12_000;
+    let apiContent = text;
+    if (attachedDoc) {
+      const docBody = attachedDoc.content.length > MAX_DOC_CHARS
+        ? `${attachedDoc.content.slice(0, MAX_DOC_CHARS)}\n\n[Content truncated — document is too long to include in full]`
+        : attachedDoc.content;
+      apiContent = `[Attached Google Doc: "${attachedDoc.title}"]\n\n${docBody}\n\n---\n\n${text}`;
+    }
+
+    const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: displayContent };
     const messagesWithUser = [...session.messages, userMsg];
 
     setInput('');
+    setAttachedDoc(null);
+    setAttachDocError('');
     setLoading(true);
     updateSession(activeSessionId, s => ({ ...s, messages: messagesWithUser }));
 
     try {
       const systemPrompt = getCachedSystemPrompt();
-      const apiMessages = messagesWithUser.slice(-10).map(m => ({ role: m.role, content: m.content }));
+      // For previous messages use stored content; for the current message use the doc-injected version
+      const apiMessages = [
+        ...messagesWithUser.slice(-10, -1).map(m => ({ role: m.role, content: m.content })),
+        { role: 'user' as const, content: apiContent },
+      ];
       const planningKeywords = ['schedule', 'study plan', 'plan my day', 'generate'];
       const needsSonnet = planningKeywords.some(kw => text.toLowerCase().includes(kw));
       const response = await sendMessage(apiMessages, systemPrompt, needsSonnet ? 'sonnet' : undefined);
@@ -698,8 +737,17 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
         id: crypto.randomUUID(), role: 'assistant', content: response, scheduleBlocks, todos,
       };
       updateSession(activeSessionId, s => ({ ...s, messages: [...s.messages, assistantMsg] }));
-    } catch (err: any) {
-      const content = err?.message === 'subscription_required'
+
+      // Auto-save to Google Doc if mode is on
+      if (saveAsDocMode && gdocsToken) {
+        const docTitle = text.replace(/\s+/g, ' ').trim().slice(0, 60) || 'Soma AI Response';
+        const msgId = assistantMsg.id;
+        createGoogleDoc(gdocsToken, docTitle, stripTags(response)).then(({ docUrl }) => {
+          setDocUrls(prev => ({ ...prev, [msgId]: docUrl }));
+        }).catch(() => {});
+      }
+    } catch (err: unknown) {
+      const content = (err as { message?: string })?.message === 'subscription_required'
         ? 'Your subscription has expired. Visit Settings → Subscription to manage your plan.'
         : friendlyError('ai');
       const errorMsg: ChatMessage = {
@@ -893,20 +941,78 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
           <div ref={messagesEndRef} />
         </div>
 
-        <div className={styles.inputRow}>
-          <input
-            className={styles.textInput}
-            placeholder="Message Soma…"
-            value={input}
-            disabled={loading}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
-          />
-          <button
-            className={styles.sendBtn}
-            onClick={send}
-            disabled={loading || !input.trim()}
-          >Send</button>
+        <div className={styles.inputAreaWrapper}>
+          {/* Attached Google Doc chip */}
+          {(attachDocLoading || attachedDoc || attachDocError) && (
+            <div className={styles.docChip}>
+              {attachDocLoading && (
+                <span className={styles.docChipLoading}>📄 Reading doc…</span>
+              )}
+              {attachDocError && !attachDocLoading && (
+                <span className={styles.docChipError}>⚠ {attachDocError}
+                  <button className={styles.docChipRemove} onClick={() => setAttachDocError('')}>✕</button>
+                </span>
+              )}
+              {attachedDoc && !attachDocLoading && (
+                <>
+                  <span className={styles.docChipIcon}>📄</span>
+                  <span className={styles.docChipTitle}>{attachedDoc.title}</span>
+                  <button
+                    className={styles.docChipRemove}
+                    onClick={() => { setAttachedDoc(null); setAttachDocError(''); }}
+                    title="Remove attached doc"
+                  >✕</button>
+                </>
+              )}
+            </div>
+          )}
+
+          <div className={styles.inputRow}>
+            <input
+              className={styles.textInput}
+              placeholder={attachedDoc ? `Ask about "${attachedDoc.title}"…` : 'Message Soma… (paste a Google Doc link to attach it)'}
+              value={input}
+              disabled={loading}
+              onChange={e => {
+                const value = e.target.value;
+                // Detect Google Doc URL — fetch content and strip URL from input
+                if (gdocsToken && !attachedDoc && !attachDocLoading) {
+                  const docId = extractGoogleDocId(value);
+                  if (docId) {
+                    setInput(stripGoogleDocUrl(value));
+                    setAttachDocLoading(true);
+                    setAttachDocError('');
+                    readGoogleDoc(gdocsToken, docId)
+                      .then(({ title, content }) => setAttachedDoc({ id: docId, title, content }))
+                      .catch((err: Error) => {
+                        const msg = err.message === 'no_access'
+                          ? "Can't access this doc — make sure it's shared or set to 'Anyone with the link'."
+                          : err.message === 'not_found' ? 'Doc not found.'
+                          : err.message === 'google_token_expired' ? 'Google token expired — reconnect in Settings.'
+                          : 'Could not read doc. Try again.';
+                        setAttachDocError(msg);
+                      })
+                      .finally(() => setAttachDocLoading(false));
+                    return;
+                  }
+                }
+                setInput(value);
+              }}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+            />
+            {gdocsToken && (
+              <button
+                className={`${styles.saveDocToggleBtn}${saveAsDocMode ? ` ${styles.saveDocToggleBtnActive}` : ''}`}
+                onClick={() => setSaveAsDocMode(p => !p)}
+                title={saveAsDocMode ? 'Auto-save to Google Docs: ON — click to turn off' : 'Click to auto-save AI responses to Google Docs'}
+              >📄</button>
+            )}
+            <button
+              className={styles.sendBtn}
+              onClick={send}
+              disabled={loading || (!input.trim() && !attachedDoc)}
+            >Send</button>
+          </div>
         </div>
       </div>
     </div>
