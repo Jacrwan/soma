@@ -316,8 +316,9 @@ export default function SettingsTab() {
       provider: 'google',
       options: {
         // drive.readonly → read any Drive file (Docs, Slides, Sheets, text)
-        // documents      → create new Google Docs (Save to Doc feature)
-        scopes: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents',
+        // documents      → create new Google Docs (notes, answers, essays)
+        // presentations  → create new Google Slides decks
+        scopes: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/presentations',
         redirectTo: redirectUrl.toString(),
         queryParams: { access_type: 'offline', prompt: 'consent' },
       },
@@ -752,7 +753,7 @@ export default function SettingsTab() {
               <div className={styles.integrationRow}>
                 <div className={styles.integrationInfo}>
                   <span className={styles.integrationLabel}>Google Drive</span>
-                  <span className={styles.integrationDescription}>Attach Drive files (Docs, Slides, Sheets) to the AI, and save responses back to a Google Doc</span>
+                  <span className={styles.integrationDescription}>Attach Drive files (Docs, Slides, Sheets) to the AI, and let it create Google Docs and Slides on request</span>
                 </div>
                 <div className={styles.integrationActions}>
                   {gdriveToken ? (

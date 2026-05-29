@@ -3,7 +3,7 @@ import DOMPurify from 'dompurify';
 import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
-import { createGoogleDoc } from '../../lib/googleDocs';
+import { createGoogleDoc, createGoogleSlides, SlideSpec } from '../../lib/googleDocs';
 import { readDriveFile, extractDriveFileId, stripGoogleFileUrl, fileTypeLabel, DriveFile } from '../../lib/googleDrive';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, hasAIAccess, startTrial, startCheckout } from '../../lib/subscription';
@@ -116,7 +116,48 @@ function stripTags(content: string) {
   return content
     .replace(/<schedule>[\s\S]*?<\/(?:schedule|todos)>/g, '')
     .replace(/<todos>[\s\S]*?<\/(?:todos|schedule)>/g, '')
+    .replace(/<createDoc\b[\s\S]*?<\/createDoc>/g, '')
+    .replace(/<createSlides\b[\s\S]*?<\/createSlides>/g, '')
     .trim();
+}
+
+interface CreateDocSpec { title: string; content: string }
+
+function parseCreateDoc(content: string): CreateDocSpec | null {
+  const match = content.match(/<createDoc\s+title="([^"]*)">([\s\S]*?)<\/createDoc>/);
+  if (!match) return null;
+  const title = match[1].trim() || 'Soma Notes';
+  const body = match[2].trim();
+  if (!body) return null;
+  return { title, content: body };
+}
+
+interface CreateSlidesSpec { title: string; slides: SlideSpec[] }
+
+function parseCreateSlides(content: string): CreateSlidesSpec | null {
+  const match = content.match(/<createSlides\s+title="([^"]*)">([\s\S]*?)<\/createSlides>/);
+  if (!match) return null;
+  const title = match[1].trim() || 'Soma Presentation';
+  const body = match[2].trim();
+  // Body format: "== Slide title" lines followed by "- bullet" lines
+  const slides: SlideSpec[] = [];
+  let current: SlideSpec | null = null;
+  for (const rawLine of body.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (line.startsWith('==')) {
+      if (current) slides.push(current);
+      current = { title: line.replace(/^==\s*/, '').trim(), bullets: [] };
+    } else if (line.startsWith('-') || line.startsWith('•') || line.startsWith('*')) {
+      if (current) current.bullets.push(line.replace(/^[-•*]\s*/, '').trim());
+    } else if (current) {
+      // Loose line under a slide — treat as a bullet
+      current.bullets.push(line);
+    }
+  }
+  if (current) slides.push(current);
+  const cleaned = slides.filter(s => s.title || s.bullets.length > 0);
+  return cleaned.length > 0 ? { title, slides: cleaned } : null;
 }
 
 function formatMessage(content: string): string {
@@ -250,6 +291,8 @@ function buildSystemPrompt(): string {
     return lines.length > 0 ? `${label}:\n${lines.join('\n')}` : '';
   }
 
+  const driveConnected = !!storage.getGoogleDriveToken();
+
   const scheduleStr = [
     schoolHoursEnabled !== false ? fmtWeek(schoolHours, 'In class (unavailable for studying)') : '',
     workHoursEnabled !== false ? fmtWeek(workHours, 'At work (unavailable for studying)') : '',
@@ -289,7 +332,38 @@ Schedule item format: { subjectId, task, startTime (ISO), endTime (ISO), source:
 Todo item format: [{"text":"...","subjectId":"uuid-here","assignmentId":12345}]
 Use the exact subject IDs from the subjects list above. Use the exact assignment IDs from the assignments list above. Set subjectId to null if no subject applies. Set assignmentId to null if not linked to a Canvas assignment.
 Match subjectId to the user's existing subjects by name (case-insensitive).
+${driveConnected ? `
+GOOGLE DRIVE — CREATING FILES:
+The user has connected Google Drive, so you can create real Google Docs and Google Slides for them when they ask.
 
+When the user asks you to create/write a Google Doc, take notes into a doc, write an essay/summary in Docs, or answer a homework assignment in a doc, respond with:
+1. One short sentence confirming what you're creating.
+2. A <createDoc> block containing the full content:
+<createDoc title="Short descriptive title">
+The full document text goes here. Write it in full — this exact text becomes the Google Doc body. Use plain text with line breaks; you may use simple markdown like ** for emphasis and - for lists.
+</createDoc>
+
+When the user asks you to create a Google Slides presentation / slide deck / slides, respond with:
+1. One short sentence confirming what you're creating.
+2. A <createSlides> block. Use "== " to start each slide (its title) and "- " for each bullet:
+<createSlides title="Deck title">
+== First slide title
+- First bullet point
+- Second bullet point
+== Second slide title
+- A bullet
+- Another bullet
+</createSlides>
+
+CRITICAL rules for file creation:
+- Always close <createDoc> with </createDoc> and <createSlides> with </createSlides>.
+- Put the FULL content inside the block — never say "I'll create it" without the block, and never put placeholder text. The block is what actually gets created.
+- Use a <createDoc> OR a <createSlides> block, never both, and never alongside <schedule>/<todos>.
+- If an assignment or file was attached to the message, use its actual content when answering or summarizing.
+- Keep the natural-language part outside the block very short — the real output lives in the file.
+` : `
+NOTE: The user has NOT connected Google Drive. If they ask you to create a Google Doc or Slides, briefly tell them to connect Google Drive in Settings → Integrations first, then offer to write the content directly in chat instead.
+`}
 SCHEDULING RULES — follow these exactly when generating a schedule:
 
 What to schedule:
@@ -554,6 +628,10 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   const [docErrors, setDocErrors] = useState<Record<string, string>>({});
   const [saveAsDocMode, setSaveAsDocMode] = useState(false);
 
+  // AI-created artifacts (doc / slides) keyed by message id
+  interface Artifact { kind: 'doc' | 'slides'; title: string; status: 'creating' | 'done' | 'error'; url?: string; error?: string }
+  const [artifacts, setArtifacts] = useState<Record<string, Artifact>>({});
+
   // Attached Google Drive file (from picker or URL pasted in chat)
   interface AttachedFile { id: string; title: string; content: string; mimeType: string }
   const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
@@ -608,6 +686,49 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       setDocErrors(prev => ({ ...prev, [msgId]: msg }));
     } finally {
       setDocLoadingId(null);
+    }
+  }
+
+  // Execute an AI-requested creation (doc or slides) and track its status per message.
+  async function runCreation(msgId: string, response: string) {
+    const docSpec = parseCreateDoc(response);
+    const slidesSpec = parseCreateSlides(response);
+    if (!docSpec && !slidesSpec) return;
+
+    const kind: Artifact['kind'] = slidesSpec ? 'slides' : 'doc';
+    const title = (slidesSpec?.title ?? docSpec?.title ?? 'Untitled').slice(0, 80);
+
+    if (!driveToken) {
+      setArtifacts(prev => ({
+        ...prev,
+        [msgId]: { kind, title, status: 'error', error: 'Connect Google Drive in Settings to create files.' },
+      }));
+      return;
+    }
+
+    setArtifacts(prev => ({ ...prev, [msgId]: { kind, title, status: 'creating' } }));
+    try {
+      let url: string;
+      if (slidesSpec) {
+        const { presentationUrl } = await createGoogleSlides(driveToken, slidesSpec.title, slidesSpec.slides);
+        url = presentationUrl;
+      } else {
+        const { docUrl } = await createGoogleDoc(driveToken, docSpec!.title, docSpec!.content);
+        url = docUrl;
+      }
+      setArtifacts(prev => ({ ...prev, [msgId]: { kind, title, status: 'done', url } }));
+    } catch (err: unknown) {
+      const e = err as Error & { presentationUrl?: string };
+      // Slides population partly failed but the deck exists — still link to it
+      if (e.presentationUrl) {
+        setArtifacts(prev => ({ ...prev, [msgId]: { kind, title, status: 'done', url: e.presentationUrl } }));
+        return;
+      }
+      const msg = e.message === 'google_token_expired'
+        ? 'Google access expired — reconnect Google Drive in Settings.'
+        : kind === 'slides' ? 'Could not create the presentation. Try again.'
+        : 'Could not create the doc. Try again.';
+      setArtifacts(prev => ({ ...prev, [msgId]: { kind, title, status: 'error', error: msg } }));
     }
   }
 
@@ -756,8 +877,11 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       };
       updateSession(activeSessionId, s => ({ ...s, messages: [...s.messages, assistantMsg] }));
 
-      // Auto-save to Google Doc if mode is on
-      if (saveAsDocMode && driveToken) {
+      // If the AI was asked to create a Doc or Slides, execute it now
+      void runCreation(assistantMsg.id, response);
+
+      // Auto-save to Google Doc if mode is on (and the AI didn't already create one)
+      if (saveAsDocMode && driveToken && !parseCreateDoc(response) && !parseCreateSlides(response)) {
         const docTitle = text.replace(/\s+/g, ' ').trim().slice(0, 60) || 'Soma AI Response';
         const msgId = assistantMsg.id;
         createGoogleDoc(driveToken, docTitle, stripTags(response)).then(({ docUrl }) => {
@@ -924,7 +1048,30 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
                   onDismiss={() => dismissTodos(msg.id)}
                 />
               )}
-              {msg.role === 'assistant' && driveToken && (
+              {msg.role === 'assistant' && artifacts[msg.id] && (
+                <div className={styles.artifactCard}>
+                  <span className={styles.artifactIcon}>{artifacts[msg.id].kind === 'slides' ? '📊' : '📄'}</span>
+                  <div className={styles.artifactInfo}>
+                    <span className={styles.artifactTitle}>{artifacts[msg.id].title}</span>
+                    <span className={styles.artifactStatus}>
+                      {artifacts[msg.id].status === 'creating'
+                        ? `Creating Google ${artifacts[msg.id].kind === 'slides' ? 'Slides' : 'Doc'}…`
+                        : artifacts[msg.id].status === 'error'
+                        ? artifacts[msg.id].error
+                        : `Created in Google ${artifacts[msg.id].kind === 'slides' ? 'Slides' : 'Docs'}`}
+                    </span>
+                  </div>
+                  {artifacts[msg.id].status === 'done' && artifacts[msg.id].url && (
+                    <a
+                      className={styles.artifactOpen}
+                      href={artifacts[msg.id].url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >Open ↗</a>
+                  )}
+                </div>
+              )}
+              {msg.role === 'assistant' && driveToken && !artifacts[msg.id] && (
                 <div className={styles.docActionRow}>
                   {docUrls[msg.id] ? (
                     <a

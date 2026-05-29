@@ -506,6 +506,63 @@
   color: var(--danger);
 }
 
+/* ── AI-created artifact card (doc / slides) ───────────────────────────── */
+
+.artifactCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  max-width: 360px;
+}
+
+.artifactIcon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.artifactInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+  flex: 1;
+}
+
+.artifactTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.artifactStatus {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.artifactOpen {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  transition: background 0.12s;
+}
+
+.artifactOpen:hover {
+  background: oklch(55% 0.22 266 / 0.08);
+}
+
 /* ── Input row ─────────────────────────────────────────────────────────── */
 
 .inputAreaWrapper {
