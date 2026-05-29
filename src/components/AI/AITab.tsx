@@ -5,14 +5,14 @@ import { storage } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
 import { createGoogleDoc, createGoogleSlides } from '../../lib/googleDocs';
 import { parseCreateDoc, parseCreateSlides } from '../../lib/aiArtifacts';
-import { readDriveFile, extractDriveFileId, stripGoogleFileUrl, fileTypeLabel, DriveFile } from '../../lib/googleDrive';
+import { readDriveFile, fileTypeLabel } from '../../lib/googleDrive';
+import { useGooglePicker, PickedFile } from '../../lib/useGooglePicker';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, hasAIAccess, startTrial, startCheckout } from '../../lib/subscription';
 import { TimeBlock, Subject, Todo, ChatMessage, ChatSession, AiTodo } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
 import { SkeletonBlock } from '../UI/Skeleton';
 import TrialConfirmModal from '../UI/TrialConfirmModal';
-import DriveFilePicker from './DriveFilePicker';
 import styles from './AITab.module.css';
 
 function SessionListSkeleton() {
@@ -594,12 +594,11 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   interface Artifact { kind: 'doc' | 'slides'; title: string; status: 'creating' | 'done' | 'error'; url?: string; error?: string }
   const [artifacts, setArtifacts] = useState<Record<string, Artifact>>({});
 
-  // Attached Google Drive file (from picker or URL pasted in chat)
+  // Attached Google Drive file (via Google Picker)
   interface AttachedFile { id: string; title: string; content: string; mimeType: string }
   const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
   const [attachLoading, setAttachLoading] = useState(false);
   const [attachError, setAttachError] = useState('');
-  const [showDrivePicker, setShowDrivePicker] = useState(false);
 
   useEffect(() => {
     const handler = () => setDriveToken(storage.getGoogleDriveToken());
@@ -607,30 +606,28 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     return () => window.removeEventListener('soma_gdrive_updated', handler);
   }, []);
 
-  function attachError_message(err: Error): string {
+  function friendlyAttachError(err: Error): string {
     switch (err.message) {
-      case 'no_access':         return "Can't access this file — make sure it's shared with your Google account.";
-      case 'not_found':         return 'File not found.';
-      case 'unsupported_type':  return "This file type can't be read. Open it in Google Docs/Slides first, then attach.";
+      case 'no_access':            return "Can't read that file — make sure it's shared with your Google account.";
+      case 'not_found':            return 'File not found.';
+      case 'unsupported_type':     return "This file type can't be read. Open it in Google Docs/Slides first, then attach.";
       case 'google_token_expired': return 'Google access expired — reconnect Google Drive in Settings.';
-      default:                  return 'Could not read file. Try again.';
+      default:                     return 'Could not read file. Try again.';
     }
   }
 
-  function attachDriveFile(fileId: string) {
+  function onPickDriveFile(file: PickedFile) {
     if (!driveToken) return;
     setAttachLoading(true);
     setAttachError('');
-    readDriveFile(driveToken, fileId)
-      .then(({ title, content, mimeType }) => setAttachedFile({ id: fileId, title, content, mimeType }))
-      .catch((err: Error) => setAttachError(attachError_message(err)))
+    readDriveFile(driveToken, file.id)
+      .then(({ title, content, mimeType }) =>
+        setAttachedFile({ id: file.id, title, content, mimeType }))
+      .catch((err: Error) => setAttachError(friendlyAttachError(err)))
       .finally(() => setAttachLoading(false));
   }
 
-  function onPickDriveFile(file: DriveFile) {
-    setShowDrivePicker(false);
-    attachDriveFile(file.id);
-  }
+  const { openPicker } = useGooglePicker(driveToken, onPickDriveFile);
 
   async function saveToDoc(msgId: string, content: string) {
     const token = storage.getGoogleDriveToken();
@@ -1099,29 +1096,17 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
             {driveToken && (
               <button
                 className={styles.driveBtn}
-                onClick={() => setShowDrivePicker(true)}
+                onClick={() => openPicker()}
                 disabled={loading || attachLoading}
                 title="Attach a file from Google Drive"
               >📁</button>
             )}
             <input
               className={styles.textInput}
-              placeholder={attachedFile ? `Ask about "${attachedFile.title}"…` : driveToken ? 'Message Soma… (attach a Drive file or paste a link)' : 'Message Soma…'}
+              placeholder={attachedFile ? `Ask about "${attachedFile.title}"…` : driveToken ? 'Message Soma… (click 📁 to attach a Drive file)' : 'Message Soma…'}
               value={input}
               disabled={loading}
-              onChange={e => {
-                const value = e.target.value;
-                // Detect a pasted Google file URL — attach it and strip the URL from input
-                if (driveToken && !attachedFile && !attachLoading) {
-                  const fileId = extractDriveFileId(value);
-                  if (fileId) {
-                    setInput(stripGoogleFileUrl(value));
-                    attachDriveFile(fileId);
-                    return;
-                  }
-                }
-                setInput(value);
-              }}
+              onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
             />
             {driveToken && (
@@ -1140,13 +1125,6 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
         </div>
       </div>
 
-      {showDrivePicker && driveToken && (
-        <DriveFilePicker
-          googleToken={driveToken}
-          onPick={onPickDriveFile}
-          onClose={() => setShowDrivePicker(false)}
-        />
-      )}
     </div>
   );
 }

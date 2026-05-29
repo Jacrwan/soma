@@ -315,10 +315,11 @@ export default function SettingsTab() {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        // drive.readonly → read any Drive file (Docs, Slides, Sheets, text)
+        // drive.file     → read/write only files the user explicitly picks via the Google Picker
+        //                  (non-restricted scope — no audit required at any scale)
         // documents      → create new Google Docs (notes, answers, essays)
         // presentations  → create new Google Slides decks
-        scopes: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/presentations',
+        scopes: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/presentations',
         redirectTo: redirectUrl.toString(),
         queryParams: { access_type: 'offline', prompt: 'consent' },
       },

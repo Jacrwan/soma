@@ -5,9 +5,9 @@ import { useSubscription, hasAIAccess } from '../../lib/subscription';
 import {
   CREATE_TEMPLATES, CreateTemplate, generateArtifact, GenerateResult,
 } from '../../lib/aiArtifacts';
-import { readDriveFile, DriveFile } from '../../lib/googleDrive';
+import { readDriveFile } from '../../lib/googleDrive';
+import { useGooglePicker, PickedFile } from '../../lib/useGooglePicker';
 import { CanvasAssignment, Subject } from '../../types';
-import DriveFilePicker from '../AI/DriveFilePicker';
 import styles from './CreateTab.module.css';
 
 type SourceType = 'topic' | 'assignment' | 'subject' | 'file';
@@ -34,7 +34,6 @@ export default function CreateTab() {
   const [assignmentId, setAssignmentId] = useState<number | null>(null);
   const [subjectId, setSubjectId] = useState<string>('');
   const [driveFile, setDriveFile] = useState<{ id: string; title: string } | null>(null);
-  const [showPicker, setShowPicker] = useState(false);
   const [instructions, setInstructions] = useState('');
 
   const [generating, setGenerating] = useState(false);
@@ -46,10 +45,11 @@ export default function CreateTab() {
     setError('');
   }
 
-  function onPickFile(f: DriveFile) {
-    setShowPicker(false);
+  function onPickFile(f: PickedFile) {
     setDriveFile({ id: f.id, title: f.name });
   }
+
+  const { openPicker } = useGooglePicker(driveToken, onPickFile);
 
   const canGenerate = (() => {
     if (!template || generating || !driveToken) return false;
@@ -235,7 +235,7 @@ export default function CreateTab() {
             {sourceType === 'file' && (
               driveToken ? (
                 <div className={styles.fileRow}>
-                  <button className={styles.secondaryBtn} onClick={() => setShowPicker(true)}>
+                  <button className={styles.secondaryBtn} onClick={() => openPicker()}>
                     {driveFile ? 'Change file' : 'Choose from Drive'}
                   </button>
                   {driveFile && <span className={styles.fileChip}>📎 {driveFile.title}</span>}
@@ -291,9 +291,6 @@ export default function CreateTab() {
         </section>
       )}
 
-      {showPicker && driveToken && (
-        <DriveFilePicker googleToken={driveToken} onPick={onPickFile} onClose={() => setShowPicker(false)} />
-      )}
     </div>
   );
 }

@@ -23,29 +23,7 @@ function mapStatusError(status: number, body: { error?: string }): Error {
   return new Error('drive_error');
 }
 
-// List / search readable files in the user's Drive.
-export async function listDriveFiles(
-  googleToken: string,
-  search?: string,
-): Promise<DriveFile[]> {
-  const token = await getSupabaseToken();
-  const res = await fetch('/api/drive-list', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({ googleToken, search }),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({})) as { error?: string };
-    throw mapStatusError(res.status, body);
-  }
-  const { files } = await res.json();
-  return files as DriveFile[];
-}
-
-// Read a single Drive file's text content.
+// Read a Drive file's text content (called after the user picks via Google Picker).
 export async function readDriveFile(
   googleToken: string,
   fileId: string,
@@ -66,27 +44,6 @@ export async function readDriveFile(
   return res.json() as Promise<{ title: string; content: string; mimeType: string }>;
 }
 
-// Extract a Drive/Docs/Slides/Sheets file ID from any Google file URL.
-export function extractDriveFileId(text: string): string | null {
-  const patterns = [
-    /drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/,
-    /docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]+)/,
-    /docs\.google\.com\/presentation\/d\/([a-zA-Z0-9_-]+)/,
-    /docs\.google\.com\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/,
-    /drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/,
-  ];
-  for (const re of patterns) {
-    const m = text.match(re);
-    if (m?.[1]) return m[1];
-  }
-  return null;
-}
-
-export function stripGoogleFileUrl(text: string): string {
-  return text
-    .replace(/https?:\/\/(?:drive|docs)\.google\.com\/[^\s]+/g, '')
-    .trim();
-}
 
 // Friendly label for a Drive mimeType.
 export function fileTypeLabel(mimeType: string): string {
