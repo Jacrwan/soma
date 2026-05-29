@@ -810,8 +810,20 @@ Rules:
 
   // ── Main view ────────────────────────────────────────────────────────────
   // (reached when isConnected OR isIcalConnected)
+
+  // For iCal users, synthesise a course list from the assignment data (no API token available)
+  const icalCourses: CanvasCourse[] = isIcalConnected
+    ? [...new Map(
+        assignments
+          .filter(a => a.courseId && a.courseName)
+          .map(a => [a.courseId, { id: a.courseId, name: a.courseName, courseCode: '' } as CanvasCourse]),
+      ).values()]
+    : [];
+
+  const displayCourses = isIcalConnected ? icalCourses : courses;
+
   const courseColorMap = Object.fromEntries(
-    courses.map((c, i) => [c.id, COURSE_COLORS[i % COURSE_COLORS.length]]),
+    displayCourses.map((c, i) => [c.id, COURSE_COLORS[i % COURSE_COLORS.length]]),
   );
 
   const filtered = assignments
@@ -849,10 +861,12 @@ Rules:
             className={`${styles.subNavBtn}${canvasView === 'assignments' ? ` ${styles.subNavBtnActive}` : ''}`}
             onClick={() => setCanvasView('assignments')}
           >Assignments</button>
-          <button
-            className={`${styles.subNavBtn}${canvasView === 'grades' ? ` ${styles.subNavBtnActive}` : ''}`}
-            onClick={() => { setCanvasView('grades'); if (!grades.length) loadGrades(); }}
-          >Grades</button>
+          {!isIcalConnected && (
+            <button
+              className={`${styles.subNavBtn}${canvasView === 'grades' ? ` ${styles.subNavBtnActive}` : ''}`}
+              onClick={() => { setCanvasView('grades'); if (!grades.length) loadGrades(); }}
+            >Grades</button>
+          )}
         </div>
         <div className={styles.syncRow}>
           {lastSynced && (
@@ -871,7 +885,7 @@ Rules:
         <button className={styles.disconnectLink} onClick={isIcalConnected ? () => { storage.setCanvasIcalUrl(''); storage.setCachedIcalAssignments([]); storage.setCachedAssignments([]); setIcalUrl(''); setAssignments([]); } : handleDisconnect}>Disconnect</button>
       </div>
 
-      {canvasView === 'grades' && (
+      {canvasView === 'grades' && !isIcalConnected && (
         <div className={styles.gradesView}>
           {gradesLoading && <div className={styles.loading}>Loading grades…</div>}
           {!gradesLoading && grades.length === 0 && (
@@ -949,7 +963,7 @@ Rules:
             className={`${styles.pill}${selectedCourseId === null ? ` ${styles.pillActive}` : ''}`}
             onClick={() => setSelectedCourseId(null)}
           >All</button>
-          {courses.map(c => (
+          {displayCourses.map(c => (
             <button
               key={c.id}
               className={`${styles.pill}${selectedCourseId === c.id ? ` ${styles.pillActive}` : ''}`}
@@ -1013,7 +1027,7 @@ Rules:
                     <div
                       key={a.id}
                       className={`${styles.assignmentRow}${done ? ` ${styles.done}` : ''}${cleared ? ` ${styles.cleared}` : ''}`}
-                      onClick={() => setDetailAssignment(a)}
+                      onClick={() => isIcalConnected ? window.open(a.htmlUrl, '_blank', 'noopener,noreferrer') : setDetailAssignment(a)}
                       style={{ cursor: 'pointer' }}
                     >
                       <span
@@ -1069,7 +1083,7 @@ Rules:
                 })}
               </div>
 
-              <div className={styles.announcementsSection}>
+              {!isIcalConnected && <div className={styles.announcementsSection}>
                 <button
                   className={styles.sectionHeader}
                   onClick={() => setAnnouncementsOpen(o => !o)}
@@ -1118,7 +1132,7 @@ Rules:
                     })}
                   </div>
                 )}
-              </div>
+              </div>}
 
               <div className={styles.studyPlan}>
                 <div className={styles.studyPlanHeader}>
@@ -1162,13 +1176,18 @@ Rules:
                               <div
                                 key={`${day.date}-${item.assignmentId}`}
                                 className={`${styles.studyPlanItem}${!assignment ? ` ${styles.studyPlanItemDisabled}` : ''}`}
-                                onClick={() => assignment && setDetailAssignment(assignment)}
+                                onClick={() => {
+                                  if (!assignment) return;
+                                  if (isIcalConnected) window.open(assignment.htmlUrl, '_blank', 'noopener,noreferrer');
+                                  else setDetailAssignment(assignment);
+                                }}
                                 role="button"
                                 tabIndex={assignment ? 0 : -1}
                                 onKeyDown={e => {
                                   if (assignment && (e.key === 'Enter' || e.key === ' ')) {
                                     e.preventDefault();
-                                    setDetailAssignment(assignment);
+                                    if (isIcalConnected) window.open(assignment.htmlUrl, '_blank', 'noopener,noreferrer');
+                                    else setDetailAssignment(assignment);
                                   }
                                 }}
                               >
@@ -1206,7 +1225,7 @@ Rules:
         </div>
       </div>}
 
-      {detailAssignment && (
+      {detailAssignment && !isIcalConnected && (
         <AssignmentDetail
           courseId={detailAssignment.courseId}
           assignmentId={detailAssignment.id}
