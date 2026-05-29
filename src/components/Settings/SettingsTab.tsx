@@ -50,11 +50,11 @@ export default function SettingsTab() {
   // Google Calendar integration state
   const [gcalToken, setGcalToken] = useState(() => storage.getGoogleToken());
 
-  // Google Docs integration state
-  const [gdocsToken, setGdocsToken] = useState(() => storage.getGoogleDocsToken());
+  // Google Drive integration state (unified: reads Drive files + creates Docs)
+  const [gdriveToken, setGdriveToken] = useState(() => storage.getGoogleDriveToken());
 
   // On mount (and after OAuth redirect back), pull provider_token from session.
-  // Uses ?source=gcal / ?source=gdocs to distinguish which token to save.
+  // Uses ?source=gcal / ?source=gdrive to distinguish which token to save.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const source = params.get('source');
@@ -63,18 +63,22 @@ export default function SettingsTab() {
       const pt = data.session?.provider_token;
       if (!pt) return;
 
-      if (source === 'gdocs') {
-        storage.setGoogleDocsToken(pt);
-        setGdocsToken(pt);
+      const clearSourceParam = () => {
         const url = new URL(window.location.href);
         url.searchParams.delete('source');
         window.history.replaceState({}, '', url.toString());
+      };
+
+      if (source === 'gdrive') {
+        storage.setGoogleDriveToken(pt);
+        setGdriveToken(pt);
+        window.dispatchEvent(new CustomEvent('soma_gdrive_updated'));
+        clearSourceParam();
       } else if (source === 'gcal') {
         storage.setGoogleToken(pt);
         setGcalToken(pt);
-        const url = new URL(window.location.href);
-        url.searchParams.delete('source');
-        window.history.replaceState({}, '', url.toString());
+        window.dispatchEvent(new CustomEvent('soma_gcal_updated'));
+        clearSourceParam();
       }
     });
   }, []);
@@ -305,22 +309,26 @@ export default function SettingsTab() {
     window.dispatchEvent(new CustomEvent('soma_gcal_updated'));
   }
 
-  async function connectGdocs() {
+  async function connectGdrive() {
     const redirectUrl = new URL(window.location.origin + '/settings');
-    redirectUrl.searchParams.set('source', 'gdocs');
+    redirectUrl.searchParams.set('source', 'gdrive');
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        scopes: 'https://www.googleapis.com/auth/documents',
+        // drive.readonly → read any Drive file (Docs, Slides, Sheets, text)
+        // documents      → create new Google Docs (Save to Doc feature)
+        scopes: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents',
         redirectTo: redirectUrl.toString(),
         queryParams: { access_type: 'offline', prompt: 'consent' },
       },
     });
   }
 
-  function disconnectGdocs() {
-    storage.setGoogleDocsToken('');
-    setGdocsToken('');
+  function disconnectGdrive() {
+    storage.setGoogleDriveToken('');
+    storage.setGoogleDocsToken(''); // clear legacy docs token too
+    setGdriveToken('');
+    window.dispatchEvent(new CustomEvent('soma_gdrive_updated'));
   }
 
   const navItems: [Section, string][] = [
@@ -743,17 +751,17 @@ export default function SettingsTab() {
 
               <div className={styles.integrationRow}>
                 <div className={styles.integrationInfo}>
-                  <span className={styles.integrationLabel}>Google Docs</span>
-                  <span className={styles.integrationDescription}>Save AI responses directly to a Google Doc</span>
+                  <span className={styles.integrationLabel}>Google Drive</span>
+                  <span className={styles.integrationDescription}>Attach Drive files (Docs, Slides, Sheets) to the AI, and save responses back to a Google Doc</span>
                 </div>
                 <div className={styles.integrationActions}>
-                  {gdocsToken ? (
+                  {gdriveToken ? (
                     <>
                       <span className={styles.connectedBadge}>Connected</span>
-                      <button className={styles.disconnectBtn} onClick={disconnectGdocs}>Disconnect</button>
+                      <button className={styles.disconnectBtn} onClick={disconnectGdrive}>Disconnect</button>
                     </>
                   ) : (
-                    <button className={styles.connectBtn} onClick={connectGdocs}>Connect</button>
+                    <button className={styles.connectBtn} onClick={connectGdrive}>Connect</button>
                   )}
                 </div>
               </div>

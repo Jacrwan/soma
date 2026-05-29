@@ -42,6 +42,7 @@ export interface SomaSettings {
   canvasIcalUrl?: string;
   googleToken?: string;
   googleDocsToken?: string;
+  googleDriveToken?: string;
 }
 
 export interface ScheduleBlock {
@@ -179,6 +180,7 @@ let _canvasToken = '';
 let _canvasIcalUrl = '';
 let _googleToken = '';
 let _googleDocsToken = '';
+let _googleDriveToken = '';
 
 // ── Utility ───────────────────────────────────────────────────────────────
 
@@ -292,7 +294,7 @@ export const storage = {
     })();
   },
 
-  // ── Google Docs ──────────────────────────────────────────────────────
+  // ── Google Docs (legacy — kept for backward compatibility) ───────────
   getGoogleDocsToken: (): string => _googleDocsToken,
   setGoogleDocsToken: (v: string): void => {
     _googleDocsToken = v;
@@ -301,6 +303,18 @@ export const storage = {
         const s = await storage.getSettings();
         await storage.saveSettings({ ...s, googleDocsToken: v });
       } catch (err) { console.error('[storage] google docs token persist failed:', err); }
+    })();
+  },
+
+  // ── Google Drive (unified: reads any Drive file + creates Docs) ──────
+  getGoogleDriveToken: (): string => _googleDriveToken,
+  setGoogleDriveToken: (v: string): void => {
+    _googleDriveToken = v;
+    void (async () => {
+      try {
+        const s = await storage.getSettings();
+        await storage.saveSettings({ ...s, googleDriveToken: v });
+      } catch (err) { console.error('[storage] google drive token persist failed:', err); }
     })();
   },
 
@@ -313,6 +327,9 @@ export const storage = {
       _canvasIcalUrl = s.canvasIcalUrl ?? '';
       _googleToken = s.googleToken ?? '';
       _googleDocsToken = s.googleDocsToken ?? '';
+      // Migrate: old Docs-only token carries forward as the Drive token so
+      // existing "save to doc" keeps working until the user reconnects Drive.
+      _googleDriveToken = s.googleDriveToken ?? s.googleDocsToken ?? '';
       // One-time migration: move plaintext tokens out of localStorage
       const migrateKey = (key: string): string => {
         const raw = localStorage.getItem(key);
@@ -584,6 +601,7 @@ export const storage = {
     _canvasIcalUrl = '';
     _googleToken = '';
     _googleDocsToken = '';
+    _googleDriveToken = '';
   },
 
   async cleanupTestBlocks(taskName: string): Promise<void> {

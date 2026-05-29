@@ -95,8 +95,8 @@ export default async function handler(req: any, res: any) {
     if (docRes.status === 404) return res.status(404).json({ error: 'not_found' });
     if (!docRes.ok)            return res.status(502).json({ error: 'google_error' });
 
-    const doc = await docRes.json();
-    const title: string = (doc.title as string | undefined) ?? 'Untitled';
+    const doc = await docRes.json() as { title?: string };
+    const title: string = doc.title ?? 'Untitled';
     const content = extractText(doc);
 
     return res.status(200).json({ title, content });

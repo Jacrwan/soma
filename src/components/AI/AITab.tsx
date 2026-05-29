@@ -3,13 +3,15 @@ import DOMPurify from 'dompurify';
 import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
-import { createGoogleDoc, readGoogleDoc } from '../../lib/googleDocs';
+import { createGoogleDoc } from '../../lib/googleDocs';
+import { readDriveFile, extractDriveFileId, stripGoogleFileUrl, fileTypeLabel, DriveFile } from '../../lib/googleDrive';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, hasAIAccess, startTrial, startCheckout } from '../../lib/subscription';
 import { TimeBlock, Subject, Todo, ChatMessage, ChatSession, AiTodo } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
 import { SkeletonBlock } from '../UI/Skeleton';
 import TrialConfirmModal from '../UI/TrialConfirmModal';
+import DriveFilePicker from './DriveFilePicker';
 import styles from './AITab.module.css';
 
 function SessionListSkeleton() {
@@ -108,17 +110,6 @@ function fmtTime12(iso: string): string {
   const m = String(d.getMinutes()).padStart(2, '0');
   const ampm = d.getHours() >= 12 ? 'PM' : 'AM';
   return `${h}:${m} ${ampm}`;
-}
-
-function extractGoogleDocId(text: string): string | null {
-  const match = text.match(/docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]+)/);
-  return match?.[1] ?? null;
-}
-
-function stripGoogleDocUrl(text: string): string {
-  return text
-    .replace(/https?:\/\/docs\.google\.com\/document\/d\/[a-zA-Z0-9_-]+[^\s]*/g, '')
-    .trim();
 }
 
 function stripTags(content: string) {
@@ -557,26 +548,52 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const subjects = storage.getSubjects();
 
-  const [gdocsToken, setGdocsToken] = useState(() => storage.getGoogleDocsToken());
+  const [driveToken, setDriveToken] = useState(() => storage.getGoogleDriveToken());
   const [docUrls, setDocUrls] = useState<Record<string, string>>({});
   const [docLoadingId, setDocLoadingId] = useState<string | null>(null);
   const [docErrors, setDocErrors] = useState<Record<string, string>>({});
   const [saveAsDocMode, setSaveAsDocMode] = useState(false);
 
-  // Attached Google Doc (read from URL pasted in chat)
-  interface AttachedDoc { id: string; title: string; content: string }
-  const [attachedDoc, setAttachedDoc] = useState<AttachedDoc | null>(null);
-  const [attachDocLoading, setAttachDocLoading] = useState(false);
-  const [attachDocError, setAttachDocError] = useState('');
+  // Attached Google Drive file (from picker or URL pasted in chat)
+  interface AttachedFile { id: string; title: string; content: string; mimeType: string }
+  const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
+  const [attachLoading, setAttachLoading] = useState(false);
+  const [attachError, setAttachError] = useState('');
+  const [showDrivePicker, setShowDrivePicker] = useState(false);
 
   useEffect(() => {
-    const handler = () => setGdocsToken(storage.getGoogleDocsToken());
-    window.addEventListener('soma_gdocs_updated', handler);
-    return () => window.removeEventListener('soma_gdocs_updated', handler);
+    const handler = () => setDriveToken(storage.getGoogleDriveToken());
+    window.addEventListener('soma_gdrive_updated', handler);
+    return () => window.removeEventListener('soma_gdrive_updated', handler);
   }, []);
 
+  function attachError_message(err: Error): string {
+    switch (err.message) {
+      case 'no_access':         return "Can't access this file — make sure it's shared with your Google account.";
+      case 'not_found':         return 'File not found.';
+      case 'unsupported_type':  return "This file type can't be read. Open it in Google Docs/Slides first, then attach.";
+      case 'google_token_expired': return 'Google access expired — reconnect Google Drive in Settings.';
+      default:                  return 'Could not read file. Try again.';
+    }
+  }
+
+  function attachDriveFile(fileId: string) {
+    if (!driveToken) return;
+    setAttachLoading(true);
+    setAttachError('');
+    readDriveFile(driveToken, fileId)
+      .then(({ title, content, mimeType }) => setAttachedFile({ id: fileId, title, content, mimeType }))
+      .catch((err: Error) => setAttachError(attachError_message(err)))
+      .finally(() => setAttachLoading(false));
+  }
+
+  function onPickDriveFile(file: DriveFile) {
+    setShowDrivePicker(false);
+    attachDriveFile(file.id);
+  }
+
   async function saveToDoc(msgId: string, content: string) {
-    const token = storage.getGoogleDocsToken();
+    const token = storage.getGoogleDriveToken();
     if (!token) return;
     setDocLoadingId(msgId);
     setDocErrors(prev => { const next = { ...prev }; delete next[msgId]; return next; });
@@ -586,7 +603,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       setDocUrls(prev => ({ ...prev, [msgId]: docUrl }));
     } catch (err: any) {
       const msg = err?.message === 'google_token_expired'
-        ? 'Google Docs token expired — reconnect in Settings.'
+        ? 'Google access expired — reconnect Google Drive in Settings.'
         : 'Could not create doc. Try again.';
       setDocErrors(prev => ({ ...prev, [msgId]: msg }));
     } finally {
@@ -697,27 +714,28 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     const session = sessions.find(s => s.id === activeSessionId);
     if (!session) return;
 
-    // Build display content (shown in chat bubble) — short, no raw doc dump
-    const displayContent = attachedDoc
-      ? `📄 **${attachedDoc.title}**\n\n${text}`
+    // Build display content (shown in chat bubble) — short, no raw file dump
+    const displayContent = attachedFile
+      ? `📎 **${attachedFile.title}**\n\n${text}`
       : text;
 
-    // Build API content — includes the full doc for the AI's context
-    const MAX_DOC_CHARS = 12_000;
+    // Build API content — includes the full file for the AI's context
+    const MAX_FILE_CHARS = 12_000;
     let apiContent = text;
-    if (attachedDoc) {
-      const docBody = attachedDoc.content.length > MAX_DOC_CHARS
-        ? `${attachedDoc.content.slice(0, MAX_DOC_CHARS)}\n\n[Content truncated — document is too long to include in full]`
-        : attachedDoc.content;
-      apiContent = `[Attached Google Doc: "${attachedDoc.title}"]\n\n${docBody}\n\n---\n\n${text}`;
+    if (attachedFile) {
+      const fileBody = attachedFile.content.length > MAX_FILE_CHARS
+        ? `${attachedFile.content.slice(0, MAX_FILE_CHARS)}\n\n[Content truncated — file is too long to include in full]`
+        : attachedFile.content;
+      const kind = fileTypeLabel(attachedFile.mimeType);
+      apiContent = `[Attached Google ${kind}: "${attachedFile.title}"]\n\n${fileBody}\n\n---\n\n${text}`;
     }
 
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: displayContent };
     const messagesWithUser = [...session.messages, userMsg];
 
     setInput('');
-    setAttachedDoc(null);
-    setAttachDocError('');
+    setAttachedFile(null);
+    setAttachError('');
     setLoading(true);
     updateSession(activeSessionId, s => ({ ...s, messages: messagesWithUser }));
 
@@ -739,10 +757,10 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       updateSession(activeSessionId, s => ({ ...s, messages: [...s.messages, assistantMsg] }));
 
       // Auto-save to Google Doc if mode is on
-      if (saveAsDocMode && gdocsToken) {
+      if (saveAsDocMode && driveToken) {
         const docTitle = text.replace(/\s+/g, ' ').trim().slice(0, 60) || 'Soma AI Response';
         const msgId = assistantMsg.id;
-        createGoogleDoc(gdocsToken, docTitle, stripTags(response)).then(({ docUrl }) => {
+        createGoogleDoc(driveToken, docTitle, stripTags(response)).then(({ docUrl }) => {
           setDocUrls(prev => ({ ...prev, [msgId]: docUrl }));
         }).catch(() => {});
       }
@@ -906,7 +924,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
                   onDismiss={() => dismissTodos(msg.id)}
                 />
               )}
-              {msg.role === 'assistant' && gdocsToken && (
+              {msg.role === 'assistant' && driveToken && (
                 <div className={styles.docActionRow}>
                   {docUrls[msg.id] ? (
                     <a
@@ -942,25 +960,26 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
         </div>
 
         <div className={styles.inputAreaWrapper}>
-          {/* Attached Google Doc chip */}
-          {(attachDocLoading || attachedDoc || attachDocError) && (
+          {/* Attached Google Drive file chip */}
+          {(attachLoading || attachedFile || attachError) && (
             <div className={styles.docChip}>
-              {attachDocLoading && (
-                <span className={styles.docChipLoading}>📄 Reading doc…</span>
+              {attachLoading && (
+                <span className={styles.docChipLoading}>📎 Reading file…</span>
               )}
-              {attachDocError && !attachDocLoading && (
-                <span className={styles.docChipError}>⚠ {attachDocError}
-                  <button className={styles.docChipRemove} onClick={() => setAttachDocError('')}>✕</button>
+              {attachError && !attachLoading && (
+                <span className={styles.docChipError}>⚠ {attachError}
+                  <button className={styles.docChipRemove} onClick={() => setAttachError('')}>✕</button>
                 </span>
               )}
-              {attachedDoc && !attachDocLoading && (
+              {attachedFile && !attachLoading && (
                 <>
-                  <span className={styles.docChipIcon}>📄</span>
-                  <span className={styles.docChipTitle}>{attachedDoc.title}</span>
+                  <span className={styles.docChipIcon}>📎</span>
+                  <span className={styles.docChipTitle}>{attachedFile.title}</span>
+                  <span className={styles.docChipKind}>{fileTypeLabel(attachedFile.mimeType)}</span>
                   <button
                     className={styles.docChipRemove}
-                    onClick={() => { setAttachedDoc(null); setAttachDocError(''); }}
-                    title="Remove attached doc"
+                    onClick={() => { setAttachedFile(null); setAttachError(''); }}
+                    title="Remove attached file"
                   >✕</button>
                 </>
               )}
@@ -968,31 +987,27 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
           )}
 
           <div className={styles.inputRow}>
+            {driveToken && (
+              <button
+                className={styles.driveBtn}
+                onClick={() => setShowDrivePicker(true)}
+                disabled={loading || attachLoading}
+                title="Attach a file from Google Drive"
+              >📁</button>
+            )}
             <input
               className={styles.textInput}
-              placeholder={attachedDoc ? `Ask about "${attachedDoc.title}"…` : 'Message Soma… (paste a Google Doc link to attach it)'}
+              placeholder={attachedFile ? `Ask about "${attachedFile.title}"…` : driveToken ? 'Message Soma… (attach a Drive file or paste a link)' : 'Message Soma…'}
               value={input}
               disabled={loading}
               onChange={e => {
                 const value = e.target.value;
-                // Detect Google Doc URL — fetch content and strip URL from input
-                if (gdocsToken && !attachedDoc && !attachDocLoading) {
-                  const docId = extractGoogleDocId(value);
-                  if (docId) {
-                    setInput(stripGoogleDocUrl(value));
-                    setAttachDocLoading(true);
-                    setAttachDocError('');
-                    readGoogleDoc(gdocsToken, docId)
-                      .then(({ title, content }) => setAttachedDoc({ id: docId, title, content }))
-                      .catch((err: Error) => {
-                        const msg = err.message === 'no_access'
-                          ? "Can't access this doc — make sure it's shared or set to 'Anyone with the link'."
-                          : err.message === 'not_found' ? 'Doc not found.'
-                          : err.message === 'google_token_expired' ? 'Google token expired — reconnect in Settings.'
-                          : 'Could not read doc. Try again.';
-                        setAttachDocError(msg);
-                      })
-                      .finally(() => setAttachDocLoading(false));
+                // Detect a pasted Google file URL — attach it and strip the URL from input
+                if (driveToken && !attachedFile && !attachLoading) {
+                  const fileId = extractDriveFileId(value);
+                  if (fileId) {
+                    setInput(stripGoogleFileUrl(value));
+                    attachDriveFile(fileId);
                     return;
                   }
                 }
@@ -1000,21 +1015,29 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
               }}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
             />
-            {gdocsToken && (
+            {driveToken && (
               <button
                 className={`${styles.saveDocToggleBtn}${saveAsDocMode ? ` ${styles.saveDocToggleBtnActive}` : ''}`}
                 onClick={() => setSaveAsDocMode(p => !p)}
-                title={saveAsDocMode ? 'Auto-save to Google Docs: ON — click to turn off' : 'Click to auto-save AI responses to Google Docs'}
+                title={saveAsDocMode ? 'Auto-save responses to Google Docs: ON — click to turn off' : 'Click to auto-save AI responses to Google Docs'}
               >📄</button>
             )}
             <button
               className={styles.sendBtn}
               onClick={send}
-              disabled={loading || (!input.trim() && !attachedDoc)}
+              disabled={loading || (!input.trim() && !attachedFile)}
             >Send</button>
           </div>
         </div>
       </div>
+
+      {showDrivePicker && driveToken && (
+        <DriveFilePicker
+          googleToken={driveToken}
+          onPick={onPickDriveFile}
+          onClose={() => setShowDrivePicker(false)}
+        />
+      )}
     </div>
   );
 }
