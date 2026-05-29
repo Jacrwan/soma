@@ -825,6 +825,40 @@
   cursor: not-allowed;
 }
 
+/* ── Danger zone layout ── */
+
+.dangerZoneActions {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dangerZoneItem {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.dangerZoneText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dangerZoneName {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.dangerZoneDesc {
+  font-size: 12px;
+  color: var(--text-muted);
+  max-width: 340px;
+  line-height: 1.5;
+}
+
 /* ── Theme toggle ── */
 
 .themeToggle {

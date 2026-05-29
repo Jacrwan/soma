@@ -557,6 +557,35 @@ export const storage = {
     await supabase.from('settings').upsert({ user_id: id, data: settings });
   },
 
+  // ── Clear all local browser data ────────────────────────────────────
+  clearLocalData(): void {
+    // Canvas cache
+    localStorage.removeItem(KEYS.cachedAssignments);
+    localStorage.removeItem(KEYS.cachedIcalAssignments);
+    localStorage.removeItem(KEYS.cachedCourses);
+    localStorage.removeItem(KEYS.cachedAnnouncements);
+    localStorage.removeItem(KEYS.cachedModules);
+    localStorage.removeItem(KEYS.cacheTimestamp);
+    localStorage.removeItem(KEYS.canvasBaseUrl);
+    localStorage.removeItem(KEYS.canvasIcalUrl);
+    localStorage.removeItem(KEYS.assignmentStatus);
+    localStorage.removeItem(KEYS.clearedAssignments);
+    localStorage.removeItem(KEYS.canvasCourseNames);
+    // Google
+    localStorage.removeItem(KEYS.googleEvents);
+    localStorage.removeItem(KEYS.googleCacheTimestamp);
+    localStorage.removeItem(KEYS.googleClientId);
+    // Study plan cache
+    localStorage.removeItem('soma_canvas_study_plan_preview');
+    // App preferences / theme
+    localStorage.removeItem(SOMA_SETTINGS_KEY);
+    // In-memory token cache
+    _canvasToken = '';
+    _canvasIcalUrl = '';
+    _googleToken = '';
+    _googleDocsToken = '';
+  },
+
   async cleanupTestBlocks(taskName: string): Promise<void> {
     const allBlocks = storage.getTimeBlocks();
     const toDelete = allBlocks.filter(b => b.task === taskName && b.timerSessionId);

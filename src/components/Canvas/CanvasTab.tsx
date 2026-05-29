@@ -326,10 +326,7 @@ export default function CanvasTab() {
   const [token, setToken] = useState(() => storage.getCanvasToken());
   const [baseUrl, setBaseUrl] = useState(() => storage.getCanvasBaseUrl());
   const [icalUrl, setIcalUrl] = useState(() => storage.getCanvasIcalUrl());
-  const [setupUrl, setSetupUrl] = useState('');
-  const [setupToken, setSetupToken] = useState('');
   const [setupIcalUrl, setSetupIcalUrl] = useState('');
-  const [setupMode, setSetupMode] = useState<'ical' | 'token'>('ical');
   const [connectLoading, setConnectLoading] = useState(false);
   const [connectError, setConnectError] = useState('');
   const [icalSyncing, setIcalSyncing] = useState(false);
@@ -510,43 +507,6 @@ export default function CanvasTab() {
     }
   }
 
-  async function handleConnect() {
-    const tk = setupToken.trim();
-    if (!setupUrl.trim() || !tk) return;
-    setConnectLoading(true);
-    setConnectError('');
-    try {
-      const url = new URL(setupUrl.trim()).origin;
-      let res: Response;
-      if (import.meta.env.DEV) {
-        res = await fetch(`/canvas-api/api/v1/courses?per_page=1`, {
-          headers: { Authorization: `Bearer ${tk}` },
-        });
-      } else {
-        const { data: { session } } = await supabase.auth.getSession();
-        const sbToken = session?.access_token ?? '';
-        res = await fetch('/api/canvas', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${sbToken}`,
-          },
-          body: JSON.stringify({ canvasUrl: url, token: tk, endpoint: '/api/v1/courses?per_page=1' }),
-        });
-      }
-      if (!res.ok) throw new Error('bad');
-      storage.setCanvasToken(tk);
-      storage.setCanvasBaseUrl(url);
-      setToken(tk);
-      setBaseUrl(url);
-      loadData(tk, url);
-    } catch {
-      setConnectError('Invalid token or URL.');
-    } finally {
-      setConnectLoading(false);
-    }
-  }
-
   async function handleConnectIcal() {
     const url = setupIcalUrl.trim();
     if (!url) return;
@@ -721,88 +681,31 @@ Rules:
       <div className={styles.setupOverlay}>
         <div className={styles.setupCard}>
           <span className={styles.setupTitle}>Connect Canvas</span>
-          <div className={styles.setupTabs}>
-            <button
-              className={`${styles.setupTab}${setupMode === 'ical' ? ` ${styles.setupTabActive}` : ''}`}
-              onClick={() => { setSetupMode('ical'); setConnectError(''); }}
-            >Calendar Feed <span className={styles.setupBadge}>Recommended</span></button>
-            <button
-              className={`${styles.setupTab}${setupMode === 'token' ? ` ${styles.setupTabActive}` : ''}`}
-              onClick={() => { setSetupMode('token'); setConnectError(''); }}
-            >Access Token</button>
+          <div className={styles.setupHintNoBorder}>
+            Paste your Canvas calendar feed URL to sync assignment due dates — no token needed.
           </div>
-
-          {setupMode === 'ical' ? (
-            <>
-              <div className={styles.setupHintNoBorder}>
-                No token needed. Paste your Canvas calendar feed URL to sync assignment due dates.
-              </div>
-              <div className={styles.setupField}>
-                <label className={styles.setupLabel}>Canvas Calendar Feed URL</label>
-                <input
-                  className={styles.setupInput}
-                  placeholder="https://school.instructure.com/feeds/calendars/user_...ics"
-                  value={setupIcalUrl}
-                  onChange={e => setSetupIcalUrl(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') handleConnectIcal(); }}
-                />
-              </div>
-              {connectError && <span className={styles.setupError}>{connectError}</span>}
-              <button
-                className={styles.setupBtn}
-                onClick={handleConnectIcal}
-                disabled={connectLoading || !setupIcalUrl.trim()}
-              >
-                {connectLoading ? 'Connecting…' : 'Connect'}
-              </button>
-              <div className={styles.setupHint}>
-                <strong>How to get your calendar URL:</strong><br />
-                Canvas → Calendar → scroll to bottom right → Calendar Feed → copy the link
-              </div>
-            </>
-          ) : (
-            <>
-              <div className={styles.setupField}>
-                <label className={styles.setupLabel}>Canvas URL</label>
-                <input
-                  className={styles.setupInput}
-                  placeholder="https://school.instructure.com"
-                  value={setupUrl}
-                  onChange={e => setSetupUrl(e.target.value)}
-                />
-              </div>
-              <div className={styles.setupHint}>
-                Use your Canvas root URL, like https://school.instructure.com, https://canvas.school.edu, or a branded Canvas domain.
-              </div>
-              <div className={styles.setupField}>
-                <label className={styles.setupLabel}>API Token</label>
-                <input
-                  className={styles.setupInput}
-                  type="password"
-                  placeholder="Paste your token"
-                  value={setupToken}
-                  onChange={e => setSetupToken(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') handleConnect(); }}
-                />
-              </div>
-              {connectError && <span className={styles.setupError}>{connectError}</span>}
-              <button
-                className={styles.setupBtn}
-                onClick={handleConnect}
-                disabled={connectLoading || !setupUrl.trim() || !setupToken.trim()}
-              >
-                {connectLoading ? 'Connecting…' : 'Connect'}
-              </button>
-              <div className={styles.setupHint}>
-                <strong>How to get your token:</strong><br />
-                Canvas → Account → Settings →<br />
-                Approved Integrations → New Access Token
-              </div>
-              <div className={styles.setupHint}>
-                Soma does not store your Canvas API token on our servers. It stays in your browser and is only used for read-only Canvas requests.
-              </div>
-            </>
-          )}
+          <div className={styles.setupField}>
+            <label className={styles.setupLabel}>Canvas Calendar Feed URL</label>
+            <input
+              className={styles.setupInput}
+              placeholder="https://school.instructure.com/feeds/calendars/user_...ics"
+              value={setupIcalUrl}
+              onChange={e => setSetupIcalUrl(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleConnectIcal(); }}
+            />
+          </div>
+          {connectError && <span className={styles.setupError}>{connectError}</span>}
+          <button
+            className={styles.setupBtn}
+            onClick={handleConnectIcal}
+            disabled={connectLoading || !setupIcalUrl.trim()}
+          >
+            {connectLoading ? 'Connecting…' : 'Connect'}
+          </button>
+          <div className={styles.setupHint}>
+            <strong>How to get your calendar URL:</strong><br />
+            Canvas → Calendar → scroll to bottom right → Calendar Feed → copy the link
+          </div>
         </div>
       </div>
     );
