@@ -145,7 +145,10 @@ export function useGoogleFolderPicker(
 
     const { DocsView, ViewId, PickerBuilder, Action } = window.google.picker;
 
-    const folderView = new DocsView(ViewId.FOLDERS);
+    const folderView = new DocsView(ViewId.DOCS)
+      .setIncludeFolders(true)
+      .setSelectFolderEnabled(true)
+      .setMimeTypes('application/vnd.google-apps.folder');
 
     new PickerBuilder()
       .setTitle('Choose a study folder')
