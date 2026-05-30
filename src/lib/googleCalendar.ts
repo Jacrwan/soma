@@ -1,6 +1,6 @@
 import { GoogleCalendarEvent } from '../types';
 
-const GCAL_CACHE_MAX_AGE = 15 * 60 * 1000;
+const GCAL_CACHE_MAX_AGE = 86_400_000;
 
 export async function getEvents(
   token: string,
@@ -27,13 +27,11 @@ export async function getEvents(
 
 export function getWeekRange(): { timeMin: string; timeMax: string } {
   const now = new Date();
-  const day = now.getDay();
-  const mon = new Date(now);
-  mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
-  mon.setHours(0, 0, 0, 0);
-  const sun = new Date(mon);
-  sun.setDate(mon.getDate() + 7);
-  return { timeMin: mon.toISOString(), timeMax: sun.toISOString() };
+  const past = new Date(now);
+  past.setFullYear(now.getFullYear() - 1);
+  const future = new Date(now);
+  future.setFullYear(now.getFullYear() + 1);
+  return { timeMin: past.toISOString(), timeMax: future.toISOString() };
 }
 
 export function isCacheStale(timestamp: number | null): boolean {
