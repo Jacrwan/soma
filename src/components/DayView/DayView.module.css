@@ -1413,6 +1413,74 @@
   justify-content: flex-end;
 }
 
+/* ── Assignments due section ───────────────────────────────────────────── */
+
+.assignmentsDueSection {
+  margin-bottom: 8px;
+  border-bottom: 1px solid oklch(95% 0.005 265);
+  padding-bottom: 6px;
+}
+
+.assignmentsDueHeader {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 8px 14px 4px;
+}
+
+.assignmentDueRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  transition: background 0.1s;
+}
+
+.assignmentDueRow:hover { background: oklch(97% 0.003 265); }
+
+.assignmentDueInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.assignmentDueName {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assignmentDueCourse {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.assignmentDueAddBtn {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.assignmentDueAddBtn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 /* ── Unified subject+todo list ─────────────────────────────────────────── */
 
 .subjectGroup {
@@ -2868,6 +2936,11 @@
 /* Block modal info panel */
 [data-theme="dark"] .blockModalInfo { background: var(--bg); border-color: var(--border); }
 [data-theme="dark"] .subjectModalDestructive { border-color: var(--border); }
+
+/* Assignments due section */
+[data-theme="dark"] .assignmentsDueSection { border-color: var(--border); }
+[data-theme="dark"] .assignmentDueRow:hover { background: var(--bg-secondary); }
+[data-theme="dark"] .assignmentDueAddBtn { background: var(--bg-secondary); border-color: var(--border); }
 
 /* Subject group divider lines */
 [data-theme="dark"] .subjectGroup { border-color: var(--border); }

@@ -1508,6 +1508,22 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     setTaskModal({ subjectId: todo.subjectId, editingTodo: todo });
   }
 
+  function addAssignmentAsTodo(a: CanvasAssignment) {
+    const subject = subjects.find(s => s.name.toLowerCase() === a.courseName.toLowerCase());
+    const newTodo: Todo = {
+      id: crypto.randomUUID(),
+      text: a.name,
+      status: 'nothing',
+      subjectId: subject?.id,
+      assignmentId: a.id,
+      dueDate: a.dueAt ? new Date(a.dueAt).toLocaleDateString() : undefined,
+      date: selectedDateKey,
+    };
+    const updated = [...todos, newTodo];
+    storage.setTodos(updated);
+    setTodos(updated);
+  }
+
   function startTimerForTodo(todo: Todo) {
     const subject = subjects.find(s => s.id === todo.subjectId);
     if (!subject) return;
@@ -2240,6 +2256,30 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
 
         {!rightReady ? <RightPanelSkeleton /> : (
         <>
+
+        {(() => {
+          const linkedIds = new Set(dayTodos.map(t => t.assignmentId).filter(Boolean));
+          const unlinked = dueAssignments.filter(d => !linkedIds.has(d.assignment.id));
+          if (unlinked.length === 0) return null;
+          return (
+            <div className={styles.assignmentsDueSection}>
+              <div className={styles.assignmentsDueHeader}>Assignments due</div>
+              {unlinked.map(({ assignment: a, color }) => (
+                <div key={a.id} className={styles.assignmentDueRow}>
+                  <span className={styles.dotIndicator} style={{ background: color }} />
+                  <div className={styles.assignmentDueInfo}>
+                    <span className={styles.assignmentDueName}>{a.name}</span>
+                    <span className={styles.assignmentDueCourse}>{a.courseName}</span>
+                  </div>
+                  <button
+                    className={styles.assignmentDueAddBtn}
+                    onClick={() => addAssignmentAsTodo(a)}
+                  >+ Add</button>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
 
         {activeSubjects.length === 0 && (
           <div className={styles.emptySubjects}>Add a subject to get started.</div>
