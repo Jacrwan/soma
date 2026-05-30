@@ -43,6 +43,11 @@ export interface PickedFile {
   mimeType: string;
 }
 
+export interface PickedFolder {
+  id: string;
+  name: string;
+}
+
 /**
  * Returns an openPicker() function that launches Google's hosted file picker.
  * Uses drive.file scope — no drive.readonly, no audit.
@@ -100,6 +105,58 @@ export function useGooglePicker(
         if (data.action === Action.PICKED && data.docs?.[0]) {
           const f = data.docs[0];
           onPick({ id: f.id, name: f.name, mimeType: f.mimeType });
+        }
+      })
+      .build()
+      .setVisible(true);
+  }, [googleToken, onPick]);
+
+  return { openPicker };
+}
+
+/**
+ * Variant of useGooglePicker that lets the user select a single folder.
+ * Uses ViewId.FOLDERS so only folders are shown — no file noise.
+ * Same VITE_GOOGLE_API_KEY requirement as useGooglePicker.
+ */
+export function useGoogleFolderPicker(
+  googleToken: string,
+  onPick: (folder: PickedFolder) => void,
+) {
+  const pickerReady = useRef(false);
+
+  const openPicker = useCallback(async () => {
+    if (!googleToken) return;
+
+    const apiKey = import.meta.env.VITE_GOOGLE_API_KEY as string | undefined;
+    if (!apiKey) {
+      console.error('[Soma] VITE_GOOGLE_API_KEY is not set — cannot open Google Picker.');
+      return;
+    }
+
+    await loadScript('https://apis.google.com/js/api.js');
+
+    if (!pickerReady.current) {
+      await new Promise<void>(resolve => {
+        window.gapi.load('picker', { callback: resolve });
+      });
+      pickerReady.current = true;
+    }
+
+    const { DocsView, ViewId, PickerBuilder, Action } = window.google.picker;
+
+    const folderView = new DocsView(ViewId.FOLDERS);
+
+    new PickerBuilder()
+      .setTitle('Choose a study folder')
+      .setOAuthToken(googleToken)
+      .setDeveloperKey(apiKey)
+      .addView(folderView)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .setCallback((data: any) => {
+        if (data.action === Action.PICKED && data.docs?.[0]) {
+          const f = data.docs[0];
+          onPick({ id: f.id, name: f.name });
         }
       })
       .build()

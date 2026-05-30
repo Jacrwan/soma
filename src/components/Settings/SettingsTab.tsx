@@ -7,15 +7,8 @@ import { friendlyError } from '../../lib/errors';
 import { useSubscription, openBillingPortal } from '../../lib/subscription';
 import { getIcalAssignments } from '../../lib/canvas';
 import { listFolderFiles, FolderFile } from '../../lib/googleDrive';
+import { useGoogleFolderPicker, PickedFolder } from '../../lib/useGooglePicker';
 import styles from './SettingsTab.module.css';
-
-function parseFolderId(input: string): string | null {
-  const trimmed = input.trim();
-  const urlMatch = trimmed.match(/\/folders\/([a-zA-Z0-9_-]{10,})/);
-  if (urlMatch) return urlMatch[1];
-  if (/^[a-zA-Z0-9_-]{10,}$/.test(trimmed)) return trimmed;
-  return null;
-}
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 type Day = typeof DAYS[number];
@@ -65,7 +58,6 @@ export default function SettingsTab() {
   // Study folder state
   const [studyFolder, setStudyFolder] = useState<{ folderId: string; folderName: string } | null>(() => storage.getStudyFolder());
   const [studyFolderFiles, setStudyFolderFiles] = useState<FolderFile[]>([]);
-  const [studyFolderInput, setStudyFolderInput] = useState('');
   const [studyFolderLoading, setStudyFolderLoading] = useState(false);
   const [studyFolderError, setStudyFolderError] = useState('');
 
@@ -367,39 +359,32 @@ export default function SettingsTab() {
     window.dispatchEvent(new CustomEvent('soma_gdrive_updated'));
   }
 
-  async function connectStudyFolder() {
-    const folderId = parseFolderId(studyFolderInput);
-    if (!folderId) {
-      setStudyFolderError('Paste a Google Drive folder URL or ID.');
-      return;
-    }
+  function onFolderPick(picked: PickedFolder) {
     setStudyFolderLoading(true);
     setStudyFolderError('');
-    try {
-      const { folderName, files } = await listFolderFiles(gdriveToken, folderId);
-      const folder = { folderId, folderName };
-      storage.setStudyFolder(folder);
-      setStudyFolder(folder);
-      setStudyFolderFiles(files);
-      setStudyFolderInput('');
-    } catch (err: unknown) {
-      const e = err as Error;
-      setStudyFolderError(
-        e.message === 'no_access'            ? "Can't access that folder — make sure it's shared with your Google account."
-        : e.message === 'not_found'          ? 'Folder not found.'
-        : e.message === 'google_token_expired' ? 'Google access expired — reconnect Google Drive.'
-        : 'Could not read folder. Check the URL and try again.',
-      );
-    } finally {
-      setStudyFolderLoading(false);
-    }
+    listFolderFiles(gdriveToken, picked.id)
+      .then(({ folderName, files }) => {
+        const sf = { folderId: picked.id, folderName };
+        storage.setStudyFolder(sf);
+        setStudyFolder(sf);
+        setStudyFolderFiles(files);
+      })
+      .catch((err: Error) => {
+        setStudyFolderError(
+          err.message === 'no_access'             ? "Can't access that folder."
+          : err.message === 'google_token_expired' ? 'Google access expired — reconnect Google Drive.'
+          : 'Could not read folder. Try again.',
+        );
+      })
+      .finally(() => setStudyFolderLoading(false));
   }
+
+  const { openPicker: openFolderPicker } = useGoogleFolderPicker(gdriveToken, onFolderPick);
 
   function disconnectStudyFolder() {
     storage.setStudyFolder(null);
     setStudyFolder(null);
     setStudyFolderFiles([]);
-    setStudyFolderInput('');
     setStudyFolderError('');
   }
 
@@ -865,25 +850,14 @@ export default function SettingsTab() {
                       )}
                     </div>
                   ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <input
-                          className={styles.modalInput}
-                          style={{ flex: 1 }}
-                          placeholder="Paste a Drive folder URL or ID…"
-                          value={studyFolderInput}
-                          onChange={e => { setStudyFolderInput(e.target.value); setStudyFolderError(''); }}
-                          onKeyDown={e => { if (e.key === 'Enter') connectStudyFolder(); }}
-                          disabled={studyFolderLoading}
-                        />
-                        <button
-                          className={styles.connectBtn}
-                          onClick={connectStudyFolder}
-                          disabled={studyFolderLoading || !studyFolderInput.trim()}
-                        >
-                          {studyFolderLoading ? 'Connecting…' : 'Connect'}
-                        </button>
-                      </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <button
+                        className={styles.connectBtn}
+                        onClick={openFolderPicker}
+                        disabled={studyFolderLoading}
+                      >
+                        {studyFolderLoading ? 'Connecting…' : 'Choose study folder'}
+                      </button>
                       {studyFolderError && <span style={{ fontSize: 12, color: 'var(--error, #ef5350)' }}>{studyFolderError}</span>}
                     </div>
                   )}
