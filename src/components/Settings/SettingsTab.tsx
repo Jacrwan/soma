@@ -312,6 +312,8 @@ export default function SettingsTab() {
   async function connectGdrive() {
     const redirectUrl = new URL(window.location.origin + '/settings');
     redirectUrl.searchParams.set('source', 'gdrive');
+    const driveScopes = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/presentations';
+    console.log('[soma] connectGdrive OAuth scopes:', driveScopes);
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -319,7 +321,7 @@ export default function SettingsTab() {
         //                  (non-restricted scope — no audit required at any scale)
         // documents      → create new Google Docs (notes, answers, essays)
         // presentations  → create new Google Slides decks
-        scopes: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/presentations',
+        scopes: driveScopes,
         redirectTo: redirectUrl.toString(),
         queryParams: { access_type: 'offline', prompt: 'consent' },
       },

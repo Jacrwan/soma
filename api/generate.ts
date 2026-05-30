@@ -88,8 +88,9 @@ async function handleDocs(req: any, res: any, googleToken: string) {
 
   if (!createRes.ok) {
     if (createRes.status === 401) return res.status(401).json({ error: 'google_token_expired' });
-    console.error(JSON.stringify({ endpoint: '/api/generate', type: 'docs', event: 'create_failed', status: createRes.status }));
-    return res.status(502).json({ error: 'Failed to create document' });
+    const googleError = await createRes.text().catch(() => '(could not read body)');
+    console.error(JSON.stringify({ endpoint: '/api/generate', type: 'docs', event: 'create_failed', status: createRes.status, googleError }));
+    return res.status(502).json({ error: 'Failed to create document', googleStatus: createRes.status, googleError });
   }
 
   const doc = await createRes.json();
@@ -107,8 +108,9 @@ async function handleDocs(req: any, res: any, googleToken: string) {
   );
 
   if (!updateRes.ok) {
-    console.error(JSON.stringify({ endpoint: '/api/generate', type: 'docs', event: 'update_failed', status: updateRes.status }));
-    return res.status(502).json({ error: 'Failed to write to document' });
+    const googleError = await updateRes.text().catch(() => '(could not read body)');
+    console.error(JSON.stringify({ endpoint: '/api/generate', type: 'docs', event: 'update_failed', status: updateRes.status, googleError }));
+    return res.status(502).json({ error: 'Failed to write to document', googleStatus: updateRes.status, googleError });
   }
 
   return res.json({
@@ -141,7 +143,11 @@ async function handleSlides(req: any, res: any, googleToken: string) {
     body: JSON.stringify({ title: deckTitle }),
   });
   if (createRes.status === 401) return res.status(401).json({ error: 'google_token_expired' });
-  if (!createRes.ok) return res.status(502).json({ error: 'create_failed' });
+  if (!createRes.ok) {
+    const googleError = await createRes.text().catch(() => '(could not read body)');
+    console.error(JSON.stringify({ endpoint: '/api/generate', type: 'slides', event: 'create_failed', status: createRes.status, googleError }));
+    return res.status(502).json({ error: 'create_failed', googleStatus: createRes.status, googleError });
+  }
 
   const pres = await createRes.json() as { presentationId?: string; slides?: { objectId?: string }[] };
   const presentationId = pres.presentationId;
@@ -203,9 +209,12 @@ async function handleSlides(req: any, res: any, googleToken: string) {
     { method: 'POST', headers: gHeaders, body: JSON.stringify({ requests }) },
   );
   if (!updateRes.ok) {
-    console.error(JSON.stringify({ endpoint: '/api/generate', type: 'slides', event: 'update_failed', status: updateRes.status }));
+    const googleError = await updateRes.text().catch(() => '(could not read body)');
+    console.error(JSON.stringify({ endpoint: '/api/generate', type: 'slides', event: 'update_failed', status: updateRes.status, googleError }));
     return res.status(502).json({
       error: 'populate_failed',
+      googleStatus: updateRes.status,
+      googleError,
       presentationUrl: `https://docs.google.com/presentation/d/${presentationId}/edit`,
     });
   }
