@@ -3,7 +3,6 @@ import { storage } from '../../lib/storage';
 import { CanvasCourse, CanvasAssignment, CanvasAnnouncement, Subject, Todo } from '../../types';
 import { getCourses, getActiveAssignments, getAssignments, getAnnouncements, getModules, getGrades, getIcalAssignments } from '../../lib/canvas';
 import { sendMessage } from '../../lib/ai';
-import { supabase } from '../../lib/supabase';
 import { CanvasGrade } from '../../types';
 import AssignmentDetail from './AssignmentDetail';
 import { SkeletonBlock } from '../UI/Skeleton';
@@ -537,8 +536,6 @@ export default function CanvasTab() {
     setCourses([]);
     setAssignments([]);
     setSelectedCourseId(null);
-    setSetupUrl('');
-    setSetupToken('');
   }
 
   function updateStatus(id: number, status: string) {

@@ -4,7 +4,7 @@ import { storage } from '../../lib/storage';
 import { useSubscription, hasAIAccess } from '../../lib/subscription';
 import {
   CREATE_TEMPLATES, CreateTemplate, PreviewResult,
-  generatePreview, savePreviewToDrive, GenerateResult,
+  generatePreview, savePreviewToDrive,
 } from '../../lib/aiArtifacts';
 import { readDriveFile } from '../../lib/googleDrive';
 import { useGooglePicker, PickedFile } from '../../lib/useGooglePicker';
