@@ -54,7 +54,11 @@ export async function createGoogleDoc(
     throw new Error('auth_required');
   }
   if (res.status === 402) throw new Error('subscription_required');
-  if (!res.ok) throw new Error('docs_error');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string; googleStatus?: number };
+    if (body.googleStatus === 401) throw new Error('google_token_expired');
+    throw new Error(body.error || 'docs_error');
+  }
 
   return res.json();
 }
@@ -84,14 +88,14 @@ export async function createGoogleSlides(
   }
   if (res.status === 402) throw new Error('subscription_required');
   if (!res.ok) {
-    // populate_failed still returns a URL — surface it via a typed error
-    const body = await res.json().catch(() => ({})) as { error?: string; presentationUrl?: string };
+    const body = await res.json().catch(() => ({})) as { error?: string; presentationUrl?: string; googleStatus?: number };
     if (body.presentationUrl) {
       const e = new Error('populate_failed') as Error & { presentationUrl?: string };
       e.presentationUrl = body.presentationUrl;
       throw e;
     }
-    throw new Error('slides_error');
+    if (body.googleStatus === 401) throw new Error('google_token_expired');
+    throw new Error(body.error || 'slides_error');
   }
 
   return res.json();

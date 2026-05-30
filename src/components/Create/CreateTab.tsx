@@ -153,11 +153,16 @@ export default function CreateTab() {
   }
 
   async function handleSaveToDrive() {
-    if (!preview || !driveToken) return;
+    if (!preview) return;
+    const freshToken = storage.getGoogleDriveToken();
+    if (!freshToken) {
+      setError('Google Drive not connected — reconnect in Settings.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
-      const result = await savePreviewToDrive(preview, driveToken);
+      const result = await savePreviewToDrive(preview, freshToken);
       const creation: SavedCreation = {
         id: crypto.randomUUID(),
         kind: result.kind,
@@ -178,7 +183,11 @@ export default function CreateTab() {
           ? 'Google access expired — reconnect Google Drive in Settings.'
           : msg.message === 'subscription_required'
           ? 'Your subscription has expired.'
-          : 'Failed to save to Drive. Please try again.',
+          : msg.message === 'auth_required'
+          ? 'Please sign in again.'
+          : msg.message === 'docs_error' || msg.message === 'slides_error'
+          ? 'Google could not create the file — try reconnecting Google Drive in Settings.'
+          : `Failed to save to Drive: ${msg.message}`,
       );
     } finally {
       setSaving(false);
