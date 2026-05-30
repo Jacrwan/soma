@@ -154,7 +154,7 @@ async function handleFile(req: any, res: any, googleToken: string) {
       error: 'unsupported_type',
       title,
       mimeType,
-      hint: 'This file type can't be read as text yet. For PDFs or Word/PowerPoint files, open them in Google Docs/Slides first (File → Open with → Google Docs), then attach that.',
+      hint: `This file type can't be read as text yet. For PDFs or Word/PowerPoint files, open them in Google Docs/Slides first (File → Open with → Google Docs), then attach that.`,
     });
   }
 
