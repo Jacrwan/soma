@@ -1330,19 +1330,33 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       const now = new Date();
       const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
       const todayKey = getTodayKey();
-      const threeDaysMs = now.getTime() + 3 * 24 * 60 * 60 * 1000;
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      const threeDaysMs = todayStart + 4 * 24 * 60 * 60 * 1000;
+      const sevenDaysAgoMs = todayStart - 7 * 24 * 60 * 60 * 1000;
       const allSubjects = storage.getSubjects();
       const assignmentStatuses = storage.getAssignmentStatus();
       const clearedAssignments = storage.getClearedAssignments();
-      const soonAssignments = storage.getCachedAssignments().filter(a => {
-        if (new Date(a.dueAt).getTime() > threeDaysMs) return false;
+      const allAssignments = storage.getCachedAssignments().filter(a => {
+        if (!a.dueAt) return false;
         if (a.submittedAt) return false;
         if (assignmentStatuses[a.id] === 'done') return false;
         if (clearedAssignments[a.id]) return false;
         return true;
       });
-      const assignmentsStr = soonAssignments.length > 0
-        ? soonAssignments.map(a => `• ${a.name} (${a.courseName}) — due ${new Date(a.dueAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`).join('\n')
+      const fmtDue = (d: Date) => d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      const overdue = allAssignments.filter(a => {
+        const due = new Date(a.dueAt).getTime();
+        return due < todayStart && due >= sevenDaysAgoMs;
+      });
+      const upcoming = allAssignments.filter(a => {
+        const due = new Date(a.dueAt).getTime();
+        return due >= todayStart && due < threeDaysMs;
+      });
+      const overdueStr = overdue.length > 0
+        ? overdue.map(a => `• ${a.name} (${a.courseName}) — was due ${fmtDue(new Date(a.dueAt))}`).join('\n')
+        : 'None';
+      const upcomingStr = upcoming.length > 0
+        ? upcoming.map(a => `• ${a.name} (${a.courseName}) — due ${fmtDue(new Date(a.dueAt))}`).join('\n')
         : 'None';
       const allTodos = storage.getTodos().filter(t => t.date === getTodayKey() && t.status !== 'done');
       const incompleteTodos = allTodos.length;
@@ -1355,10 +1369,13 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       const gcalStr = todayGcal.length > 0
         ? todayGcal.map(e => `• ${e.summary ?? '(No title)'}${e.start.dateTime ? ` (${fmtTime(e.start.dateTime)})` : ''}`).join('\n')
         : 'None';
-      const userMsg = `Today is ${dateStr}.
+      const userMsg = `Today is ${dateStr}. All dates below are absolute — do NOT say an assignment is "due tomorrow" unless its due date is literally tomorrow's date.
 
-Assignments due within 3 days:
-${assignmentsStr}
+OVERDUE assignments (past due, not yet submitted):
+${overdueStr}
+
+UPCOMING assignments (due today or within next 3 days):
+${upcomingStr}
 
 Today's schedule:
 ${gcalStr}
@@ -1366,7 +1383,7 @@ ${gcalStr}
 Incomplete todos: ${incompleteTodos} total
 ${topTodos || '(none)'}
 
-Write a brief daily summary with bullet points highlighting what to focus on today.`;
+Write a brief daily summary with bullet points highlighting what to focus on today. Clearly distinguish overdue items from upcoming ones. Use the exact due dates, never say "tomorrow" or "today" unless the date actually matches.`;
       const text = await sendMessage(
         [{ role: 'user', content: userMsg }],
         'You are a concise daily assistant for a student. Generate a focused daily briefing. Use 1 short sentence of context, then bullet points for today\'s priorities. Keep it under 6 bullet points. No markdown headers, no bold, just plain bullet points with • character. Be warm and direct.',
