@@ -1332,7 +1332,15 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       const todayKey = getTodayKey();
       const threeDaysMs = now.getTime() + 3 * 24 * 60 * 60 * 1000;
       const allSubjects = storage.getSubjects();
-      const soonAssignments = storage.getCachedAssignments().filter(a => new Date(a.dueAt).getTime() <= threeDaysMs);
+      const assignmentStatuses = storage.getAssignmentStatus();
+      const clearedAssignments = storage.getClearedAssignments();
+      const soonAssignments = storage.getCachedAssignments().filter(a => {
+        if (new Date(a.dueAt).getTime() > threeDaysMs) return false;
+        if (a.submittedAt) return false;
+        if (assignmentStatuses[a.id] === 'done') return false;
+        if (clearedAssignments[a.id]) return false;
+        return true;
+      });
       const assignmentsStr = soonAssignments.length > 0
         ? soonAssignments.map(a => `• ${a.name} (${a.courseName}) — due ${new Date(a.dueAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}`).join('\n')
         : 'None';
@@ -2259,7 +2267,15 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
 
         {(() => {
           const linkedIds = new Set(dayTodos.map(t => t.assignmentId).filter(Boolean));
-          const unlinked = dueAssignments.filter(d => !linkedIds.has(d.assignment.id));
+          const aStatuses = storage.getAssignmentStatus();
+          const aCleared = storage.getClearedAssignments();
+          const unlinked = dueAssignments.filter(d => {
+            if (linkedIds.has(d.assignment.id)) return false;
+            if (d.assignment.submittedAt) return false;
+            if (aStatuses[d.assignment.id] === 'done') return false;
+            if (aCleared[d.assignment.id]) return false;
+            return true;
+          });
           if (unlinked.length === 0) return null;
           return (
             <div className={styles.assignmentsDueSection}>
