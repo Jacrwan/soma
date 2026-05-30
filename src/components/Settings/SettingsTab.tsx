@@ -333,7 +333,7 @@ export default function SettingsTab() {
   async function connectGdrive() {
     const redirectUrl = new URL(window.location.origin + '/settings');
     redirectUrl.searchParams.set('source', 'gdrive');
-    const driveScopes = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/presentations';
+    const driveScopes = 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/presentations';
     console.log('[soma] connectGdrive OAuth scopes:', driveScopes);
     await supabase.auth.signInWithOAuth({
       provider: 'google',
