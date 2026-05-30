@@ -157,11 +157,8 @@ ${DOC_FORMAT}`,
 
 export interface GenerateInput {
   template: CreateTemplate;
-  /** Human-readable description of the source, used for context + title fallback. */
   sourceLabel: string;
-  /** The material the artifact is built from (topic text, assignment text, file contents…). */
   sourceContext: string;
-  /** Optional extra instructions from the user. */
   instructions?: string;
   driveToken: string;
 }
@@ -172,8 +169,16 @@ export interface GenerateResult {
   url: string;
 }
 
-export async function generateArtifact(input: GenerateInput): Promise<GenerateResult> {
-  const { template, sourceLabel, sourceContext, instructions, driveToken } = input;
+export interface PreviewResult {
+  kind: ArtifactKind;
+  title: string;
+  rawContent: string;
+  docSpec?: CreateDocSpec;
+  slidesSpec?: CreateSlidesSpec;
+}
+
+export async function generatePreview(input: Omit<GenerateInput, 'driveToken'>): Promise<PreviewResult> {
+  const { template, sourceLabel, sourceContext, instructions } = input;
 
   const systemPrompt = `You are Soma, a study assistant that generates polished study materials for a student.
 You write directly and substantively — never ask follow-up questions, never add commentary outside the required block.
@@ -196,18 +201,36 @@ ${template.instruction}`;
   if (template.output === 'slides') {
     const spec = parseCreateSlides(response);
     if (!spec) throw new Error('generation_failed');
-    try {
-      const { presentationUrl } = await createGoogleSlides(driveToken, spec.title, spec.slides);
-      return { kind: 'slides', title: spec.title, url: presentationUrl };
-    } catch (err: unknown) {
-      const e = err as Error & { presentationUrl?: string };
-      if (e.presentationUrl) return { kind: 'slides', title: spec.title, url: e.presentationUrl };
-      throw err;
-    }
+    return { kind: 'slides', title: spec.title, rawContent: response, slidesSpec: spec };
   }
 
   const spec = parseCreateDoc(response);
   if (!spec) throw new Error('generation_failed');
-  const { docUrl } = await createGoogleDoc(driveToken, spec.title, spec.content);
-  return { kind: 'doc', title: spec.title, url: docUrl };
+  return { kind: 'doc', title: spec.title, rawContent: response, docSpec: spec };
+}
+
+export async function savePreviewToDrive(
+  preview: PreviewResult,
+  driveToken: string,
+): Promise<GenerateResult> {
+  if (preview.kind === 'slides' && preview.slidesSpec) {
+    try {
+      const { presentationUrl } = await createGoogleSlides(driveToken, preview.slidesSpec.title, preview.slidesSpec.slides);
+      return { kind: 'slides', title: preview.title, url: presentationUrl };
+    } catch (err: unknown) {
+      const e = err as Error & { presentationUrl?: string };
+      if (e.presentationUrl) return { kind: 'slides', title: preview.title, url: e.presentationUrl };
+      throw err;
+    }
+  }
+  if (preview.docSpec) {
+    const { docUrl } = await createGoogleDoc(driveToken, preview.docSpec.title, preview.docSpec.content);
+    return { kind: 'doc', title: preview.title, url: docUrl };
+  }
+  throw new Error('generation_failed');
+}
+
+export async function generateArtifact(input: GenerateInput): Promise<GenerateResult> {
+  const preview = await generatePreview(input);
+  return savePreviewToDrive(preview, input.driveToken);
 }

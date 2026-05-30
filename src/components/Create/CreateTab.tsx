@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { useSubscription, hasAIAccess } from '../../lib/subscription';
 import {
-  CREATE_TEMPLATES, CreateTemplate, generateArtifact, GenerateResult,
+  CREATE_TEMPLATES, CreateTemplate, PreviewResult,
+  generatePreview, savePreviewToDrive, GenerateResult,
 } from '../../lib/aiArtifacts';
 import { readDriveFile } from '../../lib/googleDrive';
 import { useGooglePicker, PickedFile } from '../../lib/useGooglePicker';
@@ -12,9 +13,29 @@ import styles from './CreateTab.module.css';
 
 type SourceType = 'topic' | 'assignment' | 'subject' | 'file';
 
-interface ResultItem extends GenerateResult { id: string }
+interface SavedCreation {
+  id: string;
+  kind: 'doc' | 'slides';
+  title: string;
+  url: string;
+  templateLabel: string;
+  sourceLabel: string;
+  createdAt: string;
+}
 
+const HISTORY_KEY = 'soma_create_history';
+const MAX_HISTORY = 30;
 const MAX_FILE_CHARS = 12_000;
+
+function loadHistory(): SavedCreation[] {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+  } catch { return []; }
+}
+
+function saveHistory(items: SavedCreation[]) {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(0, MAX_HISTORY)));
+}
 
 export default function CreateTab() {
   const navigate = useNavigate();
@@ -37,12 +58,18 @@ export default function CreateTab() {
   const [instructions, setInstructions] = useState('');
 
   const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [results, setResults] = useState<ResultItem[]>([]);
+  const [preview, setPreview] = useState<PreviewResult | null>(null);
+  const [history, setHistory] = useState<SavedCreation[]>(loadHistory);
+
+  const previewRef = useRef<HTMLDivElement>(null);
+  const topicRef = useRef<HTMLInputElement>(null);
 
   function pickTemplate(t: CreateTemplate) {
     setTemplate(t);
     setError('');
+    setPreview(null);
   }
 
   function onPickFile(f: PickedFile) {
@@ -52,7 +79,7 @@ export default function CreateTab() {
   const { openPicker } = useGooglePicker(driveToken, onPickFile);
 
   const canGenerate = (() => {
-    if (!template || generating || !driveToken) return false;
+    if (!template || generating || saving) return false;
     if (sourceType === 'topic') return topic.trim().length > 1;
     if (sourceType === 'assignment') return assignmentId != null;
     if (sourceType === 'subject') return !!subjectId;
@@ -60,7 +87,7 @@ export default function CreateTab() {
     return false;
   })();
 
-  async function buildSource(): Promise<{ label: string; context: string }> {
+  const buildSource = useCallback(async (): Promise<{ label: string; context: string }> => {
     if (sourceType === 'topic') {
       return { label: topic.trim(), context: '' };
     }
@@ -84,29 +111,29 @@ export default function CreateTab() {
         : '';
       return { label: s.name, context: ctx };
     }
-    // file
     if (!driveFile) return { label: 'a file', context: '' };
     const { title, content } = await readDriveFile(driveToken, driveFile.id);
     const trimmed = content.length > MAX_FILE_CHARS
       ? `${content.slice(0, MAX_FILE_CHARS)}\n\n[Truncated — file is long]`
       : content;
     return { label: title, context: `Contents of "${title}":\n${trimmed}` };
-  }
+  }, [sourceType, topic, assignments, assignmentId, subjects, subjectId, driveFile, driveToken]);
 
   async function handleGenerate() {
     if (!template || !canGenerate) return;
     setGenerating(true);
     setError('');
+    setPreview(null);
     try {
       const { label, context } = await buildSource();
-      const result = await generateArtifact({
+      const result = await generatePreview({
         template,
         sourceLabel: label,
         sourceContext: context,
         instructions,
-        driveToken,
       });
-      setResults(prev => [{ ...result, id: crypto.randomUUID() }, ...prev]);
+      setPreview(result);
+      setTimeout(() => previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
     } catch (err: unknown) {
       const msg = err as Error;
       setError(
@@ -125,7 +152,105 @@ export default function CreateTab() {
     }
   }
 
-  // ── Gates ──────────────────────────────────────────────────────────────────
+  async function handleSaveToDrive() {
+    if (!preview || !driveToken) return;
+    setSaving(true);
+    setError('');
+    try {
+      const result = await savePreviewToDrive(preview, driveToken);
+      const creation: SavedCreation = {
+        id: crypto.randomUUID(),
+        kind: result.kind,
+        title: result.title,
+        url: result.url,
+        templateLabel: template?.label || '',
+        sourceLabel: sourceType === 'topic' ? topic.trim() : '',
+        createdAt: new Date().toISOString(),
+      };
+      const updated = [creation, ...history];
+      setHistory(updated);
+      saveHistory(updated);
+      setPreview(null);
+    } catch (err: unknown) {
+      const msg = err as Error;
+      setError(
+        msg.message === 'google_token_expired'
+          ? 'Google access expired — reconnect Google Drive in Settings.'
+          : msg.message === 'subscription_required'
+          ? 'Your subscription has expired.'
+          : 'Failed to save to Drive. Please try again.',
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey && canGenerate && !preview) {
+      e.preventDefault();
+      handleGenerate();
+    }
+  }
+
+  function clearHistory() {
+    setHistory([]);
+    localStorage.removeItem(HISTORY_KEY);
+  }
+
+  useEffect(() => {
+    if (template && sourceType === 'topic') topicRef.current?.focus();
+  }, [template, sourceType]);
+
+  function renderPreviewContent() {
+    if (!preview) return null;
+    if (preview.kind === 'slides' && preview.slidesSpec) {
+      return (
+        <div className={styles.previewSlides}>
+          {preview.slidesSpec.slides.map((slide, i) => (
+            <div key={i} className={styles.slideCard}>
+              <span className={styles.slideNumber}>{i + 1}</span>
+              <div className={styles.slideContent}>
+                <h4 className={styles.slideTitle}>{slide.title}</h4>
+                <ul className={styles.slideBullets}>
+                  {slide.bullets.map((b, j) => <li key={j}>{b}</li>)}
+                </ul>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    if (preview.docSpec) {
+      return (
+        <div className={styles.previewDoc}>
+          {preview.docSpec.content.split('\n').map((line, i) => {
+            if (!line.trim()) return <br key={i} />;
+            const isBold = line.startsWith('**') && line.endsWith('**');
+            const isHeading = /^[A-Z][^a-z]*$/.test(line.trim()) || isBold;
+            const isBullet = line.trimStart().startsWith('- ') || line.trimStart().startsWith('• ');
+            if (isHeading) return <h4 key={i} className={styles.previewHeading}>{line.replace(/\*\*/g, '')}</h4>;
+            if (isBullet) return <p key={i} className={styles.previewBullet}>{line.replace(/^[\s]*[-•]\s*/, '')}</p>;
+            return <p key={i} className={styles.previewPara}>{line}</p>;
+          })}
+        </div>
+      );
+    }
+    return null;
+  }
+
+  function formatTimeAgo(iso: string): string {
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 60_000);
+    if (mins < 1) return 'Just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    if (days === 1) return 'Yesterday';
+    if (days < 7) return `${days}d ago`;
+    return new Date(iso).toLocaleDateString();
+  }
+
   if (subscription.status === 'loading') {
     return <div className={styles.container}><div className={styles.gateCard}>Loading…</div></div>;
   }
@@ -168,7 +293,9 @@ export default function CreateTab() {
               <span className={styles.templateIcon}>{t.icon}</span>
               <span className={styles.templateLabel}>{t.label}</span>
               <span className={styles.templateDesc}>{t.description}</span>
-              <span className={styles.templateBadge}>{t.output === 'slides' ? 'Slides' : 'Doc'}</span>
+              <span className={`${styles.templateBadge} ${t.output === 'slides' ? styles.templateBadgeSlides : ''}`}>
+                {t.output === 'slides' ? 'Slides' : 'Doc'}
+              </span>
             </button>
           ))}
         </div>
@@ -188,7 +315,7 @@ export default function CreateTab() {
               <button
                 key={key}
                 className={`${styles.segBtn}${sourceType === key ? ` ${styles.segBtnActive}` : ''}`}
-                onClick={() => { setSourceType(key); setError(''); }}
+                onClick={() => { setSourceType(key); setError(''); setPreview(null); }}
               >{label}</button>
             ))}
           </div>
@@ -196,10 +323,12 @@ export default function CreateTab() {
           <div className={styles.sourceInput}>
             {sourceType === 'topic' && (
               <input
+                ref={topicRef}
                 className={styles.input}
                 placeholder="e.g. Photosynthesis, the French Revolution, derivatives…"
                 value={topic}
                 onChange={e => setTopic(e.target.value)}
+                onKeyDown={handleKeyDown}
               />
             )}
             {sourceType === 'assignment' && (
@@ -238,7 +367,7 @@ export default function CreateTab() {
                   <button className={styles.secondaryBtn} onClick={() => openPicker()}>
                     {driveFile ? 'Change file' : 'Choose from Drive'}
                   </button>
-                  {driveFile && <span className={styles.fileChip}>📎 {driveFile.title}</span>}
+                  {driveFile && <span className={styles.fileChip}>{driveFile.title}</span>}
                 </div>
               ) : (
                 <span className={styles.emptyNote}>Connect Google Drive to attach a file.</span>
@@ -256,41 +385,84 @@ export default function CreateTab() {
 
           <div className={styles.generateRow}>
             <button className={styles.primaryBtn} onClick={handleGenerate} disabled={!canGenerate}>
-              {generating ? 'Generating…' : `Create ${template.output === 'slides' ? 'Slides' : 'Doc'}`}
+              {generating ? 'Generating…' : preview ? 'Regenerate' : `Generate ${template.output === 'slides' ? 'Slides' : 'Doc'}`}
             </button>
             {error && <span className={styles.error}>{error}</span>}
           </div>
         </section>
       )}
 
-      {/* Results */}
-      {(generating || results.length > 0) && (
+      {/* Generating skeleton */}
+      {generating && (
         <section className={styles.section}>
-          <span className={styles.stepLabel}>Created</span>
+          <span className={styles.stepLabel}>Generating…</span>
+          <div className={styles.skeleton}>
+            <div className={`${styles.skeletonLine} ${styles.skeletonWide}`} />
+            <div className={`${styles.skeletonLine} ${styles.skeletonMed}`} />
+            <div className={`${styles.skeletonLine} ${styles.skeletonWide}`} />
+            <div className={`${styles.skeletonLine} ${styles.skeletonShort}`} />
+            <div className={`${styles.skeletonLine} ${styles.skeletonWide}`} />
+            <div className={`${styles.skeletonLine} ${styles.skeletonMed}`} />
+          </div>
+        </section>
+      )}
+
+      {/* Preview */}
+      {preview && !generating && (
+        <section className={styles.section} ref={previewRef}>
+          <span className={styles.stepLabel}>Preview</span>
+          <div className={styles.previewCard}>
+            <div className={styles.previewHeader}>
+              <span className={styles.previewIcon}>{preview.kind === 'slides' ? '📊' : '📄'}</span>
+              <h3 className={styles.previewTitle}>{preview.title}</h3>
+            </div>
+            <div className={styles.previewBody}>
+              {renderPreviewContent()}
+            </div>
+            <div className={styles.previewActions}>
+              <button
+                className={styles.primaryBtn}
+                onClick={handleSaveToDrive}
+                disabled={saving || !driveToken}
+              >
+                {saving ? 'Saving…' : `Save to Google ${preview.kind === 'slides' ? 'Slides' : 'Docs'}`}
+              </button>
+              <button
+                className={styles.secondaryBtn}
+                onClick={handleGenerate}
+                disabled={generating}
+              >
+                Regenerate
+              </button>
+              <button className={styles.ghostBtn} onClick={() => setPreview(null)}>Discard</button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* History */}
+      {history.length > 0 && (
+        <section className={styles.section}>
+          <div className={styles.historyHeader}>
+            <span className={styles.stepLabel}>Recent</span>
+            <button className={styles.ghostBtn} onClick={clearHistory}>Clear</button>
+          </div>
           <div className={styles.resultList}>
-            {generating && (
-              <div className={styles.resultCard}>
-                <span className={styles.resultIcon}>{template?.output === 'slides' ? '📊' : '📄'}</span>
-                <div className={styles.resultInfo}>
-                  <span className={styles.resultTitle}>Working on it…</span>
-                  <span className={styles.resultStatus}>Generating and saving to Google {template?.output === 'slides' ? 'Slides' : 'Docs'}</span>
-                </div>
-              </div>
-            )}
-            {results.map(r => (
+            {history.map(r => (
               <div key={r.id} className={styles.resultCard}>
                 <span className={styles.resultIcon}>{r.kind === 'slides' ? '📊' : '📄'}</span>
                 <div className={styles.resultInfo}>
                   <span className={styles.resultTitle}>{r.title}</span>
-                  <span className={styles.resultStatus}>Created in Google {r.kind === 'slides' ? 'Slides' : 'Docs'}</span>
+                  <span className={styles.resultStatus}>
+                    {r.templateLabel} · {formatTimeAgo(r.createdAt)}
+                  </span>
                 </div>
-                <a className={styles.openBtn} href={r.url} target="_blank" rel="noopener noreferrer">Open ↗</a>
+                <a className={styles.openBtn} href={r.url} target="_blank" rel="noopener noreferrer">Open</a>
               </div>
             ))}
           </div>
         </section>
       )}
-
     </div>
   );
 }
