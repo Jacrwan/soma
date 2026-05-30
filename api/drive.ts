@@ -3,6 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 
 export const config = { api: { bodyParser: { sizeLimit: '20kb' } } };
 
+const FILE_CHAR_LIMIT = 8_000;
+const MAX_FOLDER_FILES = 20;
+
 const ALLOWED_ORIGINS = [
   'https://somastudy.app',
   ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:5173'] : []),
@@ -198,6 +201,92 @@ async function handleFile(req: any, res: any, googleToken: string) {
   return res.status(200).json({ title, mimeType, content });
 }
 
+// Returns { content, truncated } for supported types, null to skip unsupported.
+async function readFileContent(
+  fileId: string,
+  mimeType: string,
+  gHeaders: { Authorization: string },
+): Promise<{ content: string; truncated: boolean } | null> {
+  let raw = '';
+
+  if (mimeType === 'application/vnd.google-apps.document') {
+    const docRes = await fetch(
+      `https://docs.googleapis.com/v1/documents/${encodeURIComponent(fileId)}`,
+      { headers: gHeaders },
+    );
+    if (!docRes.ok) return null;
+    raw = extractText(await docRes.json());
+  } else if (
+    mimeType === 'application/vnd.google-apps.spreadsheet' ||
+    mimeType === 'application/vnd.google-apps.presentation' ||
+    mimeType === 'application/pdf'
+  ) {
+    const exportMime = mimeType === 'application/vnd.google-apps.spreadsheet' ? 'text/csv' : 'text/plain';
+    const expRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent(exportMime)}`,
+      { headers: gHeaders },
+    );
+    if (!expRes.ok) return null;
+    raw = await expRes.text();
+  } else if (mimeType.startsWith('text/') || mimeType === 'application/rtf') {
+    const dlRes = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`,
+      { headers: gHeaders },
+    );
+    if (!dlRes.ok) return null;
+    raw = await dlRes.text();
+  } else {
+    return null;
+  }
+
+  raw = raw.replace(/\r\n/g, '\n').trim();
+  const truncated = raw.length > FILE_CHAR_LIMIT;
+  return { content: truncated ? raw.slice(0, FILE_CHAR_LIMIT) : raw, truncated };
+}
+
+async function handleFolderContents(req: any, res: any, googleToken: string) {
+  const { folderId } = req.body as { folderId?: string };
+  if (!folderId || typeof folderId !== 'string') {
+    return res.status(400).json({ error: 'Missing folderId' });
+  }
+  if (!/^[a-zA-Z0-9_-]{10,}$/.test(folderId)) {
+    return res.status(400).json({ error: 'Invalid folderId' });
+  }
+
+  const gHeaders = { Authorization: `Bearer ${googleToken}` };
+
+  const params = new URLSearchParams({
+    q: `'${folderId}' in parents and trashed=false`,
+    fields: 'files(id,name,mimeType)',
+    pageSize: String(MAX_FOLDER_FILES),
+  });
+  const listRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files?${params}`,
+    { headers: gHeaders },
+  );
+  if (listRes.status === 401) return res.status(401).json({ error: 'google_token_expired' });
+  if (listRes.status === 403) return res.status(403).json({ error: 'no_access' });
+  if (!listRes.ok)            return res.status(502).json({ error: 'google_error' });
+
+  const data = await listRes.json() as { files?: { id: string; name: string; mimeType: string }[] };
+  const listed = (data.files ?? []).slice(0, MAX_FOLDER_FILES);
+
+  const results: { id: string; name: string; mimeType: string; content: string; truncated: boolean }[] = [];
+
+  for (const file of listed) {
+    const read = await readFileContent(file.id, file.mimeType, gHeaders);
+    results.push({
+      id: file.id,
+      name: file.name,
+      mimeType: file.mimeType,
+      content: read?.content ?? '[Cannot extract text from this file type]',
+      truncated: read?.truncated ?? false,
+    });
+  }
+
+  return res.status(200).json({ files: results });
+}
+
 export default async function handler(req: any, res: any) {
   if (applyCors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -224,10 +313,11 @@ export default async function handler(req: any, res: any) {
   const type = req.query?.type as string | undefined;
 
   try {
-    if (type === 'doc')    return await handleDoc(req, res, googleToken);
-    if (type === 'file')   return await handleFile(req, res, googleToken);
-    if (type === 'folder') return await handleFolder(req, res, googleToken);
-    return res.status(400).json({ error: 'type query param must be "doc", "file", or "folder"' });
+    if (type === 'doc')             return await handleDoc(req, res, googleToken);
+    if (type === 'file')            return await handleFile(req, res, googleToken);
+    if (type === 'folder')          return await handleFolder(req, res, googleToken);
+    if (type === 'folder-contents') return await handleFolderContents(req, res, googleToken);
+    return res.status(400).json({ error: 'type query param must be "doc", "file", "folder", or "folder-contents"' });
   } catch {
     return res.status(500).json({ error: 'internal_error' });
   }
