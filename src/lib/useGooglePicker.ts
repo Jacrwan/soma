@@ -159,7 +159,7 @@ export function useGoogleFolderPicker(
       .setCallback((data: any) => {
         if (data.action === Action.PICKED && data.docs?.[0]) {
           const f = data.docs[0];
-          onPick({ id: f.id, name: f.name });
+          onPick({ id: f.id, name: f.name, mimeType: f.mimeType });
         }
       })
       .build()
