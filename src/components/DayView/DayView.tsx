@@ -1332,29 +1332,13 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       const todayKey = getTodayKey();
       const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
       const threeDaysMs = todayStart + 4 * 24 * 60 * 60 * 1000;
-      const sevenDaysAgoMs = todayStart - 7 * 24 * 60 * 60 * 1000;
       const allSubjects = storage.getSubjects();
-      const assignmentStatuses = storage.getAssignmentStatus();
-      const clearedAssignments = storage.getClearedAssignments();
-      const allAssignments = storage.getCachedAssignments().filter(a => {
-        if (!a.dueAt) return false;
-        if (a.submittedAt) return false;
-        if (assignmentStatuses[a.id] === 'done') return false;
-        if (clearedAssignments[a.id]) return false;
-        return true;
-      });
       const fmtDue = (d: Date) => d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      const overdue = allAssignments.filter(a => {
-        const due = new Date(a.dueAt).getTime();
-        return due < todayStart && due >= sevenDaysAgoMs;
-      });
-      const upcoming = allAssignments.filter(a => {
+      const upcoming = storage.getCachedAssignments().filter(a => {
+        if (!a.dueAt) return false;
         const due = new Date(a.dueAt).getTime();
         return due >= todayStart && due < threeDaysMs;
       });
-      const overdueStr = overdue.length > 0
-        ? overdue.map(a => `• ${a.name} (${a.courseName}) — was due ${fmtDue(new Date(a.dueAt))}`).join('\n')
-        : 'None';
       const upcomingStr = upcoming.length > 0
         ? upcoming.map(a => `• ${a.name} (${a.courseName}) — due ${fmtDue(new Date(a.dueAt))}`).join('\n')
         : 'None';
@@ -1369,12 +1353,9 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       const gcalStr = todayGcal.length > 0
         ? todayGcal.map(e => `• ${e.summary ?? '(No title)'}${e.start.dateTime ? ` (${fmtTime(e.start.dateTime)})` : ''}`).join('\n')
         : 'None';
-      const userMsg = `Today is ${dateStr}. All dates below are absolute — do NOT say an assignment is "due tomorrow" unless its due date is literally tomorrow's date.
+      const userMsg = `Today is ${dateStr}.
 
-OVERDUE assignments (past due, not yet submitted):
-${overdueStr}
-
-UPCOMING assignments (due today or within next 3 days):
+Upcoming assignments (due today or within next 3 days):
 ${upcomingStr}
 
 Today's schedule:
