@@ -131,7 +131,7 @@ export default async function handler(req: any, res: any) {
     }
 
     const doc = await createRes.json();
-    const documentId: string = doc.documentId;
+    const documentId: string = (doc as any).documentId;
 
     const updateRes = await fetch(
       `https://docs.googleapis.com/v1/documents/${documentId}:batchUpdate`,
