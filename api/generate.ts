@@ -89,8 +89,9 @@ async function handleDocs(req: any, res: any, googleToken: string) {
   if (!createRes.ok) {
     if (createRes.status === 401) return res.status(401).json({ error: 'google_token_expired' });
     const googleError = await createRes.text().catch(() => '(could not read body)');
-    console.error(JSON.stringify({ endpoint: '/api/generate', type: 'docs', event: 'create_failed', status: createRes.status, googleError }));
-    return res.status(502).json({ error: 'Failed to create document', googleStatus: createRes.status, googleError });
+    const tokenPreview = googleToken ? googleToken.slice(0, 20) + '...' : '(empty)';
+    console.error(JSON.stringify({ endpoint: '/api/generate', type: 'docs', event: 'create_failed', status: createRes.status, tokenPreview, googleError }));
+    return res.status(502).json({ error: 'Failed to create document', googleStatus: createRes.status, tokenPreview, googleError });
   }
 
   const doc = await createRes.json();
