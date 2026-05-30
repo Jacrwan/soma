@@ -45,6 +45,32 @@ export async function readDriveFile(
 }
 
 
+export interface FolderFile {
+  id: string;
+  name: string;
+  mimeType: string;
+}
+
+export async function listFolderFiles(
+  googleToken: string,
+  folderId: string,
+): Promise<{ folderName: string; files: FolderFile[] }> {
+  const token = await getSupabaseToken();
+  const res = await fetch('/api/drive?type=folder', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ folderId, googleToken }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string };
+    throw mapStatusError(res.status, body);
+  }
+  return res.json() as Promise<{ folderName: string; files: FolderFile[] }>;
+}
+
 // Friendly label for a Drive mimeType.
 export function fileTypeLabel(mimeType: string): string {
   if (mimeType === 'application/vnd.google-apps.document') return 'Doc';

@@ -6,7 +6,16 @@ import { supabase } from '../../lib/supabase';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, openBillingPortal } from '../../lib/subscription';
 import { getIcalAssignments } from '../../lib/canvas';
+import { listFolderFiles, FolderFile } from '../../lib/googleDrive';
 import styles from './SettingsTab.module.css';
+
+function parseFolderId(input: string): string | null {
+  const trimmed = input.trim();
+  const urlMatch = trimmed.match(/\/folders\/([a-zA-Z0-9_-]{10,})/);
+  if (urlMatch) return urlMatch[1];
+  if (/^[a-zA-Z0-9_-]{10,}$/.test(trimmed)) return trimmed;
+  return null;
+}
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 type Day = typeof DAYS[number];
@@ -53,6 +62,13 @@ export default function SettingsTab() {
   // Google Drive integration state (unified: reads Drive files + creates Docs)
   const [gdriveToken, setGdriveToken] = useState(() => storage.getGoogleDriveToken());
 
+  // Study folder state
+  const [studyFolder, setStudyFolder] = useState<{ folderId: string; folderName: string } | null>(() => storage.getStudyFolder());
+  const [studyFolderFiles, setStudyFolderFiles] = useState<FolderFile[]>([]);
+  const [studyFolderInput, setStudyFolderInput] = useState('');
+  const [studyFolderLoading, setStudyFolderLoading] = useState(false);
+  const [studyFolderError, setStudyFolderError] = useState('');
+
   // On mount (and after OAuth redirect back), pull provider_token from session.
   // Uses ?source=gcal / ?source=gdrive to distinguish which token to save.
   useEffect(() => {
@@ -81,6 +97,19 @@ export default function SettingsTab() {
         clearSourceParam();
       }
     });
+  }, []);
+
+  // Load study folder file list on mount if already connected
+  useEffect(() => {
+    const folder = storage.getStudyFolder();
+    const token = storage.getGoogleDriveToken();
+    if (folder && token) {
+      setStudyFolderLoading(true);
+      listFolderFiles(token, folder.folderId)
+        .then(({ files }) => setStudyFolderFiles(files))
+        .catch(() => {})
+        .finally(() => setStudyFolderLoading(false));
+    }
   }, []);
 
   // Load profile info
@@ -331,8 +360,47 @@ export default function SettingsTab() {
   function disconnectGdrive() {
     storage.setGoogleDriveToken('');
     storage.setGoogleDocsToken(''); // clear legacy docs token too
+    storage.setStudyFolder(null);
     setGdriveToken('');
+    setStudyFolder(null);
+    setStudyFolderFiles([]);
     window.dispatchEvent(new CustomEvent('soma_gdrive_updated'));
+  }
+
+  async function connectStudyFolder() {
+    const folderId = parseFolderId(studyFolderInput);
+    if (!folderId) {
+      setStudyFolderError('Paste a Google Drive folder URL or ID.');
+      return;
+    }
+    setStudyFolderLoading(true);
+    setStudyFolderError('');
+    try {
+      const { folderName, files } = await listFolderFiles(gdriveToken, folderId);
+      const folder = { folderId, folderName };
+      storage.setStudyFolder(folder);
+      setStudyFolder(folder);
+      setStudyFolderFiles(files);
+      setStudyFolderInput('');
+    } catch (err: unknown) {
+      const e = err as Error;
+      setStudyFolderError(
+        e.message === 'no_access'            ? "Can't access that folder — make sure it's shared with your Google account."
+        : e.message === 'not_found'          ? 'Folder not found.'
+        : e.message === 'google_token_expired' ? 'Google access expired — reconnect Google Drive.'
+        : 'Could not read folder. Check the URL and try again.',
+      );
+    } finally {
+      setStudyFolderLoading(false);
+    }
+  }
+
+  function disconnectStudyFolder() {
+    storage.setStudyFolder(null);
+    setStudyFolder(null);
+    setStudyFolderFiles([]);
+    setStudyFolderInput('');
+    setStudyFolderError('');
   }
 
   const navItems: [Section, string][] = [
@@ -769,6 +837,58 @@ export default function SettingsTab() {
                   )}
                 </div>
               </div>
+
+              {gdriveToken && (
+                <div className={styles.integrationRow} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 10 }}>
+                  <div className={styles.integrationInfo}>
+                    <span className={styles.integrationLabel}>Study Folder</span>
+                    <span className={styles.integrationDescription}>Connect a Google Drive folder so Soma can see its contents</span>
+                  </div>
+                  {studyFolder ? (
+                    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span className={styles.connectedBadge}>{studyFolder.folderName}</span>
+                        <span style={{ fontSize: 12, opacity: 0.55 }}>
+                          {studyFolderLoading ? 'Loading…' : `${studyFolderFiles.length} file${studyFolderFiles.length !== 1 ? 's' : ''}`}
+                        </span>
+                        <button className={styles.disconnectBtn} onClick={disconnectStudyFolder} style={{ marginLeft: 'auto' }}>Disconnect</button>
+                      </div>
+                      {!studyFolderLoading && studyFolderFiles.length > 0 && (
+                        <div style={{ fontSize: 12, opacity: 0.6, display: 'flex', flexDirection: 'column', gap: 3, paddingLeft: 2 }}>
+                          {studyFolderFiles.map(f => (
+                            <span key={f.id}>📄 {f.name}</span>
+                          ))}
+                        </div>
+                      )}
+                      {!studyFolderLoading && studyFolderFiles.length === 0 && (
+                        <span style={{ fontSize: 12, opacity: 0.5 }}>Folder is empty.</span>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, width: '100%' }}>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <input
+                          className={styles.modalInput}
+                          style={{ flex: 1 }}
+                          placeholder="Paste a Drive folder URL or ID…"
+                          value={studyFolderInput}
+                          onChange={e => { setStudyFolderInput(e.target.value); setStudyFolderError(''); }}
+                          onKeyDown={e => { if (e.key === 'Enter') connectStudyFolder(); }}
+                          disabled={studyFolderLoading}
+                        />
+                        <button
+                          className={styles.connectBtn}
+                          onClick={connectStudyFolder}
+                          disabled={studyFolderLoading || !studyFolderInput.trim()}
+                        >
+                          {studyFolderLoading ? 'Connecting…' : 'Connect'}
+                        </button>
+                      </div>
+                      {studyFolderError && <span style={{ fontSize: 12, color: 'var(--error, #ef5350)' }}>{studyFolderError}</span>}
+                    </div>
+                  )}
+                </div>
+              )}
 
             </div>
           </section>

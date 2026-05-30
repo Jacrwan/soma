@@ -99,6 +99,45 @@ async function handleDoc(req: any, res: any, googleToken: string) {
   return res.status(200).json({ title, content });
 }
 
+async function handleFolder(req: any, res: any, googleToken: string) {
+  const { folderId } = req.body as { folderId?: string };
+  if (!folderId || typeof folderId !== 'string') {
+    return res.status(400).json({ error: 'Missing folderId' });
+  }
+  if (!/^[a-zA-Z0-9_-]{10,}$/.test(folderId)) {
+    return res.status(400).json({ error: 'Invalid folderId' });
+  }
+
+  const gHeaders = { Authorization: `Bearer ${googleToken}` };
+
+  const metaRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(folderId)}?fields=id,name`,
+    { headers: gHeaders },
+  );
+  if (metaRes.status === 401) return res.status(401).json({ error: 'google_token_expired' });
+  if (metaRes.status === 403) return res.status(403).json({ error: 'no_access' });
+  if (metaRes.status === 404) return res.status(404).json({ error: 'not_found' });
+  if (!metaRes.ok)            return res.status(502).json({ error: 'google_error' });
+  const meta = await metaRes.json() as { name?: string };
+  const folderName: string = meta.name ?? 'Untitled folder';
+
+  const params = new URLSearchParams({
+    q: `'${folderId}' in parents and trashed=false`,
+    fields: 'files(id,name,mimeType)',
+    pageSize: '100',
+  });
+  const listRes = await fetch(
+    `https://www.googleapis.com/drive/v3/files?${params}`,
+    { headers: gHeaders },
+  );
+  if (listRes.status === 401) return res.status(401).json({ error: 'google_token_expired' });
+  if (listRes.status === 403) return res.status(403).json({ error: 'no_access' });
+  if (!listRes.ok)            return res.status(502).json({ error: 'google_error' });
+
+  const data = await listRes.json() as { files?: { id: string; name: string; mimeType: string }[] };
+  return res.status(200).json({ folderName, files: data.files ?? [] });
+}
+
 async function handleFile(req: any, res: any, googleToken: string) {
   const { fileId } = req.body as { fileId?: string };
   if (!fileId || typeof fileId !== 'string') {
@@ -192,9 +231,10 @@ export default async function handler(req: any, res: any) {
   const type = req.query?.type as string | undefined;
 
   try {
-    if (type === 'doc')  return await handleDoc(req, res, googleToken);
-    if (type === 'file') return await handleFile(req, res, googleToken);
-    return res.status(400).json({ error: 'type query param must be "doc" or "file"' });
+    if (type === 'doc')    return await handleDoc(req, res, googleToken);
+    if (type === 'file')   return await handleFile(req, res, googleToken);
+    if (type === 'folder') return await handleFolder(req, res, googleToken);
+    return res.status(400).json({ error: 'type query param must be "doc", "file", or "folder"' });
   } catch {
     return res.status(500).json({ error: 'internal_error' });
   }

@@ -125,6 +125,7 @@ const KEYS = {
   chatSessions: 'soma_chat_sessions',
   activeSessionId: 'soma_active_session_id',
   canvasCourseNames: 'soma_canvas_course_names',
+  studyFolder: 'soma_study_folder',
 };
 
 function get<T>(key: string, fallback: T): T {
@@ -357,6 +358,15 @@ export const storage = {
 
   getGoogleCacheTimestamp: (): number | null => get<number | null>(KEYS.googleCacheTimestamp, null),
   setGoogleCacheTimestamp: (v: number) => set(KEYS.googleCacheTimestamp, v),
+
+  // ── Study folder (localStorage) ─────────────────────────────────────
+  getStudyFolder(): { folderId: string; folderName: string } | null {
+    return get<{ folderId: string; folderName: string } | null>(KEYS.studyFolder, null);
+  },
+  setStudyFolder(v: { folderId: string; folderName: string } | null): void {
+    if (v === null) localStorage.removeItem(KEYS.studyFolder);
+    else set(KEYS.studyFolder, v);
+  },
 
   // ── AI chat sessions (localStorage) ─────────────────────────────────
   getChatSessions: (): ChatSession[] => get(KEYS.chatSessions, []),
@@ -594,6 +604,8 @@ export const storage = {
     localStorage.removeItem(KEYS.googleClientId);
     // Study plan cache
     localStorage.removeItem('soma_canvas_study_plan_preview');
+    // Study folder
+    localStorage.removeItem(KEYS.studyFolder);
     // App preferences / theme
     localStorage.removeItem(SOMA_SETTINGS_KEY);
     // In-memory token cache
