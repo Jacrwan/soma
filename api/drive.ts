@@ -100,7 +100,7 @@ async function handleDoc(req: any, res: any, googleToken: string) {
 }
 
 async function handleFolder(req: any, res: any, googleToken: string) {
-  const { folderId } = req.body as { folderId?: string };
+  const { folderId, folderName: passedFolderName } = req.body as { folderId?: string; folderName?: string };
   if (!folderId || typeof folderId !== 'string') {
     return res.status(400).json({ error: 'Missing folderId' });
   }
@@ -108,18 +108,11 @@ async function handleFolder(req: any, res: any, googleToken: string) {
     return res.status(400).json({ error: 'Invalid folderId' });
   }
 
-  const gHeaders = { Authorization: `Bearer ${googleToken}` };
+  const folderName: string = (passedFolderName && typeof passedFolderName === 'string')
+    ? passedFolderName
+    : 'Untitled folder';
 
-  const metaRes = await fetch(
-    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(folderId)}?fields=id,name`,
-    { headers: gHeaders },
-  );
-  if (metaRes.status === 401) return res.status(401).json({ error: 'google_token_expired' });
-  if (metaRes.status === 403) return res.status(403).json({ error: 'no_access' });
-  if (metaRes.status === 404) return res.status(404).json({ error: 'not_found' });
-  if (!metaRes.ok)            return res.status(502).json({ error: 'google_error' });
-  const meta = await metaRes.json() as { name?: string };
-  const folderName: string = meta.name ?? 'Untitled folder';
+  const gHeaders = { Authorization: `Bearer ${googleToken}` };
 
   const params = new URLSearchParams({
     q: `'${folderId}' in parents and trashed=false`,

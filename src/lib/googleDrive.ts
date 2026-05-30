@@ -54,6 +54,7 @@ export interface FolderFile {
 export async function listFolderFiles(
   googleToken: string,
   folderId: string,
+  folderName?: string,
 ): Promise<{ folderName: string; files: FolderFile[] }> {
   const token = await getSupabaseToken();
   const res = await fetch('/api/drive?type=folder', {
@@ -62,7 +63,7 @@ export async function listFolderFiles(
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ folderId, googleToken }),
+    body: JSON.stringify({ folderId, folderName, googleToken }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { error?: string };

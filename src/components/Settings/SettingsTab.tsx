@@ -366,7 +366,7 @@ export default function SettingsTab() {
     }
     setStudyFolderLoading(true);
     setStudyFolderError('');
-    listFolderFiles(gdriveToken, picked.id)
+    listFolderFiles(gdriveToken, picked.id, picked.name)
       .then(({ folderName, files }) => {
         const sf = { folderId: picked.id, folderName };
         storage.setStudyFolder(sf);
