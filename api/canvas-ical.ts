@@ -300,13 +300,17 @@ export default async function handler(req: any, res: any) {
       const { assignmentId, courseId } = extractIds(e);
       const { courseName, assignmentName } = parseSummary(e.summary);
       const resolvedCourseId = courseId || simpleHash(`course:${courseName || 'Canvas'}`);
+      let htmlUrl = e.url;
+      if (courseId && assignmentId && !/\/assignments\//.test(e.url)) {
+        htmlUrl = `https://${parsedUrl.hostname}/courses/${courseId}/assignments/${assignmentId}`;
+      }
       return {
         id: assignmentId,
         name: assignmentName || e.summary,
         courseId: resolvedCourseId,
         courseName,
         dueAt: e.due || e.dtstart,
-        htmlUrl: e.url,
+        htmlUrl,
         status: 'not_started' as const,
         submittedAt: null,
         score: null,
