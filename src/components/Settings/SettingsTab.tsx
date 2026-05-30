@@ -360,6 +360,10 @@ export default function SettingsTab() {
   }
 
   function onFolderPick(picked: PickedFolder) {
+    if (picked.mimeType !== 'application/vnd.google-apps.folder') {
+      setStudyFolderError('Please select a folder, not a file.');
+      return;
+    }
     setStudyFolderLoading(true);
     setStudyFolderError('');
     listFolderFiles(gdriveToken, picked.id)

@@ -46,6 +46,7 @@ export interface PickedFile {
 export interface PickedFolder {
   id: string;
   name: string;
+  mimeType: string;
 }
 
 /**
@@ -147,8 +148,7 @@ export function useGoogleFolderPicker(
 
     const folderView = new DocsView(ViewId.DOCS)
       .setIncludeFolders(true)
-      .setSelectFolderEnabled(true)
-      .setMimeTypes('application/vnd.google-apps.folder');
+      .setSelectFolderEnabled(true);
 
     new PickerBuilder()
       .setTitle('Choose a study folder')
