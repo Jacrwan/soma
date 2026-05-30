@@ -176,9 +176,13 @@ function extractIds(event: IcalEvent): { assignmentId: number; courseId: number 
   const uidMatch = event.uid.match(/assignment_(\d+)/i);
   const assignmentId = uidMatch ? parseInt(uidMatch[1], 10) : simpleHash(event.uid);
 
-  // Try URL: /courses/123/assignments/456
-  const urlMatch = event.url.match(/\/courses\/(\d+)\//);
-  const courseId = urlMatch ? parseInt(urlMatch[1], 10) : 0;
+  // Try URL path: /courses/123/assignments/456
+  const urlPathMatch = event.url.match(/\/courses\/(\d+)\//);
+  // Try URL query: include_contexts=course_21576
+  const urlQueryMatch = event.url.match(/course_(\d+)/);
+  const courseId = urlPathMatch ? parseInt(urlPathMatch[1], 10)
+    : urlQueryMatch ? parseInt(urlQueryMatch[1], 10)
+    : 0;
 
   return { assignmentId, courseId };
 }
