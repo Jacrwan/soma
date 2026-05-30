@@ -11,7 +11,7 @@ export async function readGoogleDoc(
 ): Promise<{ title: string; content: string }> {
   const token = await getSupabaseToken();
 
-  const res = await fetch('/api/docs-read', {
+  const res = await fetch('/api/drive?type=doc', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -39,13 +39,13 @@ export async function createGoogleDoc(
 ): Promise<{ docId: string; docUrl: string }> {
   const token = await getSupabaseToken();
 
-  const res = await fetch('/api/docs', {
+  const res = await fetch('/api/generate', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ googleToken: googleDocsToken, title, content }),
+    body: JSON.stringify({ type: 'docs', googleToken: googleDocsToken, title, content }),
   });
 
   if (res.status === 401) {
@@ -68,13 +68,13 @@ export async function createGoogleSlides(
 ): Promise<{ presentationId: string; presentationUrl: string }> {
   const token = await getSupabaseToken();
 
-  const res = await fetch('/api/slides', {
+  const res = await fetch('/api/generate', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ googleToken, title, slides }),
+    body: JSON.stringify({ type: 'slides', googleToken, title, slides }),
   });
 
   if (res.status === 401) {

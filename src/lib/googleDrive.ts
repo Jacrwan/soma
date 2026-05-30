@@ -29,7 +29,7 @@ export async function readDriveFile(
   fileId: string,
 ): Promise<{ title: string; content: string; mimeType: string }> {
   const token = await getSupabaseToken();
-  const res = await fetch('/api/drive-read', {
+  const res = await fetch('/api/drive?type=file', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
