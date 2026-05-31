@@ -272,7 +272,7 @@ Their subjects: ${subjectsStr}
 
 Upcoming assignments (next 14 days):
 ${assignmentsStr}
-${folderSection ? `\nStudy Materials:\n${folderSection}\n` : ''}
+${folderSection ? `\nYou have full knowledge of the following study materials from the user's Google Drive folder. Reference them naturally when relevant, as if you've already read them:\n\n${folderSection}\n` : ''}
 User availability:
 ${availabilityStr || 'Not set — ask the user what time they want to start and end.'}
 
