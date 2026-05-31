@@ -7,6 +7,7 @@ import { createGoogleDoc, createGoogleSlides } from '../../lib/googleDocs';
 import { parseCreateDoc, parseCreateSlides, CREATE_TEMPLATES, generatePreview, CreateTemplate } from '../../lib/aiArtifacts';
 import { readDriveFile, fileTypeLabel, getFolderContentsForPrompt, readCachedFolderSection, getFolderContentsCacheTs, hasTruncatedFolderFiles } from '../../lib/googleDrive';
 import { useGooglePicker, PickedFile } from '../../lib/useGooglePicker';
+import { ensureFreshGoogleToken } from '../../lib/googleAuth';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, hasAIAccess, startTrial, startCheckout } from '../../lib/subscription';
 import { SavedCreation, loadCreateHistory, appendToCreateHistory, CREATE_HISTORY_EVENT } from '../../lib/createHistory';
@@ -1608,7 +1609,15 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
                     <div className={styles.quickFileRow}>
                       <button
                         className={styles.quickPickFileBtn}
-                        onClick={() => openQuickPicker()}
+                        onClick={async () => {
+                          setQuickError('');
+                          const fresh = await ensureFreshGoogleToken('googleDriveToken');
+                          if (!fresh) {
+                            setQuickError('Your Google connection has expired — please reconnect in Settings.');
+                            return;
+                          }
+                          openQuickPicker(fresh);
+                        }}
                         disabled={quickDriveLoading}
                       >
                         {quickDriveFile ? 'Change file' : 'Choose from Drive'}
@@ -1662,7 +1671,14 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
             {driveToken && (
               <button
                 className={styles.driveBtn}
-                onClick={() => openPicker()}
+                onClick={async () => {
+                  const fresh = await ensureFreshGoogleToken('googleDriveToken');
+                  if (!fresh) {
+                    setAttachError('Your Google connection has expired — please reconnect in Settings.');
+                    return;
+                  }
+                  openPicker(fresh);
+                }}
                 disabled={loading || attachLoading}
                 title="Attach a file from Google Drive"
               >📁</button>

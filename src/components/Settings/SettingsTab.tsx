@@ -8,6 +8,7 @@ import { useSubscription, openBillingPortal } from '../../lib/subscription';
 import { getIcalAssignments } from '../../lib/canvas';
 import { listFolderFiles, FolderFile, clearFolderContentsCache } from '../../lib/googleDrive';
 import { useGoogleFolderPicker, PickedFolder } from '../../lib/useGooglePicker';
+import { ensureFreshGoogleToken } from '../../lib/googleAuth';
 import styles from './SettingsTab.module.css';
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
@@ -861,7 +862,15 @@ export default function SettingsTab() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <button
                         className={styles.connectBtn}
-                        onClick={openFolderPicker}
+                        onClick={async () => {
+                          setStudyFolderError('');
+                          const fresh = await ensureFreshGoogleToken('googleDriveToken');
+                          if (!fresh) {
+                            setStudyFolderError('Your Google connection has expired — please reconnect in Settings → Integrations.');
+                            return;
+                          }
+                          openFolderPicker(fresh);
+                        }}
                         disabled={studyFolderLoading}
                       >
                         {studyFolderLoading ? 'Connecting…' : 'Choose study folder'}

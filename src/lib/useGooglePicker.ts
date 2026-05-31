@@ -78,8 +78,9 @@ export function useGooglePicker(
     };
   }, []);
 
-  const openPicker = useCallback(async () => {
-    if (!googleToken) return;
+  const openPicker = useCallback(async (tokenOverride?: string) => {
+    const token = tokenOverride ?? googleToken;
+    if (!token) return;
 
     const apiKey = import.meta.env.VITE_GOOGLE_API_KEY as string | undefined;
     if (!apiKey) {
@@ -113,7 +114,7 @@ export function useGooglePicker(
 
     const picker = new PickerBuilder()
       .setTitle('Choose a file to attach to Soma')
-      .setOAuthToken(googleToken)
+      .setOAuthToken(token)
       .setDeveloperKey(apiKey)
       .setOrigin(window.location.origin)
       .setRelayUrl(window.location.origin + '/')
@@ -164,8 +165,9 @@ export function useGoogleFolderPicker(
     };
   }, []);
 
-  const openPicker = useCallback(async () => {
-    if (!googleToken) return;
+  const openPicker = useCallback(async (tokenOverride?: string) => {
+    const token = tokenOverride ?? googleToken;
+    if (!token) return;
 
     const apiKey = import.meta.env.VITE_GOOGLE_API_KEY as string | undefined;
     if (!apiKey) {
@@ -190,7 +192,7 @@ export function useGoogleFolderPicker(
 
     const picker = new PickerBuilder()
       .setTitle('Choose a study folder')
-      .setOAuthToken(googleToken)
+      .setOAuthToken(token)
       .setDeveloperKey(apiKey)
       .setOrigin(window.location.origin)
       .setRelayUrl(window.location.origin + '/')
