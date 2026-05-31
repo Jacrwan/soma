@@ -67,9 +67,9 @@ function migrateLegacy(sessions: ChatSession[]): ChatSession[] {
   } catch { return sessions; }
 }
 
-function getOrCreateToday(sessions: ChatSession[]): { session: ChatSession; all: ChatSession[] } {
+function getOrCreateTodayForSubject(sessions: ChatSession[], subjectKey: string): { session: ChatSession; all: ChatSession[] } {
   const todayKey = getTodayKey();
-  const existing = sessions.find(s => s.date === todayKey);
+  const existing = sessions.find(s => s.date === todayKey && (s.subjectKey ?? 'general') === subjectKey);
   if (existing) return { session: existing, all: sessions };
   const session: ChatSession = {
     id: crypto.randomUUID(),
@@ -77,8 +77,13 @@ function getOrCreateToday(sessions: ChatSession[]): { session: ChatSession; all:
     title: makeSessionTitle(todayKey),
     messages: [],
     createdAt: new Date().toISOString(),
+    subjectKey,
   };
   return { session, all: [session, ...sessions] };
+}
+
+function getOrCreateToday(sessions: ChatSession[]): { session: ChatSession; all: ChatSession[] } {
+  return getOrCreateTodayForSubject(sessions, 'general');
 }
 
 // ── Message formatting ──────────────────────────────────────────────────────
@@ -163,7 +168,7 @@ function parseTodos(content: string): AiTodo[] | null {
 
 // ── System prompt ───────────────────────────────────────────────────────────
 
-function buildSystemPrompt(): string {
+function buildSystemPrompt(activeSubjectKey?: string): string {
   const subjects = storage.getSubjects();
   const assignments = storage.getCachedAssignments();
   const announcements = storage.getCachedAnnouncements();
@@ -265,8 +270,15 @@ function buildSystemPrompt(): string {
   ].filter(Boolean).join('\n\n');
   const availabilityStr = scheduleStr;
 
-  return `You are Soma, a personal study assistant. Help the user plan their day.
+  const activeSubject = activeSubjectKey && activeSubjectKey !== 'general'
+    ? subjects.find(s => `subject_${s.id}` === activeSubjectKey)
+    : null;
+  const subjectFocusStr = activeSubject
+    ? `\nThe user is currently in the ${activeSubject.name} chat. Prioritize ${activeSubject.name}-related questions and context in your responses when relevant.\n`
+    : '';
 
+  return `You are Soma, a personal study assistant. Help the user plan their day.
+${subjectFocusStr}
 Today is ${date}.
 
 Their subjects: ${subjectsStr}
@@ -580,14 +592,15 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     return fallback;
   });
 
-  const [currentSessionKey, _setCurrentSessionKey] = useState<string>('general');
-
-  // Used in Phase 2
-  function _getSessionKey(subjectId: string | null): string {
-    return subjectId ? `subject_${subjectId}` : 'general';
-  }
-  void _getSessionKey;
-  void _setCurrentSessionKey;
+  const [currentSubjectKey, setCurrentSubjectKey] = useState<string>(() => {
+    const savedId = storage.getActiveSessionId();
+    if (savedId) {
+      const all = storage.getChatSessions();
+      const saved = all.find(s => s.id === savedId);
+      if (saved?.subjectKey) return saved.subjectKey;
+    }
+    return 'general';
+  });
 
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -703,16 +716,22 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     }
   }
 
-  const systemPromptCache = useRef<{ prompt: string; canvasTs: number | null; dateKey: string; folderCacheTs: number } | null>(null);
+  const systemPromptCache = useRef<{ prompt: string; canvasTs: number | null; dateKey: string; folderCacheTs: number; subjectKey: string } | null>(null);
 
-  function getCachedSystemPrompt(): string {
+  function getCachedSystemPrompt(subjectKey: string): string {
     const canvasTs = storage.getCacheTimestamp();
     const dateKey = getTodayKey();
     const folderCacheTs = getFolderContentsCacheTs();
     const cached = systemPromptCache.current;
-    if (cached && cached.canvasTs === canvasTs && cached.dateKey === dateKey && cached.folderCacheTs === folderCacheTs) return cached.prompt;
-    const prompt = buildSystemPrompt();
-    systemPromptCache.current = { prompt, canvasTs, dateKey, folderCacheTs };
+    if (
+      cached &&
+      cached.canvasTs === canvasTs &&
+      cached.dateKey === dateKey &&
+      cached.folderCacheTs === folderCacheTs &&
+      cached.subjectKey === subjectKey
+    ) return cached.prompt;
+    const prompt = buildSystemPrompt(subjectKey);
+    systemPromptCache.current = { prompt, canvasTs, dateKey, folderCacheTs, subjectKey };
     return prompt;
   }
 
@@ -723,9 +742,12 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
 
   const sortedSessions = useMemo(
     () => [...sessions]
-      .filter(s => s.messages.length > 0 || s.id === activeSessionId)
+      .filter(s => {
+        const key = s.subjectKey ?? 'general';
+        return key === currentSubjectKey && (s.messages.length > 0 || s.id === activeSessionId);
+      })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    [sessions, activeSessionId],
+    [sessions, activeSessionId, currentSubjectKey],
   );
 
   useEffect(() => {
@@ -738,9 +760,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     setSessions(prev => {
       const next = prev.map(s => {
         if (s.id !== id) return s;
-        const updated = fn(s);
-        storage.setChatSessionV2(currentSessionKey, updated.messages);
-        return updated;
+        return fn(s);
       });
       storage.setChatSessions(next);
       return next;
@@ -754,6 +774,19 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     setInput('');
   }
 
+  function selectSubject(subjectKey: string) {
+    setCurrentSubjectKey(subjectKey);
+    setDeleteConfirmId(null);
+    setInput('');
+    const { session, all } = getOrCreateTodayForSubject(sessions, subjectKey);
+    if (all.length !== sessions.length) {
+      storage.setChatSessions(all);
+      setSessions(all);
+    }
+    setActiveSessionId(session.id);
+    storage.setActiveSessionId(session.id);
+  }
+
   function newChat() {
     const todayKey = getTodayKey();
     const session: ChatSession = {
@@ -762,6 +795,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       title: makeSessionTitle(todayKey),
       messages: [],
       createdAt: new Date().toISOString(),
+      subjectKey: currentSubjectKey,
     };
     setSessions(prev => {
       const next = [session, ...prev];
@@ -840,7 +874,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     try {
       const folderContentsResult = await getFolderContentsForPrompt(); // warm folder cache; buildSystemPrompt reads it synchronously
       console.log('[soma] getFolderContentsForPrompt result (first 200):', folderContentsResult.slice(0, 200) || '(empty)');
-      const systemPrompt = getCachedSystemPrompt();
+      const systemPrompt = getCachedSystemPrompt(currentSubjectKey);
       // For previous messages use stored content; for the current message use the doc-injected version
       const apiMessages = [
         ...messagesWithUser.slice(-10, -1).map(m => ({ role: m.role, content: m.content })),
@@ -970,6 +1004,27 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
           <span className={styles.sidebarTitle}>Chats</span>
           <button className={styles.newChatBtn} onClick={newChat} title="New chat">✎</button>
         </div>
+        {/* Subject picker */}
+        <div className={styles.subjectPicker}>
+          <button
+            className={`${styles.subjectPickerRow}${currentSubjectKey === 'general' ? ` ${styles.subjectPickerRowActive}` : ''}`}
+            onClick={() => selectSubject('general')}
+          >
+            <span className={styles.subjectDotGeneral} />
+            <span className={styles.subjectPickerLabel}>General</span>
+          </button>
+          {subjects.filter(s => !s.archived).map(s => (
+            <button
+              key={s.id}
+              className={`${styles.subjectPickerRow}${currentSubjectKey === `subject_${s.id}` ? ` ${styles.subjectPickerRowActive}` : ''}`}
+              onClick={() => selectSubject(`subject_${s.id}`)}
+            >
+              <SubjectDot color={s.color} size={8} />
+              <span className={styles.subjectPickerLabel}>{s.name}</span>
+            </button>
+          ))}
+        </div>
+
         <div className={styles.sessionList}>
           {!sidebarMounted ? <SessionListSkeleton /> : sortedSessions.map(session => (
             <SessionRow

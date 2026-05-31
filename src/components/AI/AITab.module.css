@@ -119,6 +119,59 @@
   background: var(--bg-secondary);
 }
 
+/* ── Subject picker ────────────────────────────────────────────────────── */
+
+.subjectPicker {
+  flex-shrink: 0;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.subjectPickerRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px var(--space-md);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: background 0.1s;
+}
+
+.subjectPickerRow:hover {
+  background: var(--bg-secondary);
+}
+
+.subjectPickerRowActive {
+  background: var(--bg-secondary);
+}
+
+.subjectPickerRowActive .subjectPickerLabel {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.subjectPickerLabel {
+  font-size: 13px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  font-weight: 400;
+}
+
+.subjectDotGeneral {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
 .sessionList {
   flex: 1;
   overflow-y: auto;

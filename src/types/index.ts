@@ -122,4 +122,5 @@ export interface ChatSession {
   title: string;
   messages: ChatMessage[];
   createdAt: string; // ISO
+  subjectKey?: string; // 'general' | 'subject_<id>' — undefined treated as 'general'
 }
