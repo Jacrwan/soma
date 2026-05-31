@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /settings
+Disallow: /day-view
+Disallow: /canvas
+Disallow: /calendar
+Disallow: /ai
+Disallow: /create
+Disallow: /insights
+
+Sitemap: https://somastudy.app/sitemap.xml

@@ -768,6 +768,48 @@ nav.scrolled {
   color: var(--text-muted);
 }
 
+/* ── FAQ ── */
+.faq-section {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 80px 56px 40px;
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.75s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.75s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.faq-section.vis { opacity: 1; transform: translateY(0); }
+.faq-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: clamp(24px, 3vw, 36px);
+  font-weight: 400;
+  color: var(--text);
+  text-align: center;
+  margin-bottom: 48px;
+}
+.faq-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px 40px;
+}
+.faq-item {
+  padding: 24px 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.faq-q {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.faq-a {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+
 .cta-wrap {
   padding: 40px 56px 80px;
   max-width: 1240px;
@@ -870,6 +912,8 @@ nav.scrolled {
   .how-steps { grid-template-columns: 1fr; gap: 40px; }
   .how-steps::before { display: none; }
   .how-step, .how-step:nth-child(3) { padding-right: 0; }
+  .faq-section { padding: 56px 28px 28px; }
+  .faq-grid { grid-template-columns: 1fr; gap: 16px; }
   .cta-wrap { padding: 28px 28px 64px; }
   .cta-inner { padding: 56px 28px; }
   .footer-inner { padding: 36px 28px; flex-direction: column; align-items: flex-start; }
@@ -1030,7 +1074,7 @@ export default function LandingPage() {
       });
     }, { threshold: 0.22 });
 
-    document.querySelectorAll('.feature, .how-step, .cta-wrap, [data-chat], [data-assign], [data-insights]')
+    document.querySelectorAll('.feature, .how-step, .faq-section, .cta-wrap, [data-chat], [data-assign], [data-insights]')
       .forEach(el => io.observe(el));
 
     return () => io.disconnect();
@@ -1050,12 +1094,12 @@ export default function LandingPage() {
         <canvas ref={canvasRef} id="hero-canvas" />
         <div className="hero-inner">
           <div className="hero-text">
-            <p className="hero-eyebrow">AI-powered study planning</p>
+            <p className="hero-eyebrow">AI-powered study planner for students</p>
             <h1 className="hero-headline">
               <span className="hero-line-1">Study like you</span>
               <span className="hero-line-2">actually mean it.</span>
             </h1>
-            <p className="hero-sub">Soma connects to Canvas, builds your schedule, and tracks your progress so you can focus on learning, not planning.</p>
+            <p className="hero-sub">Soma connects to Canvas, builds your schedule, and tracks your progress — so you can focus on learning, not planning. Built for high school and college students.</p>
             <div className="hero-actions">
               <a href="/signup" className="btn-primary">Start for free →</a>
               <a href="#features" className="btn-ghost">See it in action</a>
@@ -1116,7 +1160,7 @@ export default function LandingPage() {
               <div className="university-logo-set" aria-hidden={setIndex > 0} key={setIndex}>
                 {UNIVERSITY_LOGOS.map((university) => (
                   <span className={`university-logo-card is-${university.shape}`} key={`${setIndex}-${university.name}`}>
-                    <img src={university.src} alt={setIndex === 0 ? university.name : ''} />
+                    <img src={university.src} alt={setIndex === 0 ? `${university.name} logo` : ''} loading="lazy" />
                   </span>
                 ))}
               </div>
@@ -1140,7 +1184,7 @@ export default function LandingPage() {
         <div className="feature">
           <div className="feat-text">
             <p className="feat-kicker">AI Scheduling</p>
-            <h2 className="feat-headline">Your day, planned in seconds.</h2>
+            <h2 className="feat-headline">Plan your study day in seconds with AI</h2>
             <p className="feat-body">Tell Soma what you need to do. It reads your Canvas deadlines, checks your availability, and builds a focused schedule. No back-and-forth, no manual planning.</p>
           </div>
           <div className="feat-vis" data-chat="">
@@ -1165,7 +1209,7 @@ export default function LandingPage() {
         <div className="feature">
           <div className="feat-text">
             <p className="feat-kicker">Canvas Sync</p>
-            <h2 className="feat-headline">Every assignment. Always up to date.</h2>
+            <h2 className="feat-headline">Sync every Canvas assignment automatically</h2>
             <p className="feat-body">Soma pulls your assignments, due dates, and announcements directly from Canvas. Your full workload, visible at a glance, with no manual entry.</p>
           </div>
           <div className="feat-vis" data-assign="">
@@ -1209,7 +1253,7 @@ export default function LandingPage() {
         <div className="feature">
           <div className="feat-text">
             <p className="feat-kicker">Passive Time Tracking</p>
-            <h2 className="feat-headline">Tracks your time. You don't have to.</h2>
+            <h2 className="feat-headline">Track study time automatically by subject</h2>
             <p className="feat-body">As the clock moves through your scheduled blocks, Soma records what you studied. No timers to start. No logs to fill in later.</p>
           </div>
           <div className="feat-vis">
@@ -1235,7 +1279,7 @@ export default function LandingPage() {
         <div className="feature">
           <div className="feat-text">
             <p className="feat-kicker">Insights</p>
-            <h2 className="feat-headline">See how you actually work.</h2>
+            <h2 className="feat-headline">Study insights and streak tracking</h2>
             <p className="feat-body">Weekly study breakdowns, subject distribution, streak tracking, and AI-powered time estimates — all derived from your actual study behavior.</p>
           </div>
           <div className="feat-vis" data-insights="">
@@ -1279,8 +1323,8 @@ export default function LandingPage() {
           <div className="how-step">
             <div className="how-num">01</div>
             <div className="how-title">Connect Canvas</div>
-            <p className="how-body">Paste your school's Canvas URL and API token. Soma reads your courses, assignments, and due dates — nothing to enter by hand.</p>
-            <p className="how-note">Soma does not store your Canvas API token on our servers. It stays in your browser and is only used for read-only Canvas requests.</p>
+            <p className="how-body">Paste your Canvas calendar feed URL. Soma reads your assignments and due dates automatically — nothing to enter by hand.</p>
+            <p className="how-note">Soma only reads your calendar feed. No passwords or API tokens required.</p>
           </div>
           <div className="how-step">
             <div className="how-num">02</div>
@@ -1291,6 +1335,36 @@ export default function LandingPage() {
             <div className="how-num">03</div>
             <div className="how-title">Study. Soma handles the rest.</div>
             <p className="how-body">Open your day view and work. Time is recorded automatically. Insights accumulate. Your study patterns improve week over week.</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="faq-section" id="faq">
+        <h2 className="faq-title">Frequently asked questions</h2>
+        <div className="faq-grid">
+          <div className="faq-item">
+            <h3 className="faq-q">Is Soma free?</h3>
+            <p className="faq-a">Soma offers a free 21-day trial with full access to all features including AI scheduling, Canvas sync, and study material generation. After the trial, it's $4.99/month.</p>
+          </div>
+          <div className="faq-item">
+            <h3 className="faq-q">Does Soma work with my school's Canvas?</h3>
+            <p className="faq-a">Yes — Soma works with any school that uses Canvas LMS. Just paste your Canvas calendar feed URL and your assignments sync automatically.</p>
+          </div>
+          <div className="faq-item">
+            <h3 className="faq-q">Can I use Soma for high school?</h3>
+            <p className="faq-a">Absolutely. Soma is built for both high school and college students. It works great for AP classes, honors courses, and any school that uses Canvas.</p>
+          </div>
+          <div className="faq-item">
+            <h3 className="faq-q">What does the AI actually do?</h3>
+            <p className="faq-a">Soma's AI reads your deadlines and availability, then builds a study schedule for your day. It can also generate study notes, practice quizzes, slide decks, and essay outlines.</p>
+          </div>
+          <div className="faq-item">
+            <h3 className="faq-q">Do I need a Google account?</h3>
+            <p className="faq-a">Google Drive is optional — it's used to save AI-generated study materials as Google Docs and Slides. You can use Soma's core features (scheduling, tracking, Canvas sync) without it.</p>
+          </div>
+          <div className="faq-item">
+            <h3 className="faq-q">Is my data private?</h3>
+            <p className="faq-a">Yes. Soma only reads your Canvas calendar feed (no passwords required). Your study data is stored securely and never shared with third parties.</p>
           </div>
         </div>
       </section>
