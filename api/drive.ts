@@ -5,7 +5,6 @@ import pdfParse from 'pdf-parse';
 export const config = { api: { bodyParser: { sizeLimit: '20kb' } } };
 
 const FILE_CHAR_LIMIT = 8_000;
-const MAX_FOLDER_FILES = 20;
 
 const ALLOWED_ORIGINS = [
   'https://somastudy.app',
@@ -294,36 +293,86 @@ async function handleFolderContents(req: any, res: any, googleToken: string) {
 
   const gHeaders = { Authorization: `Bearer ${googleToken}` };
 
-  const params = new URLSearchParams({
+  type FileEntry = { id: string; name: string; mimeType: string; content: string; truncated: boolean; error?: string; note?: string };
+  const results: FileEntry[] = [];
+  const HARD_CAP = 50;
+
+  async function fetchFolderFiles(currentFolderId: string, pathPrefix: string): Promise<void> {
+    if (results.length >= HARD_CAP) return;
+
+    const params = new URLSearchParams({
+      q: `'${currentFolderId}' in parents and trashed=false`,
+      fields: 'files(id,name,mimeType)',
+      pageSize: '100',
+    });
+    const listRes = await fetchWithTimeout(
+      `https://www.googleapis.com/drive/v3/files?${params}`,
+      { headers: gHeaders },
+    );
+    if (!listRes.ok) return; // skip inaccessible subfolders silently
+
+    const data = await listRes.json() as { files?: { id: string; name: string; mimeType: string }[] };
+    const children = data.files ?? [];
+
+    for (const child of children) {
+      if (results.length >= HARD_CAP) break;
+      const displayName = pathPrefix ? `${pathPrefix} / ${child.name}` : child.name;
+
+      if (child.mimeType === 'application/vnd.google-apps.folder') {
+        await fetchFolderFiles(child.id, displayName);
+      } else {
+        try {
+          const read = await readFileContent(child.id, displayName, child.mimeType, gHeaders);
+          if (read !== null) {
+            results.push({ id: child.id, name: displayName, mimeType: child.mimeType, content: read.content, truncated: read.truncated, ...(read.error ? { error: read.error, note: read.note } : {}) });
+          } else {
+            results.push({ id: child.id, name: displayName, mimeType: child.mimeType, content: '[Cannot extract text from this file type]', truncated: false });
+          }
+        } catch (err: unknown) {
+          const isTimeout = err instanceof Error && err.name === 'AbortError';
+          console.error(JSON.stringify({ event: 'fc_file_error', fileName: displayName, error: isTimeout ? 'timeout' : String(err) }));
+          results.push({ id: child.id, name: displayName, mimeType: child.mimeType, content: '', truncated: false, error: isTimeout ? 'timeout' : 'read_error' });
+        }
+      }
+    }
+  }
+
+  // Check auth on the root listing before recursing.
+  const rootParams = new URLSearchParams({
     q: `'${folderId}' in parents and trashed=false`,
     fields: 'files(id,name,mimeType)',
-    pageSize: String(MAX_FOLDER_FILES),
+    pageSize: '100',
   });
-  const listRes = await fetchWithTimeout(
-    `https://www.googleapis.com/drive/v3/files?${params}`,
+  const rootListRes = await fetchWithTimeout(
+    `https://www.googleapis.com/drive/v3/files?${rootParams}`,
     { headers: gHeaders },
   );
-  if (listRes.status === 401) return res.status(401).json({ error: 'google_token_expired' });
-  if (listRes.status === 403) return res.status(403).json({ error: 'no_access' });
-  if (!listRes.ok)            return res.status(502).json({ error: 'google_error' });
+  if (rootListRes.status === 401) return res.status(401).json({ error: 'google_token_expired' });
+  if (rootListRes.status === 403) return res.status(403).json({ error: 'no_access' });
+  if (!rootListRes.ok)            return res.status(502).json({ error: 'google_error' });
 
-  const data = await listRes.json() as { files?: { id: string; name: string; mimeType: string }[] };
-  const listed = (data.files ?? []).slice(0, MAX_FOLDER_FILES);
+  const rootData = await rootListRes.json() as { files?: { id: string; name: string; mimeType: string }[] };
+  const rootChildren = rootData.files ?? [];
 
-  const results: { id: string; name: string; mimeType: string; content: string; truncated: boolean; error?: string; note?: string }[] = [];
+  for (const child of rootChildren) {
+    if (results.length >= HARD_CAP) break;
+    const displayName = child.name;
 
-  for (const file of listed) {
-    try {
-      const read = await readFileContent(file.id, file.name, file.mimeType, gHeaders);
-      if (read !== null) {
-        results.push({ id: file.id, name: file.name, mimeType: file.mimeType, content: read.content, truncated: read.truncated, ...(read.error ? { error: read.error, note: read.note } : {}) });
-      } else {
-        results.push({ id: file.id, name: file.name, mimeType: file.mimeType, content: '[Cannot extract text from this file type]', truncated: false });
+    if (child.mimeType === 'application/vnd.google-apps.folder') {
+      await fetchFolderFiles(child.id, displayName);
+    } else {
+      try {
+        const read = await readFileContent(child.id, displayName, child.mimeType, gHeaders);
+        if (read !== null) {
+          results.push({ id: child.id, name: displayName, mimeType: child.mimeType, content: read.content, truncated: read.truncated, ...(read.error ? { error: read.error, note: read.note } : {}) });
+        } else {
+          results.push({ id: child.id, name: displayName, mimeType: child.mimeType, content: '[Cannot extract text from this file type]', truncated: false });
+        }
+      } catch (err: unknown) {
+        const isTimeout = err instanceof Error && err.name === 'AbortError';
+        console.error(JSON.stringify({ event: 'fc_file_error', fileName: displayName, error: isTimeout ? 'timeout' : String(err) }));
+        results.push({ id: child.id, name: displayName, mimeType: child.mimeType, content: '', truncated: false, error: isTimeout ? 'timeout' : 'read_error' });
       }
-    } catch (err: unknown) {
-      const isTimeout = err instanceof Error && err.name === 'AbortError';
-      console.error(JSON.stringify({ event: 'fc_file_error', fileName: file.name, error: isTimeout ? 'timeout' : String(err) }));
-      results.push({ id: file.id, name: file.name, mimeType: file.mimeType, content: '', truncated: false, error: isTimeout ? 'timeout' : 'read_error' });
     }
   }
 
