@@ -262,7 +262,6 @@ function buildSystemPrompt(activeSubjectKey?: string): string {
   const driveConnected = !!storage.getGoogleDriveToken();
   const folderSection = readCachedFolderSection();
   const folderHasTruncated = hasTruncatedFolderFiles();
-  console.log('[soma] buildSystemPrompt folderSection non-empty:', !!folderSection, '| first 100:', folderSection.slice(0, 100) || '(empty)');
 
   const scheduleStr = [
     schoolHoursEnabled !== false ? fmtWeek(schoolHours, 'In class (unavailable for studying)') : '',
@@ -538,19 +537,29 @@ function FilesPanel({ subjects, onClose }: { subjects: Subject[]; onClose: () =>
                   <span className={styles.filesGroupLabel}>{subject?.name ?? 'General'}</span>
                 </div>
                 {items.map(item => (
-                  <a
-                    key={item.id}
-                    href={item.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={styles.filesItem}
-                  >
-                    <span className={styles.filesItemIcon}>{item.kind === 'slides' ? '📊' : '📄'}</span>
-                    <div className={styles.filesItemInfo}>
-                      <span className={styles.filesItemTitle}>{item.title}</span>
-                      <span className={styles.filesItemDate}>{fmtFileDate(item.createdAt)}</span>
+                  item.url ? (
+                    <a
+                      key={item.id}
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={styles.filesItem}
+                    >
+                      <span className={styles.filesItemIcon}>{item.kind === 'slides' ? '📊' : '📄'}</span>
+                      <div className={styles.filesItemInfo}>
+                        <span className={styles.filesItemTitle}>{item.title}</span>
+                        <span className={styles.filesItemDate}>{fmtFileDate(item.createdAt)}</span>
+                      </div>
+                    </a>
+                  ) : (
+                    <div key={item.id} className={`${styles.filesItem} ${styles.filesItemUnavailable}`}>
+                      <span className={styles.filesItemIcon}>{item.kind === 'slides' ? '📊' : '📄'}</span>
+                      <div className={styles.filesItemInfo}>
+                        <span className={styles.filesItemTitle}>{item.title}</span>
+                        <span className={styles.filesItemUnavailableLabel}>Unavailable</span>
+                      </div>
                     </div>
-                  </a>
+                  )
                 ))}
               </div>
             );
@@ -1092,8 +1101,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     updateSession(activeSessionId, s => ({ ...s, messages: messagesWithUser }));
 
     try {
-      const folderContentsResult = await getFolderContentsForPrompt(); // warm folder cache; buildSystemPrompt reads it synchronously
-      console.log('[soma] getFolderContentsForPrompt result (first 200):', folderContentsResult.slice(0, 200) || '(empty)');
+      await getFolderContentsForPrompt(); // warm folder cache; buildSystemPrompt reads it synchronously
       const systemPrompt = getCachedSystemPrompt(currentSubjectKey);
       // For previous messages use stored content; for the current message use the doc-injected version
       const apiMessages = [
@@ -1264,6 +1272,9 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
               onCancel={() => setDeleteConfirmId(null)}
             />
           ))}
+          {sidebarMounted && sortedSessions.every(s => s.messages.length === 0) && (
+            <p className={styles.sessionEmptyHint}>No messages yet</p>
+          )}
         </div>
       </div>
 

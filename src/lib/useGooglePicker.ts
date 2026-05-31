@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 
 // Minimal typings for the Google Picker API (loaded at runtime)
 declare global {
@@ -61,6 +61,22 @@ export function useGooglePicker(
   onPick: (file: PickedFile) => void,
 ) {
   const pickerReady = useRef(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pickerRef = useRef<any>(null);
+
+  useEffect(() => {
+    function disposePicker() {
+      if (pickerRef.current) {
+        try { pickerRef.current.dispose(); } catch { /* already closed */ }
+        pickerRef.current = null;
+      }
+    }
+    window.addEventListener('popstate', disposePicker);
+    return () => {
+      disposePicker();
+      window.removeEventListener('popstate', disposePicker);
+    };
+  }, []);
 
   const openPicker = useCallback(async () => {
     if (!googleToken) return;
@@ -95,7 +111,7 @@ export function useGooglePicker(
       .setIncludeFolders(false)
       .setMimeTypes(READABLE_MIME_TYPES);
 
-    new PickerBuilder()
+    const picker = new PickerBuilder()
       .setTitle('Choose a file to attach to Soma')
       .setOAuthToken(googleToken)
       .setDeveloperKey(apiKey)
@@ -109,9 +125,13 @@ export function useGooglePicker(
           const f = data.docs[0];
           onPick({ id: f.id, name: f.name, mimeType: f.mimeType });
         }
+        if (data.action === Action.CANCEL || data.action === Action.PICKED) {
+          pickerRef.current = null;
+        }
       })
-      .build()
-      .setVisible(true);
+      .build();
+    pickerRef.current = picker;
+    picker.setVisible(true);
   }, [googleToken, onPick]);
 
   return { openPicker };
@@ -127,6 +147,22 @@ export function useGoogleFolderPicker(
   onPick: (folder: PickedFolder) => void,
 ) {
   const pickerReady = useRef(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const pickerRef = useRef<any>(null);
+
+  useEffect(() => {
+    function disposePicker() {
+      if (pickerRef.current) {
+        try { pickerRef.current.dispose(); } catch { /* already closed */ }
+        pickerRef.current = null;
+      }
+    }
+    window.addEventListener('popstate', disposePicker);
+    return () => {
+      disposePicker();
+      window.removeEventListener('popstate', disposePicker);
+    };
+  }, []);
 
   const openPicker = useCallback(async () => {
     if (!googleToken) return;
@@ -152,7 +188,7 @@ export function useGoogleFolderPicker(
       .setIncludeFolders(true)
       .setSelectFolderEnabled(true);
 
-    new PickerBuilder()
+    const picker = new PickerBuilder()
       .setTitle('Choose a study folder')
       .setOAuthToken(googleToken)
       .setDeveloperKey(apiKey)
@@ -165,9 +201,13 @@ export function useGoogleFolderPicker(
           const f = data.docs[0];
           onPick({ id: f.id, name: f.name, mimeType: f.mimeType });
         }
+        if (data.action === Action.CANCEL || data.action === Action.PICKED) {
+          pickerRef.current = null;
+        }
       })
-      .build()
-      .setVisible(true);
+      .build();
+    pickerRef.current = picker;
+    picker.setVisible(true);
   }, [googleToken, onPick]);
 
   return { openPicker };

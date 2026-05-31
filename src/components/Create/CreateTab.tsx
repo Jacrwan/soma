@@ -262,6 +262,8 @@ export default function CreateTab() {
         <p className={styles.subtitle}>Generate study materials and save them straight to Google Drive.</p>
       </header>
 
+      <p className={styles.aiHint}>💡 You can also generate study materials directly from the AI tab using the ✨ button.</p>
+
       {!driveToken && (
         <div className={styles.banner}>
           <span>Connect Google Drive to create Docs and Slides.</span>

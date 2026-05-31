@@ -178,6 +178,14 @@
   padding: var(--space-xs) 0;
 }
 
+.sessionEmptyHint {
+  margin: 0;
+  padding: 6px var(--space-md) 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
 .sessionRow {
   display: flex;
   align-items: center;
@@ -1353,4 +1361,15 @@
 .filesItemDate {
   font-size: 10px;
   color: var(--text-muted);
+}
+
+.filesItemUnavailable {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.filesItemUnavailableLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-style: italic;
 }

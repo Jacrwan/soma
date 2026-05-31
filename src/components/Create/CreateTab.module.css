@@ -24,6 +24,13 @@
   margin: 0;
 }
 
+/* ── AI tab hint ── */
+.aiHint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: -16px 0 20px;
+}
+
 /* ── Connect-Drive banner ── */
 .banner {
   display: flex;
