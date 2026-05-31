@@ -5,7 +5,7 @@ import { storage } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
 import { createGoogleDoc, createGoogleSlides } from '../../lib/googleDocs';
 import { parseCreateDoc, parseCreateSlides } from '../../lib/aiArtifacts';
-import { readDriveFile, fileTypeLabel } from '../../lib/googleDrive';
+import { readDriveFile, fileTypeLabel, getFolderContentsForPrompt, readCachedFolderSection, getFolderContentsCacheTs } from '../../lib/googleDrive';
 import { useGooglePicker, PickedFile } from '../../lib/useGooglePicker';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, hasAIAccess, startTrial, startCheckout } from '../../lib/subscription';
@@ -254,6 +254,7 @@ function buildSystemPrompt(): string {
   }
 
   const driveConnected = !!storage.getGoogleDriveToken();
+  const folderSection = readCachedFolderSection();
 
   const scheduleStr = [
     schoolHoursEnabled !== false ? fmtWeek(schoolHours, 'In class (unavailable for studying)') : '',
@@ -270,7 +271,7 @@ Their subjects: ${subjectsStr}
 
 Upcoming assignments (next 14 days):
 ${assignmentsStr}
-
+${folderSection ? `\nStudy Materials:\n${folderSection}\n` : ''}
 User availability:
 ${availabilityStr || 'Not set — ask the user what time they want to start and end.'}
 
@@ -691,15 +692,16 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     }
   }
 
-  const systemPromptCache = useRef<{ prompt: string; canvasTs: number | null; dateKey: string } | null>(null);
+  const systemPromptCache = useRef<{ prompt: string; canvasTs: number | null; dateKey: string; folderCacheTs: number } | null>(null);
 
   function getCachedSystemPrompt(): string {
     const canvasTs = storage.getCacheTimestamp();
     const dateKey = getTodayKey();
+    const folderCacheTs = getFolderContentsCacheTs();
     const cached = systemPromptCache.current;
-    if (cached && cached.canvasTs === canvasTs && cached.dateKey === dateKey) return cached.prompt;
+    if (cached && cached.canvasTs === canvasTs && cached.dateKey === dateKey && cached.folderCacheTs === folderCacheTs) return cached.prompt;
     const prompt = buildSystemPrompt();
-    systemPromptCache.current = { prompt, canvasTs, dateKey };
+    systemPromptCache.current = { prompt, canvasTs, dateKey, folderCacheTs };
     return prompt;
   }
 
@@ -820,6 +822,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     updateSession(activeSessionId, s => ({ ...s, messages: messagesWithUser }));
 
     try {
+      await getFolderContentsForPrompt(); // warm folder cache; buildSystemPrompt reads it synchronously
       const systemPrompt = getCachedSystemPrompt();
       // For previous messages use stored content; for the current message use the doc-injected version
       const apiMessages = [

@@ -6,7 +6,7 @@ import { supabase } from '../../lib/supabase';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, openBillingPortal } from '../../lib/subscription';
 import { getIcalAssignments } from '../../lib/canvas';
-import { listFolderFiles, FolderFile } from '../../lib/googleDrive';
+import { listFolderFiles, FolderFile, clearFolderContentsCache } from '../../lib/googleDrive';
 import { useGoogleFolderPicker, PickedFolder } from '../../lib/useGooglePicker';
 import styles from './SettingsTab.module.css';
 
@@ -350,6 +350,7 @@ export default function SettingsTab() {
   }
 
   function disconnectGdrive() {
+    clearFolderContentsCache();
     storage.setGoogleDriveToken('');
     storage.setGoogleDocsToken(''); // clear legacy docs token too
     storage.setStudyFolder(null);
@@ -364,6 +365,7 @@ export default function SettingsTab() {
       setStudyFolderError('Please select a folder, not a file.');
       return;
     }
+    clearFolderContentsCache();
     setStudyFolderLoading(true);
     setStudyFolderError('');
     listFolderFiles(gdriveToken, picked.id, picked.name)
@@ -386,6 +388,7 @@ export default function SettingsTab() {
   const { openPicker: openFolderPicker } = useGoogleFolderPicker(gdriveToken, onFolderPick);
 
   function disconnectStudyFolder() {
+    clearFolderContentsCache();
     storage.setStudyFolder(null);
     setStudyFolder(null);
     setStudyFolderFiles([]);
