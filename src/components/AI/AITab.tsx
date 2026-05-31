@@ -5,7 +5,7 @@ import { storage } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
 import { createGoogleDoc, createGoogleSlides } from '../../lib/googleDocs';
 import { parseCreateDoc, parseCreateSlides } from '../../lib/aiArtifacts';
-import { readDriveFile, fileTypeLabel, getFolderContentsForPrompt, readCachedFolderSection, getFolderContentsCacheTs } from '../../lib/googleDrive';
+import { readDriveFile, fileTypeLabel, getFolderContentsForPrompt, readCachedFolderSection, getFolderContentsCacheTs, hasTruncatedFolderFiles } from '../../lib/googleDrive';
 import { useGooglePicker, PickedFile } from '../../lib/useGooglePicker';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, hasAIAccess, startTrial, startCheckout } from '../../lib/subscription';
@@ -255,6 +255,7 @@ function buildSystemPrompt(): string {
 
   const driveConnected = !!storage.getGoogleDriveToken();
   const folderSection = readCachedFolderSection();
+  const folderHasTruncated = hasTruncatedFolderFiles();
   console.log('[soma] buildSystemPrompt folderSection non-empty:', !!folderSection, '| first 100:', folderSection.slice(0, 100) || '(empty)');
 
   const scheduleStr = [
@@ -272,7 +273,7 @@ Their subjects: ${subjectsStr}
 
 Upcoming assignments (next 14 days):
 ${assignmentsStr}
-${folderSection ? `\nIMPORTANT: The study materials below are real file contents you have already read and fully know. When the user references any topic, subject, or file — even loosely or by nickname — match it to the closest file in your study materials and answer from it directly. Never say you cannot access files, cannot see folders, or need the user to share anything. You already have the content. "AP Government review", "AP Gov study guide", "the review sheet" etc. should all map to the AP Government file.\n\nYou have full knowledge of the following study materials from the user's Google Drive folder. Reference them naturally when relevant, as if you've already read them:\n\n${folderSection}\n` : ''}
+${folderSection ? `\nIMPORTANT: The study materials below are real file contents you have already read and fully know. When the user references any topic, subject, or file — even loosely or by nickname — match it to the closest file in your study materials and answer from it directly. Never say you cannot access files, cannot see folders, or need the user to share anything. You already have the content. "AP Government review", "AP Gov study guide", "the review sheet" etc. should all map to the AP Government file.\n\nYou have full knowledge of the following study materials from the user's Google Drive folder. Reference them naturally when relevant, as if you've already read them:\n\n${folderSection}\n${folderHasTruncated ? '\nNote: Some files were too large to include in full. The user may not get complete answers about those files.\n' : ''}` : ''}
 User availability:
 ${availabilityStr || 'Not set — ask the user what time they want to start and end.'}
 
@@ -1095,6 +1096,12 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
                 </>
               )}
             </div>
+          )}
+
+          {hasTruncatedFolderFiles() && (
+            <p style={{ margin: '0 0 4px', fontSize: 11, color: 'var(--warning, #f59e0b)', opacity: 0.85 }}>
+              ⚠️ Some study materials were too large to include in full. Answers about those files may be incomplete.
+            </p>
           )}
 
           <div className={styles.inputRow}>

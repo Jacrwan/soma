@@ -109,6 +109,7 @@ interface FolderContentsCache {
   folderId: string;
   section: string;
   timestamp: number;
+  hasTruncated: boolean;
 }
 
 export function clearFolderContentsCache(): void {
@@ -137,8 +138,9 @@ export function readCachedFolderSection(): string {
 async function fetchAndCacheFolderSection(folderId: string, folderName: string): Promise<string> {
   const result = await readFolderContents(folderId);
   const PROMPT_FILE_LIMIT = 6_000;
-  const fileLines = result.files
-    .filter(f => f.content && !f.error && f.content !== '[Cannot extract text from this file type]')
+  const readable = result.files.filter(f => f.content && !f.error && f.content !== '[Cannot extract text from this file type]');
+  const hasTruncated = readable.some(f => f.truncated) || result.files.some(f => f.content.length >= PROMPT_FILE_LIMIT);
+  const fileLines = readable
     .map(f => {
       const content = f.content.length > PROMPT_FILE_LIMIT
         ? f.content.slice(0, PROMPT_FILE_LIMIT) + '...'
@@ -150,9 +152,17 @@ async function fetchAndCacheFolderSection(folderId: string, folderName: string):
   if (!fileLines) return '';
 
   const section = `Study Folder: ${folderName}\n${fileLines}`;
-  const entry: FolderContentsCache = { folderId, section, timestamp: Date.now() };
+  const entry: FolderContentsCache = { folderId, section, timestamp: Date.now(), hasTruncated };
   localStorage.setItem(FOLDER_CONTENTS_CACHE_KEY, JSON.stringify(entry));
   return section;
+}
+
+export function hasTruncatedFolderFiles(): boolean {
+  try {
+    const raw = localStorage.getItem(FOLDER_CONTENTS_CACHE_KEY);
+    if (!raw) return false;
+    return (JSON.parse(raw) as FolderContentsCache).hasTruncated ?? false;
+  } catch { return false; }
 }
 
 // Async — returns cached content immediately if fresh, else fetches and caches.
@@ -171,7 +181,8 @@ export async function getFolderContentsForPrompt(): Promise<string> {
       const cached = JSON.parse(cacheRaw) as FolderContentsCache;
       if (cached.folderId === folder.folderId && Date.now() - cached.timestamp <= FOLDER_CONTENTS_CACHE_TTL) {
         // Cache is fresh — return immediately and revalidate in the background.
-        fetchAndCacheFolderSection(folder.folderId, folder.folderName).catch(() => {});
+        // Errors (including 401 token expiry) are swallowed — the user doesn't need to see background refresh failures.
+        void fetchAndCacheFolderSection(folder.folderId, folder.folderName).catch((_e: unknown) => { /* silent */ });
         return cached.section;
       }
     }
