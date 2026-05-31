@@ -41,8 +41,10 @@ export interface SomaSettings {
   canvasToken?: string;
   canvasIcalUrl?: string;
   googleToken?: string;
+  googleRefreshToken?: string;
   googleDocsToken?: string;
   googleDriveToken?: string;
+  googleDriveRefreshToken?: string;
 }
 
 export interface ScheduleBlock {
@@ -180,8 +182,10 @@ async function uid(): Promise<string> {
 let _canvasToken = '';
 let _canvasIcalUrl = '';
 let _googleToken = '';
+let _googleRefreshToken = '';
 let _googleDocsToken = '';
 let _googleDriveToken = '';
+let _googleDriveRefreshToken = '';
 
 // ── Utility ───────────────────────────────────────────────────────────────
 
@@ -285,12 +289,19 @@ export const storage = {
 
   // ── Google Calendar (localStorage) ──────────────────────────────────
   getGoogleToken: (): string => _googleToken,
-  setGoogleToken: (v: string): void => {
+  getGoogleRefreshToken: (): string => _googleRefreshToken,
+  setGoogleToken: (v: string, refreshToken?: string): void => {
     _googleToken = v;
+    if (refreshToken) _googleRefreshToken = refreshToken;
     void (async () => {
       try {
         const s = await storage.getSettings();
-        await storage.saveSettings({ ...s, canvasToken: _canvasToken, googleToken: v });
+        await storage.saveSettings({
+          ...s,
+          canvasToken: _canvasToken,
+          googleToken: v,
+          ...(refreshToken ? { googleRefreshToken: refreshToken } : {}),
+        });
       } catch (err) { console.error('[storage] google token persist failed:', err); }
     })();
   },
@@ -309,12 +320,18 @@ export const storage = {
 
   // ── Google Drive (unified: reads any Drive file + creates Docs) ──────
   getGoogleDriveToken: (): string => _googleDriveToken,
-  setGoogleDriveToken: (v: string): void => {
+  getGoogleDriveRefreshToken: (): string => _googleDriveRefreshToken,
+  setGoogleDriveToken: (v: string, refreshToken?: string): void => {
     _googleDriveToken = v;
+    if (refreshToken) _googleDriveRefreshToken = refreshToken;
     void (async () => {
       try {
         const s = await storage.getSettings();
-        await storage.saveSettings({ ...s, googleDriveToken: v });
+        await storage.saveSettings({
+          ...s,
+          googleDriveToken: v,
+          ...(refreshToken ? { googleDriveRefreshToken: refreshToken } : {}),
+        });
       } catch (err) { console.error('[storage] google drive token persist failed:', err); }
     })();
   },
@@ -327,10 +344,12 @@ export const storage = {
       _canvasToken = s.canvasToken ?? '';
       _canvasIcalUrl = s.canvasIcalUrl ?? '';
       _googleToken = s.googleToken ?? '';
+      _googleRefreshToken = s.googleRefreshToken ?? '';
       _googleDocsToken = s.googleDocsToken ?? '';
       // Migrate: old Docs-only token carries forward as the Drive token so
       // existing "save to doc" keeps working until the user reconnects Drive.
       _googleDriveToken = s.googleDriveToken ?? s.googleDocsToken ?? '';
+      _googleDriveRefreshToken = s.googleDriveRefreshToken ?? '';
       // One-time migration: move plaintext tokens out of localStorage
       const migrateKey = (key: string): string => {
         const raw = localStorage.getItem(key);

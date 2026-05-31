@@ -1,5 +1,6 @@
 /// <reference types="node" />
 import { createClient } from '@supabase/supabase-js';
+import { GoogleTokenExpiredError, refreshGoogleToken } from './_googleAuth';
 
 export const config = { api: { bodyParser: { sizeLimit: '200kb' } } };
 
@@ -87,7 +88,7 @@ async function handleDocs(req: any, res: any, googleToken: string) {
   });
 
   if (!createRes.ok) {
-    if (createRes.status === 401) return res.status(401).json({ error: 'google_token_expired' });
+    if (createRes.status === 401) throw new GoogleTokenExpiredError();
     const googleError = await createRes.text().catch(() => '(could not read body)');
     const tokenPreview = googleToken ? googleToken.slice(0, 20) + '...' : '(empty)';
     console.error(JSON.stringify({ endpoint: '/api/generate', type: 'docs', event: 'create_failed', status: createRes.status, tokenPreview, googleError }));
@@ -143,7 +144,7 @@ async function handleSlides(req: any, res: any, googleToken: string) {
     headers: gHeaders,
     body: JSON.stringify({ title: deckTitle }),
   });
-  if (createRes.status === 401) return res.status(401).json({ error: 'google_token_expired' });
+  if (createRes.status === 401) throw new GoogleTokenExpiredError();
   if (!createRes.ok) {
     const googleError = await createRes.text().catch(() => '(could not read body)');
     console.error(JSON.stringify({ endpoint: '/api/generate', type: 'slides', event: 'create_failed', status: createRes.status, googleError }));
@@ -243,12 +244,34 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'googleToken required' });
   }
 
-  try {
-    if (type === 'docs') return await handleDocs(req, res, googleToken);
-    if (type === 'slides') return await handleSlides(req, res, googleToken);
+  const supabaseUrl = process.env.VITE_SUPABASE_URL ?? '';
+  const serviceKey  = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+  const admin = createClient(supabaseUrl, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  async function dispatch(tok: string) {
+    if (type === 'docs')   return await handleDocs(req, res, tok);
+    if (type === 'slides') return await handleSlides(req, res, tok);
     return res.status(400).json({ error: 'type must be "docs" or "slides"' });
-  } catch (err: any) {
-    console.error(JSON.stringify({ endpoint: '/api/generate', type, event: 'error', message: err?.message }));
-    return res.status(500).json({ error: 'Internal server error' });
+  }
+
+  try {
+    await dispatch(googleToken);
+  } catch (e) {
+    if (e instanceof GoogleTokenExpiredError) {
+      const newToken = await refreshGoogleToken(authResult.userId, admin, 'googleDriveToken');
+      if (!newToken) return res.status(401).json({ error: 'google_token_expired' });
+      try {
+        await dispatch(newToken);
+      } catch (e2) {
+        if (e2 instanceof GoogleTokenExpiredError) return res.status(401).json({ error: 'google_token_expired' });
+        console.error(JSON.stringify({ endpoint: '/api/generate', type, event: 'error', message: (e2 as any)?.message }));
+        return res.status(500).json({ error: 'Internal server error' });
+      }
+    } else {
+      console.error(JSON.stringify({ endpoint: '/api/generate', type, event: 'error', message: (e as any)?.message }));
+      return res.status(500).json({ error: 'Internal server error' });
+    }
   }
 }

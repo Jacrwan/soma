@@ -1,6 +1,7 @@
 /// <reference types="node" />
 import { createClient } from '@supabase/supabase-js';
 import { extractText as extractPdfText } from 'unpdf';
+import { GoogleTokenExpiredError, refreshGoogleToken } from './_googleAuth';
 
 export const config = { api: { bodyParser: { sizeLimit: '20kb' } } };
 
@@ -90,7 +91,7 @@ async function handleDoc(req: any, res: any, googleToken: string) {
     { headers: { Authorization: `Bearer ${googleToken}` } },
   );
 
-  if (docRes.status === 401) return res.status(401).json({ error: 'google_token_expired' });
+  if (docRes.status === 401) throw new GoogleTokenExpiredError();
   if (docRes.status === 403) return res.status(403).json({ error: 'no_access' });
   if (docRes.status === 404) return res.status(404).json({ error: 'not_found' });
   if (!docRes.ok)            return res.status(502).json({ error: 'google_error' });
@@ -126,7 +127,7 @@ async function handleFolder(req: any, res: any, googleToken: string) {
     `https://www.googleapis.com/drive/v3/files?${params}`,
     { headers: gHeaders },
   );
-  if (listRes.status === 401) return res.status(401).json({ error: 'google_token_expired' });
+  if (listRes.status === 401) throw new GoogleTokenExpiredError();
   if (listRes.status === 403) return res.status(403).json({ error: 'no_access' });
   if (!listRes.ok)            return res.status(502).json({ error: 'google_error' });
 
@@ -149,7 +150,7 @@ async function handleFile(req: any, res: any, googleToken: string) {
     `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType`,
     { headers: gHeaders },
   );
-  if (metaRes.status === 401) return res.status(401).json({ error: 'google_token_expired' });
+  if (metaRes.status === 401) throw new GoogleTokenExpiredError();
   if (metaRes.status === 403) return res.status(403).json({ error: 'no_access' });
   if (metaRes.status === 404) return res.status(404).json({ error: 'not_found' });
   if (!metaRes.ok)            return res.status(502).json({ error: 'google_error' });
@@ -166,7 +167,7 @@ async function handleFile(req: any, res: any, googleToken: string) {
       `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent(exportFormat)}`,
       { headers: gHeaders },
     );
-    if (expRes.status === 401) return res.status(401).json({ error: 'google_token_expired' });
+    if (expRes.status === 401) throw new GoogleTokenExpiredError();
     if (!expRes.ok)            return res.status(502).json({ error: 'export_failed' });
     content = await expRes.text();
   } else if (mimeType.startsWith('text/') || mimeType === 'application/json' || mimeType === 'application/rtf') {
@@ -174,7 +175,7 @@ async function handleFile(req: any, res: any, googleToken: string) {
       `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`,
       { headers: gHeaders },
     );
-    if (dlRes.status === 401) return res.status(401).json({ error: 'google_token_expired' });
+    if (dlRes.status === 401) throw new GoogleTokenExpiredError();
     if (!dlRes.ok)            return res.status(502).json({ error: 'download_failed' });
     content = await dlRes.text();
   } else if (mimeType === 'text/html' || mimeType === 'application/xhtml+xml') {
@@ -347,7 +348,7 @@ async function handleFolderContents(req: any, res: any, googleToken: string) {
     `https://www.googleapis.com/drive/v3/files?${rootParams}`,
     { headers: gHeaders },
   );
-  if (rootListRes.status === 401) return res.status(401).json({ error: 'google_token_expired' });
+  if (rootListRes.status === 401) throw new GoogleTokenExpiredError();
   if (rootListRes.status === 403) return res.status(403).json({ error: 'no_access' });
   if (!rootListRes.ok)            return res.status(502).json({ error: 'google_error' });
 
@@ -421,13 +422,28 @@ export default async function handler(req: any, res: any) {
     googleToken = bodyToken;
   }
 
-  try {
-    if (type === 'doc')             return await handleDoc(req, res, googleToken);
-    if (type === 'file')            return await handleFile(req, res, googleToken);
-    if (type === 'folder')          return await handleFolder(req, res, googleToken);
-    if (type === 'folder-contents') return await handleFolderContents(req, res, googleToken);
+  async function dispatch(tok: string) {
+    if (type === 'doc')             return await handleDoc(req, res, tok);
+    if (type === 'file')            return await handleFile(req, res, tok);
+    if (type === 'folder')          return await handleFolder(req, res, tok);
+    if (type === 'folder-contents') return await handleFolderContents(req, res, tok);
     return res.status(400).json({ error: 'type query param must be "doc", "file", "folder", or "folder-contents"' });
-  } catch {
-    return res.status(500).json({ error: 'internal_error' });
+  }
+
+  try {
+    await dispatch(googleToken);
+  } catch (e) {
+    if (e instanceof GoogleTokenExpiredError) {
+      const newToken = await refreshGoogleToken(user.id, admin, 'googleDriveToken');
+      if (!newToken) return res.status(401).json({ error: 'google_token_expired' });
+      try {
+        await dispatch(newToken);
+      } catch (e2) {
+        if (e2 instanceof GoogleTokenExpiredError) return res.status(401).json({ error: 'google_token_expired' });
+        throw e2;
+      }
+    } else {
+      return res.status(500).json({ error: 'internal_error' });
+    }
   }
 }

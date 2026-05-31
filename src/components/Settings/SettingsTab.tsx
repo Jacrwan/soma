@@ -68,7 +68,8 @@ export default function SettingsTab() {
     const source = params.get('source');
 
     supabase.auth.getSession().then(({ data }) => {
-      const pt = data.session?.provider_token;
+      const pt  = data.session?.provider_token;
+      const prt = data.session?.provider_refresh_token ?? undefined;
       if (!pt) return;
 
       const clearSourceParam = () => {
@@ -78,12 +79,12 @@ export default function SettingsTab() {
       };
 
       if (source === 'gdrive') {
-        storage.setGoogleDriveToken(pt);
+        storage.setGoogleDriveToken(pt, prt);
         setGdriveToken(pt);
         window.dispatchEvent(new CustomEvent('soma_gdrive_updated'));
         clearSourceParam();
       } else if (source === 'gcal') {
-        storage.setGoogleToken(pt);
+        storage.setGoogleToken(pt, prt);
         setGcalToken(pt);
         window.dispatchEvent(new CustomEvent('soma_gcal_updated'));
         clearSourceParam();
