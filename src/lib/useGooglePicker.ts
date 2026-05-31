@@ -99,6 +99,7 @@ export function useGooglePicker(
       .setTitle('Choose a file to attach to Soma')
       .setOAuthToken(googleToken)
       .setDeveloperKey(apiKey)
+      .setOrigin(window.location.origin)
       .addView(myFilesView)
       .addView(sharedView)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -154,6 +155,7 @@ export function useGoogleFolderPicker(
       .setTitle('Choose a study folder')
       .setOAuthToken(googleToken)
       .setDeveloperKey(apiKey)
+      .setOrigin(window.location.origin)
       .addView(folderView)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .setCallback((data: any) => {
