@@ -201,6 +201,12 @@ async function handleFile(req: any, res: any, googleToken: string) {
   return res.status(200).json({ title, mimeType, content });
 }
 
+function fetchWithTimeout(url: string, init: RequestInit, ms = 10_000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  return fetch(url, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
 interface FileReadResult {
   content: string;
   truncated: boolean;
@@ -222,7 +228,7 @@ async function readFileContent(
   let raw = '';
 
   if (mimeType === 'application/vnd.google-apps.document') {
-    const docRes = await fetch(
+    const docRes = await fetchWithTimeout(
       `https://docs.googleapis.com/v1/documents/${encodeURIComponent(fileId)}`,
       { headers: gHeaders },
     );
@@ -235,7 +241,7 @@ async function readFileContent(
     mimeType === 'application/vnd.google-apps.presentation'
   ) {
     const exportMime = mimeType === 'application/vnd.google-apps.spreadsheet' ? 'text/csv' : 'text/plain';
-    const expRes = await fetch(
+    const expRes = await fetchWithTimeout(
       `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent(exportMime)}`,
       { headers: gHeaders },
     );
@@ -244,7 +250,7 @@ async function readFileContent(
     if (!expRes.ok) return null;
     raw = await expRes.text();
   } else if (mimeType.startsWith('text/') || mimeType === 'application/rtf') {
-    const dlRes = await fetch(
+    const dlRes = await fetchWithTimeout(
       `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`,
       { headers: gHeaders },
     );
@@ -277,7 +283,7 @@ async function handleFolderContents(req: any, res: any, googleToken: string) {
     fields: 'files(id,name,mimeType)',
     pageSize: String(MAX_FOLDER_FILES),
   });
-  const listRes = await fetch(
+  const listRes = await fetchWithTimeout(
     `https://www.googleapis.com/drive/v3/files?${params}`,
     { headers: gHeaders },
   );
@@ -291,11 +297,17 @@ async function handleFolderContents(req: any, res: any, googleToken: string) {
   const results: { id: string; name: string; mimeType: string; content: string; truncated: boolean; error?: string; note?: string }[] = [];
 
   for (const file of listed) {
-    const read = await readFileContent(file.id, file.name, file.mimeType, gHeaders);
-    if (read !== null) {
-      results.push({ id: file.id, name: file.name, mimeType: file.mimeType, content: read.content, truncated: read.truncated, ...(read.error ? { error: read.error, note: read.note } : {}) });
-    } else {
-      results.push({ id: file.id, name: file.name, mimeType: file.mimeType, content: '[Cannot extract text from this file type]', truncated: false });
+    try {
+      const read = await readFileContent(file.id, file.name, file.mimeType, gHeaders);
+      if (read !== null) {
+        results.push({ id: file.id, name: file.name, mimeType: file.mimeType, content: read.content, truncated: read.truncated, ...(read.error ? { error: read.error, note: read.note } : {}) });
+      } else {
+        results.push({ id: file.id, name: file.name, mimeType: file.mimeType, content: '[Cannot extract text from this file type]', truncated: false });
+      }
+    } catch (err: unknown) {
+      const isTimeout = err instanceof Error && err.name === 'AbortError';
+      console.error(JSON.stringify({ event: 'fc_file_error', fileName: file.name, error: isTimeout ? 'timeout' : String(err) }));
+      results.push({ id: file.id, name: file.name, mimeType: file.mimeType, content: '', truncated: false, error: isTimeout ? 'timeout' : 'read_error' });
     }
   }
 
