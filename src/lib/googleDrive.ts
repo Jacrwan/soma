@@ -134,8 +134,29 @@ export function readCachedFolderSection(): string {
   } catch { return ''; }
 }
 
-// Async — fetches folder contents from the API, writes to localStorage cache, returns formatted section.
-// Call this before buildSystemPrompt() to warm the cache; buildSystemPrompt reads synchronously.
+async function fetchAndCacheFolderSection(folderId: string, folderName: string): Promise<string> {
+  const result = await readFolderContents(folderId);
+  const PROMPT_FILE_LIMIT = 3_000;
+  const fileLines = result.files
+    .filter(f => f.content && !f.error && f.content !== '[Cannot extract text from this file type]')
+    .map(f => {
+      const content = f.content.length > PROMPT_FILE_LIMIT
+        ? f.content.slice(0, PROMPT_FILE_LIMIT) + '...'
+        : f.content;
+      return `- ${f.name}:\n${content}`;
+    })
+    .join('\n\n');
+
+  if (!fileLines) return '';
+
+  const section = `Study Folder: ${folderName}\n${fileLines}`;
+  const entry: FolderContentsCache = { folderId, section, timestamp: Date.now() };
+  localStorage.setItem(FOLDER_CONTENTS_CACHE_KEY, JSON.stringify(entry));
+  return section;
+}
+
+// Async — returns cached content immediately if fresh, else fetches and caches.
+// When cache is fresh, also triggers a background refetch so the next message gets updated content.
 export async function getFolderContentsForPrompt(): Promise<string> {
   const folderRaw = localStorage.getItem('soma_study_folder');
   if (!folderRaw) return '';
@@ -144,37 +165,21 @@ export async function getFolderContentsForPrompt(): Promise<string> {
   try { folder = JSON.parse(folderRaw); } catch { return ''; }
   if (!folder?.folderId) return '';
 
-  // Cache hit
   try {
     const cacheRaw = localStorage.getItem(FOLDER_CONTENTS_CACHE_KEY);
     if (cacheRaw) {
       const cached = JSON.parse(cacheRaw) as FolderContentsCache;
       if (cached.folderId === folder.folderId && Date.now() - cached.timestamp <= FOLDER_CONTENTS_CACHE_TTL) {
+        // Cache is fresh — return immediately and revalidate in the background.
+        fetchAndCacheFolderSection(folder.folderId, folder.folderName).catch(() => {});
         return cached.section;
       }
     }
   } catch { /* ignore */ }
 
-  // Fetch fresh
+  // Cache is missing or expired — fetch synchronously so this message gets fresh content.
   try {
-    const result = await readFolderContents(folder.folderId);
-    const PROMPT_FILE_LIMIT = 3_000;
-    const fileLines = result.files
-      .filter(f => f.content && !f.error && f.content !== '[Cannot extract text from this file type]')
-      .map(f => {
-        const content = f.content.length > PROMPT_FILE_LIMIT
-          ? f.content.slice(0, PROMPT_FILE_LIMIT) + '...'
-          : f.content;
-        return `- ${f.name}:\n${content}`;
-      })
-      .join('\n\n');
-
-    if (!fileLines) return '';
-
-    const section = `Study Folder: ${folder.folderName}\n${fileLines}`;
-    const entry: FolderContentsCache = { folderId: folder.folderId, section, timestamp: Date.now() };
-    localStorage.setItem(FOLDER_CONTENTS_CACHE_KEY, JSON.stringify(entry));
-    return section;
+    return await fetchAndCacheFolderSection(folder.folderId, folder.folderName);
   } catch {
     return '';
   }
