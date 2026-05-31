@@ -580,6 +580,12 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     return fallback;
   });
 
+  const [currentSessionKey, setCurrentSessionKey] = useState<string>('general');
+
+  function getSessionKey(subjectId: string | null): string {
+    return subjectId ? `subject_${subjectId}` : 'general';
+  }
+
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -727,7 +733,12 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
 
   function updateSession(id: string, fn: (s: ChatSession) => ChatSession) {
     setSessions(prev => {
-      const next = prev.map(s => s.id === id ? fn(s) : s);
+      const next = prev.map(s => {
+        if (s.id !== id) return s;
+        const updated = fn(s);
+        storage.setChatSessionV2(currentSessionKey, updated.messages);
+        return updated;
+      });
       storage.setChatSessions(next);
       return next;
     });

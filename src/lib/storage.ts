@@ -368,12 +368,38 @@ export const storage = {
     else set(KEYS.studyFolder, v);
   },
 
-  // ── AI chat sessions (localStorage) ─────────────────────────────────
+  // ── AI chat sessions v1 (localStorage, date-keyed) ──────────────────
   getChatSessions: (): ChatSession[] => get(KEYS.chatSessions, []),
   setChatSessions: (v: ChatSession[]) => set(KEYS.chatSessions, v),
 
   getActiveSessionId: (): string => get(KEYS.activeSessionId, ''),
   setActiveSessionId: (v: string) => set(KEYS.activeSessionId, v),
+
+  // ── AI chat sessions v2 (localStorage, subject-keyed) ───────────────
+  // sessionKey format: 'general' | 'subject_<subjectId>'
+  getChatSessionV2(sessionKey: string): import('../types').ChatMessage[] {
+    try {
+      const raw = localStorage.getItem('soma_chat_sessions_v2');
+      if (!raw) return [];
+      const store = JSON.parse(raw) as Record<string, import('../types').ChatMessage[]>;
+      return store[sessionKey] ?? [];
+    } catch { return []; }
+  },
+  setChatSessionV2(sessionKey: string, messages: import('../types').ChatMessage[]): void {
+    try {
+      const raw = localStorage.getItem('soma_chat_sessions_v2');
+      const store = raw ? JSON.parse(raw) as Record<string, import('../types').ChatMessage[]> : {};
+      store[sessionKey] = messages;
+      localStorage.setItem('soma_chat_sessions_v2', JSON.stringify(store));
+    } catch { /* ignore */ }
+  },
+  listChatSessionKeys(): string[] {
+    try {
+      const raw = localStorage.getItem('soma_chat_sessions_v2');
+      if (!raw) return [];
+      return Object.keys(JSON.parse(raw) as Record<string, unknown>);
+    } catch { return []; }
+  },
 
   // ── Time blocks (localStorage) ───────────────────────────────────────
   getTimeBlocks: (): TimeBlock[] => get(SOMA_BLOCKS_KEY, []),
