@@ -1,4 +1,4 @@
-import { useState, useEffect, Component, type ReactNode, type ErrorInfo } from 'react';
+import { useState, useEffect, useRef, Component, type ReactNode, type ErrorInfo } from 'react';
 import { Routes, Route, Navigate, Outlet, useLocation, useNavigate, Link } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
@@ -17,6 +17,7 @@ import LandingPage from './components/Landing/LandingPage';
 import LegalPage from './components/Legal/LegalPage';
 import PricingPage from './components/Pricing/PricingPage';
 import { SkeletonBlock } from './components/UI/Skeleton';
+import OnboardingFlow from './components/Onboarding/OnboardingFlow';
 import styles from './App.module.css';
 
 // ── Error boundary ────────────────────────────────────────────────────────
@@ -262,6 +263,8 @@ export function applyTheme(theme: 'dark' | 'light') {
 export default function App() {
   const [user, setUser]         = useState<User | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const onboardingChecked = useRef(false);
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -275,13 +278,26 @@ export default function App() {
 
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
-      const user = data.session?.user ?? null;
-      setUser(user);
-      if (user) await storage.loadTokens();
+      const u = data.session?.user ?? null;
+      setUser(u);
+      if (u) {
+        await storage.loadTokens();
+        if (!onboardingChecked.current) {
+          onboardingChecked.current = true;
+          const s = await storage.getSettings();
+          if (!s.onboardingCompleted) setShowOnboarding(true);
+        }
+      }
       setAuthReady(true);
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const u = session?.user ?? null;
+      setUser(u);
+      if (event === 'SIGNED_IN' && u && !onboardingChecked.current) {
+        onboardingChecked.current = true;
+        const s = await storage.getSettings();
+        if (!s.onboardingCompleted) setShowOnboarding(true);
+      }
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -299,6 +315,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
+    <>
     <Routes>
       {/* Landing page */}
       <Route path="/" element={<LandingPage />} />
@@ -338,6 +355,18 @@ export default function App() {
         <Route path="*" element={<Navigate to="/day-view" replace />} />
       </Route>
     </Routes>
+    {showOnboarding && user && (
+      <OnboardingFlow
+        userName={
+          user.user_metadata?.full_name ??
+          user.user_metadata?.name ??
+          user.email ??
+          ''
+        }
+        onComplete={() => setShowOnboarding(false)}
+      />
+    )}
+    </>
     </ErrorBoundary>
   );
 }

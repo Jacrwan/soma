@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { storage, SomaSettings } from '../../lib/storage';
+import { EDUCATION_OPTIONS, EDUCATION_LABELS, type EducationId } from '../Onboarding/OnboardingFlow';
 import { applyTheme } from '../../App';
 import { supabase } from '../../lib/supabase';
 import { friendlyError } from '../../lib/errors';
@@ -39,6 +40,12 @@ export default function SettingsTab() {
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading]     = useState(false);
   const [deleteError, setDeleteError]         = useState<string | null>(null);
+
+  // Education level
+  const [educationLevel, setEducationLevel]   = useState<string>(() => storage.getSomaSettings().educationLevel || '');
+  const [editingEducation, setEditingEducation] = useState(false);
+  const [pendingEducation, setPendingEducation] = useState<EducationId | ''>('');
+  const [eduSaving, setEduSaving]             = useState(false);
 
   // Canvas integration state
   const [canvasIcalUrl, setCanvasIcalUrl] = useState(() => storage.getCanvasIcalUrl());
@@ -114,6 +121,13 @@ export default function SettingsTab() {
       setProfileEmail(u.email ?? '');
       setProfileName(u.user_metadata?.full_name ?? u.user_metadata?.name ?? '');
       setIsEmailProvider(u.app_metadata?.provider === 'email');
+    });
+  }, []);
+
+  // Load education level from Supabase (cross-device)
+  useEffect(() => {
+    storage.getSettings().then(s => {
+      if (s.educationLevel) setEducationLevel(s.educationLevel);
     });
   }, []);
 
@@ -219,6 +233,20 @@ export default function SettingsTab() {
         </div>
       );
     });
+  }
+
+  async function handleSaveEducation() {
+    if (!pendingEducation) return;
+    setEduSaving(true);
+    try {
+      const remote = await storage.getSettings();
+      await storage.saveSettings({ ...remote, educationLevel: pendingEducation });
+      const local = storage.getSomaSettings();
+      storage.setSomaSettings({ ...local, educationLevel: pendingEducation });
+      setEducationLevel(pendingEducation);
+      setEditingEducation(false);
+    } catch { /* fail silently */ }
+    setEduSaving(false);
   }
 
   async function handlePasswordChange(e: React.FormEvent) {
@@ -434,6 +462,77 @@ export default function SettingsTab() {
               <span className={styles.profileLabel}>Signed in as</span>
               {profileName && <span className={styles.profileName}>{profileName}</span>}
               <span className={styles.profileEmail}>{profileEmail}</span>
+            </div>
+
+            <div className={styles.profileSep} />
+
+            {/* Education level */}
+            <div className={styles.profileBlock}>
+              <span className={styles.profileLabel}>Education level</span>
+              {!editingEducation ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span className={styles.profileName} style={{ fontWeight: 500 }}>
+                    {educationLevel
+                      ? EDUCATION_LABELS[educationLevel as EducationId]
+                      : <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: 13 }}>Not set</span>}
+                  </span>
+                  <button
+                    className={styles.profilePassBtn}
+                    style={{ padding: '4px 12px', fontSize: 11 }}
+                    onClick={() => {
+                      setPendingEducation((educationLevel as EducationId) || '');
+                      setEditingEducation(true);
+                    }}
+                  >
+                    Edit
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                    {EDUCATION_OPTIONS.map(opt => (
+                      <button
+                        key={opt.id}
+                        onClick={() => setPendingEducation(opt.id)}
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: 4,
+                          padding: '10px 6px',
+                          borderRadius: 10,
+                          border: `1.5px solid ${pendingEducation === opt.id ? 'var(--accent)' : 'var(--border)'}`,
+                          background: pendingEducation === opt.id ? 'color-mix(in oklch, var(--accent) 8%, transparent)' : 'var(--bg-secondary)',
+                          color: 'var(--text-primary)',
+                          cursor: 'pointer',
+                          fontFamily: 'inherit',
+                          transition: 'border-color 0.15s, background 0.15s',
+                          ...(opt.id === 'other' ? { gridColumn: '1 / -1' } : {}),
+                        }}
+                      >
+                        <span style={{ fontSize: 15 }}>{opt.icon}</span>
+                        <span style={{ fontSize: 11, fontWeight: 500, textAlign: 'center' }}>{opt.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      className={styles.profilePassBtn}
+                      onClick={handleSaveEducation}
+                      disabled={!pendingEducation || eduSaving}
+                    >
+                      {eduSaving ? 'Saving…' : 'Save'}
+                    </button>
+                    <button
+                      className={styles.profileGoogleNote as unknown as string}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, color: 'var(--text-muted)', padding: '7px 4px' }}
+                      onClick={() => setEditingEducation(false)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className={styles.profileSep} />

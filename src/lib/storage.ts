@@ -45,6 +45,9 @@ export interface SomaSettings {
   googleDocsToken?: string;
   googleDriveToken?: string;
   googleDriveRefreshToken?: string;
+  onboardingCompleted?: boolean;
+  educationLevel?: string;
+  birthYear?: number;
 }
 
 export interface ScheduleBlock {
