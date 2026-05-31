@@ -304,10 +304,11 @@ export default async function handler(req: any, res: any) {
       const { assignmentId, courseId } = extractIds(e);
       const { courseName, assignmentName } = parseSummary(e.summary);
       const resolvedCourseId = courseId || simpleHash(`course:${courseName || 'Canvas'}`);
-      let htmlUrl = e.url;
-      if (courseId && assignmentId && !/\/assignments\//.test(e.url)) {
-        htmlUrl = `https://${parsedUrl.hostname}/courses/${courseId}/assignments/${assignmentId}`;
-      }
+      const dueDate = new Date(e.due || e.dtstart);
+      const month = String(dueDate.getUTCMonth() + 1).padStart(2, '0');
+      const year = dueDate.getUTCFullYear();
+      const dateStr = `${year}-${month}-${String(dueDate.getUTCDate()).padStart(2, '0')}`;
+      const htmlUrl = `https://${parsedUrl.hostname}/calendar?include_contexts=course_${courseId || resolvedCourseId}&month=${month}&year=${year}#view_name=month&view_start=${dateStr}`;
       return {
         id: assignmentId,
         name: assignmentName || e.summary,
