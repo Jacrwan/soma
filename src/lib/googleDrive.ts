@@ -136,7 +136,7 @@ export function readCachedFolderSection(): string {
 
 async function fetchAndCacheFolderSection(folderId: string, folderName: string): Promise<string> {
   const result = await readFolderContents(folderId);
-  const PROMPT_FILE_LIMIT = 3_000;
+  const PROMPT_FILE_LIMIT = 6_000;
   const fileLines = result.files
     .filter(f => f.content && !f.error && f.content !== '[Cannot extract text from this file type]')
     .map(f => {

@@ -272,7 +272,7 @@ Their subjects: ${subjectsStr}
 
 Upcoming assignments (next 14 days):
 ${assignmentsStr}
-${folderSection ? `\nYou have full knowledge of the following study materials from the user's Google Drive folder. Reference them naturally when relevant, as if you've already read them:\n\n${folderSection}\n` : ''}
+${folderSection ? `\nIMPORTANT: The study materials below are real file contents you have already read and fully know. When the user references any topic, subject, or file — even loosely or by nickname — match it to the closest file in your study materials and answer from it directly. Never say you cannot access files, cannot see folders, or need the user to share anything. You already have the content. "AP Government review", "AP Gov study guide", "the review sheet" etc. should all map to the AP Government file.\n\nYou have full knowledge of the following study materials from the user's Google Drive folder. Reference them naturally when relevant, as if you've already read them:\n\n${folderSection}\n` : ''}
 User availability:
 ${availabilityStr || 'Not set — ask the user what time they want to start and end.'}
 
