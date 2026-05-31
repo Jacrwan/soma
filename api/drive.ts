@@ -1,5 +1,6 @@
 /// <reference types="node" />
 import { createClient } from '@supabase/supabase-js';
+import pdfParse from 'pdf-parse';
 
 export const config = { api: { bodyParser: { sizeLimit: '20kb' } } };
 
@@ -220,9 +221,24 @@ async function readFileContent(
   mimeType: string,
   gHeaders: { Authorization: string },
 ): Promise<FileReadResult | null> {
-  // PDFs cannot be exported as text via the Drive export endpoint — skip immediately.
   if (mimeType === 'application/pdf') {
-    return { content: '', truncated: false, error: 'pdf_not_supported', note: 'PDF text extraction not yet supported' };
+    try {
+      const dlRes = await fetchWithTimeout(
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`,
+        { headers: gHeaders },
+      );
+      console.log(JSON.stringify({ event: 'fc_pdf', fileName, status: dlRes.status }));
+      if (!dlRes.ok) return { content: '', truncated: false, error: 'pdf_download_failed' };
+      const buffer = Buffer.from(await dlRes.arrayBuffer());
+      const parsed = await pdfParse(buffer);
+      let raw = parsed.text.replace(/\r\n/g, '\n').trim();
+      const truncated = raw.length > FILE_CHAR_LIMIT;
+      if (truncated) raw = raw.slice(0, FILE_CHAR_LIMIT);
+      return { content: raw, truncated };
+    } catch (err) {
+      console.error(JSON.stringify({ event: 'fc_pdf_error', fileName, error: String(err) }));
+      return { content: '', truncated: false, error: 'pdf_parse_failed' };
+    }
   }
 
   let raw = '';
