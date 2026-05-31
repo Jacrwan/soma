@@ -580,9 +580,9 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     return fallback;
   });
 
-  const [currentSessionKey, setCurrentSessionKey] = useState<string>('general');
+  const [currentSessionKey, _setCurrentSessionKey] = useState<string>('general');
 
-  function getSessionKey(subjectId: string | null): string {
+  function _getSessionKey(subjectId: string | null): string {
     return subjectId ? `subject_${subjectId}` : 'general';
   }
 
