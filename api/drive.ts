@@ -305,12 +305,29 @@ export default async function handler(req: any, res: any) {
   const { data: { user }, error: authErr } = await admin.auth.getUser(sbToken);
   if (authErr || !user) return res.status(401).json({ error: 'Unauthorized' });
 
-  const { googleToken } = req.body as { googleToken?: string };
-  if (!googleToken || typeof googleToken !== 'string') {
-    return res.status(400).json({ error: 'Missing googleToken' });
-  }
-
   const type = req.query?.type as string | undefined;
+
+  let googleToken: string;
+
+  if (type === 'folder-contents') {
+    // Token fetched server-side from the user's persisted settings row.
+    const { data: settingsRow } = await admin
+      .from('settings')
+      .select('data')
+      .eq('user_id', user.id)
+      .single();
+    const token = (settingsRow?.data as Record<string, unknown> | null)?.googleDriveToken;
+    if (!token || typeof token !== 'string') {
+      return res.status(400).json({ error: 'Google Drive not connected' });
+    }
+    googleToken = token;
+  } else {
+    const { googleToken: bodyToken } = req.body as { googleToken?: string };
+    if (!bodyToken || typeof bodyToken !== 'string') {
+      return res.status(400).json({ error: 'Missing googleToken' });
+    }
+    googleToken = bodyToken;
+  }
 
   try {
     if (type === 'doc')             return await handleDoc(req, res, googleToken);

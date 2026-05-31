@@ -72,6 +72,34 @@ export async function listFolderFiles(
   return res.json() as Promise<{ folderName: string; files: FolderFile[] }>;
 }
 
+export interface FolderContentFile {
+  id: string;
+  name: string;
+  mimeType: string;
+  content: string;
+  truncated: boolean;
+}
+
+// No googleToken in the body — the server fetches it from the user's settings row.
+export async function readFolderContents(
+  folderId: string,
+): Promise<{ files: FolderContentFile[] }> {
+  const token = await getSupabaseToken();
+  const res = await fetch('/api/drive?type=folder-contents', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ folderId }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string };
+    throw mapStatusError(res.status, body);
+  }
+  return res.json() as Promise<{ files: FolderContentFile[] }>;
+}
+
 // Friendly label for a Drive mimeType.
 export function fileTypeLabel(mimeType: string): string {
   if (mimeType === 'application/vnd.google-apps.document') return 'Doc';
