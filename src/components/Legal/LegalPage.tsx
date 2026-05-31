@@ -12,7 +12,7 @@ export type LegalType =
   | 'contact'
   | 'ai';
 
-const UPDATED = 'May 26, 2026';
+const UPDATED = 'May 31, 2026';
 
 function Privacy() {
   return (
@@ -47,20 +47,36 @@ function Privacy() {
             stored in Supabase.
           </li>
           <li>
-            <strong>Canvas data</strong> — your course list, assignments, grades, and announcements.
-            This data is fetched from your school's Canvas instance and cached locally in your
-            browser. Your Canvas API token stays in your browser; when a Canvas request is made,
-            the token is sent through a Vercel serverless proxy but is not stored on our servers.
+            <strong>Canvas data</strong> — your assignments and due dates, fetched from your
+            school's Canvas calendar feed (iCal URL). The feed URL is stored locally in your
+            browser. Assignment data is sent through a Vercel serverless proxy for parsing but
+            is not stored on our servers.
           </li>
           <li>
-            <strong>Google Calendar data</strong> — your Google OAuth token and calendar events,
-            cached locally in your browser. We do not store Google tokens on our servers.
+            <strong>Google account data</strong> — when you connect Google, Soma requests OAuth
+            access to the following scopes:
+            <ul>
+              <li><strong>Google Calendar</strong> (read-only) — to display your calendar events alongside your study schedule.</li>
+              <li><strong>Google Drive</strong> (drive.file) — to read files you explicitly select via the Google Picker for AI context.</li>
+              <li><strong>Google Docs</strong> — to create Google Docs containing AI-generated study materials (notes, guides, quizzes).</li>
+              <li><strong>Google Slides</strong> — to create Google Slides presentations from AI-generated content.</li>
+            </ul>
+            Your Google OAuth token is cached locally in your browser and passed through Vercel
+            serverless functions when creating files. Soma does not store Google tokens on its
+            servers. Soma only accesses files you explicitly choose — it cannot browse your
+            entire Drive.
           </li>
           <li>
             <strong>AI chat messages</strong> — when you use AI features, your messages and
-            relevant context (tasks, schedule blocks, Canvas assignments) are sent to Anthropic to
-            generate a response. Soma does not store the full conversation on its servers beyond
-            what you save as AI memory.
+            relevant context (tasks, schedule blocks, Canvas assignments, and any Google Drive
+            files you attach) are sent to Anthropic to generate a response. Soma does not store
+            the full conversation on its servers beyond what you save as AI memory.
+          </li>
+          <li>
+            <strong>Voice input</strong> — when you use the voice input feature, your speech
+            is processed by your browser's built-in Web Speech API to convert it to text. Audio
+            is not sent to Soma's servers. The resulting text is treated the same as a typed
+            message.
           </li>
           <li>
             <strong>Payment data</strong> — billing and subscription data is processed by Stripe.
@@ -105,8 +121,8 @@ function Privacy() {
               </tr>
               <tr>
                 <td>Google</td>
-                <td>OAuth sign-in and Calendar data</td>
-                <td>Google account identifier, calendar events</td>
+                <td>OAuth sign-in, Calendar, Drive, Docs, Slides</td>
+                <td>Google account identifier, calendar events, selected Drive files, created Docs and Slides</td>
               </tr>
               <tr>
                 <td>Vercel</td>
@@ -189,8 +205,9 @@ function Privacy() {
       <div className={styles.section}>
         <h2>8. Cookies and local storage</h2>
         <p>
-          Soma uses browser local storage to cache your settings, Canvas data, Google tokens, and
-          Supabase session tokens. No third-party advertising cookies are used.
+          Soma uses browser local storage to cache your settings, Canvas calendar feed data,
+          Google OAuth tokens, chat sessions, creation history, and Supabase session tokens. No
+          third-party advertising cookies are used.
         </p>
       </div>
 
@@ -308,9 +325,11 @@ function Terms() {
       <div className={styles.section}>
         <h2>8. Third-party services</h2>
         <p>
-          Soma integrates with Canvas, Google, Anthropic, Supabase, Vercel, and Stripe. Use of
-          those services is subject to their own terms. Soma is not responsible for the
-          availability, accuracy, or actions of third-party services.
+          Soma integrates with Canvas (via iCal feeds), Google (Calendar, Drive, Docs, Slides),
+          Anthropic (AI), Supabase, Vercel, and Stripe. Use of those services is subject to their
+          own terms. Soma is not responsible for the availability, accuracy, or actions of
+          third-party services. Google Drive access is limited to files you explicitly select —
+          Soma cannot browse your entire Drive.
         </p>
       </div>
 
@@ -623,15 +642,17 @@ function DataDeletion() {
         <h2>What is not deleted</h2>
         <p>
           Deleting your Soma account does not remove your data from Canvas, Google, your school,
-          or Stripe. To revoke Soma's access to Google Calendar, visit your{' '}
+          or Stripe. To revoke Soma's access to Google Calendar, Drive, Docs, and Slides, visit
+          your{' '}
           <a
             href="https://myaccount.google.com/permissions"
             target="_blank"
             rel="noopener noreferrer"
           >
             Google account permissions
-          </a>
-          . To revoke Canvas access, remove the token in Canvas.
+          </a>{' '}
+          and remove Soma. Canvas calendar feeds do not require revocation — simply disconnect
+          the feed URL in Soma's settings.
         </p>
       </div>
 
@@ -674,10 +695,11 @@ function AiDisclaimer() {
         <h2>What data is sent to Anthropic</h2>
         <p>When you use the AI tab, Soma may include the following as context:</p>
         <ul>
-          <li>Your chat messages</li>
+          <li>Your chat messages (typed or transcribed from voice input)</li>
           <li>Your schedule blocks and tasks</li>
           <li>Canvas assignments, due dates, and announcements</li>
-          <li>AI memory entries you have saved</li>
+          <li>Google Drive file contents that you explicitly attach to a chat</li>
+          <li>Your availability settings (school, work, and personal hours)</li>
         </ul>
         <p>
           This context is sent to Anthropic's API to generate a response. Anthropic's use of this
@@ -708,10 +730,32 @@ function AiDisclaimer() {
       </div>
 
       <div className={styles.section}>
+        <h2>Voice input</h2>
+        <p>
+          When you use voice input, your speech is converted to text by your browser's built-in
+          Web Speech API. The audio is processed locally by your browser and is not sent to Soma
+          or Anthropic. Only the resulting text transcription is sent to Anthropic as part of your
+          chat message. AI responses may be read aloud using your browser's built-in
+          text-to-speech — this also runs locally with no data sent externally.
+        </p>
+      </div>
+
+      <div className={styles.section}>
+        <h2>Google Drive files</h2>
+        <p>
+          When you attach a Google Drive file to a chat, its contents are read via the Google
+          Docs or Drive API and included in the message sent to Anthropic. Only files you
+          explicitly select via the Google Picker are accessed — Soma cannot browse your Drive.
+          Soma may also create Google Docs and Slides on your behalf when generating study
+          materials.
+        </p>
+      </div>
+
+      <div className={styles.section}>
         <h2>AI model</h2>
         <p>
-          Soma currently uses Claude Haiku via the Anthropic API. The model may change as newer
-          versions become available.
+          Soma uses Claude Sonnet and Claude Haiku via the Anthropic API, depending on the
+          task. The models may change as newer versions become available.
         </p>
       </div>
     </div>
