@@ -976,20 +976,16 @@
 }
 
 .quickChip {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
+  padding: 9px 14px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
   background: var(--bg);
+  font-size: 13px;
+  color: var(--text-secondary);
   cursor: pointer;
+  text-align: left;
   font-family: inherit;
-  white-space: nowrap;
-  transition: background 0.1s, border-color 0.1s, color 0.1s;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
 
 .quickChip:hover:not(:disabled) {
@@ -1009,6 +1005,7 @@
   border-radius: 8px;
   overflow: hidden;
   background: var(--bg-secondary);
+  box-shadow: 0 -4px 16px oklch(0% 0 0 / 0.12);
 }
 
 .quickFormHeader {
@@ -1055,32 +1052,35 @@
 }
 
 .quickSourceTabs {
-  display: flex;
+  display: inline-flex;
   gap: 2px;
-  flex-wrap: wrap;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 2px;
 }
 
 .quickSourceTab {
-  padding: 2px 8px;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-muted);
+  border: none;
   background: none;
-  border: 1px solid transparent;
-  border-radius: 4px;
+  padding: 6px 14px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
   cursor: pointer;
   font-family: inherit;
-  transition: color 0.1s, background 0.1s, border-color 0.1s;
+  transition: background 0.12s, color 0.12s;
 }
 
 .quickSourceTab:hover {
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .quickSourceTabActive {
-  color: var(--text-primary);
   background: var(--bg);
-  border-color: var(--border);
+  color: var(--text-primary);
+  box-shadow: 0 1px 3px oklch(0% 0 0 / 0.1);
 }
 
 .quickInput,

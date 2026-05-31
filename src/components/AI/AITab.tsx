@@ -1522,7 +1522,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
                   onClick={() => { setQuickTemplate(t); setQuickError(''); setQuickSourceType('topic'); }}
                   disabled={loading || quickGenerating}
                 >
-                  {QUICK_ICONS[t.id] ?? t.icon} {t.label}
+                  {t.label}
                 </button>
               ))}
             </div>
