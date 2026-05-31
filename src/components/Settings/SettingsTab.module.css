@@ -473,6 +473,20 @@
   color: var(--text-primary);
 }
 
+.testingBadge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: oklch(55% 0.18 50);
+  background: oklch(92% 0.08 50);
+  border: 1px solid oklch(82% 0.1 50);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
 .integrationDescription {
   font-size: 12px;
   color: var(--text-muted);

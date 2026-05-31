@@ -817,7 +817,7 @@ export default function SettingsTab() {
 
               <div className={styles.integrationRow}>
                 <div className={styles.integrationInfo}>
-                  <span className={styles.integrationLabel}>Google Drive</span>
+                  <span className={styles.integrationLabel}>Google Drive <span className={styles.testingBadge}>TESTING MODE</span></span>
                   <span className={styles.integrationDescription}>Attach Drive files (Docs, Slides, Sheets) to the AI, and let it create Google Docs and Slides on request</span>
                 </div>
                 <div className={styles.integrationActions}>
