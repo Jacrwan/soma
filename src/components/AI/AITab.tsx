@@ -582,9 +582,12 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
 
   const [currentSessionKey, _setCurrentSessionKey] = useState<string>('general');
 
+  // Used in Phase 2
   function _getSessionKey(subjectId: string | null): string {
     return subjectId ? `subject_${subjectId}` : 'general';
   }
+  void _getSessionKey;
+  void _setCurrentSessionKey;
 
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
