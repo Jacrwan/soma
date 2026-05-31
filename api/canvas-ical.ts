@@ -308,7 +308,7 @@ export default async function handler(req: any, res: any) {
       const month = String(dueDate.getUTCMonth() + 1).padStart(2, '0');
       const year = dueDate.getUTCFullYear();
       const dateStr = `${year}-${month}-${String(dueDate.getUTCDate()).padStart(2, '0')}`;
-      const htmlUrl = `https://${parsedUrl.hostname}/calendar?include_contexts=course_${courseId || resolvedCourseId}&month=${month}&year=${year}#view_name=month&view_start=${dateStr}`;
+      const htmlUrl = `https://${parsedUrl.hostname}/calendar?include_contexts=course_${courseId || resolvedCourseId}&month=${month}&year=${year}#view_name=day&view_start=${dateStr}`;
       return {
         id: assignmentId,
         name: assignmentName || e.summary,
