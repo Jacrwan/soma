@@ -16,6 +16,15 @@ import { SkeletonBlock } from '../UI/Skeleton';
 import TrialConfirmModal from '../UI/TrialConfirmModal';
 import styles from './AITab.module.css';
 
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
+  // eslint-disable-next-line no-var
+  var SpeechRecognition: any;
+}
+
 function SessionListSkeleton() {
   return (
     <div style={{ padding: '6px 0' }}>
@@ -1119,7 +1128,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
 
     let finalTranscript = '';
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
+    recognition.onresult = (event: any) => {
       let interim = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const t = event.results[i][0].transcript;
