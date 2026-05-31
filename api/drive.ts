@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import { createClient } from '@supabase/supabase-js';
-import pdfParse from 'pdf-parse';
+import { extractText as extractPdfText } from 'unpdf';
 
 export const config = { api: { bodyParser: { sizeLimit: '20kb' } } };
 
@@ -228,9 +228,9 @@ async function readFileContent(
       );
       console.log(JSON.stringify({ event: 'fc_pdf', fileName, status: dlRes.status }));
       if (!dlRes.ok) return { content: '', truncated: false, error: 'pdf_download_failed' };
-      const buffer = Buffer.from(await dlRes.arrayBuffer());
-      const parsed = await pdfParse(buffer);
-      let raw = parsed.text.replace(/\r\n/g, '\n').trim();
+      const buffer = new Uint8Array(await dlRes.arrayBuffer());
+      const { text } = await extractPdfText(buffer, { mergePages: true });
+      let raw = text.replace(/\r\n/g, '\n').trim();
       const truncated = raw.length > FILE_CHAR_LIMIT;
       if (truncated) raw = raw.slice(0, FILE_CHAR_LIMIT);
       return { content: raw, truncated };
