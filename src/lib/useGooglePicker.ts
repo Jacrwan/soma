@@ -100,6 +100,7 @@ export function useGooglePicker(
       .setOAuthToken(googleToken)
       .setDeveloperKey(apiKey)
       .setOrigin(window.location.origin)
+      .setRelayUrl(window.location.origin + '/')
       .addView(myFilesView)
       .addView(sharedView)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -156,6 +157,7 @@ export function useGoogleFolderPicker(
       .setOAuthToken(googleToken)
       .setDeveloperKey(apiKey)
       .setOrigin(window.location.origin)
+      .setRelayUrl(window.location.origin + '/')
       .addView(folderView)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .setCallback((data: any) => {
