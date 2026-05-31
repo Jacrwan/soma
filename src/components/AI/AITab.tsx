@@ -9,6 +9,7 @@ import { readDriveFile, fileTypeLabel, getFolderContentsForPrompt, readCachedFol
 import { useGooglePicker, PickedFile } from '../../lib/useGooglePicker';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, hasAIAccess, startTrial, startCheckout } from '../../lib/subscription';
+import { SavedCreation, loadCreateHistory, appendToCreateHistory, CREATE_HISTORY_EVENT } from '../../lib/createHistory';
 import { TimeBlock, Subject, Todo, ChatMessage, ChatSession, AiTodo } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
 import { SkeletonBlock } from '../UI/Skeleton';
@@ -467,6 +468,99 @@ function SessionRow({ session, isActive, isConfirming, onSelect, onDeleteClick, 
   );
 }
 
+// ── Files panel ─────────────────────────────────────────────────────────────
+
+function fmtFileDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function FilesPanel({ subjects, onClose }: { subjects: Subject[]; onClose: () => void }) {
+  const [history, setHistory] = useState<SavedCreation[]>(() => loadCreateHistory());
+  const [sort, setSort] = useState<'date' | 'type'>('date');
+
+  useEffect(() => {
+    const handler = () => setHistory(loadCreateHistory());
+    window.addEventListener(CREATE_HISTORY_EVENT, handler);
+    return () => window.removeEventListener(CREATE_HISTORY_EVENT, handler);
+  }, []);
+
+  const groups = useMemo(() => {
+    const groupMap = new Map<string, SavedCreation[]>();
+    for (const item of history) {
+      const key = item.subjectId ?? 'general';
+      if (!groupMap.has(key)) groupMap.set(key, []);
+      groupMap.get(key)!.push(item);
+    }
+    for (const items of groupMap.values()) {
+      items.sort((a, b) => {
+        if (sort === 'type' && a.kind !== b.kind) return a.kind === 'doc' ? -1 : 1;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+    }
+    return [...groupMap.entries()].sort(([keyA, itemsA], [keyB, itemsB]) => {
+      if (keyA === 'general') return 1;
+      if (keyB === 'general') return -1;
+      const latestA = Math.max(...itemsA.map(i => new Date(i.createdAt).getTime()));
+      const latestB = Math.max(...itemsB.map(i => new Date(i.createdAt).getTime()));
+      return latestB - latestA;
+    });
+  }, [history, sort]);
+
+  return (
+    <div className={styles.filesPanel}>
+      <div className={styles.filesPanelHeader}>
+        <span className={styles.filesPanelTitle}>Files</span>
+        <div className={styles.filesSortRow}>
+          <button
+            className={`${styles.filesSortBtn}${sort === 'date' ? ` ${styles.filesSortBtnActive}` : ''}`}
+            onClick={() => setSort('date')}
+          >Date</button>
+          <button
+            className={`${styles.filesSortBtn}${sort === 'type' ? ` ${styles.filesSortBtnActive}` : ''}`}
+            onClick={() => setSort('type')}
+          >Type</button>
+        </div>
+        <button className={styles.filesPanelClose} onClick={onClose} title="Close files panel">✕</button>
+      </div>
+
+      {history.length === 0 ? (
+        <div className={styles.filesEmpty}>No files generated yet</div>
+      ) : (
+        <div className={styles.filesList}>
+          {groups.map(([groupKey, items]) => {
+            const subject = groupKey !== 'general' ? subjects.find(s => s.id === groupKey) : null;
+            return (
+              <div key={groupKey} className={styles.filesGroup}>
+                <div className={styles.filesGroupHeader}>
+                  {subject
+                    ? <SubjectDot color={subject.color} size={7} />
+                    : <span className={styles.filesGroupDotGeneral} />}
+                  <span className={styles.filesGroupLabel}>{subject?.name ?? 'General'}</span>
+                </div>
+                {items.map(item => (
+                  <a
+                    key={item.id}
+                    href={item.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={styles.filesItem}
+                  >
+                    <span className={styles.filesItemIcon}>{item.kind === 'slides' ? '📊' : '📄'}</span>
+                    <div className={styles.filesItemInfo}>
+                      <span className={styles.filesItemTitle}>{item.title}</span>
+                      <span className={styles.filesItemDate}>{fmtFileDate(item.createdAt)}</span>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Locked screen ───────────────────────────────────────────────────────────
 
 function AILockedScreen({ status }: { status: string }) {
@@ -615,6 +709,16 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   const [docErrors, setDocErrors] = useState<Record<string, string>>({});
   const [saveAsDocMode, setSaveAsDocMode] = useState(false);
 
+  const [filesPanelOpen, setFilesPanelOpen] = useState<boolean>(() => {
+    try { return localStorage.getItem('soma_files_panel_open') === 'true'; }
+    catch { return false; }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem('soma_files_panel_open', String(filesPanelOpen)); }
+    catch { /* ignore */ }
+  }, [filesPanelOpen]);
+
   // AI-created artifacts (doc / slides) keyed by message id
   interface Artifact { kind: 'doc' | 'slides'; title: string; status: 'creating' | 'done' | 'error'; url?: string; error?: string }
   const [artifacts, setArtifacts] = useState<Record<string, Artifact>>({});
@@ -663,6 +767,11 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       const title = content.replace(/\s+/g, ' ').trim().slice(0, 60) || 'Soma AI Response';
       const { docUrl } = await createGoogleDoc(token, title, content);
       setDocUrls(prev => ({ ...prev, [msgId]: docUrl }));
+      appendToCreateHistory({
+        kind: 'doc', title, url: docUrl, templateLabel: 'AI Response', sourceLabel: '',
+        createdAt: new Date().toISOString(),
+        subjectId: currentSubjectKey.startsWith('subject_') ? currentSubjectKey.slice('subject_'.length) : undefined,
+      });
     } catch (err: any) {
       const msg = err?.message === 'google_token_expired'
         ? 'Google access expired — reconnect Google Drive in Settings.'
@@ -674,7 +783,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   }
 
   // Execute an AI-requested creation (doc or slides) and track its status per message.
-  async function runCreation(msgId: string, response: string) {
+  async function runCreation(msgId: string, response: string, subjectKey: string) {
     const docSpec = parseCreateDoc(response);
     const slidesSpec = parseCreateSlides(response);
     if (!docSpec && !slidesSpec) return;
@@ -690,6 +799,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       return;
     }
 
+    const subjectId = subjectKey.startsWith('subject_') ? subjectKey.slice('subject_'.length) : undefined;
     setArtifacts(prev => ({ ...prev, [msgId]: { kind, title, status: 'creating' } }));
     try {
       let url: string;
@@ -701,11 +811,13 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
         url = docUrl;
       }
       setArtifacts(prev => ({ ...prev, [msgId]: { kind, title, status: 'done', url } }));
+      appendToCreateHistory({ kind, title, url, templateLabel: 'AI Chat', sourceLabel: '', createdAt: new Date().toISOString(), subjectId });
     } catch (err: unknown) {
       const e = err as Error & { presentationUrl?: string };
       // Slides population partly failed but the deck exists — still link to it
       if (e.presentationUrl) {
         setArtifacts(prev => ({ ...prev, [msgId]: { kind, title, status: 'done', url: e.presentationUrl } }));
+        appendToCreateHistory({ kind, title, url: e.presentationUrl!, templateLabel: 'AI Chat', sourceLabel: '', createdAt: new Date().toISOString(), subjectId });
         return;
       }
       const msg = e.message === 'google_token_expired'
@@ -891,14 +1003,20 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       updateSession(activeSessionId, s => ({ ...s, messages: [...s.messages, assistantMsg] }));
 
       // If the AI was asked to create a Doc or Slides, execute it now
-      void runCreation(assistantMsg.id, response);
+      void runCreation(assistantMsg.id, response, currentSubjectKey);
 
       // Auto-save to Google Doc if mode is on (and the AI didn't already create one)
       if (saveAsDocMode && driveToken && !parseCreateDoc(response) && !parseCreateSlides(response)) {
         const docTitle = text.replace(/\s+/g, ' ').trim().slice(0, 60) || 'Soma AI Response';
         const msgId = assistantMsg.id;
+        const capturedSubjectKey = currentSubjectKey;
         createGoogleDoc(driveToken, docTitle, stripTags(response)).then(({ docUrl }) => {
           setDocUrls(prev => ({ ...prev, [msgId]: docUrl }));
+          appendToCreateHistory({
+            kind: 'doc', title: docTitle, url: docUrl, templateLabel: 'AI Response', sourceLabel: '',
+            createdAt: new Date().toISOString(),
+            subjectId: capturedSubjectKey.startsWith('subject_') ? capturedSubjectKey.slice('subject_'.length) : undefined,
+          });
         }).catch(() => {});
       }
     } catch (err: unknown) {
@@ -1045,6 +1163,11 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       <div className={styles.chatArea}>
         <div className={styles.chatHeader}>
           <span className={styles.chatTitle}>{activeSession?.title ?? 'AI Scheduling'}</span>
+          <button
+            className={`${styles.filesPanelToggle}${filesPanelOpen ? ` ${styles.filesPanelToggleActive}` : ''}`}
+            onClick={() => setFilesPanelOpen(p => !p)}
+            title={filesPanelOpen ? 'Close files panel' : 'View generated files'}
+          >📁</button>
         </div>
 
         <div className={styles.messageList}>
@@ -1206,6 +1329,10 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
         </div>
       </div>
 
+      {/* ── Files panel ─────────────────────────────────────────────────── */}
+      {filesPanelOpen && (
+        <FilesPanel subjects={subjects} onClose={() => setFilesPanelOpen(false)} />
+      )}
     </div>
   );
 }

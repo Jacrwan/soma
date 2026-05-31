@@ -314,6 +314,7 @@
 .chatHeader {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 12px var(--space-md);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -868,4 +869,184 @@
   font-size: 13px;
   color: var(--danger);
   margin: 0;
+}
+
+/* ── Files panel toggle (in chat header) ───────────────────────────────────── */
+
+.filesPanelToggle {
+  background: none;
+  border: none;
+  font-size: 15px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  opacity: 0.65;
+  flex-shrink: 0;
+  transition: opacity 0.1s, background 0.1s;
+}
+
+.filesPanelToggle:hover {
+  opacity: 1;
+  background: var(--bg-secondary);
+}
+
+.filesPanelToggleActive {
+  opacity: 1;
+  color: var(--accent);
+}
+
+/* ── Files panel ───────────────────────────────────────────────────────────── */
+
+.filesPanel {
+  width: 260px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.filesPanelHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 12px var(--space-md);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.filesPanelTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.filesSortRow {
+  display: flex;
+  gap: 2px;
+}
+
+.filesSortBtn {
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.1s, border-color 0.1s, background 0.1s;
+}
+
+.filesSortBtn:hover {
+  color: var(--text-secondary);
+}
+
+.filesSortBtnActive {
+  color: var(--text-primary);
+  border-color: var(--border);
+  background: var(--bg-secondary);
+}
+
+.filesPanelClose {
+  background: none;
+  border: none;
+  font-size: 14px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 0.1s, background 0.1s;
+}
+
+.filesPanelClose:hover {
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
+.filesEmpty {
+  padding: 32px var(--space-md);
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.filesList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.filesGroup {
+  margin-bottom: 2px;
+}
+
+.filesGroupHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px var(--space-md) 3px;
+}
+
+.filesGroupLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.filesGroupDotGeneral {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.filesItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px var(--space-md);
+  text-decoration: none;
+  transition: background 0.1s;
+}
+
+.filesItem:hover {
+  background: var(--bg-secondary);
+}
+
+.filesItemIcon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.filesItemInfo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.filesItemTitle {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.filesItemDate {
+  font-size: 10px;
+  color: var(--text-muted);
 }

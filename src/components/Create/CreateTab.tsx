@@ -9,33 +9,12 @@ import {
 import { readDriveFile } from '../../lib/googleDrive';
 import { useGooglePicker, PickedFile } from '../../lib/useGooglePicker';
 import { CanvasAssignment, Subject } from '../../types';
+import { SavedCreation, loadCreateHistory, saveCreateHistory, clearCreateHistory } from '../../lib/createHistory';
 import styles from './CreateTab.module.css';
 
 type SourceType = 'topic' | 'assignment' | 'subject' | 'file';
 
-interface SavedCreation {
-  id: string;
-  kind: 'doc' | 'slides';
-  title: string;
-  url: string;
-  templateLabel: string;
-  sourceLabel: string;
-  createdAt: string;
-}
-
-const HISTORY_KEY = 'soma_create_history';
-const MAX_HISTORY = 30;
 const MAX_FILE_CHARS = 12_000;
-
-function loadHistory(): SavedCreation[] {
-  try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
-  } catch { return []; }
-}
-
-function saveHistory(items: SavedCreation[]) {
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(0, MAX_HISTORY)));
-}
 
 export default function CreateTab() {
   const navigate = useNavigate();
@@ -61,7 +40,7 @@ export default function CreateTab() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [preview, setPreview] = useState<PreviewResult | null>(null);
-  const [history, setHistory] = useState<SavedCreation[]>(loadHistory);
+  const [history, setHistory] = useState<SavedCreation[]>(loadCreateHistory);
 
   const previewRef = useRef<HTMLDivElement>(null);
   const topicRef = useRef<HTMLInputElement>(null);
@@ -171,10 +150,11 @@ export default function CreateTab() {
         templateLabel: template?.label || '',
         sourceLabel: sourceType === 'topic' ? topic.trim() : '',
         createdAt: new Date().toISOString(),
+        subjectId: sourceType === 'subject' ? subjectId || undefined : undefined,
       };
       const updated = [creation, ...history];
       setHistory(updated);
-      saveHistory(updated);
+      saveCreateHistory(updated);
       setPreview(null);
     } catch (err: unknown) {
       const msg = err as Error;
@@ -203,7 +183,7 @@ export default function CreateTab() {
 
   function clearHistory() {
     setHistory([]);
-    localStorage.removeItem(HISTORY_KEY);
+    clearCreateHistory();
   }
 
   useEffect(() => {
