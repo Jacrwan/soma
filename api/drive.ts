@@ -201,12 +201,24 @@ async function handleFile(req: any, res: any, googleToken: string) {
   return res.status(200).json({ title, mimeType, content });
 }
 
-// Returns { content, truncated } for supported types, null to skip unsupported.
+interface FileReadResult {
+  content: string;
+  truncated: boolean;
+  error?: string;
+  note?: string;
+}
+
 async function readFileContent(
   fileId: string,
+  fileName: string,
   mimeType: string,
   gHeaders: { Authorization: string },
-): Promise<{ content: string; truncated: boolean } | null> {
+): Promise<FileReadResult | null> {
+  // PDFs cannot be exported as text via the Drive export endpoint — skip immediately.
+  if (mimeType === 'application/pdf') {
+    return { content: '', truncated: false, error: 'pdf_not_supported', note: 'PDF text extraction not yet supported' };
+  }
+
   let raw = '';
 
   if (mimeType === 'application/vnd.google-apps.document') {
@@ -214,18 +226,21 @@ async function readFileContent(
       `https://docs.googleapis.com/v1/documents/${encodeURIComponent(fileId)}`,
       { headers: gHeaders },
     );
+    const preview = await docRes.clone().text().then(t => t.slice(0, 100)).catch(() => '');
+    console.log(JSON.stringify({ event: 'fc_doc', fileName, status: docRes.status, preview }));
     if (!docRes.ok) return null;
     raw = extractText(await docRes.json());
   } else if (
     mimeType === 'application/vnd.google-apps.spreadsheet' ||
-    mimeType === 'application/vnd.google-apps.presentation' ||
-    mimeType === 'application/pdf'
+    mimeType === 'application/vnd.google-apps.presentation'
   ) {
     const exportMime = mimeType === 'application/vnd.google-apps.spreadsheet' ? 'text/csv' : 'text/plain';
     const expRes = await fetch(
       `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent(exportMime)}`,
       { headers: gHeaders },
     );
+    const preview = await expRes.clone().text().then(t => t.slice(0, 100)).catch(() => '');
+    console.log(JSON.stringify({ event: 'fc_export', fileName, mimeType, exportMime, status: expRes.status, preview }));
     if (!expRes.ok) return null;
     raw = await expRes.text();
   } else if (mimeType.startsWith('text/') || mimeType === 'application/rtf') {
@@ -233,6 +248,8 @@ async function readFileContent(
       `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`,
       { headers: gHeaders },
     );
+    const preview = await dlRes.clone().text().then(t => t.slice(0, 100)).catch(() => '');
+    console.log(JSON.stringify({ event: 'fc_download', fileName, mimeType, status: dlRes.status, preview }));
     if (!dlRes.ok) return null;
     raw = await dlRes.text();
   } else {
@@ -271,17 +288,15 @@ async function handleFolderContents(req: any, res: any, googleToken: string) {
   const data = await listRes.json() as { files?: { id: string; name: string; mimeType: string }[] };
   const listed = (data.files ?? []).slice(0, MAX_FOLDER_FILES);
 
-  const results: { id: string; name: string; mimeType: string; content: string; truncated: boolean }[] = [];
+  const results: { id: string; name: string; mimeType: string; content: string; truncated: boolean; error?: string; note?: string }[] = [];
 
   for (const file of listed) {
-    const read = await readFileContent(file.id, file.mimeType, gHeaders);
-    results.push({
-      id: file.id,
-      name: file.name,
-      mimeType: file.mimeType,
-      content: read?.content ?? '[Cannot extract text from this file type]',
-      truncated: read?.truncated ?? false,
-    });
+    const read = await readFileContent(file.id, file.name, file.mimeType, gHeaders);
+    if (read !== null) {
+      results.push({ id: file.id, name: file.name, mimeType: file.mimeType, content: read.content, truncated: read.truncated, ...(read.error ? { error: read.error, note: read.note } : {}) });
+    } else {
+      results.push({ id: file.id, name: file.name, mimeType: file.mimeType, content: '[Cannot extract text from this file type]', truncated: false });
+    }
   }
 
   return res.status(200).json({ files: results });
