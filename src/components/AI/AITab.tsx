@@ -255,6 +255,7 @@ function buildSystemPrompt(): string {
 
   const driveConnected = !!storage.getGoogleDriveToken();
   const folderSection = readCachedFolderSection();
+  console.log('[soma] buildSystemPrompt folderSection non-empty:', !!folderSection, '| first 100:', folderSection.slice(0, 100) || '(empty)');
 
   const scheduleStr = [
     schoolHoursEnabled !== false ? fmtWeek(schoolHours, 'In class (unavailable for studying)') : '',
@@ -822,7 +823,8 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     updateSession(activeSessionId, s => ({ ...s, messages: messagesWithUser }));
 
     try {
-      await getFolderContentsForPrompt(); // warm folder cache; buildSystemPrompt reads it synchronously
+      const folderContentsResult = await getFolderContentsForPrompt(); // warm folder cache; buildSystemPrompt reads it synchronously
+      console.log('[soma] getFolderContentsForPrompt result (first 200):', folderContentsResult.slice(0, 200) || '(empty)');
       const systemPrompt = getCachedSystemPrompt();
       // For previous messages use stored content; for the current message use the doc-injected version
       const apiMessages = [
