@@ -4,13 +4,13 @@ import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
 import { createGoogleDoc, createGoogleSlides } from '../../lib/googleDocs';
-import { parseCreateDoc, parseCreateSlides } from '../../lib/aiArtifacts';
+import { parseCreateDoc, parseCreateSlides, CREATE_TEMPLATES, generatePreview, CreateTemplate } from '../../lib/aiArtifacts';
 import { readDriveFile, fileTypeLabel, getFolderContentsForPrompt, readCachedFolderSection, getFolderContentsCacheTs, hasTruncatedFolderFiles } from '../../lib/googleDrive';
 import { useGooglePicker, PickedFile } from '../../lib/useGooglePicker';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, hasAIAccess, startTrial, startCheckout } from '../../lib/subscription';
 import { SavedCreation, loadCreateHistory, appendToCreateHistory, CREATE_HISTORY_EVENT } from '../../lib/createHistory';
-import { TimeBlock, Subject, Todo, ChatMessage, ChatSession, AiTodo } from '../../types';
+import { TimeBlock, Subject, Todo, ChatMessage, ChatSession, AiTodo, CanvasAssignment } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
 import { SkeletonBlock } from '../UI/Skeleton';
 import TrialConfirmModal from '../UI/TrialConfirmModal';
@@ -709,6 +709,23 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   const [docErrors, setDocErrors] = useState<Record<string, string>>({});
   const [saveAsDocMode, setSaveAsDocMode] = useState(false);
 
+  // ── Quick-create ─────────────────────────────────────────────────────────
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickTemplate, setQuickTemplate] = useState<CreateTemplate | null>(null);
+  const [quickSourceType, setQuickSourceType] = useState<'topic' | 'assignment' | 'subject' | 'file'>('topic');
+  const [quickTopic, setQuickTopic] = useState('');
+  const [quickAssignmentId, setQuickAssignmentId] = useState<number | null>(null);
+  const [quickSubjectId, setQuickSubjectId] = useState('');
+  const [quickInstructions, setQuickInstructions] = useState('');
+  const [quickGenerating, setQuickGenerating] = useState(false);
+  const [quickError, setQuickError] = useState('');
+  const [quickDriveFile, setQuickDriveFile] = useState<{ id: string; title: string } | null>(null);
+  const [quickDriveLoading, setQuickDriveLoading] = useState(false);
+
+  const QUICK_ICONS: Record<string, string> = {
+    notes: '📝', quiz: '🃏', studyguide: '📋', slides: '📊', outline: '✏️', summary: '📄',
+  };
+
   const [filesPanelOpen, setFilesPanelOpen] = useState<boolean>(() => {
     try { return localStorage.getItem('soma_files_panel_open') === 'true'; }
     catch { return false; }
@@ -757,6 +774,97 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   }
 
   const { openPicker } = useGooglePicker(driveToken, onPickDriveFile);
+
+  function onPickQuickFile(file: PickedFile) {
+    setQuickDriveFile({ id: file.id, title: file.name });
+  }
+  const { openPicker: openQuickPicker } = useGooglePicker(driveToken, onPickQuickFile);
+
+  const assignments: CanvasAssignment[] = storage.getCachedAssignments();
+  const nonArchivedSubjects = subjects.filter(s => !s.archived);
+
+  async function handleQuickGenerate() {
+    if (!quickTemplate || quickGenerating) return;
+    setQuickGenerating(true);
+    setQuickError('');
+
+    try {
+      let sourceLabel = '';
+      let sourceContext = '';
+      const MAX_FILE = 12_000;
+
+      if (quickSourceType === 'topic') {
+        sourceLabel = quickTopic.trim();
+        if (!sourceLabel) { setQuickError('Enter a topic.'); return; }
+      } else if (quickSourceType === 'assignment') {
+        const a = assignments.find(x => x.id === quickAssignmentId);
+        if (!a) { setQuickError('Select an assignment.'); return; }
+        sourceLabel = `${a.name} (${a.courseName})`;
+        sourceContext = [
+          `Assignment: ${a.name}`,
+          `Course: ${a.courseName}`,
+          a.dueAt ? `Due: ${new Date(a.dueAt).toLocaleDateString()}` : '',
+          a.description ? `Details: ${a.description}` : '',
+        ].filter(Boolean).join('\n');
+      } else if (quickSourceType === 'subject') {
+        const s = nonArchivedSubjects.find(x => x.id === quickSubjectId);
+        if (!s) { setQuickError('Select a subject.'); return; }
+        sourceLabel = s.name;
+      } else if (quickSourceType === 'file') {
+        if (!quickDriveFile) { setQuickError('Select a Drive file.'); return; }
+        if (!driveToken) { setQuickError('Connect Google Drive in Settings first.'); return; }
+        setQuickDriveLoading(true);
+        const { title, content } = await readDriveFile(driveToken, quickDriveFile.id);
+        setQuickDriveLoading(false);
+        sourceLabel = title;
+        sourceContext = content.length > MAX_FILE
+          ? `${content.slice(0, MAX_FILE)}\n\n[Truncated]`
+          : content;
+      }
+
+      const preview = await generatePreview({
+        template: quickTemplate,
+        sourceLabel,
+        sourceContext,
+        instructions: quickInstructions.trim() || undefined,
+      });
+
+      // Build a human-readable preview — shown in the bubble after stripTags removes the XML
+      let previewText: string;
+      if (preview.kind === 'slides' && preview.slidesSpec) {
+        previewText = preview.slidesSpec.slides
+          .map(s => `**${s.title}**${s.bullets.length > 0 ? '\n' + s.bullets.map(b => `• ${b}`).join('\n') : ''}`)
+          .join('\n\n');
+      } else {
+        previewText = preview.docSpec?.content ?? '';
+      }
+
+      const icon = QUICK_ICONS[quickTemplate.id] ?? quickTemplate.icon;
+      const msgContent = `${icon} **${quickTemplate.label}: ${preview.title}**\n\n${previewText}\n\n${preview.rawContent}`;
+
+      const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: msgContent };
+      updateSession(activeSessionId, s => ({ ...s, messages: [...s.messages, assistantMsg] }));
+      void runCreation(assistantMsg.id, preview.rawContent, currentSubjectKey);
+
+      setQuickTemplate(null);
+      setQuickTopic('');
+      setQuickAssignmentId(null);
+      setQuickSubjectId('');
+      setQuickInstructions('');
+      setQuickDriveFile(null);
+    } catch (err: unknown) {
+      const msg = (err as Error).message;
+      setQuickDriveLoading(false);
+      setQuickError(
+        msg === 'generation_failed'    ? 'Could not generate content. Try rephrasing.'
+        : msg === 'subscription_required' ? 'Subscription required.'
+        : msg === 'google_token_expired'  ? 'Google access expired — reconnect Drive in Settings.'
+        : 'Something went wrong. Try again.',
+      );
+    } finally {
+      setQuickGenerating(false);
+    }
+  }
 
   async function saveToDoc(msgId: string, content: string) {
     const token = storage.getGoogleDriveToken();
@@ -1296,7 +1404,144 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
             </p>
           )}
 
+          {/* Quick-create chips */}
+          {quickOpen && !quickTemplate && (
+            <div className={styles.quickChipsRow}>
+              {CREATE_TEMPLATES.map(t => (
+                <button
+                  key={t.id}
+                  className={styles.quickChip}
+                  onClick={() => { setQuickTemplate(t); setQuickError(''); setQuickSourceType('topic'); }}
+                  disabled={loading || quickGenerating}
+                >
+                  {QUICK_ICONS[t.id] ?? t.icon} {t.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Quick-create form */}
+          {quickTemplate && (
+            <div className={styles.quickForm}>
+              <div className={styles.quickFormHeader}>
+                <span className={styles.quickFormTitle}>
+                  {QUICK_ICONS[quickTemplate.id] ?? quickTemplate.icon} {quickTemplate.label}
+                </span>
+                <button className={styles.quickFormClose} onClick={() => { setQuickTemplate(null); setQuickError(''); }}>✕</button>
+              </div>
+              <div className={styles.quickFormBody}>
+                {/* Source type tabs */}
+                <div className={styles.quickSourceTabs}>
+                  {(['topic', 'assignment', 'subject', 'file'] as const).map(st => (
+                    <button
+                      key={st}
+                      className={`${styles.quickSourceTab}${quickSourceType === st ? ` ${styles.quickSourceTabActive}` : ''}`}
+                      onClick={() => { setQuickSourceType(st); setQuickError(''); }}
+                    >
+                      {st === 'topic' ? 'Topic' : st === 'assignment' ? 'Assignment' : st === 'subject' ? 'Subject' : 'Drive file'}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Source input */}
+                {quickSourceType === 'topic' && (
+                  <input
+                    className={styles.quickInput}
+                    placeholder="e.g. Photosynthesis, the French Revolution…"
+                    value={quickTopic}
+                    onChange={e => setQuickTopic(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleQuickGenerate(); }}
+                    autoFocus
+                  />
+                )}
+                {quickSourceType === 'assignment' && (
+                  assignments.length > 0 ? (
+                    <select
+                      className={styles.quickSelect}
+                      value={quickAssignmentId ?? ''}
+                      onChange={e => setQuickAssignmentId(e.target.value ? Number(e.target.value) : null)}
+                    >
+                      <option value="">Choose an assignment…</option>
+                      {assignments.map(a => (
+                        <option key={a.id} value={a.id}>{a.name} — {a.courseName}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className={styles.quickEmptyNote}>No Canvas assignments synced.</p>
+                  )
+                )}
+                {quickSourceType === 'subject' && (
+                  nonArchivedSubjects.length > 0 ? (
+                    <select
+                      className={styles.quickSelect}
+                      value={quickSubjectId}
+                      onChange={e => setQuickSubjectId(e.target.value)}
+                    >
+                      <option value="">Choose a subject…</option>
+                      {nonArchivedSubjects.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className={styles.quickEmptyNote}>No subjects yet.</p>
+                  )
+                )}
+                {quickSourceType === 'file' && (
+                  driveToken ? (
+                    <div className={styles.quickFileRow}>
+                      <button
+                        className={styles.quickPickFileBtn}
+                        onClick={() => openQuickPicker()}
+                        disabled={quickDriveLoading}
+                      >
+                        {quickDriveFile ? 'Change file' : 'Choose from Drive'}
+                      </button>
+                      {quickDriveFile && (
+                        <span className={styles.quickFileChip}>
+                          <span className={styles.quickFileChipTitle}>{quickDriveFile.title}</span>
+                          <button className={styles.quickFileChipRemove} onClick={() => setQuickDriveFile(null)}>✕</button>
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <p className={styles.quickEmptyNote}>Connect Google Drive in Settings to use Drive files.</p>
+                  )
+                )}
+
+                {/* Extra instructions */}
+                <textarea
+                  className={styles.quickTextarea}
+                  placeholder="Extra instructions (optional)"
+                  value={quickInstructions}
+                  onChange={e => setQuickInstructions(e.target.value)}
+                  rows={2}
+                />
+
+                {/* Actions */}
+                <div className={styles.quickFormActions}>
+                  <button
+                    className={styles.quickGenerateBtn}
+                    onClick={handleQuickGenerate}
+                    disabled={quickGenerating || quickDriveLoading}
+                  >
+                    {quickGenerating ? 'Generating…' : `Generate ${quickTemplate.output === 'slides' ? 'Slides' : 'Doc'}`}
+                  </button>
+                  <button className={styles.quickCancelBtn} onClick={() => { setQuickTemplate(null); setQuickError(''); }}>
+                    Cancel
+                  </button>
+                  {quickError && <span className={styles.quickError}>{quickError}</span>}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className={styles.inputRow}>
+            <button
+              className={`${styles.quickToggleBtn}${quickOpen ? ` ${styles.quickToggleBtnActive}` : ''}`}
+              onClick={() => { setQuickOpen(p => !p); if (quickOpen) setQuickTemplate(null); }}
+              title={quickOpen ? 'Hide quick actions' : 'Quick create'}
+              disabled={loading}
+            >✨</button>
             {driveToken && (
               <button
                 className={styles.driveBtn}

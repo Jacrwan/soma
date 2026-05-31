@@ -871,6 +871,310 @@
   margin: 0;
 }
 
+/* ── Quick-create ──────────────────────────────────────────────────────────── */
+
+.quickToggleBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  padding: 4px 7px;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.6;
+  line-height: 1;
+  transition: opacity 0.12s, background 0.12s, border-color 0.12s;
+}
+
+.quickToggleBtn:hover:not(:disabled) {
+  opacity: 1;
+  background: var(--bg-secondary);
+}
+
+.quickToggleBtn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.quickToggleBtnActive {
+  opacity: 1;
+  border-color: var(--accent);
+  background: oklch(55% 0.22 266 / 0.06);
+}
+
+.quickChipsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 14px 0;
+}
+
+.quickChip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg);
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+
+.quickChip:hover:not(:disabled) {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.quickChip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.quickForm {
+  margin: 6px 14px 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+.quickFormHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.quickFormTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.quickFormClose {
+  background: none;
+  border: none;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.quickFormClose:hover {
+  color: var(--text-primary);
+}
+
+.quickFormBody {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.quickSourceTabs {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+
+.quickSourceTab {
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.1s, background 0.1s, border-color 0.1s;
+}
+
+.quickSourceTab:hover {
+  color: var(--text-secondary);
+}
+
+.quickSourceTabActive {
+  color: var(--text-primary);
+  background: var(--bg);
+  border-color: var(--border);
+}
+
+.quickInput,
+.quickSelect {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text-primary);
+  outline: none;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.quickInput:focus,
+.quickSelect:focus {
+  border-color: var(--accent);
+}
+
+.quickTextarea {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--text-primary);
+  outline: none;
+  resize: none;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.quickTextarea:focus {
+  border-color: var(--accent);
+}
+
+.quickFormActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.quickGenerateBtn {
+  padding: 5px 16px;
+  background: var(--accent);
+  color: oklch(99% 0.003 265);
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  flex-shrink: 0;
+  transition: background 0.12s;
+}
+
+.quickGenerateBtn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.quickGenerateBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.quickCancelBtn {
+  background: none;
+  border: none;
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.quickCancelBtn:hover {
+  color: var(--text-secondary);
+}
+
+.quickError {
+  font-size: 11px;
+  color: var(--danger);
+  flex: 1;
+}
+
+.quickEmptyNote {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.quickFileRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.quickPickFileBtn {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  flex-shrink: 0;
+  transition: border-color 0.1s, color 0.1s;
+}
+
+.quickPickFileBtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.quickPickFileBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.quickFileChip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: var(--bg);
+  max-width: 180px;
+}
+
+.quickFileChipTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.quickFileChipRemove {
+  background: none;
+  border: none;
+  font-size: 10px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.quickFileChipRemove:hover {
+  color: var(--text-primary);
+}
+
 /* ── Files panel toggle (in chat header) ───────────────────────────────────── */
 
 .filesPanelToggle {
