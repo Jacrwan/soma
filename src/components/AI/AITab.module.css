@@ -803,6 +803,64 @@
   cursor: not-allowed;
 }
 
+/* ── Voice ── */
+.micBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.micBtn:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.micBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+@keyframes micPulse {
+  0%, 100% { box-shadow: 0 0 0 0 oklch(60% 0.25 25 / 0.4); }
+  50% { box-shadow: 0 0 0 6px oklch(60% 0.25 25 / 0); }
+}
+
+.micBtnActive {
+  color: oklch(65% 0.25 25);
+  border-color: oklch(65% 0.25 25);
+  background: oklch(65% 0.25 25 / 0.1);
+  animation: micPulse 1.5s ease-in-out infinite;
+}
+
+.speakBtn {
+  background: none;
+  border: none;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.assistantRow:hover .speakBtn {
+  opacity: 0.5;
+}
+
+.speakBtn:hover {
+  opacity: 1 !important;
+}
+
 /* ── Locked / upsell screen ────────────────────────────────────────────────── */
 
 .lockedLayout {

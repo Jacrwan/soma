@@ -707,6 +707,10 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
 
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [voiceTriggered, setVoiceTriggered] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [sidebarMounted, setSidebarMounted] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -983,6 +987,12 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
+  useEffect(() => {
+    if (voiceTriggered && input.trim() && !loading) {
+      send();
+    }
+  }, [voiceTriggered]);
+
   useEffect(() => { setSidebarMounted(true); }, []);
 
   function updateSession(id: string, fn: (s: ChatSession) => ChatSession) {
@@ -1068,9 +1078,84 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     setDeleteConfirmId(null);
   }
 
+  function stopSpeaking() {
+    window.speechSynthesis.cancel();
+    setSpeaking(false);
+  }
+
+  function speakText(text: string) {
+    stopSpeaking();
+    const clean = text
+      .replace(/<[^>]+>/g, '')
+      .replace(/\*\*/g, '')
+      .replace(/^[-•]\s*/gm, '')
+      .replace(/\n{2,}/g, '. ')
+      .replace(/\n/g, ' ')
+      .trim();
+    if (!clean) return;
+    const utterance = new SpeechSynthesisUtterance(clean);
+    utterance.rate = 1.05;
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+    setSpeaking(true);
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function toggleVoice() {
+    if (voiceActive) {
+      recognitionRef.current?.stop();
+      return;
+    }
+
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+
+    stopSpeaking();
+    const recognition = new SR();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+    recognitionRef.current = recognition;
+
+    let finalTranscript = '';
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const t = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += t;
+        } else {
+          interim = t;
+        }
+      }
+      setInput(finalTranscript + interim);
+    };
+
+    recognition.onend = () => {
+      setVoiceActive(false);
+      recognitionRef.current = null;
+      if (finalTranscript.trim()) {
+        setVoiceTriggered(true);
+      }
+    };
+
+    recognition.onerror = () => {
+      setVoiceActive(false);
+      recognitionRef.current = null;
+    };
+
+    setVoiceActive(true);
+    recognition.start();
+  }
+
   async function send() {
     const text = input.trim();
     if (!text || loading || !activeSessionId) return;
+
+    const isVoice = voiceTriggered;
+    setVoiceTriggered(false);
+    stopSpeaking();
 
     const session = sessions.find(s => s.id === activeSessionId);
     if (!session) return;
@@ -1101,9 +1186,11 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     updateSession(activeSessionId, s => ({ ...s, messages: messagesWithUser }));
 
     try {
-      await getFolderContentsForPrompt(); // warm folder cache; buildSystemPrompt reads it synchronously
-      const systemPrompt = getCachedSystemPrompt(currentSubjectKey);
-      // For previous messages use stored content; for the current message use the doc-injected version
+      await getFolderContentsForPrompt();
+      let systemPrompt = getCachedSystemPrompt(currentSubjectKey);
+      if (isVoice) {
+        systemPrompt += `\n\nIMPORTANT — VOICE MODE: The student is speaking to you by voice. Keep your response concise and conversational — short sentences, no bullet lists, no markdown formatting, no special tags like <schedule>, <todos>, <createDoc>, or <createSlides>. Respond as if you are talking back to them naturally. Still be helpful and accurate, just speak in plain conversational sentences. Describe any schedule or tasks conversationally (e.g. "I'd start with calc at 9, then chem at 11") rather than using structured blocks.`;
+      }
       const apiMessages = [
         ...messagesWithUser.slice(-10, -1).map(m => ({ role: m.role, content: m.content })),
         { role: 'user' as const, content: apiContent },
@@ -1118,7 +1205,8 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       };
       updateSession(activeSessionId, s => ({ ...s, messages: [...s.messages, assistantMsg] }));
 
-      // If the AI was asked to create a Doc or Slides, execute it now
+      if (isVoice) speakText(response);
+
       void runCreation(assistantMsg.id, response, currentSubjectKey);
 
       // Auto-save to Google Doc if mode is on (and the AI didn't already create one)
@@ -1309,6 +1397,15 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
                 className={`${styles.bubble} ${msg.role === 'user' ? styles.userBubble : styles.assistantBubble}`}
                 dangerouslySetInnerHTML={{ __html: formatMessage(stripTags(msg.content)) }}
               />
+              {msg.role === 'assistant' && (
+                <button
+                  className={styles.speakBtn}
+                  onClick={() => speaking ? stopSpeaking() : speakText(msg.content)}
+                  title={speaking ? 'Stop speaking' : 'Read aloud'}
+                >
+                  {speaking ? '◼' : '🔊'}
+                </button>
+              )}
               {msg.role === 'assistant' && msg.scheduleBlocks && !msg.scheduleDismissed && (
                 <ScheduleCard
                   blocks={msg.scheduleBlocks}
@@ -1576,6 +1673,18 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
                 title={saveAsDocMode ? 'Auto-save responses to Google Docs: ON — click to turn off' : 'Click to auto-save AI responses to Google Docs'}
               >📄</button>
             )}
+            <button
+              className={`${styles.micBtn}${voiceActive ? ` ${styles.micBtnActive}` : ''}`}
+              onClick={toggleVoice}
+              disabled={loading}
+              title={voiceActive ? 'Stop listening' : 'Voice input'}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="1" width="6" height="12" rx="3" />
+                <path d="M5 10a7 7 0 0 0 14 0" />
+                <line x1="12" y1="17" x2="12" y2="23" />
+              </svg>
+            </button>
             <button
               className={styles.sendBtn}
               onClick={send}
