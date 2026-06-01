@@ -284,8 +284,9 @@ export default function App() {
         await storage.loadTokens();
         if (!onboardingChecked.current) {
           onboardingChecked.current = true;
-          const s = await storage.getSettings();
-          if (!s.onboardingCompleted) setShowOnboarding(true);
+          storage.getSettings()
+            .then(s => { if (!s.onboardingCompleted) setShowOnboarding(true); })
+            .catch(() => {});
         }
       }
       setAuthReady(true);
@@ -295,8 +296,9 @@ export default function App() {
       setUser(u);
       if (event === 'SIGNED_IN' && u && !onboardingChecked.current) {
         onboardingChecked.current = true;
-        const s = await storage.getSettings();
-        if (!s.onboardingCompleted) setShowOnboarding(true);
+        storage.getSettings()
+          .then(s => { if (!s.onboardingCompleted) setShowOnboarding(true); })
+          .catch(() => {});
       }
     });
     return () => subscription.unsubscribe();
