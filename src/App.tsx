@@ -319,11 +319,17 @@ export default function App() {
         setAuthReady(true);
       }
 
-      if (event === 'SIGNED_IN' && u && !onboardingChecked.current) {
-        onboardingChecked.current = true;
-        storage.getSettings()
-          .then(s => { if (!s.onboardingCompleted) setShowOnboarding(true); })
-          .catch(() => {});
+      if (event === 'SIGNED_IN' && u) {
+        if (!onboardingChecked.current) {
+          onboardingChecked.current = true;
+          storage.getSettings()
+            .then(s => { if (!s.onboardingCompleted) setShowOnboarding(true); })
+            .catch(() => {});
+        }
+        const path = window.location.pathname;
+        if (path === '/' || path === '/login' || path === '/signup') {
+          navigate('/day-view', { replace: true });
+        }
       }
     });
 

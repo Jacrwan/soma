@@ -103,13 +103,13 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
   }
 
   async function connectGoogle() {
-    const redirectUrl = new URL(window.location.href);
+    if (education) localStorage.setItem('soma_ob_edu', education);
+    const redirectUrl = new URL(`${window.location.origin}/day-view`);
     redirectUrl.searchParams.set('onboarding_source', 'gdrive');
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         scopes: [
-          'https://www.googleapis.com/auth/drive.readonly',
           'https://www.googleapis.com/auth/drive.file',
           'https://www.googleapis.com/auth/documents',
           'https://www.googleapis.com/auth/presentations',
