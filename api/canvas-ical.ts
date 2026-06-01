@@ -9,8 +9,12 @@ const ALLOWED_ORIGINS = [
   ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:5173'] : []),
 ];
 
-// Only allow the Instructure/Canvas hosted service
-const ALLOWED_HOSTNAME_RE = /^[a-z0-9-]+\.instructure\.com$/i;
+// Canvas calendar feeds all share the same path shape regardless of which
+// university hosts them — e.g. school.instructure.com, bruinlearn.ucla.edu,
+// canvas.harvard.edu. The hostname is not a reliable signal, so we identify a
+// Canvas feed by its path (/feeds/calendars/user_<token>.ics) and rely on the
+// HTTPS + public-IP (SSRF) checks below to keep the fetch safe.
+const CANVAS_FEED_PATH_RE = /\/feeds\/calendars\/user_[^/]+\.ics$/i;
 
 function isPrivateIp(address: string): boolean {
   const ipType = net.isIP(address);
@@ -254,11 +258,10 @@ export default async function handler(req: any, res: any) {
   }
 
   if (parsedUrl.protocol !== 'https:') return res.status(400).json({ error: 'HTTPS required' });
-  if (!ALLOWED_HOSTNAME_RE.test(parsedUrl.hostname)) {
-    return res.status(400).json({ error: 'Only instructure.com calendar feeds are supported' });
-  }
-  if (!parsedUrl.pathname.includes('/feeds/calendars/')) {
-    return res.status(400).json({ error: 'URL does not look like a Canvas calendar feed' });
+  if (!CANVAS_FEED_PATH_RE.test(parsedUrl.pathname)) {
+    return res.status(400).json({
+      error: 'URL does not look like a Canvas calendar feed (expected .../feeds/calendars/user_….ics)',
+    });
   }
 
   // DNS / SSRF check
