@@ -281,6 +281,23 @@ export default function App() {
     applyTheme(storage.getSomaSettings().theme ?? 'dark');
   }, []);
 
+  async function checkOnboarding(u: User) {
+    try {
+      const s = await storage.getSettings();
+      if (s.onboardingCompleted) return;
+      // Only show onboarding for accounts created in the last 5 minutes (new signups).
+      // Existing users who signed up before onboarding was added skip it silently.
+      const createdAt = new Date(u.created_at).getTime();
+      const fiveMinAgo = Date.now() - 5 * 60 * 1000;
+      if (createdAt < fiveMinAgo) {
+        // Existing account — mark onboarding as done silently
+        storage.saveSettings({ ...s, onboardingCompleted: true }).catch(() => {});
+        return;
+      }
+      setShowOnboarding(true);
+    } catch { /* fail silently */ }
+  }
+
   useEffect(() => {
     console.log('[App] starting auth setup');
 
@@ -299,17 +316,12 @@ export default function App() {
       setUser(u);
 
       if (event === 'INITIAL_SESSION') {
-        // INITIAL_SESSION fires from the local cache — no network needed.
-        // This is the authoritative "do we have a session?" answer.
         if (u) {
           console.log('[App] INITIAL_SESSION — logged in, loading tokens');
-          // Fire-and-forget: tokens are needed later, not before first render.
           storage.loadTokens().catch(() => {});
           if (!onboardingChecked.current) {
             onboardingChecked.current = true;
-            storage.getSettings()
-              .then(s => { if (!s.onboardingCompleted) setShowOnboarding(true); })
-              .catch(() => {});
+            checkOnboarding(u);
           }
         } else {
           console.log('[App] INITIAL_SESSION — no session');
@@ -322,9 +334,7 @@ export default function App() {
       if (event === 'SIGNED_IN' && u) {
         if (!onboardingChecked.current) {
           onboardingChecked.current = true;
-          storage.getSettings()
-            .then(s => { if (!s.onboardingCompleted) setShowOnboarding(true); })
-            .catch(() => {});
+          checkOnboarding(u);
         }
         const path = window.location.pathname;
         if (path === '/' || path === '/login' || path === '/signup') {
@@ -392,7 +402,7 @@ export default function App() {
         <Route path="*" element={<Navigate to="/day-view" replace />} />
       </Route>
     </Routes>
-    {showOnboarding && user && (
+    {showOnboarding && user && !['/','/login','/signup','/pricing'].includes(window.location.pathname) && (
       <OnboardingFlow
         userName={
           user.user_metadata?.full_name ??
