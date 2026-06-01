@@ -13,29 +13,26 @@ const UNIVERSITY_LOGOS = [
 const UNIVERSITY_LOGO_COPIES = [0, 1, 2, 3, 4, 5] as const;
 
 const LANDING_CSS = `
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { scroll-behavior: smooth; }
-
-:root {
+.landing-root {
   --bg:          #0A0B0F;
   --surface:     #0F1117;
   --surface-2:   #161820;
   --accent:      #5B6AF0;
   --warm:        #F0A05B;
   --text:        #F0EEE8;
+  --text-primary: #F0EEE8;
   --text-dim:    #8A8A9E;
   --text-muted:  #5A5A6E;
   --border:      oklch(20% 0.012 265);
   --border-sub:  oklch(14% 0.01 265);
-}
 
-body {
   font-family: 'DM Sans', system-ui, sans-serif;
-  background: var(--bg);
-  color: var(--text);
+  background: #0A0B0F;
+  color: #F0EEE8;
   line-height: 1.6;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
+  min-height: 100dvh;
 }
 
 nav {
@@ -1081,7 +1078,7 @@ export default function LandingPage() {
   }, []);
 
   return (
-    <>
+    <div className="landing-root">
       <nav ref={navRef}>
         <a href="/" className="nav-wordmark">Soma</a>
         <div className="nav-right">
@@ -1393,6 +1390,6 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
-    </>
+    </div>
   );
 }
