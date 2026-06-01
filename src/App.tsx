@@ -102,15 +102,18 @@ function AppSkeleton() {
 }
 
 // ── App shell layout (sidebar + footer + outlet) ─────────────────────────
-function AppShell({ user, onLogout }: {
+function AppShell({ user, sessionResolved, onLogout }: {
   user: User | null;
+  sessionResolved: boolean;
   onLogout: () => void;
 }) {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Redirect unauthenticated users
-  if (!user) return <Navigate to="/login" replace />;
+  // Only redirect to login when we definitively know there is no session.
+  // If the auth timeout fired before Supabase responded, sessionResolved is
+  // false and we stay put rather than bouncing the user to the login page.
+  if (!user && sessionResolved) return <Navigate to="/login" replace />;
 
   const p = location.pathname;
 
@@ -261,9 +264,11 @@ export function applyTheme(theme: 'dark' | 'light') {
 
 // ── Root component ────────────────────────────────────────────────────────
 export default function App() {
-  const [user, setUser]         = useState<User | null>(null);
-  const [authReady, setAuthReady] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [user, setUser]             = useState<User | null>(null);
+  const [authReady, setAuthReady]   = useState(false);
+  // true only when Supabase actually responded — false if the fallback timeout fired
+  const [sessionResolved, setSessionResolved] = useState(false);
+  const [showOnboarding, setShowOnboarding]   = useState(false);
   const onboardingChecked = useRef(false);
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
     const d = new Date();
@@ -277,42 +282,43 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // Safety net: if auth setup hangs for any reason, unblock the app after 3s
-    const forceReady = setTimeout(() => {
-      console.warn('[App] auth timeout — forcing authReady');
-      setAuthReady(true);
-    }, 3000);
-
     console.log('[App] starting auth setup');
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      console.log('[App] getSession resolved, user:', !!data.session?.user);
-      const u = data.session?.user ?? null;
-      setUser(u);
-      if (u) {
-        console.log('[App] calling loadTokens');
-        await storage.loadTokens();
-        console.log('[App] loadTokens done');
-        if (!onboardingChecked.current) {
-          onboardingChecked.current = true;
-          storage.getSettings()
-            .then(s => { if (!s.onboardingCompleted) setShowOnboarding(true); })
-            .catch(() => {});
-        }
-      }
-      console.log('[App] setting authReady = true');
-      clearTimeout(forceReady);
+    // Fallback: if INITIAL_SESSION never fires (very unusual), unblock the
+    // skeleton after 5 s but leave sessionResolved=false so AppShell does NOT
+    // redirect to login — the app sits in a neutral state until Supabase responds.
+    const forceReady = setTimeout(() => {
+      console.warn('[App] auth timeout — unblocking skeleton without redirecting');
       setAuthReady(true);
-    }).catch(err => {
-      console.error('[App] getSession threw:', err);
-      clearTimeout(forceReady);
-      setAuthReady(true);
-    });
+      // sessionResolved intentionally stays false
+    }, 5000);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('[App] onAuthStateChange:', event, 'user:', !!session?.user);
       const u = session?.user ?? null;
       setUser(u);
+
+      if (event === 'INITIAL_SESSION') {
+        // INITIAL_SESSION fires from the local cache — no network needed.
+        // This is the authoritative "do we have a session?" answer.
+        if (u) {
+          console.log('[App] INITIAL_SESSION — logged in, loading tokens');
+          // Fire-and-forget: tokens are needed later, not before first render.
+          storage.loadTokens().catch(() => {});
+          if (!onboardingChecked.current) {
+            onboardingChecked.current = true;
+            storage.getSettings()
+              .then(s => { if (!s.onboardingCompleted) setShowOnboarding(true); })
+              .catch(() => {});
+          }
+        } else {
+          console.log('[App] INITIAL_SESSION — no session');
+        }
+        clearTimeout(forceReady);
+        setSessionResolved(true);
+        setAuthReady(true);
+      }
+
       if (event === 'SIGNED_IN' && u && !onboardingChecked.current) {
         onboardingChecked.current = true;
         storage.getSettings()
@@ -320,6 +326,7 @@ export default function App() {
           .catch(() => {});
       }
     });
+
     return () => {
       clearTimeout(forceReady);
       subscription.unsubscribe();
@@ -334,7 +341,7 @@ export default function App() {
   if (!authReady) return <AppSkeleton />;
 
   const shell = (
-    <AppShell user={user} onLogout={handleLogout} />
+    <AppShell user={user} sessionResolved={sessionResolved} onLogout={handleLogout} />
   );
 
   return (
