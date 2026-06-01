@@ -277,11 +277,22 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // Safety net: if auth setup hangs for any reason, unblock the app after 3s
+    const forceReady = setTimeout(() => {
+      console.warn('[App] auth timeout — forcing authReady');
+      setAuthReady(true);
+    }, 3000);
+
+    console.log('[App] starting auth setup');
+
     supabase.auth.getSession().then(async ({ data }) => {
+      console.log('[App] getSession resolved, user:', !!data.session?.user);
       const u = data.session?.user ?? null;
       setUser(u);
       if (u) {
+        console.log('[App] calling loadTokens');
         await storage.loadTokens();
+        console.log('[App] loadTokens done');
         if (!onboardingChecked.current) {
           onboardingChecked.current = true;
           storage.getSettings()
@@ -289,9 +300,17 @@ export default function App() {
             .catch(() => {});
         }
       }
+      console.log('[App] setting authReady = true');
+      clearTimeout(forceReady);
+      setAuthReady(true);
+    }).catch(err => {
+      console.error('[App] getSession threw:', err);
+      clearTimeout(forceReady);
       setAuthReady(true);
     });
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('[App] onAuthStateChange:', event, 'user:', !!session?.user);
       const u = session?.user ?? null;
       setUser(u);
       if (event === 'SIGNED_IN' && u && !onboardingChecked.current) {
@@ -301,7 +320,10 @@ export default function App() {
           .catch(() => {});
       }
     });
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(forceReady);
+      subscription.unsubscribe();
+    };
   }, []);
 
   async function handleLogout() {

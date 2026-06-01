@@ -343,7 +343,10 @@ export const storage = {
   // Supabase and performs a one-time migration away from localStorage.
   async loadTokens(): Promise<void> {
     try {
-      const s = await storage.getSettings();
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('loadTokens timeout')), 5000)
+      );
+      const s = await Promise.race([storage.getSettings(), timeout]);
       _canvasToken = s.canvasToken ?? '';
       _canvasIcalUrl = s.canvasIcalUrl ?? '';
       _googleToken = s.googleToken ?? '';
