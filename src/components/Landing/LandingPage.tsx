@@ -14,6 +14,7 @@ const UNIVERSITY_LOGO_COPIES = [0, 1, 2, 3, 4, 5] as const;
 
 const LANDING_CSS = `
 .landing-root {
+  /* ── Dark theme (default) ── */
   --bg:          #0A0B0F;
   --surface:     #0F1117;
   --surface-2:   #161820;
@@ -26,13 +27,57 @@ const LANDING_CSS = `
   --border:      oklch(20% 0.012 265);
   --border-sub:  oklch(14% 0.01 265);
 
+  /* Structural surfaces that vary by theme (referenced below) */
+  --nav-bg:          oklch(7% 0.008 265 / 0.88);
+  --mockup-sidebar:  oklch(9% 0.01 265);
+  --mockup-navdot:   oklch(22% 0.01 265);
+  --trust-grad-end:  oklch(8% 0.012 265);
+  --logo-card-border: oklch(30% 0.016 265 / 0.78);
+  --logo-card-bg-1:  oklch(17% 0.017 265 / 0.94);
+  --logo-card-bg-2:  oklch(12.5% 0.014 265 / 0.98);
+  --logo-card-inset: oklch(100% 0 0 / 0.06);
+  --mockup-shadow:
+    0 4px 24px oklch(0% 0 0 / 0.3),
+    0 24px 80px oklch(0% 0 0 / 0.45),
+    0 0 0 1px oklch(100% 0 0 / 0.04);
+
   font-family: 'DM Sans', system-ui, sans-serif;
-  background: #0A0B0F;
-  color: #F0EEE8;
+  background: var(--bg);
+  color: var(--text);
   line-height: 1.6;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   min-height: 100dvh;
+}
+
+/* ── Light theme — follows the browser / OS preference ── */
+@media (prefers-color-scheme: light) {
+  .landing-root {
+    --bg:          #FBFAF7;
+    --surface:     #FFFFFF;
+    --surface-2:   #F1F0EB;
+    --accent:      #4B54D4;
+    --warm:        #C76E1C;
+    --text:        #16171D;
+    --text-primary: #16171D;
+    --text-dim:    #4A4B5C;
+    --text-muted:  #7B7C8C;
+    --border:      oklch(90% 0.005 265);
+    --border-sub:  oklch(93% 0.004 265);
+
+    --nav-bg:          oklch(99% 0.003 265 / 0.85);
+    --mockup-sidebar:  oklch(96% 0.004 265);
+    --mockup-navdot:   oklch(85% 0.008 265);
+    --trust-grad-end:  oklch(95% 0.006 265);
+    --logo-card-border: oklch(86% 0.008 265 / 0.9);
+    --logo-card-bg-1:  oklch(100% 0 0 / 0.96);
+    --logo-card-bg-2:  oklch(97% 0.004 265 / 0.98);
+    --logo-card-inset: oklch(100% 0 0 / 0.9);
+    --mockup-shadow:
+      0 4px 24px oklch(0% 0 0 / 0.08),
+      0 24px 80px oklch(0% 0 0 / 0.12),
+      0 0 0 1px oklch(0% 0 0 / 0.05);
+  }
 }
 
 nav {
@@ -48,7 +93,7 @@ nav {
   border-bottom: 1px solid transparent;
 }
 nav.scrolled {
-  background: oklch(7% 0.008 265 / 0.88);
+  background: var(--nav-bg);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   border-bottom-color: var(--border-sub);
@@ -226,10 +271,7 @@ nav.scrolled {
   border: 1px solid var(--border);
   border-radius: 13px;
   overflow: hidden;
-  box-shadow:
-    0 4px 24px oklch(0% 0 0 / 0.3),
-    0 24px 80px oklch(0% 0 0 / 0.45),
-    0 0 0 1px oklch(100% 0 0 / 0.04);
+  box-shadow: var(--mockup-shadow);
   animation: bob 4s ease-in-out infinite;
 }
 
@@ -262,7 +304,7 @@ nav.scrolled {
 .mockup-sidebar {
   width: 44px;
   flex-shrink: 0;
-  background: oklch(9% 0.01 265);
+  background: var(--mockup-sidebar);
   border-right: 1px solid var(--border-sub);
   padding: 18px 0;
   display: flex;
@@ -273,7 +315,7 @@ nav.scrolled {
 .mockup-nav-dot {
   width: 6px; height: 6px;
   border-radius: 50%;
-  background: oklch(22% 0.01 265);
+  background: var(--mockup-navdot);
 }
 .mockup-nav-dot.on { background: var(--accent); }
 
@@ -353,7 +395,7 @@ nav.scrolled {
 .university-trust {
   position: relative;
   padding: 42px 0 0;
-  background: linear-gradient(180deg, var(--bg) 0%, oklch(8% 0.012 265) 100%);
+  background: linear-gradient(180deg, var(--bg) 0%, var(--trust-grad-end) 100%);
 }
 .university-trust-inner {
   max-width: 1240px;
@@ -394,9 +436,9 @@ nav.scrolled {
   align-items: center;
   justify-content: center;
   border-radius: 8px;
-  border: 1px solid oklch(30% 0.016 265 / 0.78);
-  background: linear-gradient(180deg, oklch(17% 0.017 265 / 0.94), oklch(12.5% 0.014 265 / 0.98));
-  box-shadow: inset 0 1px 0 oklch(100% 0 0 / 0.06), 0 18px 34px oklch(3% 0.008 265 / 0.24);
+  border: 1px solid var(--logo-card-border);
+  background: linear-gradient(180deg, var(--logo-card-bg-1), var(--logo-card-bg-2));
+  box-shadow: inset 0 1px 0 var(--logo-card-inset), 0 18px 34px oklch(3% 0.008 265 / 0.24);
 }
 .university-logo-card.is-wide {
   width: 222px;
