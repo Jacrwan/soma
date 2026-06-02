@@ -1405,6 +1405,10 @@ export default function LandingPage() {
             <h3 className="faq-q">Is my data private?</h3>
             <p className="faq-a">Yes. Soma only reads your Canvas calendar feed (no passwords required). Your study data is stored securely and never shared with third parties.</p>
           </div>
+          <div className="faq-item">
+            <h3 className="faq-q">Is this safe to use?</h3>
+            <p className="faq-a">Your Canvas calendar feed is read-only. It can only view assignment names and due dates. It can't access your grades, files, or account. Your feed URL stays in your browser and is never stored on our servers. If you ever need to, you can regenerate your feed URL in Canvas settings and reconnect in Soma.</p>
+          </div>
         </div>
       </section>
 
