@@ -54,78 +54,12 @@ type RawCanvasCourse = Record<string, unknown> & {
   id?: number;
   name?: string;
   course_code?: string;
-  enrollment_term_id?: number;
-  start_at?: string | null;
-  end_at?: string | null;
   access_restricted_by_date?: boolean;
-  term?: {
-    id?: number;
-    name?: string;
-    start_at?: string | null;
-    end_at?: string | null;
-  };
 };
-
-function toMillis(value: unknown): number | null {
-  if (typeof value !== 'string' || !value) return null;
-  const ms = new Date(value).getTime();
-  return Number.isNaN(ms) ? null : ms;
-}
-
-function isWithinWindow(start: unknown, end: unknown, now = Date.now()): boolean {
-  const startMs = toMillis(start);
-  const endMs = toMillis(end);
-  return (startMs === null || startMs <= now) && (endMs === null || endMs >= now);
-}
-
-function hasDateWindow(course: RawCanvasCourse): boolean {
-  return !!(course.start_at || course.end_at || course.term?.start_at || course.term?.end_at);
-}
-
-function isCurrentByDate(course: RawCanvasCourse): boolean {
-  if (course.access_restricted_by_date) return false;
-  const courseDatesCurrent = course.start_at || course.end_at
-    ? isWithinWindow(course.start_at, course.end_at)
-    : true;
-  const termDatesCurrent = course.term?.start_at || course.term?.end_at
-    ? isWithinWindow(course.term?.start_at, course.term?.end_at)
-    : true;
-  return courseDatesCurrent && termDatesCurrent;
-}
-
-function currentSemesterTermNamePattern(): RegExp {
-  const month = new Date().getMonth();
-  if (month >= 0 && month <= 6) return /\b(s2|semester\s*2|spring)\b/i;
-  return /\b(s1|semester\s*1|fall|autumn)\b/i;
-}
 
 function looksLikeOldSectionCourse(name: string): boolean {
   return /\[[^\]]*\bPer\s*:/i.test(name)
     || /\(.+\bPeriods?\b.+\)/i.test(name);
-}
-
-function chooseCurrentCourses(raw: RawCanvasCourse[]): RawCanvasCourse[] {
-  const unrestricted = raw.filter(c => !c.access_restricted_by_date);
-  const withoutOldSectionNames = unrestricted.filter(c => !looksLikeOldSectionCourse(c.name ?? ''));
-  const candidateCourses = withoutOldSectionNames.length > 0 ? withoutOldSectionNames : unrestricted;
-  const dated = candidateCourses.filter(hasDateWindow);
-  const currentByDate = dated.filter(isCurrentByDate);
-  if (currentByDate.length > 0) return currentByDate;
-
-  const termNamePattern = currentSemesterTermNamePattern();
-  const currentByTermName = candidateCourses.filter(c => termNamePattern.test(c.term?.name ?? ''));
-  if (currentByTermName.length > 0) return currentByTermName;
-
-  const byTerm = new Map<number, RawCanvasCourse[]>();
-  for (const course of candidateCourses) {
-    const termId = course.enrollment_term_id ?? course.term?.id;
-    if (!termId) continue;
-    byTerm.set(termId, [...(byTerm.get(termId) ?? []), course]);
-  }
-  const largestTermGroup = [...byTerm.values()].sort((a, b) => b.length - a.length)[0];
-  if (largestTermGroup?.length) return largestTermGroup;
-
-  return candidateCourses;
 }
 
 function toCourse(c: RawCanvasCourse): CanvasCourse {
@@ -139,10 +73,16 @@ function toCourse(c: RawCanvasCourse): CanvasCourse {
 export async function getCourses(token: string, baseUrl: string): Promise<CanvasCourse[]> {
   const raw = await canvasFetch(
     token, baseUrl,
-    '/api/v1/courses?enrollment_state=active&per_page=100&include[]=term',
+    '/api/v1/courses?enrollment_state=active&per_page=100',
   ) as RawCanvasCourse[];
 
-  return chooseCurrentCourses(await raw).map(toCourse);
+  // Trust enrollment_state=active from Canvas as the source of truth.
+  // Only exclude courses the student genuinely cannot access, and clean up
+  // legacy K-12 section-style course names.
+  return raw
+    .filter(c => !c.access_restricted_by_date)
+    .filter(c => !looksLikeOldSectionCourse(c.name ?? ''))
+    .map(toCourse);
 }
 
 export async function getAssignments(
