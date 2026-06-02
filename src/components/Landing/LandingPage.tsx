@@ -1383,7 +1383,7 @@ export default function LandingPage() {
         <div className="faq-grid">
           <div className="faq-item">
             <h3 className="faq-q">Is Soma free?</h3>
-            <p className="faq-a">Soma offers a free 21-day trial with full access to all features including AI scheduling, Canvas sync, and study material generation. After the trial, it's $4.99/month.</p>
+            <p className="faq-a">Soma's core features — day view, Canvas sync, calendar, time tracking, and insights — are completely free, forever. AI features (chat, schedule generation, study material creation) come with a free 21-day trial, then $4.99/month.</p>
           </div>
           <div className="faq-item">
             <h3 className="faq-q">Does Soma work with my school's Canvas?</h3>
