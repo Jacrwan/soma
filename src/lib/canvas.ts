@@ -71,18 +71,37 @@ function toCourse(c: RawCanvasCourse): CanvasCourse {
 }
 
 export async function getCourses(token: string, baseUrl: string): Promise<CanvasCourse[]> {
-  const raw = await canvasFetch(
+  const result = await canvasFetch(
     token, baseUrl,
     '/api/v1/courses?enrollment_state=active&per_page=100',
-  ) as RawCanvasCourse[];
+  );
+
+  if (!Array.isArray(result)) {
+    console.error('[canvas] getCourses: unexpected non-array response', result);
+    return [];
+  }
+  const raw = result as RawCanvasCourse[];
+  console.log('[canvas] getCourses: raw response —', raw.length, 'courses');
+  console.log('[canvas] getCourses: raw list —', raw.map(c => ({ id: c.id, name: c.name, access_restricted_by_date: c.access_restricted_by_date })));
+
+  const restricted = raw.filter(c => c.access_restricted_by_date);
+  if (restricted.length > 0) {
+    console.log('[canvas] getCourses: dropping (access_restricted_by_date) —', restricted.map(c => ({ id: c.id, name: c.name })));
+  }
+  const sectionStyle = raw.filter(c => !c.access_restricted_by_date && looksLikeOldSectionCourse(c.name ?? ''));
+  if (sectionStyle.length > 0) {
+    console.log('[canvas] getCourses: dropping (old section name pattern) —', sectionStyle.map(c => ({ id: c.id, name: c.name })));
+  }
 
   // Trust enrollment_state=active from Canvas as the source of truth.
   // Only exclude courses the student genuinely cannot access, and clean up
   // legacy K-12 section-style course names.
-  return raw
+  const courses = raw
     .filter(c => !c.access_restricted_by_date)
     .filter(c => !looksLikeOldSectionCourse(c.name ?? ''))
     .map(toCourse);
+  console.log('[canvas] getCourses: returning', courses.length, 'courses —', courses.map(c => c.name));
+  return courses;
 }
 
 export async function getAssignments(

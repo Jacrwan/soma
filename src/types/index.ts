@@ -10,6 +10,7 @@ export interface Subject {
   archived?: boolean;
   order?: number;
   source?: 'manual' | 'canvas';
+  canvasCourseId?: number;
 }
 
 export interface TimeBlock {

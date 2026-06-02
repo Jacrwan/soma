@@ -280,31 +280,47 @@ function syncCoursesToSubjects(courses: CanvasCourse[]) {
   let subjects = storage.getSubjects();
   let changed = false;
 
+  const currentCourseIds = new Set(courses.map(c => c.id));
   const currentCourseNames = new Set(courses.map(c => c.name));
   const knownCanvasCourseNames = new Set([
     ...storage.getCanvasCourseNames(),
     ...storage.getCachedCourses().map(c => c.name),
   ]);
 
-  const prunedSubjects = subjects.filter(s =>
-    currentCourseNames.has(s.name)
-      || (!isDefaultSubjectName(s.name) && !knownCanvasCourseNames.has(s.name) && !looksLikeCanvasCourseName(s.name))
-  );
+  // Prune subjects that were Canvas-imported but are no longer in the active course list.
+  // Subjects with a canvasCourseId are matched by ID; others fall back to name heuristics.
+  const prunedSubjects = subjects.filter(s => {
+    if (s.canvasCourseId !== undefined) return currentCourseIds.has(s.canvasCourseId);
+    return currentCourseNames.has(s.name)
+      || (!isDefaultSubjectName(s.name) && !knownCanvasCourseNames.has(s.name) && !looksLikeCanvasCourseName(s.name));
+  });
   if (prunedSubjects.length !== subjects.length) {
     subjects = prunedSubjects;
     changed = true;
   }
 
-  // Add subjects for current courses that don't exist yet
+  // Upsert subjects for each Canvas course.
+  // Match by canvasCourseId first (reliable across renames), then fall back to name.
+  // If a match is found but lacks a canvasCourseId, backfill it so future syncs use ID matching.
   for (const course of courses) {
-    const matchIdx = subjects.findIndex(s => s.name === course.name);
+    const matchIdx = subjects.findIndex(s =>
+      (s.canvasCourseId !== undefined && s.canvasCourseId === course.id) ||
+      s.name === course.name,
+    );
     if (matchIdx === -1) {
       subjects = [...subjects, {
         id: crypto.randomUUID(),
         name: course.name,
+        canvasCourseId: course.id,
         color: COURSE_COLORS[subjects.length % COURSE_COLORS.length] as Subject['color'],
         totalTimeToday: 0,
+        source: 'canvas' as const,
       }];
+      changed = true;
+    } else if (subjects[matchIdx].canvasCourseId === undefined) {
+      subjects = subjects.map((s, i) =>
+        i === matchIdx ? { ...s, canvasCourseId: course.id, source: 'canvas' as const } : s,
+      );
       changed = true;
     }
   }
