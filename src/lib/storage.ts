@@ -649,6 +649,10 @@ export const storage = {
     localStorage.removeItem(KEYS.assignmentStatus);
     localStorage.removeItem(KEYS.clearedAssignments);
     localStorage.removeItem(KEYS.canvasCourseNames);
+    // Remove Canvas-sourced subjects (class names synced from Canvas)
+    const subjects: Subject[] = get(KEYS.subjects, []);
+    const manualOnly = subjects.filter(s => s.source !== 'canvas');
+    set(KEYS.subjects, manualOnly);
     // Google
     localStorage.removeItem(KEYS.googleEvents);
     localStorage.removeItem(KEYS.googleCacheTimestamp);
