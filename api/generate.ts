@@ -121,6 +121,58 @@ async function handleDocs(req: any, res: any, googleToken: string) {
   });
 }
 
+async function handleDocsUpdate(req: any, res: any, googleToken: string) {
+  const { docId, content } = req.body ?? {};
+
+  if (typeof docId !== 'string' || !docId.trim()) {
+    return res.status(400).json({ error: 'docId required' });
+  }
+  if (typeof content !== 'string' || !content.trim()) {
+    return res.status(400).json({ error: 'content required' });
+  }
+  if (content.length > 50_000) {
+    return res.status(400).json({ error: 'content too long' });
+  }
+
+  const gHeaders = { 'Authorization': `Bearer ${googleToken}`, 'Content-Type': 'application/json' };
+
+  // Get the current document to find its length
+  const getRes = await fetch(`https://docs.googleapis.com/v1/documents/${docId}`, {
+    headers: { 'Authorization': `Bearer ${googleToken}` },
+  });
+  if (!getRes.ok) {
+    if (getRes.status === 401) return res.status(401).json({ error: 'google_token_expired' });
+    if (getRes.status === 404) return res.status(404).json({ error: 'Document not found' });
+    return res.status(502).json({ error: 'Failed to read document', googleStatus: getRes.status });
+  }
+  const doc = await getRes.json() as { body?: { content?: { endIndex?: number }[] } };
+  const segments = doc.body?.content ?? [];
+  const endIndex = segments.length > 0 ? (segments[segments.length - 1].endIndex ?? 1) : 1;
+
+  // Build requests: delete existing content (if any), then insert new content
+  const requests: any[] = [];
+  if (endIndex > 2) {
+    requests.push({ deleteContentRange: { range: { startIndex: 1, endIndex: endIndex - 1 } } });
+  }
+  requests.push({ insertText: { location: { index: 1 }, text: content } });
+
+  const updateRes = await fetch(
+    `https://docs.googleapis.com/v1/documents/${docId}:batchUpdate`,
+    { method: 'POST', headers: gHeaders, body: JSON.stringify({ requests }) },
+  );
+
+  if (!updateRes.ok) {
+    const googleError = await updateRes.text().catch(() => '(could not read body)');
+    console.error(JSON.stringify({ endpoint: '/api/generate', type: 'docs-update', event: 'update_failed', status: updateRes.status, googleError }));
+    return res.status(502).json({ error: 'Failed to update document', googleStatus: updateRes.status });
+  }
+
+  return res.json({
+    docId,
+    docUrl: `https://docs.google.com/document/d/${docId}/edit`,
+  });
+}
+
 async function handleSlides(req: any, res: any, googleToken: string) {
   const { title, slides } = req.body ?? {};
 
@@ -251,9 +303,10 @@ export default async function handler(req: any, res: any) {
   });
 
   async function dispatch(tok: string) {
-    if (type === 'docs')   return await handleDocs(req, res, tok);
-    if (type === 'slides') return await handleSlides(req, res, tok);
-    return res.status(400).json({ error: 'type must be "docs" or "slides"' });
+    if (type === 'docs')        return await handleDocs(req, res, tok);
+    if (type === 'docs-update') return await handleDocsUpdate(req, res, tok);
+    if (type === 'slides')      return await handleSlides(req, res, tok);
+    return res.status(400).json({ error: 'type must be "docs", "docs-update", or "slides"' });
   }
 
   try {

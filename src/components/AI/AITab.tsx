@@ -3,7 +3,7 @@ import DOMPurify from 'dompurify';
 import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
-import { createGoogleDoc, createGoogleSlides } from '../../lib/googleDocs';
+import { createGoogleDoc, updateGoogleDoc, createGoogleSlides } from '../../lib/googleDocs';
 import { parseCreateDoc, parseCreateSlides, CREATE_TEMPLATES, generatePreview, CreateTemplate } from '../../lib/aiArtifacts';
 import { readDriveFile, fileTypeLabel, getFolderContentsForPrompt, readCachedFolderSection, getFolderContentsCacheTs, hasTruncatedFolderFiles } from '../../lib/googleDrive';
 import { useGooglePicker, PickedFile } from '../../lib/useGooglePicker';
@@ -937,13 +937,16 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   }
 
   // Execute an AI-requested creation (doc or slides) and track its status per message.
-  async function runCreation(msgId: string, response: string, subjectKey: string) {
+  async function runCreation(msgId: string, response: string, subjectKey: string, sourceFile?: AttachedFile | null) {
     const docSpec = parseCreateDoc(response);
     const slidesSpec = parseCreateSlides(response);
     if (!docSpec && !slidesSpec) return;
 
+    const isDocUpdate = docSpec && sourceFile && sourceFile.mimeType === 'application/vnd.google-apps.document';
     const kind: Artifact['kind'] = slidesSpec ? 'slides' : 'doc';
-    const title = (slidesSpec?.title ?? docSpec?.title ?? 'Untitled').slice(0, 80);
+    const title = isDocUpdate
+      ? sourceFile.title
+      : (slidesSpec?.title ?? docSpec?.title ?? 'Untitled').slice(0, 80);
 
     if (!driveToken) {
       setArtifacts(prev => ({
@@ -954,21 +957,24 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     }
 
     const subjectId = subjectKey.startsWith('subject_') ? subjectKey.slice('subject_'.length) : undefined;
-    setArtifacts(prev => ({ ...prev, [msgId]: { kind, title, status: 'creating' } }));
+    setArtifacts(prev => ({ ...prev, [msgId]: { kind, title, status: isDocUpdate ? 'creating' : 'creating' } }));
     try {
       let url: string;
       if (slidesSpec) {
         const { presentationUrl } = await createGoogleSlides(driveToken, slidesSpec.title, slidesSpec.slides);
         url = presentationUrl;
+      } else if (isDocUpdate) {
+        const { docUrl } = await updateGoogleDoc(driveToken, sourceFile.id, docSpec!.content);
+        url = docUrl;
       } else {
         const { docUrl } = await createGoogleDoc(driveToken, docSpec!.title, docSpec!.content);
         url = docUrl;
       }
       setArtifacts(prev => ({ ...prev, [msgId]: { kind, title, status: 'done', url } }));
-      appendToCreateHistory({ kind, title, url, templateLabel: 'AI Chat', sourceLabel: '', createdAt: new Date().toISOString(), subjectId });
+      const label = isDocUpdate ? 'Updated' : 'AI Chat';
+      appendToCreateHistory({ kind, title, url, templateLabel: label, sourceLabel: '', createdAt: new Date().toISOString(), subjectId });
     } catch (err: unknown) {
       const e = err as Error & { presentationUrl?: string };
-      // Slides population partly failed but the deck exists — still link to it
       if (e.presentationUrl) {
         setArtifacts(prev => ({ ...prev, [msgId]: { kind, title, status: 'done', url: e.presentationUrl } }));
         appendToCreateHistory({ kind, title, url: e.presentationUrl!, templateLabel: 'AI Chat', sourceLabel: '', createdAt: new Date().toISOString(), subjectId });
@@ -976,6 +982,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       }
       const msg = e.message === 'google_token_expired'
         ? 'Google access expired — reconnect Google Drive in Settings.'
+        : isDocUpdate ? 'Could not update the doc. Try again.'
         : kind === 'slides' ? 'Could not create the presentation. Try again.'
         : 'Could not create the doc. Try again.';
       setArtifacts(prev => ({ ...prev, [msgId]: { kind, title, status: 'error', error: msg } }));
@@ -1212,6 +1219,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: displayContent };
     const messagesWithUser = [...session.messages, userMsg];
 
+    const sentAttachedFile = attachedFile;
     setInput('');
     setAttachedFile(null);
     setAttachError('');
@@ -1240,7 +1248,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
 
       if (isVoice) speakText(response);
 
-      void runCreation(assistantMsg.id, response, currentSubjectKey);
+      void runCreation(assistantMsg.id, response, currentSubjectKey, sentAttachedFile);
 
       // Auto-save to Google Doc if mode is on (and the AI didn't already create one)
       if (saveAsDocMode && driveToken && !parseCreateDoc(response) && !parseCreateSlides(response)) {

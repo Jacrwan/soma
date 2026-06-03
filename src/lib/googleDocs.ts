@@ -63,6 +63,38 @@ export async function createGoogleDoc(
   return res.json();
 }
 
+export async function updateGoogleDoc(
+  googleDocsToken: string,
+  docId: string,
+  content: string,
+): Promise<{ docId: string; docUrl: string }> {
+  const token = await getSupabaseToken();
+
+  const res = await fetch('/api/generate', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ type: 'docs-update', googleToken: googleDocsToken, docId, content }),
+  });
+
+  if (res.status === 401) {
+    const body = await res.json().catch(() => ({})) as { error?: string };
+    if (body.error === 'google_token_expired') throw new Error('google_token_expired');
+    throw new Error('auth_required');
+  }
+  if (res.status === 402) throw new Error('subscription_required');
+  if (res.status === 404) throw new Error('not_found');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string; googleStatus?: number };
+    if (body.googleStatus === 401) throw new Error('google_token_expired');
+    throw new Error(body.error || 'docs_error');
+  }
+
+  return res.json();
+}
+
 export interface SlideSpec { title: string; bullets: string[] }
 
 export async function createGoogleSlides(
