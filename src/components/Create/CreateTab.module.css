@@ -108,7 +108,13 @@
   box-shadow: 0 0 0 1px var(--accent);
 }
 
-.templateIcon { font-size: 22px; }
+.templateIcon {
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
 
 .templateLabel {
   font-size: 14px;
@@ -341,7 +347,13 @@
   background: var(--bg-secondary);
 }
 
-.previewIcon { font-size: 20px; flex-shrink: 0; }
+.previewIcon {
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
 
 .previewTitle {
   font-size: 16px;
@@ -482,7 +494,13 @@
 
 .resultCard:hover { border-color: var(--accent); }
 
-.resultIcon { font-size: 20px; flex-shrink: 0; }
+.resultIcon {
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
 
 .resultInfo {
   display: flex;
@@ -584,12 +602,55 @@
 }
 .backLink:hover { color: var(--text-primary); }
 
+/* ── Flashcard preview ── */
+.previewFlashcards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.flashcardPreviewCard {
+  display: flex;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.flashcardNum {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  min-width: 20px;
+  padding-top: 2px;
+}
+
+.flashcardContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.flashcardFront {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+
+.flashcardBack {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
 /* ── Responsive ── */
 @media (max-width: 640px) {
   .container { padding: 20px 16px 48px; }
   .templateGrid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
   .templateCard { padding: 12px; }
-  .templateIcon { font-size: 18px; }
+  .templateIcon svg { width: 16px; height: 16px; }
   .templateLabel { font-size: 13px; }
   .templateDesc { font-size: 11px; }
   .segment { flex-wrap: wrap; }

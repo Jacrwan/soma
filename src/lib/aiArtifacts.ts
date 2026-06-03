@@ -40,9 +40,32 @@ export function parseCreateSlides(content: string): CreateSlidesSpec | null {
   return cleaned.length > 0 ? { title, slides: cleaned } : null;
 }
 
+export function parseCreateFlashcards(content: string): CreateFlashcardSpec | null {
+  const match = content.match(/<createFlashcards\s+title="([^"]*)">([\s\S]*?)<\/createFlashcards>/);
+  if (!match) return null;
+  const title = match[1].trim() || 'Flashcards';
+  const body = match[2].trim();
+  const cards: { front: string; back: string }[] = [];
+  // Each card: Q: ... / A: ...
+  const cardBlocks = body.split(/\n(?=Q:\s)/);
+  for (const block of cardBlocks) {
+    const qMatch = block.match(/^Q:\s*(.+)/m);
+    const aMatch = block.match(/^A:\s*(.+)/m);
+    if (qMatch && aMatch) {
+      cards.push({ front: qMatch[1].trim(), back: aMatch[1].trim() });
+    }
+  }
+  return cards.length > 0 ? { title, cards } : null;
+}
+
 // ── Create-page templates ────────────────────────────────────────────────────
 
-export type ArtifactKind = 'doc' | 'slides';
+export type ArtifactKind = 'doc' | 'slides' | 'flashcards';
+
+export interface CreateFlashcardSpec {
+  title: string;
+  cards: { front: string; back: string }[];
+}
 
 export interface CreateTemplate {
   id: string;
@@ -72,13 +95,37 @@ Use "== " to begin each slide (the text after it is the slide title) and "- " fo
 - Another point
 </createSlides>`;
 
+const FLASHCARDS_FORMAT = `Respond with ONLY a single <createFlashcards> block and nothing else before or after it.
+Each card has a "Q: " line (the front) and an "A: " line (the back):
+<createFlashcards title="Deck title">
+Q: What is photosynthesis?
+A: The process by which plants convert sunlight into chemical energy
+
+Q: What are the two stages of photosynthesis?
+A: The light-dependent reactions and the Calvin cycle (light-independent reactions)
+</createFlashcards>`;
+
 export const CREATE_TEMPLATES: CreateTemplate[] = [
+  {
+    id: 'flashcards',
+    label: 'Flashcards',
+    description: 'A study deck generated from your material',
+    output: 'flashcards',
+    icon: 'Fc',
+    instruction: `Produce a set of 15-25 flashcards that cover the key concepts, definitions, and facts.
+- Each card should test ONE concept.
+- Keep the front (question) clear and specific.
+- Keep the back (answer) concise but complete — one or two sentences max.
+- Cover the material thoroughly, from basics to important details.
+- Order the cards so that foundational concepts come first.
+${FLASHCARDS_FORMAT}`,
+  },
   {
     id: 'notes',
     label: 'Study Notes',
     description: 'Clean, organized notes on a topic or file',
     output: 'doc',
-    icon: '📝',
+    icon: 'Sn',
     instruction: `Produce thorough but well-organized study notes.
 - Open with a one-line overview of the topic.
 - Break the material into clear sections, each with a heading.
@@ -92,7 +139,7 @@ ${DOC_FORMAT}`,
     label: 'Slide Deck',
     description: 'A presentation you can edit in Google Slides',
     output: 'slides',
-    icon: '📊',
+    icon: 'Sd',
     instruction: `Produce a clear, well-structured slide deck of about 6–12 slides.
 - Start with an "Overview" or agenda slide.
 - Give each slide a focused title and 3–6 concise bullets (not full paragraphs).
@@ -105,7 +152,7 @@ ${SLIDES_FORMAT}`,
     label: 'Study Guide',
     description: 'Exam-focused review with key concepts',
     output: 'doc',
-    icon: '📚',
+    icon: 'Sg',
     instruction: `Produce an exam-focused study guide.
 - List the key concepts and definitions a student must know.
 - Include important formulas, dates, or rules where relevant.
@@ -118,7 +165,7 @@ ${DOC_FORMAT}`,
     label: 'Practice Quiz',
     description: 'Self-test questions with an answer key',
     output: 'doc',
-    icon: '✅',
+    icon: 'Qz',
     instruction: `Produce a practice quiz that tests real understanding.
 - Write 10–15 questions mixing multiple choice and short answer.
 - Number the questions and keep them clear.
@@ -130,7 +177,7 @@ ${DOC_FORMAT}`,
     label: 'Essay Outline',
     description: 'Thesis, structure, and evidence points',
     output: 'doc',
-    icon: '🗂️',
+    icon: 'Eo',
     instruction: `Produce a structured essay outline.
 - State a clear, arguable thesis at the top.
 - Provide 3–5 body sections, each with a topic sentence and 2–4 supporting evidence points or examples.
@@ -144,7 +191,7 @@ ${DOC_FORMAT}`,
     label: 'Summarize',
     description: 'Condense an assignment or file into the essentials',
     output: 'doc',
-    icon: '📄',
+    icon: 'Sm',
     instruction: `Produce a faithful, concise summary of the provided material.
 - Begin with a 2–3 sentence high-level overview.
 - Follow with the main points as bullets, in the source's logical order.
@@ -177,6 +224,7 @@ export interface PreviewResult {
   rawContent: string;
   docSpec?: CreateDocSpec;
   slidesSpec?: CreateSlidesSpec;
+  flashcardsSpec?: CreateFlashcardSpec;
 }
 
 export async function generatePreview(input: Omit<GenerateInput, 'driveToken'>): Promise<PreviewResult> {
@@ -203,6 +251,12 @@ ${template.instruction}`;
     'sonnet',
     attachments,
   );
+
+  if (template.output === 'flashcards') {
+    const spec = parseCreateFlashcards(response);
+    if (!spec) throw new Error('generation_failed');
+    return { kind: 'flashcards', title: spec.title, rawContent: response, flashcardsSpec: spec };
+  }
 
   if (template.output === 'slides') {
     const spec = parseCreateSlides(response);

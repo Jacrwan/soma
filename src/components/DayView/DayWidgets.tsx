@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Layers, HelpCircle } from 'lucide-react';
 import { getWeeklyStudyTime, getStudyStreak } from '../../lib/insights';
 import { loadDecks, FLASHCARDS_EVENT } from '../../lib/flashcards';
 import { loadQuizzes, QUIZZES_EVENT } from '../../lib/quizzes';
@@ -99,7 +100,7 @@ export function StudySets({ subjects }: { subjects: Subject[] }) {
             const name = subjectName(item.subjectId);
             return (
               <button key={`${item.tool}-${item.id}`} className={styles.setRow} onClick={() => study(item)}>
-                <span className={styles.setIcon}>{item.tool === 'quiz' ? '🧠' : '📇'}</span>
+                <span className={styles.setIcon}>{item.tool === 'quiz' ? <HelpCircle size={14} /> : <Layers size={14} />}</span>
                 <span className={styles.setInfo}>
                   <span className={styles.setTitle}>{item.title}</span>
                   <span className={styles.setMeta}>

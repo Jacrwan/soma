@@ -49,7 +49,13 @@
   transition: background 0.15s, border-color 0.15s;
 }
 .setRow:hover { background: var(--bg-secondary); border-color: var(--border); }
-.setIcon { font-size: 15px; flex-shrink: 0; }
+.setIcon {
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
 .setInfo { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
 .setTitle { font-size: 13px; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .setMeta { font-size: 11px; color: var(--text-muted); }

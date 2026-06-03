@@ -16,6 +16,7 @@
     "dompurify": "^3.4.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "lucide-react": "^1.17.0",
     "node-fetch": "^3.3.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
