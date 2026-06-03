@@ -21,9 +21,22 @@ import styles from './CreateTab.module.css';
 type SourceType = 'topic' | 'assignment' | 'subject' | 'file';
 type Destination = 'soma' | 'google';
 type BuildMethod = 'ai' | 'manual';
-type NativeTool = 'flashcards' | 'quiz';
+type TypeId = 'flashcards' | 'quiz' | 'notes' | 'slides' | 'studyguide' | 'outline' | 'summary';
 
 const MAX_FILE_CHARS = 12_000;
+
+// One box per kind of study material. Flashcards & Quiz can be built by hand
+// (interactive, kept in Soma); they and the document types can also be
+// generated with AI. The user picks the type first, then how/where.
+const TYPE_DEFS: { id: TypeId; label: string; icon: string; desc: string }[] = [
+  { id: 'flashcards', label: 'Flashcards',   icon: '📇', desc: 'A deck you flip through and study' },
+  { id: 'quiz',       label: 'Quiz',          icon: '🧠', desc: 'Questions you take and get scored on' },
+  { id: 'notes',      label: 'Study Notes',   icon: '📝', desc: 'Clean, organized notes on a topic' },
+  { id: 'slides',     label: 'Slide Deck',    icon: '📊', desc: 'A presentation deck' },
+  { id: 'studyguide', label: 'Study Guide',   icon: '📚', desc: 'Exam-focused review of key concepts' },
+  { id: 'outline',    label: 'Essay Outline', icon: '🗂️', desc: 'Thesis, structure and evidence' },
+  { id: 'summary',    label: 'Summarize',     icon: '📄', desc: 'Condense material to the essentials' },
+];
 
 // ── Shared content renderer (used by preview + the in-app reader) ──────────────
 
@@ -89,18 +102,19 @@ export default function CreateTab() {
   }, []);
   const subjects = useMemo<Subject[]>(() => storage.getSubjects().filter(s => !s.archived), []);
 
-  // ── Destination is chosen first. Default: subscribers → Google, free → Soma.
-  const [destination, setDestination] = useState<Destination | null>(null);
-  const dest: Destination = destination ?? (aiAccess ? 'google' : 'soma');
+  const templatesById = useMemo(
+    () => Object.fromEntries(CREATE_TEMPLATES.map(t => [t.id, t])) as Record<string, CreateTemplate>,
+    [],
+  );
 
-  // Build method only varies for the in-Soma path; Google export uses AI.
+  const [typeId, setTypeId] = useState<TypeId | null>(null);
+
+  // How it's built (Write it myself / Generate with AI) and where it goes.
   const [methodSel, setMethodSel] = useState<BuildMethod | null>(null);
-  const buildMethod: BuildMethod = dest === 'google'
-    ? 'ai'
-    : (methodSel ?? (aiAccess ? 'ai' : 'manual'));
+  const method: BuildMethod = methodSel ?? (aiAccess ? 'ai' : 'manual');
+  const [destSel, setDestSel] = useState<Destination | null>(null);
+  const destination: Destination = destSel ?? (aiAccess ? 'google' : 'soma');
 
-  const [template, setTemplate] = useState<CreateTemplate | null>(null);
-  const [nativeTool, setNativeTool] = useState<NativeTool | null>(null);
   const [sourceType, setSourceType] = useState<SourceType>('topic');
   const [topic, setTopic] = useState('');
   const [assignmentId, setAssignmentId] = useState<number | null>(null);
@@ -108,7 +122,6 @@ export default function CreateTab() {
   const [driveFile, setDriveFile] = useState<{ id: string; title: string } | null>(null);
   const [instructions, setInstructions] = useState('');
 
-  // Manual authoring
   const [manualTitle, setManualTitle] = useState('');
   const [manualBody, setManualBody] = useState('');
 
@@ -130,33 +143,26 @@ export default function CreateTab() {
     return () => window.removeEventListener(NATIVE_LIBRARY_EVENT, refresh);
   }, []);
 
-  function resetBuild() { setError(''); setPreview(null); }
-
-  function chooseDestination(d: Destination) {
-    setDestination(d);
-    resetBuild();
-    if (d === 'google' && nativeTool) setNativeTool(null); // native tools are Soma-only
+  function resetBuild() {
+    setError(''); setPreview(null); setManualTitle(''); setManualBody('');
   }
+  function pickType(id: TypeId) { setTypeId(id); resetBuild(); }
 
-  function pickTemplate(t: CreateTemplate) {
-    setTemplate(t);
-    setNativeTool(null);
-    resetBuild();
-    setManualBody('');
-    setManualTitle('');
-  }
+  // Interactive (native) when building flashcards, or a hand-built quiz.
+  const interactive = typeId === 'flashcards' || (typeId === 'quiz' && method === 'manual');
 
-  function pickNative(tool: NativeTool) {
-    setNativeTool(tool);
-    setTemplate(null);
-    resetBuild();
-  }
+  // The AI/document template backing the current type (null for interactive builds).
+  const activeTemplate: CreateTemplate | null = !typeId || typeId === 'flashcards'
+    ? null
+    : typeId === 'quiz'
+      ? (method === 'ai' ? templatesById['quiz'] : null)
+      : templatesById[typeId] ?? null;
 
   function onPickFile(f: PickedFile) { setDriveFile({ id: f.id, title: f.name }); }
   const { openPicker } = useGooglePicker(driveToken, onPickFile);
 
   const canGenerate = (() => {
-    if (!template || generating || saving) return false;
+    if (!activeTemplate || generating || saving) return false;
     if (sourceType === 'topic') return topic.trim().length > 1;
     if (sourceType === 'assignment') return assignmentId != null;
     if (sourceType === 'subject') return !!subjectId;
@@ -195,13 +201,13 @@ export default function CreateTab() {
   }, [sourceType, topic, assignments, assignmentId, subjects, subjectId, driveFile, driveToken]);
 
   async function handleGenerate() {
-    if (!template || !canGenerate) return;
+    if (!activeTemplate || !canGenerate) return;
     setGenerating(true);
     setError('');
     setPreview(null);
     try {
       const { label, context } = await buildSource();
-      const result = await generatePreview({ template, sourceLabel: label, sourceContext: context, instructions });
+      const result = await generatePreview({ template: activeTemplate, sourceLabel: label, sourceContext: context, instructions });
       setPreview(result);
       setTimeout(() => previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
     } catch (err: unknown) {
@@ -218,83 +224,95 @@ export default function CreateTab() {
     }
   }
 
-  // Save the current AI preview to the chosen destination.
+  async function persistToDrive(preview: PreviewResult): Promise<void> {
+    const freshToken = storage.getGoogleDriveToken();
+    if (!freshToken) { setError('Google Drive not connected — reconnect in Settings.'); throw new Error('no_token'); }
+    const result = await savePreviewToDrive(preview, freshToken);
+    const creation: SavedCreation = {
+      id: crypto.randomUUID(),
+      kind: result.kind,
+      title: result.title,
+      url: result.url,
+      templateLabel: activeTemplate?.label || '',
+      sourceLabel: sourceType === 'topic' ? topic.trim() : '',
+      createdAt: new Date().toISOString(),
+      subjectId: sourceType === 'subject' ? subjectId || undefined : undefined,
+    };
+    const updated = [creation, ...history];
+    setHistory(updated);
+    saveCreateHistory(updated);
+  }
+
+  function persistNative(preview: PreviewResult): void {
+    saveNativeCreation({
+      id: crypto.randomUUID(),
+      kind: preview.kind,
+      title: preview.title,
+      templateLabel: activeTemplate?.label || '',
+      subjectId: sourceType === 'subject' ? subjectId || undefined : undefined,
+      createdAt: new Date().toISOString(),
+      docSpec: preview.docSpec,
+      slidesSpec: preview.slidesSpec,
+    });
+  }
+
   async function handleSavePreview() {
     if (!preview) return;
-    if (dest === 'soma') {
-      saveNativeCreation({
-        id: crypto.randomUUID(),
-        kind: preview.kind,
-        title: preview.title,
-        templateLabel: template?.label || '',
-        subjectId: sourceType === 'subject' ? subjectId || undefined : undefined,
-        createdAt: new Date().toISOString(),
-        docSpec: preview.docSpec,
-        slidesSpec: preview.slidesSpec,
-      });
-      setPreview(null);
-      return;
-    }
-    // Google Drive export
-    const freshToken = storage.getGoogleDriveToken();
-    if (!freshToken) { setError('Google Drive not connected — reconnect in Settings.'); return; }
-    setSaving(true);
-    setError('');
+    if (destination === 'soma') { persistNative(preview); setPreview(null); return; }
+    setSaving(true); setError('');
     try {
-      const result = await savePreviewToDrive(preview, freshToken);
-      const creation: SavedCreation = {
-        id: crypto.randomUUID(),
-        kind: result.kind,
-        title: result.title,
-        url: result.url,
-        templateLabel: template?.label || '',
-        sourceLabel: sourceType === 'topic' ? topic.trim() : '',
-        createdAt: new Date().toISOString(),
-        subjectId: sourceType === 'subject' ? subjectId || undefined : undefined,
-      };
-      const updated = [creation, ...history];
-      setHistory(updated);
-      saveCreateHistory(updated);
+      await persistToDrive(preview);
       setPreview(null);
     } catch (err: unknown) {
       const msg = err as Error;
-      setError(
-        msg.message === 'google_token_expired' ? 'Google access expired — reconnect Google Drive in Settings.'
-          : msg.message === 'subscription_required' ? 'Your subscription has expired.'
-          : msg.message === 'auth_required' ? 'Please sign in again.'
-          : msg.message === 'docs_error' || msg.message === 'slides_error' ? 'Google could not create the file — try reconnecting Google Drive in Settings.'
-          : `Failed to save to Drive: ${msg.message}`,
-      );
+      if (msg.message !== 'no_token') {
+        setError(
+          msg.message === 'google_token_expired' ? 'Google access expired — reconnect Google Drive in Settings.'
+            : msg.message === 'subscription_required' ? 'Your subscription has expired.'
+            : msg.message === 'auth_required' ? 'Please sign in again.'
+            : msg.message === 'docs_error' || msg.message === 'slides_error' ? 'Google could not create the file — try reconnecting Google Drive in Settings.'
+            : `Failed to save to Drive: ${msg.message}`,
+        );
+      }
     } finally {
       setSaving(false);
     }
   }
 
-  // Save a manually-written doc/deck natively (no AI, no Google).
-  function handleSaveManual() {
-    if (!template) return;
+  // Build a doc/deck the user wrote by hand, then save to the chosen destination.
+  async function handleSaveManual() {
+    if (!activeTemplate) return;
     const title = manualTitle.trim();
     if (!title) { setError('Give it a title.'); return; }
     const body = manualBody.trim();
     if (!body) { setError('Add some content first.'); return; }
 
-    if (template.output === 'slides') {
+    let result: PreviewResult;
+    if (activeTemplate.output === 'slides') {
       const spec = parseCreateSlides(`<createSlides title="${title.replace(/"/g, '')}">\n${body}\n</createSlides>`);
       if (!spec) { setError('Start each slide with "== " and each point with "- ".'); return; }
-      saveNativeCreation({
-        id: crypto.randomUUID(), kind: 'slides', title, templateLabel: template.label,
-        subjectId: undefined, createdAt: new Date().toISOString(), slidesSpec: spec,
-      });
+      result = { kind: 'slides', title, rawContent: body, slidesSpec: spec };
     } else {
-      saveNativeCreation({
-        id: crypto.randomUUID(), kind: 'doc', title, templateLabel: template.label,
-        subjectId: undefined, createdAt: new Date().toISOString(), docSpec: { title, content: body },
-      });
+      result = { kind: 'doc', title, rawContent: body, docSpec: { title, content: body } };
     }
-    setManualTitle('');
-    setManualBody('');
-    setError('');
-    setTemplate(null);
+
+    if (destination === 'soma') {
+      persistNative(result);
+      resetBuild();
+      setTypeId(null);
+      return;
+    }
+    setSaving(true); setError('');
+    try {
+      await persistToDrive(result);
+      resetBuild();
+      setTypeId(null);
+    } catch (err: unknown) {
+      const msg = err as Error;
+      if (msg.message !== 'no_token') setError(`Failed to save to Drive: ${msg.message}`);
+    } finally {
+      setSaving(false);
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -312,8 +330,8 @@ export default function CreateTab() {
   }
 
   useEffect(() => {
-    if (template && buildMethod === 'ai' && sourceType === 'topic') topicRef.current?.focus();
-  }, [template, buildMethod, sourceType]);
+    if (activeTemplate && method === 'ai' && sourceType === 'topic') topicRef.current?.focus();
+  }, [activeTemplate, method, sourceType]);
 
   // ── In-app reader (native item) ──────────────────────────────────────────────
   if (viewer) {
@@ -342,222 +360,196 @@ export default function CreateTab() {
     ...history.map(h => ({ kind: 'google' as const, item: h, createdAt: h.createdAt })),
   ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
+  const showDestination = !interactive; // interactive builds always live in Soma
+
   return (
     <div className={styles.container}>
       <header className={styles.header}>
         <h1 className={styles.title}>Create</h1>
-        <p className={styles.subtitle}>
-          {dest === 'soma'
-            ? 'Build study materials and keep them right here in Soma.'
-            : 'Generate study materials and save them to Google Drive.'}
-        </p>
+        <p className={styles.subtitle}>Make flashcards, quizzes, notes and more — kept in Soma or saved to Google.</p>
       </header>
 
-      {/* ── Destination — decided first ── */}
+      {/* ── 1 · What to make (one box per type) ── */}
       <section className={styles.section}>
-        <span className={styles.stepLabel}>1 · Where should it go?</span>
-        <div className={styles.segment}>
-          <button
-            className={`${styles.segBtn}${dest === 'soma' ? ` ${styles.segBtnActive}` : ''}`}
-            onClick={() => chooseDestination('soma')}
-          >📱 Keep in Soma</button>
-          <button
-            className={`${styles.segBtn}${dest === 'google' ? ` ${styles.segBtnActive}` : ''}`}
-            onClick={() => chooseDestination('google')}
-          >📄 Google Docs / Slides</button>
-        </div>
-        <p className={styles.destNote}>
-          {dest === 'soma'
-            ? 'Stays inside the app — view and study it here. No Google account needed.'
-            : 'Creates a real Google Doc or Slides file in your Drive.'}
-        </p>
-      </section>
-
-      {dest === 'google' && !driveToken && (
-        <div className={styles.banner}>
-          <span>Connect Google Drive to create Docs and Slides.</span>
-          <button className={styles.bannerBtn} onClick={() => navigate('/settings')}>Connect</button>
-        </div>
-      )}
-
-      {/* ── What to make ── */}
-      <section className={styles.section}>
-        <span className={styles.stepLabel}>2 · What do you want to make?</span>
+        <span className={styles.stepLabel}>1 · What do you want to make?</span>
         <div className={styles.templateGrid}>
-          {dest === 'soma' && (
-            <button
-              className={`${styles.templateCard}${nativeTool === 'flashcards' ? ` ${styles.templateCardActive}` : ''}`}
-              onClick={() => pickNative('flashcards')}
-            >
-              <span className={styles.templateIcon}>📇</span>
-              <span className={styles.templateLabel}>Flashcards</span>
-              <span className={styles.templateDesc}>Build a deck and study it in the app</span>
-              <span className={styles.templateBadge}>In Soma</span>
-            </button>
-          )}
-          {dest === 'soma' && (
-            <button
-              className={`${styles.templateCard}${nativeTool === 'quiz' ? ` ${styles.templateCardActive}` : ''}`}
-              onClick={() => pickNative('quiz')}
-            >
-              <span className={styles.templateIcon}>🧠</span>
-              <span className={styles.templateLabel}>Quiz</span>
-              <span className={styles.templateDesc}>Write questions and take them, scored instantly</span>
-              <span className={styles.templateBadge}>In Soma</span>
-            </button>
-          )}
-          {CREATE_TEMPLATES.map(t => (
-            <button
-              key={t.id}
-              className={`${styles.templateCard}${template?.id === t.id ? ` ${styles.templateCardActive}` : ''}`}
-              onClick={() => pickTemplate(t)}
-            >
-              <span className={styles.templateIcon}>{t.icon}</span>
-              <span className={styles.templateLabel}>{t.label}</span>
-              <span className={styles.templateDesc}>{t.description}</span>
-              <span className={`${styles.templateBadge} ${t.output === 'slides' ? styles.templateBadgeSlides : ''}`}>
-                {t.output === 'slides' ? 'Slides' : 'Doc'}
-              </span>
-            </button>
-          ))}
+          {TYPE_DEFS.map(t => {
+            const tmpl = templatesById[t.id];
+            const badge = t.id === 'flashcards' || t.id === 'quiz'
+              ? 'Interactive'
+              : tmpl?.output === 'slides' ? 'Slides' : 'Doc';
+            return (
+              <button
+                key={t.id}
+                className={`${styles.templateCard}${typeId === t.id ? ` ${styles.templateCardActive}` : ''}`}
+                onClick={() => pickType(t.id)}
+              >
+                <span className={styles.templateIcon}>{t.icon}</span>
+                <span className={styles.templateLabel}>{t.label}</span>
+                <span className={styles.templateDesc}>{t.desc}</span>
+                <span className={`${styles.templateBadge} ${badge === 'Slides' ? styles.templateBadgeSlides : ''}`}>{badge}</span>
+              </button>
+            );
+          })}
         </div>
       </section>
 
-      {/* ── Native tools (self-contained, in-app) ── */}
-      {nativeTool === 'flashcards' && (
+      {/* ── 2 · How (and where) ── */}
+      {typeId && (
         <section className={styles.section}>
-          <FlashcardsMode subjects={subjects} />
-        </section>
-      )}
-      {nativeTool === 'quiz' && (
-        <section className={styles.section}>
-          <QuizzesMode subjects={subjects} />
-        </section>
-      )}
-
-      {/* ── Doc / slides build ── */}
-      {template && (
-        <section className={styles.section}>
-          {/* Method toggle (Soma path can be AI or manual; Google export uses AI) */}
-          {dest === 'soma' && (
-            <div className={styles.segment}>
-              <button
-                className={`${styles.segBtn}${buildMethod === 'ai' ? ` ${styles.segBtnActive}` : ''}`}
-                onClick={() => { setMethodSel('ai'); resetBuild(); }}
-              >✨ Generate with AI</button>
-              <button
-                className={`${styles.segBtn}${buildMethod === 'manual' ? ` ${styles.segBtnActive}` : ''}`}
-                onClick={() => { setMethodSel('manual'); resetBuild(); }}
-              >✍️ Write it myself</button>
-            </div>
-          )}
-
-          {buildMethod === 'manual' ? (
-            // ── Manual authoring (free, native) ──
-            <div className={styles.sourceInput}>
-              <input
-                className={styles.input}
-                placeholder={`${template.label} title`}
-                value={manualTitle}
-                onChange={e => setManualTitle(e.target.value)}
-              />
-              <textarea
-                className={styles.textarea}
-                placeholder={template.output === 'slides'
-                  ? 'One slide per "== Title" line, one point per "- bullet" line:\n== Overview\n- First point\n- Second point'
-                  : 'Write your content. Use **bold** for emphasis, "- " for bullets, and put headings on their own line.'}
-                value={manualBody}
-                onChange={e => setManualBody(e.target.value)}
-                rows={10}
-              />
-              <div className={styles.generateRow}>
-                <button className={styles.primaryBtn} onClick={handleSaveManual} disabled={!manualTitle.trim() || !manualBody.trim()}>
-                  Save in Soma
-                </button>
-                {error && <span className={styles.error}>{error}</span>}
-              </div>
-            </div>
-          ) : !aiAccess ? (
-            // ── AI gated (free user chose AI) ──
-            <div className={styles.gateCard}>
-              <h2 className={styles.gateTitle}>AI generation is part of Soma Premium</h2>
-              <p className={styles.gateText}>
-                {dest === 'soma'
-                  ? 'Switch to “Write it myself” to build it free, or start a trial to generate with AI.'
-                  : 'Start your 3-week free trial to generate and export with AI.'}
-              </p>
-              <div className={styles.generateRow}>
-                {dest === 'soma' && (
-                  <button className={styles.secondaryBtn} onClick={() => setMethodSel('manual')}>Write it myself</button>
-                )}
-                <button className={styles.primaryBtn} onClick={() => navigate('/pricing')}>See plans</button>
-              </div>
-            </div>
+          {/* Flashcards are always a hand-built native deck — no method/destination needed */}
+          {typeId === 'flashcards' ? (
+            <FlashcardsMode subjects={subjects} />
           ) : (
-            // ── AI generation (premium) ──
             <>
-              <span className={styles.stepLabel}>Based on what?</span>
+              <span className={styles.stepLabel}>2 · How do you want to build it?</span>
               <div className={styles.segment}>
-                {([['topic', 'Topic'], ['assignment', 'Assignment'], ['subject', 'Subject'], ['file', 'Drive file']] as [SourceType, string][]).map(([key, label]) => (
-                  <button
-                    key={key}
-                    className={`${styles.segBtn}${sourceType === key ? ` ${styles.segBtnActive}` : ''}`}
-                    onClick={() => { setSourceType(key); resetBuild(); }}
-                  >{label}</button>
-                ))}
+                <button
+                  className={`${styles.segBtn}${method === 'manual' ? ` ${styles.segBtnActive}` : ''}`}
+                  onClick={() => { setMethodSel('manual'); resetBuild(); }}
+                >✍️ Write it myself · Free</button>
+                <button
+                  className={`${styles.segBtn}${method === 'ai' ? ` ${styles.segBtnActive}` : ''}`}
+                  onClick={() => { setMethodSel('ai'); resetBuild(); }}
+                >✨ Generate with AI · Premium</button>
               </div>
 
-              <div className={styles.sourceInput}>
-                {sourceType === 'topic' && (
-                  <input
-                    ref={topicRef}
-                    className={styles.input}
-                    placeholder="e.g. Photosynthesis, the French Revolution, derivatives…"
-                    value={topic}
-                    onChange={e => setTopic(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                  />
-                )}
-                {sourceType === 'assignment' && (
-                  assignments.length > 0 ? (
-                    <select className={styles.input} value={assignmentId ?? ''} onChange={e => setAssignmentId(e.target.value ? Number(e.target.value) : null)}>
-                      <option value="">Choose an assignment…</option>
-                      {assignments.map(a => <option key={a.id} value={a.id}>{a.name} — {a.courseName}</option>)}
-                    </select>
-                  ) : <span className={styles.emptyNote}>No Canvas assignments synced. Connect Canvas first.</span>
-                )}
-                {sourceType === 'subject' && (
-                  subjects.length > 0 ? (
-                    <select className={styles.input} value={subjectId} onChange={e => setSubjectId(e.target.value)}>
-                      <option value="">Choose a subject…</option>
-                      {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                  ) : <span className={styles.emptyNote}>No subjects yet.</span>
-                )}
-                {sourceType === 'file' && (
-                  driveToken ? (
-                    <div className={styles.fileRow}>
-                      <button className={styles.secondaryBtn} onClick={() => openPicker()}>{driveFile ? 'Change file' : 'Choose from Drive'}</button>
-                      {driveFile && <span className={styles.fileChip}>{driveFile.title}</span>}
+              {/* Destination — chosen before any content is made (document outputs only) */}
+              {showDestination && (
+                <>
+                  <div className={styles.segment}>
+                    <button
+                      className={`${styles.segBtn}${destination === 'soma' ? ` ${styles.segBtnActive}` : ''}`}
+                      onClick={() => { setDestSel('soma'); resetBuild(); }}
+                    >📱 Keep in Soma</button>
+                    <button
+                      className={`${styles.segBtn}${destination === 'google' ? ` ${styles.segBtnActive}` : ''}`}
+                      onClick={() => { setDestSel('google'); resetBuild(); }}
+                    >📄 Google {activeTemplate?.output === 'slides' ? 'Slides' : 'Docs'}</button>
+                  </div>
+                  <p className={styles.destNote}>
+                    {destination === 'soma'
+                      ? 'Stays inside the app — no Google account needed.'
+                      : 'Creates a real file in your Google Drive.'}
+                  </p>
+                  {destination === 'google' && !driveToken && (
+                    <div className={styles.banner}>
+                      <span>Connect Google Drive to create Docs and Slides.</span>
+                      <button className={styles.bannerBtn} onClick={() => navigate('/settings')}>Connect</button>
                     </div>
-                  ) : <span className={styles.emptyNote}>Connect Google Drive to attach a file.</span>
-                )}
-              </div>
+                  )}
+                </>
+              )}
 
-              <textarea
-                className={styles.textarea}
-                placeholder="Extra instructions (optional) — e.g. focus on chapters 3–4, keep it concise, AP-level…"
-                value={instructions}
-                onChange={e => setInstructions(e.target.value)}
-                rows={2}
-              />
+              {/* ── Interactive native quiz (manual) ── */}
+              {interactive ? (
+                <QuizzesMode subjects={subjects} />
+              ) : method === 'manual' ? (
+                // ── Manual document authoring (free) ──
+                <div className={styles.sourceInput}>
+                  <input
+                    className={styles.input}
+                    placeholder={`${activeTemplate?.label ?? ''} title`}
+                    value={manualTitle}
+                    onChange={e => setManualTitle(e.target.value)}
+                  />
+                  <textarea
+                    className={styles.textarea}
+                    placeholder={activeTemplate?.output === 'slides'
+                      ? 'One slide per "== Title" line, one point per "- bullet" line:\n== Overview\n- First point\n- Second point'
+                      : 'Write your content. Use **bold** for emphasis, "- " for bullets, and put headings on their own line.'}
+                    value={manualBody}
+                    onChange={e => setManualBody(e.target.value)}
+                    rows={10}
+                  />
+                  <div className={styles.generateRow}>
+                    <button
+                      className={styles.primaryBtn}
+                      onClick={handleSaveManual}
+                      disabled={!manualTitle.trim() || !manualBody.trim() || saving || (destination === 'google' && !driveToken)}
+                    >
+                      {saving ? 'Saving…' : destination === 'soma' ? 'Keep in Soma' : `Save to Google ${activeTemplate?.output === 'slides' ? 'Slides' : 'Docs'}`}
+                    </button>
+                    {error && <span className={styles.error}>{error}</span>}
+                  </div>
+                </div>
+              ) : !aiAccess ? (
+                // ── AI gated (free user chose AI) ──
+                <div className={styles.gateCard}>
+                  <h2 className={styles.gateTitle}>AI generation is part of Soma Premium</h2>
+                  <p className={styles.gateText}>Switch to “Write it myself” to make it free, or start a 3-week trial to generate with AI.</p>
+                  <div className={styles.generateRow}>
+                    <button className={styles.secondaryBtn} onClick={() => setMethodSel('manual')}>Write it myself</button>
+                    <button className={styles.primaryBtn} onClick={() => navigate('/pricing')}>See plans</button>
+                  </div>
+                </div>
+              ) : (
+                // ── AI generation (premium) ──
+                <>
+                  <span className={styles.stepLabel}>Based on what?</span>
+                  <div className={styles.segment}>
+                    {([['topic', 'Topic'], ['assignment', 'Assignment'], ['subject', 'Subject'], ['file', 'Drive file']] as [SourceType, string][]).map(([key, label]) => (
+                      <button
+                        key={key}
+                        className={`${styles.segBtn}${sourceType === key ? ` ${styles.segBtnActive}` : ''}`}
+                        onClick={() => { setSourceType(key); setError(''); setPreview(null); }}
+                      >{label}</button>
+                    ))}
+                  </div>
 
-              <div className={styles.generateRow}>
-                <button className={styles.primaryBtn} onClick={handleGenerate} disabled={!canGenerate}>
-                  {generating ? 'Generating…' : preview ? 'Regenerate' : `Generate ${template.output === 'slides' ? 'Slides' : 'Doc'}`}
-                </button>
-                {error && <span className={styles.error}>{error}</span>}
-              </div>
+                  <div className={styles.sourceInput}>
+                    {sourceType === 'topic' && (
+                      <input
+                        ref={topicRef}
+                        className={styles.input}
+                        placeholder="e.g. Photosynthesis, the French Revolution, derivatives…"
+                        value={topic}
+                        onChange={e => setTopic(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                      />
+                    )}
+                    {sourceType === 'assignment' && (
+                      assignments.length > 0 ? (
+                        <select className={styles.input} value={assignmentId ?? ''} onChange={e => setAssignmentId(e.target.value ? Number(e.target.value) : null)}>
+                          <option value="">Choose an assignment…</option>
+                          {assignments.map(a => <option key={a.id} value={a.id}>{a.name} — {a.courseName}</option>)}
+                        </select>
+                      ) : <span className={styles.emptyNote}>No Canvas assignments synced. Connect Canvas first.</span>
+                    )}
+                    {sourceType === 'subject' && (
+                      subjects.length > 0 ? (
+                        <select className={styles.input} value={subjectId} onChange={e => setSubjectId(e.target.value)}>
+                          <option value="">Choose a subject…</option>
+                          {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                        </select>
+                      ) : <span className={styles.emptyNote}>No subjects yet.</span>
+                    )}
+                    {sourceType === 'file' && (
+                      driveToken ? (
+                        <div className={styles.fileRow}>
+                          <button className={styles.secondaryBtn} onClick={() => openPicker()}>{driveFile ? 'Change file' : 'Choose from Drive'}</button>
+                          {driveFile && <span className={styles.fileChip}>{driveFile.title}</span>}
+                        </div>
+                      ) : <span className={styles.emptyNote}>Connect Google Drive to attach a file.</span>
+                    )}
+                  </div>
+
+                  <textarea
+                    className={styles.textarea}
+                    placeholder="Extra instructions (optional) — e.g. focus on chapters 3–4, keep it concise, AP-level…"
+                    value={instructions}
+                    onChange={e => setInstructions(e.target.value)}
+                    rows={2}
+                  />
+
+                  <div className={styles.generateRow}>
+                    <button className={styles.primaryBtn} onClick={handleGenerate} disabled={!canGenerate}>
+                      {generating ? 'Generating…' : preview ? 'Regenerate' : `Generate ${activeTemplate?.output === 'slides' ? 'Slides' : 'Doc'}`}
+                    </button>
+                    {error && <span className={styles.error}>{error}</span>}
+                  </div>
+                </>
+              )}
             </>
           )}
         </section>
@@ -587,8 +579,8 @@ export default function CreateTab() {
             </div>
             <div className={styles.previewBody}>{renderSpec(preview.kind, preview.docSpec, preview.slidesSpec)}</div>
             <div className={styles.previewActions}>
-              <button className={styles.primaryBtn} onClick={handleSavePreview} disabled={saving || (dest === 'google' && !driveToken)}>
-                {saving ? 'Saving…' : dest === 'soma' ? 'Keep in Soma' : `Save to Google ${preview.kind === 'slides' ? 'Slides' : 'Docs'}`}
+              <button className={styles.primaryBtn} onClick={handleSavePreview} disabled={saving || (destination === 'google' && !driveToken)}>
+                {saving ? 'Saving…' : destination === 'soma' ? 'Keep in Soma' : `Save to Google ${preview.kind === 'slides' ? 'Slides' : 'Docs'}`}
               </button>
               <button className={styles.secondaryBtn} onClick={handleGenerate} disabled={generating}>Regenerate</button>
               <button className={styles.ghostBtn} onClick={() => setPreview(null)}>Discard</button>
