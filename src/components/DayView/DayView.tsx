@@ -1367,7 +1367,7 @@ ${topTodos || '(none)'}
 Write a brief daily summary with bullet points highlighting what to focus on today. Clearly distinguish overdue items from upcoming ones. Use the exact due dates, never say "tomorrow" or "today" unless the date actually matches.`;
       const text = await sendMessage(
         [{ role: 'user', content: userMsg }],
-        'You are a concise daily assistant for a student. Generate a focused daily briefing. Use 1 short sentence of context, then bullet points for today\'s priorities. Keep it under 6 bullet points. No markdown headers, no bold, just plain bullet points with • character. Be warm and direct.',
+        'You are a concise daily assistant for a student. Generate a focused daily briefing. Use 1 short sentence of context, then bullet points for today\'s priorities. Keep it under 6 bullet points. No markdown headers, no bold, just plain bullet points with • character. Be warm and direct. Never use em dashes or dashes to separate clauses. Use short simple sentences instead.',
       );
       setBriefText(text);
       localStorage.setItem('soma_brief_text', text);
