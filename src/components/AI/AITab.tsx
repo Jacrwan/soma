@@ -483,6 +483,29 @@ function fmtFileDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+function ThinkingIndicator() {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setElapsed(e => e + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const secs = elapsed % 60;
+  const mins = Math.floor(elapsed / 60);
+  const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+  return (
+    <div className={`${styles.messageRow} ${styles.assistantRow}`}>
+      <div className={`${styles.bubble} ${styles.assistantBubble} ${styles.thinkingBubble}`}>
+        <span className={styles.thinkingDots}>
+          <span className={styles.thinkingDot} />
+          <span className={styles.thinkingDot} />
+          <span className={styles.thinkingDot} />
+        </span>
+        <span className={styles.thinkingTimer}>{timeStr}</span>
+      </div>
+    </div>
+  );
+}
+
 function FilesPanel({ subjects, onClose }: { subjects: Subject[]; onClose: () => void }) {
   const [history, setHistory] = useState<SavedCreation[]>(() => loadCreateHistory());
   const [sort, setSort] = useState<'date' | 'type'>('date');
@@ -1481,11 +1504,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
               )}
             </div>
           ))}
-          {loading && (
-            <div className={`${styles.messageRow} ${styles.assistantRow}`}>
-              <div className={`${styles.bubble} ${styles.assistantBubble} ${styles.thinkingBubble}`}>…</div>
-            </div>
-          )}
+          {loading && <ThinkingIndicator />}
           <div ref={messagesEndRef} />
         </div>
 
