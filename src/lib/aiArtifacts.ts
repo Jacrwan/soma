@@ -1,4 +1,5 @@
 import { sendMessage } from './ai';
+import type { Attachment } from './uploads';
 import { createGoogleDoc, createGoogleSlides, SlideSpec } from './googleDocs';
 
 // ── Tag parsing (shared by the AI chat and the Create page) ──────────────────
@@ -160,6 +161,7 @@ export interface GenerateInput {
   sourceLabel: string;
   sourceContext: string;
   instructions?: string;
+  attachments?: Attachment[];
   driveToken: string;
 }
 
@@ -178,7 +180,7 @@ export interface PreviewResult {
 }
 
 export async function generatePreview(input: Omit<GenerateInput, 'driveToken'>): Promise<PreviewResult> {
-  const { template, sourceLabel, sourceContext, instructions } = input;
+  const { template, sourceLabel, sourceContext, instructions, attachments } = input;
 
   const systemPrompt = `You are Soma, a study assistant that generates polished study materials for a student.
 You write directly and substantively — never ask follow-up questions, never add commentary outside the required block.
@@ -189,6 +191,9 @@ ${template.instruction}`;
   const userParts = [
     `Create a ${template.label.toLowerCase()} about: ${sourceLabel}`,
     sourceContext ? `\nSource material:\n${sourceContext}` : '',
+    attachments && attachments.length > 0
+      ? `\nBase it on the attached ${attachments.length > 1 ? 'files' : 'file'} (e.g. lecture slide or reading). Read ${attachments.length > 1 ? 'them' : 'it'} carefully and use only what they contain.`
+      : '',
     instructions?.trim() ? `\nAdditional instructions from the student:\n${instructions.trim()}` : '',
   ].filter(Boolean);
 
@@ -196,6 +201,7 @@ ${template.instruction}`;
     [{ role: 'user', content: userParts.join('\n') }],
     systemPrompt,
     'sonnet',
+    attachments,
   );
 
   if (template.output === 'slides') {

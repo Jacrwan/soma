@@ -550,6 +550,26 @@
   margin: 10px 0 0;
 }
 
+/* Upload (photo / PDF) drop-zone */
+.uploadZone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  padding: 28px 20px;
+  border: 1.5px dashed var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.uploadZone:hover, .uploadZone:focus-visible { border-color: var(--text-muted); outline: none; }
+.uploadZoneActive { border-color: var(--accent); background: var(--bg-secondary); }
+.uploadIcon { font-size: 20px; color: var(--text-muted); }
+.uploadTitle { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+.uploadHint { font-size: 11px; color: var(--text-muted); }
+
 .backLink {
   background: none;
   border: none;

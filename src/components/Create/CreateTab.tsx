@@ -9,6 +9,7 @@ import {
 } from '../../lib/aiArtifacts';
 import { readDriveFile } from '../../lib/googleDrive';
 import { useGooglePicker, PickedFile } from '../../lib/useGooglePicker';
+import { Attachment, fileToAttachment, UploadError, ACCEPT_ATTR } from '../../lib/uploads';
 import { CanvasAssignment, Subject } from '../../types';
 import { SavedCreation, loadCreateHistory, saveCreateHistory } from '../../lib/createHistory';
 import {
@@ -18,7 +19,7 @@ import FlashcardsMode from './FlashcardsMode';
 import QuizzesMode from './QuizzesMode';
 import styles from './CreateTab.module.css';
 
-type SourceType = 'topic' | 'assignment' | 'subject' | 'file';
+type SourceType = 'topic' | 'assignment' | 'subject' | 'file' | 'upload';
 type Destination = 'soma' | 'google';
 type BuildMethod = 'ai' | 'manual';
 type TypeId = 'flashcards' | 'quiz' | 'notes' | 'slides' | 'studyguide' | 'outline' | 'summary';
@@ -142,6 +143,12 @@ export default function CreateTab() {
   const [driveFile, setDriveFile] = useState<{ id: string; title: string } | null>(null);
   const [instructions, setInstructions] = useState('');
 
+  // Uploaded file (photo / PDF) read in the browser — never stored server-side.
+  const [attachment, setAttachment] = useState<Attachment | null>(null);
+  const [uploadBusy, setUploadBusy] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [manualTitle, setManualTitle] = useState('');
   const [manualBody, setManualBody] = useState('');
 
@@ -181,16 +188,40 @@ export default function CreateTab() {
   function onPickFile(f: PickedFile) { setDriveFile({ id: f.id, title: f.name }); }
   const { openPicker } = useGooglePicker(driveToken, onPickFile);
 
+  async function ingestFile(file: File | undefined | null) {
+    if (!file) return;
+    setError('');
+    setUploadBusy(true);
+    try {
+      setAttachment(await fileToAttachment(file));
+    } catch (e) {
+      setError(e instanceof UploadError ? e.message : 'Could not read that file.');
+    } finally {
+      setUploadBusy(false);
+    }
+  }
+  function onUploadDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragActive(false);
+    ingestFile(e.dataTransfer.files?.[0]);
+  }
+  function onUploadPaste(e: React.ClipboardEvent) {
+    const file = Array.from(e.clipboardData.files)[0];
+    if (file) { e.preventDefault(); ingestFile(file); }
+  }
+
   const canGenerate = (() => {
     if (!activeTemplate || generating || saving) return false;
     if (sourceType === 'topic') return topic.trim().length > 1;
     if (sourceType === 'assignment') return assignmentId != null;
     if (sourceType === 'subject') return !!subjectId;
     if (sourceType === 'file') return !!driveFile;
+    if (sourceType === 'upload') return !!attachment && !uploadBusy;
     return false;
   })();
 
   const buildSource = useCallback(async (): Promise<{ label: string; context: string }> => {
+    if (sourceType === 'upload') return { label: attachment?.name ?? 'the uploaded file', context: '' };
     if (sourceType === 'topic') return { label: topic.trim(), context: '' };
     if (sourceType === 'assignment') {
       const a = assignments.find(x => x.id === assignmentId);
@@ -218,7 +249,7 @@ export default function CreateTab() {
       ? `${content.slice(0, MAX_FILE_CHARS)}\n\n[Truncated — file is long]`
       : content;
     return { label: title, context: `Contents of "${title}":\n${trimmed}` };
-  }, [sourceType, topic, assignments, assignmentId, subjects, subjectId, driveFile, driveToken]);
+  }, [sourceType, topic, assignments, assignmentId, subjects, subjectId, driveFile, driveToken, attachment]);
 
   async function handleGenerate() {
     if (!activeTemplate || !canGenerate) return;
@@ -227,7 +258,13 @@ export default function CreateTab() {
     setPreview(null);
     try {
       const { label, context } = await buildSource();
-      const result = await generatePreview({ template: activeTemplate, sourceLabel: label, sourceContext: context, instructions });
+      const result = await generatePreview({
+        template: activeTemplate,
+        sourceLabel: label,
+        sourceContext: context,
+        instructions,
+        attachments: sourceType === 'upload' && attachment ? [attachment] : undefined,
+      });
       setPreview(result);
       setTimeout(() => previewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
     } catch (err: unknown) {
@@ -508,7 +545,7 @@ export default function CreateTab() {
                 <>
                   <span className={styles.stepLabel}>Based on what?</span>
                   <div className={styles.segment}>
-                    {([['topic', 'Topic'], ['assignment', 'Assignment'], ['subject', 'Subject'], ['file', 'Drive file']] as [SourceType, string][]).map(([key, label]) => (
+                    {([['topic', 'Topic'], ['upload', 'Upload'], ['assignment', 'Assignment'], ['subject', 'Subject'], ['file', 'Drive file']] as [SourceType, string][]).map(([key, label]) => (
                       <button
                         key={key}
                         className={`${styles.segBtn}${sourceType === key ? ` ${styles.segBtnActive}` : ''}`}
@@ -527,6 +564,36 @@ export default function CreateTab() {
                         onChange={e => setTopic(e.target.value)}
                         onKeyDown={handleKeyDown}
                       />
+                    )}
+                    {sourceType === 'upload' && (
+                      attachment ? (
+                        <div className={styles.fileRow}>
+                          <span className={styles.fileChip}>{attachment.kind === 'pdf' ? '📄' : '🖼'} {attachment.name}</span>
+                          <button className={styles.secondaryBtn} onClick={() => setAttachment(null)}>Remove</button>
+                        </div>
+                      ) : (
+                        <div
+                          className={`${styles.uploadZone}${dragActive ? ` ${styles.uploadZoneActive}` : ''}`}
+                          onClick={() => fileInputRef.current?.click()}
+                          onDragOver={e => { e.preventDefault(); setDragActive(true); }}
+                          onDragLeave={() => setDragActive(false)}
+                          onDrop={onUploadDrop}
+                          onPaste={onUploadPaste}
+                          tabIndex={0}
+                          role="button"
+                        >
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept={ACCEPT_ATTR}
+                            hidden
+                            onChange={e => { ingestFile(e.target.files?.[0]); e.target.value = ''; }}
+                          />
+                          <span className={styles.uploadIcon}>⬆</span>
+                          <span className={styles.uploadTitle}>{uploadBusy ? 'Reading…' : 'Drop a photo or PDF, click to choose, or paste a screenshot'}</span>
+                          <span className={styles.uploadHint}>Lecture slide, reading, or notes · JPG, PNG, WebP, PDF</span>
+                        </div>
+                      )
                     )}
                     {sourceType === 'assignment' && (
                       assignments.length > 0 ? (

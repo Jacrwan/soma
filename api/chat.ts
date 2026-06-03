@@ -1,7 +1,8 @@
 /// <reference types="node" />
 import { createClient } from '@supabase/supabase-js';
 
-export const config = { api: { bodyParser: { sizeLimit: '1mb' } } };
+// Raised from 1mb so uploaded images/PDFs (sent as base64 content blocks) fit.
+export const config = { api: { bodyParser: { sizeLimit: '4.5mb' } } };
 
 const TRIAL_MS     = 21 * 86_400_000;
 const EXTENSION_MS =  7 * 86_400_000;
@@ -127,12 +128,35 @@ export default async function handler(req: any, res: any) {
   if (messages.length > 50) {
     return res.status(400).json({ error: 'Too many messages (max 50)' });
   }
+  const ALLOWED_BLOCKS = new Set(['text', 'image', 'document']);
   for (const msg of messages) {
-    if (typeof msg?.role !== 'string' || typeof msg?.content !== 'string') {
-      return res.status(400).json({ error: 'Each message must have role and content strings' });
+    if (typeof msg?.role !== 'string') {
+      return res.status(400).json({ error: 'Each message must have a role' });
     }
-    if (msg.content.length > 10_000) {
-      return res.status(400).json({ error: 'Message content too long (max 10000 chars)' });
+    // Content may be a plain string (text chats) or an array of content blocks
+    // (text + uploaded image/PDF attachments).
+    if (typeof msg.content === 'string') {
+      if (msg.content.length > 10_000) {
+        return res.status(400).json({ error: 'Message content too long (max 10000 chars)' });
+      }
+      continue;
+    }
+    if (!Array.isArray(msg.content) || msg.content.length > 8) {
+      return res.status(400).json({ error: 'Invalid message content' });
+    }
+    for (const block of msg.content) {
+      if (!block || !ALLOWED_BLOCKS.has(block.type)) {
+        return res.status(400).json({ error: 'Unsupported content block' });
+      }
+      if (block.type === 'text' && (typeof block.text !== 'string' || block.text.length > 10_000)) {
+        return res.status(400).json({ error: 'Text block too long' });
+      }
+      if (block.type === 'image' || block.type === 'document') {
+        const src = block.source;
+        if (!src || src.type !== 'base64' || typeof src.data !== 'string' || src.data.length > 6_000_000) {
+          return res.status(400).json({ error: 'Invalid attachment' });
+        }
+      }
     }
   }
 
@@ -142,7 +166,7 @@ export default async function handler(req: any, res: any) {
       headers: {
         'x-api-key': process.env.ANTHROPIC_API_KEY ?? '',
         'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'prompt-caching-2024-07-31',
+        'anthropic-beta': 'prompt-caching-2024-07-31,pdfs-2024-09-25',
         'content-type': 'application/json',
       },
       body: JSON.stringify({
