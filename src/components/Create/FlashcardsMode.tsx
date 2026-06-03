@@ -12,9 +12,13 @@ type View =
   | { name: 'edit'; deck: FlashcardDeck }
   | { name: 'study'; deckId: string };
 
-export default function FlashcardsMode({ subjects }: { subjects: Subject[] }) {
+export default function FlashcardsMode({ subjects, initialStudyId }: { subjects: Subject[]; initialStudyId?: string }) {
   const [decks, setDecks] = useState<FlashcardDeck[]>(loadDecks);
-  const [view, setView] = useState<View>({ name: 'list' });
+  const [view, setView] = useState<View>(
+    initialStudyId && loadDecks().some((d) => d.id === initialStudyId)
+      ? { name: 'study', deckId: initialStudyId }
+      : { name: 'list' },
+  );
 
   // Keep in sync if decks change elsewhere (e.g. another tab/component).
   useEffect(() => {
@@ -227,40 +231,75 @@ function DeckEditor({ deck: initial, subjects, onDone, onStudy }: {
 // ── Study view (in-app flip-through) ───────────────────────────────────────────
 
 function StudyView({ deck, onExit }: { deck: FlashcardDeck; onExit: () => void }) {
+  // `order` holds the card indices for this round; a "review missed" round
+  // narrows it to the cards the user didn't know — lightweight spaced repetition.
   const [order, setOrder] = useState<number[]>(() => deck.cards.map((_, i) => i));
   const [pos, setPos] = useState(0);
   const [flipped, setFlipped] = useState(false);
+  const [results, setResults] = useState<Record<number, 'known' | 'missed'>>({});
+  const [done, setDone] = useState(false);
 
   const card = useMemo(() => deck.cards[order[pos]], [deck.cards, order, pos]);
-  const atEnd = pos >= order.length - 1;
-  const atStart = pos <= 0;
+  const knownCount = Object.values(results).filter((r) => r === 'known').length;
+  const missedIdx = order.filter((i) => results[i] === 'missed');
 
-  function go(delta: number) {
-    setFlipped(false);
-    setPos((p) => Math.min(order.length - 1, Math.max(0, p + delta)));
-  }
-  function shuffle() {
-    const shuffled = [...order];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    setOrder(shuffled);
+  function startRound(indices: number[]) {
+    setOrder(indices);
+    setResults({});
     setPos(0);
     setFlipped(false);
+    setDone(false);
   }
-  function restart() { setPos(0); setFlipped(false); }
+  function shuffle() {
+    const s = [...order];
+    for (let i = s.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [s[i], s[j]] = [s[j], s[i]]; }
+    startRound(s);
+  }
+  function grade(verdict: 'known' | 'missed') {
+    setResults((prev) => ({ ...prev, [order[pos]]: verdict }));
+    if (pos >= order.length - 1) setDone(true);
+    else { setPos((p) => p + 1); setFlipped(false); }
+  }
+  function back() { if (pos > 0) { setPos((p) => p - 1); setFlipped(false); } }
 
-  // Keyboard: Space/Enter flips, arrows navigate.
+  // Keyboard: Space/Enter flips; once flipped, ←/→ grade missed/known.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (done) return;
       if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); setFlipped((f) => !f); }
-      else if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
-      else if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+      else if (flipped && e.key === 'ArrowRight') { e.preventDefault(); grade('known'); }
+      else if (flipped && e.key === 'ArrowLeft') { e.preventDefault(); grade('missed'); }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [order.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [flipped, done, pos, order]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (done) {
+    const pct = Math.round((knownCount / order.length) * 100);
+    return (
+      <div className={styles.wrap}>
+        <div className={styles.listHeader}>
+          <button className={styles.backBtn} onClick={onExit}>← Decks</button>
+          <span className={styles.stepLabel}>{deck.title || 'Untitled deck'}</span>
+        </div>
+        <div className={styles.results}>
+          <span className={styles.resultsScore}>{knownCount}/{order.length}</span>
+          <span className={styles.resultsLbl}>{pct}% known this round</span>
+          <div className={styles.resultsActions}>
+            {missedIdx.length > 0 && (
+              <button className={styles.primaryBtn} onClick={() => startRound(missedIdx)}>
+                Review {missedIdx.length} missed
+              </button>
+            )}
+            <button className={styles.secondaryBtn} onClick={() => startRound(deck.cards.map((_, i) => i))}>
+              Restart all
+            </button>
+            <button className={styles.ghostBtn} onClick={onExit}>Done</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.wrap}>
@@ -273,10 +312,7 @@ function StudyView({ deck, onExit }: { deck: FlashcardDeck; onExit: () => void }
       <div className={styles.studyProgress}>
         Card {pos + 1} of {order.length}
         <div className={styles.progressTrack}>
-          <div
-            className={styles.progressFill}
-            style={{ width: `${((pos + 1) / order.length) * 100}%` }}
-          />
+          <div className={styles.progressFill} style={{ width: `${((pos + 1) / order.length) * 100}%` }} />
         </div>
       </div>
 
@@ -286,22 +322,21 @@ function StudyView({ deck, onExit }: { deck: FlashcardDeck; onExit: () => void }
         aria-live="polite"
       >
         <span className={styles.studyFace}>{flipped ? 'BACK' : 'FRONT'}</span>
-        <span className={styles.studyText}>
-          {(flipped ? card?.back : card?.front) || '—'}
-        </span>
+        <span className={styles.studyText}>{(flipped ? card?.back : card?.front) || '—'}</span>
         <span className={styles.flipHint}>Click or press Space to flip</span>
       </button>
 
-      <div className={styles.studyNav}>
-        <button className={styles.secondaryBtn} onClick={() => go(-1)} disabled={atStart}>
-          ← Prev
-        </button>
-        {atEnd ? (
-          <button className={styles.primaryBtn} onClick={restart}>Restart</button>
-        ) : (
-          <button className={styles.primaryBtn} onClick={() => go(1)}>Next →</button>
-        )}
-      </div>
+      {flipped ? (
+        <div className={styles.gradeRow}>
+          <button className={styles.missBtn} onClick={() => grade('missed')}>Review again</button>
+          <button className={styles.knowBtn} onClick={() => grade('known')}>Got it</button>
+        </div>
+      ) : (
+        <div className={styles.studyNav}>
+          <button className={styles.secondaryBtn} onClick={back} disabled={pos === 0}>← Prev</button>
+          <button className={styles.primaryBtn} onClick={() => setFlipped(true)}>Show answer</button>
+        </div>
+      )}
     </div>
   );
 }

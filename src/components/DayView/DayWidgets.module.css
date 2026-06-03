@@ -1,0 +1,56 @@
+/* ── Week glance ── */
+.glance {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  width: 100%;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: border-color 0.15s;
+}
+.glance:hover { border-color: var(--text-muted); }
+.glanceItem { display: flex; flex-direction: column; gap: 2px; }
+.glanceValue { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+.glanceLabel { font-size: 11px; color: var(--text-muted); }
+.glanceDivider { width: 1px; align-self: stretch; background: var(--border); }
+.glanceArrow { margin-left: auto; color: var(--text-muted); font-size: 18px; }
+
+/* ── Study sets ── */
+.studySets { margin-bottom: 22px; }
+.studyHeader { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.studyTitle {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.studyManage {
+  background: none; border: none; color: var(--text-muted);
+  font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; padding: 0;
+  transition: color 0.15s;
+}
+.studyManage:hover { color: var(--accent); }
+.studyEmpty { font-size: 12px; color: var(--text-muted); line-height: 1.5; margin: 0; }
+.studyLink {
+  background: none; border: none; color: var(--accent);
+  font: inherit; cursor: pointer; padding: 0; text-decoration: underline; text-underline-offset: 2px;
+}
+
+.setList { display: flex; flex-direction: column; gap: 6px; }
+.setRow {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 9px 10px;
+  background: none; border: 1px solid transparent; border-radius: 8px;
+  cursor: pointer; font-family: inherit; text-align: left;
+  transition: background 0.15s, border-color 0.15s;
+}
+.setRow:hover { background: var(--bg-secondary); border-color: var(--border); }
+.setIcon { font-size: 15px; flex-shrink: 0; }
+.setInfo { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.setTitle { font-size: 13px; font-weight: 500; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.setMeta { font-size: 11px; color: var(--text-muted); }
+.setAction { font-size: 12px; font-weight: 600; color: var(--accent); flex-shrink: 0; }

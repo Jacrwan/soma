@@ -88,6 +88,53 @@
   flex-shrink: 0;
 }
 
+/* Premium marker on gated nav items */
+.navLock {
+  margin-left: auto;
+  color: var(--text-muted);
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+.navItemActive .navLock { color: var(--accent); opacity: 1; }
+
+/* Trial countdown banner */
+.trialBanner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 18px;
+  background: oklch(55% 0.22 266 / 0.14);
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+.trialBannerText { flex: 1; min-width: 0; }
+.trialBannerCta {
+  background: var(--accent);
+  color: oklch(99% 0.003 265);
+  border: none;
+  border-radius: 7px;
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+.trialBannerCta:hover { opacity: 0.9; }
+.trialBannerClose {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+.trialBannerClose:hover { color: var(--text-primary); }
+
 /* ── Main content ── */
 
 .contentCol {

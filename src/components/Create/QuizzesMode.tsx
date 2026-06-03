@@ -12,9 +12,13 @@ type View =
   | { name: 'edit'; quiz: Quiz }
   | { name: 'take'; quizId: string };
 
-export default function QuizzesMode({ subjects }: { subjects: Subject[] }) {
+export default function QuizzesMode({ subjects, initialStudyId }: { subjects: Subject[]; initialStudyId?: string }) {
   const [quizzes, setQuizzes] = useState<Quiz[]>(loadQuizzes);
-  const [view, setView] = useState<View>({ name: 'list' });
+  const [view, setView] = useState<View>(
+    initialStudyId && loadQuizzes().some((q) => q.id === initialStudyId)
+      ? { name: 'take', quizId: initialStudyId }
+      : { name: 'list' },
+  );
 
   useEffect(() => {
     const refresh = () => setQuizzes(loadQuizzes());

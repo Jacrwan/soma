@@ -11,6 +11,7 @@ import CalendarTab from './components/Calendar/CalendarTab';
 import InsightsTab from './components/Insights/InsightsTab';
 import SettingsTab from './components/Settings/SettingsTab';
 import { storage } from './lib/storage';
+import { useSubscription, hasAIAccess } from './lib/subscription';
 import { TimerProvider } from './contexts/TimerContext';
 import TimerOverlay from './components/Timer/TimerOverlay';
 import LandingPage from './components/Landing/LandingPage';
@@ -109,6 +110,23 @@ function AppShell({ user, sessionResolved, onLogout }: {
 }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const subscription = useSubscription();
+  const aiLocked = subscription.status !== 'loading' && !hasAIAccess(subscription.status);
+
+  // Days left in an active trial (for the countdown banner).
+  const trialEndIso = subscription.status === 'trialing' ? subscription.trialEndsAt
+    : subscription.status === 'trial_extended' ? subscription.extensionEndsAt
+    : null;
+  const trialDaysLeft = trialEndIso
+    ? Math.max(0, Math.ceil((new Date(trialEndIso).getTime() - Date.now()) / 86_400_000))
+    : null;
+  const [trialBannerDismissed, setTrialBannerDismissed] = useState(
+    () => localStorage.getItem('soma_trial_banner_dismissed') === new Date().toDateString(),
+  );
+  function dismissTrialBanner() {
+    localStorage.setItem('soma_trial_banner_dismissed', new Date().toDateString());
+    setTrialBannerDismissed(true);
+  }
 
   // Only redirect to login when we definitively know there is no session.
   // If the auth timeout fired before Supabase responded, sessionResolved is
@@ -194,6 +212,12 @@ function AppShell({ user, sessionResolved, onLogout }: {
               <path d="M7 1L8.1 5.9L13 7L8.1 8.1L7 13L5.9 8.1L1 7L5.9 5.9Z"/>
             </svg>
             AI
+            {aiLocked && (
+              <svg className={styles.navLock} width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-label="Premium">
+                <rect x="3" y="6.5" width="8" height="6" rx="1"/>
+                <path d="M4.5 6.5V4.5a2.5 2.5 0 0 1 5 0v2"/>
+              </svg>
+            )}
           </button>
 
           <button className={nav('/create')} onClick={() => navigate('/create')}>
@@ -232,6 +256,17 @@ function AppShell({ user, sessionResolved, onLogout }: {
       </nav>
 
       <div className={styles.contentCol}>
+        {trialDaysLeft !== null && !trialBannerDismissed && (
+          <div className={styles.trialBanner}>
+            <span className={styles.trialBannerText}>
+              {trialDaysLeft === 0
+                ? 'Your free trial ends today.'
+                : `${trialDaysLeft} day${trialDaysLeft === 1 ? '' : 's'} left in your free trial.`}
+            </span>
+            <button className={styles.trialBannerCta} onClick={() => navigate('/pricing')}>Keep Premium</button>
+            <button className={styles.trialBannerClose} onClick={dismissTrialBanner} aria-label="Dismiss">×</button>
+          </div>
+        )}
         <main className={styles.main}>
           <Outlet />
         </main>

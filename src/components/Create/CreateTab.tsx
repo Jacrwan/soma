@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { useSubscription, hasAIAccess } from '../../lib/subscription';
 import {
@@ -108,6 +108,26 @@ export default function CreateTab() {
   );
 
   const [typeId, setTypeId] = useState<TypeId | null>(null);
+
+  // Deep-link: Day View can launch a specific deck/quiz straight into study.
+  const location = useLocation();
+  const [launchStudyId, setLaunchStudyId] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    const st = location.state as {
+      study?: { tool: 'flashcards' | 'quiz'; id: string };
+      make?: { tool: 'flashcards' | 'quiz' };
+    } | null;
+    if (st?.study) {
+      setTypeId(st.study.tool);
+      if (st.study.tool === 'quiz') setMethodSel('manual'); // native interactive quiz
+      setLaunchStudyId(st.study.id);
+      window.history.replaceState({}, '');
+    } else if (st?.make) {
+      setTypeId(st.make.tool);
+      if (st.make.tool === 'quiz') setMethodSel('manual');
+      window.history.replaceState({}, '');
+    }
+  }, [location.state]);
 
   // How it's built (Write it myself / Generate with AI) and where it goes.
   const [methodSel, setMethodSel] = useState<BuildMethod | null>(null);
@@ -399,7 +419,7 @@ export default function CreateTab() {
         <section className={styles.section}>
           {/* Flashcards are always a hand-built native deck — no method/destination needed */}
           {typeId === 'flashcards' ? (
-            <FlashcardsMode subjects={subjects} />
+            <FlashcardsMode subjects={subjects} initialStudyId={launchStudyId} />
           ) : (
             <>
               <span className={styles.stepLabel}>2 · How do you want to build it?</span>
@@ -443,7 +463,7 @@ export default function CreateTab() {
 
               {/* ── Interactive native quiz (manual) ── */}
               {interactive ? (
-                <QuizzesMode subjects={subjects} />
+                <QuizzesMode subjects={subjects} initialStudyId={launchStudyId} />
               ) : method === 'manual' ? (
                 // ── Manual document authoring (free) ──
                 <div className={styles.sourceInput}>
