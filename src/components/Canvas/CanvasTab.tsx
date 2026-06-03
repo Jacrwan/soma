@@ -560,8 +560,9 @@ export default function CanvasTab() {
     setAssignmentStatus(updated);
 
     if (status === 'done') {
+      // Mark cleared so it drops out of the active list and into Done, but stay
+      // on the current tab rather than jumping the user over to Done.
       setAssignmentCleared(id, true);
-      setStatusFilter('done');
     } else {
       setAssignmentCleared(id, false);
       setStatusFilter(status as 'not_started' | 'in_progress');
