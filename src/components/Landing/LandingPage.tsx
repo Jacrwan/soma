@@ -7,6 +7,8 @@ const UNIVERSITY_LOGOS = [
   { name: 'UCLA', src: '/university-logos/ucla.svg', shape: 'mark' },
   { name: 'UC San Diego', src: '/university-logos/ucsd.png', shape: 'mark' },
   { name: 'Emory University', src: '/university-logos/emory.svg', shape: 'wide' },
+  { name: 'UC Irvine', src: '/university-logos/uc-irvine.png', shape: 'mark' },
+  { name: 'UC Davis', src: '/university-logos/uc-davis.png', shape: 'mark' },
   { name: 'Carnegie Mellon University', src: '/university-logos/carnegie-mellon.png', shape: 'mark' },
   { name: 'Georgia Tech', src: '/university-logos/georgia-tech.svg', shape: 'mark' },
 ] as const;
