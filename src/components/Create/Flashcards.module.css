@@ -260,15 +260,37 @@
   color: var(--text-primary);
   line-height: 1.4;
   white-space: pre-wrap;
+  animation: fadeIn 0.18s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 .flipHint { font-size: 11px; color: var(--text-muted); opacity: 0.7; }
 
-.studyNav { display: flex; gap: 10px; justify-content: space-between; }
+.studyNav {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-height: 48px;
+  animation: fadeSlideIn 0.15s ease-out;
+}
 .studyNav .primaryBtn, .studyNav .secondaryBtn { min-width: 110px; }
 
 /* Spaced-repetition grading */
-.gradeRow { display: flex; gap: 10px; }
+.gradeRow {
+  display: flex;
+  gap: 10px;
+  min-height: 48px;
+  animation: fadeSlideIn 0.15s ease-out;
+}
 .gradeRow button { flex: 1; padding: 13px 0; font-size: 14px; font-weight: 600; border-radius: 9px; cursor: pointer; font-family: inherit; border: 1px solid var(--border); transition: all 0.15s; }
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 .missBtn { background: none; color: oklch(62% 0.2 25); border-color: oklch(62% 0.2 25 / 0.5); }
 .missBtn:hover { background: oklch(62% 0.2 25 / 0.12); }
 .knowBtn { background: oklch(58% 0.18 148 / 0.16); color: oklch(70% 0.16 148); border-color: oklch(58% 0.18 148 / 0.5); }

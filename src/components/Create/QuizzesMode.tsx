@@ -20,6 +20,13 @@ export default function QuizzesMode({ subjects, initialStudyId }: { subjects: Su
       : { name: 'list' },
   );
 
+  // Jump to take mode when initialStudyId changes (e.g. clicked from Library).
+  useEffect(() => {
+    if (initialStudyId && loadQuizzes().some((q) => q.id === initialStudyId)) {
+      setView({ name: 'take', quizId: initialStudyId });
+    }
+  }, [initialStudyId]);
+
   useEffect(() => {
     const refresh = () => setQuizzes(loadQuizzes());
     window.addEventListener(QUIZZES_EVENT, refresh);

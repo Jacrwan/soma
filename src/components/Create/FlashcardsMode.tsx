@@ -20,6 +20,13 @@ export default function FlashcardsMode({ subjects, initialStudyId }: { subjects:
       : { name: 'list' },
   );
 
+  // Jump to study mode when initialStudyId changes (e.g. clicked from Library).
+  useEffect(() => {
+    if (initialStudyId && loadDecks().some((d) => d.id === initialStudyId)) {
+      setView({ name: 'study', deckId: initialStudyId });
+    }
+  }, [initialStudyId]);
+
   // Keep in sync if decks change elsewhere (e.g. another tab/component).
   useEffect(() => {
     const refresh = () => setDecks(loadDecks());
@@ -322,7 +329,7 @@ function StudyView({ deck, onExit }: { deck: FlashcardDeck; onExit: () => void }
         aria-live="polite"
       >
         <span className={styles.studyFace}>{flipped ? 'BACK' : 'FRONT'}</span>
-        <span className={styles.studyText}>{(flipped ? card?.back : card?.front) || '—'}</span>
+        <span key={`${pos}-${flipped}`} className={styles.studyText}>{(flipped ? card?.back : card?.front) || '—'}</span>
         <span className={styles.flipHint}>Click or press Space to flip</span>
       </button>
 

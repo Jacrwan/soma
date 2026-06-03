@@ -7,7 +7,8 @@ import {
   CreateDocSpec, CreateSlidesSpec, CreateFlashcardSpec,
   generatePreview, savePreviewToDrive, parseCreateSlides,
 } from '../../lib/aiArtifacts';
-import { saveDeck, newCard } from '../../lib/flashcards';
+import { FlashcardDeck, saveDeck, newCard, loadDecks, deleteDeck, FLASHCARDS_EVENT } from '../../lib/flashcards';
+import { Quiz, loadQuizzes, deleteQuiz, QUIZZES_EVENT } from '../../lib/quizzes';
 import { readDriveFile } from '../../lib/googleDrive';
 import { useGooglePicker, PickedFile } from '../../lib/useGooglePicker';
 import { Attachment, fileToAttachment, UploadError, ACCEPT_ATTR } from '../../lib/uploads';
@@ -180,15 +181,25 @@ export default function CreateTab() {
 
   const [history, setHistory] = useState<SavedCreation[]>(loadCreateHistory);
   const [nativeItems, setNativeItems] = useState<NativeCreation[]>(loadNativeLibrary);
+  const [decks, setDecks] = useState<FlashcardDeck[]>(loadDecks);
+  const [quizzes, setQuizzes] = useState<Quiz[]>(loadQuizzes);
   const [viewer, setViewer] = useState<NativeCreation | null>(null);
 
   const previewRef = useRef<HTMLDivElement>(null);
   const topicRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const refresh = () => setNativeItems(loadNativeLibrary());
-    window.addEventListener(NATIVE_LIBRARY_EVENT, refresh);
-    return () => window.removeEventListener(NATIVE_LIBRARY_EVENT, refresh);
+    const refreshNative = () => setNativeItems(loadNativeLibrary());
+    const refreshDecks = () => setDecks(loadDecks());
+    const refreshQuizzes = () => setQuizzes(loadQuizzes());
+    window.addEventListener(NATIVE_LIBRARY_EVENT, refreshNative);
+    window.addEventListener(FLASHCARDS_EVENT, refreshDecks);
+    window.addEventListener(QUIZZES_EVENT, refreshQuizzes);
+    return () => {
+      window.removeEventListener(NATIVE_LIBRARY_EVENT, refreshNative);
+      window.removeEventListener(FLASHCARDS_EVENT, refreshDecks);
+      window.removeEventListener(QUIZZES_EVENT, refreshQuizzes);
+    };
   }, []);
 
   function resetBuild() {
@@ -456,6 +467,8 @@ export default function CreateTab() {
   const recent = [
     ...nativeItems.map(n => ({ kind: 'native' as const, item: n, createdAt: n.createdAt })),
     ...history.map(h => ({ kind: 'google' as const, item: h, createdAt: h.createdAt })),
+    ...decks.map(d => ({ kind: 'deck' as const, item: d, createdAt: d.createdAt })),
+    ...quizzes.map(q => ({ kind: 'quiz' as const, item: q, createdAt: q.createdAt })),
   ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const showDestination = !interactive && typeId !== 'flashcards'; // flashcards + interactive builds always live in Soma
@@ -836,32 +849,66 @@ export default function CreateTab() {
         </section>
       )}
 
-      {/* Library / Recent — native items open in-app, Google items open the link */}
+      {/* Library — decks, quizzes, native docs, and Google items */}
       {recent.length > 0 && (
         <section className={styles.section}>
           <span className={styles.stepLabel}>Library</span>
           <div className={styles.resultList}>
-            {recent.map(entry => entry.kind === 'native' ? (
-              <div key={entry.item.id} className={styles.resultCard}>
-                <span className={styles.resultIcon}>{entry.item.kind === 'slides' ? <Presentation size={14} /> : entry.item.kind === 'flashcards' ? <Layers size={14} /> : <FileText size={14} />}</span>
-                <div className={styles.resultInfo}>
-                  <span className={styles.resultTitle}>{entry.item.title}</span>
-                  <span className={styles.resultStatus}>In Soma · {entry.item.templateLabel} · {formatTimeAgo(entry.item.createdAt)}</span>
+            {recent.map(entry => {
+              if (entry.kind === 'deck') {
+                const deck = entry.item as FlashcardDeck;
+                return (
+                  <div key={deck.id} className={styles.resultCard}>
+                    <span className={styles.resultIcon}><Layers size={14} /></span>
+                    <div className={styles.resultInfo}>
+                      <span className={styles.resultTitle}>{deck.title || 'Untitled deck'}</span>
+                      <span className={styles.resultStatus}>Flashcards · {deck.cards.length} card{deck.cards.length === 1 ? '' : 's'} · {formatTimeAgo(deck.createdAt)}</span>
+                    </div>
+                    <button className={styles.openBtn} onClick={() => { setTypeId('flashcards'); setMethodSel('manual'); setLaunchStudyId(deck.id); }}>Study</button>
+                    <button className={styles.ghostBtn} onClick={() => { if (confirm('Delete this deck?')) deleteDeck(deck.id); }}>Delete</button>
+                  </div>
+                );
+              }
+              if (entry.kind === 'quiz') {
+                const quiz = entry.item as Quiz;
+                return (
+                  <div key={quiz.id} className={styles.resultCard}>
+                    <span className={styles.resultIcon}><HelpCircle size={14} /></span>
+                    <div className={styles.resultInfo}>
+                      <span className={styles.resultTitle}>{quiz.title || 'Untitled quiz'}</span>
+                      <span className={styles.resultStatus}>Quiz · {quiz.questions.length} question{quiz.questions.length === 1 ? '' : 's'} · {formatTimeAgo(quiz.createdAt)}</span>
+                    </div>
+                    <button className={styles.openBtn} onClick={() => { setTypeId('quiz'); setMethodSel('manual'); setLaunchStudyId(quiz.id); }}>Take</button>
+                    <button className={styles.ghostBtn} onClick={() => { if (confirm('Delete this quiz?')) deleteQuiz(quiz.id); }}>Delete</button>
+                  </div>
+                );
+              }
+              if (entry.kind === 'native') {
+                return (
+                  <div key={entry.item.id} className={styles.resultCard}>
+                    <span className={styles.resultIcon}>{entry.item.kind === 'slides' ? <Presentation size={14} /> : <FileText size={14} />}</span>
+                    <div className={styles.resultInfo}>
+                      <span className={styles.resultTitle}>{entry.item.title}</span>
+                      <span className={styles.resultStatus}>In Soma · {(entry.item as NativeCreation).templateLabel} · {formatTimeAgo(entry.item.createdAt)}</span>
+                    </div>
+                    <button className={styles.openBtn} onClick={() => setViewer(entry.item as NativeCreation)}>Open</button>
+                    <button className={styles.ghostBtn} onClick={() => removeNative(entry.item.id)}>Delete</button>
+                  </div>
+                );
+              }
+              // Google
+              return (
+                <div key={entry.item.id} className={styles.resultCard}>
+                  <span className={styles.resultIcon}>{entry.item.kind === 'slides' ? <Presentation size={14} /> : <FileText size={14} />}</span>
+                  <div className={styles.resultInfo}>
+                    <span className={styles.resultTitle}>{entry.item.title}</span>
+                    <span className={styles.resultStatus}>Google · {(entry.item as SavedCreation).templateLabel} · {formatTimeAgo(entry.item.createdAt)}</span>
+                  </div>
+                  <a className={styles.openBtn} href={(entry.item as SavedCreation).url} target="_blank" rel="noopener noreferrer">Open</a>
+                  <button className={styles.ghostBtn} onClick={() => removeGoogle(entry.item.id)}>Delete</button>
                 </div>
-                <button className={styles.openBtn} onClick={() => setViewer(entry.item as NativeCreation)}>Open</button>
-                <button className={styles.ghostBtn} onClick={() => removeNative(entry.item.id)}>Delete</button>
-              </div>
-            ) : (
-              <div key={entry.item.id} className={styles.resultCard}>
-                <span className={styles.resultIcon}>{entry.item.kind === 'slides' ? <Presentation size={14} /> : <FileText size={14} />}</span>
-                <div className={styles.resultInfo}>
-                  <span className={styles.resultTitle}>{entry.item.title}</span>
-                  <span className={styles.resultStatus}>Google · {(entry.item as SavedCreation).templateLabel} · {formatTimeAgo(entry.item.createdAt)}</span>
-                </div>
-                <a className={styles.openBtn} href={(entry.item as SavedCreation).url} target="_blank" rel="noopener noreferrer">Open</a>
-                <button className={styles.ghostBtn} onClick={() => removeGoogle(entry.item.id)}>Delete</button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}
