@@ -297,11 +297,11 @@ export default async function handler(req: any, res: any) {
       // Only include assignment-type events (UID contains "assignment" or URL points to an assignment)
       const isAssignment = /assignment/i.test(e.uid) || /\/assignments\//.test(e.url);
       if (!isAssignment) return false;
-      // Include anything due in the past 7 days through future
+      // Include anything due within the past month through future
       const dueTs = new Date(e.due || e.dtstart).getTime();
       if (Number.isNaN(dueTs)) return false;
-      const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
-      return dueTs >= sevenDaysAgo;
+      const oneMonthAgo = now - 30 * 24 * 60 * 60 * 1000;
+      return dueTs >= oneMonthAgo;
     })
     .map(e => {
       const { assignmentId, courseId } = extractIds(e);
