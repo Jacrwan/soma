@@ -47,15 +47,10 @@ function fmtSize(bytes: number): string {
 }
 
 export default function AssignmentDetail({ courseId, assignmentId, onClose }: Props) {
-  const [details, setDetails] = useState<AssignmentDetails | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [details] = useState<AssignmentDetails | null>(null);
+  const [loading] = useState(false);
   const [error, setError] = useState('');
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    setLoading(false);
-    setError('Assignment details require a Canvas API token.');
-  }, [courseId, assignmentId]);
 
   // Close on Escape
   useEffect(() => {
