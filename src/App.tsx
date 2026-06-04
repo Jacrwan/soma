@@ -389,7 +389,19 @@ export default function App() {
     navigate('/');
   }
 
-  if (!authReady) return <AppSkeleton />;
+  if (!authReady) {
+    const publicRoutes = ['/', '/login', '/signup', '/pricing'];
+    const isPublic = publicRoutes.includes(window.location.pathname) ||
+      window.location.pathname.startsWith('/privacy') ||
+      window.location.pathname.startsWith('/terms') ||
+      window.location.pathname.startsWith('/billing') ||
+      window.location.pathname.startsWith('/refund') ||
+      window.location.pathname.startsWith('/data-deletion') ||
+      window.location.pathname.startsWith('/contact') ||
+      window.location.pathname.startsWith('/ai-disclaimer');
+    if (isPublic) return null;
+    return <AppSkeleton />;
+  }
 
   const shell = (
     <AppShell user={user} sessionResolved={sessionResolved} onLogout={handleLogout} />
