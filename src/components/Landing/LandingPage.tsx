@@ -992,12 +992,6 @@ export default function LandingPage() {
     return () => links.forEach(l => document.head.removeChild(l));
   }, []);
 
-  useEffect(() => {
-    const style = document.createElement('style');
-    style.textContent = LANDING_CSS;
-    document.head.appendChild(style);
-    return () => { document.head.removeChild(style); };
-  }, []);
 
   useEffect(() => {
     const nav = navRef.current;
@@ -1123,6 +1117,7 @@ export default function LandingPage() {
 
   return (
     <div className="landing-root">
+      <style>{LANDING_CSS}</style>
       <nav ref={navRef}>
         <a href="/" className="nav-wordmark">Soma</a>
         <div className="nav-right">
