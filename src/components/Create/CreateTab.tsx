@@ -321,7 +321,7 @@ export default function CreateTab() {
     const result = await savePreviewToDrive(preview, freshToken);
     const creation: SavedCreation = {
       id: crypto.randomUUID(),
-      kind: result.kind,
+      kind: result.kind as 'doc' | 'slides',
       title: result.title,
       url: result.url,
       templateLabel: activeTemplate?.label || '',
@@ -337,7 +337,7 @@ export default function CreateTab() {
   function persistNative(preview: PreviewResult): void {
     saveNativeCreation({
       id: crypto.randomUUID(),
-      kind: preview.kind,
+      kind: preview.kind as 'doc' | 'slides',
       title: preview.title,
       templateLabel: activeTemplate?.label || '',
       subjectId: sourceType === 'subject' ? subjectId || undefined : undefined,
