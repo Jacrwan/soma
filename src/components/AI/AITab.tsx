@@ -182,8 +182,8 @@ function parseTodos(content: string): AiTodo[] | null {
 function buildSystemPrompt(activeSubjectKey?: string): string {
   const subjects = storage.getSubjects();
   const assignments = storage.getCachedAssignments();
-  const announcements = storage.getCachedAnnouncements();
-  const modules = storage.getCachedModules();
+  const announcements: import('../../types').CanvasAnnouncement[] = [];
+  const modules: import('../../types').CanvasModule[] = [];
   const blocks = storage.getTimeBlocks().filter(b => isToday(b.startTime));
   const gcalEvents = storage.getCachedGoogleEvents().filter(
     e => !!e.start.dateTime && isToday(e.start.dateTime),

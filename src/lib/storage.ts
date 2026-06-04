@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Subject, TimeBlock, TimerSession, CanvasAssignment, CanvasAnnouncement, CanvasModule, CanvasCourse, Todo, GoogleCalendarEvent, ChatSession } from '../types';
+import { Subject, TimeBlock, TimerSession, CanvasAssignment, CanvasCourse, Todo, GoogleCalendarEvent, ChatSession } from '../types';
 
 const SOMA_TODOS_KEY = 'soma_todos';
 const SOMA_BLOCKS_KEY = 'soma_blocks';
@@ -38,7 +38,6 @@ export interface SomaSettings {
     defaultOutput: 'schedule' | 'todos';
   };
   theme: 'dark' | 'light';
-  canvasToken?: string;
   canvasIcalUrl?: string;
   googleToken?: string;
   googleRefreshToken?: string;
@@ -114,13 +113,10 @@ const DEFAULT_SETTINGS: SomaSettings = {
 const KEYS = {
   subjects: 'soma_subjects',
   timerSessions: 'soma_sessions',
-  canvasBaseUrl: 'canvas_base_url',
   assignmentStatus: 'canvas_assignment_status',
   clearedAssignments: 'canvas_cleared_assignments',
   cachedCourses: 'soma_cached_courses',
   cachedAssignments: 'soma_canvas_cache',
-  cachedAnnouncements: 'soma_cached_announcements',
-  cachedModules: 'soma_cached_modules',
   cacheTimestamp: 'soma_canvas_cache_timestamp',
   canvasIcalUrl: 'soma_canvas_ical_url',
   cachedIcalAssignments: 'soma_ical_assignments',
@@ -129,7 +125,6 @@ const KEYS = {
   googleCacheTimestamp: 'soma_google_cache_timestamp',
   chatSessions: 'soma_chat_sessions',
   activeSessionId: 'soma_active_session_id',
-  canvasCourseNames: 'soma_canvas_course_names',
   studyFolder: 'soma_study_folder',
 };
 
@@ -182,7 +177,6 @@ async function uid(): Promise<string> {
 
 // In-memory token cache — populated by loadTokens() at auth time.
 // Never written to localStorage; source of truth is Supabase settings.
-let _canvasToken = '';
 let _canvasIcalUrl = '';
 let _googleToken = '';
 let _googleRefreshToken = '';
@@ -223,20 +217,6 @@ export const storage = {
   setTimerSessions: (v: TimerSession[]) => set(KEYS.timerSessions, v),
 
   // ── Canvas (localStorage) ────────────────────────────────────────────
-  getCanvasToken: (): string => _canvasToken,
-  setCanvasToken: (v: string): void => {
-    _canvasToken = v;
-    void (async () => {
-      try {
-        const s = await storage.getSettings();
-        await storage.saveSettings({ ...s, canvasToken: v, googleToken: _googleToken });
-      } catch (err) { console.error('[storage] canvas token persist failed:', err); }
-    })();
-  },
-
-  getCanvasBaseUrl: (): string => get(KEYS.canvasBaseUrl, ''),
-  setCanvasBaseUrl: (v: string) => set(KEYS.canvasBaseUrl, v),
-
   getCanvasIcalUrl: (): string => _canvasIcalUrl,
   setCanvasIcalUrl: (v: string): void => {
     _canvasIcalUrl = v;
@@ -254,10 +234,8 @@ export const storage = {
   setCachedIcalAssignments: (v: import('../types').CanvasAssignment[]) => {
     const normalized = normalizeIcalAssignments(v);
     set(KEYS.cachedIcalAssignments, normalized);
-    if (!_canvasToken) {
-      set(KEYS.cachedAssignments, normalized);
-      set(KEYS.cachedCourses, coursesFromAssignments(normalized));
-    }
+    set(KEYS.cachedAssignments, normalized);
+    set(KEYS.cachedCourses, coursesFromAssignments(normalized));
   },
 
   getAssignmentStatus: (): Record<number, string> => get(KEYS.assignmentStatus, {}),
@@ -269,26 +247,12 @@ export const storage = {
   getCachedCourses: (): CanvasCourse[] => get(KEYS.cachedCourses, []),
   setCachedCourses: (v: CanvasCourse[]) => set(KEYS.cachedCourses, v),
 
-  getCachedAssignments: (): CanvasAssignment[] => {
-    const iCalAssignments = _canvasIcalUrl
-      ? normalizeIcalAssignments(get<CanvasAssignment[]>(KEYS.cachedIcalAssignments, []))
-      : [];
-    if (!_canvasToken && iCalAssignments.length > 0) return iCalAssignments;
-    return normalizeIcalAssignments(get(KEYS.cachedAssignments, []));
-  },
+  getCachedAssignments: (): CanvasAssignment[] =>
+    normalizeIcalAssignments(get<CanvasAssignment[]>(KEYS.cachedIcalAssignments, [])),
   setCachedAssignments: (v: CanvasAssignment[]) => set(KEYS.cachedAssignments, normalizeIcalAssignments(v)),
-
-  getCachedAnnouncements: (): CanvasAnnouncement[] => get(KEYS.cachedAnnouncements, []),
-  setCachedAnnouncements: (v: CanvasAnnouncement[]) => set(KEYS.cachedAnnouncements, v),
-
-  getCachedModules: (): CanvasModule[] => get(KEYS.cachedModules, []),
-  setCachedModules: (v: CanvasModule[]) => set(KEYS.cachedModules, v),
 
   getCacheTimestamp: (): number | null => get<number | null>(KEYS.cacheTimestamp, null),
   setCacheTimestamp: (v: number) => set(KEYS.cacheTimestamp, v),
-
-  getCanvasCourseNames: (): string[] => get(KEYS.canvasCourseNames, []),
-  setCanvasCourseNames: (v: string[]) => set(KEYS.canvasCourseNames, v),
 
   // ── Google Calendar (localStorage) ──────────────────────────────────
   getGoogleToken: (): string => _googleToken,
@@ -301,7 +265,6 @@ export const storage = {
         const s = await storage.getSettings();
         await storage.saveSettings({
           ...s,
-          canvasToken: _canvasToken,
           googleToken: v,
           ...(refreshToken ? { googleRefreshToken: refreshToken } : {}),
         });
@@ -347,7 +310,6 @@ export const storage = {
         setTimeout(() => reject(new Error('loadTokens timeout')), 5000)
       );
       const s = await Promise.race([storage.getSettings(), timeout]);
-      _canvasToken = s.canvasToken ?? '';
       _canvasIcalUrl = s.canvasIcalUrl ?? '';
       _googleToken = s.googleToken ?? '';
       _googleRefreshToken = s.googleRefreshToken ?? '';
@@ -356,19 +318,17 @@ export const storage = {
       // existing "save to doc" keeps working until the user reconnects Drive.
       _googleDriveToken = s.googleDriveToken ?? s.googleDocsToken ?? '';
       _googleDriveRefreshToken = s.googleDriveRefreshToken ?? '';
-      // One-time migration: move plaintext tokens out of localStorage
+      // One-time migration: move plaintext Google token out of localStorage
       const migrateKey = (key: string): string => {
         const raw = localStorage.getItem(key);
         if (!raw) return '';
         localStorage.removeItem(key);
         try { return JSON.parse(raw) as string; } catch { return ''; }
       };
-      const lsCanvas = migrateKey('canvas_token');
       const lsGoogle = migrateKey('soma_google_token');
-      if (lsCanvas || lsGoogle) {
-        if (!_canvasToken && lsCanvas) _canvasToken = lsCanvas;
-        if (!_googleToken && lsGoogle) _googleToken = lsGoogle;
-        await storage.saveSettings({ ...s, canvasToken: _canvasToken, googleToken: _googleToken });
+      if (lsGoogle && !_googleToken) {
+        _googleToken = lsGoogle;
+        await storage.saveSettings({ ...s, googleToken: _googleToken });
       }
     } catch (err) {
       console.error('[storage] loadTokens failed:', err);
@@ -641,14 +601,10 @@ export const storage = {
     localStorage.removeItem(KEYS.cachedAssignments);
     localStorage.removeItem(KEYS.cachedIcalAssignments);
     localStorage.removeItem(KEYS.cachedCourses);
-    localStorage.removeItem(KEYS.cachedAnnouncements);
-    localStorage.removeItem(KEYS.cachedModules);
     localStorage.removeItem(KEYS.cacheTimestamp);
-    localStorage.removeItem(KEYS.canvasBaseUrl);
     localStorage.removeItem(KEYS.canvasIcalUrl);
     localStorage.removeItem(KEYS.assignmentStatus);
     localStorage.removeItem(KEYS.clearedAssignments);
-    localStorage.removeItem(KEYS.canvasCourseNames);
     // Remove Canvas-sourced subjects (class names synced from Canvas)
     const subjects: Subject[] = get(KEYS.subjects, []);
     const manualOnly = subjects.filter(s => s.source !== 'canvas');
@@ -664,7 +620,6 @@ export const storage = {
     // App preferences / theme
     localStorage.removeItem(SOMA_SETTINGS_KEY);
     // In-memory token cache
-    _canvasToken = '';
     _canvasIcalUrl = '';
     _googleToken = '';
     _googleDocsToken = '';

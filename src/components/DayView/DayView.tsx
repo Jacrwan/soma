@@ -143,7 +143,7 @@ function isDefaultSubjectName(name: string): boolean {
 
 function getVisibleSubjects(): Subject[] {
   const currentCanvasCourseNames = new Set(storage.getCachedCourses().map(c => c.name));
-  const knownCanvasCourseNames = new Set(storage.getCanvasCourseNames());
+  const knownCanvasCourseNames = new Set<string>();
 
   return storage.getSubjects().filter(s => {
     if (s.archived) return false;

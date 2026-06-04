@@ -1,6 +1,4 @@
-import { useState, useEffect } from 'react';
-import { storage } from '../../lib/storage';
-import { getGrades } from '../../lib/canvas';
+import { useState } from 'react';
 import { CanvasGrade } from '../../types';
 import styles from './GradesTab.module.css';
 
@@ -26,36 +24,14 @@ function letterColor(grade: string | null): string {
 }
 
 export default function GradesTab() {
-  const [token] = useState(() => storage.getCanvasToken());
-  const [baseUrl] = useState(() => storage.getCanvasBaseUrl());
-  const [grades, setGrades] = useState<CanvasGrade[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [grades] = useState<CanvasGrade[]>([]);
+  const [loading] = useState(false);
+  const [error] = useState('');
 
-  const isConnected = !!token && !!baseUrl;
-
-  useEffect(() => {
-    if (!isConnected) return;
-    loadGrades();
-  }, []);
-
-  async function loadGrades(force = false) {
-    if (force) setLoading(true); else setLoading(true);
-    setError('');
-    try {
-      const data = await getGrades(token, baseUrl);
-      setGrades(data);
-    } catch {
-      setError('Failed to load grades. Check your Canvas connection.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  if (!isConnected) {
+  if (true) {
     return (
       <div className={styles.empty}>
-        <span>Connect Canvas first in the Canvas tab.</span>
+        <span>Grades are not available with the calendar feed integration.</span>
       </div>
     );
   }

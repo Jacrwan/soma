@@ -1,10 +1,8 @@
 import { useState, useEffect } from 'react';
 import { storage } from '../../lib/storage';
-import { CanvasCourse, CanvasAssignment, CanvasAnnouncement, Subject, Todo } from '../../types';
-import { getCourses, getActiveAssignments, getAssignments, getAnnouncements, getModules, getGrades, getIcalAssignments } from '../../lib/canvas';
+import { CanvasCourse, CanvasAssignment, Subject, Todo } from '../../types';
+import { getIcalAssignments } from '../../lib/canvas';
 import { sendMessage } from '../../lib/ai';
-import { CanvasGrade } from '../../types';
-import AssignmentDetail from './AssignmentDetail';
 import { SkeletonBlock } from '../UI/Skeleton';
 import styles from './CanvasTab.module.css';
 
@@ -64,10 +62,6 @@ function fmtDue(iso: string) {
   return new Date(iso).toLocaleDateString('en-US', {
     weekday: 'short', month: 'short', day: 'numeric',
   });
-}
-
-function fmtPosted(iso: string) {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 function dayKey(date: Date) {
@@ -158,10 +152,7 @@ function rankStudyAssignments(
     .filter(a => selectedCourseId === null || a.courseId === selectedCourseId)
     .filter(a => !clearedAssignments[a.id])
     .filter(a => (assignmentStatus[a.id] ?? 'not_started') !== 'done')
-    .filter(a => {
-      const delta = daysFromToday(a.dueAt);
-      return delta <= STUDY_PLAN_DAYS;
-    })
+    .filter(a => daysFromToday(a.dueAt) <= STUDY_PLAN_DAYS)
     .sort((a, b) => {
       const aDelta = daysFromToday(a.dueAt);
       const bDelta = daysFromToday(b.dueAt);
@@ -258,75 +249,8 @@ function getCachedStudyPlan(): StudyPlanSnapshot {
 
 function setCachedStudyPlan(state: StudyPlanSnapshot['state'], days: StudyPlanDay[], notice = '') {
   localStorage.setItem(STUDY_PLAN_CACHE_KEY, JSON.stringify({
-    state,
-    days,
-    notice,
-    generatedAt: Date.now(),
+    state, days, notice, generatedAt: Date.now(),
   }));
-}
-
-function looksLikeCanvasCourseName(name: string): boolean {
-  return /\b(AP|Hon|Honors|Semester|Periods?|P\d|S[12]|Yr)\b/i.test(name)
-    || /\bPer\s*:/i.test(name)
-    || /-.+/.test(name)
-    || /\(.+\bPeriods?\b.+\)/i.test(name);
-}
-
-function isDefaultSubjectName(name: string): boolean {
-  return ['math', 'science', 'english', 'history', 'language', 'other'].includes(name.trim().toLowerCase());
-}
-
-function syncCoursesToSubjects(courses: CanvasCourse[]) {
-  let subjects = storage.getSubjects();
-  let changed = false;
-
-  const currentCourseIds = new Set(courses.map(c => c.id));
-  const currentCourseNames = new Set(courses.map(c => c.name));
-  const knownCanvasCourseNames = new Set([
-    ...storage.getCanvasCourseNames(),
-    ...storage.getCachedCourses().map(c => c.name),
-  ]);
-
-  // Prune subjects that were Canvas-imported but are no longer in the active course list.
-  // Subjects with a canvasCourseId are matched by ID; others fall back to name heuristics.
-  const prunedSubjects = subjects.filter(s => {
-    if (s.canvasCourseId !== undefined) return currentCourseIds.has(s.canvasCourseId);
-    return currentCourseNames.has(s.name)
-      || (!isDefaultSubjectName(s.name) && !knownCanvasCourseNames.has(s.name) && !looksLikeCanvasCourseName(s.name));
-  });
-  if (prunedSubjects.length !== subjects.length) {
-    subjects = prunedSubjects;
-    changed = true;
-  }
-
-  // Upsert subjects for each Canvas course.
-  // Match by canvasCourseId first (reliable across renames), then fall back to name.
-  // If a match is found but lacks a canvasCourseId, backfill it so future syncs use ID matching.
-  for (const course of courses) {
-    const matchIdx = subjects.findIndex(s =>
-      (s.canvasCourseId !== undefined && s.canvasCourseId === course.id) ||
-      s.name === course.name,
-    );
-    if (matchIdx === -1) {
-      subjects = [...subjects, {
-        id: crypto.randomUUID(),
-        name: course.name,
-        canvasCourseId: course.id,
-        color: COURSE_COLORS[subjects.length % COURSE_COLORS.length] as Subject['color'],
-        totalTimeToday: 0,
-        source: 'canvas' as const,
-      }];
-      changed = true;
-    } else if (subjects[matchIdx].canvasCourseId === undefined) {
-      subjects = subjects.map((s, i) =>
-        i === matchIdx ? { ...s, canvasCourseId: course.id, source: 'canvas' as const } : s,
-      );
-      changed = true;
-    }
-  }
-
-  storage.setCanvasCourseNames([...currentCourseNames]);
-  if (changed) storage.setSubjects(subjects);
 }
 
 function fmtSynced(ts: number): string {
@@ -338,8 +262,6 @@ function fmtSynced(ts: number): string {
 
 export default function CanvasTab() {
   const [initialStudyPlan] = useState(() => getCachedStudyPlan());
-  const [token, setToken] = useState(() => storage.getCanvasToken());
-  const [baseUrl, setBaseUrl] = useState(() => storage.getCanvasBaseUrl());
   const [icalUrl, setIcalUrl] = useState(() => storage.getCanvasIcalUrl());
   const [setupIcalUrl, setSetupIcalUrl] = useState('');
   const [connectLoading, setConnectLoading] = useState(false);
@@ -347,16 +269,8 @@ export default function CanvasTab() {
   const [icalSyncing, setIcalSyncing] = useState(false);
   const [icalError, setIcalError] = useState('');
 
-  const [courses, setCourses] = useState<CanvasCourse[]>(() => storage.getCachedCourses());
-  const [assignments, setAssignments] = useState<CanvasAssignment[]>(() => {
-    const token = storage.getCanvasToken();
-    const ical = storage.getCanvasIcalUrl();
-    if (token) return storage.getCachedAssignments();
-    if (ical) return storage.getCachedIcalAssignments();
-    return storage.getCachedAssignments();
-  });
-  const [announcements, setAnnouncements] = useState<CanvasAnnouncement[]>(
-    () => storage.getCachedAnnouncements(),
+  const [assignments, setAssignments] = useState<CanvasAssignment[]>(
+    () => storage.getCachedIcalAssignments(),
   );
   const [assignmentStatus, setAssignmentStatus] = useState<Record<number, string>>(
     () => storage.getAssignmentStatus(),
@@ -365,41 +279,21 @@ export default function CanvasTab() {
     () => storage.getClearedAssignments(),
   );
   const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
-  const [announcementsOpen, setAnnouncementsOpen] = useState(true);
-  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [lastSynced, setLastSynced] = useState<number | null>(() => storage.getCacheTimestamp());
-  const [syncing, setSyncing] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [detailAssignment, setDetailAssignment] = useState<CanvasAssignment | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | 'not_started' | 'in_progress' | 'done'>('all');
   const [sortBy, setSortBy] = useState<'due' | 'course'>('due');
-  const [canvasView, setCanvasView] = useState<'assignments' | 'grades'>('assignments');
-  const [grades, setGrades] = useState<CanvasGrade[]>([]);
-  const [gradesLoading, setGradesLoading] = useState(false);
   const [studyPlanState, setStudyPlanState] = useState<StudyPlanState>(initialStudyPlan.state);
   const [studyPlanDays, setStudyPlanDays] = useState<StudyPlanDay[]>(initialStudyPlan.days);
   const [studyPlanNotice, setStudyPlanNotice] = useState(initialStudyPlan.notice);
   const [createdStudyTasks, setCreatedStudyTasks] = useState<Record<number, boolean>>({});
 
-  const isConnected = !!token && !!baseUrl;
-  const isIcalConnected = !!icalUrl && !isConnected;
-
   useEffect(() => {
-    if (isConnected) {
-      const hasCachedAssignments = storage.getCachedAssignments().length > 0;
-      const cacheTs = storage.getCacheTimestamp();
-      const cacheFresh = !!cacheTs && Date.now() - cacheTs < CACHE_MAX_AGE;
-      if (!hasCachedAssignments || !cacheFresh) {
-        loadData(token, baseUrl, false, { includeHistory: false });
-      }
-    } else if (isIcalConnected) {
-      const cached = storage.getCachedIcalAssignments();
-      const cacheTs = storage.getCacheTimestamp();
-      const cacheFresh = !!cacheTs && Date.now() - cacheTs < CACHE_MAX_AGE;
-      if (cached.length === 0 || !cacheFresh) {
-        loadIcalData();
-      }
+    if (!icalUrl) return;
+    const cached = storage.getCachedIcalAssignments();
+    const cacheTs = storage.getCacheTimestamp();
+    const cacheFresh = !!cacheTs && Date.now() - cacheTs < CACHE_MAX_AGE;
+    if (cached.length === 0 || !cacheFresh) {
+      loadIcalData();
     }
   }, []);
 
@@ -410,7 +304,6 @@ export default function CanvasTab() {
     try {
       const fetched = await getIcalAssignments(icalUrl);
       storage.setCachedIcalAssignments(fetched);
-      storage.setCachedAssignments(fetched);
       storage.setCacheTimestamp(Date.now());
       setAssignments(fetched);
       setLastSynced(Date.now());
@@ -439,89 +332,6 @@ export default function CanvasTab() {
     }
   }
 
-  async function refreshSecondaryData(tk: string, url: string, coursesData: CanvasCourse[]) {
-    const [announcementGroups, moduleGroups] = await Promise.all([
-      Promise.all(coursesData.map(c => getAnnouncements(tk, url, c.id).catch(() => []))),
-      Promise.all(coursesData.map(c => getModules(tk, url, c.id).catch(() => []))),
-    ]);
-    const flatAnnouncements = announcementGroups.flat();
-    storage.setCachedAnnouncements(flatAnnouncements);
-    setAnnouncements(flatAnnouncements);
-    storage.setCachedModules(moduleGroups.flat());
-  }
-
-  async function loadData(
-    tk: string,
-    url: string,
-    force = false,
-    options: { includeHistory?: boolean } = {},
-  ) {
-    const includeHistory = options.includeHistory ?? force;
-    const hasCachedAssignments = storage.getCachedAssignments().length > 0;
-    if (force || hasCachedAssignments) setSyncing(true); else setLoading(true);
-    setError('');
-    try {
-      const coursesData = await getCourses(tk, url);
-      setCourses(coursesData);
-      syncCoursesToSubjects(coursesData);
-      storage.setCachedCourses(coursesData);
-      const assignmentGroups = await Promise.all(
-        coursesData.map(c => (
-          includeHistory ? getAssignments(tk, url, c) : getActiveAssignments(tk, url, c)
-        ).catch(() => [])),
-      );
-      const all = assignmentGroups.flat();
-      all.sort((a, b) => new Date(b.dueAt).getTime() - new Date(a.dueAt).getTime());
-
-      // Auto-mark submitted assignments as done
-      const currentStatus = storage.getAssignmentStatus();
-      const updatedStatus = { ...currentStatus };
-      let statusChanged = false;
-      for (const a of all) {
-        if (a.score != null && a.score > 0 && updatedStatus[a.id] !== 'done') {
-          updatedStatus[a.id] = 'done';
-          statusChanged = true;
-        } else if (a.score === 0 && !a.submittedAt && updatedStatus[a.id] !== 'not_started') {
-          updatedStatus[a.id] = 'not_started';
-          statusChanged = true;
-        } else if (a.submittedAt && a.score == null && updatedStatus[a.id] !== 'done') {
-          updatedStatus[a.id] = 'done';
-          statusChanged = true;
-        }
-      }
-      if (statusChanged) {
-        storage.setAssignmentStatus(updatedStatus);
-        setAssignmentStatus(updatedStatus);
-      }
-
-      setAssignments(all);
-      storage.setCachedAssignments(all);
-      const now = Date.now();
-      storage.setCacheTimestamp(now);
-      setLastSynced(now);
-      setSyncing(false);
-      setLoading(false);
-      refreshSecondaryData(tk, url, coursesData).catch(() => {});
-    } catch {
-      setError('Failed to load. Check your token and URL.');
-    } finally {
-      setSyncing(false);
-      setLoading(false);
-    }
-  }
-
-  async function loadGrades() {
-    setGradesLoading(true);
-    try {
-      const data = await getGrades(token, baseUrl);
-      setGrades(data);
-    } catch {
-      // silently fail — grades are best-effort
-    } finally {
-      setGradesLoading(false);
-    }
-  }
-
   async function handleConnectIcal() {
     const url = setupIcalUrl.trim();
     if (!url) return;
@@ -531,7 +341,6 @@ export default function CanvasTab() {
       const fetched = await getIcalAssignments(url);
       storage.setCanvasIcalUrl(url);
       storage.setCachedIcalAssignments(fetched);
-      storage.setCachedAssignments(fetched);
       storage.setCacheTimestamp(Date.now());
       setIcalUrl(url);
       setAssignments(fetched);
@@ -545,13 +354,11 @@ export default function CanvasTab() {
   }
 
   function handleDisconnect() {
-    storage.setCanvasToken('');
-    storage.setCanvasBaseUrl('');
-    setToken('');
-    setBaseUrl('');
-    setCourses([]);
+    storage.setCanvasIcalUrl('');
+    storage.setCachedIcalAssignments([]);
+    storage.setCachedAssignments([]);
+    setIcalUrl('');
     setAssignments([]);
-    setSelectedCourseId(null);
   }
 
   function updateStatus(id: number, status: string) {
@@ -560,8 +367,6 @@ export default function CanvasTab() {
     setAssignmentStatus(updated);
 
     if (status === 'done') {
-      // Mark cleared so it drops out of the active list and into Done, but stay
-      // on the current tab rather than jumping the user over to Done.
       setAssignmentCleared(id, true);
     } else {
       setAssignmentCleared(id, false);
@@ -686,11 +491,8 @@ Rules:
     setCreatedStudyTasks(prev => ({ ...prev, [item.assignmentId]: true }));
   }
 
-  // ── iCal-connected view — skip setup card, go straight to main ──────────
-  if (isIcalConnected) {
-    // Fall through to main view below — assignments state already loaded from iCal cache
-  } else if (!isConnected) {
-  // ── Setup card ──────────────────────────────────────────────────────────
+  // ── Setup card ──────────────────────────────────────────────────────────────
+  if (!icalUrl) {
     return (
       <div className={styles.setupOverlay}>
         <div className={styles.setupCard}>
@@ -725,22 +527,15 @@ Rules:
     );
   }
 
-  // ── Main view ────────────────────────────────────────────────────────────
-  // (reached when isConnected OR isIcalConnected)
-
-  // For iCal users, synthesise a course list from the assignment data (no API token available)
-  const icalCourses: CanvasCourse[] = isIcalConnected
-    ? [...new Map(
-        assignments
-          .filter(a => a.courseId && a.courseName)
-          .map(a => [a.courseId, { id: a.courseId, name: a.courseName, courseCode: '' } as CanvasCourse]),
-      ).values()]
-    : [];
-
-  const displayCourses = isIcalConnected ? icalCourses : courses;
+  // ── Main view ────────────────────────────────────────────────────────────────
+  const courses: CanvasCourse[] = [...new Map(
+    assignments
+      .filter(a => a.courseId && a.courseName)
+      .map(a => [a.courseId, { id: a.courseId, name: a.courseName, courseCode: '' } as CanvasCourse]),
+  ).values()];
 
   const courseColorMap = Object.fromEntries(
-    displayCourses.map((c, i) => [c.id, COURSE_COLORS[i % COURSE_COLORS.length]]),
+    courses.map((c, i) => [c.id, COURSE_COLORS[i % COURSE_COLORS.length]]),
   );
 
   const filtered = assignments
@@ -752,135 +547,41 @@ Rules:
       : a.courseName.localeCompare(b.courseName)
     );
 
-  const filteredAnnouncements = selectedCourseId === null
-    ? announcements
-    : announcements.filter(a => a.courseId === selectedCourseId);
   const studyPlanEligible = rankStudyAssignments(
-    assignments,
-    selectedCourseId,
-    assignmentStatus,
-    clearedAssignments,
+    assignments, selectedCourseId, assignmentStatus, clearedAssignments,
   );
-
-  function toggleExpanded(id: number) {
-    setExpandedIds(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
 
   return (
     <div className={styles.container}>
       <div className={styles.topBar}>
         <div className={styles.subNav}>
-          <button
-            className={`${styles.subNavBtn}${canvasView === 'assignments' ? ` ${styles.subNavBtnActive}` : ''}`}
-            onClick={() => setCanvasView('assignments')}
-          >Assignments</button>
-          {!isIcalConnected && (
-            <button
-              className={`${styles.subNavBtn}${canvasView === 'grades' ? ` ${styles.subNavBtnActive}` : ''}`}
-              onClick={() => { setCanvasView('grades'); if (!grades.length) loadGrades(); }}
-            >Grades</button>
-          )}
+          <button className={`${styles.subNavBtn} ${styles.subNavBtnActive}`}>Assignments</button>
         </div>
         <div className={styles.syncRow}>
           {lastSynced && (
             <span className={styles.syncLabel}>
-              {isIcalConnected ? '📅 Calendar Feed · ' : ''}Last synced: {fmtSynced(lastSynced)}
+              📅 Calendar Feed · Last synced: {fmtSynced(lastSynced)}
             </span>
           )}
           {icalError && <span className={styles.syncError}>{icalError}</span>}
           <button
             className={styles.refreshBtn}
-            onClick={() => isIcalConnected ? loadIcalData() : canvasView === 'grades' ? loadGrades() : loadData(token, baseUrl, true)}
-            disabled={syncing || loading || gradesLoading || icalSyncing}
+            onClick={loadIcalData}
+            disabled={icalSyncing}
             title="Refresh"
-          >{icalSyncing || syncing ? '…' : '↻'}</button>
+          >{icalSyncing ? '…' : '↻'}</button>
         </div>
-        <button className={styles.disconnectLink} onClick={isIcalConnected ? () => { storage.setCanvasIcalUrl(''); storage.setCachedIcalAssignments([]); storage.setCachedAssignments([]); setIcalUrl(''); setAssignments([]); } : handleDisconnect}>Disconnect</button>
+        <button className={styles.disconnectLink} onClick={handleDisconnect}>Disconnect</button>
       </div>
 
-      {canvasView === 'grades' && !isIcalConnected && (
-        <div className={styles.gradesView}>
-          {gradesLoading && <div className={styles.loading}>Loading grades…</div>}
-          {!gradesLoading && grades.length === 0 && (
-            <div className={styles.empty}>No grade data available.</div>
-          )}
-          {!gradesLoading && grades.length > 0 && (() => {
-            const GRADE_COLORS: Record<string, string> = {
-              A: '#66bb6a', B: '#42a5f5', C: '#ffa726', D: '#ef5350', F: '#ef5350',
-            };
-            const scoreColor = (s: number | null) => {
-              if (s === null) return 'var(--text-muted)';
-              if (s >= 90) return '#66bb6a';
-              if (s >= 80) return '#42a5f5';
-              if (s >= 70) return '#ffa726';
-              return '#ef5350';
-            };
-            return (
-              <>
-                <div className={styles.gradesList}>
-                  {grades.map((g, i) => (
-                    <div key={g.courseId} className={styles.gradesRow}>
-                      <span className={styles.gradesDot} style={{ background: COURSE_COLORS[i % COURSE_COLORS.length] }} />
-                      <div className={styles.gradesInfo}>
-                        <span className={styles.gradesName}>{g.courseName}</span>
-                        <span className={styles.gradesCode}>{g.courseCode}</span>
-                      </div>
-                      <div className={styles.gradesRight}>
-                        {g.currentScore !== null ? (
-                          <>
-                            <span className={styles.gradesLetter} style={{ color: GRADE_COLORS[g.currentGrade?.[0] ?? ''] ?? 'var(--text-muted)' }}>
-                              {g.currentGrade ?? '—'}
-                            </span>
-                            <span className={styles.gradesScore} style={{ color: scoreColor(g.currentScore) }}>
-                              {g.currentScore.toFixed(1)}%
-                            </span>
-                          </>
-                        ) : (
-                          <span className={styles.gradesNoGrade}>No grade</span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Per-course assignment scores */}
-                {assignments.length > 0 && (
-                  <div className={styles.assignmentScores}>
-                    <div className={styles.scoresHeader}>Assignment Scores</div>
-                    {assignments
-                      .filter(a => a.score !== null && a.score !== undefined)
-                      .map(a => (
-                        <div key={a.id} className={styles.scoreRow}>
-                          <span className={styles.scoreDot} style={{ background: COURSE_COLORS[courses.findIndex(c => c.id === a.courseId) % COURSE_COLORS.length] }} />
-                          <div className={styles.scoreInfo}>
-                            <span className={styles.scoreName}>{a.name}</span>
-                            <span className={styles.scoreCourse}>{a.courseName}</span>
-                          </div>
-                          <span className={styles.scoreValue} style={{ color: scoreColor(a.pointsPossible ? (a.score! / a.pointsPossible) * 100 : null) }}>
-                            {a.score}/{a.pointsPossible ?? '?'}
-                          </span>
-                        </div>
-                      ))}
-                  </div>
-                )}
-              </>
-            );
-          })()}
-        </div>
-      )}
-
-      {canvasView === 'assignments' && <div className={styles.layout}>
+      <div className={styles.layout}>
         {/* ── Course sidebar ── */}
         <div className={styles.sidebar}>
           <button
             className={`${styles.pill}${selectedCourseId === null ? ` ${styles.pillActive}` : ''}`}
             onClick={() => setSelectedCourseId(null)}
           >All</button>
-          {displayCourses.map(c => (
+          {courses.map(c => (
             <button
               key={c.id}
               className={`${styles.pill}${selectedCourseId === c.id ? ` ${styles.pillActive}` : ''}`}
@@ -891,16 +592,9 @@ Rules:
 
         {/* ── Assignment area ── */}
         <div className={styles.main}>
-          {loading && <AssignmentSkeleton />}
+          {icalSyncing && assignments.length === 0 && <AssignmentSkeleton />}
 
-          {!loading && error && (
-            <div className={styles.errorState}>
-              <span>{error}</span>
-              <button className={styles.retryBtn} onClick={() => loadData(token, baseUrl)}>Retry</button>
-            </div>
-          )}
-
-          {!loading && !error && (
+          {!icalSyncing && (
             <>
               <div className={styles.filterBar}>
                 <div className={styles.filterPills}>
@@ -944,7 +638,7 @@ Rules:
                     <div
                       key={a.id}
                       className={`${styles.assignmentRow}${done ? ` ${styles.done}` : ''}${cleared ? ` ${styles.cleared}` : ''}`}
-                      onClick={() => isIcalConnected ? window.open(a.htmlUrl, '_blank', 'noopener,noreferrer') : setDetailAssignment(a)}
+                      onClick={() => window.open(a.htmlUrl, '_blank', 'noopener,noreferrer')}
                       style={{ cursor: 'pointer' }}
                     >
                       <span
@@ -956,20 +650,6 @@ Rules:
                         <span className={styles.assignmentCourse}>{a.courseName}</span>
                       </div>
                       <div className={styles.assignmentRight}>
-                        <span className={styles.assignmentScore} style={{
-                          visibility: a.score != null && a.pointsPossible != null ? 'visible' : 'hidden',
-                          color: a.score != null && a.pointsPossible != null && a.pointsPossible > 0
-                            ? (() => {
-                                const pct = (a.score / a.pointsPossible!) * 100;
-                                if (pct >= 90) return '#66bb6a';
-                                if (pct >= 80) return '#42a5f5';
-                                if (pct >= 70) return '#ffa726';
-                                return '#ef5350';
-                              })()
-                            : 'var(--text-muted)',
-                        }}>
-                          {a.score ?? 0}/{a.pointsPossible ?? 0}
-                        </span>
                         <span className={styles.assignmentDue}>Due: {fmtDue(a.dueAt)}</span>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={e => e.stopPropagation()}>
                           <button
@@ -999,57 +679,6 @@ Rules:
                   );
                 })}
               </div>
-
-              {!isIcalConnected && <div className={styles.announcementsSection}>
-                <button
-                  className={styles.sectionHeader}
-                  onClick={() => setAnnouncementsOpen(o => !o)}
-                >
-                  <span className={styles.sectionTitle}>Announcements</span>
-                  <span className={styles.sectionRule} />
-                  <span className={styles.caret}>{announcementsOpen ? '▾' : '▸'}</span>
-                </button>
-                {announcementsOpen && (
-                  <div className={styles.announcementList}>
-                    {filteredAnnouncements.length === 0 ? (
-                      <div className={styles.announcementsEmpty}>No announcements.</div>
-                    ) : filteredAnnouncements.map(a => {
-                      const expanded = expandedIds.has(a.id);
-                      const courseName = courses.find(c => c.id === a.courseId)?.name ?? '';
-                      return (
-                        <div
-                          key={a.id}
-                          className={styles.announcementCard}
-                          onClick={() => toggleExpanded(a.id)}
-                        >
-                          <div className={styles.announcementTop}>
-                            <span className={styles.announcementCourse}>{courseName}</span>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <span className={styles.announcementDate}>
-                                {a.postedAt ? fmtPosted(a.postedAt) : ''}
-                              </span>
-                              {a.htmlUrl && (
-                                <a
-                                  className={styles.externalLink}
-                                  href={a.htmlUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  title="Open in Canvas"
-                                  onClick={e => e.stopPropagation()}
-                                >↗</a>
-                              )}
-                            </div>
-                          </div>
-                          <span className={styles.announcementTitle}>{a.title}</span>
-                          <span className={expanded ? styles.announcementBodyExpanded : styles.announcementBody}>
-                            {a.message}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>}
 
               <div className={styles.studyPlan}>
                 <div className={styles.studyPlanHeader}>
@@ -1094,17 +723,14 @@ Rules:
                                 key={`${day.date}-${item.assignmentId}`}
                                 className={`${styles.studyPlanItem}${!assignment ? ` ${styles.studyPlanItemDisabled}` : ''}`}
                                 onClick={() => {
-                                  if (!assignment) return;
-                                  if (isIcalConnected) window.open(assignment.htmlUrl, '_blank', 'noopener,noreferrer');
-                                  else setDetailAssignment(assignment);
+                                  if (assignment) window.open(assignment.htmlUrl, '_blank', 'noopener,noreferrer');
                                 }}
                                 role="button"
                                 tabIndex={assignment ? 0 : -1}
                                 onKeyDown={e => {
                                   if (assignment && (e.key === 'Enter' || e.key === ' ')) {
                                     e.preventDefault();
-                                    if (isIcalConnected) window.open(assignment.htmlUrl, '_blank', 'noopener,noreferrer');
-                                    else setDetailAssignment(assignment);
+                                    window.open(assignment.htmlUrl, '_blank', 'noopener,noreferrer');
                                   }
                                 }}
                               >
@@ -1140,15 +766,7 @@ Rules:
             </>
           )}
         </div>
-      </div>}
-
-      {detailAssignment && !isIcalConnected && (
-        <AssignmentDetail
-          courseId={detailAssignment.courseId}
-          assignmentId={detailAssignment.id}
-          onClose={() => setDetailAssignment(null)}
-        />
-      )}
+      </div>
     </div>
   );
 }

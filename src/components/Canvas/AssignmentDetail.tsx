@@ -1,8 +1,23 @@
 import { useEffect, useState } from 'react';
 import DOMPurify from 'dompurify';
-import { getAssignmentDetails, AssignmentDetails } from '../../lib/canvas';
-import { storage } from '../../lib/storage';
 import styles from './AssignmentDetail.module.css';
+
+interface AssignmentAttachment {
+  id: number;
+  filename: string;
+  contentType: string;
+  url: string;
+  size: number;
+}
+
+interface AssignmentDetails {
+  id: number;
+  name: string;
+  description: string | null;
+  dueAt: string | null;
+  htmlUrl: string;
+  attachments: AssignmentAttachment[];
+}
 
 interface Props {
   courseId: number;
@@ -37,18 +52,9 @@ export default function AssignmentDetail({ courseId, assignmentId, onClose }: Pr
   const [error, setError] = useState('');
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 
-  const token = storage.getCanvasToken();
-  const baseUrl = storage.getCanvasBaseUrl();
-
   useEffect(() => {
-    setLoading(true);
-    setError('');
-    setDetails(null);
-    setPdfUrl(null);
-    getAssignmentDetails(token, baseUrl, courseId, assignmentId)
-      .then(setDetails)
-      .catch(() => setError('Failed to load assignment details.'))
-      .finally(() => setLoading(false));
+    setLoading(false);
+    setError('Assignment details require a Canvas API token.');
   }, [courseId, assignmentId]);
 
   // Close on Escape
