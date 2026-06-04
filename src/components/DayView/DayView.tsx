@@ -2884,8 +2884,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
 
     {deadlineDetail && (
       <AssignmentDetail
-        courseId={deadlineDetail.courseId}
-        assignmentId={deadlineDetail.assignmentId}
         onClose={() => setDeadlineDetail(null)}
       />
     )}
