@@ -9,12 +9,12 @@ import { readDriveFile, fileTypeLabel, getFolderContentsForPrompt, readCachedFol
 import { useGooglePicker, PickedFile } from '../../lib/useGooglePicker';
 import { ensureFreshGoogleToken } from '../../lib/googleAuth';
 import { friendlyError } from '../../lib/errors';
-import { useSubscription, hasAIAccess, startTrial, startCheckout } from '../../lib/subscription';
+import { useSubscription, hasAIAccess, startCheckout } from '../../lib/subscription';
 import { SavedCreation, loadCreateHistory, appendToCreateHistory, CREATE_HISTORY_EVENT } from '../../lib/createHistory';
 import { TimeBlock, Subject, Todo, ChatMessage, ChatSession, AiTodo, CanvasAssignment } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
 import { SkeletonBlock } from '../UI/Skeleton';
-import TrialConfirmModal from '../UI/TrialConfirmModal';
+import TrialSetupModal from '../Trial/TrialSetupModal';
 import styles from './AITab.module.css';
 
 declare global {
@@ -661,29 +661,15 @@ function AILockedScreen({ status }: { status: string }) {
     );
   }
 
-  // Free user — confirm then start the 3-week trial
+  // Free user — show trial setup modal (plan selection + card upfront)
   const [showModal, setShowModal] = useState(false);
-
-  async function handleConfirm() {
-    setLoading(true);
-    setError('');
-    try {
-      await startTrial();
-      navigate(0 as any);
-    } catch (e: any) {
-      setError(e?.message ?? 'Something went wrong.');
-      setLoading(false);
-    }
-  }
 
   return (
     <>
       {showModal && (
-        <TrialConfirmModal
-          onConfirm={handleConfirm}
-          onCancel={() => setShowModal(false)}
-          loading={loading}
-          error={error}
+        <TrialSetupModal
+          onComplete={() => navigate(0 as any)}
+          onSkip={() => setShowModal(false)}
         />
       )}
       <div className={styles.lockedLayout}>
@@ -692,12 +678,12 @@ function AILockedScreen({ status }: { status: string }) {
           <h2 className={styles.lockedTitle}>AI planning is included with Soma Premium</h2>
           <p className={styles.lockedDesc}>
             Get AI-powered scheduling, todo generation, and study planning.
-            Start your <strong>3-week free trial</strong> — no charge today.
+            Start your <strong>21-day free trial</strong> — no charge until the trial ends.
           </p>
           <button className={styles.lockedBtn} onClick={() => setShowModal(true)}>
             Start free trial
           </button>
-          <p className={styles.lockedMeta}>$4.99/mo after trial · Cancel anytime</p>
+          <p className={styles.lockedMeta}>$5.99/mo after trial · Cancel anytime</p>
         </div>
       </div>
     </>

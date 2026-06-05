@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { useSubscription, startTrial, startCheckout } from '../../lib/subscription';
-import TrialConfirmModal from '../UI/TrialConfirmModal';
+import { useSubscription, startCheckout } from '../../lib/subscription';
+import TrialSetupModal from '../Trial/TrialSetupModal';
 import styles from './PricingPage.module.css';
 
 const MONTHLY_PRICE    = '$4.99';
@@ -91,18 +91,6 @@ export default function PricingPage() {
       // Free user — show confirmation modal first
       setError(null);
       setShowModal(true);
-    }
-  }
-
-  async function handleConfirmTrial() {
-    setLoading(true);
-    setError(null);
-    try {
-      await startTrial();
-      navigate('/ai');
-    } catch (e: any) {
-      setError('Something went wrong. Please try again.');
-      setLoading(false);
     }
   }
 
@@ -231,11 +219,9 @@ export default function PricingPage() {
       </div>
 
       {showModal && (
-        <TrialConfirmModal
-          onConfirm={handleConfirmTrial}
-          onCancel={() => setShowModal(false)}
-          loading={loading}
-          error={error ?? undefined}
+        <TrialSetupModal
+          onComplete={() => navigate('/day-view')}
+          onSkip={() => setShowModal(false)}
         />
       )}
     </div>
