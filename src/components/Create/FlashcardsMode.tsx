@@ -333,17 +333,16 @@ function StudyView({ deck, onExit }: { deck: FlashcardDeck; onExit: () => void }
         <span className={styles.flipHint}>Click or press Space to flip</span>
       </button>
 
-      {flipped ? (
-        <div className={styles.gradeRow}>
-          <button className={styles.missBtn} onClick={() => grade('missed')}>Review again</button>
-          <button className={styles.knowBtn} onClick={() => grade('known')}>Got it</button>
+      <div className={styles.studyActions}>
+        <div className={`${styles.studyNav}${flipped ? ` ${styles.hidden}` : ''}`}>
+          <button className={styles.secondaryBtn} onClick={back} disabled={pos === 0} tabIndex={flipped ? -1 : 0}>← Prev</button>
+          <button className={styles.primaryBtn} onClick={() => setFlipped(true)} tabIndex={flipped ? -1 : 0}>Show answer</button>
         </div>
-      ) : (
-        <div className={styles.studyNav}>
-          <button className={styles.secondaryBtn} onClick={back} disabled={pos === 0}>← Prev</button>
-          <button className={styles.primaryBtn} onClick={() => setFlipped(true)}>Show answer</button>
+        <div className={`${styles.gradeRow}${!flipped ? ` ${styles.hidden}` : ''}`}>
+          <button className={styles.missBtn} onClick={() => grade('missed')} tabIndex={!flipped ? -1 : 0}>Review again</button>
+          <button className={styles.knowBtn} onClick={() => grade('known')} tabIndex={!flipped ? -1 : 0}>Got it</button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
