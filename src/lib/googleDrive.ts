@@ -29,13 +29,13 @@ export async function readDriveFile(
   fileId: string,
 ): Promise<{ title: string; content: string; mimeType: string }> {
   const token = await getSupabaseToken();
-  const res = await fetch('/api/drive?type=file', {
+  const res = await fetch('/api/google', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ fileId, googleToken }),
+    body: JSON.stringify({ action: 'drive', type: 'file', fileId, googleToken }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { error?: string };
@@ -57,13 +57,13 @@ export async function listFolderFiles(
   folderName?: string,
 ): Promise<{ folderName: string; files: FolderFile[] }> {
   const token = await getSupabaseToken();
-  const res = await fetch('/api/drive?type=folder', {
+  const res = await fetch('/api/google', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ folderId, folderName, googleToken }),
+    body: JSON.stringify({ action: 'drive', type: 'folder', folderId, folderName, googleToken }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { error?: string };
@@ -87,13 +87,13 @@ export async function readFolderContents(
   folderId: string,
 ): Promise<{ files: FolderContentFile[] }> {
   const token = await getSupabaseToken();
-  const res = await fetch('/api/drive?type=folder-contents', {
+  const res = await fetch('/api/google', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ folderId }),
+    body: JSON.stringify({ action: 'drive', type: 'folder-contents', folderId }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { error?: string };

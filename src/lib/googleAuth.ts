@@ -18,13 +18,13 @@ async function refreshViaServer(
   tokenField: 'googleDriveToken' | 'googleToken',
 ): Promise<string | null> {
   try {
-    const res = await fetch('/api/refresh-google-token', {
+    const res = await fetch('/api/google', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${supabaseToken}`,
       },
-      body: JSON.stringify({ tokenField }),
+      body: JSON.stringify({ action: 'refresh-token', tokenField }),
     });
     if (!res.ok) return null;
     const data = await res.json() as { accessToken?: string };

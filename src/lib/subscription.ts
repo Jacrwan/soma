@@ -39,6 +39,14 @@ const EMPTY: SubscriptionInfo = {
   cancelAtPeriodEnd: false,
 };
 
+async function stripePost(action: string, token: string, body?: Record<string, unknown>) {
+  return fetch('/api/stripe', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, ...body }),
+  });
+}
+
 export function useSubscription(): SubscriptionInfo {
   const [info, setInfo] = useState<SubscriptionInfo>(EMPTY);
 
@@ -60,15 +68,13 @@ export function useSubscription(): SubscriptionInfo {
       }
 
       try {
-        const res = await fetch('/api/subscription', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
+        const res = await stripePost('get-subscription', token);
         if (!res.ok) throw new Error('failed');
         const data = await res.json();
         if (!cancelled) {
           setInfo({
             status: (data.status as SubscriptionStatus) ?? 'free',
-            plan: (data.plan === 'annual' ? 'annual' : 'monthly'),
+            plan: data.plan === 'annual' ? 'annual' : 'monthly',
             trialStart: data.trialStart ?? null,
             trialEndsAt: data.trialEndsAt ?? null,
             extensionStart: data.extensionStart ?? null,
@@ -89,33 +95,14 @@ export function useSubscription(): SubscriptionInfo {
   return info;
 }
 
-export async function startTrial(): Promise<void> {
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token;
-  if (!token) throw new Error('Not authenticated');
-
-  const res = await fetch('/api/start-trial', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({})) as { error?: string };
-    throw new Error(body.error ?? 'Failed to start trial');
-  }
-}
-
-// ── New trial flow (card upfront) ────────────────────────────────────────────
+// ── New trial flow (card upfront via Stripe Elements) ─────────────────────────
 
 export async function createSetupIntent(): Promise<{ clientSecret: string; trialEndsAt: string }> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   if (!token) throw new Error('Not authenticated');
 
-  const res = await fetch('/api/create-setup-intent', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const res = await stripePost('create-setup-intent', token);
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { error?: string };
     throw new Error(body.error ?? 'Failed to create setup intent');
@@ -131,11 +118,7 @@ export async function createSubscription(
   const token = session?.access_token;
   if (!token) throw new Error('Not authenticated');
 
-  const res = await fetch('/api/create-subscription', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ paymentMethodId, plan }),
-  });
+  const res = await stripePost('create-subscription', token, { paymentMethodId, plan });
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { error?: string };
     throw new Error(body.error ?? 'Failed to create subscription');
@@ -143,22 +126,13 @@ export async function createSubscription(
   return res.json() as Promise<{ trialEndsAt: string }>;
 }
 
-// Extension checkout — called after the 21-day free trial expires.
-// Always monthly ($4.99/mo) with a 7-day free extension.
+// Legacy extension checkout — used after an old card-free trial expires
 export async function startCheckout(): Promise<void> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   if (!token) throw new Error('Not authenticated');
 
-  const res = await fetch('/api/create-checkout-session', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({}),
-  });
-
+  const res = await stripePost('create-checkout-session', token);
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { error?: string };
     throw new Error(body.error ?? 'Checkout failed');
@@ -172,11 +146,7 @@ export async function openBillingPortal(): Promise<void> {
   const token = session?.access_token;
   if (!token) throw new Error('Not authenticated');
 
-  const res = await fetch('/api/create-billing-portal-session', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
+  const res = await stripePost('create-billing-portal', token);
   if (!res.ok) throw new Error('Portal failed');
   const { url } = await res.json() as { url: string };
   window.location.href = url;

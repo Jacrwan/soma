@@ -11,13 +11,13 @@ export async function readGoogleDoc(
 ): Promise<{ title: string; content: string }> {
   const token = await getSupabaseToken();
 
-  const res = await fetch('/api/drive?type=doc', {
+  const res = await fetch('/api/google', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ docId, googleToken: googleDocsToken }),
+    body: JSON.stringify({ action: 'drive', type: 'doc', docId, googleToken: googleDocsToken }),
   });
 
   if (res.status === 401) {
