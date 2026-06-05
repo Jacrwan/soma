@@ -4,11 +4,11 @@ import { storage } from '../../lib/storage';
 import { useSubscription, hasAIAccess } from '../../lib/subscription';
 import {
   CREATE_TEMPLATES, CreateTemplate, PreviewResult,
-  CreateDocSpec, CreateSlidesSpec, CreateFlashcardSpec,
+  CreateDocSpec, CreateSlidesSpec, CreateFlashcardSpec, CreateQuizSpec,
   generatePreview, savePreviewToDrive, parseCreateSlides,
 } from '../../lib/aiArtifacts';
 import { FlashcardDeck, saveDeck, newCard, loadDecks, deleteDeck, FLASHCARDS_EVENT } from '../../lib/flashcards';
-import { Quiz, loadQuizzes, deleteQuiz, QUIZZES_EVENT } from '../../lib/quizzes';
+import { Quiz, loadQuizzes, saveQuiz, deleteQuiz, QUIZZES_EVENT } from '../../lib/quizzes';
 import { readDriveFile } from '../../lib/googleDrive';
 import { useGooglePicker, PickedFile } from '../../lib/useGooglePicker';
 import { Attachment, fileToAttachment, UploadError, ACCEPT_ATTR } from '../../lib/uploads';
@@ -22,7 +22,6 @@ import {
   BookOpen, ListTree, AlignLeft,
 } from 'lucide-react';
 import FlashcardsMode from './FlashcardsMode';
-import QuizzesMode from './QuizzesMode';
 import styles from './CreateTab.module.css';
 
 type SourceType = 'topic' | 'assignment' | 'subject' | 'file' | 'upload';
@@ -48,7 +47,29 @@ const TYPE_DEFS: { id: TypeId; label: string; icon: React.ReactNode; desc: strin
 
 // ── Shared content renderer (used by preview + the in-app reader) ──────────────
 
-function renderSpec(kind: 'doc' | 'slides' | 'flashcards', docSpec?: CreateDocSpec, slidesSpec?: CreateSlidesSpec, flashcardsSpec?: CreateFlashcardSpec) {
+function renderSpec(kind: 'doc' | 'slides' | 'flashcards' | 'quiz', docSpec?: CreateDocSpec, slidesSpec?: CreateSlidesSpec, flashcardsSpec?: CreateFlashcardSpec, quizSpec?: CreateQuizSpec) {
+  if (kind === 'quiz' && quizSpec) {
+    return (
+      <div className={styles.previewFlashcards}>
+        {quizSpec.questions.map((q, i) => (
+          <div key={i} className={styles.flashcardPreviewCard}>
+            <span className={styles.flashcardNum}>{i + 1}</span>
+            <div className={styles.flashcardContent}>
+              <p className={styles.flashcardFront}>{q.prompt}</p>
+              <div className={styles.quizOptions}>
+                {q.options.map((opt, j) => (
+                  <span key={j} className={`${styles.quizOption}${j === q.correctIndex ? ` ${styles.quizOptionCorrect}` : ''}`}>
+                    {String.fromCharCode(65 + j)}) {opt}
+                  </span>
+                ))}
+              </div>
+              {q.explanation && <p className={styles.flashcardBack}>{q.explanation}</p>}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
   if (kind === 'flashcards' && flashcardsSpec) {
     return (
       <div className={styles.previewFlashcards}>
@@ -142,12 +163,10 @@ export default function CreateTab() {
     } | null;
     if (st?.study) {
       setTypeId(st.study.tool);
-      if (st.study.tool === 'quiz') setMethodSel('manual'); // native interactive quiz
       setLaunchStudyId(st.study.id);
       window.history.replaceState({}, '');
     } else if (st?.make) {
       setTypeId(st.make.tool);
-      if (st.make.tool === 'quiz') setMethodSel('manual');
       window.history.replaceState({}, '');
     }
   }, [location.state]);
@@ -207,16 +226,17 @@ export default function CreateTab() {
   }
   function pickType(id: TypeId) { setTypeId(id); resetBuild(); }
 
-  // Interactive (native) when building flashcards by hand, or a hand-built quiz.
-  const interactive = (typeId === 'flashcards' && method === 'manual') || (typeId === 'quiz' && method === 'manual');
+  // Interactive (native) when building flashcards by hand.
+  const interactive = typeId === 'flashcards' && method === 'manual';
 
   // The AI/document template backing the current type (null for interactive builds).
+  // Quiz is always AI — no manual mode.
   const activeTemplate: CreateTemplate | null = !typeId
     ? null
     : typeId === 'flashcards'
       ? (method === 'ai' ? templatesById['flashcards'] : null)
       : typeId === 'quiz'
-        ? (method === 'ai' ? templatesById['quiz'] : null)
+        ? templatesById['quiz']
         : templatesById[typeId] ?? null;
 
   function onPickFile(f: PickedFile) { setDriveFile({ id: f.id, title: f.name }); }
@@ -367,6 +387,29 @@ export default function CreateTab() {
       setPreview(null);
       return;
     }
+    // Quizzes always save as a native interactive quiz in Soma
+    if (preview.kind === 'quiz' && preview.quizSpec) {
+      const now = new Date().toISOString();
+      const quiz: Quiz = {
+        id: crypto.randomUUID(),
+        title: preview.quizSpec.title,
+        subjectId: sourceType === 'subject' ? subjectId || undefined : undefined,
+        questions: preview.quizSpec.questions.map(q => ({
+          id: crypto.randomUUID(),
+          kind: 'choice' as const,
+          prompt: q.prompt,
+          options: [...q.options],
+          correctIndex: q.correctIndex,
+          answer: q.options[q.correctIndex],
+          explanation: q.explanation,
+        })),
+        createdAt: now,
+        updatedAt: now,
+      };
+      saveQuiz(quiz);
+      setPreview(null);
+      return;
+    }
     if (destination === 'soma') { persistNative(preview); setPreview(null); return; }
     setSaving(true); setError('');
     try {
@@ -453,7 +496,7 @@ export default function CreateTab() {
         </header>
         <div className={styles.previewCard}>
           <div className={styles.previewBody}>
-            {renderSpec(viewer.kind, viewer.docSpec, viewer.slidesSpec, undefined)}
+            {renderSpec(viewer.kind, viewer.docSpec, viewer.slidesSpec, undefined, undefined)}
           </div>
         </div>
       </div>
@@ -471,7 +514,7 @@ export default function CreateTab() {
     ...quizzes.map(q => ({ kind: 'quiz' as const, item: q, createdAt: q.createdAt })),
   ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const showDestination = !interactive && typeId !== 'flashcards'; // flashcards + interactive builds always live in Soma
+  const showDestination = !interactive && typeId !== 'flashcards' && typeId !== 'quiz'; // flashcards, quizzes + interactive builds always live in Soma
 
   return (
     <div className={styles.container}>
@@ -632,17 +675,22 @@ export default function CreateTab() {
             </>
           ) : (
             <>
-              <span className={styles.stepLabel}>2 · How do you want to build it?</span>
-              <div className={styles.segment}>
-                <button
-                  className={`${styles.segBtn}${method === 'ai' ? ` ${styles.segBtnActive}` : ''}`}
-                  onClick={() => { setMethodSel('ai'); resetBuild(); }}
-                >Generate with AI · Premium</button>
-                <button
-                  className={`${styles.segBtn}${method === 'manual' ? ` ${styles.segBtnActive}` : ''}`}
-                  onClick={() => { setMethodSel('manual'); resetBuild(); }}
-                >Write it myself · Free</button>
-              </div>
+              {/* Quiz is AI-only — no method toggle */}
+              {typeId !== 'quiz' && (
+                <>
+                  <span className={styles.stepLabel}>2 · How do you want to build it?</span>
+                  <div className={styles.segment}>
+                    <button
+                      className={`${styles.segBtn}${method === 'ai' ? ` ${styles.segBtnActive}` : ''}`}
+                      onClick={() => { setMethodSel('ai'); resetBuild(); }}
+                    >Generate with AI · Premium</button>
+                    <button
+                      className={`${styles.segBtn}${method === 'manual' ? ` ${styles.segBtnActive}` : ''}`}
+                      onClick={() => { setMethodSel('manual'); resetBuild(); }}
+                    >Write it myself · Free</button>
+                  </div>
+                </>
+              )}
 
               {/* Destination — chosen before any content is made (document outputs only) */}
               {showDestination && (
@@ -671,10 +719,9 @@ export default function CreateTab() {
                 </>
               )}
 
-              {/* ── Interactive native quiz (manual) ── */}
               {interactive ? (
-                <QuizzesMode subjects={subjects} initialStudyId={launchStudyId} />
-              ) : method === 'manual' ? (
+                null /* no interactive quiz anymore */
+              ) : method === 'manual' && typeId !== 'quiz' ? (
                 // ── Manual document authoring (free) ──
                 <div className={styles.sourceInput}>
                   <input
@@ -704,12 +751,14 @@ export default function CreateTab() {
                   </div>
                 </div>
               ) : !aiAccess ? (
-                // ── AI gated (free user chose AI) ──
+                // ── AI gated (free user) ──
                 <div className={styles.gateCard}>
                   <h2 className={styles.gateTitle}>AI generation is part of Soma Premium</h2>
-                  <p className={styles.gateText}>Switch to “Write it myself” to make it free, or start a 3-week trial to generate with AI.</p>
+                  <p className={styles.gateText}>{typeId === 'quiz'
+                    ? 'Start a 3-week trial to generate interactive quizzes with AI.'
+                    : 'Switch to “Write it myself” to make it free, or start a 3-week trial to generate with AI.'}</p>
                   <div className={styles.generateRow}>
-                    <button className={styles.secondaryBtn} onClick={() => setMethodSel('manual')}>Write it myself</button>
+                    {typeId !== 'quiz' && <button className={styles.secondaryBtn} onClick={() => setMethodSel('manual')}>Write it myself</button>}
                     <button className={styles.primaryBtn} onClick={() => navigate('/pricing')}>See plans</button>
                   </div>
                 </div>
@@ -804,7 +853,7 @@ export default function CreateTab() {
 
                   <div className={styles.generateRow}>
                     <button className={styles.primaryBtn} onClick={handleGenerate} disabled={!canGenerate}>
-                      {generating ? 'Generating…' : preview ? 'Regenerate' : `Generate ${activeTemplate?.output === 'slides' ? 'Slides' : 'Doc'}`}
+                      {generating ? 'Generating…' : preview ? 'Regenerate' : `Generate ${activeTemplate?.output === 'slides' ? 'Slides' : activeTemplate?.output === 'quiz' ? 'Quiz' : 'Doc'}`}
                     </button>
                     {error && <span className={styles.error}>{error}</span>}
                   </div>
@@ -834,13 +883,13 @@ export default function CreateTab() {
           <span className={styles.stepLabel}>Preview</span>
           <div className={styles.previewCard}>
             <div className={styles.previewHeader}>
-              <span className={styles.previewIcon}>{preview.kind === 'flashcards' ? <Layers size={16} /> : preview.kind === 'slides' ? <Presentation size={16} /> : <FileText size={16} />}</span>
-              <h3 className={styles.previewTitle}>{preview.title}{preview.kind === 'flashcards' && preview.flashcardsSpec ? ` (${preview.flashcardsSpec.cards.length} cards)` : ''}</h3>
+              <span className={styles.previewIcon}>{preview.kind === 'flashcards' ? <Layers size={16} /> : preview.kind === 'quiz' ? <HelpCircle size={16} /> : preview.kind === 'slides' ? <Presentation size={16} /> : <FileText size={16} />}</span>
+              <h3 className={styles.previewTitle}>{preview.title}{preview.kind === 'flashcards' && preview.flashcardsSpec ? ` (${preview.flashcardsSpec.cards.length} cards)` : preview.kind === 'quiz' && preview.quizSpec ? ` (${preview.quizSpec.questions.length} questions)` : ''}</h3>
             </div>
-            <div className={styles.previewBody}>{renderSpec(preview.kind, preview.docSpec, preview.slidesSpec, preview.flashcardsSpec)}</div>
+            <div className={styles.previewBody}>{renderSpec(preview.kind, preview.docSpec, preview.slidesSpec, preview.flashcardsSpec, preview.quizSpec)}</div>
             <div className={styles.previewActions}>
-              <button className={styles.primaryBtn} onClick={handleSavePreview} disabled={saving || (preview.kind !== 'flashcards' && destination === 'google' && !driveToken)}>
-                {saving ? 'Saving...' : preview.kind === 'flashcards' ? 'Save Deck' : destination === 'soma' ? 'Keep in Soma' : `Save to Google ${preview.kind === 'slides' ? 'Slides' : 'Docs'}`}
+              <button className={styles.primaryBtn} onClick={handleSavePreview} disabled={saving || (preview.kind !== 'flashcards' && preview.kind !== 'quiz' && destination === 'google' && !driveToken)}>
+                {saving ? 'Saving...' : preview.kind === 'flashcards' ? 'Save Deck' : preview.kind === 'quiz' ? 'Save Quiz' : destination === 'soma' ? 'Keep in Soma' : `Save to Google ${preview.kind === 'slides' ? 'Slides' : 'Docs'}`}
               </button>
               <button className={styles.secondaryBtn} onClick={handleGenerate} disabled={generating}>Regenerate</button>
               <button className={styles.ghostBtn} onClick={() => setPreview(null)}>Discard</button>

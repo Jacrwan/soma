@@ -58,13 +58,54 @@ export function parseCreateFlashcards(content: string): CreateFlashcardSpec | nu
   return cards.length > 0 ? { title, cards } : null;
 }
 
+export function parseCreateQuiz(content: string): CreateQuizSpec | null {
+  const match = content.match(/<createQuiz\s+title="([^"]*)">([\s\S]*?)<\/createQuiz>/);
+  if (!match) return null;
+  const title = match[1].trim() || 'Quiz';
+  const body = match[2].trim();
+  const questions: CreateQuizQuestion[] = [];
+  // Split on numbered questions: "1. " or "1) "
+  const qBlocks = body.split(/\n(?=\d+[.)]\s)/);
+  for (const block of qBlocks) {
+    const promptMatch = block.match(/^\d+[.)]\s*(.+)/m);
+    if (!promptMatch) continue;
+    const prompt = promptMatch[1].trim();
+    const opts: string[] = [];
+    let correctIndex = 0;
+    // Match options: A) ... B) ... C) ... D) ...
+    const optMatches = block.matchAll(/^([A-D])[.)]\s*(\*?)(.+)/gm);
+    for (const m of optMatches) {
+      if (m[2] === '*') correctIndex = opts.length;
+      opts.push(m[3].trim());
+    }
+    const explMatch = block.match(/^E[xX](?:planation)?:\s*(.+)/m);
+    const explanation = explMatch ? explMatch[1].trim() : '';
+    if (prompt && opts.length === 4) {
+      questions.push({ prompt, options: opts as [string, string, string, string], correctIndex, explanation });
+    }
+  }
+  return questions.length > 0 ? { title, questions } : null;
+}
+
 // ── Create-page templates ────────────────────────────────────────────────────
 
-export type ArtifactKind = 'doc' | 'slides' | 'flashcards';
+export type ArtifactKind = 'doc' | 'slides' | 'flashcards' | 'quiz';
 
 export interface CreateFlashcardSpec {
   title: string;
   cards: { front: string; back: string }[];
+}
+
+export interface CreateQuizQuestion {
+  prompt: string;
+  options: [string, string, string, string];
+  correctIndex: number;
+  explanation: string;
+}
+
+export interface CreateQuizSpec {
+  title: string;
+  questions: CreateQuizQuestion[];
 }
 
 export interface CreateTemplate {
@@ -94,6 +135,25 @@ Use "== " to begin each slide (the text after it is the slide title) and "- " fo
 - A point
 - Another point
 </createSlides>`;
+
+const QUIZ_FORMAT = `Respond with ONLY a single <createQuiz> block and nothing else before or after it.
+Each question is numbered, has exactly 4 options (A-D), and the correct option is marked with * before the text.
+Add a one-line explanation after each question.
+<createQuiz title="Quiz title">
+1. What is the powerhouse of the cell?
+A) Nucleus
+B) *Mitochondria
+C) Ribosome
+D) Golgi apparatus
+Explanation: Mitochondria generate most of the cell's ATP through oxidative phosphorylation.
+
+2. Which process converts CO2 into glucose?
+A) Cellular respiration
+B) Fermentation
+C) *Photosynthesis
+D) Glycolysis
+Explanation: Photosynthesis uses light energy to convert carbon dioxide and water into glucose.
+</createQuiz>`;
 
 const FLASHCARDS_FORMAT = `Respond with ONLY a single <createFlashcards> block and nothing else before or after it.
 Each card has a "Q: " line (the front) and an "A: " line (the back):
@@ -163,14 +223,17 @@ ${DOC_FORMAT}`,
   {
     id: 'quiz',
     label: 'Practice Quiz',
-    description: 'Self-test questions with an answer key',
-    output: 'doc',
+    description: 'Interactive multiple-choice quiz',
+    output: 'quiz',
     icon: 'Qz',
-    instruction: `Produce a practice quiz that tests real understanding.
-- Write 10–15 questions mixing multiple choice and short answer.
-- Number the questions and keep them clear.
-- After all questions, add a clearly separated "Answer Key" with the correct answer and a one-line explanation for each.
-${DOC_FORMAT}`,
+    instruction: `Produce a multiple-choice practice quiz that tests real understanding.
+- Write 10-15 questions.
+- Each question must have exactly 4 options (A, B, C, D).
+- Mark the correct option with * before its text.
+- Add a one-line explanation after each question.
+- Cover the material thoroughly, mixing recall and application questions.
+- Make wrong options plausible but clearly incorrect.
+${QUIZ_FORMAT}`,
   },
   {
     id: 'outline',
@@ -225,6 +288,7 @@ export interface PreviewResult {
   docSpec?: CreateDocSpec;
   slidesSpec?: CreateSlidesSpec;
   flashcardsSpec?: CreateFlashcardSpec;
+  quizSpec?: CreateQuizSpec;
 }
 
 export async function generatePreview(input: Omit<GenerateInput, 'driveToken'>): Promise<PreviewResult> {
@@ -251,6 +315,12 @@ ${template.instruction}`;
     'sonnet',
     attachments,
   );
+
+  if (template.output === 'quiz') {
+    const spec = parseCreateQuiz(response);
+    if (!spec) throw new Error('generation_failed');
+    return { kind: 'quiz', title: spec.title, rawContent: response, quizSpec: spec };
+  }
 
   if (template.output === 'flashcards') {
     const spec = parseCreateFlashcards(response);
