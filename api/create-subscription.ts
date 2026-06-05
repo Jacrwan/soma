@@ -37,7 +37,7 @@ export default async function handler(req: any, res: any) {
   const serviceKey  = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
   const stripeKey   = process.env.STRIPE_SECRET_KEY ?? '';
   const monthlyPriceId = process.env.STRIPE_PRICE_ID_MONTHLY ?? '';
-  const annualPriceId  = process.env.STRIPE_PRICE_ID_ANNUAL ?? '';
+  const annualPriceId  = process.env.STRIPE_PRICE_ID_YEARLY ?? '';
 
   if (!supabaseUrl || !serviceKey || !stripeKey || !monthlyPriceId || !annualPriceId) {
     return res.status(500).json({ error: 'Server not configured' });
