@@ -26,7 +26,12 @@ function computeStatus(row: {
   status: string;
   trial_start: string | null;
   extension_start: string | null;
+  stripe_subscription_id?: string | null;
 }): string {
+  // If there's a Stripe subscription, trust Stripe's status (synced by webhooks)
+  if (row.stripe_subscription_id) return row.status;
+
+  // Legacy free trial — no card on file, compute expiry locally
   const now = Date.now();
   if (row.status === 'trialing' && row.trial_start) {
     return now > new Date(row.trial_start).getTime() + TRIAL_MS
@@ -65,7 +70,7 @@ export default async function handler(req: any, res: any) {
 
   const { data: sub } = await admin
     .from('subscriptions')
-    .select('status, trial_start, extension_start, current_period_end, cancel_at_period_end')
+    .select('status, plan, trial_start, extension_start, current_period_end, cancel_at_period_end, stripe_subscription_id')
     .eq('user_id', user.id)
     .single();
 
@@ -73,15 +78,21 @@ export default async function handler(req: any, res: any) {
 
   const status = computeStatus(sub);
 
-  const trialEndsAt = sub.trial_start
-    ? new Date(new Date(sub.trial_start).getTime() + TRIAL_MS).toISOString()
-    : null;
+  // For Stripe-backed trials, trial end comes from current_period_end
+  // For legacy free trials (no Stripe sub), compute from trial_start
+  const trialEndsAt = sub.stripe_subscription_id
+    ? (sub.current_period_end ?? null)
+    : (sub.trial_start
+        ? new Date(new Date(sub.trial_start).getTime() + TRIAL_MS).toISOString()
+        : null);
+
   const extensionEndsAt = sub.extension_start
     ? new Date(new Date(sub.extension_start).getTime() + EXTENSION_MS).toISOString()
     : null;
 
   return res.json({
     status,
+    plan: sub.plan ?? 'monthly',
     trialStart: sub.trial_start,
     trialEndsAt,
     extensionStart: sub.extension_start,

@@ -19,6 +19,8 @@ import LegalPage from './components/Legal/LegalPage';
 import PricingPage from './components/Pricing/PricingPage';
 import { SkeletonBlock } from './components/UI/Skeleton';
 import OnboardingFlow from './components/Onboarding/OnboardingFlow';
+import TrialSetupModal from './components/Trial/TrialSetupModal';
+import PaywallScreen from './components/Paywall/PaywallScreen';
 import styles from './App.module.css';
 
 // ── Error boundary ────────────────────────────────────────────────────────
@@ -113,6 +115,13 @@ function AppShell({ user, sessionResolved, onLogout }: {
   const subscription = useSubscription();
   const aiLocked = subscription.status !== 'loading' && !hasAIAccess(subscription.status);
 
+  // Paywall: block the app for past_due / unpaid / canceled
+  const paywallStatus = (
+    subscription.status === 'past_due' ||
+    subscription.status === 'unpaid' ||
+    subscription.status === 'canceled'
+  ) ? subscription.status as 'past_due' | 'unpaid' | 'canceled' : null;
+
   // Days left in an active trial (for the countdown banner).
   const trialEndIso = subscription.status === 'trialing' ? subscription.trialEndsAt
     : subscription.status === 'trial_extended' ? subscription.extensionEndsAt
@@ -129,9 +138,17 @@ function AppShell({ user, sessionResolved, onLogout }: {
   }
 
   // Only redirect to login when we definitively know there is no session.
-  // If the auth timeout fired before Supabase responded, sessionResolved is
-  // false and we stay put rather than bouncing the user to the login page.
   if (!user && sessionResolved) return <Navigate to="/login" replace />;
+
+  // Full-screen paywall for expired/failed subscriptions
+  if (paywallStatus && subscription.status !== 'loading') {
+    return (
+      <PaywallScreen
+        status={paywallStatus}
+        onResubscribe={() => navigate('/pricing')}
+      />
+    );
+  }
 
   const p = location.pathname;
 
@@ -260,10 +277,9 @@ function AppShell({ user, sessionResolved, onLogout }: {
           <div className={styles.trialBanner}>
             <span className={styles.trialBannerText}>
               {trialDaysLeft === 0
-                ? 'Your free trial ends today.'
+                ? 'Your trial ends today — your card will be charged at end of day.'
                 : `${trialDaysLeft} day${trialDaysLeft === 1 ? '' : 's'} left in your free trial.`}
             </span>
-            <button className={styles.trialBannerCta} onClick={() => navigate('/pricing')}>Keep Premium</button>
             <button className={styles.trialBannerClose} onClick={dismissTrialBanner} aria-label="Dismiss">×</button>
           </div>
         )}
@@ -304,6 +320,8 @@ export default function App() {
   // true only when Supabase actually responded — false if the fallback timeout fired
   const [sessionResolved, setSessionResolved] = useState(false);
   const [showOnboarding, setShowOnboarding]   = useState(false);
+  const [showTrialModal, setShowTrialModal]   = useState(false);
+  const subscription = useSubscription();
   const onboardingChecked = useRef(false);
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
     const d = new Date();
@@ -315,6 +333,23 @@ export default function App() {
   useEffect(() => {
     applyTheme(storage.getSomaSettings().theme ?? 'dark');
   }, []);
+
+  // Show trial modal for logged-in users with no subscription once status resolves
+  useEffect(() => {
+    if (!user || showOnboarding) return;
+    if (subscription.status === 'free') {
+      const publicPaths = ['/', '/login', '/signup', '/pricing'];
+      const isPublic = publicPaths.includes(window.location.pathname) ||
+        window.location.pathname.startsWith('/privacy') ||
+        window.location.pathname.startsWith('/terms') ||
+        window.location.pathname.startsWith('/billing') ||
+        window.location.pathname.startsWith('/refund') ||
+        window.location.pathname.startsWith('/data-deletion') ||
+        window.location.pathname.startsWith('/contact') ||
+        window.location.pathname.startsWith('/ai-disclaimer');
+      if (!isPublic) setShowTrialModal(true);
+    }
+  }, [user, subscription.status, showOnboarding]);
 
   async function checkOnboarding(u: User) {
     try {
@@ -457,7 +492,19 @@ export default function App() {
           user.email ??
           ''
         }
-        onComplete={() => setShowOnboarding(false)}
+        onComplete={() => {
+          setShowOnboarding(false);
+          // Prompt for trial immediately after onboarding for new users
+          setShowTrialModal(true);
+        }}
+      />
+    )}
+    {showTrialModal && user && !showOnboarding &&
+      !['/','/login','/signup','/pricing'].includes(window.location.pathname) &&
+      (subscription.status === 'free' || subscription.status === 'loading') && (
+      <TrialSetupModal
+        onComplete={() => setShowTrialModal(false)}
+        onSkip={() => setShowTrialModal(false)}
       />
     )}
     </>
