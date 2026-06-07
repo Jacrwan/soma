@@ -226,9 +226,10 @@ async function handleSlides(req: any, res: any, googleToken: string) {
   requests.push({ insertText: { objectId: 'tTitle', text: deckTitle } });
 
   contentSlides.forEach((slide, i) => {
-    const slideId = `s${i}`;
-    const titleId = `t${i}`;
-    const bodyId  = `b${i}`;
+    // Google Slides object IDs must be at least 5 characters.
+    const slideId = `slide_${i}`;
+    const titleId = `title_${i}`;
+    const bodyId  = `body_${i}`;
     const slideTitle = (slide.title ?? `Slide ${i + 1}`).toString().slice(0, 200);
     const bullets = Array.isArray(slide.bullets)
       ? slide.bullets.map(b => b.toString().slice(0, 500)).filter(Boolean)
