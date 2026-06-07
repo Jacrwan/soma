@@ -147,7 +147,10 @@ export async function openBillingPortal(): Promise<void> {
   if (!token) throw new Error('Not authenticated');
 
   const res = await stripePost('create-billing-portal', token);
-  if (!res.ok) throw new Error('Portal failed');
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(body.error ?? 'Portal failed');
+  }
   const { url } = await res.json() as { url: string };
   window.location.href = url;
 }

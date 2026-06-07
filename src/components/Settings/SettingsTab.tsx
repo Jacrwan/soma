@@ -704,7 +704,7 @@ export default function SettingsTab() {
                     setSubLoading(true);
                     setSubError(null);
                     try { await openBillingPortal(); }
-                    catch { setSubError('Could not open billing portal.'); setSubLoading(false); }
+                    catch (err) { setSubError(err instanceof Error ? err.message : 'Could not open billing portal.'); setSubLoading(false); }
                   }}
                 >
                   {subLoading ? 'Loading…' : 'Manage subscription'}

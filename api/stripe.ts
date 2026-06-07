@@ -228,12 +228,16 @@ async function createBillingPortal(user: any, admin: any, stripe: Stripe, req: a
 
   if (!sub?.stripe_customer_id) return res.status(404).json({ error: 'No subscription found' });
 
-  const portalSession = await stripe.billingPortal.sessions.create({
-    customer: sub.stripe_customer_id,
-    return_url: `${origin(req)}/settings`,
-  });
-
-  return res.json({ url: portalSession.url });
+  try {
+    const portalSession = await stripe.billingPortal.sessions.create({
+      customer: sub.stripe_customer_id,
+      return_url: `${origin(req)}/settings`,
+    });
+    return res.json({ url: portalSession.url });
+  } catch (err: any) {
+    console.error('[stripe] billing portal error:', err?.message);
+    return res.status(500).json({ error: err?.message ?? 'Failed to open billing portal' });
+  }
 }
 
 // ── Main handler ──────────────────────────────────────────────────────────────
