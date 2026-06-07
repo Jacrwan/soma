@@ -178,31 +178,48 @@ async function createSubscription(user: any, admin: any, stripe: Stripe, body: R
   return res.json({ success: true, subscriptionId: subscription.id, trialEndsAt });
 }
 
-async function createCheckoutSession(user: any, admin: any, stripe: Stripe, req: any, res: any) {
-  const priceId = process.env.STRIPE_PRICE_ID_MONTHLY ?? '';
+async function createCheckoutSession(user: any, admin: any, stripe: Stripe, body: Record<string, unknown>, req: any, res: any) {
+  const plan = body.plan === 'annual' ? 'annual' : 'monthly';
+  const monthlyPriceId = process.env.STRIPE_PRICE_ID_MONTHLY ?? '';
+  const annualPriceId  = process.env.STRIPE_PRICE_ID_YEARLY ?? '';
+  const priceId = plan === 'annual' ? annualPriceId : monthlyPriceId;
   if (!priceId) return res.status(500).json({ error: 'Price ID not configured' });
 
-  const LEGACY_TRIAL_MS = 21 * 86_400_000;
   const { data: sub } = await admin
     .from('subscriptions')
-    .select('status, trial_start, extension_start, stripe_customer_id')
+    .select('status, trial_start, extension_start, stripe_customer_id, stripe_subscription_id')
     .eq('user_id', user.id)
     .single();
 
-  if (!sub?.trial_start) return res.status(409).json({ error: 'Start your free trial first' });
-  if (sub.extension_start) return res.status(409).json({ error: 'Already extended' });
-  if (sub.status === 'active') return res.status(409).json({ error: 'Already subscribed' });
-  if (Date.now() < new Date(sub.trial_start).getTime() + LEGACY_TRIAL_MS) {
+  if (sub?.stripe_subscription_id) return res.status(409).json({ error: 'Already subscribed' });
+  if (sub?.status === 'active')     return res.status(409).json({ error: 'Already subscribed' });
+
+  const hasFreeTrial  = !!sub?.trial_start;
+  const trialExpired  = hasFreeTrial && Date.now() > new Date(sub.trial_start).getTime() + TRIAL_MS;
+
+  let trialDays: number;
+  if (!hasFreeTrial) {
+    trialDays = TRIAL_DAYS; // new user — 21-day trial
+  } else if (trialExpired && !sub.extension_start) {
+    trialDays = 7; // expired free trial — 7-day extension
+  } else if (!trialExpired) {
     return res.status(409).json({ error: 'Free trial has not ended yet' });
+  } else {
+    return res.status(409).json({ error: 'Already extended' });
   }
 
-  let customerId = sub.stripe_customer_id as string | undefined;
+  let customerId = sub?.stripe_customer_id as string | undefined;
   if (!customerId) {
     const customer = await stripe.customers.create({
       email: user.email,
       metadata: { supabase_user_id: user.id },
     });
     customerId = customer.id;
+    const now = new Date().toISOString();
+    await admin.from('subscriptions').upsert(
+      { user_id: user.id, stripe_customer_id: customerId, status: sub?.status ?? 'free', updated_at: now },
+      { onConflict: 'user_id' },
+    );
   }
 
   const org = origin(req);
@@ -211,8 +228,11 @@ async function createCheckoutSession(user: any, admin: any, stripe: Stripe, req:
     mode: 'subscription',
     payment_method_collection: 'always',
     line_items: [{ price: priceId, quantity: 1 }],
-    subscription_data: { trial_period_days: 7, metadata: { supabase_user_id: user.id } },
-    success_url: `${org}/settings?subscription=extended`,
+    subscription_data: {
+      trial_period_days: trialDays,
+      metadata: { supabase_user_id: user.id, plan },
+    },
+    success_url: `${org}/day-view?subscription=started`,
     cancel_url: `${org}/pricing`,
   });
 
@@ -292,7 +312,7 @@ export default async function handler(req: any, res: any) {
 
   if (action === 'create-setup-intent')     return createSetupIntent(user, admin, stripe, res);
   if (action === 'create-subscription')     return createSubscription(user, admin, stripe, body, res);
-  if (action === 'create-checkout-session') return createCheckoutSession(user, admin, stripe, req, res);
+  if (action === 'create-checkout-session') return createCheckoutSession(user, admin, stripe, body, req, res);
   if (action === 'create-billing-portal')   return createBillingPortal(user, admin, stripe, req, res);
 
   return res.status(400).json({ error: `Unknown action: ${action}` });

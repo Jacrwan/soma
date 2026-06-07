@@ -5,10 +5,10 @@ import { useSubscription, startCheckout } from '../../lib/subscription';
 import TrialSetupModal from '../Trial/TrialSetupModal';
 import styles from './PricingPage.module.css';
 
-const MONTHLY_PRICE    = '$4.99';
-const ANNUAL_PRICE     = '$49.99';
-const ANNUAL_PER_MONTH = '$4.17';
-const ANNUAL_SAVINGS   = '48%';
+const MONTHLY_PRICE    = '$5.99';
+const ANNUAL_PRICE     = '$47.88';
+const ANNUAL_PER_MONTH = '$3.99';
+const ANNUAL_SAVINGS   = '33%';
 
 function CheckIcon() {
   return (
@@ -99,7 +99,7 @@ export default function PricingPage() {
     : loading ? 'Starting…' : 'Start free 3-week trial';
 
   const ctaMeta = isTrialExpired
-    ? '$4.99/month after 7-day extension · Cancel anytime'
+    ? `${MONTHLY_PRICE}/month after 7-day extension · Cancel anytime`
     : plan === 'monthly'
       ? `${MONTHLY_PRICE}/month after trial · Cancel anytime`
       : `${ANNUAL_PRICE}/year after trial · Cancel anytime`;
@@ -121,7 +121,7 @@ export default function PricingPage() {
         {isTrialExpired ? (
           <>
             <h1 className={styles.headline}>Your free trial has ended</h1>
-            <p className={styles.sub}>Add a payment method to get 7 more days free, then $4.99/mo.</p>
+            <p className={styles.sub}>Add a payment method to get 7 more days free, then {MONTHLY_PRICE}/mo.</p>
           </>
         ) : (
           <>

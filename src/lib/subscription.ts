@@ -126,13 +126,12 @@ export async function createSubscription(
   return res.json() as Promise<{ trialEndsAt: string }>;
 }
 
-// Legacy extension checkout — used after an old card-free trial expires
-export async function startCheckout(): Promise<void> {
+export async function startCheckout(plan: 'monthly' | 'annual' = 'monthly'): Promise<void> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   if (!token) throw new Error('Not authenticated');
 
-  const res = await stripePost('create-checkout-session', token);
+  const res = await stripePost('create-checkout-session', token, { plan });
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { error?: string };
     throw new Error(body.error ?? 'Checkout failed');
