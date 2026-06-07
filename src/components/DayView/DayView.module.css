@@ -2112,7 +2112,7 @@
   padding: 9px 12px;
   margin-top: 4px;
   background: none;
-  border: 1px solid oklch(92% 0.006 265);
+  border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--text-secondary);
   font-size: 12px;
@@ -2123,9 +2123,9 @@
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .newSubjectListBtn:hover {
-  background: oklch(97% 0.004 265);
+  background: var(--bg-secondary);
   color: var(--text-primary);
-  border-color: oklch(85% 0.01 265);
+  border-color: var(--text-muted);
 }
 
 /* ── Mobile layout ─────────────────────────────────────────────────────── */
