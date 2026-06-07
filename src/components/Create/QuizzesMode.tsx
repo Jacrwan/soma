@@ -255,7 +255,7 @@ function QuizEditor({ quiz: initial, subjects, onDone, onTake }: {
 
 // ── Take ───────────────────────────────────────────────────────────────────
 
-function TakeQuiz({ quiz, onExit }: { quiz: Quiz; onExit: () => void }) {
+export function TakeQuiz({ quiz, onExit }: { quiz: Quiz; onExit: () => void }) {
   const [responses, setResponses] = useState<Record<string, string | number>>({});
   const [submitted, setSubmitted] = useState(false);
 

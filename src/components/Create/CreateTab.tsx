@@ -22,6 +22,7 @@ import {
   BookOpen, ListTree, AlignLeft,
 } from 'lucide-react';
 import FlashcardsMode from './FlashcardsMode';
+import { TakeQuiz } from './QuizzesMode';
 import styles from './CreateTab.module.css';
 
 type SourceType = 'topic' | 'assignment' | 'subject' | 'file' | 'upload';
@@ -156,14 +157,20 @@ export default function CreateTab() {
   // Deep-link: Day View can launch a specific deck/quiz straight into study.
   const location = useLocation();
   const [launchStudyId, setLaunchStudyId] = useState<string | undefined>(undefined);
+  const [takingQuiz, setTakingQuiz] = useState<Quiz | null>(null);
   useEffect(() => {
     const st = location.state as {
       study?: { tool: 'flashcards' | 'quiz'; id: string };
       make?: { tool: 'flashcards' | 'quiz' };
     } | null;
     if (st?.study) {
-      setTypeId(st.study.tool);
-      setLaunchStudyId(st.study.id);
+      if (st.study.tool === 'quiz') {
+        const q = loadQuizzes().find((x) => x.id === st.study!.id);
+        if (q) setTakingQuiz(q);
+      } else {
+        setTypeId(st.study.tool);
+        setLaunchStudyId(st.study.id);
+      }
       window.history.replaceState({}, '');
     } else if (st?.make) {
       setTypeId(st.make.tool);
@@ -484,6 +491,15 @@ export default function CreateTab() {
   useEffect(() => {
     if (activeTemplate && method === 'ai' && sourceType === 'topic') topicRef.current?.focus();
   }, [activeTemplate, method, sourceType]);
+
+  // ── Quiz taker ────────────────────────────────────────────────────────────────
+  if (takingQuiz) {
+    return (
+      <div className={styles.container}>
+        <TakeQuiz quiz={takingQuiz} onExit={() => setTakingQuiz(null)} />
+      </div>
+    );
+  }
 
   // ── In-app reader (native item) ──────────────────────────────────────────────
   if (viewer) {
@@ -927,7 +943,7 @@ export default function CreateTab() {
                       <span className={styles.resultTitle}>{quiz.title || 'Untitled quiz'}</span>
                       <span className={styles.resultStatus}>Quiz · {quiz.questions.length} question{quiz.questions.length === 1 ? '' : 's'} · {formatTimeAgo(quiz.createdAt)}</span>
                     </div>
-                    <button className={styles.openBtn} onClick={() => { setTypeId('quiz'); setMethodSel('manual'); setLaunchStudyId(quiz.id); }}>Take</button>
+                    <button className={styles.openBtn} onClick={() => setTakingQuiz(quiz)}>Take</button>
                     <button className={styles.ghostBtn} onClick={() => { if (confirm('Delete this quiz?')) deleteQuiz(quiz.id); }}>Delete</button>
                   </div>
                 );
