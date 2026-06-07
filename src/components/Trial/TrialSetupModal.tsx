@@ -8,8 +8,8 @@ const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as 
 
 type Plan = 'monthly' | 'annual';
 
-const MONTHLY_PRICE = 5.99;
-const ANNUAL_PRICE  = 47.88;
+const MONTHLY_PRICE = 4.99;
+const ANNUAL_PRICE  = 49.99;
 const ANNUAL_MONTHLY_EQUIV = (ANNUAL_PRICE / 12).toFixed(2);
 
 function fmtDate(iso: string) {
@@ -90,7 +90,7 @@ function CardForm({ plan, onPlanChange, trialEndsAt, onSuccess }: FormProps) {
           className={`${styles.planCard}${plan === 'annual' ? ` ${styles.planCardActive}` : ''}`}
           onClick={() => onPlanChange('annual')}
         >
-          <span className={styles.planBadge}>SAVE 33%</span>
+          <span className={styles.planBadge}>SAVE 48%</span>
           <span className={styles.planName}>Annual</span>
           <span className={styles.planPrice}>${ANNUAL_MONTHLY_EQUIV}</span>
           <span className={styles.planPriceSub}>per month · billed yearly</span>
