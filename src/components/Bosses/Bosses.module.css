@@ -1,0 +1,344 @@
+.container {
+  height: 100%;
+  overflow-y: auto;
+  padding: 32px 40px 64px;
+  max-width: 960px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ── Header ── */
+.header { margin-bottom: 20px; }
+.title { font-size: 24px; font-weight: 700; color: var(--text-primary); margin: 0 0 4px; }
+.subtitle { font-size: 14px; color: var(--text-muted); margin: 0; max-width: 560px; }
+
+/* ── Stats / rank ── */
+.statsRow {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  margin-bottom: 22px;
+  flex-wrap: wrap;
+}
+.rankCard {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 12px 18px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, oklch(55% 0.22 266 / 0.16), oklch(55% 0.22 266 / 0.04));
+  border: 1px solid oklch(55% 0.22 266 / 0.3);
+  min-width: 150px;
+}
+.rankLabel { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); }
+.rankName { font-size: 20px; font-weight: 700; color: var(--text-primary); line-height: 1.1; }
+.rankNext { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+.statChip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 20px;
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  min-width: 76px;
+}
+.statNum { font-size: 22px; font-weight: 700; color: var(--text-primary); line-height: 1; }
+.statLbl { font-size: 11px; color: var(--text-muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* ── Tabs ── */
+.tabs { display: flex; gap: 6px; margin-bottom: 18px; border-bottom: 1px solid var(--border); }
+.tabBtn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  margin-bottom: -1px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tabBtn:hover { color: var(--text-primary); }
+.tabActive { color: var(--text-primary); border-bottom-color: var(--accent); }
+.tabCount {
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 1px 7px;
+  min-width: 18px;
+  text-align: center;
+}
+
+/* ── Active list ── */
+.cardList { display: flex; flex-direction: column; gap: 12px; }
+
+.card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  transition: border-color 0.15s, transform 0.1s;
+}
+.card:hover { border-color: var(--accent); }
+.cardOverdue { border-color: oklch(62% 0.2 25 / 0.6); }
+
+.cardArt { flex-shrink: 0; width: 88px; height: 88px; display: grid; place-items: center; }
+.cardBody { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.cardTop { display: flex; align-items: center; gap: 8px; }
+.bossName { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.assignmentName {
+  font-size: 13px; color: var(--text-secondary); font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+}
+.courseName { font-size: 11px; color: var(--text-muted); }
+
+.tierBadge {
+  font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  padding: 2px 7px; border-radius: 5px; flex-shrink: 0;
+}
+.tier_minion { background: var(--bg-tertiary); color: var(--text-muted); }
+.tier_elite { background: oklch(55% 0.22 266 / 0.14); color: var(--accent); }
+.tier_archboss { background: oklch(62% 0.2 25 / 0.16); color: oklch(64% 0.2 25); }
+
+.cardMeta { display: flex; align-items: center; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
+.dueChip {
+  font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px;
+  background: var(--bg-tertiary); color: var(--text-secondary);
+}
+.due_safe { color: var(--text-secondary); }
+.due_soon { color: oklch(68% 0.15 70); background: oklch(68% 0.15 70 / 0.12); }
+.due_urgent { color: oklch(64% 0.2 40); background: oklch(64% 0.2 40 / 0.14); }
+.due_overdue { color: oklch(64% 0.2 25); background: oklch(64% 0.2 25 / 0.16); }
+.comboChip { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px; color: oklch(70% 0.16 148); background: oklch(58% 0.18 148 / 0.12); }
+
+.cardActions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+.fightBtn {
+  background: var(--accent); color: oklch(99% 0.003 265); border: none;
+  border-radius: 8px; padding: 9px 20px; font-size: 14px; font-weight: 700;
+  cursor: pointer; font-family: inherit; transition: opacity 0.15s, transform 0.1s;
+}
+.fightBtn:hover { opacity: 0.92; transform: translateY(-1px); }
+.doneBtn {
+  background: none; border: 1px solid var(--border); color: var(--text-muted);
+  border-radius: 8px; padding: 5px 12px; font-size: 11px; font-weight: 600;
+  cursor: pointer; font-family: inherit; transition: color 0.15s, border-color 0.15s;
+}
+.doneBtn:hover { color: var(--text-primary); border-color: var(--text-muted); }
+
+/* ── HP bar ── */
+.hpWrap { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.hpTrack { flex: 1; height: 8px; background: var(--bg-tertiary); border-radius: 999px; overflow: hidden; }
+.hpFill { height: 100%; border-radius: 999px; transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1); }
+.hpHigh { background: linear-gradient(90deg, oklch(60% 0.18 145), oklch(68% 0.16 150)); }
+.hpMid  { background: linear-gradient(90deg, oklch(70% 0.16 75), oklch(74% 0.15 80)); }
+.hpLow  { background: linear-gradient(90deg, oklch(62% 0.2 25), oklch(66% 0.2 30)); }
+.hpText { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+
+/* ── Fight view ── */
+.fight { display: flex; flex-direction: column; gap: 8px; animation: fadeIn 0.2s ease-out; }
+.backLink {
+  background: none; border: none; color: var(--text-muted); font-size: 14px;
+  font-weight: 500; cursor: pointer; font-family: inherit; padding: 0; align-self: flex-start;
+  transition: color 0.15s;
+}
+.backLink:hover { color: var(--text-primary); }
+
+.fightStage {
+  display: grid; place-items: center; padding: 12px 0 4px;
+}
+.fightInfo {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.fightTitleRow { display: flex; align-items: center; gap: 10px; }
+.fightName { font-size: 22px; font-weight: 700; color: var(--text-primary); margin: 0; }
+.fightAssignment { font-size: 15px; color: var(--text-secondary); font-weight: 600; margin: 0; }
+.fightCourse { font-size: 12px; color: var(--text-muted); margin: 0; }
+.fightBanter { font-size: 14px; font-style: italic; color: var(--text-secondary); margin: 6px 0; }
+.fightHp { margin: 2px 0 6px; }
+
+/* phases */
+.phases { display: flex; flex-direction: column; gap: 4px; margin: 4px 0; }
+.phase {
+  display: flex; align-items: center; gap: 8px; font-size: 12px;
+  color: var(--text-muted); padding: 4px 0;
+}
+.phaseDot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
+.phaseActive { color: var(--text-primary); }
+.phaseActive .phaseDot { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+.phaseDone { color: var(--text-secondary); }
+.phaseDone .phaseDot { background: oklch(64% 0.18 148); }
+.phaseDone .phaseTitle { text-decoration: line-through; opacity: 0.7; }
+.phaseTitle { flex: 1; }
+.phaseHp { font-variant-numeric: tabular-nums; }
+
+/* multipliers */
+.multipliers { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0; }
+.multChip {
+  font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 7px;
+  background: var(--bg-tertiary); color: var(--text-muted);
+}
+.multGood { color: oklch(70% 0.16 148); background: oklch(58% 0.18 148 / 0.12); }
+.multTotal { font-size: 12px; font-weight: 700; color: var(--text-primary); margin-left: auto; }
+
+/* timer */
+.timerBox {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 18px; margin-top: 6px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+}
+.timerDisplay { font-size: 44px; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: 0.02em; }
+.timerRunning { color: var(--accent); }
+.timerControls { display: flex; gap: 10px; }
+.timerHint { font-size: 11px; color: var(--text-muted); margin: 0; text-align: center; }
+
+.primaryBtn {
+  background: var(--accent); color: oklch(99% 0.003 265); border: none;
+  border-radius: 9px; padding: 11px 26px; font-size: 15px; font-weight: 700;
+  cursor: pointer; font-family: inherit; transition: opacity 0.15s, transform 0.1s;
+}
+.primaryBtn:hover { opacity: 0.92; transform: translateY(-1px); }
+.strikeBtn {
+  background: linear-gradient(135deg, oklch(62% 0.2 25), oklch(58% 0.21 20));
+  color: #fff; border: none; border-radius: 9px; padding: 11px 26px;
+  font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.strikeBtn:hover:not(:disabled) { opacity: 0.92; transform: translateY(-1px); }
+.strikeBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.strikeResult {
+  font-size: 13px; color: var(--text-secondary); text-align: center;
+  padding: 10px; background: oklch(55% 0.22 266 / 0.08); border-radius: 9px;
+  animation: fadeIn 0.2s ease-out;
+}
+.strikeResult strong { color: var(--text-primary); }
+.strikeBanter { font-style: italic; color: var(--text-muted); }
+
+.canvasLink { font-size: 12px; color: var(--accent); text-decoration: none; align-self: center; margin-top: 4px; }
+.canvasLink:hover { text-decoration: underline; }
+
+/* victory */
+.victory {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: 10px; padding: 32px 24px;
+  background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 18px;
+  animation: fadeIn 0.3s ease-out;
+}
+.victoryTitle { font-size: 24px; font-weight: 700; color: var(--text-primary); margin: 4px 0 0; }
+.victoryBanter { font-size: 15px; font-style: italic; color: var(--text-secondary); margin: 4px 0; max-width: 420px; }
+.victorySub { font-size: 12px; color: var(--text-muted); margin: 0 0 10px; }
+
+.outcomeBadge {
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  padding: 3px 12px; border-radius: 999px;
+}
+.outcome_flawless { background: oklch(58% 0.18 148 / 0.16); color: oklch(70% 0.16 148); }
+.outcome_clutch { background: oklch(70% 0.16 75 / 0.16); color: oklch(72% 0.15 78); }
+.outcome_reclaimed { background: oklch(55% 0.22 266 / 0.16); color: var(--accent); }
+.outcome_cleared { background: var(--bg-tertiary); color: var(--text-secondary); }
+
+/* ── Log ── */
+.logGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.logCard {
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+  background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px;
+}
+.logBody { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.logActions { display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; }
+.ghostBtn {
+  background: none; border: none; color: var(--text-muted); font-size: 11px;
+  font-weight: 600; cursor: pointer; font-family: inherit; padding: 3px 8px;
+  border-radius: 6px; transition: color 0.15s;
+}
+.ghostBtn:hover { color: var(--text-primary); }
+
+/* ── Empty ── */
+.empty {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: 8px; padding: 48px 24px;
+  border: 1px dashed var(--border); border-radius: 16px;
+}
+.emptyTitle { font-size: 16px; font-weight: 600; color: var(--text-primary); margin: 8px 0 0; }
+.emptyText { font-size: 13px; color: var(--text-muted); margin: 0; max-width: 380px; line-height: 1.5; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Boss art — SVG animations
+   ════════════════════════════════════════════════════════════════════════ */
+.bossArt { display: block; overflow: visible; }
+.bossBody { transform-origin: 60px 60px; animation: bossFloat 5s ease-in-out infinite; }
+.bossSilhouette { transform-origin: 60px 60px; }
+
+.bossCore { transform-origin: 60px 60px; }
+.coreCalm { animation: corePulse 3.4s ease-in-out infinite; }
+.coreHurt { animation: corePulse 1.8s ease-in-out infinite; }
+.coreCritical { animation: corePulseFast 0.9s ease-in-out infinite; }
+
+.bossCracks { animation: fadeIn 0.4s ease-out; }
+
+.bossEnraged .bossBody { animation: bossFloat 5s ease-in-out infinite, bossShake 0.5s ease-in-out infinite; }
+.bossEnraged .bossCore { filter: drop-shadow(0 0 6px oklch(64% 0.2 25)); }
+
+.bossSlain { animation: none; }
+.bossShards polygon {
+  transform-origin: 60px 60px;
+  animation: shardOut 0.7s ease-out forwards;
+  animation-delay: calc(var(--i) * 0.04s);
+}
+
+@keyframes bossFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+@keyframes bossShake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-1.5px); }
+  75% { transform: translateX(1.5px); }
+}
+@keyframes corePulse {
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.18); opacity: 1; }
+}
+@keyframes corePulseFast {
+  0%, 100% { transform: scale(0.92); opacity: 0.8; }
+  50% { transform: scale(1.3); opacity: 1; }
+}
+@keyframes shardOut {
+  0% { transform: translate(0, 0) scale(1); opacity: 0.9; }
+  100% { transform: translate(calc((var(--i) - 2) * 10px), -14px) scale(0.6) rotate(40deg); opacity: 0; }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── Responsive ── */
+@media (max-width: 640px) {
+  .container { padding: 20px 16px 48px; }
+  .card { flex-wrap: wrap; }
+  .cardArt { width: 64px; height: 64px; }
+  .cardActions { flex-direction: row; width: 100%; }
+  .fightBtn { flex: 1; }
+  .logGrid { grid-template-columns: 1fr; }
+  .timerDisplay { font-size: 38px; }
+  .statsRow { gap: 8px; }
+  .statChip { padding: 10px 14px; min-width: 64px; }
+}
