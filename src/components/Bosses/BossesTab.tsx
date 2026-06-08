@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { storage } from '../../lib/storage';
 import { CanvasAssignment, TimerSession } from '../../types';
 import {
-  Boss, BossStats, StrikeResult, BossTheme,
+  Boss, BossStats, StrikeResult, BossTheme, BossTier,
   getActiveBosses, getSlainBosses, getBosses, bossStats,
-  strikeBoss, markSlain, reviveBoss, resetBoss, retireBoss, setThemeOverride,
+  applyRawDamage, markSlain, reviveBoss, resetBoss, retireBoss, setThemeOverride, clearOverdue,
   reconcileStudySessions, syncFromCloud, markSessionCredited,
   banterFor, earlyMultiplier, spacingMultiplier, daysUntil,
   isOnboarded, setOnboarded,
@@ -131,7 +131,9 @@ function FightView({ boss, aura, onExit }: { boss: Boss; aura: string; onExit: (
 
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startRef = useRef<number>(0);
-  const committedMinRef = useRef<number>(0);
+  const committedDmgRef = useRef<number>(0);
+  const multRef = useRef<number>(1);
+  const popupAccumRef = useRef<number>(0);
   const bossRef = useRef(boss);
   bossRef.current = boss;
   const popupId = useRef(0);
@@ -176,21 +178,27 @@ function FightView({ boss, aura, onExit }: { boss: Boss; aura: string; onExit: (
     void storage.saveTimerSession(session, subj.name).catch(() => {});
   }
 
+  // Smooth accrual: damage rises proportionally with focus time so the first
+  // hit lands in seconds, not at the 1-minute mark. Popups batch every ~12 dmg.
   const tick = useCallback(() => {
     const sec = Math.floor((Date.now() - startRef.current) / 1000);
     setElapsed(sec);
-    const wholeMin = Math.floor(sec / 60);
-    while (committedMinRef.current < wholeMin) {
-      const r = strikeBoss(bossRef.current, 1);
-      committedMinRef.current++;
-      popDamage(r.damage);
+    const targetDamage = Math.round((sec / 60) * multRef.current);
+    const delta = targetDamage - committedDmgRef.current;
+    if (delta >= 1) {
+      committedDmgRef.current = targetDamage;
+      const r = applyRawDamage(bossRef.current, delta, 'fight');
       setLastResult(r);
+      popupAccumRef.current += delta;
+      if (popupAccumRef.current >= 8 || r.slain) {
+        popDamage(popupAccumRef.current);
+        popupAccumRef.current = 0;
+      }
       if (r.slain) {
         stopTick();
         setRunning(false);
         recordStudyTime(sec);
         setVictory(r);
-        return;
       }
     }
   }, [stopTick]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -199,6 +207,7 @@ function FightView({ boss, aura, onExit }: { boss: Boss; aura: string; onExit: (
     if (running) return;
     setPaused(false);
     setRunning(true);
+    multRef.current = earlyMultiplier(daysUntil(bossRef.current.dueAt)) * spacingMultiplier(distinctDaysWithToday(bossRef.current));
     startRef.current = Date.now() - elapsed * 1000;
     tickRef.current = setInterval(tick, 250);
   }
@@ -214,7 +223,8 @@ function FightView({ boss, aura, onExit }: { boss: Boss; aura: string; onExit: (
     setRunning(false);
     recordStudyTime(elapsed);
     setElapsed(0);
-    committedMinRef.current = 0;
+    committedDmgRef.current = 0;
+    popupAccumRef.current = 0;
     setPaused(false);
   }
 
@@ -383,26 +393,26 @@ export default function BossesTab() {
   const [fighting, setFighting] = useState<Boss | null>(null);
   const [showOnboard, setShowOnboard] = useState(!isOnboarded());
   const [showShop, setShowShop] = useState(false);
+  const [tierFilter, setTierFilter] = useState<'all' | BossTier>('all');
+  const [sortBy, setSortBy] = useState<'urgency' | 'health'>('urgency');
   const [tickN, setTickN] = useState(0);
   const refresh = useCallback(() => setTickN(t => t + 1), []);
 
-  // Sync from cloud + apply any pending study time on mount.
+  // Sync from cloud + apply any pending study time on mount (silent: no toasts).
   useEffect(() => {
-    void syncFromCloud().then(() => { reconcileStudySessions(assignments); refresh(); });
-    reconcileStudySessions(assignments);
+    void syncFromCloud().then(() => { reconcileStudySessions(assignments, new Date(), true); refresh(); });
+    reconcileStudySessions(assignments, new Date(), true);
   }, [assignments, refresh]);
 
-  // React to boss changes and to study sessions logged elsewhere.
+  // React to boss changes (BossToaster credits study time app-wide).
   useEffect(() => {
-    const onBoss = () => refresh();
-    const onFocus = () => { reconcileStudySessions(assignments); refresh(); };
-    window.addEventListener(BOSSES_EVENT, onBoss);
-    window.addEventListener(FOCUS_LOGGED_EVENT, onFocus);
+    window.addEventListener(BOSSES_EVENT, refresh);
+    window.addEventListener(FOCUS_LOGGED_EVENT, refresh);
     return () => {
-      window.removeEventListener(BOSSES_EVENT, onBoss);
-      window.removeEventListener(FOCUS_LOGGED_EVENT, onFocus);
+      window.removeEventListener(BOSSES_EVENT, refresh);
+      window.removeEventListener(FOCUS_LOGGED_EVENT, refresh);
     };
-  }, [assignments, refresh]);
+  }, [refresh]);
 
   const active = useMemo(() => getActiveBosses(assignments), [assignments, tickN]); // eslint-disable-line react-hooks/exhaustive-deps
   const slain = useMemo(() => getSlainBosses(assignments), [assignments, tickN]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -492,15 +502,60 @@ export default function BossesTab() {
             <p className={styles.emptyTitle}>No bosses on the board</p>
             <p className={styles.emptyText}>Connect Canvas in Settings and your upcoming deadlines appear here as bosses to defeat.</p>
           </div>
-        ) : (
-          <div className={styles.cardList}>
-            {active.map(b => (
-              <BossCard key={b.key} boss={b} aura={aura}
-                onFight={setFighting} onMarkDone={handleMarkDone} onRetire={handleRetire}
-                onRetheme={(bb, t) => { setThemeOverride(bb, t); refresh(); }} />
-            ))}
-          </div>
-        )
+        ) : (() => {
+          const filtered = active.filter(b => tierFilter === 'all' || b.tier === tierFilter);
+          const overdueCount = active.filter(b => b.overdue).length;
+          const renderCard = (b: Boss) => (
+            <BossCard key={b.key} boss={b} aura={aura}
+              onFight={setFighting} onMarkDone={handleMarkDone} onRetire={handleRetire}
+              onRetheme={(bb, t) => { setThemeOverride(bb, t); refresh(); }} />
+          );
+          const bands = [
+            { key: 'reclaim', label: 'Past due', items: filtered.filter(b => b.overdue) },
+            { key: 'week', label: 'This week', items: filtered.filter(b => !b.overdue && b.daysUntilDue <= 7) },
+            { key: 'later', label: 'Later', items: filtered.filter(b => !b.overdue && b.daysUntilDue > 7) },
+          ].filter(band => band.items.length > 0);
+          const flat = [...filtered].sort((a, b) => b.hpRemaining - a.hpRemaining);
+          return (
+            <>
+              <div className={styles.controls}>
+                <label className={styles.controlGroup}>Show
+                  <select value={tierFilter} onChange={e => setTierFilter(e.target.value as 'all' | BossTier)}>
+                    <option value="all">All tiers</option>
+                    <option value="minion">Minions</option>
+                    <option value="elite">Elites</option>
+                    <option value="archboss">Arch-Bosses</option>
+                  </select>
+                </label>
+                <label className={styles.controlGroup}>Sort
+                  <select value={sortBy} onChange={e => setSortBy(e.target.value as 'urgency' | 'health')}>
+                    <option value="urgency">By urgency</option>
+                    <option value="health">By health</option>
+                  </select>
+                </label>
+                {overdueCount > 0 && (
+                  <button className={styles.clearGhostBtn} onClick={() => {
+                    if (confirm(`Retire all ${overdueCount} past-due boss${overdueCount === 1 ? '' : 'es'}? Use this to clear ones you already submitted.`)) {
+                      clearOverdue(assignments); refresh();
+                    }
+                  }}>Clear {overdueCount} past-due</button>
+                )}
+              </div>
+              {filtered.length === 0 ? (
+                <p className={styles.filterEmpty}>No {tierFilter === 'all' ? '' : tierFilter} bosses match.</p>
+              ) : sortBy === 'health' ? (
+                <div className={styles.cardList}>{flat.map(renderCard)}</div>
+              ) : (
+                bands.map(band => (
+                  <div key={band.key} className={styles.band}>
+                    <span className={styles.bandLabel}>{band.label} <span className={styles.bandCount}>{band.items.length}</span></span>
+                    <div className={styles.cardList}>{band.items.map(renderCard)}</div>
+                  </div>
+                ))
+              )}
+            </>
+          );
+        })()
       ) : (
         slain.length === 0 ? (
           <div className={styles.empty}>

@@ -73,6 +73,7 @@ interface BossState {
   lastStrikeDay?: string;
   cosmetics: { unlocked: string[]; activeAura: string };
   onboarded: boolean;
+  celebratedMilestones: number[];
 }
 
 const KEY = 'soma_boss_state';
@@ -89,6 +90,7 @@ function defaultState(): BossState {
     streak: 0,
     cosmetics: { unlocked: ['default'], activeAura: 'default' },
     onboarded: false,
+    celebratedMilestones: [],
   };
 }
 
@@ -305,46 +307,75 @@ function bumpStreak(state: BossState, now: Date): void {
   state.lastStrikeDay = today;
 }
 
-/** Core damage application. Used by fights, passive study, and knowledge strikes. */
-export function dealDamage(boss: BossSpec, minutes: number, source: DamageSource = 'fight', now = new Date()): StrikeResult {
+export const BOSS_TOAST_EVENT = 'soma_boss_toast';
+export interface BossToastDetail {
+  name: string; theme: BossTheme; damage: number; slain: boolean; source: DamageSource;
+  milestone?: boolean; message?: string;
+}
+
+function emitToast(boss: BossSpec, damage: number, slain: boolean, source: DamageSource): void {
+  window.dispatchEvent(new CustomEvent(BOSS_TOAST_EVENT, {
+    detail: { name: boss.name, theme: boss.theme, damage, slain, source } as BossToastDetail,
+  }));
+}
+
+const MILESTONES = [3, 5, 10, 25, 50, 100];
+
+function checkMilestone(state: BossState, theme: BossTheme): void {
+  const slainCount = Object.values(state.progress).filter(p => p.status === 'slain').length;
+  if (!MILESTONES.includes(slainCount) || state.celebratedMilestones.includes(slainCount)) return;
+  const bonus = slainCount * 5;
+  state.stardust += bonus;
+  state.celebratedMilestones = [...state.celebratedMilestones, slainCount];
+  window.dispatchEvent(new CustomEvent(BOSS_TOAST_EVENT, {
+    detail: { name: 'Milestone', theme, damage: 0, slain: false, source: 'fight',
+      milestone: true, message: `${slainCount} bosses slain. +${bonus} stardust` } as BossToastDetail,
+  }));
+}
+
+/** Core: add already-computed (multiplier-adjusted) damage to a boss. */
+export function applyRawDamage(boss: BossSpec, rawDamage: number, source: DamageSource = 'fight', now = new Date(), silent = false): StrikeResult {
   const state = load();
   const prev = state.progress[boss.key] ?? { damage: 0, foughtDays: [], status: 'active' as const };
   if (prev.status === 'slain') {
-    return { damage: 0, rawMinutes: minutes, earlyMultiplier: 1, spacingMultiplier: 1, slain: true, outcome: prev.outcome, hpRemaining: 0, stardustEarned: 0 };
+    return { damage: 0, rawMinutes: 0, earlyMultiplier: 1, spacingMultiplier: 1, slain: true, outcome: prev.outcome, hpRemaining: 0, stardustEarned: 0 };
   }
-
+  const damage = Math.max(1, Math.round(rawDamage));
   const today = dayKey(now);
   const foughtDays = prev.foughtDays.includes(today) ? prev.foughtDays : [...prev.foughtDays, today];
-  const early = earlyMultiplier(daysUntil(boss.dueAt, now));
-  const spacing = spacingMultiplier(foughtDays.length);
-  const damage = Math.max(1, Math.round(minutes * early * spacing));
-
   const newDamage = prev.damage + damage;
   const hpRemaining = Math.max(0, boss.hp - newDamage);
   const slain = hpRemaining <= 0;
   const outcome = slain ? decideOutcome(boss.dueAt, now) : prev.outcome;
 
   state.progress[boss.key] = {
-    ...prev,
-    damage: newDamage,
-    foughtDays,
-    status: slain ? 'slain' : 'active',
-    outcome,
+    ...prev, damage: newDamage, foughtDays,
+    status: slain ? 'slain' : 'active', outcome,
     slainAt: slain ? now.toISOString() : prev.slainAt,
   };
-
   let stardustEarned = 0;
-  if (slain && outcome) {
-    stardustEarned = stardustFor(boss.tier, outcome);
-    state.stardust += stardustEarned;
-  }
+  if (slain && outcome) { stardustEarned = stardustFor(boss.tier, outcome); state.stardust += stardustEarned; }
   bumpStreak(state, now);
+  if (slain) checkMilestone(state, boss.theme);
   save();
 
-  return { damage, rawMinutes: minutes, earlyMultiplier: early, spacingMultiplier: spacing, slain, outcome, hpRemaining, stardustEarned };
+  if (!silent && source !== 'fight') emitToast(boss, damage, slain, source);
+  return { damage, rawMinutes: 0, earlyMultiplier: 1, spacingMultiplier: 1, slain, outcome, hpRemaining, stardustEarned };
 }
 
-/** Fight strike (alias of dealDamage with fight source). */
+/** Apply focus minutes (with early + spacing multipliers) to a boss. */
+export function dealDamage(boss: BossSpec, minutes: number, source: DamageSource = 'fight', now = new Date(), silent = false): StrikeResult {
+  const state = load();
+  const prev = state.progress[boss.key];
+  const today = dayKey(now);
+  const willHaveDays = prev?.foughtDays.includes(today) ? prev.foughtDays.length : (prev?.foughtDays.length ?? 0) + 1;
+  const early = earlyMultiplier(daysUntil(boss.dueAt, now));
+  const spacing = spacingMultiplier(willHaveDays);
+  const res = applyRawDamage(boss, minutes * early * spacing, source, now, silent);
+  return { ...res, rawMinutes: minutes, earlyMultiplier: early, spacingMultiplier: spacing };
+}
+
+/** Fight strike. */
 export function strikeBoss(boss: Boss, minutes: number, now = new Date()): StrikeResult {
   return dealDamage(boss, minutes, 'fight', now);
 }
@@ -363,8 +394,9 @@ function assignmentById(assignments: CanvasAssignment[], id: number): CanvasAssi
   return assignments.find(a => a.id === id);
 }
 
-/** Apply uncredited Day View study sessions as damage to matching bosses. */
-export function reconcileStudySessions(assignments: CanvasAssignment[], now = new Date()): void {
+/** Apply uncredited Day View study sessions as damage to matching bosses.
+ *  Pass silent=true for the on-mount backlog so old sessions don't flood toasts. */
+export function reconcileStudySessions(assignments: CanvasAssignment[], now = new Date(), silent = false): void {
   const state = load();
   const sessions = storage.getTimerSessions();
   const subjects = storage.getSubjects();
@@ -375,20 +407,19 @@ export function reconcileStudySessions(assignments: CanvasAssignment[], now = ne
     if (credited.has(sess.id)) continue;
     const minutes = Math.round((sess.durationSeconds || 0) / 60);
     if (minutes < 1) { credited.add(sess.id); changed = true; continue; }
-    // Find the most urgent active boss whose subject matches this session.
     const matches = getActiveBosses(assignments, now).filter(b => {
       const spec = specForAssignment(assignmentById(assignments, b.id)!, subjects);
       return spec.subjectId && spec.subjectId === sess.subjectId;
     });
     if (matches.length > 0) {
-      dealDamage(matches[0], minutes, 'study', now);
+      dealDamage(matches[0], minutes, 'study', now, silent);
     }
     credited.add(sess.id);
     changed = true;
   }
   if (changed) {
     const fresh = load();
-    fresh.creditedSessions = Array.from(credited).slice(-500); // cap growth
+    fresh.creditedSessions = Array.from(credited).slice(-500);
     save();
   }
 }
@@ -465,7 +496,21 @@ export function markSlain(boss: Boss, now = new Date()): void {
   state.progress[boss.key] = { ...prev, damage: boss.hp, status: 'slain', outcome, slainAt: now.toISOString() };
   state.stardust += stardustFor(boss.tier, outcome);
   bumpStreak(state, now);
+  checkMilestone(state, boss.theme);
   save();
+}
+
+/** Retire every overdue, still-active boss in one go (clear submitted ghosts). */
+export function clearOverdue(assignments: CanvasAssignment[], now = new Date()): number {
+  const overdue = getActiveBosses(assignments, now).filter(b => b.overdue);
+  if (overdue.length === 0) return 0;
+  const state = load();
+  for (const b of overdue) {
+    const prev = state.progress[b.key] ?? { damage: 0, foughtDays: [], status: 'active' as const };
+    state.progress[b.key] = { ...prev, status: 'retired' };
+  }
+  save();
+  return overdue.length;
 }
 
 export function reviveBoss(boss: Boss): void {
@@ -503,11 +548,14 @@ export function setOnboarded(): void { const s = load(); s.onboarded = true; sav
 
 export interface Cosmetic { id: string; name: string; cost: number; color: string; }
 export const COSMETICS: Cosmetic[] = [
-  { id: 'default', name: 'Standard core', cost: 0,   color: '' },
-  { id: 'ember',   name: 'Ember aura',    cost: 80,  color: '#f97316' },
-  { id: 'frost',   name: 'Frost aura',    cost: 150, color: '#38bdf8' },
-  { id: 'void',    name: 'Void aura',     cost: 250, color: '#a855f7' },
-  { id: 'gold',    name: 'Champion gold', cost: 500, color: '#facc15' },
+  { id: 'default', name: 'Standard core', cost: 0,    color: '' },
+  { id: 'ember',   name: 'Ember aura',    cost: 60,   color: '#f97316' },
+  { id: 'frost',   name: 'Frost aura',    cost: 120,  color: '#38bdf8' },
+  { id: 'toxic',   name: 'Toxic aura',    cost: 200,  color: '#84cc16' },
+  { id: 'void',    name: 'Void aura',     cost: 320,  color: '#a855f7' },
+  { id: 'rose',    name: 'Rose aura',     cost: 450,  color: '#fb7185' },
+  { id: 'gold',    name: 'Champion gold', cost: 650,  color: '#facc15' },
+  { id: 'prism',   name: 'Prismatic',     cost: 1000, color: '#22d3ee' },
 ];
 
 export function getStardust(): number { return load().stardust; }

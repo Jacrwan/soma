@@ -442,3 +442,82 @@
   .statsRow { gap: 8px; }
   .statChip { padding: 10px 14px; min-width: 64px; }
 }
+
+/* ── App-wide damage toaster ── */
+.toaster {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  pointer-events: auto;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 13px;
+  box-shadow: 0 8px 24px oklch(0% 0 0 / 0.28);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text-primary);
+  animation: toastIn 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.toast:hover { border-color: var(--accent); }
+.toastDot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 8px currentColor; }
+.toastText { white-space: nowrap; }
+.toastText b { font-weight: 700; }
+.toastArrow { color: var(--text-muted); font-weight: 700; }
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@media (max-width: 640px) {
+  .toaster { right: 12px; left: 12px; bottom: 12px; }
+  .toast { font-size: 12px; }
+  .toastText { white-space: normal; }
+}
+.toastMilestone {
+  border-color: oklch(80% 0.14 85 / 0.6);
+  background: linear-gradient(135deg, oklch(80% 0.14 85 / 0.16), var(--bg-secondary));
+}
+.toastMilestone .toastText { font-weight: 700; color: oklch(80% 0.14 85); }
+
+/* ── Board controls + grouping ── */
+.controls {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px;
+}
+.controlGroup {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600; color: var(--text-muted);
+}
+.controlGroup select {
+  background: var(--bg-secondary); border: 1px solid var(--border); color: var(--text-primary);
+  border-radius: 7px; padding: 5px 8px; font-size: 12px; font-family: inherit; cursor: pointer;
+}
+.clearGhostBtn {
+  margin-left: auto;
+  background: none; border: 1px solid oklch(72% 0.13 75 / 0.5); color: oklch(72% 0.13 75);
+  border-radius: 7px; padding: 5px 12px; font-size: 12px; font-weight: 600;
+  cursor: pointer; font-family: inherit; transition: background 0.15s;
+}
+.clearGhostBtn:hover { background: oklch(72% 0.13 75 / 0.1); }
+.filterEmpty { font-size: 13px; color: var(--text-muted); padding: 24px 0; text-align: center; }
+
+.band { margin-bottom: 22px; }
+.bandLabel {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--text-muted); margin-bottom: 10px;
+}
+.bandCount {
+  font-size: 10px; font-weight: 700; background: var(--bg-tertiary); color: var(--text-secondary);
+  border-radius: 999px; padding: 1px 7px; min-width: 16px; text-align: center;
+}

@@ -61,11 +61,9 @@ export function TopBoss() {
   const [boss, setBoss] = useState<Boss | null>(null);
 
   useEffect(() => {
-    function refresh() {
-      const assignments = storage.getCachedAssignments();
-      reconcileStudySessions(assignments);
-      setBoss(mostUrgentBoss(assignments));
-    }
+    const assignments = storage.getCachedAssignments();
+    reconcileStudySessions(assignments, new Date(), true); // silent on mount
+    const refresh = () => setBoss(mostUrgentBoss(storage.getCachedAssignments()));
     refresh();
     window.addEventListener(BOSSES_EVENT, refresh);
     window.addEventListener(FOCUS_LOGGED_EVENT, refresh);
