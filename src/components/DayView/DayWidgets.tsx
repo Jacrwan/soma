@@ -4,6 +4,11 @@ import { Layers, HelpCircle } from 'lucide-react';
 import { getWeeklyStudyTime, getStudyStreak } from '../../lib/insights';
 import { loadDecks, FLASHCARDS_EVENT } from '../../lib/flashcards';
 import { loadQuizzes, QUIZZES_EVENT } from '../../lib/quizzes';
+import { storage } from '../../lib/storage';
+import {
+  Boss, mostUrgentBoss, reconcileStudySessions, BOSSES_EVENT, FOCUS_LOGGED_EVENT, TIER_LABEL,
+} from '../../lib/bosses';
+import BossArt from '../Bosses/BossArt';
 import { Subject } from '../../types';
 import styles from './DayWidgets.module.css';
 
@@ -45,6 +50,50 @@ export function WeekGlance() {
         <span className={styles.glanceLabel}>day streak</span>
       </div>
       <span className={styles.glanceArrow}>›</span>
+    </button>
+  );
+}
+
+// ── Top boss (links to the Bosses tab) ─────────────────────────────────────────
+
+export function TopBoss() {
+  const navigate = useNavigate();
+  const [boss, setBoss] = useState<Boss | null>(null);
+
+  useEffect(() => {
+    function refresh() {
+      const assignments = storage.getCachedAssignments();
+      reconcileStudySessions(assignments);
+      setBoss(mostUrgentBoss(assignments));
+    }
+    refresh();
+    window.addEventListener(BOSSES_EVENT, refresh);
+    window.addEventListener(FOCUS_LOGGED_EVENT, refresh);
+    return () => {
+      window.removeEventListener(BOSSES_EVENT, refresh);
+      window.removeEventListener(FOCUS_LOGGED_EVENT, refresh);
+    };
+  }, []);
+
+  if (!boss) return null;
+  const due = boss.daysUntilDue;
+  const dueText = due < 0 ? `${Math.abs(due)}d past due` : due === 0 ? 'due today' : due === 1 ? 'due tomorrow' : `due in ${due} days`;
+
+  return (
+    <button className={styles.topBoss} onClick={() => navigate('/bosses')}>
+      <span className={styles.topBossArt}><BossArt theme={boss.theme} pct={boss.pct} size={52} /></span>
+      <span className={styles.topBossInfo}>
+        <span className={styles.topBossTop}>
+          <span className={styles.topBossName}>{boss.name}</span>
+          <span className={styles.topBossTier}>{TIER_LABEL[boss.tier]}</span>
+        </span>
+        <span className={styles.topBossAssignment}>{boss.assignmentName}</span>
+        <span className={styles.topBossBar}>
+          <span className={styles.topBossFill} style={{ width: `${Math.max(3, boss.pct * 100)}%` }} />
+        </span>
+        <span className={styles.topBossMeta}>{boss.hpRemaining} min left · {dueText}</span>
+      </span>
+      <span className={styles.topBossAction}>Fight ›</span>
     </button>
   );
 }

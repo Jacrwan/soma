@@ -7,7 +7,7 @@ import { Subject, TimeBlock, TimerSession, SubjectColor, Todo, GoogleCalendarEve
 import { useTimerContext } from '../../contexts/TimerContext';
 import AssignmentDetail from '../Canvas/AssignmentDetail';
 import { SkeletonBlock } from '../UI/Skeleton';
-import { WeekGlance, StudySets } from './DayWidgets';
+import { WeekGlance, StudySets, TopBoss } from './DayWidgets';
 import styles from './DayView.module.css';
 
 function RightPanelSkeleton() {
@@ -1006,6 +1006,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     void storage.saveTimerSession(session, subjectName).catch(err => {
       console.error('[markAsStudied] Supabase saveTimerSession failed:', err);
     });
+    window.dispatchEvent(new Event('soma_focus_logged'));
     setMissedBlockIds(prev => { const next = new Set(prev); next.delete(block.id); return next; });
     setElapsedBySubject(prev => ({
       ...prev,
@@ -2268,6 +2269,8 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
 
         {!rightReady ? <RightPanelSkeleton /> : (
         <>
+
+        <TopBoss />
 
         <StudySets subjects={activeSubjects} />
 

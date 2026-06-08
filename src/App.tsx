@@ -6,6 +6,7 @@ import AuthScreen from './components/Auth/AuthScreen';
 import DayView from './components/DayView/DayView';
 import CanvasTab from './components/Canvas/CanvasTab';
 import BossesTab from './components/Bosses/BossesTab';
+import { syncFromCloud as syncBossesFromCloud } from './lib/bosses';
 import AITab from './components/AI/AITab';
 import CreateTab from './components/Create/CreateTab';
 import CalendarTab from './components/Calendar/CalendarTab';
@@ -115,6 +116,11 @@ function AppShell({ user, sessionResolved, onLogout }: {
   const navigate = useNavigate();
   const subscription = useSubscription();
   const aiLocked = subscription.status !== 'loading' && !hasAIAccess(subscription.status);
+
+  // Restore Bosses progress from the cloud once on sign-in.
+  useEffect(() => {
+    if (user) void syncBossesFromCloud().catch(() => {});
+  }, [user]);
 
   // Paywall: block the app for past_due / unpaid / canceled
   const paywallStatus = (

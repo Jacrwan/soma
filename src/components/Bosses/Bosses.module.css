@@ -93,7 +93,7 @@
   transition: border-color 0.15s, transform 0.1s;
 }
 .card:hover { border-color: var(--accent); }
-.cardOverdue { border-color: oklch(62% 0.2 25 / 0.6); }
+.cardReclaim { border-color: oklch(70% 0.14 75 / 0.5); }
 
 .cardArt { flex-shrink: 0; width: 88px; height: 88px; display: grid; place-items: center; }
 .cardBody { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
@@ -121,8 +121,9 @@
 .due_safe { color: var(--text-secondary); }
 .due_soon { color: oklch(68% 0.15 70); background: oklch(68% 0.15 70 / 0.12); }
 .due_urgent { color: oklch(64% 0.2 40); background: oklch(64% 0.2 40 / 0.14); }
-.due_overdue { color: oklch(64% 0.2 25); background: oklch(64% 0.2 25 / 0.16); }
+.due_reclaim { color: oklch(72% 0.13 75); background: oklch(72% 0.13 75 / 0.14); }
 .comboChip { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px; color: oklch(70% 0.16 148); background: oklch(58% 0.18 148 / 0.12); }
+.clearChip { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px; color: var(--text-secondary); background: var(--bg-tertiary); }
 
 .cardActions { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
 .fightBtn {
@@ -131,12 +132,28 @@
   cursor: pointer; font-family: inherit; transition: opacity 0.15s, transform 0.1s;
 }
 .fightBtn:hover { opacity: 0.92; transform: translateY(-1px); }
-.doneBtn {
+.moreBtn {
   background: none; border: 1px solid var(--border); color: var(--text-muted);
-  border-radius: 8px; padding: 5px 12px; font-size: 11px; font-weight: 600;
+  border-radius: 8px; padding: 4px 12px; font-size: 16px; font-weight: 700; line-height: 1;
   cursor: pointer; font-family: inherit; transition: color 0.15s, border-color 0.15s;
 }
-.doneBtn:hover { color: var(--text-primary); border-color: var(--text-muted); }
+.moreBtn:hover { color: var(--text-primary); border-color: var(--text-muted); }
+
+.cardMenu {
+  display: flex; align-items: center; gap: 8px; margin-top: 8px; flex-wrap: wrap;
+  padding-top: 8px; border-top: 1px solid var(--border);
+}
+.menuBtn {
+  background: none; border: 1px solid var(--border); color: var(--text-secondary);
+  border-radius: 7px; padding: 4px 10px; font-size: 11px; font-weight: 600;
+  cursor: pointer; font-family: inherit; transition: color 0.15s, border-color 0.15s;
+}
+.menuBtn:hover { color: var(--text-primary); border-color: var(--text-muted); }
+.menuTheme { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); }
+.menuTheme select {
+  background: var(--bg); border: 1px solid var(--border); color: var(--text-primary);
+  border-radius: 6px; padding: 3px 6px; font-size: 11px; font-family: inherit; cursor: pointer;
+}
 
 /* ── HP bar ── */
 .hpWrap { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
@@ -294,8 +311,30 @@
 
 .bossCracks { animation: fadeIn 0.4s ease-out; }
 
+.bossEyes { animation: blink 5.5s ease-in-out infinite; transform-origin: 60px 50px; }
+.bossAura { animation: auraSpin 8s linear infinite; transform-origin: 60px 60px; }
+
 .bossEnraged .bossBody { animation: bossFloat 5s ease-in-out infinite, bossShake 0.5s ease-in-out infinite; }
 .bossEnraged .bossCore { filter: drop-shadow(0 0 6px oklch(64% 0.2 25)); }
+.bossEnraged .bossEyes { animation: blink 1.6s ease-in-out infinite; }
+
+.bossFlash .bossBody { animation: hitFlash 0.22s ease-out; }
+.bossFlash .bossCore { filter: brightness(1.8) drop-shadow(0 0 10px #fff); }
+
+@keyframes blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.1); }
+}
+@keyframes auraSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes hitFlash {
+  0% { transform: translate(0,0) scale(1); }
+  30% { transform: translate(3px,-2px) scale(1.04); }
+  60% { transform: translate(-2px,1px) scale(1.02); }
+  100% { transform: translate(0,0) scale(1); }
+}
 
 .bossSlain { animation: none; }
 .bossShards polygon {
@@ -330,8 +369,69 @@
   to { opacity: 1; }
 }
 
+/* ── Juice: damage popups + pause ── */
+.fightStage { position: relative; }
+.dmgPopup {
+  position: absolute; top: 30%; left: 50%;
+  font-size: 26px; font-weight: 800; color: oklch(70% 0.2 30);
+  text-shadow: 0 2px 8px oklch(0% 0 0 / 0.5);
+  pointer-events: none; transform: translateX(-50%);
+  animation: dmgFloat 1s ease-out forwards;
+}
+@keyframes dmgFloat {
+  0% { opacity: 0; transform: translate(-50%, 0) scale(0.7); }
+  20% { opacity: 1; transform: translate(-50%, -10px) scale(1.1); }
+  100% { opacity: 0; transform: translate(-50%, -54px) scale(1); }
+}
+.pauseBtn {
+  background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border);
+  border-radius: 9px; padding: 11px 26px; font-size: 15px; font-weight: 700;
+  cursor: pointer; font-family: inherit; transition: border-color 0.15s;
+}
+.pauseBtn:hover { border-color: var(--text-muted); }
+.pausedNote { font-size: 12px; color: oklch(72% 0.13 75); margin: 0; text-align: center; }
+
+/* ── Onboarding ── */
+.onboard {
+  display: flex; gap: 16px; align-items: center;
+  padding: 16px 18px; margin-bottom: 20px;
+  background: linear-gradient(135deg, oklch(55% 0.22 266 / 0.1), oklch(55% 0.22 266 / 0.02));
+  border: 1px solid oklch(55% 0.22 266 / 0.25); border-radius: 14px;
+}
+.onboardArt { flex-shrink: 0; }
+.onboardBody { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.onboardTitle { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.onboardList { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.onboardList li { font-size: 13px; color: var(--text-secondary); line-height: 1.45; }
+.onboardBody .primaryBtn { align-self: flex-start; padding: 8px 18px; font-size: 14px; }
+
+/* ── Stardust + cosmetics ── */
+.stardustChip { cursor: pointer; border: 1px solid var(--border); transition: border-color 0.15s; }
+.stardustChip:hover { border-color: var(--accent); }
+.stardustEarned { font-size: 13px; font-weight: 700; color: oklch(80% 0.14 85); }
+
+.cosmetics {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 14px; margin-bottom: 18px;
+  background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px;
+}
+.cosmeticsLabel { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+.cosmeticsRow { display: flex; gap: 8px; flex-wrap: wrap; }
+.auraChip {
+  display: flex; align-items: center; gap: 7px;
+  background: var(--bg); border: 1px solid var(--border); color: var(--text-secondary);
+  border-radius: 999px; padding: 5px 12px; font-size: 12px; font-weight: 600;
+  cursor: pointer; font-family: inherit; transition: border-color 0.15s, color 0.15s;
+}
+.auraChip:hover:not(:disabled) { border-color: var(--text-muted); color: var(--text-primary); }
+.auraChip:disabled { opacity: 0.45; cursor: not-allowed; }
+.auraActive { border-color: var(--accent); color: var(--accent); }
+.auraLocked { color: var(--text-muted); }
+.auraSwatch { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 6px currentColor; }
+
 /* ── Responsive ── */
 @media (max-width: 640px) {
+  .onboard { flex-direction: column; align-items: flex-start; }
   .container { padding: 20px 16px 48px; }
   .card { flex-wrap: wrap; }
   .cardArt { width: 64px; height: 64px; }

@@ -5,6 +5,8 @@ import {
   normalizeAnswer, QUIZZES_EVENT,
 } from '../../lib/quizzes';
 import { Subject } from '../../types';
+import { storage } from '../../lib/storage';
+import { knowledgeStrike } from '../../lib/bosses';
 import styles from './Quizzes.module.css';
 
 type View =
@@ -265,6 +267,15 @@ export function TakeQuiz({ quiz, onExit }: { quiz: Quiz; onExit: () => void }) {
     return typeof r === 'string' && normalizeAnswer(r) === normalizeAnswer(q.answer);
   }
 
+  function submit() {
+    setSubmitted(true);
+    // Knowledge strike: a graded quiz deals burst damage to the matching boss.
+    if (quiz.subjectId) {
+      const correct = quiz.questions.filter(isCorrect).length;
+      knowledgeStrike(quiz.subjectId, storage.getCachedAssignments(), 10 + correct * 3);
+    }
+  }
+
   const score = useMemo(
     () => (submitted ? quiz.questions.filter(isCorrect).length : 0),
     [submitted, responses, quiz.questions], // eslint-disable-line react-hooks/exhaustive-deps
@@ -339,7 +350,7 @@ export function TakeQuiz({ quiz, onExit }: { quiz: Quiz; onExit: () => void }) {
             <button className={styles.secondaryBtn} onClick={onExit}>Done</button>
           </>
         ) : (
-          <button className={styles.primaryBtn} onClick={() => setSubmitted(true)} disabled={!allAnswered}>
+          <button className={styles.primaryBtn} onClick={submit} disabled={!allAnswered}>
             {allAnswered ? 'Submit' : `Answer all (${answeredCount}/${quiz.questions.length})`}
           </button>
         )}

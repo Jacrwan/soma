@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Flashcard, FlashcardDeck,
   loadDecks, saveDeck, deleteDeck, newCard, newDeck,
   FLASHCARDS_EVENT,
 } from '../../lib/flashcards';
 import { Subject } from '../../types';
+import { storage } from '../../lib/storage';
+import { knowledgeStrike } from '../../lib/bosses';
 import styles from './Flashcards.module.css';
 
 type View =
@@ -268,6 +270,15 @@ function StudyView({ deck, onExit }: { deck: FlashcardDeck; onExit: () => void }
     else { setPos((p) => p + 1); setFlipped(false); }
   }
   function back() { if (pos > 0) { setPos((p) => p - 1); setFlipped(false); } }
+
+  // Knowledge strike: finishing a study round bursts the matching boss once.
+  const struckRef = useRef(false);
+  useEffect(() => {
+    if (done && !struckRef.current && deck.subjectId) {
+      struckRef.current = true;
+      knowledgeStrike(deck.subjectId, storage.getCachedAssignments(), 10 + knownCount * 2);
+    }
+  }, [done, deck.subjectId, knownCount]);
 
   // Keyboard: Space/Enter flips; once flipped, ←/→ grade missed/known.
   useEffect(() => {

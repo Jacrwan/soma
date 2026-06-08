@@ -47,6 +47,7 @@ export interface SomaSettings {
   onboardingCompleted?: boolean;
   educationLevel?: string;
   birthYear?: number;
+  bossState?: unknown; // Bosses feature state blob (synced as-is)
 }
 
 export interface ScheduleBlock {
@@ -613,6 +614,9 @@ export const storage = {
     localStorage.removeItem(KEYS.googleEvents);
     localStorage.removeItem(KEYS.googleCacheTimestamp);
     localStorage.removeItem(KEYS.googleClientId);
+    // Bosses progress
+    localStorage.removeItem('soma_boss_state');
+    localStorage.removeItem('soma_boss_progress'); // legacy key
     // Study plan cache
     localStorage.removeItem('soma_canvas_study_plan_preview');
     // Study folder

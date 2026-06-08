@@ -272,6 +272,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     storage.setTimerSessions([...storage.getTimerSessions(), timerSession]);
     void storage.saveTimerSession(timerSession, session.subject.name).catch(() => {});
     void storage.deleteActiveTimer().catch(() => {});
+    // Let the Bosses feature credit this study time as damage.
+    window.dispatchEvent(new Event('soma_focus_logged'));
 
     const updatedSubjects = storage.getSubjects().map(s =>
       s.id === session.subject.id ? { ...s, totalTimeToday: s.totalTimeToday + durationSeconds } : s,
