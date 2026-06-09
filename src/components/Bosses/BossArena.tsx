@@ -29,7 +29,7 @@ const bossX = LW * 0.72, bossY = LH * 0.34;
 const scholarX = LW * 0.27, scholarY = LH * 0.74;
 const handX = LW * 0.40, handY = LH * 0.60;
 
-export default function BossArena({ theme, tier, pct, slain = false, aura = '', attack }: BossArenaProps) {
+export default function BossArena({ theme, tier, pct: _pct, slain = false, aura = '', attack }: BossArenaProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const creature = creatureForBoss(theme, tier);
   const color = CREATURE_COLOR[creature];
