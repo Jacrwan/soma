@@ -41,6 +41,7 @@ export interface BossProgress {
   outcome?: BossOutcome;
   slainAt?: string;
   themeOverride?: BossTheme;
+  hpOverride?: number;
 }
 
 export interface Boss extends BossSpec {
@@ -218,19 +219,19 @@ function round15(n: number): number { return Math.max(15, Math.round(n / 15) * 1
 function classify(name: string): { tier: BossTier; hp: number } {
   const n = name.toLowerCase();
   if (/\b(final|cumulative|capstone)\b/.test(n)) {
-    return { tier: 'archboss', hp: /cumulative/.test(n) ? 360 : 300 };
+    return { tier: 'archboss', hp: /cumulative/.test(n) ? 180 : 150 };
   }
   if (/\b(midterm|exam|test|essay|paper|project|research|portfolio)\b/.test(n)) {
     const big = /\b(essay|paper|project|research|midterm|portfolio)\b/.test(n);
-    return { tier: 'elite', hp: round15(big ? 210 : 165) };
+    return { tier: 'elite', hp: round15(big ? 100 : 75) };
   }
   if (/\b(lab|problem set|pset|assignment|worksheet)\b/.test(n)) {
-    return { tier: 'elite', hp: round15(105) };
+    return { tier: 'elite', hp: round15(50) };
   }
-  if (/\b(quiz)\b/.test(n)) return { tier: 'minion', hp: 45 };
-  if (/\b(read|reading|chapter|annotat)\b/.test(n)) return { tier: 'minion', hp: 30 };
-  if (/\b(discussion|post|response|journal|reflection)\b/.test(n)) return { tier: 'minion', hp: 20 };
-  return { tier: 'minion', hp: 45 };
+  if (/\b(quiz)\b/.test(n)) return { tier: 'minion', hp: 25 };
+  if (/\b(read|reading|chapter|annotat)\b/.test(n)) return { tier: 'minion', hp: 15 };
+  if (/\b(discussion|post|response|journal|reflection)\b/.test(n)) return { tier: 'minion', hp: 10 };
+  return { tier: 'minion', hp: 25 };
 }
 
 function phasesFor(tier: BossTier, hp: number): BossPhase[] {
@@ -250,9 +251,11 @@ function subjectForCourse(courseName: string, courseId: number, subjects: Subjec
 
 export function specForAssignment(a: CanvasAssignment, subjects: Subject[] = storage.getSubjects()): BossSpec {
   const key = fingerprint(a);
-  const override = load().progress[key]?.themeOverride;
-  const theme = override ?? themeFor(a.courseName, a.name);
-  const { tier, hp } = classify(a.name);
+  const prog = load().progress[key];
+  const theme = prog?.themeOverride ?? themeFor(a.courseName, a.name);
+  const c = classify(a.name);
+  const tier = c.tier;
+  const hp = prog?.hpOverride ?? c.hp; // user can set their own goal
   const subj = subjectForCourse(a.courseName, a.courseId, subjects);
   return {
     id: a.id, key,
@@ -556,6 +559,15 @@ export function setThemeOverride(boss: Boss, theme: BossTheme): void {
   const state = load();
   const prev = state.progress[boss.key] ?? { damage: 0, foughtDays: [], status: 'active' as const };
   state.progress[boss.key] = { ...prev, themeOverride: theme };
+  save();
+}
+
+/** Let the user set their own study-minute goal (HP) for a boss. */
+export function setHpOverride(boss: Boss, minutes: number): void {
+  const state = load();
+  const prev = state.progress[boss.key] ?? { damage: 0, foughtDays: [], status: 'active' as const };
+  const hp = Math.max(5, Math.min(600, Math.round(minutes / 5) * 5));
+  state.progress[boss.key] = { ...prev, hpOverride: hp };
   save();
 }
 

@@ -4,7 +4,7 @@ import { CanvasAssignment, TimerSession } from '../../types';
 import {
   Boss, BossStats, StrikeResult, BossTheme, BossTier,
   getActiveBosses, getSlainBosses, getBosses, bossStats,
-  applyRawDamage, markSlain, reviveBoss, resetBoss, retireBoss, setThemeOverride, clearOverdue,
+  applyRawDamage, markSlain, reviveBoss, resetBoss, retireBoss, setThemeOverride, setHpOverride, clearOverdue,
   reconcileStudySessions, syncFromCloud, markSessionCredited,
   banterFor, earlyMultiplier, spacingMultiplier, daysUntil,
   isOnboarded, setOnboarded,
@@ -76,14 +76,16 @@ function HpBar({ pct, remaining, total }: { pct: number; remaining: number; tota
 
 // ── Active boss card ─────────────────────────────────────────────────────────
 
-function BossCard({ boss, aura, onFight, onMarkDone, onRetire, onRetheme }: {
+function BossCard({ boss, aura, onFight, onMarkDone, onRetire, onRetheme, onSetHp }: {
   boss: Boss; aura: string;
   onFight: (b: Boss) => void;
   onMarkDone: (b: Boss) => void;
   onRetire: (b: Boss) => void;
   onRetheme: (b: Boss, t: BossTheme) => void;
+  onSetHp: (b: Boss, minutes: number) => void;
 }) {
   const [menu, setMenu] = useState(false);
+  const [hpInput, setHpInput] = useState(String(boss.hp));
   const due = dueLabel(boss);
   const enraged = boss.daysUntilDue >= 0 && boss.daysUntilDue <= 2 && boss.pct > 0.6;
   return (
@@ -108,14 +110,26 @@ function BossCard({ boss, aura, onFight, onMarkDone, onRetire, onRetheme }: {
         </div>
         {menu && (
           <div className={styles.cardMenu}>
-            <button className={styles.menuBtn} onClick={() => onMarkDone(boss)}>Mark done</button>
-            <button className={styles.menuBtn} onClick={() => onRetire(boss)}>Retire</button>
+            <label className={styles.menuTheme}>
+              Goal
+              <input
+                className={styles.hpInput}
+                type="number" min={5} max={600} step={5}
+                value={hpInput}
+                onChange={e => setHpInput(e.target.value)}
+                onBlur={() => { const v = Number(hpInput); if (v >= 5) onSetHp(boss, v); }}
+                onKeyDown={e => { if (e.key === 'Enter') { const v = Number(hpInput); if (v >= 5) onSetHp(boss, v); (e.target as HTMLInputElement).blur(); } }}
+              />
+              min
+            </label>
             <label className={styles.menuTheme}>
               Theme
               <select value={boss.theme} onChange={e => onRetheme(boss, e.target.value as BossTheme)}>
                 {ALL_THEMES.map(t => <option key={t} value={t}>{THEME_LABEL[t]}</option>)}
               </select>
             </label>
+            <button className={styles.menuBtn} onClick={() => onMarkDone(boss)}>Mark done</button>
+            <button className={styles.menuBtn} onClick={() => onRetire(boss)}>Retire</button>
           </div>
         )}
       </div>
@@ -576,11 +590,12 @@ export default function BossesTab() {
           const renderCard = (b: Boss) => (
             <BossCard key={b.key} boss={b} aura={aura}
               onFight={setFighting} onMarkDone={handleMarkDone} onRetire={handleRetire}
-              onRetheme={(bb, t) => { setThemeOverride(bb, t); refresh(); }} />
+              onRetheme={(bb, t) => { setThemeOverride(bb, t); refresh(); }}
+              onSetHp={(bb, m) => { setHpOverride(bb, m); refresh(); }} />
           );
           const bands = [
-            { key: 'reclaim', label: 'Past due', items: filtered.filter(b => b.overdue) },
             { key: 'week', label: 'This week', items: filtered.filter(b => !b.overdue && b.daysUntilDue <= 7) },
+            { key: 'reclaim', label: 'Past due', items: filtered.filter(b => b.overdue) },
             { key: 'later', label: 'Later', items: filtered.filter(b => !b.overdue && b.daysUntilDue > 7) },
           ].filter(band => band.items.length > 0);
           const flat = [...filtered].sort((a, b) => b.hpRemaining - a.hpRemaining);
