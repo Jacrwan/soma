@@ -458,6 +458,11 @@ nav.scrolled {
   max-width: 176px;
   max-height: 42px;
 }
+/* The UC Davis seal has built-in padding; size it up so it matches the others. */
+.university-logo-card.logo-lg img {
+  max-width: 76px;
+  max-height: 76px;
+}
 
 .marquee-wrap {
   border-top: 1px solid var(--border-sub);
@@ -945,6 +950,7 @@ nav.scrolled {
   .university-logo-card.is-wide { width: 182px; }
   .university-logo-card img { max-width: 98px; max-height: 52px; }
   .university-logo-card.is-wide img { max-width: 142px; max-height: 36px; }
+  .university-logo-card.logo-lg img { max-width: 64px; max-height: 64px; }
   .marquee-wrap { display: none; }
   .feature { grid-template-columns: 1fr; padding: 56px 28px; gap: 36px; }
   .feature:nth-child(even) .feat-text { order: 0; }
@@ -1195,7 +1201,7 @@ export default function LandingPage() {
             {UNIVERSITY_LOGO_COPIES.map((setIndex) => (
               <div className="university-logo-set" aria-hidden={setIndex > 0} key={setIndex}>
                 {UNIVERSITY_LOGOS.map((university) => (
-                  <span className={`university-logo-card is-${university.shape}`} key={`${setIndex}-${university.name}`}>
+                  <span className={`university-logo-card is-${university.shape}${university.name === 'UC Davis' ? ' logo-lg' : ''}`} key={`${setIndex}-${university.name}`}>
                     <img src={university.src} alt={setIndex === 0 ? `${university.name} logo` : ''} loading="lazy" />
                   </span>
                 ))}
