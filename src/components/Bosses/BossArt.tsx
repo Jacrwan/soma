@@ -1,3 +1,4 @@
+import type { JSX } from 'react';
 import { BossTheme, THEME_COLOR } from '../../lib/bosses';
 import styles from './Bosses.module.css';
 

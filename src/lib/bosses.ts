@@ -158,6 +158,7 @@ export async function syncFromCloud(): Promise<void> {
       activeAura: local.cosmetics.activeAura || cloud.cosmetics?.activeAura || 'default',
     },
     onboarded: cloud.onboarded || local.onboarded,
+    celebratedMilestones: Array.from(new Set([...(cloud.celebratedMilestones || []), ...local.celebratedMilestones])),
   };
   // For each boss, keep the more-progressed record (slain wins, else more damage).
   for (const [k, lp] of Object.entries(local.progress)) {
