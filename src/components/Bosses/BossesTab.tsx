@@ -187,20 +187,23 @@ function FightView({ boss, aura, onExit }: { boss: Boss; aura: string; onExit: (
     setTimeout(() => setPopups(p => p.filter(x => x.id !== id)), 1000);
   }
 
+  // Record the fight's focus time as a real study session so it always shows up
+  // in Insights (study time + streak). Uses the matched subject when one exists,
+  // otherwise falls back to the boss's course so the minutes still count.
   function recordStudyTime(totalSec: number) {
-    if (totalSec < 60 || !boss.subjectId) return;
-    const subjects = storage.getSubjects();
-    const subj = subjects.find(s => s.id === boss.subjectId);
-    if (!subj) return;
+    if (totalSec < 60) return;
+    const subj = boss.subjectId ? storage.getSubjects().find(s => s.id === boss.subjectId) : undefined;
+    const subjectId = subj?.id ?? `boss:${boss.course}`.slice(0, 80);
+    const subjectName = subj?.name ?? boss.course;
     const session: TimerSession = {
-      id: crypto.randomUUID(), subjectId: boss.subjectId,
+      id: crypto.randomUUID(), subjectId,
       task: `Boss: ${boss.assignmentName}`.slice(0, 80),
       startTime: new Date(Date.now() - totalSec * 1000).toISOString(),
       endTime: new Date().toISOString(), durationSeconds: totalSec,
     };
     storage.setTimerSessions([...storage.getTimerSessions(), session]);
     markSessionCredited(session.id);
-    void storage.saveTimerSession(session, subj.name).catch(() => {});
+    void storage.saveTimerSession(session, subjectName).catch(() => {});
   }
 
   // An attack spends charges for damage. Manual attacks build combo; the
