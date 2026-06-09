@@ -521,3 +521,31 @@
   font-size: 10px; font-weight: 700; background: var(--bg-tertiary); color: var(--text-secondary);
   border-radius: 999px; padding: 1px 7px; min-width: 16px; text-align: center;
 }
+
+/* ── Active attacks ── */
+.chargeRow { display: flex; align-items: center; gap: 10px; }
+.chargeLabel { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); }
+.chargePips { display: flex; gap: 5px; flex: 1; }
+.chargePip {
+  flex: 1; height: 9px; border-radius: 3px;
+  background: var(--bg-tertiary); border: 1px solid var(--border);
+  transition: background 0.2s, box-shadow 0.2s;
+}
+.chargePipFull {
+  background: linear-gradient(90deg, oklch(72% 0.15 80), oklch(78% 0.16 85));
+  border-color: oklch(72% 0.15 80);
+  box-shadow: 0 0 8px oklch(72% 0.15 80 / 0.6);
+}
+.attackRow { display: flex; gap: 10px; }
+.attackSlash, .attackBlast {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 10px 12px; border-radius: 10px; cursor: pointer; font-family: inherit;
+  border: 1px solid var(--border); transition: transform 0.1s, opacity 0.15s, box-shadow 0.15s;
+}
+.attackSlash { background: linear-gradient(135deg, oklch(72% 0.15 80 / 0.18), var(--bg)); border-color: oklch(72% 0.15 80 / 0.5); }
+.attackBlast { background: linear-gradient(135deg, oklch(60% 0.16 250 / 0.2), var(--bg)); border-color: oklch(60% 0.16 250 / 0.5); }
+.attackSlash:hover:not(:disabled), .attackBlast:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 14px oklch(0% 0 0 / 0.2); }
+.attackSlash:active:not(:disabled), .attackBlast:active:not(:disabled) { transform: scale(0.97); }
+.attackSlash:disabled, .attackBlast:disabled { opacity: 0.4; cursor: not-allowed; }
+.attackName { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+.attackCost { font-size: 11px; font-weight: 600; color: var(--text-muted); }

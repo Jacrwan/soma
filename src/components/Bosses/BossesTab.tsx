@@ -13,8 +13,17 @@ import {
   TIER_LABEL, THEME_LABEL, outcomeLabel, BOSSES_EVENT, FOCUS_LOGGED_EVENT,
 } from '../../lib/bosses';
 import BossArt from './BossArt';
-import BossArena from './BossArena';
+import BossArena, { ArenaAttack } from './BossArena';
 import styles from './Bosses.module.css';
+
+// Active-fight tuning.
+const CHARGE_SECONDS = 3.2;   // focus seconds to earn one charge
+const MAX_CHARGES = 5;
+const SLASH_COST = 1, SLASH_BASE = 2;
+const BLAST_COST = 3, BLAST_BASE = 9;
+const COMBO_DECAY_MS = 2800;
+const COMBO_MAX = 2;
+const AUTO_IDLE_MS = 1600;    // at full charge, auto-slash after this idle
 
 type Tab = 'active' | 'log';
 
@@ -128,16 +137,22 @@ function FightView({ boss, aura, onExit }: { boss: Boss; aura: string; onExit: (
   const [popups, setPopups] = useState<Popup[]>([]);
   const [lastResult, setLastResult] = useState<StrikeResult | null>(null);
   const [victory, setVictory] = useState<StrikeResult | null>(null);
-  const [attackNonce, setAttackNonce] = useState(0);
+  const [attack, setAttack] = useState<ArenaAttack>({ nonce: 0, type: 'slash' });
+  const [charges, setCharges] = useState(0);
+  const [combo, setCombo] = useState(1);
 
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startRef = useRef<number>(0);
-  const committedDmgRef = useRef<number>(0);
   const multRef = useRef<number>(1);
-  const popupAccumRef = useRef<number>(0);
+  const chargesRef = useRef(0);
+  const chargeAccumRef = useRef(0);
+  const comboRef = useRef(1);
+  const lastAttackRef = useRef(0);
+  const nonceRef = useRef(0);
   const bossRef = useRef(boss);
   bossRef.current = boss;
   const popupId = useRef(0);
+  const endedRef = useRef(false);
 
   const enraged = boss.daysUntilDue >= 0 && boss.daysUntilDue <= 2 && boss.pct > 0.6;
   const early = earlyMultiplier(daysUntil(boss.dueAt));
@@ -158,52 +173,65 @@ function FightView({ boss, aura, onExit }: { boss: Boss; aura: string; onExit: (
     setTimeout(() => setPopups(p => p.filter(x => x.id !== id)), 1000);
   }
 
-  // Write the fight's focus time as a real study session so it counts everywhere.
   function recordStudyTime(totalSec: number) {
     if (totalSec < 60 || !boss.subjectId) return;
     const subjects = storage.getSubjects();
     const subj = subjects.find(s => s.id === boss.subjectId);
     if (!subj) return;
     const session: TimerSession = {
-      id: crypto.randomUUID(),
-      subjectId: boss.subjectId,
+      id: crypto.randomUUID(), subjectId: boss.subjectId,
       task: `Boss: ${boss.assignmentName}`.slice(0, 80),
       startTime: new Date(Date.now() - totalSec * 1000).toISOString(),
-      endTime: new Date().toISOString(),
-      durationSeconds: totalSec,
+      endTime: new Date().toISOString(), durationSeconds: totalSec,
     };
     storage.setTimerSessions([...storage.getTimerSessions(), session]);
-    markSessionCredited(session.id); // damage already dealt by the fight; don't double count
+    markSessionCredited(session.id);
     void storage.saveTimerSession(session, subj.name).catch(() => {});
   }
 
-  // Smooth accrual: damage rises proportionally with focus time so the first
-  // hit lands in seconds, not at the 1-minute mark. Popups batch every ~12 dmg.
-  const tick = useCallback(() => {
-    const sec = Math.floor((Date.now() - startRef.current) / 1000);
-    setElapsed(sec);
-    const targetDamage = Math.round((sec / 60) * multRef.current);
-    const delta = targetDamage - committedDmgRef.current;
-    if (delta >= 1) {
-      committedDmgRef.current = targetDamage;
-      setActiveFight({ bossKey: bossRef.current.key, startTime: startRef.current, committed: targetDamage });
-      const r = applyRawDamage(bossRef.current, delta, 'fight');
-      setLastResult(r);
-      setAttackNonce(n => n + 1); // Scholar strikes the boss
-      popupAccumRef.current += delta;
-      if (popupAccumRef.current >= 8 || r.slain) {
-        popDamage(popupAccumRef.current);
-        popupAccumRef.current = 0;
-      }
-      if (r.slain) {
-        stopTick();
-        setRunning(false);
-        setActiveFight(null);
-        recordStudyTime(sec);
-        setVictory(r);
-      }
+  // An attack spends charges for damage. Manual attacks build combo; the
+  // auto-attack (when you let charge max out) does not, so active play is faster.
+  function doAttack(type: 'slash' | 'blast', auto = false) {
+    if (endedRef.current) return;
+    const cost = type === 'blast' ? BLAST_COST : SLASH_COST;
+    if (chargesRef.current < cost) return;
+    chargesRef.current -= cost; setCharges(chargesRef.current);
+    if (!auto) comboRef.current = Math.min(COMBO_MAX, comboRef.current + (type === 'blast' ? 0.25 : 0.12));
+    lastAttackRef.current = Date.now(); setCombo(Math.round(comboRef.current * 100) / 100);
+    const base = type === 'blast' ? BLAST_BASE : SLASH_BASE;
+    const dmg = Math.max(1, Math.round(base * comboRef.current * multRef.current));
+    const r = applyRawDamage(bossRef.current, dmg, 'fight');
+    setLastResult(r);
+    nonceRef.current++; setAttack({ nonce: nonceRef.current, type });
+    popDamage(dmg);
+    if (r.slain) {
+      endedRef.current = true;
+      stopTick(); setRunning(false); setActiveFight(null);
+      recordStudyTime(Math.floor((Date.now() - startRef.current) / 1000));
+      setVictory(r);
     }
-  }, [stopTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  }
+  const doAttackRef = useRef(doAttack);
+  doAttackRef.current = doAttack;
+
+  const tick = useCallback(() => {
+    const now = Date.now();
+    setElapsed(Math.floor((now - startRef.current) / 1000));
+    // accrue charges
+    chargeAccumRef.current += 0.25 / CHARGE_SECONDS;
+    while (chargeAccumRef.current >= 1 && chargesRef.current < MAX_CHARGES) {
+      chargeAccumRef.current -= 1; chargesRef.current += 1; setCharges(chargesRef.current);
+    }
+    if (chargesRef.current >= MAX_CHARGES) chargeAccumRef.current = 0;
+    // combo decay
+    if (comboRef.current > 1 && now - lastAttackRef.current > COMBO_DECAY_MS) {
+      comboRef.current = 1; setCombo(1);
+    }
+    // auto-attack when charge is maxed and idle
+    if (chargesRef.current >= MAX_CHARGES && now - lastAttackRef.current > AUTO_IDLE_MS) {
+      doAttackRef.current('slash', true);
+    }
+  }, []);
 
   function beginTick() {
     multRef.current = earlyMultiplier(daysUntil(bossRef.current.dueAt)) * spacingMultiplier(distinctDaysWithToday(bossRef.current));
@@ -214,33 +242,29 @@ function FightView({ boss, aura, onExit }: { boss: Boss; aura: string; onExit: (
     if (running) return;
     setRunning(true);
     startRef.current = Date.now() - elapsed * 1000;
-    setActiveFight({ bossKey: bossRef.current.key, startTime: startRef.current, committed: committedDmgRef.current });
+    lastAttackRef.current = Date.now();
+    setActiveFight({ bossKey: bossRef.current.key, startTime: startRef.current, committed: 0 });
     beginTick();
   }
 
   function pause() {
-    stopTick();
-    setRunning(false);
-    setActiveFight(null); // a manual pause does not auto-resume across tabs
+    stopTick(); setRunning(false); setActiveFight(null);
   }
 
   function stopAndBank() {
-    stopTick();
-    setRunning(false);
-    setActiveFight(null);
+    stopTick(); setRunning(false); setActiveFight(null);
     recordStudyTime(elapsed);
-    setElapsed(0);
-    committedDmgRef.current = 0;
-    popupAccumRef.current = 0;
+    setElapsed(0); chargesRef.current = 0; setCharges(0); chargeAccumRef.current = 0;
+    comboRef.current = 1; setCombo(1);
   }
 
-  // Resume an in-progress fight (e.g. after switching tabs) and catch up on the
-  // time that passed while away. Only running fights persist.
+  // Resume an in-progress fight after switching tabs. The timer keeps counting;
+  // charges start fresh (you build them by being present and focusing).
   useEffect(() => {
     const af = getActiveFight();
     if (af && af.bossKey === bossRef.current.key) {
       startRef.current = af.startTime;
-      committedDmgRef.current = af.committed;
+      lastAttackRef.current = Date.now();
       setElapsed(Math.floor((Date.now() - af.startTime) / 1000));
       setRunning(true);
       beginTick();
@@ -250,10 +274,13 @@ function FightView({ boss, aura, onExit }: { boss: Boss; aura: string; onExit: (
 
   function handleExit() {
     stopTick();
-    if (running) setActiveFight({ bossKey: bossRef.current.key, startTime: startRef.current, committed: committedDmgRef.current });
+    if (running) setActiveFight({ bossKey: bossRef.current.key, startTime: startRef.current, committed: 0 });
     if (elapsed >= 60) recordStudyTime(elapsed);
     onExit();
   }
+
+  const canSlash = charges >= SLASH_COST;
+  const canBlast = charges >= BLAST_COST;
 
   if (victory) {
     return (
@@ -278,7 +305,7 @@ function FightView({ boss, aura, onExit }: { boss: Boss; aura: string; onExit: (
       <button className={styles.backLink} onClick={handleExit}>← Bosses</button>
 
       <div className={styles.fightStage}>
-        <BossArena theme={boss.theme} tier={boss.tier} pct={boss.pct} aura={aura} attackNonce={attackNonce} />
+        <BossArena theme={boss.theme} tier={boss.tier} pct={boss.pct} aura={aura} attack={attack} />
         {popups.map(p => <span key={p.id} className={styles.dmgPopup}>-{p.amount}</span>)}
       </div>
 
@@ -311,13 +338,36 @@ function FightView({ boss, aura, onExit }: { boss: Boss; aura: string; onExit: (
         )}
 
         <div className={styles.multipliers}>
-          <span className={`${styles.multChip}${early >= 1.5 ? ` ${styles.multGood}` : ''}`}>Early strike ×{early.toFixed(1)}</span>
-          <span className={`${styles.multChip}${spacing > 1 ? ` ${styles.multGood}` : ''}`}>Combo ×{spacing.toFixed(1)}</span>
-          <span className={styles.multTotal}>Damage ×{(early * spacing).toFixed(2)}</span>
+          <span className={`${styles.multChip}${early >= 1.5 ? ` ${styles.multGood}` : ''}`}>Early ×{early.toFixed(1)}</span>
+          <span className={`${styles.multChip}${spacing > 1 ? ` ${styles.multGood}` : ''}`}>Spacing ×{spacing.toFixed(1)}</span>
+          <span className={`${styles.multChip}${combo > 1 ? ` ${styles.multGood}` : ''}`}>Combo ×{combo.toFixed(2)}</span>
         </div>
 
         <div className={styles.timerBox}>
           <span className={`${styles.timerDisplay}${running ? ` ${styles.timerRunning}` : ''}`}>{fmtClock(elapsed)}</span>
+
+          {/* charge meter */}
+          <div className={styles.chargeRow}>
+            <span className={styles.chargeLabel}>Charge</span>
+            <div className={styles.chargePips}>
+              {Array.from({ length: MAX_CHARGES }).map((_, i) => (
+                <span key={i} className={`${styles.chargePip}${i < charges ? ` ${styles.chargePipFull}` : ''}`} />
+              ))}
+            </div>
+          </div>
+
+          {/* active attacks */}
+          <div className={styles.attackRow}>
+            <button className={styles.attackSlash} onClick={() => doAttack('slash')} disabled={!canSlash}>
+              <span className={styles.attackName}>Pencil Slash</span>
+              <span className={styles.attackCost}>{SLASH_COST}⚡</span>
+            </button>
+            <button className={styles.attackBlast} onClick={() => doAttack('blast')} disabled={!canBlast}>
+              <span className={styles.attackName}>Laptop Blast</span>
+              <span className={styles.attackCost}>{BLAST_COST}⚡</span>
+            </button>
+          </div>
+
           <div className={styles.timerControls}>
             {!running ? (
               <button className={styles.primaryBtn} onClick={start}>{elapsed > 0 ? 'Resume focus' : 'Start focus'}</button>
@@ -326,7 +376,7 @@ function FightView({ boss, aura, onExit }: { boss: Boss; aura: string; onExit: (
             )}
             {elapsed > 0 && !running && <button className={styles.secondaryBtn} onClick={stopAndBank}>Bank &amp; reset</button>}
           </div>
-          <p className={styles.timerHint}>Focus to attack. The boss takes damage every minute, live, boosted by your multipliers.</p>
+          <p className={styles.timerHint}>Focus to charge up, then spend charges on attacks. Chain attacks for a bigger combo. Let charge max out and the Scholar auto-strikes.</p>
         </div>
 
         {lastResult && !victory && (

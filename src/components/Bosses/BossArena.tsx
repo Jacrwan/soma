@@ -4,13 +4,16 @@ import {
   creatureForBoss, drawCreatureFitted, drawScholarFitted, CREATURE_COLOR, ScholarPose,
 } from './sprites';
 
-// The fight arena: the Scholar (player) on the left attacks the boss on the
-// right. Each `attackNonce` bump plays an attack — pencil slash or laptop blast —
-// flinging particles into the boss, which shakes and flashes.
+// Pokémon-style battle arena: the boss sits on a platform in the back-right
+// (smaller, farther), the Scholar stands large in the front-left (closer). Each
+// `attack` bump plays a pencil slash or laptop blast that flings particles up
+// into the boss, which shakes and flashes.
 
 const LW = 460, LH = 300;
 
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; color: string; size: number; blast?: boolean; }
+
+export interface ArenaAttack { nonce: number; type: 'slash' | 'blast'; }
 
 interface BossArenaProps {
   theme: BossTheme;
@@ -18,49 +21,47 @@ interface BossArenaProps {
   pct: number;
   slain?: boolean;
   aura?: string;
-  attackNonce: number;
+  attack: ArenaAttack;
 }
 
-export default function BossArena({ theme, tier, pct, slain = false, aura = '', attackNonce }: BossArenaProps) {
+// Boss platform (back-right) and Scholar platform (front-left).
+const bossX = LW * 0.72, bossY = LH * 0.34;
+const scholarX = LW * 0.27, scholarY = LH * 0.74;
+const handX = LW * 0.40, handY = LH * 0.60;
+
+export default function BossArena({ theme, tier, pct, slain = false, aura = '', attack }: BossArenaProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const creature = creatureForBoss(theme, tier);
   const color = CREATURE_COLOR[creature];
 
   const st = useRef({
-    t: 0, pose: 'idle' as ScholarPose, poseT: 1, toggle: false,
+    t: 0, pose: 'idle' as ScholarPose, poseT: 1,
     particles: [] as Particle[], bossShake: 0, bossHit: 0, deathDone: false,
   });
   const slainRef = useRef(slain);
-  const pctRef = useRef(pct);
   const auraRef = useRef(aura);
-  slainRef.current = slain; pctRef.current = pct; auraRef.current = aura;
+  slainRef.current = slain; auraRef.current = aura;
 
-  // Boss anchor (right) and scholar hand origin (left).
-  const bossX = LW * 0.66, bossY = LH * 0.46;
-  const handX = LW * 0.34, handY = LH * 0.52;
-
-  function spawnAttack() {
+  // Trigger an attack animation when the nonce bumps.
+  useEffect(() => {
+    if (attack.nonce <= 0 || slainRef.current) return;
     const s = st.current;
-    s.toggle = !s.toggle;
-    s.pose = s.toggle ? 'slash' : 'blast';
-    s.poseT = 0;
-    const burst = s.pose === 'blast';
+    s.pose = attack.type; s.poseT = 0;
+    const burst = attack.type === 'blast';
     setTimeout(() => {
-      const n = burst ? 16 : 12;
+      const n = burst ? 18 : 12;
       for (let i = 0; i < n; i++) {
-        const a = Math.atan2(bossY - handY, bossX - handX) + (Math.random() - 0.5) * 0.5;
-        const spd = burst ? 6 + Math.random() * 4 : 4 + Math.random() * 3;
+        const a = Math.atan2(bossY - handY, bossX - handX) + (Math.random() - 0.5) * 0.45;
+        const spd = burst ? 6.5 + Math.random() * 4 : 4.5 + Math.random() * 3;
         s.particles.push({
-          x: handX, y: handY, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd - 1, life: 1,
+          x: handX, y: handY, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, life: 1,
           color: burst ? (i % 3 ? '#378ADD' : '#B5D4F4') : (i % 2 ? '#FAC775' : '#EF9F27'),
           size: 3 + Math.random() * 4, blast: burst,
         });
       }
-      s.bossShake = 14; s.bossHit = 8;
-    }, 150);
-  }
-
-  useEffect(() => { if (attackNonce > 0 && !slainRef.current) spawnAttack(); }, [attackNonce]); // eslint-disable-line react-hooks/exhaustive-deps
+      s.bossShake = burst ? 18 : 13; s.bossHit = 8;
+    }, 140);
+  }, [attack.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -72,6 +73,16 @@ export default function BossArena({ theme, tier, pct, slain = false, aura = '', 
     ctx.scale(dpr, dpr);
     let raf = 0;
 
+    function platform(cx: number, cy: number, rx: number) {
+      if (!ctx) return;
+      ctx.save();
+      ctx.fillStyle = color + '22';
+      ctx.beginPath(); ctx.ellipse(cx, cy, rx, rx * 0.32, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = color + '44'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.ellipse(cx, cy, rx, rx * 0.32, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+
     function frame() {
       if (!ctx) return;
       const s = st.current;
@@ -82,18 +93,22 @@ export default function BossArena({ theme, tier, pct, slain = false, aura = '', 
       if (s.bossHit > 0) s.bossHit--;
       ctx.clearRect(0, 0, LW, LH);
 
-      // floor glow
-      const fl = ctx.createRadialGradient(LW / 2, LH - 20, 10, LW / 2, LH - 20, LW * 0.6);
-      fl.addColorStop(0, color + '22'); fl.addColorStop(1, color + '00');
+      // ambient floor
+      const fl = ctx.createLinearGradient(0, 0, 0, LH);
+      fl.addColorStop(0, color + '14'); fl.addColorStop(1, color + '00');
       ctx.fillStyle = fl; ctx.fillRect(0, 0, LW, LH);
 
-      // boss
+      // platforms
+      platform(bossX, bossY + 64, 86);
+      platform(scholarX, scholarY + 78, 104);
+
+      // boss (back-right, smaller)
       if (!slainRef.current) {
         if (auraRef.current) {
           ctx.save(); ctx.strokeStyle = auraRef.current; ctx.globalAlpha = 0.45; ctx.lineWidth = 2.5;
-          ctx.beginPath(); ctx.arc(bossX, bossY, 92, s.t * 0.5, s.t * 0.5 + Math.PI * 1.4); ctx.stroke(); ctx.restore();
+          ctx.beginPath(); ctx.arc(bossX, bossY, 74, s.t * 0.5, s.t * 0.5 + Math.PI * 1.4); ctx.stroke(); ctx.restore();
         }
-        drawCreatureFitted(ctx, creature, bossX, bossY, 210, s.t, s.bossShake, s.bossHit, false);
+        drawCreatureFitted(ctx, creature, bossX, bossY, 168, s.t, s.bossShake, s.bossHit, false);
       } else {
         if (!s.deathDone) {
           s.deathDone = true;
@@ -104,12 +119,12 @@ export default function BossArena({ theme, tier, pct, slain = false, aura = '', 
         }
         ctx.globalAlpha = 0.12 + Math.sin(s.t * 3) * 0.05;
         ctx.fillStyle = color;
-        ctx.beginPath(); ctx.arc(bossX, bossY, 60 + Math.sin(s.t * 3) * 10, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(bossX, bossY, 48 + Math.sin(s.t * 3) * 8, 0, Math.PI * 2); ctx.fill();
         ctx.globalAlpha = 1;
       }
 
-      // scholar
-      drawScholarFitted(ctx, handX - 8, LH * 0.58, 232, s.t, s.pose, s.poseT);
+      // scholar (front-left, larger)
+      drawScholarFitted(ctx, scholarX, scholarY, 256, s.t, s.pose, s.poseT);
 
       // particles
       for (let i = s.particles.length - 1; i >= 0; i--) {
@@ -122,7 +137,7 @@ export default function BossArena({ theme, tier, pct, slain = false, aura = '', 
           ctx.fillStyle = p.color;
           ctx.beginPath(); ctx.arc(p.x, p.y, Math.max(0.5, p.size * p.life), 0, Math.PI * 2); ctx.fill();
         }
-        p.x += p.vx; p.y += p.vy; p.vy += 0.12; p.life -= 0.026;
+        p.x += p.vx; p.y += p.vy; p.vy += 0.1; p.life -= 0.026;
         if (p.life <= 0) s.particles.splice(i, 1);
       }
       ctx.globalAlpha = 1;
@@ -137,7 +152,6 @@ export default function BossArena({ theme, tier, pct, slain = false, aura = '', 
     return () => { cancelAnimationFrame(raf); document.removeEventListener('visibilitychange', onVis); };
   }, [creature, color]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // reset death burst flag when boss changes / revives
   useEffect(() => { if (!slain) st.current.deathDone = false; }, [slain]);
 
   return (
