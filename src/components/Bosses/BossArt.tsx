@@ -1,165 +1,72 @@
-import type { JSX } from 'react';
-import { BossTheme, THEME_COLOR } from '../../lib/bosses';
-import styles from './Bosses.module.css';
+import { useEffect, useRef } from 'react';
+import { BossTheme, BossTier } from '../../lib/bosses';
+import { creatureForBoss, drawCreatureFitted, CREATURE_COLOR } from './sprites';
 
-// Parametric SVG boss art. One themed creature per subject with a glowing health
-// core (brighter and faster as HP drops), blinking eyes for personality, cracks
-// that spread with damage, an optional cosmetic aura, and a shatter on defeat.
-
+// Canvas portrait of a boss creature. Animated, lightweight; pauses when the
+// tab is hidden. Same prop shape as before so every call site keeps working.
 interface BossArtProps {
   theme: BossTheme;
   pct: number;
   slain?: boolean;
   size?: number;
   enraged?: boolean;
-  aura?: string;   // cosmetic glow colour
-  flash?: boolean; // brief hit flash
+  aura?: string;
+  flash?: boolean;
+  tier?: BossTier;
 }
 
-function silhouette(theme: BossTheme): JSX.Element {
-  switch (theme) {
-    case 'math':
-      return (
-        <g>
-          <polygon points="60,14 92,52 60,106 28,52" />
-          <polygon points="60,14 92,52 60,52" opacity="0.65" />
-          <polygon points="60,106 28,52 60,52" opacity="0.8" />
-          <polygon points="60,52 92,52 60,106" opacity="0.5" />
-        </g>
-      );
-    case 'chemistry':
-      return (
-        <g>
-          <path d="M50 20 h20 v20 l20 46 a30 30 0 0 1 -60 0 l20 -46 z" />
-          <circle cx="52" cy="84" r="5" opacity="0.55" />
-          <circle cx="70" cy="76" r="4" opacity="0.55" />
-          <circle cx="62" cy="92" r="3.5" opacity="0.55" />
-        </g>
-      );
-    case 'biology':
-      return (
-        <g>
-          <circle cx="60" cy="60" r="44" />
-          <circle cx="40" cy="48" r="5" opacity="0.5" />
-          <circle cx="80" cy="70" r="6" opacity="0.5" />
-          <circle cx="50" cy="80" r="4" opacity="0.5" />
-        </g>
-      );
-    case 'history':
-      return (
-        <g>
-          <rect x="36" y="20" width="48" height="74" rx="4" />
-          <rect x="28" y="92" width="64" height="10" rx="2" />
-          <rect x="30" y="14" width="60" height="9" rx="2" />
-          <line x1="50" y1="26" x2="50" y2="90" opacity="0.5" />
-          <line x1="70" y1="26" x2="70" y2="90" opacity="0.5" />
-        </g>
-      );
-    case 'english':
-      return (
-        <g>
-          <path d="M60 18 C30 24 28 58 56 60 C84 62 86 92 58 100 C36 106 30 86 46 80"
-            fill="none" strokeWidth="13" strokeLinecap="round" />
-        </g>
-      );
-    case 'physics':
-      return (
-        <g>
-          <ellipse cx="60" cy="60" rx="42" ry="16" fill="none" strokeWidth="5" />
-          <ellipse cx="60" cy="60" rx="42" ry="16" fill="none" strokeWidth="5" transform="rotate(60 60 60)" />
-          <ellipse cx="60" cy="60" rx="42" ry="16" fill="none" strokeWidth="5" transform="rotate(120 60 60)" />
-          <circle cx="60" cy="60" r="9" />
-        </g>
-      );
-    case 'cs':
-      return (
-        <g>
-          <rect x="34" y="34" width="52" height="52" rx="6" />
-          <path d="M30 40 L22 60 L30 80" fill="none" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M90 40 L98 60 L90 80" fill="none" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />
-          <line x1="46" y1="70" x2="74" y2="70" opacity="0.5" />
-        </g>
-      );
-    case 'language':
-      return (
-        <g>
-          <path d="M30 56 a30 26 0 1 1 8 22 l-14 6 6 -14 a26 24 0 0 1 0 -14 z" />
-        </g>
-      );
-    case 'general':
-    default:
-      return (
-        <g>
-          <circle cx="60" cy="60" r="42" />
-        </g>
-      );
-  }
-}
+export default function BossArt({
+  theme, pct, slain = false, size = 200, enraged = false, aura = '', flash = false, tier = 'elite',
+}: BossArtProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const propsRef = useRef({ pct, slain, enraged, aura, flash });
+  propsRef.current = { pct, slain, enraged, aura, flash };
+  const creature = creatureForBoss(theme, tier);
+  const phase = useRef(Math.random() * 100);
+  const flashRef = useRef(0);
 
-function cracks(damageFrac: number, color: string): JSX.Element | null {
-  const count = Math.min(5, Math.floor(damageFrac * 6));
-  if (count <= 0) return null;
-  const lines = ['M60 60 L40 30', 'M60 60 L92 40', 'M60 60 L86 86', 'M60 60 L30 78', 'M60 60 L58 100'];
-  return (
-    <g stroke={color} strokeWidth="1.6" opacity={0.5} className={styles.bossCracks}>
-      {lines.slice(0, count).map((d, i) => <path key={i} d={d} fill="none" />)}
-    </g>
-  );
-}
+  // Bump a short hit-flash whenever the flash prop flips true.
+  useEffect(() => { if (flash) flashRef.current = 6; }, [flash]);
 
-function shards(color: string): JSX.Element {
-  const tris = ['40,40 56,46 44,58', '78,42 90,54 74,56', '46,78 60,72 56,90', '72,78 86,72 80,90', '58,52 70,54 62,66'];
-  return (
-    <g fill={color} className={styles.bossShards}>
-      {tris.map((p, i) => <polygon key={i} points={p} opacity={0.8} style={{ ['--i' as string]: i }} />)}
-    </g>
-  );
-}
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = size * dpr; canvas.height = size * dpr;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.scale(dpr, dpr);
+    let raf = 0; let t = phase.current;
+    const color = CREATURE_COLOR[creature];
 
-export default function BossArt({ theme, pct, slain = false, size = 200, enraged = false, aura = '', flash = false }: BossArtProps) {
-  const { base, glow } = THEME_COLOR[theme];
-  const damageFrac = 1 - Math.max(0, Math.min(1, pct));
-  const gid = `bg-${theme}`;
-  const coreId = `bc-${theme}`;
-  const coreClass = pct < 0.2 ? styles.coreCritical : pct < 0.55 ? styles.coreHurt : styles.coreCalm;
+    function frame() {
+      if (!ctx) return;
+      const p = propsRef.current;
+      t += p.enraged ? 0.05 : 0.03;
+      ctx.clearRect(0, 0, size, size);
+      const glow = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+      glow.addColorStop(0, color + '33');
+      glow.addColorStop(1, color + '00');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, size, size);
+      if (p.aura && !p.slain) {
+        ctx.save(); ctx.strokeStyle = p.aura; ctx.globalAlpha = 0.5; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(size / 2, size / 2, size * 0.46, t * 0.6, t * 0.6 + Math.PI * 1.5); ctx.stroke();
+        ctx.restore();
+      }
+      if (flashRef.current > 0) flashRef.current--;
+      const shake = flashRef.current > 0 ? 6 : 0;
+      drawCreatureFitted(ctx, creature, size / 2, size / 2, size * 0.92, t, shake, flashRef.current, p.slain);
+      raf = requestAnimationFrame(frame);
+    }
+    function onVis() {
+      if (document.hidden) { cancelAnimationFrame(raf); raf = 0; }
+      else if (!raf) raf = requestAnimationFrame(frame);
+    }
+    raf = requestAnimationFrame(frame);
+    document.addEventListener('visibilitychange', onVis);
+    return () => { cancelAnimationFrame(raf); document.removeEventListener('visibilitychange', onVis); };
+  }, [creature, size]);
 
-  return (
-    <svg
-      viewBox="0 0 120 120" width={size} height={size}
-      className={`${styles.bossArt}${enraged ? ` ${styles.bossEnraged}` : ''}${slain ? ` ${styles.bossSlain}` : ''}${flash ? ` ${styles.bossFlash}` : ''}`}
-      role="img" aria-label="boss"
-    >
-      <defs>
-        <radialGradient id={gid} cx="50%" cy="50%" r="55%">
-          <stop offset="0%" stopColor={glow} stopOpacity="0.35" />
-          <stop offset="100%" stopColor={base} stopOpacity="0" />
-        </radialGradient>
-        <radialGradient id={coreId} cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.95" />
-          <stop offset="45%" stopColor={glow} stopOpacity="0.9" />
-          <stop offset="100%" stopColor={base} stopOpacity="0" />
-        </radialGradient>
-      </defs>
-
-      {aura && !slain && <circle cx="60" cy="60" r="54" fill="none" stroke={aura} strokeWidth="2" opacity="0.5" className={styles.bossAura} />}
-      <circle cx="60" cy="60" r="56" fill={`url(#${gid})`} />
-
-      {!slain && (
-        <g className={styles.bossBody}>
-          <g fill={base} stroke={base} strokeWidth="0" style={{ opacity: 0.92 }}>
-            {silhouette(theme)}
-          </g>
-          {cracks(damageFrac, glow)}
-          <circle cx="60" cy="60" r="13" fill={`url(#${coreId})`} className={`${styles.bossCore} ${coreClass}`} />
-          {/* eyes for personality */}
-          <g className={styles.bossEyes} fill="#0e0e12">
-            <ellipse cx="53" cy="50" rx="2.6" ry="3.4" />
-            <ellipse cx="67" cy="50" rx="2.6" ry="3.4" />
-          </g>
-        </g>
-      )}
-
-      {slain && <g style={{ opacity: 0.9 }}>{shards(base)}</g>}
-    </svg>
-  );
+  return <canvas ref={canvasRef} style={{ width: size, height: size, display: 'block' }} aria-label="boss" />;
 }

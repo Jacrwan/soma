@@ -434,6 +434,23 @@ export function markSessionCredited(sessionId: string): void {
   }
 }
 
+// ── Active fight persistence (keeps the timer running across tab switches) ─────
+
+const ACTIVE_FIGHT_KEY = 'soma_boss_active_fight';
+export interface ActiveFight { bossKey: string; startTime: number; committed: number; }
+
+export function getActiveFight(): ActiveFight | null {
+  try {
+    const raw = localStorage.getItem(ACTIVE_FIGHT_KEY);
+    return raw ? JSON.parse(raw) as ActiveFight : null;
+  } catch { return null; }
+}
+
+export function setActiveFight(f: ActiveFight | null): void {
+  if (f) localStorage.setItem(ACTIVE_FIGHT_KEY, JSON.stringify(f));
+  else localStorage.removeItem(ACTIVE_FIGHT_KEY);
+}
+
 // ── Reads ────────────────────────────────────────────────────────────────────
 
 const STALE_AFTER_DAYS = 21;

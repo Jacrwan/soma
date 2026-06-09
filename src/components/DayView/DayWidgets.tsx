@@ -79,7 +79,7 @@ export function TopBoss() {
 
   return (
     <button className={styles.topBoss} onClick={() => navigate('/bosses')}>
-      <span className={styles.topBossArt}><BossArt theme={boss.theme} pct={boss.pct} size={52} /></span>
+      <span className={styles.topBossArt}><BossArt theme={boss.theme} tier={boss.tier} pct={boss.pct} size={52} /></span>
       <span className={styles.topBossInfo}>
         <span className={styles.topBossTop}>
           <span className={styles.topBossName}>{boss.name}</span>

@@ -9,9 +9,11 @@ import {
   banterFor, earlyMultiplier, spacingMultiplier, daysUntil,
   isOnboarded, setOnboarded,
   COSMETICS, getStardust, getActiveAura, getUnlockedCosmetics, unlockCosmetic, selectAura,
+  getActiveFight, setActiveFight,
   TIER_LABEL, THEME_LABEL, outcomeLabel, BOSSES_EVENT, FOCUS_LOGGED_EVENT,
 } from '../../lib/bosses';
 import BossArt from './BossArt';
+import BossArena from './BossArena';
 import styles from './Bosses.module.css';
 
 type Tab = 'active' | 'log';
@@ -78,7 +80,7 @@ function BossCard({ boss, aura, onFight, onMarkDone, onRetire, onRetheme }: {
   return (
     <div className={`${styles.card}${boss.overdue ? ` ${styles.cardReclaim}` : ''}`}>
       <div className={styles.cardArt}>
-        <BossArt theme={boss.theme} pct={boss.pct} size={88} enraged={enraged} aura={aura} />
+        <BossArt theme={boss.theme} tier={boss.tier} pct={boss.pct} size={88} enraged={enraged} aura={aura} />
       </div>
       <div className={styles.cardBody}>
         <div className={styles.cardTop}>
@@ -122,12 +124,11 @@ interface Popup { id: number; amount: number; }
 
 function FightView({ boss, aura, onExit }: { boss: Boss; aura: string; onExit: () => void }) {
   const [running, setRunning] = useState(false);
-  const [paused, setPaused] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [flash, setFlash] = useState(false);
   const [popups, setPopups] = useState<Popup[]>([]);
   const [lastResult, setLastResult] = useState<StrikeResult | null>(null);
   const [victory, setVictory] = useState<StrikeResult | null>(null);
+  const [attackNonce, setAttackNonce] = useState(0);
 
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startRef = useRef<number>(0);
@@ -154,8 +155,6 @@ function FightView({ boss, aura, onExit }: { boss: Boss; aura: string; onExit: (
   function popDamage(amount: number) {
     const id = popupId.current++;
     setPopups(p => [...p, { id, amount }]);
-    setFlash(true);
-    setTimeout(() => setFlash(false), 220);
     setTimeout(() => setPopups(p => p.filter(x => x.id !== id)), 1000);
   }
 
@@ -187,8 +186,10 @@ function FightView({ boss, aura, onExit }: { boss: Boss; aura: string; onExit: (
     const delta = targetDamage - committedDmgRef.current;
     if (delta >= 1) {
       committedDmgRef.current = targetDamage;
+      setActiveFight({ bossKey: bossRef.current.key, startTime: startRef.current, committed: targetDamage });
       const r = applyRawDamage(bossRef.current, delta, 'fight');
       setLastResult(r);
+      setAttackNonce(n => n + 1); // Scholar strikes the boss
       popupAccumRef.current += delta;
       if (popupAccumRef.current >= 8 || r.slain) {
         popDamage(popupAccumRef.current);
@@ -197,48 +198,59 @@ function FightView({ boss, aura, onExit }: { boss: Boss; aura: string; onExit: (
       if (r.slain) {
         stopTick();
         setRunning(false);
+        setActiveFight(null);
         recordStudyTime(sec);
         setVictory(r);
       }
     }
   }, [stopTick]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  function beginTick() {
+    multRef.current = earlyMultiplier(daysUntil(bossRef.current.dueAt)) * spacingMultiplier(distinctDaysWithToday(bossRef.current));
+    tickRef.current = setInterval(tick, 250);
+  }
+
   function start() {
     if (running) return;
-    setPaused(false);
     setRunning(true);
-    multRef.current = earlyMultiplier(daysUntil(bossRef.current.dueAt)) * spacingMultiplier(distinctDaysWithToday(bossRef.current));
     startRef.current = Date.now() - elapsed * 1000;
-    tickRef.current = setInterval(tick, 250);
+    setActiveFight({ bossKey: bossRef.current.key, startTime: startRef.current, committed: committedDmgRef.current });
+    beginTick();
   }
 
   function pause() {
     stopTick();
     setRunning(false);
-    setPaused(true);
+    setActiveFight(null); // a manual pause does not auto-resume across tabs
   }
 
   function stopAndBank() {
     stopTick();
     setRunning(false);
+    setActiveFight(null);
     recordStudyTime(elapsed);
     setElapsed(0);
     committedDmgRef.current = 0;
     popupAccumRef.current = 0;
-    setPaused(false);
   }
 
-  // Soft focus enforcement: pause if the user leaves the tab while studying.
+  // Resume an in-progress fight (e.g. after switching tabs) and catch up on the
+  // time that passed while away. Only running fights persist.
   useEffect(() => {
-    function onVis() { if (document.hidden && tickRef.current) pause(); }
-    document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
+    const af = getActiveFight();
+    if (af && af.bossKey === bossRef.current.key) {
+      startRef.current = af.startTime;
+      committedDmgRef.current = af.committed;
+      setElapsed(Math.floor((Date.now() - af.startTime) / 1000));
+      setRunning(true);
+      beginTick();
+    }
+    return () => stopTick();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => () => { stopTick(); }, [stopTick]);
 
   function handleExit() {
     stopTick();
+    if (running) setActiveFight({ bossKey: bossRef.current.key, startTime: startRef.current, committed: committedDmgRef.current });
     if (elapsed >= 60) recordStudyTime(elapsed);
     onExit();
   }
@@ -247,7 +259,7 @@ function FightView({ boss, aura, onExit }: { boss: Boss; aura: string; onExit: (
     return (
       <div className={styles.fight}>
         <div className={styles.victory}>
-          <BossArt theme={boss.theme} pct={0} slain size={220} aura={aura} />
+          <BossArt theme={boss.theme} tier={boss.tier} pct={0} slain size={220} aura={aura} />
           <h2 className={styles.victoryTitle}>{boss.name} defeated</h2>
           <span className={`${styles.outcomeBadge} ${styles[`outcome_${victory.outcome}`]}`}>{outcomeLabel(victory.outcome)}</span>
           {victory.stardustEarned > 0 && <span className={styles.stardustEarned}>+{victory.stardustEarned} stardust</span>}
@@ -266,7 +278,7 @@ function FightView({ boss, aura, onExit }: { boss: Boss; aura: string; onExit: (
       <button className={styles.backLink} onClick={handleExit}>← Bosses</button>
 
       <div className={styles.fightStage}>
-        <BossArt theme={boss.theme} pct={boss.pct} size={240} enraged={enraged} aura={aura} flash={flash} />
+        <BossArena theme={boss.theme} tier={boss.tier} pct={boss.pct} aura={aura} attackNonce={attackNonce} />
         {popups.map(p => <span key={p.id} className={styles.dmgPopup}>-{p.amount}</span>)}
       </div>
 
@@ -306,7 +318,6 @@ function FightView({ boss, aura, onExit }: { boss: Boss; aura: string; onExit: (
 
         <div className={styles.timerBox}>
           <span className={`${styles.timerDisplay}${running ? ` ${styles.timerRunning}` : ''}`}>{fmtClock(elapsed)}</span>
-          {paused && <p className={styles.pausedNote}>Paused — you left the page. Resume when you are back.</p>}
           <div className={styles.timerControls}>
             {!running ? (
               <button className={styles.primaryBtn} onClick={start}>{elapsed > 0 ? 'Resume focus' : 'Start focus'}</button>
@@ -337,7 +348,7 @@ function LogCard({ boss, aura, onRevive, onReset }: {
 }) {
   return (
     <div className={styles.logCard}>
-      <BossArt theme={boss.theme} pct={0} slain size={64} aura={aura} />
+      <BossArt theme={boss.theme} tier={boss.tier} pct={0} slain size={64} aura={aura} />
       <div className={styles.logBody}>
         <div className={styles.cardTop}>
           <span className={styles.bossName}>{boss.name}</span>
@@ -402,6 +413,13 @@ export default function BossesTab() {
   useEffect(() => {
     void syncFromCloud().then(() => { reconcileStudySessions(assignments, new Date(), true); refresh(); });
     reconcileStudySessions(assignments, new Date(), true);
+    // Resume a fight that was running when the user switched tabs.
+    const af = getActiveFight();
+    if (af) {
+      const b = getBosses(assignments).find(x => x.key === af.bossKey && x.progress.status === 'active');
+      if (b) setFighting(b);
+      else setActiveFight(null);
+    }
   }, [assignments, refresh]);
 
   // React to boss changes (BossToaster credits study time app-wide).
