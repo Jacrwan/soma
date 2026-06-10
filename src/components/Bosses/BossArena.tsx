@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { BossTheme, BossTier } from '../../lib/bosses';
 import {
-  creatureForBoss, drawCreatureFitted, drawScholarFitted, CREATURE_COLOR, ScholarPose,
+  creatureForBoss, drawCreatureFitted, drawScholarFitted, CREATURE_COLOR, CREATURE_SPRITE, ScholarPose,
 } from './sprites';
+import SpriteBoss from './SpriteBoss';
 
 // Pokémon-style battle arena: the boss sits on a platform in the back-right
 // (smaller, farther), the Scholar stands large in the front-left (closer). Each
@@ -33,6 +34,7 @@ export default function BossArena({ theme, tier, pct: _pct, slain = false, aura 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const creature = creatureForBoss(theme, tier);
   const color = CREATURE_COLOR[creature];
+  const sprite = CREATURE_SPRITE[creature]; // real splash art, if any
 
   const st = useRef({
     t: 0, pose: 'idle' as ScholarPose, poseT: 1,
@@ -102,25 +104,27 @@ export default function BossArena({ theme, tier, pct: _pct, slain = false, aura 
       platform(bossX, bossY + 64, 86);
       platform(scholarX, scholarY + 78, 104);
 
-      // boss (back-right, smaller)
-      if (!slainRef.current) {
-        if (auraRef.current) {
-          ctx.save(); ctx.strokeStyle = auraRef.current; ctx.globalAlpha = 0.45; ctx.lineWidth = 2.5;
-          ctx.beginPath(); ctx.arc(bossX, bossY, 74, s.t * 0.5, s.t * 0.5 + Math.PI * 1.4); ctx.stroke(); ctx.restore();
-        }
-        drawCreatureFitted(ctx, creature, bossX, bossY, 168, s.t, s.bossShake, s.bossHit, false);
-      } else {
-        if (!s.deathDone) {
-          s.deathDone = true;
-          for (let i = 0; i < 44; i++) {
-            const a = Math.random() * Math.PI * 2, spd = 2 + Math.random() * 5;
-            s.particles.push({ x: bossX, y: bossY, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, life: 1, color: i % 2 ? color : '#FAC775', size: 3 + Math.random() * 6 });
+      // boss (back-right, smaller) — drawn on canvas only when there is no sprite
+      if (!sprite) {
+        if (!slainRef.current) {
+          if (auraRef.current) {
+            ctx.save(); ctx.strokeStyle = auraRef.current; ctx.globalAlpha = 0.45; ctx.lineWidth = 2.5;
+            ctx.beginPath(); ctx.arc(bossX, bossY, 74, s.t * 0.5, s.t * 0.5 + Math.PI * 1.4); ctx.stroke(); ctx.restore();
           }
+          drawCreatureFitted(ctx, creature, bossX, bossY, 168, s.t, s.bossShake, s.bossHit, false);
+        } else {
+          if (!s.deathDone) {
+            s.deathDone = true;
+            for (let i = 0; i < 44; i++) {
+              const a = Math.random() * Math.PI * 2, spd = 2 + Math.random() * 5;
+              s.particles.push({ x: bossX, y: bossY, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, life: 1, color: i % 2 ? color : '#FAC775', size: 3 + Math.random() * 6 });
+            }
+          }
+          ctx.globalAlpha = 0.12 + Math.sin(s.t * 3) * 0.05;
+          ctx.fillStyle = color;
+          ctx.beginPath(); ctx.arc(bossX, bossY, 48 + Math.sin(s.t * 3) * 8, 0, Math.PI * 2); ctx.fill();
+          ctx.globalAlpha = 1;
         }
-        ctx.globalAlpha = 0.12 + Math.sin(s.t * 3) * 0.05;
-        ctx.fillStyle = color;
-        ctx.beginPath(); ctx.arc(bossX, bossY, 48 + Math.sin(s.t * 3) * 8, 0, Math.PI * 2); ctx.fill();
-        ctx.globalAlpha = 1;
       }
 
       // scholar (front-left, larger)
@@ -155,10 +159,17 @@ export default function BossArena({ theme, tier, pct: _pct, slain = false, aura 
   useEffect(() => { if (!slain) st.current.deathDone = false; }, [slain]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      style={{ width: '100%', maxWidth: LW, aspectRatio: `${LW} / ${LH}`, display: 'block', margin: '0 auto' }}
-      aria-label="boss fight"
-    />
+    <div style={{ position: 'relative', width: '100%', maxWidth: LW, aspectRatio: `${LW} / ${LH}`, margin: '0 auto' }}>
+      <canvas
+        ref={canvasRef}
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }}
+        aria-label="boss fight"
+      />
+      {sprite && (
+        <div style={{ position: 'absolute', left: '47%', right: '2%', top: '3%', bottom: '33%' }}>
+          <SpriteBoss src={sprite} nonce={attack.nonce} slain={slain} aura={aura} />
+        </div>
+      )}
+    </div>
   );
 }

@@ -553,3 +553,46 @@
   width: 56px; background: var(--bg); border: 1px solid var(--border); color: var(--text-primary);
   border-radius: 6px; padding: 3px 6px; font-size: 11px; font-family: inherit;
 }
+
+/* ── Splash-art sprite boss (rigged cutout) ── */
+.sbWrap { position: absolute; inset: 0; pointer-events: none; }
+.sbGlow {
+  position: absolute; left: 50%; top: 6%; width: 70%; aspect-ratio: 1;
+  transform: translateX(-50%); border-radius: 50%;
+  background: radial-gradient(closest-side, oklch(60% 0.16 266 / 0.22), transparent);
+  animation: sbGlow 3.4s ease-in-out infinite;
+}
+.sbAura {
+  position: absolute; left: 50%; top: 4%; width: 78%; aspect-ratio: 1;
+  transform: translateX(-50%); border-radius: 50%; border: 2px solid; opacity: 0.4;
+  animation: sbSpin 9s linear infinite;
+}
+.sbShadow {
+  position: absolute; bottom: 4%; left: 50%; width: 38%; height: 9%;
+  transform: translateX(-50%); border-radius: 50%;
+  background: radial-gradient(closest-side, oklch(0% 0 0 / 0.55), transparent);
+  animation: sbShadow 3.6s ease-in-out infinite;
+}
+.sbFloat { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: center; animation: sbFloat 3.6s ease-in-out infinite; }
+.sbBob { height: 96%; display: flex; align-items: flex-end; }
+.sbBreathe { height: 100%; transform-origin: 50% 100%; animation: sbBreathe 2.8s ease-in-out infinite; }
+.sbFigure { position: relative; height: 100%; aspect-ratio: 760 / 954; }
+.sbFigure img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.sbLower { clip-path: inset(60% 0 0 0); transform-origin: 50% 61%; animation: sbSway 3.3s ease-in-out infinite; }
+.sbUpper { filter: drop-shadow(0 8px 14px oklch(0% 0 0 / 0.45)); }
+.sbSlain .sbFigure { opacity: 0.32; filter: grayscale(0.4); }
+.sbSlain .sbLower { animation: none; }
+
+@keyframes sbFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes sbBreathe { 0%, 100% { transform: scaleY(1) scaleX(1); } 50% { transform: scaleY(1.022) scaleX(0.992); } }
+@keyframes sbSway { 0%, 100% { transform: rotate(-2deg) skewX(-1.1deg); } 50% { transform: rotate(2.2deg) skewX(1.1deg); } }
+@keyframes sbGlow { 0%, 100% { opacity: 0.45; transform: translateX(-50%) scale(0.97); } 50% { opacity: 0.72; transform: translateX(-50%) scale(1.04); } }
+@keyframes sbShadow { 0%, 100% { transform: translateX(-50%) scaleX(1); opacity: 0.6; } 50% { transform: translateX(-50%) scaleX(0.94); opacity: 0.5; } }
+@keyframes sbSpin { from { transform: translateX(-50%) rotate(0); } to { transform: translateX(-50%) rotate(360deg); } }
+
+/* ── Sprite thumbnail (cards / widget / log) ── */
+.spriteThumb { display: grid; place-items: center; overflow: hidden; border-radius: 12px; }
+.spriteThumb img {
+  width: 100%; height: 100%; object-fit: cover; object-position: 50% 12%;
+  animation: sbFloat 3.8s ease-in-out infinite;
+}

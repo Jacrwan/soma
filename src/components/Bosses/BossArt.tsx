@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { BossTheme, BossTier } from '../../lib/bosses';
-import { creatureForBoss, drawCreatureFitted, CREATURE_COLOR } from './sprites';
+import { creatureForBoss, drawCreatureFitted, CREATURE_COLOR, CREATURE_SPRITE } from './sprites';
+import styles from './Bosses.module.css';
 
 // Canvas portrait of a boss creature. Animated, lightweight; pauses when the
 // tab is hidden. Same prop shape as before so every call site keeps working.
@@ -22,6 +23,7 @@ export default function BossArt({
   const propsRef = useRef({ pct, slain, enraged, aura, flash });
   propsRef.current = { pct, slain, enraged, aura, flash };
   const creature = creatureForBoss(theme, tier);
+  const sprite = CREATURE_SPRITE[creature];
   const phase = useRef(Math.random() * 100);
   const flashRef = useRef(0);
 
@@ -67,6 +69,18 @@ export default function BossArt({
     document.addEventListener('visibilitychange', onVis);
     return () => { cancelAnimationFrame(raf); document.removeEventListener('visibilitychange', onVis); };
   }, [creature, size]);
+
+  // Real splash art: show a head-biased crop with a gentle float.
+  if (sprite) {
+    return (
+      <span className={styles.spriteThumb} style={{ width: size, height: size }}>
+        <img
+          src={sprite} alt="boss" loading="lazy"
+          style={{ filter: slain ? 'grayscale(0.5)' : undefined, opacity: slain ? 0.4 : 1 }}
+        />
+      </span>
+    );
+  }
 
   return <canvas ref={canvasRef} style={{ width: size, height: size, display: 'block' }} aria-label="boss" />;
 }
