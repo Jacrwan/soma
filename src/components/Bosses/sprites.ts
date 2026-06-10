@@ -304,9 +304,11 @@ export function creatureForBoss(theme: BossTheme, tier: BossTier): Creature {
 
 // ── Real splash-art sprites (PNG cutouts) ─────────────────────────────────────
 // When a creature has a sprite, the UI renders the rigged image instead of the
-// hand-drawn canvas creature. Arch-bosses (the "void" slot) use the paladin.
+// hand-drawn canvas creature. Arch-bosses (the "void" slot) use the paladin; the
+// humanities themes (history/english/language) summon the cyber seraph.
 export const CREATURE_SPRITE: Partial<Record<Creature, string>> = {
   void: '/boss-sprites/paladin.webp',
+  leviathan: '/boss-sprites/seraph.webp',
 };
 
 export function spriteForBoss(theme: BossTheme, tier: BossTier): string | undefined {
