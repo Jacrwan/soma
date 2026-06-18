@@ -701,14 +701,13 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   const [loading, setLoading] = useState(false);
   const [voiceActive, setVoiceActive] = useState(false);
   const [voiceTriggered, setVoiceTriggered] = useState(false);
-  const [speaking, setSpeaking] = useState(false);
   const recognitionRef = useRef<any>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const subjects = storage.getSubjects();
 
   const [driveToken, setDriveToken] = useState(() => storage.getGoogleDriveToken());
-  const [saveAsDocMode, setSaveAsDocMode] = useState(false);
+  const [saveAsDocMode] = useState(false);
 
   // ── Quick-create ─────────────────────────────────────────────────────────
   const [quickOpen, setQuickOpen] = useState(false);
@@ -1090,7 +1089,6 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
 
   function stopSpeaking() {
     window.speechSynthesis.cancel();
-    setSpeaking(false);
   }
 
   function speakText(text: string) {
@@ -1105,9 +1103,6 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     if (!clean) return;
     const utterance = new SpeechSynthesisUtterance(clean);
     utterance.rate = 1.05;
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
-    setSpeaking(true);
     window.speechSynthesis.speak(utterance);
   }
 
@@ -1294,7 +1289,6 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     }));
   }
 
-  const activeSession = sessions.find(s => s.id === activeSessionId);
 
   if (subscription.status === 'loading') {
     return (
