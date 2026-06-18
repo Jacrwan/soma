@@ -190,19 +190,17 @@ function buildSystemPrompt(activeSubjectKey?: string): string {
   const subjectsStr = subjects.map(s => `${s.name} (id: ${s.id})`).join(', ');
 
   const assignmentStatus = storage.getAssignmentStatus() as Record<string, string>;
-  const statusLabel: Record<string, string> = {
-    not_started: 'not started',
-    in_progress: 'in progress',
-    done: 'done',
-  };
-  const assignmentsStr = assignments.length > 0
-    ? assignments.map(a => {
+  const incompleteAssignments = assignments.filter(a =>
+    assignmentStatus[String(a.id)] !== 'done' && a.status !== 'done',
+  );
+  const assignmentsStr = incompleteAssignments.length > 0
+    ? incompleteAssignments.map(a => {
         const due = new Date(a.dueAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-        const status = statusLabel[assignmentStatus[String(a.id)] ?? 'not_started'] ?? 'not started';
-        const desc = a.description ? `\n  Description: ${a.description.slice(0, 300)}` : '';
-        return `- ${a.name} (id: ${a.id}) | ${a.courseName} | Due: ${due} | Status: ${status}${desc}`;
+        return `- ${a.name} — ${a.courseName} — Due ${due}`;
       }).join('\n')
     : 'None';
+  const uniqueCourses = [...new Set(assignments.map(a => a.courseName).filter(Boolean))];
+  const coursesStr = uniqueCourses.length > 0 ? uniqueCourses.join(', ') : 'None synced from Canvas';
 
   const blocksStr = blocks.length > 0
     ? blocks.map(b => {
@@ -284,10 +282,15 @@ function buildSystemPrompt(activeSubjectKey?: string): string {
 ${subjectFocusStr}
 Today is ${date}.
 
-Their subjects: ${subjectsStr}
+The user's courses/subjects: ${subjectsStr}
+Canvas courses: ${coursesStr}
 
-Upcoming assignments (next 14 days):
+The user's upcoming incomplete assignments are:
 ${assignmentsStr}
+
+If there are no upcoming assignments, say so clearly and do not make up or hallucinate any assignments.
+
+Use this information to help the user plan their study schedule, prioritize tasks, and answer questions about their workload. Always refer to today's actual date when discussing deadlines.
 ${folderSection ? `\nIMPORTANT: The study materials below are real file contents you have already read and fully know. When the user references any topic, subject, or file — even loosely or by nickname — match it to the closest file in your study materials and answer from it directly. Never say you cannot access files, cannot see folders, or need the user to share anything. You already have the content. "AP Government review", "AP Gov study guide", "the review sheet" etc. should all map to the AP Government file.\n\nYou have full knowledge of the following study materials from the user's Google Drive folder. Reference them naturally when relevant, as if you've already read them:\n\n${folderSection}\n${folderHasTruncated ? '\nNote: Some files were too large to include in full. The user may not get complete answers about those files.\n' : ''}` : ''}
 User availability:
 ${availabilityStr || 'Not set — ask the user what time they want to start and end.'}
