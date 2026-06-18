@@ -354,37 +354,68 @@ export const storage = {
     else set(KEYS.studyFolder, v);
   },
 
-  // ── AI chat sessions v1 (localStorage, date-keyed) ──────────────────
+  // ── AI chat sessions localStorage — read-only, used for one-time migration to Supabase ──
   getChatSessions: (): ChatSession[] => get(KEYS.chatSessions, []),
-  setChatSessions: (v: ChatSession[]) => set(KEYS.chatSessions, v),
 
   getActiveSessionId: (): string => get(KEYS.activeSessionId, ''),
   setActiveSessionId: (v: string) => set(KEYS.activeSessionId, v),
 
-  // ── AI chat sessions v2 (localStorage, subject-keyed) ───────────────
-  // sessionKey format: 'general' | 'subject_<subjectId>'
-  getChatSessionV2(sessionKey: string): import('../types').ChatMessage[] {
-    try {
-      const raw = localStorage.getItem('soma_chat_sessions_v2');
-      if (!raw) return [];
-      const store = JSON.parse(raw) as Record<string, import('../types').ChatMessage[]>;
-      return store[sessionKey] ?? [];
-    } catch { return []; }
+  // ── AI chat sessions (Supabase) ──────────────────────────────────────
+  async fetchChatSessions(): Promise<ChatSession[]> {
+    const userId = await uid();
+    const { data, error } = await supabase
+      .from('chat_sessions')
+      .select('id, date, title, messages, created_at, subject_key')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map(r => ({
+      id: r.id as string,
+      date: r.date as string,
+      title: r.title as string,
+      messages: (r.messages as ChatMessage[]) ?? [],
+      createdAt: r.created_at as string,
+      subjectKey: (r.subject_key as string | null) ?? undefined,
+    }));
   },
-  setChatSessionV2(sessionKey: string, messages: import('../types').ChatMessage[]): void {
-    try {
-      const raw = localStorage.getItem('soma_chat_sessions_v2');
-      const store = raw ? JSON.parse(raw) as Record<string, import('../types').ChatMessage[]> : {};
-      store[sessionKey] = messages;
-      localStorage.setItem('soma_chat_sessions_v2', JSON.stringify(store));
-    } catch { /* ignore */ }
+
+  async upsertChatSession(session: ChatSession): Promise<void> {
+    const userId = await uid();
+    const payload = {
+      id: session.id,
+      user_id: userId,
+      date: session.date,
+      title: session.title,
+      messages: session.messages,
+      created_at: session.createdAt,
+      subject_key: session.subjectKey ?? null,
+      updated_at: new Date().toISOString(),
+    };
+    console.log('[storage] upsertChatSession payload:', payload);
+    await supabase.from('chat_sessions').upsert(payload);
   },
-  listChatSessionKeys(): string[] {
-    try {
-      const raw = localStorage.getItem('soma_chat_sessions_v2');
-      if (!raw) return [];
-      return Object.keys(JSON.parse(raw) as Record<string, unknown>);
-    } catch { return []; }
+
+  async deleteChatSession(sessionId: string): Promise<void> {
+    const userId = await uid();
+    await supabase.from('chat_sessions').delete().eq('id', sessionId).eq('user_id', userId);
+  },
+
+  async migrateChatSessions(sessions: ChatSession[]): Promise<void> {
+    if (sessions.length === 0) return;
+    const userId = await uid();
+    await supabase.from('chat_sessions').upsert(
+      sessions.map(s => ({
+        id: s.id,
+        user_id: userId,
+        date: s.date,
+        title: s.title,
+        messages: s.messages,
+        created_at: s.createdAt,
+        subject_key: s.subjectKey ?? null,
+        updated_at: new Date().toISOString(),
+      })),
+      { onConflict: 'id' },
+    );
   },
 
   // ── Time blocks (localStorage) ───────────────────────────────────────

@@ -90,25 +90,6 @@ function migrateLegacy(sessions: ChatSession[]): ChatSession[] {
   } catch { return sessions; }
 }
 
-function getOrCreateTodayForSubject(sessions: ChatSession[], subjectKey: string): { session: ChatSession; all: ChatSession[] } {
-  const todayKey = getTodayKey();
-  const existing = sessions.find(s => s.date === todayKey && (s.subjectKey ?? 'general') === subjectKey);
-  if (existing) return { session: existing, all: sessions };
-  const session: ChatSession = {
-    id: crypto.randomUUID(),
-    date: todayKey,
-    title: makeSessionTitle(todayKey),
-    messages: [],
-    createdAt: new Date().toISOString(),
-    subjectKey,
-  };
-  return { session, all: [session, ...sessions] };
-}
-
-function getOrCreateToday(sessions: ChatSession[]): { session: ChatSession; all: ChatSession[] } {
-  return getOrCreateTodayForSubject(sessions, 'general');
-}
-
 // ── Message formatting ──────────────────────────────────────────────────────
 
 function isToday(iso: string) {
@@ -709,34 +690,12 @@ function AILockedScreen({ status }: { status: string }) {
 export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void }) {
   const subscription = useSubscription();
 
-  const [sessions, setSessions] = useState<ChatSession[]>(() => {
-    let s = storage.getChatSessions();
-    s = migrateLegacy(s);
-    const { all } = getOrCreateToday(s);
-    storage.setChatSessions(all);
-    return all;
-  });
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
 
-  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
-    const all = storage.getChatSessions();
-    const savedId = storage.getActiveSessionId();
-    if (savedId && all.some(s => s.id === savedId)) return savedId;
-    const todayKey = getTodayKey();
-    const today = all.find(s => s.date === todayKey);
-    const fallback = today?.id ?? all[0]?.id ?? '';
-    storage.setActiveSessionId(fallback);
-    return fallback;
-  });
+  const [activeSessionId, setActiveSessionId] = useState<string>(storage.getActiveSessionId);
 
-  const [currentSubjectKey, setCurrentSubjectKey] = useState<string>(() => {
-    const savedId = storage.getActiveSessionId();
-    if (savedId) {
-      const all = storage.getChatSessions();
-      const saved = all.find(s => s.id === savedId);
-      if (saved?.subjectKey) return saved.subjectKey;
-    }
-    return 'general';
-  });
+  const [currentSubjectKey, setCurrentSubjectKey] = useState<string>('general');
 
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -745,7 +704,6 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   const [speaking, setSpeaking] = useState(false);
   const recognitionRef = useRef<any>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [sidebarMounted, setSidebarMounted] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const subjects = storage.getSubjects();
 
@@ -994,6 +952,64 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   );
 
   useEffect(() => {
+    let cancelled = false;
+    async function loadSessions() {
+      try {
+        let remote = await storage.fetchChatSessions();
+
+        // One-time migration: if Supabase is empty, push any localStorage sessions up
+        if (remote.length === 0) {
+          let local = storage.getChatSessions();
+          local = migrateLegacy(local);
+          if (local.length > 0) {
+            await storage.migrateChatSessions(local);
+            localStorage.removeItem('soma_chat_sessions');
+            localStorage.removeItem('soma_chat_history');
+            remote = await storage.fetchChatSessions();
+          }
+        }
+
+        if (cancelled) return;
+
+        if (remote.length === 0) {
+          const todayKey = getTodayKey();
+          const fresh: ChatSession = {
+            id: crypto.randomUUID(),
+            date: todayKey,
+            title: makeSessionTitle(todayKey),
+            messages: [],
+            createdAt: new Date().toISOString(),
+          };
+          await storage.upsertChatSession(fresh);
+          remote = [fresh];
+        }
+
+        setSessions(remote);
+
+        const savedId = storage.getActiveSessionId();
+        if (savedId && remote.some(s => s.id === savedId)) {
+          setActiveSessionId(savedId);
+          const s = remote.find(x => x.id === savedId);
+          if (s?.subjectKey) setCurrentSubjectKey(s.subjectKey);
+        } else {
+          const todayKey = getTodayKey();
+          const today = remote.find(s => s.date === todayKey) ?? remote[0];
+          const fallbackId = today?.id ?? '';
+          setActiveSessionId(fallbackId);
+          storage.setActiveSessionId(fallbackId);
+          if (today?.subjectKey) setCurrentSubjectKey(today.subjectKey);
+        }
+      } catch (err) {
+        console.error('[AITab] failed to load sessions from Supabase:', err);
+      } finally {
+        if (!cancelled) setSessionsLoading(false);
+      }
+    }
+    loadSessions();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
@@ -1003,15 +1019,14 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     }
   }, [voiceTriggered]);
 
-  useEffect(() => { setSidebarMounted(true); }, []);
-
   function updateSession(id: string, fn: (s: ChatSession) => ChatSession) {
     setSessions(prev => {
-      const next = prev.map(s => {
-        if (s.id !== id) return s;
-        return fn(s);
-      });
-      storage.setChatSessions(next);
+      const next = prev.map(s => s.id !== id ? s : fn(s));
+      const updated = next.find(s => s.id === id);
+      if (updated) {
+        console.log('[storage] upsertChatSession payload:', updated);
+        void storage.upsertChatSession(updated).catch(err => console.error('[AITab] upsertChatSession:', err));
+      }
       return next;
     });
   }
@@ -1025,8 +1040,6 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     if (s?.subjectKey) setCurrentSubjectKey(s.subjectKey);
   }
 
-
-
   function newChat() {
     const todayKey = getTodayKey();
     const session: ChatSession = {
@@ -1037,17 +1050,15 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       createdAt: new Date().toISOString(),
       subjectKey: currentSubjectKey,
     };
-    setSessions(prev => {
-      const next = [session, ...prev];
-      storage.setChatSessions(next);
-      return next;
-    });
+    setSessions(prev => [session, ...prev]);
+    void storage.upsertChatSession(session).catch(err => console.error('[AITab] newChat upsert:', err));
     setActiveSessionId(session.id);
     storage.setActiveSessionId(session.id);
     setInput('');
   }
 
   function deleteSession(id: string) {
+    void storage.deleteChatSession(id).catch(err => console.error('[AITab] deleteSession:', err));
     const next = sessions.filter(s => s.id !== id);
     if (id === activeSessionId) {
       if (next.length > 0) {
@@ -1065,16 +1076,14 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
           messages: [],
           createdAt: new Date().toISOString(),
         };
-        const withFresh = [fresh];
-        storage.setChatSessions(withFresh);
+        void storage.upsertChatSession(fresh).catch(err => console.error('[AITab] deleteSession fresh:', err));
         storage.setActiveSessionId(fresh.id);
-        setSessions(withFresh);
+        setSessions([fresh]);
         setActiveSessionId(fresh.id);
         setDeleteConfirmId(null);
         return;
       }
     }
-    storage.setChatSessions(next);
     setSessions(next);
     setDeleteConfirmId(null);
   }
@@ -1327,7 +1336,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
         </div>
 
         <div className={styles.sessionList}>
-          {!sidebarMounted ? <SessionListSkeleton /> : sortedSessions.map(session => (
+          {sessionsLoading ? <SessionListSkeleton /> : sortedSessions.map(session => (
             <SessionRow
               key={session.id}
               session={session}
@@ -1339,7 +1348,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
               onCancel={() => setDeleteConfirmId(null)}
             />
           ))}
-          {sidebarMounted && sortedSessions.every(s => s.messages.length === 0) && (
+          {!sessionsLoading && sortedSessions.every(s => s.messages.length === 0) && (
             <p className={styles.sessionEmptyHint}>No chats yet</p>
           )}
         </div>
