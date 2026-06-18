@@ -308,6 +308,7 @@ export default async function handler(req: any, res: any) {
   const admin = createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
   const { data: { user }, error: authErr } = await admin.auth.getUser(sbToken);
   if (authErr || !user) return res.status(401).json({ error: 'Unauthorized' });
+  const userId = userId;
 
   let body = req.body as Record<string, unknown> | string | undefined;
   if (typeof body === 'string') {
@@ -324,7 +325,7 @@ export default async function handler(req: any, res: any) {
     if (tokenField !== 'googleDriveToken' && tokenField !== 'googleToken') {
       return res.status(400).json({ error: 'tokenField must be "googleDriveToken" or "googleToken"' });
     }
-    const newToken = await refreshGoogleToken(user.id, admin, tokenField as 'googleDriveToken' | 'googleToken');
+    const newToken = await refreshGoogleToken(userId, admin, tokenField as 'googleDriveToken' | 'googleToken');
     if (!newToken) return res.status(401).json({ error: 'refresh_failed' });
     return res.status(200).json({ accessToken: newToken });
   }
@@ -337,7 +338,7 @@ export default async function handler(req: any, res: any) {
       if (type === 'doc')             return await handleDoc(body, res, tok);
       if (type === 'file')            return await handleFile(body, res, tok);
       if (type === 'folder')          return await handleFolder(body, res, tok);
-      if (type === 'folder-contents') return await handleFolderContents(body, res, admin, user.id);
+      if (type === 'folder-contents') return await handleFolderContents(body, res, admin, userId);
       return res.status(400).json({ error: 'type must be "doc", "file", "folder", or "folder-contents"' });
     }
 
@@ -359,7 +360,7 @@ export default async function handler(req: any, res: any) {
       await dispatch(googleToken);
     } catch (e) {
       if (e instanceof GoogleTokenExpiredError) {
-        const newToken = await refreshGoogleToken(user.id, admin, 'googleDriveToken');
+        const newToken = await refreshGoogleToken(userId, admin, 'googleDriveToken');
         if (!newToken) return res.status(401).json({ error: 'google_token_expired' });
         try {
           await dispatch(newToken);
