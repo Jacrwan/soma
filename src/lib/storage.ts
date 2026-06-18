@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Subject, TimeBlock, TimerSession, CanvasAssignment, CanvasCourse, Todo, GoogleCalendarEvent, ChatSession } from '../types';
+import { Subject, TimeBlock, TimerSession, CanvasAssignment, CanvasCourse, Todo, GoogleCalendarEvent, ChatMessage, ChatSession } from '../types';
 
 const SOMA_TODOS_KEY = 'soma_todos';
 const SOMA_BLOCKS_KEY = 'soma_blocks';
