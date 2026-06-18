@@ -361,7 +361,7 @@
 .chatHeader {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 0 var(--space-md);
   height: 52px;
   border-bottom: 1px solid var(--border);
@@ -452,7 +452,7 @@
 }
 
 .bubble {
-  padding: 10px 15px;
+  padding: 8px 12px;
   font-size: 14px;
   line-height: 1.6;
   white-space: pre-wrap;

@@ -1357,7 +1357,6 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       {/* ── Chat area ───────────────────────────────────────────────────── */}
       <div className={styles.chatArea}>
         <div className={styles.chatHeader}>
-          <span className={styles.chatTitle}>{activeSession?.title ?? 'AI Scheduling'}</span>
           <button
             className={`${styles.filesPanelToggle}${filesPanelOpen ? ` ${styles.filesPanelToggleActive}` : ''}`}
             onClick={() => setFilesPanelOpen(p => !p)}
@@ -1370,7 +1369,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
             <div className={styles.emptyState}>
               <div className={styles.emptyHint}>Start by describing what you need to accomplish today.</div>
               <div className={styles.suggestions}>
-                {['Plan my day', 'What should I study first?', 'Generate a schedule for today'].map(s => (
+                {['Plan my day', 'What should I study first?'].map(s => (
                   <button key={s} className={styles.suggestionBtn} onClick={() => setInput(s)}>{s}</button>
                 ))}
               </div>
@@ -1385,15 +1384,6 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
                 className={`${styles.bubble} ${msg.role === 'user' ? styles.userBubble : styles.assistantBubble}`}
                 dangerouslySetInnerHTML={{ __html: formatMessage(stripTags(msg.content)) }}
               />
-              {msg.role === 'assistant' && (
-                <button
-                  className={styles.speakBtn}
-                  onClick={() => speaking ? stopSpeaking() : speakText(msg.content)}
-                  title={speaking ? 'Stop speaking' : 'Read aloud'}
-                >
-                  {speaking ? '◼' : '🔊'}
-                </button>
-              )}
               {msg.role === 'assistant' && msg.scheduleBlocks && !msg.scheduleDismissed && (
                 <ScheduleCard
                   blocks={msg.scheduleBlocks}
