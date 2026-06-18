@@ -701,6 +701,13 @@
   color: var(--text-muted);
 }
 
+.somaActionConfirm {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 2px;
+  opacity: 0.8;
+}
+
 .artifactOpen {
   font-size: 12px;
   font-weight: 600;

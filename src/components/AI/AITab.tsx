@@ -128,6 +128,7 @@ function stripTags(content: string) {
     .replace(/<todos>[\s\S]*?<\/(?:todos|schedule)>/g, '')
     .replace(/<createDoc\b[\s\S]*?<\/createDoc>/g, '')
     .replace(/<createSlides\b[\s\S]*?<\/createSlides>/g, '')
+    .replace(/<soma-action>[\s\S]*?<\/soma-action>/g, '')
     .trim();
 }
 
@@ -167,6 +168,21 @@ function parseTodos(content: string): AiTodo[] | null {
       subjectId: item.subjectId ?? undefined,
       assignmentId: typeof item.assignmentId === 'number' ? item.assignmentId : undefined,
     })).filter(t => t.text);
+  } catch { return null; }
+}
+
+const SUBJECT_COLORS: SubjectColor[] = ['#ef5350','#42a5f5','#66bb6a','#ab47bc','#ffa726','#26c6da','#ec407a','#8d6e63'];
+
+function parseSomaAction(content: string): { action: string; name: string; color: SubjectColor } | null {
+  const match = content.match(/<soma-action>([\s\S]*?)<\/soma-action>/);
+  if (!match) return null;
+  try {
+    const parsed = JSON.parse(match[1].trim());
+    if (parsed.action === 'create_subject' && typeof parsed.name === 'string' && parsed.name.trim()) {
+      const color: SubjectColor = SUBJECT_COLORS.includes(parsed.color) ? parsed.color : '#42a5f5';
+      return { action: 'create_subject', name: parsed.name.trim(), color };
+    }
+    return null;
   } catch { return null; }
 }
 
@@ -369,7 +385,13 @@ Scheduling logic:
 
 If you can't match a subject, use the "Other" subject.
 Always ask clarifying questions if the user's request is vague.
-If the user's availability is set above, use it to constrain the schedule automatically — do not ask for start/end times unless the user asks to override them. If availability is not set, ask the user what time they want to start and end their day before generating a schedule.`;
+If the user's availability is set above, use it to constrain the schedule automatically — do not ask for start/end times unless the user asks to override them. If availability is not set, ask the user what time they want to start and end their day before generating a schedule.
+
+SUBJECT / PROJECT CREATION:
+If the user expresses interest in a new ongoing goal, topic, or project not part of their Canvas courses, ask them: 'Would you like me to create a [Project Name] project in Soma so we can track this?' If the user confirms (yes, sure, go ahead, etc.), then and only then emit:
+<soma-action>{"action":"create_subject","name":"[Project Name]","color":"#42a5f5"}</soma-action>
+Choose a color that fits the topic. Available colors: #ef5350 (red), #42a5f5 (blue), #66bb6a (green), #ab47bc (purple), #ffa726 (orange), #26c6da (cyan), #ec407a (pink), #8d6e63 (brown).
+CRITICAL: Only emit <soma-action> after explicit user confirmation. Never emit it proactively.`;
 }
 
 // ── Sub-components ──────────────────────────────────────────────────────────
@@ -706,6 +728,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   const [voiceTriggered, setVoiceTriggered] = useState(false);
   const recognitionRef = useRef<any>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [createdSubjectMsgs, setCreatedSubjectMsgs] = useState<Record<string, string>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const subjects = storage.getSubjects();
 
@@ -1214,6 +1237,22 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       };
       updateSession(activeSessionId, s => ({ ...s, messages: [...s.messages, assistantMsg] }));
 
+      const somaAction = parseSomaAction(response);
+      if (somaAction?.action === 'create_subject') {
+        const existing = storage.getSubjects();
+        if (!existing.some(s => s.name.toLowerCase() === somaAction.name.toLowerCase())) {
+          const newSubject: Subject = {
+            id: crypto.randomUUID(),
+            name: somaAction.name,
+            color: somaAction.color,
+            totalTimeToday: 0,
+            source: 'manual',
+          };
+          storage.setSubjects([...existing, newSubject]);
+        }
+        setCreatedSubjectMsgs(prev => ({ ...prev, [assistantMsg.id]: somaAction.name }));
+      }
+
       if (isVoice) speakText(response);
 
       void runCreation(assistantMsg.id, response, currentSubjectKey, sentAttachedFile);
@@ -1395,6 +1434,11 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
                   onAccept={() => acceptTodos(msg.id, msg.todos!)}
                   onDismiss={() => dismissTodos(msg.id)}
                 />
+              )}
+              {msg.role === 'assistant' && createdSubjectMsgs[msg.id] && (
+                <div className={styles.somaActionConfirm}>
+                  ✓ Created &ldquo;{createdSubjectMsgs[msg.id]}&rdquo; as a project in Soma
+                </div>
               )}
               {msg.role === 'assistant' && artifacts[msg.id] && (
                 <div className={styles.artifactCard}>
