@@ -528,9 +528,13 @@ Rules:
   }
 
   // ── Main view ────────────────────────────────────────────────────────────────
+  const archivedCourseNames = new Set(
+    storage.getSubjects().filter(s => s.archived).map(s => s.name),
+  );
+
   const courses: CanvasCourse[] = [...new Map(
     assignments
-      .filter(a => a.courseId && a.courseName)
+      .filter(a => a.courseId && a.courseName && !archivedCourseNames.has(a.courseName))
       .map(a => [a.courseId, { id: a.courseId, name: a.courseName, courseCode: '' } as CanvasCourse]),
   ).values()];
 
@@ -538,7 +542,9 @@ Rules:
     courses.map((c, i) => [c.id, COURSE_COLORS[i % COURSE_COLORS.length]]),
   );
 
-  const filtered = assignments
+  const activeAssignments = assignments.filter(a => !archivedCourseNames.has(a.courseName));
+
+  const filtered = activeAssignments
     .filter(a => selectedCourseId === null || a.courseId === selectedCourseId)
     .filter(a => statusFilter === 'done' ? !!clearedAssignments[a.id] : !clearedAssignments[a.id])
     .filter(a => statusFilter === 'all' || statusFilter === 'done' || (assignmentStatus[a.id] ?? 'not_started') === statusFilter)
@@ -548,7 +554,7 @@ Rules:
     );
 
   const studyPlanEligible = rankStudyAssignments(
-    assignments, selectedCourseId, assignmentStatus, clearedAssignments,
+    activeAssignments, selectedCourseId, assignmentStatus, clearedAssignments,
   );
 
   return (

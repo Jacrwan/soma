@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { storage, SomaSettings } from '../../lib/storage';
+import SemesterEndModal from '../shared/SemesterEndModal';
 import { EDUCATION_OPTIONS, EDUCATION_LABELS, type EducationId } from '../Onboarding/OnboardingFlow';
 import { applyTheme } from '../../App';
 import { supabase } from '../../lib/supabase';
@@ -15,7 +16,7 @@ import styles from './SettingsTab.module.css';
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 type Day = typeof DAYS[number];
 type HoursCategory = 'schoolHours' | 'workHours' | 'personalHours';
-type Section = 'profile' | 'subscription' | 'appearance' | 'availability' | 'study' | 'ai' | 'integrations';
+type Section = 'profile' | 'subscription' | 'appearance' | 'availability' | 'study' | 'ai' | 'integrations' | 'courses';
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -56,6 +57,19 @@ export default function SettingsTab() {
 
   // Local data state
   const [clearDataLoading, setClearDataLoading] = useState(false);
+
+  // Semester archive
+  const [showSemesterModal, setShowSemesterModal] = useState(false);
+  const [archiveDone, setArchiveDone] = useState(false);
+
+  function archiveCanvasCourses() {
+    const updated = storage.getSubjects().map(s =>
+      s.source === 'canvas' ? { ...s, archived: true } : s,
+    );
+    storage.setSubjects(updated);
+    setShowSemesterModal(false);
+    setArchiveDone(true);
+  }
 
   // Google Calendar integration state
   const [gcalToken, setGcalToken] = useState(() => storage.getGoogleToken());
@@ -433,6 +447,7 @@ export default function SettingsTab() {
     ['study',         'Study Preferences'],
     ['ai',            'AI Behavior'],
     ['integrations',  'Integrations'],
+    ['courses',       'Courses'],
   ];
 
   return (
@@ -984,8 +999,39 @@ export default function SettingsTab() {
           </section>
         )}
 
+        {activeSection === 'courses' && (
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>Courses</h2>
+            <p className={styles.sectionDescription}>
+              Archive your Canvas courses at the end of a semester. Archived courses are hidden from
+              Day View, the AI, and Canvas, but your study history in Insights is preserved.
+            </p>
+            <div style={{ marginTop: 16 }}>
+              {archiveDone ? (
+                <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
+                  Courses archived. You can always manually re-enable them by updating subjects in Day View.
+                </p>
+              ) : (
+                <button
+                  className={styles.dangerBtn}
+                  onClick={() => setShowSemesterModal(true)}
+                >
+                  Archive current courses
+                </button>
+              )}
+            </div>
+          </section>
+        )}
+
       </div>
     </div>
+
+    {showSemesterModal && (
+      <SemesterEndModal
+        onConfirm={archiveCanvasCourses}
+        onDismiss={() => setShowSemesterModal(false)}
+      />
+    )}
 
     {/* Canvas connect modal */}
     {showCanvasModal && (

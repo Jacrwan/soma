@@ -419,6 +419,22 @@
   flex-shrink: 0;
 }
 
+.archivedItem {
+  opacity: 0.5;
+}
+
+.archivedBadge {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-hover, oklch(0% 0 0 / 0.06));
+  border-radius: 4px;
+  padding: 1px 5px;
+  vertical-align: middle;
+}
+
 /* Estimated vs actual */
 
 .evaList {

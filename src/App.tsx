@@ -20,7 +20,25 @@ import { SkeletonBlock } from './components/UI/Skeleton';
 import OnboardingFlow from './components/Onboarding/OnboardingFlow';
 import TrialSetupModal from './components/Trial/TrialSetupModal';
 import PaywallScreen from './components/Paywall/PaywallScreen';
+import SemesterEndModal from './components/shared/SemesterEndModal';
 import styles from './App.module.css';
+
+function getSemesterKey(): string | null {
+  const now = new Date();
+  const m = now.getMonth() + 1;
+  const d = now.getDate();
+  const y = now.getFullYear();
+  if ((m === 5 && d >= 15) || (m === 6 && d <= 15)) return `${y}-spring`;
+  if ((m === 12 && d >= 10) || (m === 1 && d <= 5)) return `${m === 1 ? y - 1 : y}-fall`;
+  return null;
+}
+
+function archiveCanvasCourses() {
+  const updated = storage.getSubjects().map(s =>
+    s.source === 'canvas' ? { ...s, archived: true } : s,
+  );
+  storage.setSubjects(updated);
+}
 
 // ── Error boundary ────────────────────────────────────────────────────────
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
@@ -136,6 +154,15 @@ function AppShell({ user, sessionResolved, onLogout }: {
     setTrialBannerDismissed(true);
   }
 
+  const [showSemesterModal, setShowSemesterModal] = useState(false);
+  useEffect(() => {
+    const key = getSemesterKey();
+    if (!key) return;
+    if (localStorage.getItem('soma_semester_archive_prompted') === key) return;
+    const hasActiveCanvas = storage.getSubjects().some(s => s.source === 'canvas' && !s.archived);
+    if (hasActiveCanvas) setShowSemesterModal(true);
+  }, []);
+
   // Only redirect to login when we definitively know there is no session.
   if (!user && sessionResolved) return <Navigate to="/login" replace />;
 
@@ -191,6 +218,21 @@ function AppShell({ user, sessionResolved, onLogout }: {
     <TimerProvider>
     <div className={styles.app}>
       <TimerOverlay />
+      {showSemesterModal && (
+        <SemesterEndModal
+          onConfirm={() => {
+            archiveCanvasCourses();
+            const key = getSemesterKey();
+            if (key) localStorage.setItem('soma_semester_archive_prompted', key);
+            setShowSemesterModal(false);
+          }}
+          onDismiss={() => {
+            const key = getSemesterKey();
+            if (key) localStorage.setItem('soma_semester_archive_prompted', key);
+            setShowSemesterModal(false);
+          }}
+        />
+      )}
       <nav className={styles.sidebar}>
         <div className={styles.brand}>Soma</div>
 

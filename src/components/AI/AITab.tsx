@@ -189,7 +189,9 @@ function parseSomaAction(content: string): { action: string; name: string; color
 // ── System prompt ───────────────────────────────────────────────────────────
 
 function buildSystemPrompt(activeSubjectKey?: string): string {
-  const subjects = storage.getSubjects();
+  const allSubjects = storage.getSubjects();
+  const subjects = allSubjects.filter(s => !s.archived);
+  const archivedCourseNames = new Set(allSubjects.filter(s => s.archived).map(s => s.name));
   const assignments = storage.getCachedAssignments();
   const announcements: import('../../types').CanvasAnnouncement[] = [];
   const modules: import('../../types').CanvasModule[] = [];
@@ -207,7 +209,9 @@ function buildSystemPrompt(activeSubjectKey?: string): string {
 
   const assignmentStatus = storage.getAssignmentStatus() as Record<string, string>;
   const incompleteAssignments = assignments.filter(a =>
-    assignmentStatus[String(a.id)] !== 'done' && a.status !== 'done',
+    !archivedCourseNames.has(a.courseName) &&
+    assignmentStatus[String(a.id)] !== 'done' &&
+    a.status !== 'done',
   );
   const assignmentsStr = incompleteAssignments.length > 0
     ? incompleteAssignments.map(a => {
@@ -215,7 +219,9 @@ function buildSystemPrompt(activeSubjectKey?: string): string {
         return `- ${a.name} — ${a.courseName} — Due ${due}`;
       }).join('\n')
     : 'None';
-  const uniqueCourses = [...new Set(assignments.map(a => a.courseName).filter(Boolean))];
+  const uniqueCourses = [...new Set(
+    assignments.filter(a => !archivedCourseNames.has(a.courseName)).map(a => a.courseName).filter(Boolean),
+  )];
   const coursesStr = uniqueCourses.length > 0 ? uniqueCourses.join(', ') : 'None synced from Canvas';
 
   const blocksStr = blocks.length > 0

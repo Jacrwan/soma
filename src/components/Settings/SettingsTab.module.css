@@ -839,6 +839,27 @@
   cursor: not-allowed;
 }
 
+.sectionDescription {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.dangerBtn {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: #e53935;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+
+.dangerBtn:hover { opacity: 0.88; }
+
 /* ── Danger zone layout ── */
 
 .dangerZoneActions {

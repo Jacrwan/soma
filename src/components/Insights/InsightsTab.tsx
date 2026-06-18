@@ -221,6 +221,7 @@ export default function InsightsTab() {
 
   const subjects = useMemo(() => storage.getSubjects(), []);
   const subjectNameMap = useMemo(() => new Map(subjects.map(s => [s.id, s.name])), [subjects]);
+  const archivedSubjectNames = useMemo(() => new Set(subjects.filter(s => s.archived).map(s => s.name)), [subjects]);
 
   const maxWeeklyMinutes = Math.max(...weekly.map(d => d.minutes), 1);
   const totalWeeklyMinutes = useMemo(
@@ -377,13 +378,19 @@ export default function InsightsTab() {
               </div>
             </div>
             <div className={styles.donutLegend}>
-              {donutSlices.map((slice, i) => (
-                <div key={i} className={styles.donutLegendItem}>
-                  <span className={styles.donutLegendDot} style={{ background: slice.color }} />
-                  <span className={styles.donutLegendName}>{slice.name}</span>
-                  <span className={styles.donutLegendTime}>{formatHours(slice.minutes)}</span>
-                </div>
-              ))}
+              {donutSlices.map((slice, i) => {
+                const isArchived = archivedSubjectNames.has(slice.name);
+                return (
+                  <div key={i} className={`${styles.donutLegendItem}${isArchived ? ` ${styles.archivedItem}` : ''}`}>
+                    <span className={styles.donutLegendDot} style={{ background: slice.color }} />
+                    <span className={styles.donutLegendName}>
+                      {slice.name}
+                      {isArchived && <span className={styles.archivedBadge}>Archived</span>}
+                    </span>
+                    <span className={styles.donutLegendTime}>{formatHours(slice.minutes)}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
