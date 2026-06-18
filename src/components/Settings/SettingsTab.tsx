@@ -953,7 +953,7 @@ export default function SettingsTab() {
 
               <div className={styles.integrationRow}>
                 <div className={styles.integrationInfo}>
-                  <span className={styles.integrationLabel}>Google Calendar</span>
+                  <span className={styles.integrationLabel}>Google Calendar <span className={styles.testingBadge}>Testing</span></span>
                   <span className={styles.integrationDescription}>See your events alongside your schedule</span>
                 </div>
                 <div className={styles.integrationActions}>
@@ -970,7 +970,7 @@ export default function SettingsTab() {
 
               <div className={styles.integrationRow}>
                 <div className={styles.integrationInfo}>
-                  <span className={styles.integrationLabel}>Google Drive</span>
+                  <span className={styles.integrationLabel}>Google Drive <span className={styles.testingBadge}>Testing</span></span>
                   <span className={styles.integrationDescription}>Attach Drive files (Docs, Slides, Sheets) to the AI, and let it create Google Docs and Slides on request</span>
                 </div>
                 <div className={styles.integrationActions}>
@@ -985,13 +985,14 @@ export default function SettingsTab() {
                 </div>
               </div>
 
-              {gdriveToken && (
-                <div className={styles.integrationRow} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 10 }}>
+              <div className={styles.integrationRow} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 10 }}>
                   <div className={styles.integrationInfo}>
                     <span className={styles.integrationLabel}>Study Folder</span>
                     <span className={styles.integrationDescription}>Connect a Google Drive folder so Soma can see its contents</span>
                   </div>
-                  {studyFolder ? (
+                  {!gdriveToken ? (
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Connect Google Drive above to choose a study folder.</span>
+                  ) : studyFolder ? (
                     <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span className={styles.connectedBadge}>{studyFolder.folderName}</span>
@@ -1032,7 +1033,6 @@ export default function SettingsTab() {
                     </div>
                   )}
                 </div>
-              )}
 
             </div>
           </section>

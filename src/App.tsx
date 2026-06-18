@@ -97,7 +97,7 @@ function AppSkeleton() {
   return (
     <div className={styles.app}>
       <nav className={styles.sidebar}>
-        <div className={styles.brand}>Soma</div>
+        <div className={styles.brand}>soma <span className={styles.betaBadge}>beta</span></div>
         <div className={styles.navItems}>
           {[100, 80, 90, 50, 85].map((w, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, height: 40, padding: '0 20px' }}>
@@ -234,7 +234,7 @@ function AppShell({ user, sessionResolved, onLogout }: {
         />
       )}
       <nav className={styles.sidebar}>
-        <div className={styles.brand}>Soma</div>
+        <div className={styles.brand}>soma <span className={styles.betaBadge}>beta</span></div>
 
         <div className={styles.navItems}>
           <button className={nav('/day-view')} onClick={() => navigate('/day-view')}>

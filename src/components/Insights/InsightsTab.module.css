@@ -46,12 +46,12 @@
 }
 
 .pageTitle {
-  font-family: 'DM Serif Display', serif;
-  font-size: 38px;
-  font-weight: 400;
+  font-size: 28px;
+  font-weight: 700;
   line-height: 1;
   color: var(--text-primary);
   margin: 0;
+  letter-spacing: -0.01em;
 }
 
 .pageSubtitle {
