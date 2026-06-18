@@ -452,7 +452,7 @@ function SessionRow({ session, isActive, isConfirming, onSelect, onDeleteClick, 
   const firstUserMsg = session.messages.find(m => m.role === 'user');
   const displayTitle = firstUserMsg
     ? firstUserMsg.content.replace(/\n/g, ' ').slice(0, 50)
-    : session.title;
+    : 'New chat';
 
   return (
     <div
@@ -1455,11 +1455,6 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
             </div>
           )}
 
-          {hasTruncatedFolderFiles() && (
-            <p style={{ margin: '0 0 4px', fontSize: 11, color: 'var(--warning, #f59e0b)', opacity: 0.85 }}>
-              ⚠️ Some study materials were too large to include in full. Answers about those files may be incomplete.
-            </p>
-          )}
 
           {/* Quick-create chips */}
           {quickOpen && !quickTemplate && (
@@ -1630,13 +1625,6 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
             />
-            {driveToken && (
-              <button
-                className={`${styles.saveDocToggleBtn}${saveAsDocMode ? ` ${styles.saveDocToggleBtnActive}` : ''}`}
-                onClick={() => setSaveAsDocMode(p => !p)}
-                title={saveAsDocMode ? 'Auto-save responses to Google Docs: ON — click to turn off' : 'Click to auto-save AI responses to Google Docs'}
-              >📄</button>
-            )}
             <button
               className={`${styles.micBtn}${voiceActive ? ` ${styles.micBtnActive}` : ''}`}
               onClick={toggleVoice}
