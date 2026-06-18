@@ -839,6 +839,34 @@
   cursor: not-allowed;
 }
 
+.saveRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.saveBtn {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  padding: 8px 20px;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+
+.saveBtn:hover { opacity: 0.88; }
+.saveBtn:disabled { opacity: 0.5; cursor: default; }
+
+.savedFlash {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 12px 0 0;
+}
+
 .sectionDescription {
   font-size: 13px;
   color: var(--text-secondary);

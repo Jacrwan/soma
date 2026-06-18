@@ -58,6 +58,21 @@ export default function SettingsTab() {
   // Local data state
   const [clearDataLoading, setClearDataLoading] = useState(false);
 
+  // Supabase settings save
+  const [savedSection, setSavedSection] = useState<string | null>(null);
+  const [supabaseSaving, setSupabaseSaving] = useState(false);
+
+  async function saveToSupabase(section: string, nextSettings?: SomaSettings) {
+    setSupabaseSaving(true);
+    try {
+      await storage.saveSettings(nextSettings ?? settings);
+      setSavedSection(section);
+      setTimeout(() => setSavedSection(s => s === section ? null : s), 2000);
+    } catch { /* silent */ } finally {
+      setSupabaseSaving(false);
+    }
+  }
+
   // Semester archive
   const [showSemesterModal, setShowSemesterModal] = useState(false);
   const [archiveDone, setArchiveDone] = useState(false);
@@ -808,6 +823,16 @@ export default function SettingsTab() {
               <p className={styles.subsectionHint}>Your free window — available for studying</p>
               <div className={`${styles.availabilityList}${settings.personalHoursEnabled === false ? ` ${styles.availabilityListDisabled}` : ''}`}>{renderDayRows('personalHours')}</div>
             </div>
+
+            <div className={styles.saveRow}>
+              <button
+                className={styles.saveBtn}
+                disabled={supabaseSaving}
+                onClick={() => void saveToSupabase('availability')}
+              >
+                {savedSection === 'availability' ? 'Saved ✓' : 'Save'}
+              </button>
+            </div>
           </section>
         )}
 
@@ -851,6 +876,16 @@ export default function SettingsTab() {
                 />
               </div>
             </div>
+
+            <div className={styles.saveRow}>
+              <button
+                className={styles.saveBtn}
+                disabled={supabaseSaving}
+                onClick={() => void saveToSupabase('study')}
+              >
+                {savedSection === 'study' ? 'Saved ✓' : 'Save'}
+              </button>
+            </div>
           </section>
         )}
 
@@ -863,11 +898,11 @@ export default function SettingsTab() {
                 <div className={styles.segment}>
                   <button
                     className={`${styles.segBtn}${settings.aiPrefs.verbosity === 'concise' ? ` ${styles.segBtnActive}` : ''}`}
-                    onClick={() => save({ ...settings, aiPrefs: { ...settings.aiPrefs, verbosity: 'concise' } })}
+                    onClick={() => { const n = { ...settings, aiPrefs: { ...settings.aiPrefs, verbosity: 'concise' as const } }; save(n); void saveToSupabase('ai', n); }}
                   >Concise</button>
                   <button
                     className={`${styles.segBtn}${settings.aiPrefs.verbosity === 'detailed' ? ` ${styles.segBtnActive}` : ''}`}
-                    onClick={() => save({ ...settings, aiPrefs: { ...settings.aiPrefs, verbosity: 'detailed' } })}
+                    onClick={() => { const n = { ...settings, aiPrefs: { ...settings.aiPrefs, verbosity: 'detailed' as const } }; save(n); void saveToSupabase('ai', n); }}
                   >Detailed</button>
                 </div>
               </div>
@@ -877,15 +912,19 @@ export default function SettingsTab() {
                 <div className={styles.segment}>
                   <button
                     className={`${styles.segBtn}${settings.aiPrefs.defaultOutput === 'schedule' ? ` ${styles.segBtnActive}` : ''}`}
-                    onClick={() => save({ ...settings, aiPrefs: { ...settings.aiPrefs, defaultOutput: 'schedule' } })}
+                    onClick={() => { const n = { ...settings, aiPrefs: { ...settings.aiPrefs, defaultOutput: 'schedule' as const } }; save(n); void saveToSupabase('ai', n); }}
                   >Schedule</button>
                   <button
                     className={`${styles.segBtn}${settings.aiPrefs.defaultOutput === 'todos' ? ` ${styles.segBtnActive}` : ''}`}
-                    onClick={() => save({ ...settings, aiPrefs: { ...settings.aiPrefs, defaultOutput: 'todos' } })}
+                    onClick={() => { const n = { ...settings, aiPrefs: { ...settings.aiPrefs, defaultOutput: 'todos' as const } }; save(n); void saveToSupabase('ai', n); }}
                   >Todos</button>
                 </div>
               </div>
             </div>
+
+            {savedSection === 'ai' && (
+              <p className={styles.savedFlash}>Saved ✓</p>
+            )}
           </section>
         )}
 
@@ -931,7 +970,7 @@ export default function SettingsTab() {
 
               <div className={styles.integrationRow}>
                 <div className={styles.integrationInfo}>
-                  <span className={styles.integrationLabel}>Google Drive <span className={styles.testingBadge}>TESTING MODE</span></span>
+                  <span className={styles.integrationLabel}>Google Drive</span>
                   <span className={styles.integrationDescription}>Attach Drive files (Docs, Slides, Sheets) to the AI, and let it create Google Docs and Slides on request</span>
                 </div>
                 <div className={styles.integrationActions}>
