@@ -5,11 +5,7 @@ import { supabase } from './lib/supabase';
 import AuthScreen from './components/Auth/AuthScreen';
 import DayView from './components/DayView/DayView';
 import CanvasTab from './components/Canvas/CanvasTab';
-import BossesTab from './components/Bosses/BossesTab';
-import BossToaster from './components/Bosses/BossToaster';
-import { syncFromCloud as syncBossesFromCloud } from './lib/bosses';
 import AITab from './components/AI/AITab';
-import CreateTab from './components/Create/CreateTab';
 import CalendarTab from './components/Calendar/CalendarTab';
 import InsightsTab from './components/Insights/InsightsTab';
 import SettingsTab from './components/Settings/SettingsTab';
@@ -118,11 +114,6 @@ function AppShell({ user, sessionResolved, onLogout }: {
   const subscription = useSubscription();
   const aiLocked = subscription.status !== 'loading' && !hasAIAccess(subscription.status);
 
-  // Restore Bosses progress from the cloud once on sign-in.
-  useEffect(() => {
-    if (user) void syncBossesFromCloud().catch(() => {});
-  }, [user]);
-
   // Paywall: block the app for past_due / unpaid / canceled
   const paywallStatus = (
     subscription.status === 'past_due' ||
@@ -184,9 +175,7 @@ function AppShell({ user, sessionResolved, onLogout }: {
     const titles: Record<string, string> = {
       '/day-view':  'Soma — Day View',
       '/canvas':    'Soma — Canvas',
-      '/bosses':    'Soma — Bosses',
       '/ai':        'Soma — AI',
-      '/create':    'Soma — Create',
       '/calendar':  'Soma — Calendar',
       '/insights':  'Soma — Insights',
       '/settings':  'Soma — Settings',
@@ -202,7 +191,6 @@ function AppShell({ user, sessionResolved, onLogout }: {
     <TimerProvider>
     <div className={styles.app}>
       <TimerOverlay />
-      <BossToaster />
       <nav className={styles.sidebar}>
         <div className={styles.brand}>Soma</div>
 
@@ -225,16 +213,6 @@ function AppShell({ user, sessionResolved, onLogout }: {
             Canvas
           </button>
 
-          <button className={nav('/bosses')} onClick={() => navigate('/bosses')}>
-            <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M11.5 2.5L6 8M11.5 2.5h-2M11.5 2.5v2"/>
-              <path d="M6 8L4 6M6 8l-1.2 1.2a1.7 1.7 0 1 1-2-2L2 6"/>
-              <path d="M2.5 2.5L8 8M2.5 2.5h2M2.5 2.5v2"/>
-              <path d="M8 8l2-2M8 8l1.2 1.2a1.7 1.7 0 1 0 2-2L12 6"/>
-            </svg>
-            Bosses
-          </button>
-
           <button className={nav('/calendar')} onClick={() => navigate('/calendar')}>
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
               <rect x="1" y="2" width="12" height="11" rx="1.5"/>
@@ -255,13 +233,6 @@ function AppShell({ user, sessionResolved, onLogout }: {
                 <path d="M4.5 6.5V4.5a2.5 2.5 0 0 1 5 0v2"/>
               </svg>
             )}
-          </button>
-
-          <button className={nav('/create')} onClick={() => navigate('/create')}>
-            <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M7 1v12M1 7h12"/>
-            </svg>
-            Create
           </button>
 
           <button className={nav('/insights')} onClick={() => navigate('/insights')}>
@@ -489,7 +460,6 @@ export default function App() {
       <Route element={shell}>
         <Route path="/day-view"  element={<DayView selectedDate={selectedDate} onSelectDate={setSelectedDate} />} />
         <Route path="/canvas"    element={<CanvasTab />} />
-        <Route path="/bosses"    element={<BossesTab />} />
         <Route path="/calendar"  element={
           <CalendarTab
             selectedDate={selectedDate}
@@ -498,7 +468,6 @@ export default function App() {
           />
         } />
         <Route path="/ai"       element={<AITab onSwitchToToday={() => navigate('/day-view')} />} />
-        <Route path="/create"   element={<CreateTab />} />
         <Route path="/insights" element={<InsightsTab />} />
         <Route path="/settings" element={<SettingsTab />} />
         {/* Unknown app routes → day view */}

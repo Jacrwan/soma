@@ -40,6 +40,18 @@ function SessionListSkeleton() {
 
 // ── Date/session helpers ────────────────────────────────────────────────────
 
+function fmtSessionTimestamp(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) {
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  }
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 function getTodayKey(): string {
   const now = new Date();
   const effective = now.getHours() < 5
@@ -456,17 +468,19 @@ function SessionRow({ session, isActive, isConfirming, onSelect, onDeleteClick, 
     );
   }
 
-  const msgCount = session.messages.length;
+  const firstUserMsg = session.messages.find(m => m.role === 'user');
+  const displayTitle = firstUserMsg
+    ? firstUserMsg.content.replace(/\n/g, ' ').slice(0, 50)
+    : session.title;
+
   return (
     <div
       className={`${styles.sessionRow}${isActive ? ` ${styles.sessionRowActive}` : ''}`}
       onClick={onSelect}
     >
       <div className={styles.sessionInfo}>
-        <span className={styles.sessionTitle}>{session.title}</span>
-        {msgCount > 0 && (
-          <span className={styles.sessionCount}>{msgCount} msg{msgCount !== 1 ? 's' : ''}</span>
-        )}
+        <span className={styles.sessionTitle}>{displayTitle}</span>
+        <span className={styles.sessionTimestamp}>{fmtSessionTimestamp(session.createdAt)}</span>
       </div>
       <button
         className={styles.sessionDeleteBtn}
@@ -736,9 +750,6 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   const subjects = storage.getSubjects();
 
   const [driveToken, setDriveToken] = useState(() => storage.getGoogleDriveToken());
-  const [docUrls, setDocUrls] = useState<Record<string, string>>({});
-  const [docLoadingId, setDocLoadingId] = useState<string | null>(null);
-  const [docErrors, setDocErrors] = useState<Record<string, string>>({});
   const [saveAsDocMode, setSaveAsDocMode] = useState(false);
 
   // ── Quick-create ─────────────────────────────────────────────────────────
@@ -898,30 +909,6 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     }
   }
 
-  async function saveToDoc(msgId: string, content: string) {
-    const token = storage.getGoogleDriveToken();
-    if (!token) return;
-    setDocLoadingId(msgId);
-    setDocErrors(prev => { const next = { ...prev }; delete next[msgId]; return next; });
-    try {
-      const title = content.replace(/\s+/g, ' ').trim().slice(0, 60) || 'Soma AI Response';
-      const { docUrl } = await createGoogleDoc(token, title, content);
-      setDocUrls(prev => ({ ...prev, [msgId]: docUrl }));
-      appendToCreateHistory({
-        kind: 'doc', title, url: docUrl, templateLabel: 'AI Response', sourceLabel: '',
-        createdAt: new Date().toISOString(),
-        subjectId: currentSubjectKey.startsWith('subject_') ? currentSubjectKey.slice('subject_'.length) : undefined,
-      });
-    } catch (err: any) {
-      const msg = err?.message === 'google_token_expired'
-        ? 'Google access expired — reconnect Google Drive in Settings.'
-        : 'Could not create doc. Try again.';
-      setDocErrors(prev => ({ ...prev, [msgId]: msg }));
-    } finally {
-      setDocLoadingId(null);
-    }
-  }
-
   // Execute an AI-requested creation (doc or slides) and track its status per message.
   async function runCreation(msgId: string, response: string, subjectKey: string, sourceFile?: AttachedFile | null) {
     const docSpec = parseCreateDoc(response);
@@ -1001,12 +988,9 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
 
   const sortedSessions = useMemo(
     () => [...sessions]
-      .filter(s => {
-        const key = s.subjectKey ?? 'general';
-        return key === currentSubjectKey && (s.messages.length > 0 || s.id === activeSessionId);
-      })
+      .filter(s => s.messages.length > 0 || s.id === activeSessionId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
-    [sessions, activeSessionId, currentSubjectKey],
+    [sessions, activeSessionId],
   );
 
   useEffect(() => {
@@ -1037,20 +1021,11 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     storage.setActiveSessionId(id);
     setDeleteConfirmId(null);
     setInput('');
+    const s = sessions.find(x => x.id === id);
+    if (s?.subjectKey) setCurrentSubjectKey(s.subjectKey);
   }
 
-  function selectSubject(subjectKey: string) {
-    setCurrentSubjectKey(subjectKey);
-    setDeleteConfirmId(null);
-    setInput('');
-    const { session, all } = getOrCreateTodayForSubject(sessions, subjectKey);
-    if (all.length !== sessions.length) {
-      storage.setChatSessions(all);
-      setSessions(all);
-    }
-    setActiveSessionId(session.id);
-    storage.setActiveSessionId(session.id);
-  }
+
 
   function newChat() {
     const todayKey = getTodayKey();
@@ -1239,10 +1214,8 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       // Auto-save to Google Doc if mode is on (and the AI didn't already create one)
       if (saveAsDocMode && driveToken && !parseCreateDoc(response) && !parseCreateSlides(response)) {
         const docTitle = text.replace(/\s+/g, ' ').trim().slice(0, 60) || 'Soma AI Response';
-        const msgId = assistantMsg.id;
         const capturedSubjectKey = currentSubjectKey;
         createGoogleDoc(driveToken, docTitle, stripTags(response)).then(({ docUrl }) => {
-          setDocUrls(prev => ({ ...prev, [msgId]: docUrl }));
           appendToCreateHistory({
             kind: 'doc', title: docTitle, url: docUrl, templateLabel: 'AI Response', sourceLabel: '',
             createdAt: new Date().toISOString(),
@@ -1350,28 +1323,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       {/* ── Sidebar ─────────────────────────────────────────────────────── */}
       <div className={styles.sidebar}>
         <div className={styles.sidebarHeader}>
-          <span className={styles.sidebarTitle}>Chats</span>
-          <button className={styles.newChatBtn} onClick={newChat} title="New chat">✎</button>
-        </div>
-        {/* Subject picker */}
-        <div className={styles.subjectPicker}>
-          <button
-            className={`${styles.subjectPickerRow}${currentSubjectKey === 'general' ? ` ${styles.subjectPickerRowActive}` : ''}`}
-            onClick={() => selectSubject('general')}
-          >
-            <span className={styles.subjectDotGeneral} />
-            <span className={styles.subjectPickerLabel}>General</span>
-          </button>
-          {subjects.filter(s => !s.archived).map(s => (
-            <button
-              key={s.id}
-              className={`${styles.subjectPickerRow}${currentSubjectKey === `subject_${s.id}` ? ` ${styles.subjectPickerRowActive}` : ''}`}
-              onClick={() => selectSubject(`subject_${s.id}`)}
-            >
-              <SubjectDot color={s.color} size={8} />
-              <span className={styles.subjectPickerLabel}>{s.name}</span>
-            </button>
-          ))}
+          <button className={styles.newChatBtnFull} onClick={newChat}>+ New Chat</button>
         </div>
 
         <div className={styles.sessionList}>
@@ -1388,7 +1340,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
             />
           ))}
           {sidebarMounted && sortedSessions.every(s => s.messages.length === 0) && (
-            <p className={styles.sessionEmptyHint}>No messages yet</p>
+            <p className={styles.sessionEmptyHint}>No chats yet</p>
           )}
         </div>
       </div>
@@ -1468,31 +1420,6 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
                       target="_blank"
                       rel="noopener noreferrer"
                     >Open ↗</a>
-                  )}
-                </div>
-              )}
-              {msg.role === 'assistant' && driveToken && !artifacts[msg.id] && (
-                <div className={styles.docActionRow}>
-                  {docUrls[msg.id] ? (
-                    <a
-                      className={styles.docLink}
-                      href={docUrls[msg.id]}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      Opened in Google Docs ↗
-                    </a>
-                  ) : (
-                    <button
-                      className={styles.saveDocBtn}
-                      disabled={docLoadingId === msg.id}
-                      onClick={() => saveToDoc(msg.id, stripTags(msg.content))}
-                    >
-                      {docLoadingId === msg.id ? 'Saving…' : 'Save to Google Doc'}
-                    </button>
-                  )}
-                  {docErrors[msg.id] && (
-                    <span className={styles.docError}>{docErrors[msg.id]}</span>
                   )}
                 </div>
               )}

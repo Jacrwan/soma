@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { storage, inferSubjectId } from '../../lib/storage';
 import { supabase } from '../../lib/supabase';
 import { sendMessage } from '../../lib/ai';
@@ -7,7 +6,6 @@ import { Subject, TimeBlock, TimerSession, SubjectColor, Todo, GoogleCalendarEve
 import { useTimerContext } from '../../contexts/TimerContext';
 import AssignmentDetail from '../Canvas/AssignmentDetail';
 import { SkeletonBlock } from '../UI/Skeleton';
-import { WeekGlance, StudySets, TopBoss } from './DayWidgets';
 import styles from './DayView.module.css';
 
 function RightPanelSkeleton() {
@@ -427,7 +425,6 @@ interface DayViewProps {
 }
 
 export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
-  const navigate = useNavigate();
   const [blocks, setBlocks] = useState<TimeBlock[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [currentMinutes, setCurrentMinutes] = useState(0);
@@ -2215,9 +2212,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
           );
         })()}
 
-        {/* ── This-week glance (links to Insights) ── */}
-        <WeekGlance />
-
         {/* ── Daily Brief ── */}
         <div className={styles.dailyBrief}>
           <div
@@ -2270,10 +2264,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
         {!rightReady ? <RightPanelSkeleton /> : (
         <>
 
-        <TopBoss />
-
-        <StudySets subjects={activeSubjects} />
-
         {(() => {
           const linkedIds = new Set(dayTodos.map(t => t.assignmentId).filter(Boolean));
           const aStatuses = storage.getAssignmentStatus();
@@ -2300,14 +2290,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                     className={styles.assignmentDueAddBtn}
                     onClick={() => addAssignmentAsTodo(a)}
                   >+ Add</button>
-                  {/* Only offer "make a quiz" for assessment-type assignments */}
-                  {/\b(quiz|test|exam|midterm|finals?|assessment|study\s*guide|review)\b/i.test(a.name) && (
-                    <button
-                      className={styles.assignmentDueAddBtn}
-                      title="Make a quiz for this"
-                      onClick={() => navigate('/create', { state: { make: { tool: 'quiz', title: a.name, subjectName: a.courseName } } })}
-                    >Quiz</button>
-                  )}
                 </div>
               ))}
             </div>

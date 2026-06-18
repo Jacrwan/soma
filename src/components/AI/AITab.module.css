@@ -96,19 +96,30 @@
 .sidebarHeader {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 14px;
-  height: 52px;
+  padding: 10px 10px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
-.sidebarTitle {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--text-muted);
+.newChatBtnFull {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.newChatBtnFull:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--accent);
+  color: var(--text-primary);
 }
 
 .newChatBtn {
@@ -267,10 +278,11 @@
   text-overflow: ellipsis;
 }
 
-.sessionCount {
+.sessionTimestamp {
   font-size: 10px;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
 
 .sessionDeleteBtn {
@@ -424,13 +436,13 @@
 .messageRow {
   display: flex;
   flex-direction: column;
-  max-width: 74%;
   gap: var(--space-sm);
 }
 
 .userRow {
   align-self: flex-end;
   align-items: flex-end;
+  max-width: 60%;
 }
 
 .assistantRow {
@@ -440,7 +452,7 @@
 }
 
 .bubble {
-  padding: 10px 16px;
+  padding: 10px 15px;
   font-size: 14px;
   line-height: 1.6;
   white-space: pre-wrap;
@@ -448,15 +460,16 @@
 }
 
 .userBubble {
-  background: var(--accent);
-  color: oklch(99% 0.003 265);
-  border-radius: 18px 18px 4px 18px;
+  background: oklch(55% 0.22 266 / 0.16);
+  color: var(--text-primary);
+  border-radius: 14px 14px 4px 14px;
 }
 
 .assistantBubble {
-  background: var(--bg-secondary);
+  background: transparent;
   color: var(--text-primary);
-  border-radius: 4px 18px 18px 18px;
+  border-radius: 0;
+  padding: 4px 0;
 }
 
 .thinkingBubble {
