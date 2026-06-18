@@ -987,7 +987,7 @@ export default function SettingsTab() {
 
               <div className={styles.integrationRow} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 10 }}>
                   <div className={styles.integrationInfo}>
-                    <span className={styles.integrationLabel}>Study Folder</span>
+                    <span className={styles.integrationLabel}>Study Folder <span className={styles.testingBadge}>Testing</span></span>
                     <span className={styles.integrationDescription}>Connect a Google Drive folder so Soma can see its contents</span>
                   </div>
                   {!gdriveToken ? (
