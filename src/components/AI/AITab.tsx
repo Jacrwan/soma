@@ -11,7 +11,7 @@ import { ensureFreshGoogleToken } from '../../lib/googleAuth';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, hasAIAccess, startCheckout } from '../../lib/subscription';
 import { SavedCreation, loadCreateHistory, appendToCreateHistory, CREATE_HISTORY_EVENT } from '../../lib/createHistory';
-import { TimeBlock, Subject, Todo, ChatMessage, ChatSession, AiTodo, CanvasAssignment } from '../../types';
+import { TimeBlock, Subject, SubjectColor, Todo, ChatMessage, ChatSession, AiTodo, CanvasAssignment } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
 import { SkeletonBlock } from '../UI/Skeleton';
 import TrialSetupModal from '../Trial/TrialSetupModal';
