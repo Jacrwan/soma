@@ -874,6 +874,83 @@
   margin: 0;
 }
 
+.archivedSection {
+  margin-top: 28px;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+}
+
+.archivedTitle {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-primary);
+  margin: 0 0 12px;
+}
+
+.archivedEmpty {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.archivedList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.archivedRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.archivedDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.archivedName {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.archivedActions {
+  display: flex;
+  gap: 8px;
+}
+
+.restoreBtn {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.restoreBtn:hover { opacity: 0.8; }
+
+.deleteSubjectBtn {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e53935;
+  background: transparent;
+  border: 1px solid #e53935;
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.deleteSubjectBtn:hover { opacity: 0.8; }
+
 .dangerBtn {
   font-size: 13px;
   font-weight: 600;

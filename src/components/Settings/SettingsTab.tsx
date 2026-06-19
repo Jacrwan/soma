@@ -76,14 +76,30 @@ export default function SettingsTab() {
   // Semester archive
   const [showSemesterModal, setShowSemesterModal] = useState(false);
   const [archiveDone, setArchiveDone] = useState(false);
+  const [archivedSubjects, setArchivedSubjects] = useState(() =>
+    storage.getSubjects().filter(s => s.archived),
+  );
 
   function archiveCanvasCourses() {
     const updated = storage.getSubjects().map(s =>
       s.source === 'canvas' ? { ...s, archived: true } : s,
     );
     storage.setSubjects(updated);
+    setArchivedSubjects(updated.filter(s => s.archived));
     setShowSemesterModal(false);
     setArchiveDone(true);
+  }
+
+  function restoreSubject(id: string) {
+    const updated = storage.getSubjects().map(s => s.id === id ? { ...s, archived: false } : s);
+    storage.setSubjects(updated);
+    setArchivedSubjects(updated.filter(s => s.archived));
+  }
+
+  function deleteArchivedSubject(id: string) {
+    const updated = storage.getSubjects().filter(s => s.id !== id);
+    storage.setSubjects(updated);
+    setArchivedSubjects(prev => prev.filter(s => s.id !== id));
   }
 
   // Google Calendar integration state
@@ -1048,7 +1064,7 @@ export default function SettingsTab() {
             <div style={{ marginTop: 16 }}>
               {archiveDone ? (
                 <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
-                  Courses archived. You can always manually re-enable them by updating subjects in Day View.
+                  Courses archived. You can restore them below.
                 </p>
               ) : (
                 <button
@@ -1057,6 +1073,26 @@ export default function SettingsTab() {
                 >
                   Archive current courses
                 </button>
+              )}
+            </div>
+
+            <div className={styles.archivedSection}>
+              <h3 className={styles.archivedTitle}>Archived Courses</h3>
+              {archivedSubjects.length === 0 ? (
+                <p className={styles.archivedEmpty}>No archived courses yet.</p>
+              ) : (
+                <div className={styles.archivedList}>
+                  {archivedSubjects.map(s => (
+                    <div key={s.id} className={styles.archivedRow}>
+                      <span className={styles.archivedDot} style={{ background: s.color }} />
+                      <span className={styles.archivedName}>{s.name}</span>
+                      <div className={styles.archivedActions}>
+                        <button className={styles.restoreBtn} onClick={() => restoreSubject(s.id)}>Restore</button>
+                        <button className={styles.deleteSubjectBtn} onClick={() => deleteArchivedSubject(s.id)}>Delete</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </section>

@@ -173,17 +173,72 @@ function parseTodos(content: string): AiTodo[] | null {
 
 const SUBJECT_COLORS: SubjectColor[] = ['#ef5350','#42a5f5','#66bb6a','#ab47bc','#ffa726','#26c6da','#ec407a','#8d6e63'];
 
-function parseSomaAction(content: string): { action: string; name: string; color: SubjectColor } | null {
+type SomaAction =
+  | { action: 'create_subject'; name: string; color: SubjectColor }
+  | { action: 'archive_subject'; subject_id: string }
+  | { action: 'delete_subject'; subject_id: string }
+  | { action: 'complete_todo'; todo_id: string }
+  | { action: 'delete_todo'; todo_id: string };
+
+function parseSomaAction(content: string): SomaAction | null {
   const match = content.match(/<soma-action>([\s\S]*?)<\/soma-action>/);
   if (!match) return null;
   try {
-    const parsed = JSON.parse(match[1].trim());
-    if (parsed.action === 'create_subject' && typeof parsed.name === 'string' && parsed.name.trim()) {
-      const color: SubjectColor = SUBJECT_COLORS.includes(parsed.color) ? parsed.color : '#42a5f5';
-      return { action: 'create_subject', name: parsed.name.trim(), color };
+    const p = JSON.parse(match[1].trim());
+    if (p.action === 'create_subject' && typeof p.name === 'string' && p.name.trim()) {
+      const color: SubjectColor = SUBJECT_COLORS.includes(p.color) ? p.color : '#42a5f5';
+      return { action: 'create_subject', name: p.name.trim(), color };
     }
+    if (p.action === 'archive_subject' && typeof p.subject_id === 'string')
+      return { action: 'archive_subject', subject_id: p.subject_id };
+    if (p.action === 'delete_subject' && typeof p.subject_id === 'string')
+      return { action: 'delete_subject', subject_id: p.subject_id };
+    if (p.action === 'complete_todo' && typeof p.todo_id === 'string')
+      return { action: 'complete_todo', todo_id: p.todo_id };
+    if (p.action === 'delete_todo' && typeof p.todo_id === 'string')
+      return { action: 'delete_todo', todo_id: p.todo_id };
     return null;
   } catch { return null; }
+}
+
+async function executeSomaAction(action: SomaAction): Promise<string | null> {
+  switch (action.action) {
+    case 'create_subject': {
+      const existing = storage.getSubjects();
+      if (!existing.some(s => s.name.toLowerCase() === action.name.toLowerCase())) {
+        storage.setSubjects([...existing, {
+          id: crypto.randomUUID(), name: action.name, color: action.color,
+          totalTimeToday: 0, source: 'manual' as const,
+        }]);
+      }
+      return `✓ Created "${action.name}" as a project in Soma`;
+    }
+    case 'archive_subject': {
+      const subj = storage.getSubjects().find(s => s.id === action.subject_id);
+      if (!subj) return null;
+      storage.setSubjects(storage.getSubjects().map(s => s.id === action.subject_id ? { ...s, archived: true } : s));
+      return `✓ Archived: ${subj.name}`;
+    }
+    case 'delete_subject': {
+      const subj = storage.getSubjects().find(s => s.id === action.subject_id);
+      if (!subj) return null;
+      storage.setSubjects(storage.getSubjects().filter(s => s.id !== action.subject_id));
+      return `✓ Deleted: ${subj.name}`;
+    }
+    case 'complete_todo': {
+      const todos = await storage.fetchTodos(getTodayKey()).catch(() => [] as Todo[]);
+      const todo = todos.find(t => t.id === action.todo_id);
+      if (!todo) return null;
+      await storage.saveTodo({ ...todo, status: 'done' });
+      return `✓ Completed: ${todo.text}`;
+    }
+    case 'delete_todo': {
+      const todos = await storage.fetchTodos(getTodayKey()).catch(() => [] as Todo[]);
+      const todo = todos.find(t => t.id === action.todo_id);
+      await storage.deleteTodo(action.todo_id);
+      return todo ? `✓ Deleted: ${todo.text}` : '✓ Todo deleted';
+    }
+  }
 }
 
 // ── System prompt ───────────────────────────────────────────────────────────
@@ -393,11 +448,26 @@ If you can't match a subject, use the "Other" subject.
 Always ask clarifying questions if the user's request is vague.
 If the user's availability is set above, use it to constrain the schedule automatically — do not ask for start/end times unless the user asks to override them. If availability is not set, ask the user what time they want to start and end their day before generating a schedule.
 
-SUBJECT / PROJECT CREATION:
-If the user expresses interest in a new ongoing goal, topic, or project not part of their Canvas courses, ask them: 'Would you like me to create a [Project Name] project in Soma so we can track this?' If the user confirms (yes, sure, go ahead, etc.), then and only then emit:
-<soma-action>{"action":"create_subject","name":"[Project Name]","color":"#42a5f5"}</soma-action>
-Choose a color that fits the topic. Available colors: #ef5350 (red), #42a5f5 (blue), #66bb6a (green), #ab47bc (purple), #ffa726 (orange), #26c6da (cyan), #ec407a (pink), #8d6e63 (brown).
-CRITICAL: Only emit <soma-action> after explicit user confirmation. Never emit it proactively.`;
+SUBJECT & TODO MANAGEMENT:
+You can manage the user's subjects and todos by emitting <soma-action> blocks. Always ask for confirmation before any action. Only emit the block after the user explicitly confirms (yes, sure, go ahead, etc.).
+
+Create a new project/subject (ask first: "Would you like me to create a [Name] project in Soma so we can track this?"):
+<soma-action>{"action":"create_subject","name":"[Name]","color":"#42a5f5"}</soma-action>
+Available colors: #ef5350 (red), #42a5f5 (blue), #66bb6a (green), #ab47bc (purple), #ffa726 (orange), #26c6da (cyan), #ec407a (pink), #8d6e63 (brown).
+
+Archive a subject (ask first: "Would you like me to archive [Name]?"):
+<soma-action>{"action":"archive_subject","subject_id":"[exact id]"}</soma-action>
+
+Permanently delete a subject (ask first: "Are you sure you want to delete [Name]? This can't be undone."):
+<soma-action>{"action":"delete_subject","subject_id":"[exact id]"}</soma-action>
+
+Mark a todo as complete (ask first: "Should I mark '[task]' as complete?"):
+<soma-action>{"action":"complete_todo","todo_id":"[exact id]"}</soma-action>
+
+Delete a todo (ask first: "Should I delete '[task]'?"):
+<soma-action>{"action":"delete_todo","todo_id":"[exact id]"}</soma-action>
+
+CRITICAL: Use only the exact IDs from the subjects list and todos list above. Never invent or guess IDs. Never emit <soma-action> without explicit user confirmation.`;
 }
 
 // ── Sub-components ──────────────────────────────────────────────────────────
@@ -734,7 +804,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   const [voiceTriggered, setVoiceTriggered] = useState(false);
   const recognitionRef = useRef<any>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [createdSubjectMsgs, setCreatedSubjectMsgs] = useState<Record<string, string>>({});
+  const [actionConfirmMsgs, setActionConfirmMsgs] = useState<Record<string, string>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const subjects = storage.getSubjects();
 
@@ -1226,6 +1296,14 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     try {
       await getFolderContentsForPrompt();
       let systemPrompt = getCachedSystemPrompt(currentSubjectKey);
+      try {
+        const todayTodos = await storage.fetchTodos(getTodayKey());
+        const activeTodos = todayTodos.filter(t => t.status !== 'done');
+        if (activeTodos.length > 0) {
+          const todosStr = activeTodos.map(t => `- ${t.text} (id: ${t.id})`).join('\n');
+          systemPrompt += `\n\nThe user's active todos for today:\n${todosStr}`;
+        }
+      } catch { /* non-critical */ }
       if (isVoice) {
         systemPrompt += `\n\nIMPORTANT — VOICE MODE: The student is speaking to you by voice. Keep your response concise and conversational — short sentences, no bullet lists, no markdown formatting, no special tags like <schedule>, <todos>, <createDoc>, or <createSlides>. Respond as if you are talking back to them naturally. Still be helpful and accurate, just speak in plain conversational sentences. Describe any schedule or tasks conversationally (e.g. "I'd start with calc at 9, then chem at 11") rather than using structured blocks.`;
       }
@@ -1244,19 +1322,10 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       updateSession(activeSessionId, s => ({ ...s, messages: [...s.messages, assistantMsg] }));
 
       const somaAction = parseSomaAction(response);
-      if (somaAction?.action === 'create_subject') {
-        const existing = storage.getSubjects();
-        if (!existing.some(s => s.name.toLowerCase() === somaAction.name.toLowerCase())) {
-          const newSubject: Subject = {
-            id: crypto.randomUUID(),
-            name: somaAction.name,
-            color: somaAction.color,
-            totalTimeToday: 0,
-            source: 'manual',
-          };
-          storage.setSubjects([...existing, newSubject]);
-        }
-        setCreatedSubjectMsgs(prev => ({ ...prev, [assistantMsg.id]: somaAction.name }));
+      if (somaAction) {
+        void executeSomaAction(somaAction).then(confirm => {
+          if (confirm) setActionConfirmMsgs(prev => ({ ...prev, [assistantMsg.id]: confirm }));
+        });
       }
 
       if (isVoice) speakText(response);
@@ -1441,9 +1510,9 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
                   onDismiss={() => dismissTodos(msg.id)}
                 />
               )}
-              {msg.role === 'assistant' && createdSubjectMsgs[msg.id] && (
+              {msg.role === 'assistant' && actionConfirmMsgs[msg.id] && (
                 <div className={styles.somaActionConfirm}>
-                  ✓ Created &ldquo;{createdSubjectMsgs[msg.id]}&rdquo; as a project in Soma
+                  {actionConfirmMsgs[msg.id]}
                 </div>
               )}
               {msg.role === 'assistant' && artifacts[msg.id] && (
