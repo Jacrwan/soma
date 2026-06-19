@@ -260,7 +260,9 @@ function buildSystemPrompt(activeSubjectKey?: string): string {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
   });
 
-  const subjectsStr = subjects.map(s => `${s.name} (id: ${s.id})`).join(', ');
+  const subjectsStr = subjects.length > 0
+    ? subjects.map(s => `- ${s.name} | id: ${s.id} | source: ${s.source ?? 'manual'}`).join('\n')
+    : 'None';
 
   const assignmentStatus = storage.getAssignmentStatus() as Record<string, string>;
   const incompleteAssignments = assignments.filter(a =>
@@ -359,7 +361,8 @@ function buildSystemPrompt(activeSubjectKey?: string): string {
 ${subjectFocusStr}
 Today is ${date}.
 
-The user's courses/subjects: ${subjectsStr}
+The user's current subjects (use these exact IDs in any soma-actions):
+${subjectsStr}
 Canvas courses: ${coursesStr}
 
 The user's upcoming incomplete assignments are:
@@ -467,7 +470,7 @@ Mark a todo as complete (ask first: "Should I mark '[task]' as complete?"):
 Delete a todo (ask first: "Should I delete '[task]'?"):
 <soma-action>{"action":"delete_todo","todo_id":"[exact id]"}</soma-action>
 
-CRITICAL: Use only the exact IDs from the subjects list and todos list above. Never invent or guess IDs. Never emit <soma-action> without explicit user confirmation.`;
+CRITICAL: When the user asks you to edit, delete, archive, or complete a subject or todo, you MUST use the exact subject_id or todo_id from the lists above. Never invent or guess IDs. If you cannot find the item in the list, tell the user it wasn't found. Never emit <soma-action> without explicit user confirmation.`;
 }
 
 // ── Sub-components ──────────────────────────────────────────────────────────
@@ -1297,11 +1300,14 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       await getFolderContentsForPrompt();
       let systemPrompt = getCachedSystemPrompt(currentSubjectKey);
       try {
-        const todayTodos = await storage.fetchTodos(getTodayKey());
-        const activeTodos = todayTodos.filter(t => t.status !== 'done');
-        if (activeTodos.length > 0) {
-          const todosStr = activeTodos.map(t => `- ${t.text} (id: ${t.id})`).join('\n');
-          systemPrompt += `\n\nThe user's active todos for today:\n${todosStr}`;
+        const incompleteTodos = await storage.fetchIncompleteTodos();
+        if (incompleteTodos.length > 0) {
+          const subjectNameMap = new Map(storage.getSubjects().map(s => [s.id, s.name]));
+          const todosStr = incompleteTodos.map(t => {
+            const subjectName = t.subjectId ? (subjectNameMap.get(t.subjectId) ?? 'Unknown') : 'None';
+            return `- ${t.text} | id: ${t.id} | subject: ${subjectName} | due: ${t.date ?? 'none'}`;
+          }).join('\n');
+          systemPrompt += `\n\nThe user's current todos (use these exact IDs in any soma-actions):\n${todosStr}`;
         }
       } catch { /* non-critical */ }
       if (isVoice) {

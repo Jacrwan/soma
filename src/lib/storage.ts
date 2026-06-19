@@ -489,6 +489,24 @@ export const storage = {
     await supabase.from('todos').delete().eq('id', todoId).eq('user_id', id);
   },
 
+  async fetchIncompleteTodos(): Promise<Todo[]> {
+    const id = await uid();
+    const { data } = await supabase
+      .from('todos')
+      .select('*')
+      .eq('user_id', id)
+      .neq('status', 'done');
+    return (data ?? []).map(r => ({
+      id: r.id,
+      text: r.text,
+      status: r.status ?? 'nothing',
+      subjectId: r.subject_id ?? undefined,
+      assignmentId: r.assignment_id ?? undefined,
+      date: r.date,
+      estimatedMinutes: r.estimated_minutes ?? undefined,
+    } as Todo));
+  },
+
   // ── Schedule blocks (Supabase) ───────────────────────────────────────
   async getScheduleBlocks(date: string): Promise<ScheduleBlock[]> {
     const id = await uid();
