@@ -1144,6 +1144,13 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     setEditSubject(null);
   }
 
+  function archiveSubject(id: string) {
+    const updated = storage.getSubjects().map(s => s.id === id ? { ...s, archived: true } : s);
+    storage.setSubjects(updated);
+    setSubjects(updated.filter(s => !s.archived));
+    setEditSubject(null);
+  }
+
   function deleteSubject(id: string) {
     const subject = subjects.find(s => s.id === id);
     if (subject?.source === 'manual') {
@@ -2747,6 +2754,13 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               disabled={!editSubject.name.trim()}
             >Save</button>
             <button className={styles.taskModalCancel} onClick={() => setEditSubject(null)}>Cancel</button>
+            <button
+              className={styles.taskModalCancel}
+              onClick={() => {
+                if (window.confirm(`Archive "${editSubject.name}"? It will be hidden from Day View and the AI, but your study history is preserved.`))
+                  archiveSubject(editSubject.id);
+              }}
+            >Archive subject</button>
             <div className={styles.subjectModalDestructive}>
               <button className={styles.editDeleteBtn} onClick={() => deleteSubject(editSubject.id)}>Delete subject</button>
             </div>
