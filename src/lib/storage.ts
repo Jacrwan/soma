@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Subject, TimeBlock, TimerSession, CanvasAssignment, CanvasCourse, Todo, GoogleCalendarEvent, ChatMessage, ChatSession } from '../types';
+import { Subject, TimeBlock, TimerSession, CanvasAssignment, CanvasCourse, Todo, TodoSession, GoogleCalendarEvent, ChatMessage, ChatSession } from '../types';
 
 const SOMA_TODOS_KEY = 'soma_todos';
 const SOMA_BLOCKS_KEY = 'soma_blocks';
@@ -192,8 +192,6 @@ function todoFromRow(r: Record<string, unknown>): Todo {
     dueDate: (r.due_date as string | null) ?? undefined,
     notes: (r.notes as string | null) ?? undefined,
     order: (r.order as number | null) ?? undefined,
-    startTime: typeof r.start_time === 'string' ? r.start_time : undefined,
-    endTime: typeof r.end_time === 'string' ? r.end_time : undefined,
   };
 }
 
@@ -643,14 +641,58 @@ export const storage = {
       due_date: todo.dueDate ?? null,
       notes: todo.notes ?? null,
       order: todo.order ?? null,
-      start_time: todo.startTime ?? null,
-      end_time: todo.endTime ?? null,
     });
   },
 
   async deleteTodo(todoId: string): Promise<void> {
     const id = await uid();
     await supabase.from('todos').delete().eq('id', todoId).eq('user_id', id);
+  },
+
+  async saveTodoSession(session: { id?: string; todoId: string; date: string; startTime?: string; endTime?: string }): Promise<string> {
+    const userId = await uid();
+    const id = session.id ?? crypto.randomUUID();
+    await supabase.from('todo_sessions').upsert({
+      id,
+      todo_id: session.todoId,
+      user_id: userId,
+      date: session.date,
+      start_time: session.startTime ?? null,
+      end_time: session.endTime ?? null,
+    });
+    return id;
+  },
+
+  async deleteTodoSession(id: string): Promise<void> {
+    const userId = await uid();
+    await supabase.from('todo_sessions').delete().eq('id', id).eq('user_id', userId);
+  },
+
+  async updateTodoSession(id: string, updates: { startTime?: string; endTime?: string }): Promise<void> {
+    const userId = await uid();
+    const patch: Record<string, unknown> = {};
+    if (updates.startTime !== undefined) patch.start_time = updates.startTime;
+    if (updates.endTime !== undefined) patch.end_time = updates.endTime;
+    if (Object.keys(patch).length === 0) return;
+    await supabase.from('todo_sessions').update(patch).eq('id', id).eq('user_id', userId);
+  },
+
+  async fetchTodoSessions(date: string): Promise<TodoSession[]> {
+    const userId = await uid();
+    const { data } = await supabase
+      .from('todo_sessions')
+      .select('id, todo_id, date, start_time, end_time, todos(text, subject_id)')
+      .eq('user_id', userId)
+      .eq('date', date);
+    return (data ?? []).map((r: Record<string, unknown>) => ({
+      id: r.id as string,
+      todoId: r.todo_id as string,
+      date: r.date as string,
+      startTime: typeof r.start_time === 'string' ? r.start_time : undefined,
+      endTime: typeof r.end_time === 'string' ? r.end_time : undefined,
+      todoText: (r.todos as Record<string, unknown> | null)?.text as string | undefined,
+      subjectId: (r.todos as Record<string, unknown> | null)?.subject_id as string | undefined,
+    }));
   },
 
   async fetchIncompleteTodos(): Promise<Todo[]> {

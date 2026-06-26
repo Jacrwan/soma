@@ -34,6 +34,16 @@ export interface TimerSession {
   pauseDurationSeconds?: number;
 }
 
+export interface TodoSession {
+  id: string;
+  todoId: string;
+  date: string;         // YYYY-MM-DD
+  startTime?: string;   // ISO timestamptz
+  endTime?: string;     // ISO timestamptz
+  todoText?: string;    // joined from todos.text
+  subjectId?: string;   // joined from todos.subject_id
+}
+
 export interface CanvasAssignment {
   id: number;
   name: string;
@@ -91,8 +101,6 @@ export interface Todo {
   estimatedMinutes?: number;
   notes?: string;
   order?: number;
-  startTime?: string; // ISO datetime, for future timeline display
-  endTime?: string;   // ISO datetime, for future timeline display
 }
 
 export interface GoogleCalendarEvent {

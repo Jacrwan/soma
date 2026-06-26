@@ -157,10 +157,13 @@ type SomaAction =
   | { action: 'update_subject'; subject_id: string; name?: string; color?: SubjectColor }
   | { action: 'archive_subject'; subject_id: string }
   | { action: 'delete_subject'; subject_id: string }
-  | { action: 'create_todo'; title: string; subject_id?: string; due_date?: string; start_time?: string; end_time?: string }
+  | { action: 'create_todo'; title: string; subject_id?: string; due_date?: string; sessions?: Array<{ date: string; start_time: string; end_time: string }> }
   | { action: 'update_todo'; todo_id: string; title?: string; due_date?: string; notes?: string }
   | { action: 'complete_todo'; todo_id: string }
-  | { action: 'delete_todo'; todo_id: string };
+  | { action: 'delete_todo'; todo_id: string }
+  | { action: 'create_session'; todo_id: string; date: string; start_time: string; end_time: string }
+  | { action: 'delete_session'; session_id: string }
+  | { action: 'update_session'; session_id: string; start_time?: string; end_time?: string };
 
 function parseSingleSomaAction(json: string): SomaAction | null {
   try {
@@ -186,8 +189,16 @@ function parseSingleSomaAction(json: string): SomaAction | null {
         title: p.title.trim(),
         subject_id: typeof p.subject_id === 'string' ? p.subject_id : undefined,
         due_date: typeof p.due_date === 'string' ? p.due_date : undefined,
-        start_time: typeof p.start_time === 'string' ? p.start_time : undefined,
-        end_time: typeof p.end_time === 'string' ? p.end_time : undefined,
+        sessions: Array.isArray(p.sessions)
+          ? (p.sessions as unknown[])
+              .filter((s): s is Record<string, string> =>
+                typeof s === 'object' && s !== null &&
+                typeof (s as Record<string, unknown>).date === 'string' &&
+                typeof (s as Record<string, unknown>).start_time === 'string' &&
+                typeof (s as Record<string, unknown>).end_time === 'string',
+              )
+              .map(s => ({ date: s.date, start_time: s.start_time, end_time: s.end_time }))
+          : undefined,
       };
     if (p.action === 'update_todo' && typeof p.todo_id === 'string')
       return {
@@ -201,6 +212,21 @@ function parseSingleSomaAction(json: string): SomaAction | null {
       return { action: 'complete_todo', todo_id: p.todo_id };
     if (p.action === 'delete_todo' && typeof p.todo_id === 'string')
       return { action: 'delete_todo', todo_id: p.todo_id };
+    if (p.action === 'create_session' &&
+        typeof p.todo_id === 'string' &&
+        typeof p.date === 'string' &&
+        typeof p.start_time === 'string' &&
+        typeof p.end_time === 'string')
+      return { action: 'create_session', todo_id: p.todo_id, date: p.date, start_time: p.start_time, end_time: p.end_time };
+    if (p.action === 'delete_session' && typeof p.session_id === 'string')
+      return { action: 'delete_session', session_id: p.session_id };
+    if (p.action === 'update_session' && typeof p.session_id === 'string')
+      return {
+        action: 'update_session',
+        session_id: p.session_id,
+        start_time: typeof p.start_time === 'string' ? p.start_time : undefined,
+        end_time: typeof p.end_time === 'string' ? p.end_time : undefined,
+      };
     return null;
   } catch { return null; }
 }
@@ -292,11 +318,15 @@ async function executeSomaAction(action: SomaAction): Promise<string | null> {
         subjectId: resolvedSubjectId,
         dueDate: action.due_date,
         date: action.due_date ?? getTodayKey(),
-        startTime: action.start_time,
-        endTime: action.end_time,
       };
       storage.setTodos([...storage.getTodos(), newTodo]);
       window.dispatchEvent(new Event('soma_todos_changed'));
+      if (action.sessions && action.sessions.length > 0) {
+        await Promise.all(action.sessions.map(sess =>
+          storage.saveTodoSession({ todoId: newTodo.id, date: sess.date, startTime: sess.start_time, endTime: sess.end_time }),
+        ));
+        window.dispatchEvent(new Event('soma_todo_sessions_changed'));
+      }
       const subjectNote = action.subject_id && !resolvedSubjectId ? ' (subject not found — left unassigned)' : '';
       return `✓ Added todo: "${action.title}"${subjectNote}`;
     }
@@ -339,6 +369,31 @@ async function executeSomaAction(action: SomaAction): Promise<string | null> {
       }
       window.dispatchEvent(new Event('soma_todos_changed'));
       return todo ? `✓ Deleted todo: "${todo.text}"` : '✓ Todo deleted';
+    }
+    case 'create_session': {
+      const todo = storage.getTodos().find(t => t.id === action.todo_id);
+      if (!todo) return `✗ Todo not found for session: ${action.todo_id}`;
+      await storage.saveTodoSession({
+        todoId: action.todo_id,
+        date: action.date,
+        startTime: action.start_time,
+        endTime: action.end_time,
+      });
+      window.dispatchEvent(new Event('soma_todo_sessions_changed'));
+      return `✓ Scheduled session for "${todo.text}"`;
+    }
+    case 'delete_session': {
+      await storage.deleteTodoSession(action.session_id);
+      window.dispatchEvent(new Event('soma_todo_sessions_changed'));
+      return `✓ Deleted session`;
+    }
+    case 'update_session': {
+      await storage.updateTodoSession(action.session_id, {
+        startTime: action.start_time,
+        endTime: action.end_time,
+      });
+      window.dispatchEvent(new Event('soma_todo_sessions_changed'));
+      return `✓ Updated session`;
     }
   }
 }
@@ -560,9 +615,6 @@ IMPORTANT RULES:
 <soma-action>{"action":"create_todo","title":"Task 2","subject_id":"...","due_date":"2026-06-30"}</soma-action>
 <soma-action>{"action":"create_todo","title":"Task 3","subject_id":"...","due_date":"2026-07-01"}</soma-action>
 All blocks must appear in the same response. Each create_todo MUST have a different due_date matching the specific day that task is assigned to — never default all tasks to today.
-- When the user asks to schedule a todo at a specific time with a duration, include start_time and end_time in the create_todo action as ISO datetime strings. Example: if the user wants a 2-hour task on June 27 at 10am, emit:
-<soma-action>{"action":"create_todo","title":"...","subject_id":"...","due_date":"2026-06-27","start_time":"2026-06-27T10:00:00","end_time":"2026-06-27T12:00:00"}</soma-action>
-Only include start_time/end_time when the user explicitly specifies a time. If no time is given, omit them.
 
 Available colors for subjects: #ef5350 (red), #42a5f5 (blue), #66bb6a (green), #ab47bc (purple), #ffa726 (orange), #26c6da (cyan), #ec407a (pink), #8d6e63 (brown).
 
@@ -570,6 +622,9 @@ Available colors for subjects: #ef5350 (red), #42a5f5 (blue), #66bb6a (green), #
 
 Create a todo (emit immediately once you have a title; ask once for missing info if needed):
 <soma-action>{"action":"create_todo","title":"[task title]","subject_id":"[exact id or omit if none]","due_date":"YYYY-MM-DD"}</soma-action>
+
+Create a todo with a time block in one step (only when the user specifies a time):
+<soma-action>{"action":"create_todo","title":"[task]","subject_id":"[exact id or omit]","due_date":"YYYY-MM-DD","sessions":[{"date":"YYYY-MM-DD","start_time":"YYYY-MM-DDTHH:MM:SS","end_time":"YYYY-MM-DDTHH:MM:SS"}]}</soma-action>
 
 Update a todo (any combination of fields; omit fields you are not changing):
 <soma-action>{"action":"update_todo","todo_id":"[exact id]","title":"[new title]","due_date":"YYYY-MM-DD","notes":"[notes]"}</soma-action>
@@ -581,6 +636,25 @@ Delete a todo (confirm first: "Should I delete '[task]'? This can't be undone.")
 <soma-action>{"action":"delete_todo","todo_id":"[exact id]"}</soma-action>
 
 CRITICAL — deleting todos: Always match todos by name from the current todos list injected above — never rely on IDs from previous messages or memory. If you cannot find the todo by name in the current list, tell the user it was not found rather than claiming it was deleted. Only say something was deleted after you have emitted a delete_todo soma-action with a valid ID from the current list.
+
+── SESSION ACTIONS ───────────────────────────────────────────────────────────
+
+Sessions are time blocks shown on the Day View timeline. Each session belongs to a todo and has a start_time and end_time. A single todo can have multiple sessions (e.g. the same task at 9am and again at 2pm in a day, or sessions on different days).
+
+Schedule a time block for an existing todo:
+<soma-action>{"action":"create_session","todo_id":"[exact todo id]","date":"YYYY-MM-DD","start_time":"YYYY-MM-DDTHH:MM:SS","end_time":"YYYY-MM-DDTHH:MM:SS"}</soma-action>
+
+Update a session's time (confirm first if it changes something the user set):
+<soma-action>{"action":"update_session","session_id":"[exact session id from injected list]","start_time":"YYYY-MM-DDTHH:MM:SS","end_time":"YYYY-MM-DDTHH:MM:SS"}</soma-action>
+
+Delete a session (confirm first):
+<soma-action>{"action":"delete_session","session_id":"[exact session id from injected list]"}</soma-action>
+
+Session rules:
+- Use create_session when the todo already exists and the user asks to schedule it at a time.
+- Use sessions array in create_todo when creating a new todo that already has a time.
+- When the user wants the same task at two different times in a day, emit two create_session blocks for the same todo_id.
+- All times are ISO datetime strings in local time (no trailing Z).
 
 ── SUBJECT ACTIONS ───────────────────────────────────────────────────────────
 
@@ -1424,6 +1498,20 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
             return `- ${t.text} | id: ${t.id} | subject: ${subjectName} | due: ${t.date ?? 'none'}`;
           }).join('\n');
           systemPrompt += `\n\nThe user's current todos (use these exact IDs in any soma-actions):\n${todosStr}`;
+        }
+      } catch { /* non-critical */ }
+      try {
+        const todayKey = getTodayKey();
+        const todaySessions = await storage.fetchTodoSessions(todayKey);
+        if (todaySessions.length > 0) {
+          const subjectNameMap = new Map(storage.getSubjects().map(s => [s.id, s.name]));
+          const sessionsStr = todaySessions.map(s => {
+            const subjectName = s.subjectId ? (subjectNameMap.get(s.subjectId) ?? 'Unknown') : 'None';
+            const start = s.startTime ? fmtTime12(s.startTime) : '?';
+            const end = s.endTime ? fmtTime12(s.endTime) : '?';
+            return `- ${s.todoText ?? 'Untitled'} | session_id: ${s.id} | subject: ${subjectName} | ${start}–${end}`;
+          }).join('\n');
+          systemPrompt += `\n\nThe user's scheduled sessions for today (use these exact session_ids for update/delete):\n${sessionsStr}`;
         }
       } catch { /* non-critical */ }
       if (isVoice) {

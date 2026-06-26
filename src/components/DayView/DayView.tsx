@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, type CSSProperties } from 're
 import { storage } from '../../lib/storage';
 import { supabase } from '../../lib/supabase';
 import { sendMessage } from '../../lib/ai';
-import { Subject, TimeBlock, TimerSession, SubjectColor, Todo, GoogleCalendarEvent, CanvasAssignment, CanvasCourse } from '../../types';
+import { Subject, TimeBlock, TimerSession, SubjectColor, Todo, TodoSession, GoogleCalendarEvent, CanvasAssignment, CanvasCourse } from '../../types';
 import { useTimerContext } from '../../contexts/TimerContext';
 import AssignmentDetail from '../Canvas/AssignmentDetail';
 import { SkeletonBlock } from '../UI/Skeleton';
@@ -472,6 +472,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [deadlineDetail, setDeadlineDetail] = useState<{ courseId: number; assignmentId: number } | null>(null);
   const [elapsedBySubject, setElapsedBySubject] = useState<Record<string, number>>({});
   const [missedBlockIds, setMissedBlockIds] = useState<Set<string>>(new Set());
+  const [todoSessions, setTodoSessions] = useState<TodoSession[]>([]);
   const [taskSessions, setTaskSessions] = useState<TaskSession[]>([]);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingSessionMins, setEditingSessionMins] = useState('');
@@ -563,6 +564,11 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       ...s,
       totalTimeToday: subjectSecsFromSessions(s.id, selectedDate),
     })));
+  }, [selectedDate]);
+
+  useEffect(() => {
+    const dateKey = toISODateString(selectedDate);
+    void storage.fetchTodoSessions(dateKey).then(setTodoSessions).catch(() => {});
   }, [selectedDate]);
 
   useEffect(() => {
@@ -735,16 +741,22 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     function onTodosChanged() {
       void storage.fetchAllTodos().then(setTodos).catch(() => {});
     }
+    function onTodoSessionsChanged() {
+      const dateKey = toISODateString(selectedDate);
+      void storage.fetchTodoSessions(dateKey).then(setTodoSessions).catch(() => {});
+    }
 
     window.addEventListener('soma_timer_stopped', onTimerStopped);
     window.addEventListener('soma_merge_applied', onMergeApplied);
     window.addEventListener('soma_subjects_changed', onSubjectsChanged);
     window.addEventListener('soma_todos_changed', onTodosChanged);
+    window.addEventListener('soma_todo_sessions_changed', onTodoSessionsChanged);
     return () => {
       window.removeEventListener('soma_timer_stopped', onTimerStopped);
       window.removeEventListener('soma_merge_applied', onMergeApplied);
       window.removeEventListener('soma_subjects_changed', onSubjectsChanged);
       window.removeEventListener('soma_todos_changed', onTodosChanged);
+      window.removeEventListener('soma_todo_sessions_changed', onTodoSessionsChanged);
     };
   }, [selectedDate]);
 
@@ -1636,15 +1648,15 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
   })();
   const dayTodos = todos.filter(t => todoMatchesDate(t, selectedDateKey));
 
-  // Todos with a scheduled startTime appear as blocks on the timeline
-  const todoBlocks: TimeBlock[] = dayTodos
-    .filter(t => t.startTime && t.endTime)
-    .map(t => ({
-      id: t.id,
-      subjectId: t.subjectId ?? '',
-      task: t.text,
-      startTime: t.startTime!,
-      endTime: t.endTime!,
+  // Sessions from todo_sessions table appear as blocks on the timeline
+  const sessionBlocks: TimeBlock[] = todoSessions
+    .filter(s => s.startTime && s.endTime)
+    .map(s => ({
+      id: s.id,
+      subjectId: s.subjectId ?? '',
+      task: s.todoText ?? '',
+      startTime: s.startTime!,
+      endTime: s.endTime!,
       source: 'ai' as const,
     }));
 
@@ -1990,7 +2002,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
           )}
 
           {(() => {
-            const allBlocks = [...blocks, ...todoBlocks.filter(tb => !blocks.some(b => b.id === tb.id))];
+            const allBlocks = [...blocks, ...sessionBlocks.filter(sb => !blocks.some(b => b.id === sb.id))];
             const shortBlocks: TimeBlock[] = [];
             const regularBlocks: TimeBlock[] = [];
             for (const block of allBlocks) {
