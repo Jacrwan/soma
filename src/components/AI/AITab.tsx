@@ -171,7 +171,7 @@ type SomaAction =
   | { action: 'update_subject'; subject_id: string; name?: string; color?: SubjectColor }
   | { action: 'archive_subject'; subject_id: string }
   | { action: 'delete_subject'; subject_id: string }
-  | { action: 'create_todo'; title: string; subject_id?: string; due_date?: string }
+  | { action: 'create_todo'; title: string; subject_id?: string; due_date?: string; start_time?: string; end_time?: string }
   | { action: 'update_todo'; todo_id: string; title?: string; due_date?: string; notes?: string }
   | { action: 'complete_todo'; todo_id: string }
   | { action: 'delete_todo'; todo_id: string };
@@ -200,6 +200,8 @@ function parseSingleSomaAction(json: string): SomaAction | null {
         title: p.title.trim(),
         subject_id: typeof p.subject_id === 'string' ? p.subject_id : undefined,
         due_date: typeof p.due_date === 'string' ? p.due_date : undefined,
+        start_time: typeof p.start_time === 'string' ? p.start_time : undefined,
+        end_time: typeof p.end_time === 'string' ? p.end_time : undefined,
       };
     if (p.action === 'update_todo' && typeof p.todo_id === 'string')
       return {
@@ -304,6 +306,8 @@ async function executeSomaAction(action: SomaAction): Promise<string | null> {
         subjectId: resolvedSubjectId,
         dueDate: action.due_date,
         date: action.due_date ?? getTodayKey(),
+        startTime: action.start_time,
+        endTime: action.end_time,
       };
       storage.setTodos([...storage.getTodos(), newTodo]);
       window.dispatchEvent(new Event('soma_todos_changed'));
@@ -570,6 +574,9 @@ IMPORTANT RULES:
 <soma-action>{"action":"create_todo","title":"Task 2","subject_id":"...","due_date":"2026-06-30"}</soma-action>
 <soma-action>{"action":"create_todo","title":"Task 3","subject_id":"...","due_date":"2026-07-01"}</soma-action>
 All blocks must appear in the same response. Each create_todo MUST have a different due_date matching the specific day that task is assigned to — never default all tasks to today.
+- When the user asks to schedule a todo at a specific time with a duration, include start_time and end_time in the create_todo action as ISO datetime strings. Example: if the user wants a 2-hour task on June 27 at 10am, emit:
+<soma-action>{"action":"create_todo","title":"...","subject_id":"...","due_date":"2026-06-27","start_time":"2026-06-27T10:00:00","end_time":"2026-06-27T12:00:00"}</soma-action>
+Only include start_time/end_time when the user explicitly specifies a time. If no time is given, omit them.
 
 Available colors for subjects: #ef5350 (red), #42a5f5 (blue), #66bb6a (green), #ab47bc (purple), #ffa726 (orange), #26c6da (cyan), #ec407a (pink), #8d6e63 (brown).
 
