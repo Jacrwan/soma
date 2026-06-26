@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
-import { storage, inferSubjectId } from '../../lib/storage';
+import { storage } from '../../lib/storage';
 import { supabase } from '../../lib/supabase';
 import { sendMessage } from '../../lib/ai';
 import { Subject, TimeBlock, TimerSession, SubjectColor, Todo, GoogleCalendarEvent, CanvasAssignment, CanvasCourse } from '../../types';
