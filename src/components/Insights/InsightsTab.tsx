@@ -280,6 +280,21 @@ export default function InsightsTab() {
 
   if (!mounted) return <InsightsSkeleton />;
 
+  const hasAnyData = totalWeeklyMinutes > 0 || breakdown.length > 0 || streak > 0;
+
+  if (!hasAnyData) {
+    return (
+      <div className={styles.page}>
+        <div className={styles.insightsEmpty}>
+          <div className={styles.insightsEmptyIllo}>📊</div>
+          <h2 className={styles.insightsEmptyHeading}>No study data yet</h2>
+          <p className={styles.insightsEmptyBody}>Start a task in Day View to begin tracking your study time.</p>
+          <a href="/day-view" className={styles.insightsEmptyBtn}>Go to Day View</a>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.page}>
       <header className={styles.pageHeader}>

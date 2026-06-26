@@ -2311,7 +2311,17 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
         })()}
 
         {activeSubjects.length === 0 && (
-          <div className={styles.emptySubjects}>Add a subject to get started.</div>
+          <div className={styles.emptySubjectsPanel}>
+            <div className={styles.emptySubjectsIllo}>📚</div>
+            <h3 className={styles.emptySubjectsHeading}>You're all set up</h3>
+            <p className={styles.emptySubjectsBody}>
+              Connect Canvas to sync your assignments, or ask the AI to help you plan your day.
+            </p>
+            <div className={styles.emptySubjectsActions}>
+              <a href="/canvas" className={styles.emptySubjectsBtnPrimary}>Connect Canvas</a>
+              <a href="/ai" className={styles.emptySubjectsBtnSecondary}>Ask the AI</a>
+            </div>
+          </div>
         )}
 
         {orderedActiveSubjects.map(subject => {
@@ -2352,6 +2362,11 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
 
               <div className={styles.todoGroupBody}>
                 {getOrderedGroupTodos(subject.id).map(todo => renderTodoItem(todo, subject.id))}
+                {groupTodos.length === 0 && (
+                  <div className={styles.subjectEmptyTodos}>
+                    No tasks yet — add one or <a href="/ai" className={styles.subjectEmptyTodosLink}>ask the AI</a>
+                  </div>
+                )}
               </div>
             </div>
           );

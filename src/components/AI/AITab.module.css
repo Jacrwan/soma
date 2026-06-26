@@ -431,6 +431,27 @@
   border-color: var(--accent);
 }
 
+.canvasBanner {
+  font-size: 13px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 16px;
+  max-width: 320px;
+  line-height: 1.5;
+}
+
+.canvasBannerLink {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.canvasBannerLink:hover {
+  text-decoration: underline;
+}
+
 /* ── Messages ────────────────────────────────────────────────────────────── */
 
 .messageRow {

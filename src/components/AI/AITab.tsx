@@ -1576,16 +1576,28 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
         </div>
 
         <div className={styles.messageList}>
-          {messages.length === 0 && (
-            <div className={styles.emptyState}>
-              <div className={styles.emptyHint}>Start by describing what you need to accomplish today.</div>
-              <div className={styles.suggestions}>
-                {['Plan my day', 'What should I study first?'].map(s => (
-                  <button key={s} className={styles.suggestionBtn} onClick={() => setInput(s)}>{s}</button>
-                ))}
+          {messages.length === 0 && (() => {
+            const canvasConnected = Boolean(storage.getCanvasIcalUrl());
+            const chips = canvasConnected
+              ? ['Plan my week', "What's due soon?", 'Help me focus today']
+              : ['Plan my day', 'What should I study first?'];
+            return (
+              <div className={styles.emptyState}>
+                <div className={styles.emptyHint}>Start by describing what you need to accomplish today.</div>
+                {!canvasConnected && (
+                  <div className={styles.canvasBanner}>
+                    Connect Canvas to let Soma see your assignments.{' '}
+                    <a href="/canvas" className={styles.canvasBannerLink}>Connect</a>
+                  </div>
+                )}
+                <div className={styles.suggestions}>
+                  {chips.map(s => (
+                    <button key={s} className={styles.suggestionBtn} onClick={() => setInput(s)}>{s}</button>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
           {messages.map(msg => (
             <div
               key={msg.id}

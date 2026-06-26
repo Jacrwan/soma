@@ -679,6 +679,54 @@
   border-radius: 8px;
 }
 
+.insightsEmpty {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  padding: 80px var(--space-lg);
+}
+
+.insightsEmptyIllo {
+  font-size: 44px;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.insightsEmptyHeading {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: -0.2px;
+}
+
+.insightsEmptyBody {
+  font-size: 14px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  max-width: 34ch;
+  margin: 0;
+}
+
+.insightsEmptyBtn {
+  margin-top: 4px;
+  padding: 9px 22px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.insightsEmptyBtn:hover {
+  background: var(--accent-hover);
+}
+
 .emptyIcon {
   color: var(--accent);
   display: flex;

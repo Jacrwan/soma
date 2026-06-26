@@ -2106,6 +2106,91 @@
   padding: var(--space-md) 0;
 }
 
+.emptySubjectsPanel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  padding: 48px var(--space-lg) 40px;
+}
+
+.emptySubjectsIllo {
+  font-size: 40px;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.emptySubjectsHeading {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: -0.2px;
+}
+
+.emptySubjectsBody {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  max-width: 30ch;
+  margin: 0;
+}
+
+.emptySubjectsActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.emptySubjectsBtnPrimary {
+  padding: 8px 18px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.emptySubjectsBtnPrimary:hover {
+  background: var(--accent-hover);
+}
+
+.emptySubjectsBtnSecondary {
+  padding: 8px 18px;
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+}
+
+.emptySubjectsBtnSecondary:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.subjectEmptyTodos {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.subjectEmptyTodosLink {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.subjectEmptyTodosLink:hover {
+  text-decoration: underline;
+}
+
 .newSubjectListBtn {
   display: block;
   width: 100%;
