@@ -117,6 +117,7 @@ export interface ChatMessage {
   todosDismissed?: boolean;
   scheduleAccepted?: boolean;
   todosAccepted?: boolean;
+  confirmText?: string;
 }
 
 export interface ChatSession {

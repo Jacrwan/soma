@@ -476,8 +476,15 @@
   padding: 8px 12px;
   font-size: 14px;
   line-height: 1.6;
-  white-space: pre-wrap;
   word-break: break-word;
+}
+
+.bubble p {
+  margin: 0 0 5px;
+}
+
+.bubble p:last-child {
+  margin-bottom: 0;
 }
 
 .userBubble {

@@ -142,7 +142,12 @@ function formatMessage(content: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/\*\*(.+?)\*\*/gs, '<strong>$1</strong>');
-  return DOMPurify.sanitize(escaped, { ALLOWED_TAGS: ['strong'], ALLOWED_ATTR: [] });
+  // Split on paragraph breaks (2+ newlines), wrap each in <p>, convert remaining \n to <br>
+  const html = escaped
+    .split(/\n{2,}/)
+    .map(para => `<p>${para.replace(/\n/g, '<br>')}</p>`)
+    .join('');
+  return DOMPurify.sanitize(html, { ALLOWED_TAGS: ['strong', 'p', 'br'], ALLOWED_ATTR: [] });
 }
 
 function parseScheduleBlocks(content: string): TimeBlock[] | null {
@@ -950,7 +955,6 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   const [voiceTriggered, setVoiceTriggered] = useState(false);
   const recognitionRef = useRef<any>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [actionConfirmMsgs, setActionConfirmMsgs] = useState<Record<string, string>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const subjects = storage.getSubjects();
 
@@ -1481,8 +1485,15 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       if (somaActions.length > 0) {
         Promise.all(somaActions.map(a => executeSomaAction(a))).then(confirms => {
           const msgs = confirms.filter(Boolean) as string[];
-          if (msgs.length > 0)
-            setActionConfirmMsgs(prev => ({ ...prev, [assistantMsg.id]: msgs.join('\n') }));
+          if (msgs.length > 0) {
+            const confirmText = msgs.join('\n');
+            updateSession(activeSessionId, s => ({
+              ...s,
+              messages: s.messages.map(m =>
+                m.id === assistantMsg.id ? { ...m, confirmText } : m,
+              ),
+            }));
+          }
         });
       }
 
@@ -1682,9 +1693,9 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
                   accepted={msg.todosAccepted}
                 />
               )}
-              {msg.role === 'assistant' && actionConfirmMsgs[msg.id] && (
+              {msg.role === 'assistant' && msg.confirmText && (
                 <div className={styles.somaActionConfirm}>
-                  {actionConfirmMsgs[msg.id]}
+                  {msg.confirmText}
                 </div>
               )}
               {msg.role === 'assistant' && artifacts[msg.id] && (
