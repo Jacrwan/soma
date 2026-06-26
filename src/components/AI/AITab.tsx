@@ -99,20 +99,6 @@ function isToday(iso: string) {
     && d.getDate() === n.getDate();
 }
 
-function fmtBlockTime(iso: string) {
-  const d = new Date(iso);
-  const h = d.getHours() % 12 || 12;
-  const m = d.getMinutes();
-  const ampm = d.getHours() >= 12 ? 'PM' : 'AM';
-  return `${h}:${String(m).padStart(2, '0')} ${ampm}`;
-}
-
-function fmtDuration(startIso: string, endIso: string) {
-  const mins = (new Date(endIso).getTime() - new Date(startIso).getTime()) / 60_000;
-  if (mins >= 60 && mins % 60 === 0) return `${mins / 60}h`;
-  if (mins >= 60) return `${Math.floor(mins / 60)}h ${mins % 60}m`;
-  return `${mins}m`;
-}
 
 function fmtTime12(iso: string): string {
   const d = new Date(iso);
