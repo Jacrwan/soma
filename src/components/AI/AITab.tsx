@@ -350,17 +350,21 @@ async function executeSomaAction(action: SomaAction): Promise<string | null> {
       const allTodos = storage.getTodos();
       const todo = allTodos.find(t => t.id === action.todo_id);
       console.log('[soma] delete_todo fired — todo_id:', action.todo_id,
-        '| found in cache:', todo ? `"${todo.text}"` : 'NOT FOUND (firing direct Supabase delete anyway)');
-      // Always fire a direct Supabase delete so stale-cache misses don't silently fail
-      void storage.deleteTodo(action.todo_id).catch(err =>
-        console.warn('[soma] delete_todo — direct Supabase delete failed:', err),
-      );
-      // Also remove from in-memory cache if present
-      if (todo) {
-        storage.setTodos(allTodos.filter(t => t.id !== action.todo_id));
+        '| found in cache:', todo ? `"${todo.text}"` : 'NOT FOUND — firing direct Supabase delete anyway');
+      // Await the direct Supabase delete so the row is gone before this promise resolves
+      try {
+        await storage.deleteTodo(action.todo_id);
+      } catch (err) {
+        console.warn('[soma] delete_todo — Supabase delete failed:', err);
+      }
+      // Remove from in-memory cache regardless of whether it was found above — ensures
+      // the next fetchIncompleteTodos() and the next system-prompt injection see a clean list
+      const filtered = allTodos.filter(t => t.id !== action.todo_id);
+      if (filtered.length !== allTodos.length) {
+        storage.setTodos(filtered);
       }
       window.dispatchEvent(new Event('soma_todos_changed'));
-      return todo ? `✓ Deleted todo: "${todo.text}"` : '✓ Todo deleted (via direct DB delete)';
+      return todo ? `✓ Deleted todo: "${todo.text}"` : '✓ Todo deleted';
     }
   }
 }
@@ -609,6 +613,8 @@ Mark a todo complete (confirm first: "Should I mark '[task]' as done?"):
 
 Delete a todo (confirm first: "Should I delete '[task]'? This can't be undone."):
 <soma-action>{"action":"delete_todo","todo_id":"[exact id]"}</soma-action>
+
+CRITICAL — deleting todos: Always match todos by name from the current todos list injected above — never rely on IDs from previous messages or memory. If you cannot find the todo by name in the current list, tell the user it was not found rather than claiming it was deleted. Only say something was deleted after you have emitted a delete_todo soma-action with a valid ID from the current list.
 
 ── SUBJECT ACTIONS ───────────────────────────────────────────────────────────
 
