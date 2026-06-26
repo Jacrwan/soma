@@ -130,6 +130,7 @@ function stripTags(content: string) {
     .replace(/<createSlides\b[\s\S]*?<\/createSlides>/g, '')
     .replace(/<soma-action>[\s\S]*?<\/soma-action>/g, '')
     .replace(/<function_calls>[\s\S]*?<\/function_calls>/g, '')
+    .replace(/<[a-zA-Z][a-zA-Z0-9]*[^>]+name="soma-action"[^>]*>[\s\S]*?<\/[a-zA-Z][a-zA-Z0-9]*>/g, '')
     .trim();
 }
 
@@ -185,11 +186,11 @@ type SomaAction =
   | { action: 'delete_todo'; todo_id: string };
 
 function parseSomaAction(content: string): SomaAction | null {
-  // Support both <soma-action>JSON</soma-action> and Claude's native
-  // <function_calls><invoke name="soma-action">JSON</invoke></function_calls> formats
+  // Handle <soma-action>JSON</soma-action> and any model-invented wrapper format
+  // that carries name="soma-action" (e.g. <invoke>, <regionMargin>, <function_calls>, etc.)
   const match =
     content.match(/<soma-action>([\s\S]*?)<\/soma-action>/) ??
-    content.match(/<invoke name="soma-action">([\s\S]*?)<\/invoke>/);
+    content.match(/<[a-zA-Z][a-zA-Z0-9]*[^>]+name="soma-action"[^>]*>([\s\S]*?)<\/[a-zA-Z][a-zA-Z0-9]*>/);
   if (!match) return null;
   try {
     const p = JSON.parse(match[1].trim());
