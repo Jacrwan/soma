@@ -91,6 +91,8 @@ export interface Todo {
   estimatedMinutes?: number;
   notes?: string;
   order?: number;
+  startTime?: string; // ISO datetime, for future timeline display
+  endTime?: string;   // ISO datetime, for future timeline display
 }
 
 export interface GoogleCalendarEvent {
@@ -111,11 +113,8 @@ export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  scheduleBlocks?: TimeBlock[];
   todos?: AiTodo[];
-  scheduleDismissed?: boolean;
   todosDismissed?: boolean;
-  scheduleAccepted?: boolean;
   todosAccepted?: boolean;
   confirmText?: string;
 }

@@ -11,7 +11,7 @@ import { ensureFreshGoogleToken } from '../../lib/googleAuth';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, hasAIAccess, startCheckout } from '../../lib/subscription';
 import { SavedCreation, loadCreateHistory, appendToCreateHistory, CREATE_HISTORY_EVENT } from '../../lib/createHistory';
-import { TimeBlock, Subject, SubjectColor, Todo, ChatMessage, ChatSession, AiTodo, CanvasAssignment } from '../../types';
+import { Subject, SubjectColor, Todo, ChatMessage, ChatSession, AiTodo, CanvasAssignment } from '../../types';
 import SubjectDot from '../shared/SubjectDot';
 import { SkeletonBlock } from '../UI/Skeleton';
 import TrialSetupModal from '../Trial/TrialSetupModal';
@@ -148,22 +148,6 @@ function formatMessage(content: string): string {
     .map(para => `<p>${para.replace(/\n/g, '<br>')}</p>`)
     .join('');
   return DOMPurify.sanitize(html, { ALLOWED_TAGS: ['strong', 'p', 'br'], ALLOWED_ATTR: [] });
-}
-
-function parseScheduleBlocks(content: string): TimeBlock[] | null {
-  const match = content.match(/<schedule>([\s\S]*?)<\/(?:schedule|todos)>/);
-  if (!match) return null;
-  try {
-    const raw: Partial<TimeBlock>[] = JSON.parse(match[1].trim());
-    return raw.map(b => ({
-      id: crypto.randomUUID(),
-      subjectId: b.subjectId ?? '',
-      task: b.task ?? '',
-      startTime: b.startTime ?? '',
-      endTime: b.endTime ?? '',
-      source: 'ai' as const,
-    }));
-  } catch { return null; }
 }
 
 function parseTodos(content: string): AiTodo[] | null {
@@ -378,7 +362,6 @@ function buildSystemPrompt(activeSubjectKey?: string): string {
   const assignments = storage.getCachedAssignments();
   const announcements: import('../../types').CanvasAnnouncement[] = [];
   const modules: import('../../types').CanvasModule[] = [];
-  const blocks = storage.getTimeBlocks().filter(b => isToday(b.startTime));
   const gcalEvents = storage.getCachedGoogleEvents().filter(
     e => !!e.start.dateTime && isToday(e.start.dateTime),
   );
@@ -408,13 +391,6 @@ function buildSystemPrompt(activeSubjectKey?: string): string {
     assignments.filter(a => !archivedCourseNames.has(a.courseName)).map(a => a.courseName).filter(Boolean),
   )];
   const coursesStr = uniqueCourses.length > 0 ? uniqueCourses.join(', ') : 'None synced from Canvas';
-
-  const blocksStr = blocks.length > 0
-    ? blocks.map(b => {
-        const subj = subjects.find(s => s.id === b.subjectId);
-        return `- ${fmtBlockTime(b.startTime)}–${fmtBlockTime(b.endTime)}: ${subj?.name ?? 'Unknown'} — ${b.task}`;
-      }).join('\n')
-    : 'No blocks scheduled yet';
 
   const gcalStr = gcalEvents.length > 0
     ? gcalEvents.map(e => {
@@ -502,9 +478,6 @@ Use this information to help the user plan their study schedule, prioritize task
 ${folderSection ? `\nIMPORTANT: The study materials below are real file contents you have already read and fully know. When the user references any topic, subject, or file — even loosely or by nickname — match it to the closest file in your study materials and answer from it directly. Never say you cannot access files, cannot see folders, or need the user to share anything. You already have the content. "AP Government review", "AP Gov study guide", "the review sheet" etc. should all map to the AP Government file.\n\nYou have full knowledge of the following study materials from the user's Google Drive folder. Reference them naturally when relevant, as if you've already read them:\n\n${folderSection}\n${folderHasTruncated ? '\nNote: Some files were too large to include in full. The user may not get complete answers about those files.\n' : ''}` : ''}
 User availability:
 ${availabilityStr || 'Not set — ask the user what time they want to start and end.'}
-
-Current schedule:
-${blocksStr}
 ${gcalStr ? `\nExisting calendar events (read-only, do not schedule over these):\n${gcalStr}` : ''}
 ${announcementsStr ? `\nRecent course announcements:\n${announcementsStr}` : ''}
 ${modulesStr ? `\nCourse modules (structure):\n${modulesStr}` : ''}
@@ -632,49 +605,6 @@ Permanently delete a subject (confirm first: "Are you sure you want to delete [N
 }
 
 // ── Sub-components ──────────────────────────────────────────────────────────
-
-function ScheduleCard({
-  blocks, subjects, onAccept, onDismiss, accepted,
-}: {
-  blocks: TimeBlock[];
-  subjects: Subject[];
-  onAccept: () => void;
-  onDismiss: () => void;
-  accepted?: boolean;
-}) {
-  return (
-    <div className={styles.card}>
-      <div className={styles.cardHeader}>📅 Proposed Schedule</div>
-      <div className={styles.cardBody}>
-        {blocks.map(b => {
-          const subj = subjects.find(s => s.id === b.subjectId);
-          return (
-            <div key={b.id} className={styles.scheduleRow}>
-              <span className={styles.scheduleTime}>{fmtBlockTime(b.startTime)}</span>
-              {subj && <SubjectDot color={subj.color} size={8} />}
-              <span className={styles.scheduleTask}>
-                {subj ? `${subj.name} — ${b.task}` : b.task}
-              </span>
-              <span className={styles.scheduleDur}>{fmtDuration(b.startTime, b.endTime)}</span>
-            </div>
-          );
-        })}
-      </div>
-      <div className={styles.cardActions}>
-        {accepted ? (
-          <button className={`${styles.cardBtn} ${styles.cardBtnAccent} ${styles.cardBtnConfirmed}`} disabled>
-            <span style={{ color: '#5B6AF0' }}>✓</span> Schedule Added
-          </button>
-        ) : (
-          <>
-            <button className={`${styles.cardBtn} ${styles.cardBtnAccent}`} onClick={onAccept}>Accept Schedule</button>
-            <button className={styles.cardBtn} onClick={onDismiss}>Dismiss</button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function TodoCard({
   todos, onAccept, onDismiss, accepted,
@@ -1513,10 +1443,9 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       const planningKeywords = ['schedule', 'study plan', 'plan my day', 'generate'];
       const needsSonnet = planningKeywords.some(kw => text.toLowerCase().includes(kw));
       const response = await sendMessage(apiMessages, systemPrompt, needsSonnet ? 'sonnet' : undefined);
-      const scheduleBlocks = parseScheduleBlocks(response) ?? undefined;
       const todos = parseTodos(response) ?? undefined;
       const assistantMsg: ChatMessage = {
-        id: crypto.randomUUID(), role: 'assistant', content: response, scheduleBlocks, todos,
+        id: crypto.randomUUID(), role: 'assistant', content: response, todos,
       };
       updateSession(activeSessionId, s => ({ ...s, messages: [...s.messages, assistantMsg] }));
 
@@ -1564,38 +1493,6 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     } finally {
       setLoading(false);
     }
-  }
-
-  function acceptSchedule(msgId: string, blocks: TimeBlock[]) {
-    const existingTodos = storage.getTodos();
-    const existingTexts = new Set(existingTodos.map(t => t.text));
-    const newTodos: Todo[] = blocks
-      .filter(b => b.task && !existingTexts.has(b.task))
-      .map(b => {
-        const d = new Date(b.startTime);
-        const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-        return {
-          id: crypto.randomUUID(),
-          text: b.task,
-          status: 'nothing' as const,
-          subjectId: b.subjectId || undefined,
-          date: dateKey,
-          dueDate: dateKey,
-        };
-      });
-    if (newTodos.length > 0) storage.setTodos([...existingTodos, ...newTodos]);
-    window.dispatchEvent(new Event('soma_todos_changed'));
-
-    updateSession(activeSessionId, s => ({
-      ...s, messages: s.messages.map(m => m.id === msgId ? { ...m, scheduleAccepted: true } : m),
-    }));
-    onSwitchToToday();
-  }
-
-  function dismissSchedule(msgId: string) {
-    updateSession(activeSessionId, s => ({
-      ...s, messages: s.messages.map(m => m.id === msgId ? { ...m, scheduleDismissed: true } : m),
-    }));
   }
 
   function acceptTodos(msgId: string, todos: AiTodo[]) {
@@ -1723,15 +1620,6 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
                 className={`${styles.bubble} ${msg.role === 'user' ? styles.userBubble : styles.assistantBubble}`}
                 dangerouslySetInnerHTML={{ __html: formatMessage(stripTags(msg.content)) }}
               />
-              {msg.role === 'assistant' && msg.scheduleBlocks && !msg.scheduleDismissed && (
-                <ScheduleCard
-                  blocks={msg.scheduleBlocks}
-                  subjects={subjects}
-                  onAccept={() => acceptSchedule(msg.id, msg.scheduleBlocks!)}
-                  onDismiss={() => dismissSchedule(msg.id)}
-                  accepted={msg.scheduleAccepted}
-                />
-              )}
               {msg.role === 'assistant' && msg.todos && !msg.todosDismissed && (
                 <TodoCard
                   todos={msg.todos}

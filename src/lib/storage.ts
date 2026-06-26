@@ -50,18 +50,6 @@ export interface SomaSettings {
   bossState?: unknown; // Bosses feature state blob (synced as-is)
 }
 
-export interface ScheduleBlock {
-  id: string;
-  user_id?: string;
-  date: string;
-  subject_id?: string | null;
-  subject_name?: string | null;
-  task_name?: string | null;
-  start_time?: string | null;
-  end_time?: string | null;
-  color?: string | null;
-  created_at?: string;
-}
 
 const DEFAULT_DAY: DayAvailability = { start: '08:00', end: '22:00', blocked: [] };
 const DEFAULT_EMPTY_DAY: DayAvailability = { start: '', end: '', blocked: [] };
@@ -204,6 +192,8 @@ function todoFromRow(r: Record<string, unknown>): Todo {
     dueDate: (r.due_date as string | null) ?? undefined,
     notes: (r.notes as string | null) ?? undefined,
     order: (r.order as number | null) ?? undefined,
+    startTime: typeof r.start_time === 'string' ? r.start_time : undefined,
+    endTime: typeof r.end_time === 'string' ? r.end_time : undefined,
   };
 }
 
@@ -653,6 +643,8 @@ export const storage = {
       due_date: todo.dueDate ?? null,
       notes: todo.notes ?? null,
       order: todo.order ?? null,
+      start_time: todo.startTime ?? null,
+      end_time: todo.endTime ?? null,
     });
   },
 
@@ -669,27 +661,6 @@ export const storage = {
       .eq('user_id', id)
       .neq('status', 'done');
     return (data ?? []).map(r => todoFromRow(r as Record<string, unknown>));
-  },
-
-  // ── Schedule blocks (Supabase) ───────────────────────────────────────
-  async getScheduleBlocks(date: string): Promise<ScheduleBlock[]> {
-    const id = await uid();
-    const { data } = await supabase
-      .from('schedule_blocks')
-      .select('*')
-      .eq('user_id', id)
-      .eq('date', date);
-    return data ?? [];
-  },
-
-  async saveScheduleBlock(block: Omit<ScheduleBlock, 'user_id' | 'created_at'>): Promise<void> {
-    const id = await uid();
-    await supabase.from('schedule_blocks').upsert({ ...block, user_id: id });
-  },
-
-  async deleteScheduleBlock(blockId: string): Promise<void> {
-    const id = await uid();
-    await supabase.from('schedule_blocks').delete().eq('id', blockId).eq('user_id', id);
   },
 
   // ── Active timer (Supabase) ──────────────────────────────────────────
@@ -847,9 +818,6 @@ export const storage = {
     const toDelete = allBlocks.filter(b => b.task === taskName && b.timerSessionId);
     if (toDelete.length === 0) return;
     storage.setTimeBlocks(allBlocks.filter(b => !(b.task === taskName && b.timerSessionId)));
-    const id = await uid();
-    const ids = toDelete.map(b => b.id);
-    await supabase.from('schedule_blocks').delete().in('id', ids).eq('user_id', id);
   },
 
 };

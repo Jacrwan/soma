@@ -689,17 +689,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
             b.id === mergedId ? { ...b, startTime: stopTime } : b,
           );
           storage.setTimeBlocks(trimmed);
-          const subj = storage.getSubjects().find(s => s.id === mergedBlock.subjectId);
-          void storage.saveScheduleBlock({
-            id: mergedId,
-            date: mergedBlock.startTime.slice(0, 10),
-            subject_id: mergedBlock.subjectId,
-            subject_name: subj?.name ?? null,
-            task_name: mergedBlock.task ?? null,
-            start_time: stopTime,
-            end_time: mergedBlock.endTime,
-            color: subj?.color ?? null,
-          }).catch(() => {});
           const updatedBlocks = trimmed.filter(b => isOnDate(b.startTime, selectedDate));
           setBlocks(updatedBlocks);
           setSubjects(storage.getSubjects().map(s => ({
@@ -978,9 +967,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     setBlockModal(null);
     setBlockEditMode(false);
 
-    // Delete from Supabase schedule_blocks
-    void storage.deleteScheduleBlock(id).catch(() => {});
-
     // Delete any block-linked timer session (linkedBlockId set = created via Mark as completed, not the real timer)
     const linked = storage.getTimerSessions().find(s => s.linkedBlockId === id);
     if (linked) {
@@ -1089,7 +1075,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       const remaining = storage.getTimeBlocks().filter(b => b.timerSessionId !== session.id);
       storage.setTimeBlocks(remaining);
       setBlocks(remaining.filter(b => isOnDate(b.startTime, selectedDate)));
-      void storage.deleteScheduleBlock(linkedBlock.id).catch(() => {});
     }
     if (taskModal?.editingTodo) void loadTaskSessions(taskModal.editingTodo);
   }
@@ -1210,9 +1195,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       const remaining = allBlocks.filter(b => !blocksToRemove.has(b.id));
       storage.setTimeBlocks(remaining);
       setBlocks(remaining.filter(b => isOnDate(b.startTime, selectedDate)));
-      for (const b of subjectBlocks) {
-        if (blocksToRemove.has(b.id)) void storage.deleteScheduleBlock(b.id).catch(() => {});
-      }
     }
 
     if (deleteSessions) {
@@ -1273,11 +1255,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       if (needsUpdate || blocksToDelete.length > 0) {
         storage.setTimeBlocks(finalBlocks);
         setBlocks(finalBlocks.filter(b => isOnDate(b.startTime, selectedDate)));
-
-        // FIX 3: also delete future blocks from Supabase schedule_blocks
-        for (const b of blocksToDelete) {
-          void storage.deleteScheduleBlock(b.id).catch(() => {});
-        }
       }
     }
   }
@@ -1311,9 +1288,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       const remaining = allBlocks.filter(b => !blocksToRemove.has(b.id));
       storage.setTimeBlocks(remaining);
       setBlocks(remaining.filter(b => isOnDate(b.startTime, selectedDate)));
-      for (const b of todoBlocks) {
-        if (blocksToRemove.has(b.id)) void storage.deleteScheduleBlock(b.id).catch(() => {});
-      }
     }
 
     // Optional: delete timer sessions
@@ -1662,6 +1636,18 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
   })();
   const dayTodos = todos.filter(t => todoMatchesDate(t, selectedDateKey));
 
+  // Todos with a scheduled startTime appear as blocks on the timeline
+  const todoBlocks: TimeBlock[] = dayTodos
+    .filter(t => t.startTime && t.endTime)
+    .map(t => ({
+      id: t.id,
+      subjectId: t.subjectId ?? '',
+      task: t.text,
+      startTime: t.startTime!,
+      endTime: t.endTime!,
+      source: 'ai' as const,
+    }));
+
   function getOrderedGroupTodos(groupId: string): Todo[] {
     const groupTodos = groupId === 'unassigned'
       ? dayTodos.filter(t => !t.subjectId)
@@ -2004,9 +1990,10 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
           )}
 
           {(() => {
+            const allBlocks = [...blocks, ...todoBlocks.filter(tb => !blocks.some(b => b.id === tb.id))];
             const shortBlocks: TimeBlock[] = [];
             const regularBlocks: TimeBlock[] = [];
-            for (const block of blocks) {
+            for (const block of allBlocks) {
               const durMin = (new Date(block.endTime).getTime() - new Date(block.startTime).getTime()) / 60_000;
               if (durMin <= 0) continue;
               if (durMin < 5) shortBlocks.push(block);

@@ -114,16 +114,6 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         b.id === candidate.id ? { ...b, startTime: timerStartISO } : b,
       ));
       window.dispatchEvent(new CustomEvent('soma_merge_applied'));
-      void storage.saveScheduleBlock({
-        id: candidate.id,
-        date: todayStr,
-        subject_id: candidate.subjectId,
-        subject_name: activeSession.subject.name,
-        task_name: candidate.task ?? null,
-        start_time: timerStartISO,
-        end_time: candidate.endTime,
-        color: activeSession.subject.color,
-      }).catch(() => {});
     } else {
       // Case 2: late start — split block at timer start time
       // The portion before timerStart becomes a separate block (will be detected as missed).
@@ -142,28 +132,6 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       );
       storage.setTimeBlocks([...updatedBlocks, preBlock]);
       window.dispatchEvent(new CustomEvent('soma_merge_applied'));
-      // Update original block's start in Supabase
-      void storage.saveScheduleBlock({
-        id: candidate.id,
-        date: todayStr,
-        subject_id: candidate.subjectId,
-        subject_name: activeSession.subject.name,
-        task_name: candidate.task ?? null,
-        start_time: timerStartISO,
-        end_time: candidate.endTime,
-        color: activeSession.subject.color,
-      }).catch(() => {});
-      // Persist pre-block to Supabase
-      void storage.saveScheduleBlock({
-        id: preBlock.id,
-        date: todayStr,
-        subject_id: candidate.subjectId,
-        subject_name: activeSession.subject.name,
-        task_name: candidate.task ?? null,
-        start_time: candidate.startTime,
-        end_time: timerStartISO,
-        color: activeSession.subject.color,
-      }).catch(() => {});
     }
   }, [activeSession]);
 
