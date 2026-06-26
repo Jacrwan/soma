@@ -115,6 +115,8 @@ export interface ChatMessage {
   todos?: AiTodo[];
   scheduleDismissed?: boolean;
   todosDismissed?: boolean;
+  scheduleAccepted?: boolean;
+  todosAccepted?: boolean;
 }
 
 export interface ChatSession {

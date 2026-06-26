@@ -636,6 +636,12 @@
   background: var(--accent-hover);
 }
 
+.cardBtnConfirmed {
+  opacity: 0.6;
+  pointer-events: none;
+  cursor: default;
+}
+
 /* ── Google Docs action ──────────────────────────────────────────────────── */
 
 .docActionRow {

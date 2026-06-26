@@ -570,12 +570,13 @@ Permanently delete a subject (confirm first: "Are you sure you want to delete [N
 // ── Sub-components ──────────────────────────────────────────────────────────
 
 function ScheduleCard({
-  blocks, subjects, onAccept, onDismiss,
+  blocks, subjects, onAccept, onDismiss, accepted,
 }: {
   blocks: TimeBlock[];
   subjects: Subject[];
   onAccept: () => void;
   onDismiss: () => void;
+  accepted?: boolean;
 }) {
   return (
     <div className={styles.card}>
@@ -596,19 +597,28 @@ function ScheduleCard({
         })}
       </div>
       <div className={styles.cardActions}>
-        <button className={`${styles.cardBtn} ${styles.cardBtnAccent}`} onClick={onAccept}>Accept Schedule</button>
-        <button className={styles.cardBtn} onClick={onDismiss}>Dismiss</button>
+        {accepted ? (
+          <button className={`${styles.cardBtn} ${styles.cardBtnAccent} ${styles.cardBtnConfirmed}`} disabled>
+            <span style={{ color: '#5B6AF0' }}>✓</span> Schedule Added
+          </button>
+        ) : (
+          <>
+            <button className={`${styles.cardBtn} ${styles.cardBtnAccent}`} onClick={onAccept}>Accept Schedule</button>
+            <button className={styles.cardBtn} onClick={onDismiss}>Dismiss</button>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
 function TodoCard({
-  todos, onAccept, onDismiss,
+  todos, onAccept, onDismiss, accepted,
 }: {
   todos: AiTodo[];
   onAccept: () => void;
   onDismiss: () => void;
+  accepted?: boolean;
 }) {
   return (
     <div className={styles.card}>
@@ -619,8 +629,16 @@ function TodoCard({
         ))}
       </div>
       <div className={styles.cardActions}>
-        <button className={`${styles.cardBtn} ${styles.cardBtnAccent}`} onClick={onAccept}>Accept Todos</button>
-        <button className={styles.cardBtn} onClick={onDismiss}>Dismiss</button>
+        {accepted ? (
+          <button className={`${styles.cardBtn} ${styles.cardBtnAccent} ${styles.cardBtnConfirmed}`} disabled>
+            <span style={{ color: '#5B6AF0' }}>✓</span> Added to Day View
+          </button>
+        ) : (
+          <>
+            <button className={`${styles.cardBtn} ${styles.cardBtnAccent}`} onClick={onAccept}>Accept Todos</button>
+            <button className={styles.cardBtn} onClick={onDismiss}>Dismiss</button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -1479,7 +1497,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     if (newTodos.length > 0) storage.setTodos([...existingTodos, ...newTodos]);
 
     updateSession(activeSessionId, s => ({
-      ...s, messages: s.messages.map(m => m.id === msgId ? { ...m, scheduleDismissed: true } : m),
+      ...s, messages: s.messages.map(m => m.id === msgId ? { ...m, scheduleAccepted: true } : m),
     }));
     onSwitchToToday();
   }
@@ -1503,7 +1521,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     storage.setTodos(newTodos);
 
     updateSession(activeSessionId, s => ({
-      ...s, messages: s.messages.map(m => m.id === msgId ? { ...m, todosDismissed: true } : m),
+      ...s, messages: s.messages.map(m => m.id === msgId ? { ...m, todosAccepted: true } : m),
     }));
     onSwitchToToday();
   }
@@ -1621,6 +1639,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
                   subjects={subjects}
                   onAccept={() => acceptSchedule(msg.id, msg.scheduleBlocks!)}
                   onDismiss={() => dismissSchedule(msg.id)}
+                  accepted={msg.scheduleAccepted}
                 />
               )}
               {msg.role === 'assistant' && msg.todos && !msg.todosDismissed && (
@@ -1628,6 +1647,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
                   todos={msg.todos}
                   onAccept={() => acceptTodos(msg.id, msg.todos!)}
                   onDismiss={() => dismissTodos(msg.id)}
+                  accepted={msg.todosAccepted}
                 />
               )}
               {msg.role === 'assistant' && actionConfirmMsgs[msg.id] && (
