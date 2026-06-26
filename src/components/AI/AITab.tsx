@@ -175,9 +175,11 @@ const SUBJECT_COLORS: SubjectColor[] = ['#ef5350','#42a5f5','#66bb6a','#ab47bc',
 
 type SomaAction =
   | { action: 'create_subject'; name: string; color: SubjectColor }
+  | { action: 'update_subject'; subject_id: string; name?: string; color?: SubjectColor }
   | { action: 'archive_subject'; subject_id: string }
   | { action: 'delete_subject'; subject_id: string }
   | { action: 'create_todo'; title: string; subject_id?: string; due_date?: string }
+  | { action: 'update_todo'; todo_id: string; title?: string; due_date?: string; notes?: string }
   | { action: 'complete_todo'; todo_id: string }
   | { action: 'delete_todo'; todo_id: string };
 
@@ -190,6 +192,13 @@ function parseSomaAction(content: string): SomaAction | null {
       const color: SubjectColor = SUBJECT_COLORS.includes(p.color) ? p.color : '#42a5f5';
       return { action: 'create_subject', name: p.name.trim(), color };
     }
+    if (p.action === 'update_subject' && typeof p.subject_id === 'string')
+      return {
+        action: 'update_subject',
+        subject_id: p.subject_id,
+        name: typeof p.name === 'string' && p.name.trim() ? p.name.trim() : undefined,
+        color: SUBJECT_COLORS.includes(p.color) ? p.color : undefined,
+      };
     if (p.action === 'archive_subject' && typeof p.subject_id === 'string')
       return { action: 'archive_subject', subject_id: p.subject_id };
     if (p.action === 'delete_subject' && typeof p.subject_id === 'string')
@@ -200,6 +209,14 @@ function parseSomaAction(content: string): SomaAction | null {
         title: p.title.trim(),
         subject_id: typeof p.subject_id === 'string' ? p.subject_id : undefined,
         due_date: typeof p.due_date === 'string' ? p.due_date : undefined,
+      };
+    if (p.action === 'update_todo' && typeof p.todo_id === 'string')
+      return {
+        action: 'update_todo',
+        todo_id: p.todo_id,
+        title: typeof p.title === 'string' && p.title.trim() ? p.title.trim() : undefined,
+        due_date: typeof p.due_date === 'string' ? p.due_date : undefined,
+        notes: typeof p.notes === 'string' ? p.notes : undefined,
       };
     if (p.action === 'complete_todo' && typeof p.todo_id === 'string')
       return { action: 'complete_todo', todo_id: p.todo_id };
@@ -219,19 +236,34 @@ async function executeSomaAction(action: SomaAction): Promise<string | null> {
           totalTimeToday: 0, source: 'manual' as const,
         }]);
       }
-      return `✓ Created "${action.name}" as a project in Soma`;
+      window.dispatchEvent(new Event('soma_subjects_changed'));
+      return `✓ Created subject: "${action.name}"`;
+    }
+    case 'update_subject': {
+      const subj = storage.getSubjects().find(s => s.id === action.subject_id);
+      if (!subj) return null;
+      const updated = {
+        ...subj,
+        ...(action.name ? { name: action.name } : {}),
+        ...(action.color ? { color: action.color } : {}),
+      };
+      storage.setSubjects(storage.getSubjects().map(s => s.id === action.subject_id ? updated : s));
+      window.dispatchEvent(new Event('soma_subjects_changed'));
+      return `✓ Updated subject: "${updated.name}"`;
     }
     case 'archive_subject': {
       const subj = storage.getSubjects().find(s => s.id === action.subject_id);
       if (!subj) return null;
       storage.setSubjects(storage.getSubjects().map(s => s.id === action.subject_id ? { ...s, archived: true } : s));
+      window.dispatchEvent(new Event('soma_subjects_changed'));
       return `✓ Archived: ${subj.name}`;
     }
     case 'delete_subject': {
       const subj = storage.getSubjects().find(s => s.id === action.subject_id);
       if (!subj) return null;
       storage.setSubjects(storage.getSubjects().filter(s => s.id !== action.subject_id));
-      return `✓ Deleted: ${subj.name}`;
+      window.dispatchEvent(new Event('soma_subjects_changed'));
+      return `✓ Deleted subject: "${subj.name}"`;
     }
     case 'create_todo': {
       const newTodo: Todo = {
@@ -242,21 +274,35 @@ async function executeSomaAction(action: SomaAction): Promise<string | null> {
         dueDate: action.due_date,
         date: getTodayKey(),
       };
-      await storage.saveTodo(newTodo);
+      storage.setTodos([...storage.getTodos(), newTodo]);
+      window.dispatchEvent(new Event('soma_todos_changed'));
       return `✓ Added todo: "${action.title}"`;
     }
-    case 'complete_todo': {
-      const todos = await storage.fetchTodos(getTodayKey()).catch(() => [] as Todo[]);
-      const todo = todos.find(t => t.id === action.todo_id);
+    case 'update_todo': {
+      const todo = storage.getTodos().find(t => t.id === action.todo_id);
       if (!todo) return null;
-      await storage.saveTodo({ ...todo, status: 'done' });
-      return `✓ Completed: ${todo.text}`;
+      const updated: Todo = {
+        ...todo,
+        ...(action.title ? { text: action.title } : {}),
+        ...(action.due_date !== undefined ? { dueDate: action.due_date || undefined } : {}),
+        ...(action.notes !== undefined ? { notes: action.notes || undefined } : {}),
+      };
+      storage.setTodos(storage.getTodos().map(t => t.id === action.todo_id ? updated : t));
+      window.dispatchEvent(new Event('soma_todos_changed'));
+      return `✓ Updated todo: "${updated.text}"`;
+    }
+    case 'complete_todo': {
+      const todo = storage.getTodos().find(t => t.id === action.todo_id);
+      if (!todo) return null;
+      storage.setTodos(storage.getTodos().map(t => t.id === action.todo_id ? { ...t, status: 'done' } : t));
+      window.dispatchEvent(new Event('soma_todos_changed'));
+      return `✓ Completed: "${todo.text}"`;
     }
     case 'delete_todo': {
-      const todos = await storage.fetchTodos(getTodayKey()).catch(() => [] as Todo[]);
-      const todo = todos.find(t => t.id === action.todo_id);
-      await storage.deleteTodo(action.todo_id);
-      return todo ? `✓ Deleted: ${todo.text}` : '✓ Todo deleted';
+      const todo = storage.getTodos().find(t => t.id === action.todo_id);
+      storage.setTodos(storage.getTodos().filter(t => t.id !== action.todo_id));
+      window.dispatchEvent(new Event('soma_todos_changed'));
+      return todo ? `✓ Deleted todo: "${todo.text}"` : '✓ Todo deleted';
     }
   }
 }
@@ -472,28 +518,46 @@ Always ask clarifying questions if the user's request is vague.
 If the user's availability is set above, use it to constrain the schedule automatically — do not ask for start/end times unless the user asks to override them. If availability is not set, ask the user what time they want to start and end their day before generating a schedule.
 
 SUBJECT & TODO MANAGEMENT:
-You can manage the user's subjects and todos by emitting <soma-action> blocks. Always ask for confirmation before any action. Only emit the block after the user explicitly confirms (yes, sure, go ahead, etc.).
+You have full capability to manage the user's subjects and todos. You are not limited to suggestions — you can act directly. Use <soma-action> blocks to make changes. The blocks execute in the background and the user will see a confirmation automatically.
 
-Create a new project/subject (ask first: "Would you like me to create a [Name] project in Soma so we can track this?"):
-<soma-action>{"action":"create_subject","name":"[Name]","color":"#42a5f5"}</soma-action>
-Available colors: #ef5350 (red), #42a5f5 (blue), #66bb6a (green), #ab47bc (purple), #ffa726 (orange), #26c6da (cyan), #ec407a (pink), #8d6e63 (brown).
+IMPORTANT RULES:
+- Always use the exact IDs from the subjects and todos lists injected above. Never invent or guess IDs.
+- If you cannot find an item by its name or description, tell the user it wasn't found rather than guessing.
+- Convert all natural language dates to ISO format (YYYY-MM-DD) based on today's date shown above (e.g. "tonight" or "today" → today's date, "tomorrow" → tomorrow's date, "next Friday" → calculate the date).
+- For destructive actions (delete, archive, complete) always confirm with the user first before emitting the block.
+- For safe actions (create, update) emit immediately once you have enough context — do not make the user confirm twice.
+- You cannot modify settings, billing, subscriptions, or authentication. Only subjects and todos.
+- Only emit one <soma-action> block per response.
 
-Archive a subject (ask first: "Would you like me to archive [Name]?"):
-<soma-action>{"action":"archive_subject","subject_id":"[exact id]"}</soma-action>
+Available colors for subjects: #ef5350 (red), #42a5f5 (blue), #66bb6a (green), #ab47bc (purple), #ffa726 (orange), #26c6da (cyan), #ec407a (pink), #8d6e63 (brown).
 
-Permanently delete a subject (ask first: "Are you sure you want to delete [Name]? This can't be undone."):
-<soma-action>{"action":"delete_subject","subject_id":"[exact id]"}</soma-action>
+── TODO ACTIONS ──────────────────────────────────────────────────────────────
 
-Add/create a todo or task — CRITICAL RULE: When the user asks you to add, create, or log a todo or task, you MUST emit a <soma-action> block to actually create it. Never just say you added something without emitting this block. Always confirm the subject_id from the current subjects list above. If a due date or time is mentioned (e.g. "by tonight"), convert it to an ISO date string for today. Emit this block immediately if the user gave you enough context; otherwise ask once for any missing info (title, subject) and then emit after they answer — do not ask for confirmation a second time if the user already clearly asked you to add it:
-<soma-action>{"action":"create_todo","title":"[task title]","subject_id":"[exact id or omit]","due_date":"2026-06-26"}</soma-action>
+Create a todo (emit immediately once you have a title; ask once for missing info if needed):
+<soma-action>{"action":"create_todo","title":"[task title]","subject_id":"[exact id or omit if none]","due_date":"YYYY-MM-DD"}</soma-action>
 
-Mark a todo as complete (ask first: "Should I mark '[task]' as complete?"):
+Update a todo (any combination of fields; omit fields you are not changing):
+<soma-action>{"action":"update_todo","todo_id":"[exact id]","title":"[new title]","due_date":"YYYY-MM-DD","notes":"[notes]"}</soma-action>
+
+Mark a todo complete (confirm first: "Should I mark '[task]' as done?"):
 <soma-action>{"action":"complete_todo","todo_id":"[exact id]"}</soma-action>
 
-Delete a todo (ask first: "Should I delete '[task]'?"):
+Delete a todo (confirm first: "Should I delete '[task]'? This can't be undone."):
 <soma-action>{"action":"delete_todo","todo_id":"[exact id]"}</soma-action>
 
-CRITICAL: When the user asks you to edit, delete, archive, or complete a subject or todo, you MUST use the exact subject_id or todo_id from the lists above. Never invent or guess IDs. If you cannot find the item in the list, tell the user it wasn't found. Never emit <soma-action> for destructive actions (archive, delete, complete) without explicit user confirmation. For create_todo, emit immediately once you have the title — do not say you added something without the block.`;
+── SUBJECT ACTIONS ───────────────────────────────────────────────────────────
+
+Create a subject (ask first: "Would you like me to create a [Name] project?"):
+<soma-action>{"action":"create_subject","name":"[Name]","color":"#42a5f5"}</soma-action>
+
+Update a subject name or color (emit immediately):
+<soma-action>{"action":"update_subject","subject_id":"[exact id]","name":"[new name]","color":"#hexcolor"}</soma-action>
+
+Archive a subject (confirm first: "Should I archive [Name]?"):
+<soma-action>{"action":"archive_subject","subject_id":"[exact id]"}</soma-action>
+
+Permanently delete a subject (confirm first: "Are you sure you want to delete [Name]? This is irreversible."):
+<soma-action>{"action":"delete_subject","subject_id":"[exact id]"}</soma-action>`;
 }
 
 // ── Sub-components ──────────────────────────────────────────────────────────

@@ -722,11 +722,24 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       setBlocks(storage.getTimeBlocks().filter(b => isOnDate(b.startTime, selectedDate)));
     }
 
+    function onSubjectsChanged() {
+      void storage.fetchSubjects().then(fresh => {
+        setSubjects(fresh.filter(s => !s.archived));
+      }).catch(() => {});
+    }
+    function onTodosChanged() {
+      void storage.fetchAllTodos().then(setTodos).catch(() => {});
+    }
+
     window.addEventListener('soma_timer_stopped', onTimerStopped);
     window.addEventListener('soma_merge_applied', onMergeApplied);
+    window.addEventListener('soma_subjects_changed', onSubjectsChanged);
+    window.addEventListener('soma_todos_changed', onTodosChanged);
     return () => {
       window.removeEventListener('soma_timer_stopped', onTimerStopped);
       window.removeEventListener('soma_merge_applied', onMergeApplied);
+      window.removeEventListener('soma_subjects_changed', onSubjectsChanged);
+      window.removeEventListener('soma_todos_changed', onTodosChanged);
     };
   }, [selectedDate]);
 
