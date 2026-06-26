@@ -132,6 +132,7 @@ function stripTags(content: string) {
     .replace(/<function_calls>[\s\S]*?<\/function_calls>/g, '')
     .replace(/<[a-zA-Z][a-zA-Z0-9]*[^>]+name="soma-action"[^>]*>[\s\S]*?<\/[a-zA-Z][a-zA-Z0-9]*>/g, '')
     .replace(/<raw>[\s\S]*?<\/raw>/g, '')
+    .replace(/<artifact[^>]*>[\s\S]*?<\/artifact>/g, '')
     .trim();
 }
 
@@ -229,17 +230,27 @@ function parseSingleSomaAction(json: string): SomaAction | null {
 
 function parseSomaActions(content: string): SomaAction[] {
   const actions: SomaAction[] = [];
+  let m: RegExpExecArray | null;
+
   // Primary: <soma-action>JSON</soma-action> (may appear multiple times)
   const primary = /<soma-action>([\s\S]*?)<\/soma-action>/g;
-  let m: RegExpExecArray | null;
   while ((m = primary.exec(content)) !== null) {
     const action = parseSingleSomaAction(m[1]);
     if (action) actions.push(action);
   }
   if (actions.length > 0) return actions;
-  // Fallback: model-invented wrapper with name="soma-action" attribute
-  const fallback = /<[a-zA-Z][a-zA-Z0-9]*[^>]+name="soma-action"[^>]*>([\s\S]*?)<\/[a-zA-Z][a-zA-Z0-9]*>/g;
-  while ((m = fallback.exec(content)) !== null) {
+
+  // Fallback 1: model-invented wrapper with name="soma-action" attribute
+  const namedWrapper = /<[a-zA-Z][a-zA-Z0-9]*[^>]+name="soma-action"[^>]*>([\s\S]*?)<\/[a-zA-Z][a-zA-Z0-9]*>/g;
+  while ((m = namedWrapper.exec(content)) !== null) {
+    const action = parseSingleSomaAction(m[1]);
+    if (action) actions.push(action);
+  }
+  if (actions.length > 0) return actions;
+
+  // Fallback 2: <artifact> tags containing JSON with an "action" field
+  const artifactWrapper = /<artifact[^>]*>([\s\S]*?)<\/artifact>/g;
+  while ((m = artifactWrapper.exec(content)) !== null) {
     const action = parseSingleSomaAction(m[1]);
     if (action) actions.push(action);
   }
@@ -548,6 +559,7 @@ IMPORTANT RULES:
 - For destructive actions (delete, archive, complete) always confirm with the user first before emitting the block.
 - For safe actions (create, update) emit immediately once you have enough context — do not make the user confirm twice.
 - You cannot modify settings, billing, subscriptions, or authentication. Only subjects and todos.
+- IMPORTANT: Never wrap soma-actions in <artifact> tags. Always use exactly <soma-action>{...}</soma-action> — no other wrapper tags. The parser only recognizes <soma-action> tags.
 - When creating multiple todos (e.g. a weekly schedule), emit ALL soma-action blocks in a single response — one per task. Do not stop after the first one. It is required to emit all of them in the same message. Example for a 3-day schedule:
 <soma-action>{"action":"create_todo","title":"Task 1","subject_id":"...","due_date":"2026-06-29"}</soma-action>
 <soma-action>{"action":"create_todo","title":"Task 2","subject_id":"...","due_date":"2026-06-30"}</soma-action>
