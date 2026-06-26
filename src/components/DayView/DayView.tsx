@@ -436,21 +436,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   });
   const timerCtx = useTimerContext();
   const [showAddSubject, setShowAddSubject] = useState(false);
-  const [todos, setTodos] = useState<Todo[]>(() => {
-    const existing = storage.getTodos();
-    const subjects = storage.getSubjects();
-    const assignments = storage.getCachedAssignments();
-    const migrated = existing.map(t => {
-      const legacyDone = (t as unknown as { done?: boolean }).done;
-      const status: Todo['status'] = t.status ?? (legacyDone ? 'done' : 'nothing');
-      const subjectId = t.subjectId ?? inferSubjectId(t.text, subjects, assignments);
-      return { ...t, status, subjectId };
-    });
-    if (migrated.some((t, i) => t.status !== existing[i].status || t.subjectId !== existing[i].subjectId)) {
-      storage.setTodos(migrated);
-    }
-    return migrated;
-  });
+  const [todos, setTodos] = useState<Todo[]>(() => storage.getTodos());
   const [taskModal, setTaskModal] = useState<{ subjectId: string | undefined; editingTodo?: Todo } | null>(null);
   const [subjectPickerMode, setSubjectPickerMode] = useState<'timer' | 'task' | null>(null);
   const [taskDetailsOpen, setTaskDetailsOpen] = useState(false);
@@ -544,6 +530,13 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
     };
     tick();
     const id = setInterval(tick, 1_000);
+
+    // Refresh from Supabase — ensures cross-device sync on load
+    void storage.fetchSubjects().then(fresh => {
+      setSubjects(fresh.filter(s => !s.archived));
+    }).catch(() => {});
+    void storage.fetchAllTodos().then(setTodos).catch(() => {});
+
     return () => clearInterval(id);
   }, []);
 

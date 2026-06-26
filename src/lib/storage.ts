@@ -185,6 +185,28 @@ let _googleDocsToken = '';
 let _googleDriveToken = '';
 let _googleDriveRefreshToken = '';
 
+// In-memory caches for Supabase-backed data.
+// Populated by loadSubjects() / loadTodos() at auth time.
+// getSubjects() / getTodos() read from here synchronously;
+// setSubjects() / setTodos() update here and diff-sync to Supabase async.
+let _subjects: Subject[] = [];
+let _todos: Todo[] = [];
+
+function todoFromRow(r: Record<string, unknown>): Todo {
+  return {
+    id: r.id as string,
+    text: r.text as string,
+    status: (r.status as Todo['status']) ?? 'nothing',
+    subjectId: (r.subject_id as string | null) ?? undefined,
+    assignmentId: (r.assignment_id as number | null) ?? undefined,
+    date: r.date as string,
+    estimatedMinutes: (r.estimated_minutes as number | null) ?? undefined,
+    dueDate: (r.due_date as string | null) ?? undefined,
+    notes: (r.notes as string | null) ?? undefined,
+    order: (r.order as number | null) ?? undefined,
+  };
+}
+
 // ── Utility ───────────────────────────────────────────────────────────────
 
 export function inferSubjectId(
@@ -209,9 +231,101 @@ export function inferSubjectId(
 
 export const storage = {
 
-  // ── Subjects (localStorage) ──────────────────────────────────────────
-  getSubjects: (): Subject[] => get(KEYS.subjects, []),
-  setSubjects: (v: Subject[]) => set(KEYS.subjects, v),
+  // ── Subjects (Supabase, write-through cache) ─────────────────────────
+  getSubjects(): Subject[] {
+    return _subjects;
+  },
+
+  setSubjects(next: Subject[]): void {
+    const prev = _subjects;
+    _subjects = next;
+    void (async () => {
+      try {
+        const id = await uid();
+        const prevMap = new Map(prev.map(s => [s.id, s]));
+        const nextSet = new Set(next.map(s => s.id));
+        for (const s of next) {
+          const p = prevMap.get(s.id);
+          if (!p || p.name !== s.name || p.color !== s.color || p.archived !== s.archived ||
+              p.order !== s.order || p.source !== s.source || p.totalTimeToday !== s.totalTimeToday ||
+              p.canvasCourseId !== s.canvasCourseId) {
+            await supabase.from('subjects').upsert({
+              id: s.id,
+              user_id: id,
+              name: s.name,
+              color: s.color as string,
+              source: s.source ?? 'manual',
+              archived: s.archived ?? false,
+              order: s.order ?? null,
+              total_time_today: s.totalTimeToday,
+              canvas_course_id: s.canvasCourseId ?? null,
+              updated_at: new Date().toISOString(),
+            });
+          }
+        }
+        for (const s of prev) {
+          if (!nextSet.has(s.id)) {
+            await supabase.from('subjects').delete().eq('id', s.id).eq('user_id', id);
+          }
+        }
+      } catch (err) {
+        console.error('[storage] setSubjects sync failed:', err);
+      }
+    })();
+  },
+
+  async fetchSubjects(): Promise<Subject[]> {
+    const id = await uid();
+    const { data } = await supabase
+      .from('subjects')
+      .select('*')
+      .eq('user_id', id)
+      .order('order', { ascending: true, nullsFirst: false });
+    const subjects: Subject[] = (data ?? []).map(r => ({
+      id: r.id as string,
+      name: r.name as string,
+      color: r.color as Subject['color'],
+      source: (r.source as 'manual' | 'canvas') ?? 'manual',
+      archived: r.archived ?? false,
+      order: (r.order as number | null) ?? undefined,
+      totalTimeToday: (r.total_time_today as number) ?? 0,
+      canvasCourseId: (r.canvas_course_id as number | null) ?? undefined,
+    }));
+    _subjects = subjects;
+    return subjects;
+  },
+
+  async loadSubjects(): Promise<void> {
+    try {
+      const remote = await storage.fetchSubjects();
+      if (remote.length === 0) {
+        const local: Subject[] = get(KEYS.subjects, []);
+        if (local.length > 0) {
+          _subjects = local;
+          const id = await uid();
+          await supabase.from('subjects').upsert(
+            local.map(s => ({
+              id: s.id,
+              user_id: id,
+              name: s.name,
+              color: s.color as string,
+              source: s.source ?? 'manual',
+              archived: s.archived ?? false,
+              order: s.order ?? null,
+              total_time_today: s.totalTimeToday,
+              canvas_course_id: s.canvasCourseId ?? null,
+            })),
+            { onConflict: 'id' },
+          );
+          localStorage.removeItem(KEYS.subjects);
+        }
+      }
+    } catch (err) {
+      console.error('[storage] loadSubjects failed:', err);
+      // Fall back to localStorage if Supabase unavailable
+      _subjects = get(KEYS.subjects, []);
+    }
+  },
 
   // ── Timer sessions (localStorage) ───────────────────────────────────
   getTimerSessions: (): TimerSession[] => get(KEYS.timerSessions, []),
@@ -303,8 +417,8 @@ export const storage = {
     })();
   },
 
-  // Call once after auth resolves. Populates the in-memory token cache from
-  // Supabase and performs a one-time migration away from localStorage.
+  // Call once after auth resolves. Populates the in-memory token/data caches
+  // from Supabase and performs one-time migrations away from localStorage.
   async loadTokens(): Promise<void> {
     try {
       const timeout = new Promise<never>((_, reject) =>
@@ -334,6 +448,9 @@ export const storage = {
     } catch (err) {
       console.error('[storage] loadTokens failed:', err);
     }
+    // Load subjects before todos (todo migration uses subjects for subjectId inference)
+    await storage.loadSubjects().catch(err => console.error('[storage] loadSubjects:', err));
+    await storage.loadTodos().catch(err => console.error('[storage] loadTodos:', err));
   },
 
   getGoogleClientId: (): string => get(KEYS.googleClientId, ''),
@@ -422,9 +539,69 @@ export const storage = {
   getTimeBlocks: (): TimeBlock[] => get(SOMA_BLOCKS_KEY, []),
   setTimeBlocks: (v: TimeBlock[]) => set(SOMA_BLOCKS_KEY, v),
 
-  // ── Todos sync (localStorage) ────────────────────────────────────────
-  getTodos: (): Todo[] => get(SOMA_TODOS_KEY, []),
-  setTodos: (v: Todo[]) => set(SOMA_TODOS_KEY, v),
+  // ── Todos (Supabase, write-through cache) ────────────────────────────
+  getTodos(): Todo[] {
+    return _todos;
+  },
+
+  setTodos(next: Todo[]): void {
+    const prev = _todos;
+    _todos = next;
+    void (async () => {
+      try {
+        const prevMap = new Map(prev.map(t => [t.id, t]));
+        const nextSet = new Set(next.map(t => t.id));
+        for (const t of next) {
+          const p = prevMap.get(t.id);
+          if (!p || p.text !== t.text || p.status !== t.status || p.subjectId !== t.subjectId ||
+              p.dueDate !== t.dueDate || p.notes !== t.notes || p.order !== t.order ||
+              p.estimatedMinutes !== t.estimatedMinutes || p.date !== t.date) {
+            await storage.saveTodo(t);
+          }
+        }
+        for (const t of prev) {
+          if (!nextSet.has(t.id)) {
+            await storage.deleteTodo(t.id);
+          }
+        }
+      } catch (err) {
+        console.error('[storage] setTodos sync failed:', err);
+      }
+    })();
+  },
+
+  async fetchAllTodos(): Promise<Todo[]> {
+    const id = await uid();
+    const { data } = await supabase.from('todos').select('*').eq('user_id', id);
+    const todos = (data ?? []).map(r => todoFromRow(r as Record<string, unknown>));
+    _todos = todos;
+    return todos;
+  },
+
+  async loadTodos(): Promise<void> {
+    try {
+      const remote = await storage.fetchAllTodos();
+      if (remote.length === 0) {
+        const local: Todo[] = get(SOMA_TODOS_KEY, []);
+        if (local.length > 0) {
+          // Apply legacy migration (done boolean → status, infer subjectId)
+          const assignments = storage.getCachedAssignments();
+          const migrated = local.map(t => {
+            const legacyDone = (t as unknown as { done?: boolean }).done;
+            const status: Todo['status'] = t.status ?? (legacyDone ? 'done' : 'nothing');
+            const subjectId = t.subjectId ?? inferSubjectId(t.text, _subjects, assignments);
+            return { ...t, status, subjectId };
+          });
+          _todos = migrated;
+          await Promise.all(migrated.map(t => storage.saveTodo(t)));
+          localStorage.removeItem(SOMA_TODOS_KEY);
+        }
+      }
+    } catch (err) {
+      console.error('[storage] loadTodos failed:', err);
+      _todos = get(SOMA_TODOS_KEY, []);
+    }
+  },
 
   // ── Settings sync (localStorage) ─────────────────────────────────────
   getSomaSettings(): SomaSettings {
@@ -459,15 +636,7 @@ export const storage = {
       .select('*')
       .eq('user_id', id)
       .eq('date', date);
-    return (data ?? []).map(r => ({
-      id: r.id,
-      text: r.text,
-      status: r.status ?? 'nothing',
-      subjectId: r.subject_id ?? undefined,
-      assignmentId: r.assignment_id ?? undefined,
-      date: r.date,
-      estimatedMinutes: r.estimated_minutes ?? undefined,
-    } as Todo));
+    return (data ?? []).map(r => todoFromRow(r as Record<string, unknown>));
   },
 
   async saveTodo(todo: Todo): Promise<void> {
@@ -481,6 +650,9 @@ export const storage = {
       estimated_minutes: todo.estimatedMinutes ?? null,
       status: todo.status,
       date: todo.date,
+      due_date: todo.dueDate ?? null,
+      notes: todo.notes ?? null,
+      order: todo.order ?? null,
     });
   },
 
@@ -496,15 +668,7 @@ export const storage = {
       .select('*')
       .eq('user_id', id)
       .neq('status', 'done');
-    return (data ?? []).map(r => ({
-      id: r.id,
-      text: r.text,
-      status: r.status ?? 'nothing',
-      subjectId: r.subject_id ?? undefined,
-      assignmentId: r.assignment_id ?? undefined,
-      date: r.date,
-      estimatedMinutes: r.estimated_minutes ?? undefined,
-    } as Todo));
+    return (data ?? []).map(r => todoFromRow(r as Record<string, unknown>));
   },
 
   // ── Schedule blocks (Supabase) ───────────────────────────────────────
@@ -655,10 +819,9 @@ export const storage = {
     localStorage.removeItem(KEYS.canvasIcalUrl);
     localStorage.removeItem(KEYS.assignmentStatus);
     localStorage.removeItem(KEYS.clearedAssignments);
-    // Remove Canvas-sourced subjects (class names synced from Canvas)
-    const subjects: Subject[] = get(KEYS.subjects, []);
-    const manualOnly = subjects.filter(s => s.source !== 'canvas');
-    set(KEYS.subjects, manualOnly);
+    // Remove Canvas-sourced subjects — write-through syncs deletion to Supabase
+    const manualOnly = _subjects.filter(s => s.source !== 'canvas');
+    storage.setSubjects(manualOnly);
     // Google
     localStorage.removeItem(KEYS.googleEvents);
     localStorage.removeItem(KEYS.googleCacheTimestamp);
