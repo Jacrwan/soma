@@ -1160,6 +1160,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   function deleteSubject(id: string) {
     const subject = subjects.find(s => s.id === id);
     if (subject?.source === 'manual') {
+      setEditSubject(null);
       setDeleteSubjectConfirm({ subject, deleteSessions: false, deleteBlocks: false });
       return;
     }
