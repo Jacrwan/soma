@@ -304,7 +304,7 @@ async function executeSomaAction(action: SomaAction): Promise<string | null> {
         status: 'nothing',
         subjectId: action.subject_id,
         dueDate: action.due_date,
-        date: getTodayKey(),
+        date: action.due_date ?? getTodayKey(),
       };
       storage.setTodos([...storage.getTodos(), newTodo]);
       window.dispatchEvent(new Event('soma_todos_changed'));
