@@ -273,6 +273,7 @@ async function executeSomaAction(action: SomaAction): Promise<string | null> {
       return `✓ Deleted subject: "${subj.name}"`;
     }
     case 'create_todo': {
+      console.log('[soma] create_todo action payload:', JSON.stringify(action));
       const newTodo: Todo = {
         id: crypto.randomUUID(),
         text: action.title,
@@ -534,7 +535,7 @@ IMPORTANT RULES:
 - For destructive actions (delete, archive, complete) always confirm with the user first before emitting the block.
 - For safe actions (create, update) emit immediately once you have enough context — do not make the user confirm twice.
 - You cannot modify settings, billing, subscriptions, or authentication. Only subjects and todos.
-- Only emit one <soma-action> block per response.
+- When creating multiple todos as part of a schedule (e.g. one task per day over a week), each create_todo action MUST have a different due_date matching the specific day that task is assigned to. Never default all tasks to today. For example, if a task is planned for Monday June 29, the due_date must be "2026-06-29". Emit one <soma-action> per task with its correct individual date.
 
 Available colors for subjects: #ef5350 (red), #42a5f5 (blue), #66bb6a (green), #ab47bc (purple), #ffa726 (orange), #26c6da (cyan), #ec407a (pink), #8d6e63 (brown).
 
