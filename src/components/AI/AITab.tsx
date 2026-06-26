@@ -491,13 +491,14 @@ When the user asks you to generate a schedule or todo list, respond with:
 CRITICAL: Always close <schedule> with </schedule> and <todos> with </todos>. Never mix closing tags.
 
 CRITICAL: NEVER output both <schedule> and <todos> in the same response. Choose exactly one:
-- Use <schedule> when the user asks to plan their day, create a schedule, or asks what to do today with a time structure. Accepting a schedule automatically creates todos, so adding <todos> alongside a <schedule> is always wrong and redundant.
+- Use <schedule> when the user asks to plan their day, create a schedule, or asks what to do today with a time structure. Accepting a schedule creates todos (not calendar blocks) — one todo per task, placed on the correct day. Adding <todos> alongside a <schedule> is always wrong and redundant.
 - Use <todos> when the user asks for a task list, things to do for a specific assignment, or a checklist — only when no time structure is needed.
 
 Schedule item format: { subjectId, task, startTime (ISO), endTime (ISO), source: "ai" }
 Todo item format: [{"text":"...","subjectId":"uuid-here","assignmentId":12345}]
 Use the exact subject IDs from the subjects list above. Use the exact assignment IDs from the assignments list above. Set subjectId to null if no subject applies. Set assignmentId to null if not linked to a Canvas assignment.
 Match subjectId to the user's existing subjects by name (case-insensitive).
+SUBJECT ASSIGNMENT: When creating todos for a study schedule, always assign them to the most relevant subject based on the content. Physics study tasks go under a physics-related subject, not Machine Learning/AI. If no matching subject exists, ask the user which subject to use before creating the todos. Never default to an unrelated subject.
 ${driveConnected ? `
 GOOGLE DRIVE — CREATING FILES:
 The user has connected Google Drive, so you can create real Google Docs and Google Slides for them when they ask.
@@ -565,6 +566,7 @@ IMPORTANT RULES:
 - For safe actions (create, update) emit immediately once you have enough context — do not make the user confirm twice.
 - You cannot modify settings, billing, subscriptions, or authentication. Only subjects and todos.
 - IMPORTANT: Never wrap soma-actions in <artifact> tags. Always use exactly <soma-action>{...}</soma-action> — no other wrapper tags. The parser only recognizes <soma-action> tags.
+- SUBJECT ASSIGNMENT: When creating todos for a study schedule, always assign them to the most relevant subject based on the content. Physics study tasks go under a physics-related subject, not Machine Learning/AI. If no matching subject exists, ask the user which subject to use before creating the todos. Never default to an unrelated subject.
 - When creating multiple todos (e.g. a weekly schedule), emit ALL soma-action blocks in a single response — one per task. Do not stop after the first one. It is required to emit all of them in the same message. Example for a 3-day schedule:
 <soma-action>{"action":"create_todo","title":"Task 1","subject_id":"...","due_date":"2026-06-29"}</soma-action>
 <soma-action>{"action":"create_todo","title":"Task 2","subject_id":"...","due_date":"2026-06-30"}</soma-action>
@@ -1528,16 +1530,24 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   }
 
   function acceptSchedule(msgId: string, blocks: TimeBlock[]) {
-    const existing = storage.getTimeBlocks().filter(b => !isToday(b.startTime));
-    storage.setTimeBlocks([...existing, ...blocks]);
-
     const existingTodos = storage.getTodos();
     const existingTexts = new Set(existingTodos.map(t => t.text));
-    const todayKey = getTodayKey();
     const newTodos: Todo[] = blocks
       .filter(b => b.task && !existingTexts.has(b.task))
-      .map(b => ({ id: crypto.randomUUID(), text: b.task, status: 'nothing' as const, subjectId: b.subjectId, date: todayKey }));
+      .map(b => {
+        const d = new Date(b.startTime);
+        const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        return {
+          id: crypto.randomUUID(),
+          text: b.task,
+          status: 'nothing' as const,
+          subjectId: b.subjectId || undefined,
+          date: dateKey,
+          dueDate: dateKey,
+        };
+      });
     if (newTodos.length > 0) storage.setTodos([...existingTodos, ...newTodos]);
+    window.dispatchEvent(new Event('soma_todos_changed'));
 
     updateSession(activeSessionId, s => ({
       ...s, messages: s.messages.map(m => m.id === msgId ? { ...m, scheduleAccepted: true } : m),
