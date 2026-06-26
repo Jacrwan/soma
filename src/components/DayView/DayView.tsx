@@ -183,6 +183,18 @@ function fmtElapsed(minutes: number): string {
   return `${h}h ${m}m`;
 }
 
+function formatDueDate(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const due = new Date(y, m - 1, d);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const diffDays = Math.round((due.getTime() - today.getTime()) / 86400000);
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Tomorrow';
+  if (diffDays > 1 && diffDays < 7) return due.toLocaleDateString('en-US', { weekday: 'long' });
+  return due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 function computeElapsedTime(blocks: TimeBlock[], now: Date, viewDate: Date): Record<string, number> {
   const nowMs = now.getTime();
   const result: Record<string, number> = {};
@@ -1738,7 +1750,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             {hasEstimate && (
               <span className={styles.todoEstBadge}>{fmtEstimated(todo.estimatedMinutes!)}</span>
             )}
-            {todo.dueDate && <span className={styles.todoDueDate}>{todo.dueDate}</span>}
+            {todo.dueDate && <span className={styles.todoDueDate}>{formatDueDate(todo.dueDate)}</span>}
           </div>
           {(hasEstimate || actualMins > 0) && (
             <span className={styles.todoTimeDisplay}>

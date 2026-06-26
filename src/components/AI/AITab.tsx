@@ -896,6 +896,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   const [currentSubjectKey, setCurrentSubjectKey] = useState<string>('general');
 
   const [input, setInput] = useState('');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [loading, setLoading] = useState(false);
   const [voiceActive, setVoiceActive] = useState(false);
   const [voiceTriggered, setVoiceTriggered] = useState(false);
@@ -1216,6 +1217,13 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       send();
     }
   }, [voiceTriggered]);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 200) + 'px';
+  }, [input]);
 
   function updateSession(id: string, fn: (s: ChatSession) => ChatSession) {
     setSessions(prev => {
@@ -1845,11 +1853,13 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
                 title="Attach a file from Google Drive"
               >📁</button>
             )}
-            <input
+            <textarea
+              ref={textareaRef}
               className={styles.textInput}
               placeholder={attachedFile ? `Ask about "${attachedFile.title}"…` : driveToken ? 'Message Soma… (click 📁 to attach a Drive file)' : 'Message Soma…'}
               value={input}
               disabled={loading}
+              rows={1}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
             />

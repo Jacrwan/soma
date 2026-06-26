@@ -1598,7 +1598,7 @@
 
 .todoItem {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   padding: 5px var(--space-sm) 5px 26px;
   border-radius: 6px;
@@ -1618,6 +1618,7 @@
   flex-shrink: 0;
   width: 16px;
   height: 16px;
+  margin-top: 2px;
   border-radius: 50%;
   border: 1.5px solid #d0d0d0;
   background: none;
@@ -1638,6 +1639,7 @@
   background: none;
   width: 16px;
   height: 16px;
+  margin-top: 2px;
   color: var(--accent);
   display: flex;
   align-items: center;
@@ -1652,6 +1654,7 @@
   border-radius: 50%;
   width: 16px;
   height: 16px;
+  margin-top: 2px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1663,19 +1666,16 @@
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .todoText {
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.45;
   color: var(--text-primary);
   cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
+  word-break: break-word;
 }
 
 .todoItemDone .todoText {
@@ -1685,7 +1685,6 @@
 .todoDueDate {
   font-size: 11px;
   color: var(--text-muted);
-  flex-shrink: 0;
   white-space: nowrap;
 }
 
@@ -1695,6 +1694,7 @@
   gap: 4px;
   opacity: 1;
   flex-shrink: 0;
+  margin-top: 1px;
 }
 
 .editTodoBtn,
@@ -2362,6 +2362,7 @@
   white-space: nowrap;
   flex-shrink: 0;
   padding: 0 4px;
+  margin-top: 2px;
 }
 
 /* ── Task creation modal ─────────────────────────────────────────────────── */
