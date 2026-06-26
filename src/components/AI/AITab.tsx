@@ -129,6 +129,7 @@ function stripTags(content: string) {
     .replace(/<createDoc\b[\s\S]*?<\/createDoc>/g, '')
     .replace(/<createSlides\b[\s\S]*?<\/createSlides>/g, '')
     .replace(/<soma-action>[\s\S]*?<\/soma-action>/g, '')
+    .replace(/<function_calls>[\s\S]*?<\/function_calls>/g, '')
     .trim();
 }
 
@@ -184,7 +185,11 @@ type SomaAction =
   | { action: 'delete_todo'; todo_id: string };
 
 function parseSomaAction(content: string): SomaAction | null {
-  const match = content.match(/<soma-action>([\s\S]*?)<\/soma-action>/);
+  // Support both <soma-action>JSON</soma-action> and Claude's native
+  // <function_calls><invoke name="soma-action">JSON</invoke></function_calls> formats
+  const match =
+    content.match(/<soma-action>([\s\S]*?)<\/soma-action>/) ??
+    content.match(/<invoke name="soma-action">([\s\S]*?)<\/invoke>/);
   if (!match) return null;
   try {
     const p = JSON.parse(match[1].trim());
