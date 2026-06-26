@@ -184,13 +184,18 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
 
   const isConnected = !!token;
 
-  // On mount (and after OAuth redirect back), pull provider_token from session
+  // On mount (and after OAuth redirect back from gcal flow), pull provider_token from session.
+  // Only save if ?source=gcal to avoid clobbering the Calendar token with a Drive token.
   useEffect(() => {
+    const source = new URLSearchParams(window.location.search).get('source');
     supabase.auth.getSession().then(({ data }) => {
       const pt = data.session?.provider_token;
-      if (pt) {
+      if (pt && source === 'gcal') {
         storage.setGoogleToken(pt);
         setToken(pt);
+        const url = new URL(window.location.href);
+        url.searchParams.delete('source');
+        window.history.replaceState({}, '', url.toString());
       }
     });
   }, []);
@@ -275,11 +280,13 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   }
 
   async function connectGcal() {
+    const redirectUrl = new URL(window.location.href);
+    redirectUrl.searchParams.set('source', 'gcal');
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         scopes: 'https://www.googleapis.com/auth/calendar.readonly',
-        redirectTo: window.location.href,
+        redirectTo: redirectUrl.toString(),
         queryParams: { access_type: 'offline', prompt: 'consent' },
       },
     });

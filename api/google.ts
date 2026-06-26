@@ -308,7 +308,7 @@ export default async function handler(req: any, res: any) {
   const admin = createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
   const { data: { user }, error: authErr } = await admin.auth.getUser(sbToken);
   if (authErr || !user) return res.status(401).json({ error: 'Unauthorized' });
-  const userId = userId;
+  const userId = user.id;
 
   let body = req.body as Record<string, unknown> | string | undefined;
   if (typeof body === 'string') {
