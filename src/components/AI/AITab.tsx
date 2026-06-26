@@ -303,17 +303,28 @@ async function executeSomaAction(action: SomaAction): Promise<string | null> {
     }
     case 'create_todo': {
       console.log('[soma] create_todo action payload:', JSON.stringify(action));
+      // Validate subject_id — reject silently-wrong assignments
+      let resolvedSubjectId: string | undefined = undefined;
+      if (action.subject_id) {
+        const exists = storage.getSubjects().some(s => s.id === action.subject_id && !s.archived);
+        if (exists) {
+          resolvedSubjectId = action.subject_id;
+        } else {
+          console.warn('[soma] create_todo — subject_id not found in current subjects:', action.subject_id, '— leaving unassigned');
+        }
+      }
       const newTodo: Todo = {
         id: crypto.randomUUID(),
         text: action.title,
         status: 'nothing',
-        subjectId: action.subject_id,
+        subjectId: resolvedSubjectId,
         dueDate: action.due_date,
         date: action.due_date ?? getTodayKey(),
       };
       storage.setTodos([...storage.getTodos(), newTodo]);
       window.dispatchEvent(new Event('soma_todos_changed'));
-      return `✓ Added todo: "${action.title}"`;
+      const subjectNote = action.subject_id && !resolvedSubjectId ? ' (subject not found — left unassigned)' : '';
+      return `✓ Added todo: "${action.title}"${subjectNote}`;
     }
     case 'update_todo': {
       const todo = storage.getTodos().find(t => t.id === action.todo_id);
@@ -338,16 +349,18 @@ async function executeSomaAction(action: SomaAction): Promise<string | null> {
     case 'delete_todo': {
       const allTodos = storage.getTodos();
       const todo = allTodos.find(t => t.id === action.todo_id);
-      console.log('[soma] delete_todo fired — todo_id:', action.todo_id);
-      console.log('[soma] delete_todo — found in storage:', todo ? `"${todo.text}"` : 'NOT FOUND');
-      console.log('[soma] delete_todo — all storage IDs:', allTodos.map(t => t.id));
-      if (!todo) {
-        console.warn('[soma] delete_todo — ID not found in _todos; Supabase delete will NOT fire. AI may have used a stale or incorrect ID.');
-        return '✓ Todo deleted';
+      console.log('[soma] delete_todo fired — todo_id:', action.todo_id,
+        '| found in cache:', todo ? `"${todo.text}"` : 'NOT FOUND (firing direct Supabase delete anyway)');
+      // Always fire a direct Supabase delete so stale-cache misses don't silently fail
+      void storage.deleteTodo(action.todo_id).catch(err =>
+        console.warn('[soma] delete_todo — direct Supabase delete failed:', err),
+      );
+      // Also remove from in-memory cache if present
+      if (todo) {
+        storage.setTodos(allTodos.filter(t => t.id !== action.todo_id));
       }
-      storage.setTodos(allTodos.filter(t => t.id !== action.todo_id));
       window.dispatchEvent(new Event('soma_todos_changed'));
-      return `✓ Deleted todo: "${todo.text}"`;
+      return todo ? `✓ Deleted todo: "${todo.text}"` : '✓ Todo deleted (via direct DB delete)';
     }
   }
 }
@@ -1181,22 +1194,32 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     }
   }
 
-  const systemPromptCache = useRef<{ prompt: string; canvasTs: number | null; dateKey: string; folderCacheTs: number; subjectKey: string } | null>(null);
+  const systemPromptCache = useRef<{ prompt: string; canvasTs: number | null; dateKey: string; folderCacheTs: number; subjectKey: string; subjectsV: number } | null>(null);
+  const subjectsVersion = useRef(0);
+
+  // Invalidate the prompt cache whenever subjects change mid-conversation
+  useEffect(() => {
+    const bump = () => { subjectsVersion.current += 1; };
+    window.addEventListener('soma_subjects_changed', bump);
+    return () => window.removeEventListener('soma_subjects_changed', bump);
+  }, []);
 
   function getCachedSystemPrompt(subjectKey: string): string {
     const canvasTs = storage.getCacheTimestamp();
     const dateKey = getTodayKey();
     const folderCacheTs = getFolderContentsCacheTs();
+    const subjectsV = subjectsVersion.current;
     const cached = systemPromptCache.current;
     if (
       cached &&
       cached.canvasTs === canvasTs &&
       cached.dateKey === dateKey &&
       cached.folderCacheTs === folderCacheTs &&
-      cached.subjectKey === subjectKey
+      cached.subjectKey === subjectKey &&
+      cached.subjectsV === subjectsV
     ) return cached.prompt;
     const prompt = buildSystemPrompt(subjectKey);
-    systemPromptCache.current = { prompt, canvasTs, dateKey, folderCacheTs, subjectKey };
+    systemPromptCache.current = { prompt, canvasTs, dateKey, folderCacheTs, subjectKey, subjectsV };
     return prompt;
   }
 
