@@ -131,6 +131,7 @@ function stripTags(content: string) {
     .replace(/<soma-action>[\s\S]*?<\/soma-action>/g, '')
     .replace(/<function_calls>[\s\S]*?<\/function_calls>/g, '')
     .replace(/<[a-zA-Z][a-zA-Z0-9]*[^>]+name="soma-action"[^>]*>[\s\S]*?<\/[a-zA-Z][a-zA-Z0-9]*>/g, '')
+    .replace(/<raw>[\s\S]*?<\/raw>/g, '')
     .trim();
 }
 
