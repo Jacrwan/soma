@@ -186,15 +186,9 @@ type SomaAction =
   | { action: 'complete_todo'; todo_id: string }
   | { action: 'delete_todo'; todo_id: string };
 
-function parseSomaAction(content: string): SomaAction | null {
-  // Handle <soma-action>JSON</soma-action> and any model-invented wrapper format
-  // that carries name="soma-action" (e.g. <invoke>, <regionMargin>, <function_calls>, etc.)
-  const match =
-    content.match(/<soma-action>([\s\S]*?)<\/soma-action>/) ??
-    content.match(/<[a-zA-Z][a-zA-Z0-9]*[^>]+name="soma-action"[^>]*>([\s\S]*?)<\/[a-zA-Z][a-zA-Z0-9]*>/);
-  if (!match) return null;
+function parseSingleSomaAction(json: string): SomaAction | null {
   try {
-    const p = JSON.parse(match[1].trim());
+    const p = JSON.parse(json.trim());
     if (p.action === 'create_subject' && typeof p.name === 'string' && p.name.trim()) {
       const color: SubjectColor = SUBJECT_COLORS.includes(p.color) ? p.color : '#42a5f5';
       return { action: 'create_subject', name: p.name.trim(), color };
@@ -231,6 +225,25 @@ function parseSomaAction(content: string): SomaAction | null {
       return { action: 'delete_todo', todo_id: p.todo_id };
     return null;
   } catch { return null; }
+}
+
+function parseSomaActions(content: string): SomaAction[] {
+  const actions: SomaAction[] = [];
+  // Primary: <soma-action>JSON</soma-action> (may appear multiple times)
+  const primary = /<soma-action>([\s\S]*?)<\/soma-action>/g;
+  let m: RegExpExecArray | null;
+  while ((m = primary.exec(content)) !== null) {
+    const action = parseSingleSomaAction(m[1]);
+    if (action) actions.push(action);
+  }
+  if (actions.length > 0) return actions;
+  // Fallback: model-invented wrapper with name="soma-action" attribute
+  const fallback = /<[a-zA-Z][a-zA-Z0-9]*[^>]+name="soma-action"[^>]*>([\s\S]*?)<\/[a-zA-Z][a-zA-Z0-9]*>/g;
+  while ((m = fallback.exec(content)) !== null) {
+    const action = parseSingleSomaAction(m[1]);
+    if (action) actions.push(action);
+  }
+  return actions;
 }
 
 async function executeSomaAction(action: SomaAction): Promise<string | null> {
@@ -535,7 +548,11 @@ IMPORTANT RULES:
 - For destructive actions (delete, archive, complete) always confirm with the user first before emitting the block.
 - For safe actions (create, update) emit immediately once you have enough context — do not make the user confirm twice.
 - You cannot modify settings, billing, subscriptions, or authentication. Only subjects and todos.
-- When creating multiple todos as part of a schedule (e.g. one task per day over a week), each create_todo action MUST have a different due_date matching the specific day that task is assigned to. Never default all tasks to today. For example, if a task is planned for Monday June 29, the due_date must be "2026-06-29". Emit one <soma-action> per task with its correct individual date.
+- When creating multiple todos (e.g. a weekly schedule), emit ALL soma-action blocks in a single response — one per task. Do not stop after the first one. It is required to emit all of them in the same message. Example for a 3-day schedule:
+<soma-action>{"action":"create_todo","title":"Task 1","subject_id":"...","due_date":"2026-06-29"}</soma-action>
+<soma-action>{"action":"create_todo","title":"Task 2","subject_id":"...","due_date":"2026-06-30"}</soma-action>
+<soma-action>{"action":"create_todo","title":"Task 3","subject_id":"...","due_date":"2026-07-01"}</soma-action>
+All blocks must appear in the same response. Each create_todo MUST have a different due_date matching the specific day that task is assigned to — never default all tasks to today.
 
 Available colors for subjects: #ef5350 (red), #42a5f5 (blue), #66bb6a (green), #ab47bc (purple), #ffa726 (orange), #26c6da (cyan), #ec407a (pink), #8d6e63 (brown).
 
@@ -1448,10 +1465,12 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       };
       updateSession(activeSessionId, s => ({ ...s, messages: [...s.messages, assistantMsg] }));
 
-      const somaAction = parseSomaAction(response);
-      if (somaAction) {
-        void executeSomaAction(somaAction).then(confirm => {
-          if (confirm) setActionConfirmMsgs(prev => ({ ...prev, [assistantMsg.id]: confirm }));
+      const somaActions = parseSomaActions(response);
+      if (somaActions.length > 0) {
+        Promise.all(somaActions.map(a => executeSomaAction(a))).then(confirms => {
+          const msgs = confirms.filter(Boolean) as string[];
+          if (msgs.length > 0)
+            setActionConfirmMsgs(prev => ({ ...prev, [assistantMsg.id]: msgs.join('\n') }));
         });
       }
 
