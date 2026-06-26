@@ -60,6 +60,10 @@ function getTodayKey() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function todoMatchesDate(t: { date: string; dueDate?: string }, dateKey: string): boolean {
+  return t.date === dateKey || t.dueDate === dateKey;
+}
+
 function toISODateString(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
@@ -896,8 +900,8 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       const allTodos = todosRef.current;
       const dateKey = selectedDateKeyRef.current;
       const groupTodos = groupId === 'unassigned'
-        ? allTodos.filter(t => t.date === dateKey && !t.subjectId)
-        : allTodos.filter(t => t.date === dateKey && t.subjectId === groupId);
+        ? allTodos.filter(t => todoMatchesDate(t, dateKey) && !t.subjectId)
+        : allTodos.filter(t => todoMatchesDate(t, dateKey) && t.subjectId === groupId);
       const ordered = [...groupTodos].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       const y = e.clientY;
       let best = 0, bestDist = Infinity;
@@ -925,8 +929,8 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
         const allTodos = storage.getTodos();
         const dateKey = selectedDateKeyRef.current;
         const groupTodos = groupId === 'unassigned'
-          ? allTodos.filter(t => t.date === dateKey && !t.subjectId)
-          : allTodos.filter(t => t.date === dateKey && t.subjectId === groupId);
+          ? allTodos.filter(t => todoMatchesDate(t, dateKey) && !t.subjectId)
+          : allTodos.filter(t => todoMatchesDate(t, dateKey) && t.subjectId === groupId);
         const ordered = [...groupTodos].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
         const from = ordered.findIndex(t => t.id === todoId);
         if (from !== -1 && from !== overIndex) {
@@ -1369,7 +1373,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       const upcomingStr = upcoming.length > 0
         ? upcoming.map(a => `• ${a.name} (${a.courseName}) — due ${fmtDue(new Date(a.dueAt))}`).join('\n')
         : 'None';
-      const allTodos = storage.getTodos().filter(t => t.date === getTodayKey() && t.status !== 'done');
+      const allTodos = storage.getTodos().filter(t => todoMatchesDate(t, getTodayKey()) && t.status !== 'done');
       const incompleteTodos = allTodos.length;
       const topTodos = allTodos.slice(0, 5)
         .map(t => {
@@ -1656,7 +1660,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     result.splice(dragOverIndex, 0, item);
     return result;
   })();
-  const dayTodos = todos.filter(t => t.date === selectedDateKey);
+  const dayTodos = todos.filter(t => todoMatchesDate(t, selectedDateKey));
 
   function getOrderedGroupTodos(groupId: string): Todo[] {
     const groupTodos = groupId === 'unassigned'
@@ -1691,16 +1695,18 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
 
   const todoCountByDay = new Map<string, number>();
   todos.forEach(t => {
-    if (t.date) {
-      const k = dayKey(new Date(t.date + 'T00:00:00'));
+    const effectiveDate = t.dueDate ?? t.date;
+    if (effectiveDate) {
+      const k = dayKey(new Date(effectiveDate + 'T00:00:00'));
       todoCountByDay.set(k, (todoCountByDay.get(k) ?? 0) + 1);
     }
   });
 
   const itemsByDayKey = new Map<string, Array<{ name: string; color: string; type: 'todo' | 'assignment' }>>();
   todos.forEach(t => {
-    if (t.date) {
-      const k = dayKey(new Date(t.date + 'T00:00:00'));
+    const effectiveDate = t.dueDate ?? t.date;
+    if (effectiveDate) {
+      const k = dayKey(new Date(effectiveDate + 'T00:00:00'));
       if (!itemsByDayKey.has(k)) itemsByDayKey.set(k, []);
       const subj = subjects.find(s => s.id === t.subjectId);
       itemsByDayKey.get(k)!.push({ name: t.text, color: subj?.color ?? '#888', type: 'todo' });
