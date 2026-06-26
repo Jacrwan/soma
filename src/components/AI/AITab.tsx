@@ -336,10 +336,18 @@ async function executeSomaAction(action: SomaAction): Promise<string | null> {
       return `✓ Completed: "${todo.text}"`;
     }
     case 'delete_todo': {
-      const todo = storage.getTodos().find(t => t.id === action.todo_id);
-      storage.setTodos(storage.getTodos().filter(t => t.id !== action.todo_id));
+      const allTodos = storage.getTodos();
+      const todo = allTodos.find(t => t.id === action.todo_id);
+      console.log('[soma] delete_todo fired — todo_id:', action.todo_id);
+      console.log('[soma] delete_todo — found in storage:', todo ? `"${todo.text}"` : 'NOT FOUND');
+      console.log('[soma] delete_todo — all storage IDs:', allTodos.map(t => t.id));
+      if (!todo) {
+        console.warn('[soma] delete_todo — ID not found in _todos; Supabase delete will NOT fire. AI may have used a stale or incorrect ID.');
+        return '✓ Todo deleted';
+      }
+      storage.setTodos(allTodos.filter(t => t.id !== action.todo_id));
       window.dispatchEvent(new Event('soma_todos_changed'));
-      return todo ? `✓ Deleted todo: "${todo.text}"` : '✓ Todo deleted';
+      return `✓ Deleted todo: "${todo.text}"`;
     }
   }
 }
@@ -498,7 +506,7 @@ Schedule item format: { subjectId, task, startTime (ISO), endTime (ISO), source:
 Todo item format: [{"text":"...","subjectId":"uuid-here","assignmentId":12345}]
 Use the exact subject IDs from the subjects list above. Use the exact assignment IDs from the assignments list above. Set subjectId to null if no subject applies. Set assignmentId to null if not linked to a Canvas assignment.
 Match subjectId to the user's existing subjects by name (case-insensitive).
-SUBJECT ASSIGNMENT: When creating todos for a study schedule, always assign them to the most relevant subject based on the content. Physics study tasks go under a physics-related subject, not Machine Learning/AI. If no matching subject exists, ask the user which subject to use before creating the todos. Never default to an unrelated subject.
+SUBJECT ASSIGNMENT: When assigning a todo to a subject, you MUST match by subject name semantically. Physics study tasks must go under a subject with 'Physics' or 'Berkeley' in the name. Machine Learning tasks go under 'Machine Learning'. Never assign physics content to a machine learning subject. If no matching subject exists, ask the user which subject to use before creating the todos. Never default to an unrelated subject.
 ${driveConnected ? `
 GOOGLE DRIVE — CREATING FILES:
 The user has connected Google Drive, so you can create real Google Docs and Google Slides for them when they ask.
@@ -566,7 +574,7 @@ IMPORTANT RULES:
 - For safe actions (create, update) emit immediately once you have enough context — do not make the user confirm twice.
 - You cannot modify settings, billing, subscriptions, or authentication. Only subjects and todos.
 - IMPORTANT: Never wrap soma-actions in <artifact> tags. Always use exactly <soma-action>{...}</soma-action> — no other wrapper tags. The parser only recognizes <soma-action> tags.
-- SUBJECT ASSIGNMENT: When creating todos for a study schedule, always assign them to the most relevant subject based on the content. Physics study tasks go under a physics-related subject, not Machine Learning/AI. If no matching subject exists, ask the user which subject to use before creating the todos. Never default to an unrelated subject.
+- SUBJECT ASSIGNMENT: When assigning a todo to a subject, you MUST match by subject name semantically. Physics study tasks must go under a subject with 'Physics' or 'Berkeley' in the name. Machine Learning tasks go under 'Machine Learning'. Never assign physics content to a machine learning subject. If no matching subject exists, ask the user which subject to use before creating the todos. Never default to an unrelated subject.
 - When creating multiple todos (e.g. a weekly schedule), emit ALL soma-action blocks in a single response — one per task. Do not stop after the first one. It is required to emit all of them in the same message. Example for a 3-day schedule:
 <soma-action>{"action":"create_todo","title":"Task 1","subject_id":"...","due_date":"2026-06-29"}</soma-action>
 <soma-action>{"action":"create_todo","title":"Task 2","subject_id":"...","due_date":"2026-06-30"}</soma-action>
