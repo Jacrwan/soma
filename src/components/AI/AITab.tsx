@@ -177,6 +177,7 @@ type SomaAction =
   | { action: 'create_subject'; name: string; color: SubjectColor }
   | { action: 'archive_subject'; subject_id: string }
   | { action: 'delete_subject'; subject_id: string }
+  | { action: 'create_todo'; title: string; subject_id?: string; due_date?: string }
   | { action: 'complete_todo'; todo_id: string }
   | { action: 'delete_todo'; todo_id: string };
 
@@ -193,6 +194,13 @@ function parseSomaAction(content: string): SomaAction | null {
       return { action: 'archive_subject', subject_id: p.subject_id };
     if (p.action === 'delete_subject' && typeof p.subject_id === 'string')
       return { action: 'delete_subject', subject_id: p.subject_id };
+    if (p.action === 'create_todo' && typeof p.title === 'string' && p.title.trim())
+      return {
+        action: 'create_todo',
+        title: p.title.trim(),
+        subject_id: typeof p.subject_id === 'string' ? p.subject_id : undefined,
+        due_date: typeof p.due_date === 'string' ? p.due_date : undefined,
+      };
     if (p.action === 'complete_todo' && typeof p.todo_id === 'string')
       return { action: 'complete_todo', todo_id: p.todo_id };
     if (p.action === 'delete_todo' && typeof p.todo_id === 'string')
@@ -224,6 +232,18 @@ async function executeSomaAction(action: SomaAction): Promise<string | null> {
       if (!subj) return null;
       storage.setSubjects(storage.getSubjects().filter(s => s.id !== action.subject_id));
       return `✓ Deleted: ${subj.name}`;
+    }
+    case 'create_todo': {
+      const newTodo: Todo = {
+        id: crypto.randomUUID(),
+        text: action.title,
+        status: 'nothing',
+        subjectId: action.subject_id,
+        dueDate: action.due_date,
+        date: getTodayKey(),
+      };
+      await storage.saveTodo(newTodo);
+      return `✓ Added todo: "${action.title}"`;
     }
     case 'complete_todo': {
       const todos = await storage.fetchTodos(getTodayKey()).catch(() => [] as Todo[]);
@@ -464,13 +484,16 @@ Archive a subject (ask first: "Would you like me to archive [Name]?"):
 Permanently delete a subject (ask first: "Are you sure you want to delete [Name]? This can't be undone."):
 <soma-action>{"action":"delete_subject","subject_id":"[exact id]"}</soma-action>
 
+Add/create a todo or task — CRITICAL RULE: When the user asks you to add, create, or log a todo or task, you MUST emit a <soma-action> block to actually create it. Never just say you added something without emitting this block. Always confirm the subject_id from the current subjects list above. If a due date or time is mentioned (e.g. "by tonight"), convert it to an ISO date string for today. Emit this block immediately if the user gave you enough context; otherwise ask once for any missing info (title, subject) and then emit after they answer — do not ask for confirmation a second time if the user already clearly asked you to add it:
+<soma-action>{"action":"create_todo","title":"[task title]","subject_id":"[exact id or omit]","due_date":"2026-06-26"}</soma-action>
+
 Mark a todo as complete (ask first: "Should I mark '[task]' as complete?"):
 <soma-action>{"action":"complete_todo","todo_id":"[exact id]"}</soma-action>
 
 Delete a todo (ask first: "Should I delete '[task]'?"):
 <soma-action>{"action":"delete_todo","todo_id":"[exact id]"}</soma-action>
 
-CRITICAL: When the user asks you to edit, delete, archive, or complete a subject or todo, you MUST use the exact subject_id or todo_id from the lists above. Never invent or guess IDs. If you cannot find the item in the list, tell the user it wasn't found. Never emit <soma-action> without explicit user confirmation.`;
+CRITICAL: When the user asks you to edit, delete, archive, or complete a subject or todo, you MUST use the exact subject_id or todo_id from the lists above. Never invent or guess IDs. If you cannot find the item in the list, tell the user it wasn't found. Never emit <soma-action> for destructive actions (archive, delete, complete) without explicit user confirmation. For create_todo, emit immediately once you have the title — do not say you added something without the block.`;
 }
 
 // ── Sub-components ──────────────────────────────────────────────────────────
