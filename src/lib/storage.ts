@@ -652,13 +652,15 @@ export const storage = {
   async saveTodoSession(session: { id?: string; todoId: string; date: string; startTime?: string; endTime?: string }): Promise<string> {
     const userId = await uid();
     const id = session.id ?? crypto.randomUUID();
+    // Convert to real UTC — JS parses no-timezone strings as local, .toISOString() gives UTC
+    const toUtc = (iso: string) => new Date(iso).toISOString();
     await supabase.from('todo_sessions').upsert({
       id,
       todo_id: session.todoId,
       user_id: userId,
       date: session.date,
-      start_time: session.startTime ?? null,
-      end_time: session.endTime ?? null,
+      start_time: session.startTime ? toUtc(session.startTime) : null,
+      end_time: session.endTime ? toUtc(session.endTime) : null,
     });
     return id;
   },
@@ -670,9 +672,10 @@ export const storage = {
 
   async updateTodoSession(id: string, updates: { startTime?: string; endTime?: string }): Promise<void> {
     const userId = await uid();
+    const toUtc = (iso: string) => new Date(iso).toISOString();
     const patch: Record<string, unknown> = {};
-    if (updates.startTime !== undefined) patch.start_time = updates.startTime;
-    if (updates.endTime !== undefined) patch.end_time = updates.endTime;
+    if (updates.startTime !== undefined) patch.start_time = updates.startTime ? toUtc(updates.startTime) : null;
+    if (updates.endTime !== undefined) patch.end_time = updates.endTime ? toUtc(updates.endTime) : null;
     if (Object.keys(patch).length === 0) return;
     await supabase.from('todo_sessions').update(patch).eq('id', id).eq('user_id', userId);
   },
