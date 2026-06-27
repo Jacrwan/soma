@@ -2035,6 +2035,9 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
 
           {(() => {
             console.log('[sessions] sessionBlocks to render:', JSON.stringify(sessionBlocks));
+            // sessionBlocks are already filtered to the selected date by the Supabase query — no isOnDate filter needed.
+            // startTime comes from Supabase as UTC (e.g. "2026-06-27T17:00:00Z").
+            // getHours() returns LOCAL hours, so 17:00 UTC → 10:00 PDT → correct timeline position.
             const allBlocks = [...blocks, ...sessionBlocks.filter(sb => !blocks.some(b => b.id === sb.id))];
             const shortBlocks: TimeBlock[] = [];
             const regularBlocks: TimeBlock[] = [];

@@ -5,6 +5,13 @@ const SOMA_TODOS_KEY = 'soma_todos';
 const SOMA_BLOCKS_KEY = 'soma_blocks';
 const SOMA_SETTINGS_KEY = 'soma_settings';
 
+// Supabase returns timestamptz as UTC ISO strings, but sometimes without a timezone suffix.
+// Without 'Z' or '+HH:MM', new Date() treats the string as LOCAL time — causing wrong positions.
+// This ensures strings like "2026-06-27T17:00:00" are always parsed as UTC.
+function ensureUtcSuffix(ts: string): string {
+  return ts.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(ts) ? ts : ts + 'Z';
+}
+
 interface DayAvailability {
   start: string;
   end: string;
@@ -697,8 +704,8 @@ export const storage = {
       id: r.id as string,
       todoId: r.todo_id as string,
       date: r.date as string,
-      startTime: typeof r.start_time === 'string' ? r.start_time : undefined,
-      endTime: typeof r.end_time === 'string' ? r.end_time : undefined,
+      startTime: typeof r.start_time === 'string' ? ensureUtcSuffix(r.start_time) : undefined,
+      endTime: typeof r.end_time === 'string' ? ensureUtcSuffix(r.end_time) : undefined,
       todoText: (r.todos as Record<string, unknown> | null)?.text as string | undefined,
       subjectId: (r.todos as Record<string, unknown> | null)?.subject_id as string | undefined,
     }));
@@ -716,8 +723,8 @@ export const storage = {
       id: r.id as string,
       todoId: r.todo_id as string,
       date: r.date as string,
-      startTime: typeof r.start_time === 'string' ? r.start_time : undefined,
-      endTime: typeof r.end_time === 'string' ? r.end_time : undefined,
+      startTime: typeof r.start_time === 'string' ? ensureUtcSuffix(r.start_time) : undefined,
+      endTime: typeof r.end_time === 'string' ? ensureUtcSuffix(r.end_time) : undefined,
       todoText: (r.todos as Record<string, unknown> | null)?.text as string | undefined,
       subjectId: (r.todos as Record<string, unknown> | null)?.subject_id as string | undefined,
     }));
