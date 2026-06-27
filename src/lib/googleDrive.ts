@@ -137,16 +137,22 @@ export function readCachedFolderSection(): string {
 
 async function fetchAndCacheFolderSection(folderId: string, folderName: string): Promise<string> {
   const result = await readFolderContents(folderId);
-  const PROMPT_FILE_LIMIT = 6_000;
+  // Per-file and total caps prevent the system prompt from exceeding the AI context window.
+  const PROMPT_FILE_LIMIT  = 6_000;
+  const PROMPT_TOTAL_LIMIT = 40_000;
   const readable = result.files.filter(f => f.content && !f.error && f.content !== '[Cannot extract text from this file type]');
-  const hasTruncated = readable.some(f => f.truncated) || result.files.some(f => f.content.length >= PROMPT_FILE_LIMIT);
+  const hasTruncated = readable.some(f => f.truncated) || readable.some(f => f.content.length >= PROMPT_FILE_LIMIT);
+  let totalChars = 0;
   const fileLines = readable
     .map(f => {
-      const content = f.content.length > PROMPT_FILE_LIMIT
-        ? f.content.slice(0, PROMPT_FILE_LIMIT) + '...'
-        : f.content;
+      if (totalChars >= PROMPT_TOTAL_LIMIT) return null;
+      const available = PROMPT_TOTAL_LIMIT - totalChars;
+      const clipped = f.content.length > PROMPT_FILE_LIMIT ? f.content.slice(0, PROMPT_FILE_LIMIT) + '...' : f.content;
+      const content = clipped.length > available ? clipped.slice(0, available) + '...' : clipped;
+      totalChars += content.length;
       return `- ${f.name}:\n${content}`;
     })
+    .filter((line): line is string => line !== null)
     .join('\n\n');
 
   if (!fileLines) return '';

@@ -43,13 +43,26 @@ export async function sendMessage(
   if (res.status === 401) throw new Error('auth_required');
   if (res.status === 402) throw new Error('subscription_required');
   if (res.status === 429) throw new Error('rate_limit');
+  if (res.status === 529) throw new Error('overloaded');
 
   if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    if (res.status === 413 || body.includes('too long') || body.includes('context_length') || body.includes('max_tokens'))
+    const rawBody = await res.text().catch(() => '');
+    // Always log non-ok responses so we can see what's happening.
+    console.error('[soma/ai] /api/chat error', res.status, rawBody);
+
+    // Server returns JSON with a specific error code we can act on.
+    try {
+      const parsed = JSON.parse(rawBody) as { error?: string; detail?: string };
+      const code = parsed.error ?? '';
+      if (code === 'context_too_long' || code === 'rate_limit' || code === 'overloaded') throw new Error(code);
+      if (code) throw new Error(`api_error:${res.status}`);
+    } catch (e) {
+      if ((e as Error).message !== rawBody) throw e; // rethrow our own errors
+    }
+    // Fallback text-based detection.
+    if (rawBody.includes('too long') || rawBody.includes('context_length') || rawBody.includes('max_tokens'))
       throw new Error('context_too_long');
-    if (body.includes('overloaded') || res.status === 529)
-      throw new Error('overloaded');
+    if (rawBody.includes('overloaded')) throw new Error('overloaded');
     throw new Error(`api_error:${res.status}`);
   }
   const data = await res.json() as { content: { text: string }[] };

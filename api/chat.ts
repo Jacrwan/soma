@@ -120,7 +120,18 @@ export default async function handler(req: any, res: any) {
     return res.status(authResult.status).json({ error: authResult.error });
   }
 
-  const { messages, systemPrompt } = req.body ?? {};
+  const { messages, systemPrompt, model } = req.body ?? {};
+
+  // Guard against system prompts large enough to exceed Anthropic's context window.
+  // Claude Haiku/Sonnet max is 200k tokens; 1 token ≈ 4 chars so 600k chars is a safe ceiling.
+  const SYSTEM_PROMPT_CHAR_LIMIT = 600_000;
+  if (typeof systemPrompt === 'string' && systemPrompt.length > SYSTEM_PROMPT_CHAR_LIMIT) {
+    console.warn(JSON.stringify({
+      endpoint: '/api/chat', event: 'system_prompt_too_large',
+      chars: systemPrompt.length, limit: SYSTEM_PROMPT_CHAR_LIMIT,
+    }));
+    return res.status(400).json({ error: 'context_too_long' });
+  }
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: 'messages must be a non-empty array' });
@@ -170,17 +181,29 @@ export default async function handler(req: any, res: any) {
         'content-type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: model === 'sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001',
         max_tokens: 4096,
         system: [{ type: 'text', text: systemPrompt ?? '', cache_control: { type: 'ephemeral' } }],
         messages,
       }),
     });
 
-    const data = await response.json();
+    const data = await response.json() as Record<string, unknown>;
     if (!response.ok) {
-      console.error(JSON.stringify({ endpoint: '/api/chat', event: 'upstream_error', status: response.status }));
-      return res.status(500).json({ error: 'AI request failed' });
+      const anthropicErr = (data?.error as Record<string, unknown> | undefined) ?? {};
+      const errType    = (anthropicErr.type    as string | undefined) ?? '';
+      const errMessage = (anthropicErr.message as string | undefined) ?? '';
+      console.error(JSON.stringify({
+        endpoint: '/api/chat', event: 'upstream_error',
+        status: response.status, type: errType, message: errMessage,
+      }));
+      // Surface specific error codes the client knows how to handle
+      if (response.status === 429) return res.status(429).json({ error: 'rate_limit' });
+      if (response.status === 529) return res.status(529).json({ error: 'overloaded' });
+      if (response.status === 400 && (errMessage.includes('too long') || errMessage.includes('token'))) {
+        return res.status(400).json({ error: 'context_too_long' });
+      }
+      return res.status(502).json({ error: `upstream_${response.status}`, detail: errMessage });
     }
     res.json(data);
   } catch (err: any) {
