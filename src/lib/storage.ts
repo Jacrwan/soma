@@ -674,7 +674,10 @@ export const storage = {
     };
     console.log('[sessions] upsert payload:', JSON.stringify(sessionData));
     const { error } = await supabase.from('todo_sessions').upsert(sessionData, { onConflict: 'todo_id,date,start_time' });
-    if (error) console.error('[sessions] save error:', error);
+    if (error) {
+      console.error('[sessions] save error:', error);
+      throw error;
+    }
     return id;
   },
 

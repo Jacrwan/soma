@@ -346,9 +346,14 @@ async function executeSomaAction(action: SomaAction): Promise<string | null> {
       }
 
       if (action.sessions && action.sessions.length > 0) {
-        await Promise.all(action.sessions.map(sess =>
-          storage.saveTodoSession({ todoId, date: sess.date, startTime: sess.start_time, endTime: sess.end_time }),
-        ));
+        await Promise.all(action.sessions.map(async sess => {
+          console.log('[sessions] create_todo saving session — raw from AI:', JSON.stringify(sess));
+          try {
+            await storage.saveTodoSession({ todoId, date: sess.date, startTime: sess.start_time, endTime: sess.end_time });
+          } catch (err) {
+            console.error('[sessions] save failed:', JSON.stringify({ sess, error: String(err) }));
+          }
+        }));
         window.dispatchEvent(new Event('soma_todo_sessions_changed'));
       }
       const subjectNote = action.subject_id && !resolvedSubjectId ? ' (subject not found — left unassigned)' : '';
