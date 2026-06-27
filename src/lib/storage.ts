@@ -663,7 +663,6 @@ export const storage = {
     const toUtc = (iso: string) => new Date(iso).toISOString();
     const startUtc = session.startTime ? toUtc(session.startTime) : null;
     const endUtc   = session.endTime   ? toUtc(session.endTime)   : null;
-    console.log('[sessions] saving session — input:', JSON.stringify({ startTime: session.startTime, endTime: session.endTime }), '→ UTC:', JSON.stringify({ startUtc, endUtc }));
     const sessionData = {
       id,
       todo_id: session.todoId,
@@ -672,7 +671,6 @@ export const storage = {
       start_time: startUtc,
       end_time: endUtc,
     };
-    console.log('[sessions] upsert payload:', JSON.stringify(sessionData));
     const { error } = await supabase.from('todo_sessions').upsert(sessionData, { onConflict: 'todo_id,date,start_time' });
     if (error) {
       console.error('[sessions] save error:', error);

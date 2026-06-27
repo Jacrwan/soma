@@ -569,11 +569,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
 
   useEffect(() => {
     const dateKey = toISODateString(selectedDate);
-    console.log('[sessions] fetching for date:', dateKey);
-    void storage.fetchTodoSessions(dateKey).then(sessions => {
-      console.log('[sessions] fetched:', JSON.stringify(sessions));
-      setTodoSessions(sessions);
-    }).catch((err) => console.error('[sessions] fetch error:', err));
+    void storage.fetchTodoSessions(dateKey).then(setTodoSessions).catch((err) => console.error('[sessions] fetch error:', err));
   }, [selectedDate]);
 
   useEffect(() => {
@@ -2034,7 +2030,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
           )}
 
           {(() => {
-            console.log('[sessions] sessionBlocks to render:', JSON.stringify(sessionBlocks));
             // sessionBlocks are already filtered to the selected date by the Supabase query — no isOnDate filter needed.
             // startTime comes from Supabase as UTC (e.g. "2026-06-27T17:00:00Z").
             // getHours() returns LOCAL hours, so 17:00 UTC → 10:00 PDT → correct timeline position.
