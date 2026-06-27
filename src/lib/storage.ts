@@ -654,14 +654,20 @@ export const storage = {
     const id = session.id ?? crypto.randomUUID();
     // Convert to real UTC — JS parses no-timezone strings as local, .toISOString() gives UTC
     const toUtc = (iso: string) => new Date(iso).toISOString();
-    await supabase.from('todo_sessions').upsert({
+    const startUtc = session.startTime ? toUtc(session.startTime) : null;
+    const endUtc   = session.endTime   ? toUtc(session.endTime)   : null;
+    console.log('[sessions] saving session — input:', JSON.stringify({ startTime: session.startTime, endTime: session.endTime }), '→ UTC:', JSON.stringify({ startUtc, endUtc }));
+    const sessionData = {
       id,
       todo_id: session.todoId,
       user_id: userId,
       date: session.date,
-      start_time: session.startTime ? toUtc(session.startTime) : null,
-      end_time: session.endTime ? toUtc(session.endTime) : null,
-    }, { onConflict: 'todo_id,date,start_time' });
+      start_time: startUtc,
+      end_time: endUtc,
+    };
+    console.log('[sessions] upsert payload:', JSON.stringify(sessionData));
+    const { error } = await supabase.from('todo_sessions').upsert(sessionData, { onConflict: 'todo_id,date,start_time' });
+    if (error) console.error('[sessions] save error:', error);
     return id;
   },
 

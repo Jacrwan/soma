@@ -569,7 +569,11 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
 
   useEffect(() => {
     const dateKey = toISODateString(selectedDate);
-    void storage.fetchTodoSessions(dateKey).then(setTodoSessions).catch(() => {});
+    console.log('[sessions] fetching for date:', dateKey);
+    void storage.fetchTodoSessions(dateKey).then(sessions => {
+      console.log('[sessions] fetched:', JSON.stringify(sessions));
+      setTodoSessions(sessions);
+    }).catch((err) => console.error('[sessions] fetch error:', err));
   }, [selectedDate]);
 
   useEffect(() => {
@@ -2030,6 +2034,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
           )}
 
           {(() => {
+            console.log('[sessions] sessionBlocks to render:', JSON.stringify(sessionBlocks));
             const allBlocks = [...blocks, ...sessionBlocks.filter(sb => !blocks.some(b => b.id === sb.id))];
             const shortBlocks: TimeBlock[] = [];
             const regularBlocks: TimeBlock[] = [];
