@@ -2589,6 +2589,42 @@
   transform: translateX(16px);
 }
 
+.scheduledTimesSection {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.scheduledTimeRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: oklch(97% 0.005 265);
+  border: 1px solid oklch(91% 0.006 265);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.addTimeBlockBtn {
+  margin-top: 10px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  background: transparent;
+  border: 1.5px dashed var(--accent);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s;
+  align-self: flex-start;
+}
+
+.addTimeBlockBtn:hover {
+  background: oklch(97% 0.012 265);
+}
+
 /* Expanded schedule section */
 .scheduleExpanded {
   background: oklch(98% 0.004 265);

@@ -695,6 +695,30 @@ export const storage = {
     }));
   },
 
+  async fetchTodoSessionsByTodoId(todoId: string): Promise<TodoSession[]> {
+    const userId = await uid();
+    const { data } = await supabase
+      .from('todo_sessions')
+      .select('id, todo_id, date, start_time, end_time, todos(text, subject_id)')
+      .eq('user_id', userId)
+      .eq('todo_id', todoId)
+      .order('start_time', { ascending: true });
+    return (data ?? []).map((r: Record<string, unknown>) => ({
+      id: r.id as string,
+      todoId: r.todo_id as string,
+      date: r.date as string,
+      startTime: typeof r.start_time === 'string' ? r.start_time : undefined,
+      endTime: typeof r.end_time === 'string' ? r.end_time : undefined,
+      todoText: (r.todos as Record<string, unknown> | null)?.text as string | undefined,
+      subjectId: (r.todos as Record<string, unknown> | null)?.subject_id as string | undefined,
+    }));
+  },
+
+  async deleteAllTodoSessions(todoId: string): Promise<void> {
+    const userId = await uid();
+    await supabase.from('todo_sessions').delete().eq('todo_id', todoId).eq('user_id', userId);
+  },
+
   async fetchIncompleteTodos(): Promise<Todo[]> {
     const id = await uid();
     const { data } = await supabase

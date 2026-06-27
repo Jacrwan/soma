@@ -311,6 +311,13 @@ async function executeSomaAction(action: SomaAction): Promise<string | null> {
           console.warn('[soma] create_todo — subject_id not found in current subjects:', action.subject_id, '— leaving unassigned');
         }
       }
+      const totalSessionMins = Array.isArray(action.sessions) && action.sessions.length > 0
+        ? action.sessions.reduce((sum, sess) => {
+            const s = new Date(sess.start_time).getTime();
+            const e = new Date(sess.end_time).getTime();
+            return sum + Math.round((e - s) / 60_000);
+          }, 0)
+        : 0;
       const newTodo: Todo = {
         id: crypto.randomUUID(),
         text: action.title,
@@ -318,6 +325,7 @@ async function executeSomaAction(action: SomaAction): Promise<string | null> {
         subjectId: resolvedSubjectId,
         dueDate: action.due_date,
         date: action.due_date ?? getTodayKey(),
+        estimatedMinutes: totalSessionMins > 0 ? totalSessionMins : undefined,
       };
       storage.setTodos([...storage.getTodos(), newTodo]);
       window.dispatchEvent(new Event('soma_todos_changed'));

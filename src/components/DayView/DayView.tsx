@@ -473,6 +473,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   const [elapsedBySubject, setElapsedBySubject] = useState<Record<string, number>>({});
   const [missedBlockIds, setMissedBlockIds] = useState<Set<string>>(new Set());
   const [todoSessions, setTodoSessions] = useState<TodoSession[]>([]);
+  const [editTodoSessions, setEditTodoSessions] = useState<TodoSession[]>([]);
   const [taskSessions, setTaskSessions] = useState<TaskSession[]>([]);
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editingSessionMins, setEditingSessionMins] = useState('');
@@ -1469,14 +1470,16 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     setTaskModal({ subjectId });
   }
 
-  function saveTaskFromModal(startTimer = false) {
+  async function saveTaskFromModal(startTimer = false) {
     if (!taskModal) return;
     const text = taskForm.text.trim();
     if (!text) { setTaskModal(null); return; }
     const estimatedMinutes = taskForm.hours * 60 + taskForm.minutes;
 
+    let savedTodoId: string;
     if (taskModal.editingTodo) {
-      const updated = todos.map(t => t.id === taskModal.editingTodo!.id ? {
+      savedTodoId = taskModal.editingTodo.id;
+      const updated = todos.map(t => t.id === savedTodoId ? {
         ...t,
         text,
         dueDate: taskForm.dueDate || undefined,
@@ -1486,8 +1489,9 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
       storage.setTodos(updated);
       setTodos(updated);
     } else {
+      savedTodoId = crypto.randomUUID();
       const newTodo: Todo = {
-        id: crypto.randomUUID(),
+        id: savedTodoId,
         text,
         status: 'nothing',
         subjectId: taskModal.subjectId,
@@ -1500,22 +1504,31 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
       setTodos(prev => [...prev, newTodo]);
     }
 
+    const dateStr = taskForm.dueDate || selectedDateKey;
     if (taskForm.scheduleIt) {
       const hour24 = (taskForm.startHour % 12) + (taskForm.startAmPm === 'PM' ? 12 : 0);
       const durMins = Math.max(estimatedMinutes, 30);
-      const start = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), hour24, taskForm.startMinute);
+      const start = new Date(`${dateStr}T${String(hour24).padStart(2, '0')}:${String(taskForm.startMinute).padStart(2, '0')}:00`);
       const end = new Date(start.getTime() + durMins * 60_000);
-      const block: TimeBlock = {
-        id: crypto.randomUUID(),
-        subjectId: taskModal.subjectId ?? '',
-        task: text,
-        startTime: toLocalISO(start),
-        endTime: toLocalISO(end),
-        source: 'manual',
-      };
-      storage.setTimeBlocks([...storage.getTimeBlocks(), block]);
-      setBlocks(prev => [...prev, block]);
+      if (taskModal.editingTodo && editTodoSessions.length > 0) {
+        await storage.updateTodoSession(editTodoSessions[0].id, {
+          startTime: toLocalISO(start),
+          endTime: toLocalISO(end),
+        });
+      } else {
+        await storage.saveTodoSession({
+          todoId: savedTodoId,
+          date: dateStr,
+          startTime: toLocalISO(start),
+          endTime: toLocalISO(end),
+        });
+      }
+      window.dispatchEvent(new Event('soma_todo_sessions_changed'));
+    } else if (taskModal.editingTodo) {
+      await storage.deleteAllTodoSessions(savedTodoId);
+      window.dispatchEvent(new Event('soma_todo_sessions_changed'));
     }
+
     setTaskModal(null);
     if (startTimer && taskModal.subjectId) {
       const subject = subjects.find(s => s.id === taskModal.subjectId);
@@ -1523,10 +1536,25 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
     }
   }
 
-  function openEditTodo(todo: Todo) {
+  async function openEditTodo(todo: Todo) {
     const hours = Math.floor((todo.estimatedMinutes ?? 0) / 60);
     const minutes = (todo.estimatedMinutes ?? 0) % 60;
-    setTaskForm({ text: todo.text, hours, minutes, dueDate: todo.dueDate ?? '', notes: todo.notes ?? '', scheduleIt: false, startHour: 9, startMinute: 0, startAmPm: 'AM' });
+
+    let sessions: TodoSession[] = [];
+    try { sessions = await storage.fetchTodoSessionsByTodoId(todo.id); } catch { /* non-critical */ }
+
+    let scheduleIt = sessions.length > 0;
+    let startHour = 9, startMinute = 0, startAmPm: 'AM' | 'PM' = 'AM';
+    if (sessions.length > 0 && sessions[0].startTime) {
+      const d = new Date(sessions[0].startTime);
+      const h = d.getHours();
+      startHour = h % 12 || 12;
+      startMinute = d.getMinutes();
+      startAmPm = h >= 12 ? 'PM' : 'AM';
+    }
+
+    setEditTodoSessions(sessions);
+    setTaskForm({ text: todo.text, hours, minutes, dueDate: todo.dueDate ?? '', notes: todo.notes ?? '', scheduleIt, startHour, startMinute, startAmPm });
     setTaskDetailsOpen(true);
     setTaskModal({ subjectId: todo.subjectId, editingTodo: todo });
   }
@@ -1750,7 +1778,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             )}
           </button>
           <div className={styles.todoContent}>
-            <span className={styles.todoText} onClick={() => { if (wasInTodoDragRef.current) { wasInTodoDragRef.current = false; return; } openEditTodo(todo); }}>{todo.text}</span>
+            <span className={styles.todoText} onClick={() => { if (wasInTodoDragRef.current) { wasInTodoDragRef.current = false; return; } void openEditTodo(todo); }}>{todo.text}</span>
             {hasEstimate && (
               <span className={styles.todoEstBadge}>{fmtEstimated(todo.estimatedMinutes!)}</span>
             )}
@@ -1777,7 +1805,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             <button
               className={styles.editTodoBtn}
               title="Edit"
-              onClick={e => { e.stopPropagation(); openEditTodo(todo); }}
+              onClick={e => { e.stopPropagation(); void openEditTodo(todo); }}
             >
               <svg width="11" height="11" viewBox="0 0 11 11" fill="none"><path d="M7.5 1.5l2 2L3 10H1V8L7.5 1.5z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </button>
@@ -2450,7 +2478,7 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
               value={taskForm.text}
               autoFocus
               onChange={e => setTaskForm(f => ({ ...f, text: e.target.value }))}
-              onKeyDown={e => { if (e.key === 'Enter' && taskForm.text.trim()) saveTaskFromModal(); }}
+              onKeyDown={e => { if (e.key === 'Enter' && taskForm.text.trim()) void saveTaskFromModal(); }}
             />
 
             <button
@@ -2507,6 +2535,38 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                   />
                 </div>
 
+                {taskModal.editingTodo && editTodoSessions.length > 0 && (
+                  <div className={styles.scheduledTimesSection}>
+                    <span className={styles.sessionSectionTitle}>Scheduled Times</span>
+                    {editTodoSessions.map(s => {
+                      const fmtT = (iso?: string) => {
+                        if (!iso) return '?';
+                        const d = new Date(iso);
+                        const h = d.getHours(), m = d.getMinutes();
+                        return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+                      };
+                      const dateLabel = new Date(s.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                      return (
+                        <div key={s.id} className={styles.scheduledTimeRow}>
+                          <span className={styles.sessionDate}>{dateLabel}</span>
+                          <span className={styles.sessionTime}>{fmtT(s.startTime)} – {fmtT(s.endTime)}</span>
+                          <button
+                            className={`${styles.sessionIconBtn} ${styles.sessionIconBtnDanger}`}
+                            title="Remove time block"
+                            onClick={async () => {
+                              await storage.deleteTodoSession(s.id);
+                              const remaining = editTodoSessions.filter(x => x.id !== s.id);
+                              setEditTodoSessions(remaining);
+                              if (remaining.length === 0) setTaskForm(f => ({ ...f, scheduleIt: false }));
+                              window.dispatchEvent(new Event('soma_todo_sessions_changed'));
+                            }}
+                          >×</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
                 <div className={styles.taskModalToggleRow}>
                   <span className={styles.taskModalToggleLabel}>Schedule it</span>
                   <label className={styles.toggleSwitch}>
@@ -2553,7 +2613,30 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                         </div>
                       </div>
                     </div>
-                    <p className={styles.scheduleHint}>This will pin a time block on the schedule automatically when saved.</p>
+                    {taskModal.editingTodo && (
+                      <button
+                        className={styles.addTimeBlockBtn}
+                        onClick={async () => {
+                          const hour24 = (taskForm.startHour % 12) + (taskForm.startAmPm === 'PM' ? 12 : 0);
+                          const durMins = Math.max(taskForm.hours * 60 + taskForm.minutes, 30);
+                          const dateStr = taskForm.dueDate || selectedDateKey;
+                          const start = new Date(`${dateStr}T${String(hour24).padStart(2, '0')}:${String(taskForm.startMinute).padStart(2, '0')}:00`);
+                          const end = new Date(start.getTime() + durMins * 60_000);
+                          const id = await storage.saveTodoSession({
+                            todoId: taskModal.editingTodo!.id,
+                            date: dateStr,
+                            startTime: toLocalISO(start),
+                            endTime: toLocalISO(end),
+                          });
+                          setEditTodoSessions(prev => [...prev, {
+                            id, todoId: taskModal.editingTodo!.id, date: dateStr,
+                            startTime: toLocalISO(start), endTime: toLocalISO(end),
+                          }]);
+                          window.dispatchEvent(new Event('soma_todo_sessions_changed'));
+                        }}
+                      >+ Add time block</button>
+                    )}
+                    <p className={styles.scheduleHint}>Adds a block to the timeline at the selected time.</p>
                   </div>
                 )}
               </>
@@ -2561,9 +2644,9 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
 
             {taskModal.editingTodo && (
               <div className={styles.sessionSection}>
-                <div className={styles.sessionSectionTitle}>Study Sessions</div>
+                <div className={styles.sessionSectionTitle}>Study History</div>
                 {taskSessions.length === 0
-                  ? <div className={styles.sessionEmpty}>No sessions logged yet</div>
+                  ? <div className={styles.sessionEmpty}>No study sessions logged yet</div>
                   : taskSessions.map(s => {
                     const fmtHm = (iso: string) => {
                       const d = new Date(iso);
@@ -2621,13 +2704,13 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             <div className={styles.taskModalActions}>
               <button
                 className={styles.taskModalSubmit}
-                onClick={() => saveTaskFromModal(false)}
+                onClick={() => void saveTaskFromModal(false)}
                 disabled={!taskForm.text.trim()}
               >{taskModal.editingTodo ? 'Save Changes' : 'Add Task'}</button>
               {!taskModal.editingTodo && taskModal.subjectId && (
                 <button
                   className={styles.taskModalStart}
-                  onClick={() => saveTaskFromModal(true)}
+                  onClick={() => void saveTaskFromModal(true)}
                   disabled={!taskForm.text.trim()}
                 >Add & Start Timer</button>
               )}
