@@ -534,18 +534,9 @@ ${availabilityStr || 'Not set — ask the user what time they want to start and 
 ${gcalStr ? `\nExisting calendar events (read-only, do not schedule over these):\n${gcalStr}` : ''}
 ${announcementsStr ? `\nRecent course announcements:\n${announcementsStr}` : ''}
 ${modulesStr ? `\nCourse modules (structure):\n${modulesStr}` : ''}
-When the user asks you to generate a schedule or todo list, respond with:
-1. A friendly natural language explanation
-2. If generating a schedule: a JSON array wrapped in <schedule>...</schedule> tags
-3. If generating todos: a JSON array wrapped in <todos>...</todos> tags
+When the user asks you to generate a schedule or study plan, use <soma-action> create_todo blocks — one per task. Do NOT use <schedule> tags; they are not supported.
 
-CRITICAL: Always close <schedule> with </schedule> and <todos> with </todos>. Never mix closing tags.
-
-CRITICAL: NEVER output both <schedule> and <todos> in the same response. Choose exactly one:
-- Use <schedule> when the user asks to plan their day, create a schedule, or asks what to do today with a time structure. Accepting a schedule creates todos (not calendar blocks) — one todo per task, placed on the correct day. Adding <todos> alongside a <schedule> is always wrong and redundant.
-- Use <todos> when the user asks for a task list, things to do for a specific assignment, or a checklist — only when no time structure is needed.
-
-Schedule item format: { subjectId, task, startTime (ISO), endTime (ISO), source: "ai" }
+When the user asks for a simple checklist (things to do for an assignment, etc.) with no specific times, you may use <todos> tags as a quick-add shortcut:
 Todo item format: [{"text":"...","subjectId":"uuid-here","assignmentId":12345}]
 Use the exact subject IDs from the subjects list above. Use the exact assignment IDs from the assignments list above. Set subjectId to null if no subject applies. Set assignmentId to null if not linked to a Canvas assignment.
 Match subjectId to the user's existing subjects by name (case-insensitive).
@@ -576,9 +567,12 @@ When the user asks you to create a Google Slides presentation / slide deck / sli
 CRITICAL rules for file creation:
 - Always close <createDoc> with </createDoc> and <createSlides> with </createSlides>.
 - Put the FULL content inside the block — never say "I'll create it" without the block, and never put placeholder text. The block is what actually gets created.
-- Use a <createDoc> OR a <createSlides> block, never both, and never alongside <schedule>/<todos>.
+- Use a <createDoc> OR a <createSlides> block, never both, and never alongside <todos>.
 - If an assignment or file was attached to the message, use its actual content when answering or summarizing.
 - Keep the natural-language part outside the block very short — the real output lives in the file.
+
+GOOGLE DRIVE — READING FILES:
+When study materials are loaded from Google Drive (textbooks, PDFs, notes, etc.), summarize the relevant content rather than reproducing large portions. Use what you've read to inform your planning and answers, but keep your response concise. Never quote more than a short excerpt from any document.
 ` : `
 NOTE: The user has NOT connected Google Drive. If they ask you to create a Google Doc or Slides, briefly tell them to connect Google Drive in Settings → Integrations first, then offer to write the content directly in chat instead.
 `}
@@ -1523,7 +1517,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
         }
       } catch { /* non-critical */ }
       if (isVoice) {
-        systemPrompt += `\n\nIMPORTANT — VOICE MODE: The student is speaking to you by voice. Keep your response concise and conversational — short sentences, no bullet lists, no markdown formatting, no special tags like <schedule>, <todos>, <createDoc>, or <createSlides>. Respond as if you are talking back to them naturally. Still be helpful and accurate, just speak in plain conversational sentences. Describe any schedule or tasks conversationally (e.g. "I'd start with calc at 9, then chem at 11") rather than using structured blocks.`;
+        systemPrompt += `\n\nIMPORTANT — VOICE MODE: The student is speaking to you by voice. Keep your response concise and conversational — short sentences, no bullet lists, no markdown formatting, no special tags like <todos>, <createDoc>, <createSlides>, or <soma-action>. Respond as if you are talking back to them naturally. Still be helpful and accurate, just speak in plain conversational sentences. Describe any schedule or tasks conversationally (e.g. "I'd start with calc at 9, then chem at 11") rather than using structured blocks.`;
       }
       const apiMessages = [
         ...messagesWithUser.slice(-10, -1).map(m => ({ role: m.role, content: m.content })),
@@ -1571,8 +1565,17 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
         }).catch(() => {});
       }
     } catch (err: unknown) {
-      const content = (err as { message?: string })?.message === 'subscription_required'
+      const code = (err as { message?: string })?.message ?? '';
+      const content = code === 'subscription_required'
         ? 'Your subscription has expired. Visit Settings → Subscription to manage your plan.'
+        : code === 'rate_limit'
+        ? 'Rate limit reached — please wait a moment and try again.'
+        : code === 'context_too_long'
+        ? 'Your message or study materials were too long for a single response. Try asking for a shorter plan, or remove some files from your study folder.'
+        : code === 'overloaded'
+        ? 'The AI is overloaded right now — please try again in a few seconds.'
+        : code.startsWith('api_error:')
+        ? `Something went wrong (${code.replace('api_error:', 'error ')}). Please try again.`
         : friendlyError('ai');
       const errorMsg: ChatMessage = {
         id: crypto.randomUUID(), role: 'assistant',

@@ -42,10 +42,15 @@ export async function sendMessage(
 
   if (res.status === 401) throw new Error('auth_required');
   if (res.status === 402) throw new Error('subscription_required');
+  if (res.status === 429) throw new Error('rate_limit');
 
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Chat error: ${res.status}: ${body}`);
+    const body = await res.text().catch(() => '');
+    if (res.status === 413 || body.includes('too long') || body.includes('context_length') || body.includes('max_tokens'))
+      throw new Error('context_too_long');
+    if (body.includes('overloaded') || res.status === 529)
+      throw new Error('overloaded');
+    throw new Error(`api_error:${res.status}`);
   }
   const data = await res.json() as { content: { text: string }[] };
   return data.content[0].text;
