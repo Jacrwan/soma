@@ -661,7 +661,7 @@ export const storage = {
       date: session.date,
       start_time: session.startTime ? toUtc(session.startTime) : null,
       end_time: session.endTime ? toUtc(session.endTime) : null,
-    });
+    }, { onConflict: 'todo_id,date,start_time' });
     return id;
   },
 

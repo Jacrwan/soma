@@ -318,25 +318,42 @@ async function executeSomaAction(action: SomaAction): Promise<string | null> {
             return sum + Math.round((e - s) / 60_000);
           }, 0)
         : 0;
-      const newTodo: Todo = {
-        id: crypto.randomUUID(),
-        text: action.title,
-        status: 'nothing',
-        subjectId: resolvedSubjectId,
-        dueDate: action.due_date,
-        date: action.due_date ?? getTodayKey(),
-        estimatedMinutes: totalSessionMins > 0 ? totalSessionMins : undefined,
-      };
-      storage.setTodos([...storage.getTodos(), newTodo]);
-      window.dispatchEvent(new Event('soma_todos_changed'));
+
+      // Dedup: if a non-done todo with the same title + subject already exists, reuse it.
+      const existingTodo = storage.getTodos().find(t =>
+        t.text.trim().toLowerCase() === action.title.trim().toLowerCase() &&
+        t.subjectId === resolvedSubjectId &&
+        t.status !== 'done',
+      );
+
+      let todoId: string;
+      if (existingTodo) {
+        todoId = existingTodo.id;
+        console.log('[soma] create_todo — reusing existing todo:', todoId, action.title);
+      } else {
+        const newTodo: Todo = {
+          id: crypto.randomUUID(),
+          text: action.title,
+          status: 'nothing',
+          subjectId: resolvedSubjectId,
+          dueDate: action.due_date,
+          date: action.due_date ?? getTodayKey(),
+          estimatedMinutes: totalSessionMins > 0 ? totalSessionMins : undefined,
+        };
+        todoId = newTodo.id;
+        storage.setTodos([...storage.getTodos(), newTodo]);
+        window.dispatchEvent(new Event('soma_todos_changed'));
+      }
+
       if (action.sessions && action.sessions.length > 0) {
         await Promise.all(action.sessions.map(sess =>
-          storage.saveTodoSession({ todoId: newTodo.id, date: sess.date, startTime: sess.start_time, endTime: sess.end_time }),
+          storage.saveTodoSession({ todoId, date: sess.date, startTime: sess.start_time, endTime: sess.end_time }),
         ));
         window.dispatchEvent(new Event('soma_todo_sessions_changed'));
       }
       const subjectNote = action.subject_id && !resolvedSubjectId ? ' (subject not found — left unassigned)' : '';
-      return `✓ Added todo: "${action.title}"${subjectNote}`;
+      const dedupNote = existingTodo ? ' (existing todo reused)' : '';
+      return `✓ Added todo: "${action.title}"${subjectNote}${dedupNote}`;
     }
     case 'update_todo': {
       const todo = storage.getTodos().find(t => t.id === action.todo_id);
