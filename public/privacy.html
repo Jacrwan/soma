@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Soma — Privacy Policy</title>
+  <meta name="description" content="Soma's Privacy Policy explains what information we collect, how it is used, who it is shared with, and your rights." />
+  <link rel="icon" type="image/svg+xml" href="/soma_logo.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #0A0B0F;
+      color: #F0EEE8;
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 40px;
+      border-bottom: 1px solid oklch(20% 0.012 265);
+    }
+    .wordmark {
+      font-family: 'DM Serif Display', serif;
+      font-size: 18px;
+      font-weight: 700;
+      color: #F0EEE8;
+      text-decoration: none;
+      letter-spacing: -0.2px;
+    }
+    .back {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      color: #8A8A9E;
+      text-decoration: none;
+    }
+    .back:hover { color: #F0EEE8; }
+    .page {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 56px 40px 96px;
+    }
+    .header {
+      margin-bottom: 40px;
+      padding-bottom: 28px;
+      border-bottom: 1px solid oklch(20% 0.012 265);
+    }
+    .header h1 {
+      font-size: clamp(26px, 4vw, 36px);
+      font-weight: 700;
+      color: #F0EEE8;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      margin: 0 0 10px;
+    }
+    .updated {
+      font-size: 13px;
+      color: #8A8A9E;
+      margin: 0;
+    }
+    .body {
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+    .divider {
+      height: 1px;
+      background: oklch(20% 0.012 265);
+    }
+    .section {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .section h2 {
+      font-size: 15px;
+      font-weight: 650;
+      color: #F0EEE8;
+      letter-spacing: -0.01em;
+      margin: 0;
+    }
+    .section p, .section li {
+      font-size: 14px;
+      line-height: 1.65;
+      color: oklch(70% 0.01 265);
+      margin: 0;
+    }
+    .section ul, .section ol {
+      margin: 0;
+      padding-left: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .section a {
+      color: #5B6AF0;
+      text-decoration: none;
+    }
+    .section a:hover { text-decoration: underline; }
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    th {
+      text-align: left;
+      padding: 9px 12px;
+      font-weight: 600;
+      color: oklch(65% 0.015 265);
+      border-bottom: 1px solid oklch(20% 0.012 265);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    td {
+      padding: 10px 12px;
+      color: oklch(68% 0.01 265);
+      border-bottom: 1px solid oklch(14% 0.01 265);
+      vertical-align: top;
+    }
+    tr:last-child td { border-bottom: none; }
+    @media (max-width: 640px) {
+      .topbar { padding: 16px 20px; }
+      .page { padding: 36px 20px 72px; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="topbar">
+    <a href="/" class="wordmark">Soma</a>
+    <a href="/" class="back">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 2L4 7l5 5" />
+      </svg>
+      Back
+    </a>
+  </nav>
+
+  <main class="page">
+    <div class="header">
+      <h1>Privacy Policy</h1>
+      <p class="updated">Last updated: May 31, 2026</p>
+    </div>
+
+    <div class="body">
+      <div class="section">
+        <p>
+          This Privacy Policy explains what information Soma collects, how it is used, who it is
+          shared with, and your rights. By using Soma you agree to this policy.
+        </p>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="section">
+        <h2>1. Who we are</h2>
+        <p>
+          Soma is an independent study-productivity application. For privacy inquiries, visit our
+          <a href="/contact">Contact</a> page.
+        </p>
+      </div>
+
+      <div class="section">
+        <h2>2. Information we collect</h2>
+        <ul>
+          <li>
+            <strong>Account data</strong> — your email address and encrypted password (or Google
+            account identifier) when you register via Supabase Auth.
+          </li>
+          <li>
+            <strong>App data stored on our servers</strong> — to-dos, schedule blocks, elapsed
+            study time, app settings, and AI memory entries. These are linked to your account and
+            stored in Supabase.
+          </li>
+          <li>
+            <strong>Canvas data</strong> — your assignments and due dates, fetched from your
+            school's Canvas calendar feed (iCal URL). The feed URL is stored locally in your
+            browser. Assignment data is sent through a Vercel serverless proxy for parsing but
+            is not stored on our servers.
+          </li>
+          <li>
+            <strong>Google account data</strong> — when you connect Google, Soma requests OAuth
+            access to the following scopes:
+            <ul>
+              <li><strong>Google Calendar</strong> (read-only) — to display your calendar events alongside your study schedule.</li>
+              <li><strong>Google Drive</strong> (drive.file) — to read files you explicitly select via the Google Picker for AI context.</li>
+              <li><strong>Google Docs</strong> — to create Google Docs containing AI-generated study materials (notes, guides, quizzes).</li>
+              <li><strong>Google Slides</strong> — to create Google Slides presentations from AI-generated content.</li>
+            </ul>
+            Your Google OAuth token is cached locally in your browser and passed through Vercel
+            serverless functions when creating files. Soma does not store Google tokens on its
+            servers. Soma only accesses files you explicitly choose — it cannot browse your
+            entire Drive.
+          </li>
+          <li>
+            <strong>AI chat messages</strong> — when you use AI features, your messages and
+            relevant context (tasks, schedule blocks, Canvas assignments, and any Google Drive
+            files you attach) are sent to Anthropic to generate a response. Soma does not store
+            the full conversation on its servers beyond what you save as AI memory.
+          </li>
+          <li>
+            <strong>Voice input</strong> — when you use the voice input feature, your speech
+            is processed by your browser's built-in Web Speech API to convert it to text. Audio
+            is not sent to Soma's servers. The resulting text is treated the same as a typed
+            message.
+          </li>
+          <li>
+            <strong>Payment data</strong> — billing and subscription data is processed by Stripe.
+            Soma does not store full card numbers or payment credentials.
+          </li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <h2>3. How we use your information</h2>
+        <ul>
+          <li>To provide, operate, and improve the Soma service.</li>
+          <li>To process subscription payments and manage your account.</li>
+          <li>To send transactional emails (account confirmation, billing receipts).</li>
+          <li>To provide AI-powered features by sending context to Anthropic.</li>
+          <li>To respond to support and privacy requests.</li>
+        </ul>
+        <p>We do not sell your personal data to third parties.</p>
+      </div>
+
+      <div class="section">
+        <h2>4. Third-party services</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Service</th>
+                <th>Purpose</th>
+                <th>Data shared</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Supabase</td>
+                <td>Authentication and database</td>
+                <td>Account credentials, app data</td>
+              </tr>
+              <tr>
+                <td>Anthropic</td>
+                <td>AI responses</td>
+                <td>Chat messages, tasks, schedule context</td>
+              </tr>
+              <tr>
+                <td>Google</td>
+                <td>OAuth sign-in, Calendar, Drive, Docs, Slides</td>
+                <td>Google account identifier, calendar events, selected Drive files, created Docs and Slides</td>
+              </tr>
+              <tr>
+                <td>Vercel</td>
+                <td>Hosting and API proxy</td>
+                <td>Request data routed through serverless functions</td>
+              </tr>
+              <tr>
+                <td>Stripe</td>
+                <td>Payment processing</td>
+                <td>Name, email, billing details</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Each of these providers has their own privacy policy. We encourage you to review them.
+        </p>
+      </div>
+
+      <div class="section">
+        <h2>5. Data retention</h2>
+        <ul>
+          <li>Account and server-side app data is retained until you delete your account.</li>
+          <li>
+            Local browser data (Canvas tokens, cached assignments, local preferences) is retained
+            until you clear your browser storage or use the Data Deletion tool in the app.
+          </li>
+          <li>
+            After account deletion, server-side data is removed within 30 days. Backups may
+            retain data for up to 90 days.
+          </li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <h2>6. Your rights</h2>
+        <p>
+          Depending on where you live, you may have the following rights regarding your personal
+          data:
+        </p>
+        <ul>
+          <li>
+            <strong>Access</strong> — request a copy of the personal data we hold about you.
+          </li>
+          <li>
+            <strong>Erasure</strong> — request deletion of your account and associated data. You
+            can do this directly from Settings → Delete Account, or by contacting us.
+          </li>
+          <li>
+            <strong>Portability</strong> — request your data in a portable format.
+          </li>
+          <li>
+            <strong>Correction</strong> — request that inaccurate data be corrected.
+          </li>
+          <li>
+            <strong>Opt-out of AI data processing</strong> — you can stop using AI features at any
+            time to prevent further data being sent to Anthropic.
+          </li>
+        </ul>
+        <p>
+          California residents have additional rights under the CCPA, including the right to know
+          what personal information is collected and the right to non-discrimination for exercising
+          privacy rights. We do not sell personal information.
+        </p>
+        <p>
+          To exercise any of these rights, contact us via the
+          <a href="/contact">Contact</a> page.
+        </p>
+      </div>
+
+      <div class="section">
+        <h2>7. Children</h2>
+        <p>
+          Soma is not directed to children under the age of 13. We do not knowingly collect
+          personal information from children under 13. If you believe a child under 13 has
+          provided us personal information, please contact us and we will promptly delete it.
+        </p>
+      </div>
+
+      <div class="section">
+        <h2>8. Cookies and local storage</h2>
+        <p>
+          Soma uses browser local storage to cache your settings, Canvas calendar feed data,
+          Google OAuth tokens, chat sessions, creation history, and Supabase session tokens. No
+          third-party advertising cookies are used.
+        </p>
+      </div>
+
+      <div class="section">
+        <h2>9. Changes to this policy</h2>
+        <p>
+          We may update this policy from time to time. If we make material changes, we will update
+          the "Last updated" date and, where appropriate, notify you by email or in-app. Continued
+          use of Soma after changes take effect constitutes acceptance of the revised policy.
+        </p>
+      </div>
+    </div>
+  </main>
+</body>
+</html>
