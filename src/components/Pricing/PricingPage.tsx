@@ -107,7 +107,10 @@ export default function PricingPage() {
   return (
     <div className={styles.wrap}>
       <div className={styles.topbar}>
-        <Link to={backTo} className={styles.wordmark}>Soma</Link>
+        <Link to={backTo} className={styles.wordmark}>
+          <img src="/favicon.svg" width="24" height="24" alt="" style={{ borderRadius: 5, verticalAlign: 'middle', marginRight: 8 }} />
+          Soma
+        </Link>
         <Link to={backTo} className={styles.back}>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
             <path d="M9 2L4 7l5 5" />

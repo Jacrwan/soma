@@ -627,7 +627,7 @@ const LANDING_CSS = `
   gap: 36px;
   background: linear-gradient(135deg, #172554 0%, #1e40af 52%, #2563eb 100%);
   border-radius: 18px;
-  padding: 38px 0 38px 44px;
+  padding: 38px 40px 38px 44px;
   overflow: hidden;
 }
 .ln-cta h2 {
@@ -662,11 +662,11 @@ const LANDING_CSS = `
 /* Daily-brief app preview inside the CTA */
 .ln-cta-vis { position: relative; }
 .ln-brief-app {
-  width: 118%;
+  width: 100%;
   background: #fff;
   border-radius: 13px;
   box-shadow: 0 10px 40px rgba(2, 10, 30, 0.28);
-  padding: 16px 18px 4px;
+  padding: 16px 18px 16px;
 }
 .ln-brief-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .ln-brief-day { font-size: 17px; font-weight: 700; letter-spacing: -0.03em; color: var(--slate-900); }
@@ -961,6 +961,7 @@ export default function LandingPage() {
 
       <nav className="ln-nav">
         <a href="/" className="ln-brand">
+          <img src="/favicon.svg" width="28" height="28" alt="" style={{ borderRadius: 6, flexShrink: 0 }} />
           <span className="ln-word">Soma</span>
         </a>
         <div className="ln-nav-links">
@@ -1317,6 +1318,7 @@ export default function LandingPage() {
         <div className="ln-foot-in">
           <div>
             <div className="ln-foot-brand">
+              <img src="/favicon.svg" width="24" height="24" alt="" style={{ borderRadius: 5, flexShrink: 0 }} />
               <span className="ln-foot-word">Soma</span>
             </div>
             <p className="ln-foot-copy">

@@ -53,7 +53,10 @@ export default function AuthScreen({ initialMode = 'login' }: { initialMode?: 'l
   return (
     <div className={styles.wrap}>
       <div className={styles.card}>
-        <a href="/" className={styles.wordmark}>Soma</a>
+        <a href="/" className={styles.wordmark}>
+          <img src="/favicon.svg" width="28" height="28" alt="" style={{ borderRadius: 6, verticalAlign: 'middle', marginRight: 8 }} />
+          Soma
+        </a>
 
         <div className={styles.heading}>
           {mode === 'login' ? 'Welcome back' : 'Create your account'}
