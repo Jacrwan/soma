@@ -15,12 +15,12 @@
 }
 
 .wordmark {
-  font-family: 'DM Serif Display', serif;
+  font-family: 'Jost', sans-serif;
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-primary, #F0EEE8);
   text-decoration: none;
-  letter-spacing: -0.2px;
+  letter-spacing: 0.15em;
 }
 
 .back {
