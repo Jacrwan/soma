@@ -1,54 +1,35 @@
 .wrap {
-  /* ── Dark theme (default) ── */
-  --bg:            #0A0B0F;
-  --surface:       #0F1117;
-  --border:        oklch(20% 0.012 265);
-  --text:          #F0EEE8;
-  --text-dim:      #8A8A9E;
-  --text-muted:    #5A5A6E;
-  --accent:        #5B6AF0;
-  --accent-link:   #8A8ADE;
-  --on-accent:     #F0EEE8;
-  --input-bg:      oklch(14% 0.014 265);
-  --input-border:  oklch(22% 0.018 265);
-  --input-focus:   oklch(55% 0.22 266 / 0.65);
-  --google-bg:     #F0EEE8;
-  --google-text:   #1a1a2e;
-  --google-border: transparent;
+  /* Keep the public auth flow light, matching the landing page. */
+  color-scheme: light;
+  --bg:            oklch(98.4% 0.003 247.858);
+  --surface:       oklch(99.8% 0.001 265);
+  --border:        oklch(92.9% 0.013 255.508);
+  --text:          oklch(20.8% 0.042 265.755);
+  --text-dim:      oklch(44.6% 0.043 257.281);
+  --text-muted:    oklch(50% 0.04 257);
+  --accent:        oklch(42.4% 0.199 265.638);
+  --accent-link:   oklch(42.4% 0.199 265.638);
+  --on-accent:     oklch(98.4% 0.003 247.858);
+  --input-bg:      oklch(98.4% 0.003 247.858);
+  --input-border:  oklch(86.9% 0.022 252.894);
+  --input-focus:   oklch(42.4% 0.199 265.638);
+  --google-bg:     var(--surface);
+  --google-text:   var(--text);
+  --google-border: var(--input-border);
   --card-shadow:
-    0 4px 24px oklch(0% 0 0 / 0.3),
-    0 24px 64px oklch(0% 0 0 / 0.4);
+    0 4px 20px oklch(20.8% 0.042 265.755 / 0.04),
+    0 18px 48px oklch(20.8% 0.042 265.755 / 0.07);
 
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 100vh;
+  min-height: 100dvh;
+  padding: 24px 16px;
   background: var(--bg);
-  font-family: 'DM Sans', system-ui, sans-serif;
+  color: var(--text);
+  font-family: 'Figtree', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
-}
-
-/* ── Light theme — follows the browser / OS preference, like the landing page ── */
-@media (prefers-color-scheme: light) {
-  .wrap {
-    --bg:            #FBFAF7;
-    --surface:       #FFFFFF;
-    --border:        oklch(90% 0.005 265);
-    --text:          #16171D;
-    --text-dim:      #55566A;
-    --text-muted:    #7B7C8C;
-    --accent:        #4B54D4;
-    --accent-link:   #4B54D4;
-    --input-bg:      oklch(97% 0.003 265);
-    --input-border:  oklch(88% 0.006 265);
-    --input-focus:   oklch(55% 0.22 266 / 0.55);
-    --google-bg:     #FFFFFF;
-    --google-text:   #16171D;
-    --google-border: oklch(86% 0.008 265);
-    --card-shadow:
-      0 4px 20px oklch(0% 0 0 / 0.06),
-      0 18px 48px oklch(0% 0 0 / 0.1);
-  }
 }
 
 .card {
@@ -194,7 +175,7 @@
 
 .error {
   font-size: 13px;
-  color: oklch(62% 0.2 25);
+  color: oklch(52% 0.2 25);
   text-align: center;
   line-height: 1.4;
 }
