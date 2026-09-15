@@ -47,7 +47,7 @@ export default function PricingPage() {
   const [backTo, setBackTo]     = useState('/');
 
   useEffect(() => {
-    document.title = 'Soma — Pricing';
+    document.title = 'Pricing | Soma';
     supabase.auth.getSession().then(({ data }) => {
       const loggedIn = !!data.session;
       setIsLoggedIn(loggedIn);

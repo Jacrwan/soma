@@ -187,12 +187,12 @@ function AppShell({ user, sessionResolved, onLogout }: {
   // Document title
   useEffect(() => {
     const titles: Record<string, string> = {
-      '/day-view':  'Soma — Day View',
-      '/canvas':    'Soma — Canvas',
-      '/ai':        'Soma — AI',
-      '/calendar':  'Soma — Calendar',
-      '/insights':  'Soma — Insights',
-      '/settings':  'Soma — Settings',
+      '/day-view':  'Day View | Soma',
+      '/canvas':    'Canvas | Soma',
+      '/ai':        'AI | Soma',
+      '/calendar':  'Calendar | Soma',
+      '/insights':  'Insights | Soma',
+      '/settings':  'Settings | Soma',
     };
     document.title = titles[p] ?? 'Soma';
   }, [p]);

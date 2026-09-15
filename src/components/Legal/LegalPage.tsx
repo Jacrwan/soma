@@ -964,7 +964,7 @@ export default function LegalPage({ type }: { type: LegalType }) {
 
   useEffect(() => {
     const prev = document.title;
-    document.title = `Soma — ${config.title}`;
+    document.title = `${config.title} | Soma`;
     return () => { document.title = prev; };
   }, [config.title]);
 

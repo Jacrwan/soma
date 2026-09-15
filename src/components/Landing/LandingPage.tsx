@@ -899,7 +899,7 @@ export default function LandingPage() {
 
   useEffect(() => {
     const prev = document.title;
-    document.title = 'Soma | Study planner for Canvas students';
+    document.title = 'Study Planner for Canvas Students | Soma';
     return () => { document.title = prev; };
   }, []);
 
