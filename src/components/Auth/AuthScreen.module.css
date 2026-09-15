@@ -64,11 +64,11 @@
 }
 
 .wordmark {
-  font-family: 'Jost', sans-serif;
-  font-weight: 600;
-  font-size: 18px;
+  font-family: 'Figtree', sans-serif;
+  font-weight: 700;
+  font-size: 19px;
   color: var(--text);
-  letter-spacing: 0.15em;
+  letter-spacing: -0.03em;
   user-select: none;
   text-decoration: none;
   display: flex;

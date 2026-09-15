@@ -33,10 +33,10 @@
 }
 
 .logoName {
-  font-family: 'Jost', sans-serif;
-  font-weight: 300;
-  font-size: 18px;
-  letter-spacing: 0.5px;
+  font-family: 'Figtree', sans-serif;
+  font-weight: 700;
+  font-size: 19px;
+  letter-spacing: -0.03em;
   color: var(--text-primary);
 }
 

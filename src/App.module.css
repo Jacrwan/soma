@@ -19,13 +19,13 @@
 }
 
 .brand {
-  font-family: 'Jost', sans-serif;
-  font-weight: 600;
-  font-size: 18px;
+  font-family: 'Figtree', sans-serif;
+  font-weight: 700;
+  font-size: 19px;
   color: var(--nav-active);
   padding: 28px 20px 16px;
   flex-shrink: 0;
-  letter-spacing: 0.15em;
+  letter-spacing: -0.03em;
   user-select: none;
   display: flex;
   align-items: center;

@@ -18,10 +18,10 @@
 }
 
 .wordmark {
-  font-family: 'Jost', sans-serif;
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: 0.15em;
+  font-family: 'Figtree', sans-serif;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
   color: #c9c9c5;
   text-decoration: none;
   display: flex;
