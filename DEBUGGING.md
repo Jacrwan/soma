@@ -21,3 +21,12 @@
 Tests use mocked Canvas, authentication, database, and subscription responses. They do not access customer accounts, create charges, or change the production database. Install dependencies with `npm ci`, install Chromium with `npx playwright install chromium`, then run `npm test`.
 
 These are source changes only. Production deployment and verification against a real Canvas feed and paid account are still required. Courses previously deleted by the old Day View behavior are not automatically restored; re-sync can recreate courses present in the feed, but cannot recover their previous metadata or links.
+
+## Insights loading and tab-switch latency
+
+- Loading now lasts until the data resolves. An empty message requires a successful query confirming there are no study sessions; errors offer Retry.
+- One paginated session read supplies all eight charts, replacing their separate session reads and repeated auth calls. Subjects and todos load in parallel for correct names and estimates even on a direct visit.
+- An in-memory cache is scoped by account. Repeat visits within 30 seconds reuse the result without a fetch. Older data remains visible during background refresh; local-day changes also expire the cache.
+- Successful timer saves/deletions invalidate cached Insights, including while the page is unmounted. Existing subject/todo change events also invalidate it.
+- Week and month navigation calculate from the loaded history, without another request. Pagination preserves records beyond the database's 1000-row response cap.
+- Eleven new browser regressions cover loading, cache reuse and expiration, failed loads and refreshes, save invalidation, account isolation, pagination, empty accounts, and all chart calculations. Tests use mocked responses, so they prove removal of redundant requests and blocking UI behavior rather than a production millisecond latency target.

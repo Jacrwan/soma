@@ -1,6 +1,6 @@
-import { useMemo, useState, useEffect } from 'react';
-import { getWeeklyStudyTime, getSubjectBreakdown, getEstimatedVsActual, getStudyStreak, getHeatmapMinutes, getPeakHours, getSubjectPacing, getTimeAccuracy } from '../../lib/insights';
-import { storage } from '../../lib/storage';
+import { useMemo, useState } from 'react';
+import { summarizeInsights } from '../../lib/insights';
+import { useInsights } from '../../lib/useInsights';
 import { SkeletonBlock } from '../UI/Skeleton';
 import styles from './InsightsTab.module.css';
 
@@ -112,7 +112,7 @@ function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
 function InsightsSkeleton() {
   const BAR_HEIGHTS = [55, 80, 40, 100, 70, 30, 90];
   return (
-    <div className={styles.page}>
+    <div className={styles.page} role="status" aria-label="Loading insights" aria-busy="true">
       <header className={styles.pageHeader}>
         <div>
           <SkeletonBlock width={110} height={32} />
@@ -187,39 +187,16 @@ function InsightsSkeleton() {
   );
 }
 
-export default function InsightsTab() {
+export default function InsightsTab({ userId }: { userId: string | null }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [calendarOffset, setCalendarOffset] = useState(0);
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
+  const { data, loading, error, retry } = useInsights(userId);
+  const { weekly, breakdown, estimated, streak, heatmapMinutesMap, peakHoursData,
+    subjectPacingData, timeAccuracyData, subjects } = useMemo(
+    () => summarizeInsights(data, weekOffset, calendarOffset),
+    [data, weekOffset, calendarOffset],
+  );
 
-  type WeeklyDay = { day: string; minutes: number };
-  type BreakdownItem = { subjectName: string; minutes: number; color: string };
-  type EstimatedItem = { text: string; estimated: number; actual: number };
-
-  const [weekly, setWeekly] = useState<WeeklyDay[]>([]);
-  const [breakdown, setBreakdown] = useState<BreakdownItem[]>([]);
-  const [estimated, setEstimated] = useState<EstimatedItem[]>([]);
-  const [streak, setStreak] = useState(0);
-  const [heatmapMinutesMap, setHeatmapMinutesMap] = useState<Record<number, number>>({});
-  const [peakHoursData, setPeakHoursData] = useState<Record<number, number>>({});
-  const [subjectPacingData, setSubjectPacingData] = useState<Record<string, number>>({});
-  const [timeAccuracyData, setTimeAccuracyData] = useState<Record<string, { avgDeltaMinutes: number; sampleCount: number }>>({});
-
-  useEffect(() => { getWeeklyStudyTime(weekOffset).then(setWeekly); }, [weekOffset]);
-  useEffect(() => { getSubjectBreakdown().then(setBreakdown); }, []);
-  useEffect(() => { getEstimatedVsActual().then(setEstimated); }, []);
-  useEffect(() => { getStudyStreak().then(setStreak); }, []);
-  useEffect(() => {
-    const now = new Date();
-    const target = new Date(now.getFullYear(), now.getMonth() + calendarOffset, 1);
-    getHeatmapMinutes(target.getFullYear(), target.getMonth()).then(setHeatmapMinutesMap);
-  }, [calendarOffset]);
-  useEffect(() => { getPeakHours().then(setPeakHoursData); }, []);
-  useEffect(() => { getSubjectPacing().then(setSubjectPacingData); }, []);
-  useEffect(() => { getTimeAccuracy().then(setTimeAccuracyData); }, []);
-
-  const subjects = useMemo(() => storage.getSubjects(), []);
   const subjectNameMap = useMemo(() => new Map(subjects.map(s => [s.id, s.name])), [subjects]);
   const archivedSubjectNames = useMemo(() => new Set(subjects.filter(s => s.archived).map(s => s.name)), [subjects]);
 
@@ -278,13 +255,21 @@ export default function InsightsTab() {
     return { cells, firstDayOfWeekMon: (firstDow + 6) % 7, year, month };
   }, [calendarOffset, heatmapMinutesMap]);
 
-  if (!mounted) return <InsightsSkeleton />;
+  if (loading && (!data || data.sessions.length === 0)) return <InsightsSkeleton />;
 
-  const hasAnyData = totalWeeklyMinutes > 0 || breakdown.length > 0 || streak > 0;
+  const errorNotice = error ? (
+    <div role="alert">
+      {error} <button onClick={retry} aria-label="Retry insights">Retry</button>
+    </div>
+  ) : null;
+  if (!data || (error && data.sessions.length === 0)) return <div className={styles.page}>{errorNotice}</div>;
+
+  const hasAnyData = data.sessions.length > 0;
 
   if (!hasAnyData) {
     return (
-      <div className={styles.page}>
+      <div className={styles.page} aria-busy={loading}>
+        {errorNotice}
         <div className={styles.insightsEmpty}>
           <div className={styles.insightsEmptyIllo}>📊</div>
           <h2 className={styles.insightsEmptyHeading}>No study data yet</h2>
@@ -296,7 +281,8 @@ export default function InsightsTab() {
   }
 
   return (
-    <div className={styles.page}>
+    <div className={styles.page} aria-busy={loading}>
+      {errorNotice}
       <header className={styles.pageHeader}>
         <div className={styles.pageTitleBlock}>
           <h1 className={styles.pageTitle}>Insights</h1>

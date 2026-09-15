@@ -833,31 +833,37 @@ export const storage = {
   // ── Timer sessions (Supabase) ────────────────────────────────────────
   async deleteTimerSession(sessionId: string): Promise<void> {
     const id = await uid();
-    await supabase.from('timer_sessions').delete().eq('id', sessionId).eq('user_id', id);
+    const { error } = await supabase.from('timer_sessions').delete().eq('id', sessionId).eq('user_id', id);
+    if (error) throw new Error(error.message);
+    window.dispatchEvent(new Event('soma_insights_changed'));
   },
 
   async deleteTimerSessionsByTask(taskText: string, subjectId: string): Promise<void> {
     const id = await uid();
-    await supabase
+    const { error } = await supabase
       .from('timer_sessions')
       .delete()
       .eq('user_id', id)
       .eq('task_text', taskText)
       .eq('subject_id', subjectId);
+    if (error) throw new Error(error.message);
+    window.dispatchEvent(new Event('soma_insights_changed'));
   },
 
   async deleteTimerSessionsBySubject(subjectId: string): Promise<void> {
     const id = await uid();
-    await supabase
+    const { error } = await supabase
       .from('timer_sessions')
       .delete()
       .eq('user_id', id)
       .eq('subject_id', subjectId);
+    if (error) throw new Error(error.message);
+    window.dispatchEvent(new Event('soma_insights_changed'));
   },
 
   async saveTimerSession(session: TimerSession, subjectName: string): Promise<void> {
     const id = await uid();
-    await supabase.from('timer_sessions').insert({
+    const { error } = await supabase.from('timer_sessions').insert({
       id: session.id,
       user_id: id,
       subject_id: session.subjectId,
@@ -868,6 +874,8 @@ export const storage = {
       duration_seconds: session.durationSeconds,
       date: session.startTime.slice(0, 10),
     });
+    if (error) throw new Error(error.message);
+    window.dispatchEvent(new Event('soma_insights_changed'));
   },
 
   // ── Elapsed time (Supabase) ──────────────────────────────────────────

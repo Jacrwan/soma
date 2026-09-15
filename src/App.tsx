@@ -532,7 +532,7 @@ export default function App() {
           />
         } />
         <Route path="/ai"       element={<AITab onSwitchToToday={() => navigate('/day-view')} />} />
-        <Route path="/insights" element={<InsightsTab />} />
+        <Route path="/insights" element={<InsightsTab userId={user?.id ?? null} />} />
         <Route path="/settings" element={<SettingsTab />} />
         {/* Unknown app routes → day view */}
         <Route path="*" element={<Navigate to="/day-view" replace />} />
