@@ -20,10 +20,11 @@ const UNIVERSITY_LOGOS = [
   { name: 'UCLA', src: '/university-logos/ucla.svg', shape: 'mark' },
   { name: 'UC San Diego', src: '/university-logos/ucsd.png', shape: 'mark' },
   { name: 'Emory University', src: '/university-logos/emory.svg', shape: 'wide' },
-  { name: 'UC Irvine', src: '/university-logos/uc-irvine.png', shape: 'mark' },
-  { name: 'UC Davis', src: '/university-logos/uc-davis.svg', shape: 'mark' },
+  { name: 'UC Irvine', src: '/university-logos/uc-irvine-wordmark.svg', shape: 'wide' },
+  { name: 'UC Davis', src: '/university-logos/uc-davis-wordmark.svg', shape: 'wide' },
   { name: 'Carnegie Mellon University', src: '/university-logos/carnegie-mellon.png', shape: 'mark' },
   { name: 'Georgia Tech', src: '/university-logos/georgia-tech.svg', shape: 'mark' },
+  { name: 'Rutgers University', src: '/university-logos/rutgers-wordmark.svg', shape: 'wide' },
 ] as const;
 const UNIVERSITY_LOGO_COPIES = [0, 1, 2, 3, 4, 5] as const;
 
