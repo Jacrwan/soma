@@ -18,11 +18,15 @@
 }
 
 .wordmark {
-  font-family: 'Playfair Display', serif;
-  font-size: 20px;
-  font-weight: 700;
+  font-family: 'Jost', sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
   color: #c9c9c5;
   text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
 }
 
 .back {

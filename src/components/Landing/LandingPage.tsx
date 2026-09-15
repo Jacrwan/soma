@@ -86,7 +86,7 @@ const LANDING_CSS = `
 }
 
 .ln-brand { display: flex; align-items: center; gap: 9px; text-decoration: none; flex-shrink: 0; }
-.ln-word { font-size: 19px; font-weight: 700; color: var(--slate-900); letter-spacing: -0.03em; }
+.ln-word { font-family: 'Jost', sans-serif; font-size: 18px; font-weight: 600; color: var(--slate-900); letter-spacing: 0.15em; }
 
 .ln-nav-links { display: flex; align-items: center; gap: 4px; }
 .ln-nav-links a {
@@ -743,7 +743,7 @@ const LANDING_CSS = `
   gap: 40px;
 }
 .ln-foot-brand { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
-.ln-foot-word { font-size: 17px; font-weight: 700; letter-spacing: -0.03em; color: var(--slate-900); }
+.ln-foot-word { font-family: 'Jost', sans-serif; font-size: 18px; font-weight: 600; letter-spacing: 0.15em; color: var(--slate-900); }
 .ln-foot-copy { font-size: 13.5px; color: var(--slate-500); max-width: 330px; line-height: 1.6; margin: 0 0 14px; }
 .ln-foot-mail { font-size: 13.5px; color: var(--slate-500); }
 .ln-foot-mail a { color: var(--blue-700); text-decoration: none; }
