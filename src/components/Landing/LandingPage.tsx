@@ -961,7 +961,7 @@ export default function LandingPage() {
 
       <nav className="ln-nav">
         <a href="/" className="ln-brand">
-          <img src="/favicon.svg" width="28" height="28" alt="" style={{ borderRadius: 6, flexShrink: 0 }} />
+          <img src="/favicon.png" width="28" height="28" alt="" style={{ borderRadius: 6, flexShrink: 0 }} />
           <span className="ln-word">Soma</span>
         </a>
         <div className="ln-nav-links">
@@ -1318,7 +1318,7 @@ export default function LandingPage() {
         <div className="ln-foot-in">
           <div>
             <div className="ln-foot-brand">
-              <img src="/favicon.svg" width="24" height="24" alt="" style={{ borderRadius: 5, flexShrink: 0 }} />
+              <img src="/favicon.png" width="24" height="24" alt="" style={{ borderRadius: 5, flexShrink: 0 }} />
               <span className="ln-foot-word">Soma</span>
             </div>
             <p className="ln-foot-copy">

@@ -54,7 +54,7 @@ export default function AuthScreen({ initialMode = 'login' }: { initialMode?: 'l
     <div className={styles.wrap}>
       <div className={styles.card}>
         <a href="/" className={styles.wordmark}>
-          <img src="/favicon.svg" width="28" height="28" alt="" style={{ borderRadius: 6, verticalAlign: 'middle', marginRight: 8 }} />
+          <img src="/favicon.png" width="28" height="28" alt="" style={{ borderRadius: 6, verticalAlign: 'middle', marginRight: 8 }} />
           Soma
         </a>
 

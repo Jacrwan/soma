@@ -108,7 +108,7 @@ export default function PricingPage() {
     <div className={styles.wrap}>
       <div className={styles.topbar}>
         <Link to={backTo} className={styles.wordmark}>
-          <img src="/favicon.svg" width="24" height="24" alt="" style={{ borderRadius: 5, verticalAlign: 'middle', marginRight: 8 }} />
+          <img src="/favicon.png" width="24" height="24" alt="" style={{ borderRadius: 5, verticalAlign: 'middle', marginRight: 8 }} />
           Soma
         </Link>
         <Link to={backTo} className={styles.back}>
