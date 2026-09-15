@@ -363,6 +363,7 @@ export default function SettingsTab() {
     setCanvasError('');
     try {
       const fetched = await getIcalAssignments(url);
+      await storage.syncCanvasSubjects(fetched);
       storage.setCanvasIcalUrl(url);
       storage.setCachedIcalAssignments(fetched);
       storage.setCachedAssignments(fetched);

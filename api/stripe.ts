@@ -48,13 +48,14 @@ function computeStatus(row: {
 
 // ── Action handlers ───────────────────────────────────────────────────────────
 
-async function getSubscription(user: any, admin: any, res: any) {
-  const { data: sub } = await admin
+export async function getSubscription(user: any, admin: any, res: any) {
+  const { data: sub, error } = await admin
     .from('subscriptions')
     .select('status, plan, trial_start, extension_start, current_period_end, cancel_at_period_end, stripe_subscription_id')
     .eq('user_id', user.id)
-    .single();
+    .maybeSingle();
 
+  if (error) return res.status(503).json({ error: 'Could not verify subscription. Please try again.' });
   if (!sub) return res.json({ status: 'free' });
 
   const status = computeStatus(sub);

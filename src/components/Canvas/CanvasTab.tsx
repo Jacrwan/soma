@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { storage } from '../../lib/storage';
-import { CanvasCourse, CanvasAssignment, Subject, Todo } from '../../types';
+import { CanvasCourse, CanvasAssignment, Todo } from '../../types';
 import { getIcalAssignments } from '../../lib/canvas';
 import { sendMessage } from '../../lib/ai';
 import { SkeletonBlock } from '../UI/Skeleton';
@@ -294,6 +294,10 @@ export default function CanvasTab() {
     const cacheFresh = !!cacheTs && Date.now() - cacheTs < CACHE_MAX_AGE;
     if (cached.length === 0 || !cacheFresh) {
       loadIcalData();
+    } else {
+      void storage.syncCanvasSubjects(cached).catch(e => {
+        setIcalError(e instanceof Error ? e.message : 'Could not save Canvas courses.');
+      });
     }
   }, []);
 
@@ -303,28 +307,11 @@ export default function CanvasTab() {
     setIcalError('');
     try {
       const fetched = await getIcalAssignments(icalUrl);
+      await storage.syncCanvasSubjects(fetched);
       storage.setCachedIcalAssignments(fetched);
       storage.setCacheTimestamp(Date.now());
       setAssignments(fetched);
       setLastSynced(Date.now());
-      // Sync course names to subjects
-      const courseNames = [...new Set(fetched.map(a => a.courseName).filter(Boolean))];
-      const existing = storage.getSubjects();
-      let subjects = [...existing];
-      let changed = false;
-      for (const name of courseNames) {
-        if (!subjects.find(s => s.name === name)) {
-          subjects = [...subjects, {
-            id: crypto.randomUUID(),
-            name,
-            color: COURSE_COLORS[subjects.length % COURSE_COLORS.length] as Subject['color'],
-            totalTimeToday: 0,
-            source: 'canvas' as const,
-          }];
-          changed = true;
-        }
-      }
-      if (changed) storage.setSubjects(subjects);
     } catch (e: unknown) {
       setIcalError(e instanceof Error ? e.message : 'Failed to sync calendar feed');
     } finally {
@@ -339,6 +326,7 @@ export default function CanvasTab() {
     setConnectError('');
     try {
       const fetched = await getIcalAssignments(url);
+      await storage.syncCanvasSubjects(fetched);
       storage.setCanvasIcalUrl(url);
       storage.setCachedIcalAssignments(fetched);
       storage.setCacheTimestamp(Date.now());

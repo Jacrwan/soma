@@ -90,6 +90,7 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
     setCanvasError('');
     try {
       const fetched = await getIcalAssignments(url);
+      await storage.syncCanvasSubjects(fetched);
       storage.setCanvasIcalUrl(url);
       storage.setCachedIcalAssignments(fetched);
       storage.setCachedAssignments(fetched);

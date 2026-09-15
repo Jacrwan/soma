@@ -5,3 +5,6 @@ dist/
 .env.local
 .env*.local
 .vercel
+
+playwright-report/
+test-results/

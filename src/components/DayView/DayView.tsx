@@ -132,31 +132,6 @@ function fmtTime(iso: string) {
 }
 
 
-function looksLikeCanvasCourseName(name: string): boolean {
-  return /\b(AP|Hon|Honors|Semester|Periods?|P\d|S[12]|Yr)\b/i.test(name)
-    || /\bPer\s*:/i.test(name)
-    || /-.+/.test(name)
-    || /\(.+\bPeriods?\b.+\)/i.test(name);
-}
-
-function isDefaultSubjectName(name: string): boolean {
-  return ['math', 'science', 'english', 'history', 'language', 'other'].includes(name.trim().toLowerCase());
-}
-
-function getVisibleSubjects(): Subject[] {
-  const currentCanvasCourseNames = new Set(storage.getCachedCourses().map(c => c.name));
-  const knownCanvasCourseNames = new Set<string>();
-
-  return storage.getSubjects().filter(s => {
-    if (s.archived) return false;
-    if (currentCanvasCourseNames.size === 0) return true;
-    if (currentCanvasCourseNames.has(s.name)) return true;
-    if (isDefaultSubjectName(s.name)) return false;
-    if (knownCanvasCourseNames.has(s.name)) return false;
-    return !looksLikeCanvasCourseName(s.name);
-  });
-}
-
 function fmtEstimated(mins: number): string {
   const h = Math.floor(mins / 60);
   const m = mins % 60;
@@ -534,11 +509,7 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   }, [selectedDate]);
 
   useEffect(() => {
-    const visibleSubjects = getVisibleSubjects();
-    if (visibleSubjects.length !== storage.getSubjects().length) {
-      storage.setSubjects(visibleSubjects);
-    }
-    setSubjects(visibleSubjects);
+    setSubjects(storage.getSubjects().filter(s => !s.archived));
     setRightReady(true);
 
     const tick = () => {

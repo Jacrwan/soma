@@ -10,7 +10,7 @@ import CalendarTab from './components/Calendar/CalendarTab';
 import InsightsTab from './components/Insights/InsightsTab';
 import SettingsTab from './components/Settings/SettingsTab';
 import { storage } from './lib/storage';
-import { useSubscription, hasAIAccess } from './lib/subscription';
+import { useSubscription, refreshSubscription, hasAIAccess } from './lib/subscription';
 import { TimerProvider } from './contexts/TimerContext';
 import TimerOverlay from './components/Timer/TimerOverlay';
 import LandingPage from './components/Landing/LandingPage';
@@ -163,22 +163,9 @@ function AppShell({ user, sessionResolved, onLogout }: {
     if (hasActiveCanvas) setShowSemesterModal(true);
   }, []);
 
-  // Only redirect to login when we definitively know there is no session.
-  if (!user && sessionResolved) return <Navigate to="/login" replace />;
-
-  // Full-screen paywall for expired/failed subscriptions
-  if (paywallStatus && subscription.status !== 'loading') {
-    return (
-      <PaywallScreen
-        status={paywallStatus}
-        onResubscribe={() => navigate('/pricing')}
-      />
-    );
-  }
-
   const p = location.pathname;
 
-  // Google OAuth implicit-flow redirect (must be after early-return guard)
+  // Hooks must run before every conditional return.
   useEffect(() => {
     const hash = window.location.hash;
     if (!hash || !hash.includes('access_token')) return;
@@ -209,6 +196,19 @@ function AppShell({ user, sessionResolved, onLogout }: {
     };
     document.title = titles[p] ?? 'Soma';
   }, [p]);
+
+  // Only redirect to login when we definitively know there is no session.
+  if (!user && sessionResolved) return <Navigate to="/login" replace />;
+
+  // Full-screen paywall for expired/failed subscriptions
+  if (paywallStatus && subscription.status !== 'loading') {
+    return (
+      <PaywallScreen
+        status={paywallStatus}
+        onResubscribe={() => navigate('/pricing')}
+      />
+    );
+  }
 
   function nav(path: string) {
     return `${styles.navItem}${p === path ? ` ${styles.navItemActive}` : ''}`;
@@ -306,6 +306,12 @@ function AppShell({ user, sessionResolved, onLogout }: {
       </nav>
 
       <div className={styles.contentCol}>
+        {subscription.error && (
+          <div role="alert" className={styles.trialBanner}>
+            <span>{subscription.error}</span>
+            <button onClick={() => void refreshSubscription()}>Retry</button>
+          </div>
+        )}
         {trialDaysLeft !== null && !trialBannerDismissed && (
           <div className={styles.trialBanner}>
             <span className={styles.trialBannerText}>
@@ -355,6 +361,16 @@ export default function App() {
   const [showOnboarding, setShowOnboarding]   = useState(false);
   const [showTrialModal, setShowTrialModal]   = useState(false);
   const subscription = useSubscription();
+  const userId = user?.id;
+  const location = useLocation();
+  const dismissedTrialUsers = useRef(new Set<string>());
+  function dismissTrial() {
+    if (userId) {
+      dismissedTrialUsers.current.add(userId);
+      try { sessionStorage.setItem(`soma_trial_dismissed:${userId}`, 'true'); } catch { /* memory fallback */ }
+    }
+    setShowTrialModal(false);
+  }
   const onboardingChecked = useRef(false);
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
     const d = new Date();
@@ -369,7 +385,13 @@ export default function App() {
 
   // Show trial modal for logged-in users with no subscription once status resolves
   useEffect(() => {
-    if (!user || showOnboarding) return;
+    if (!userId || showOnboarding || subscription.error || subscription.status !== 'free') {
+      setShowTrialModal(false);
+      return;
+    }
+    let dismissed = dismissedTrialUsers.current.has(userId);
+    try { dismissed ||= sessionStorage.getItem(`soma_trial_dismissed:${userId}`) === 'true'; } catch { /* memory fallback */ }
+    if (dismissed) { setShowTrialModal(false); return; }
     if (subscription.status === 'free') {
       const publicPaths = ['/', '/login', '/signup', '/pricing'];
       const isPublic = publicPaths.includes(window.location.pathname) ||
@@ -380,9 +402,9 @@ export default function App() {
         window.location.pathname.startsWith('/data-deletion') ||
         window.location.pathname.startsWith('/contact') ||
         window.location.pathname.startsWith('/ai-disclaimer');
-      if (!isPublic) setShowTrialModal(true);
+      setShowTrialModal(!isPublic);
     }
-  }, [user, subscription.status, showOnboarding]);
+  }, [userId, subscription.status, subscription.error, showOnboarding, location.pathname]);
 
   async function checkOnboarding(u: User) {
     try {
@@ -526,17 +548,16 @@ export default function App() {
         }
         onComplete={() => {
           setShowOnboarding(false);
-          // Prompt for trial immediately after onboarding for new users
-          setShowTrialModal(true);
+          // The subscription effect decides whether a trial prompt is appropriate.
         }}
       />
     )}
     {showTrialModal && user && !showOnboarding &&
       !['/','/login','/signup','/pricing'].includes(window.location.pathname) &&
-      (subscription.status === 'free' || subscription.status === 'loading') && (
+      subscription.status === 'free' && !subscription.error && (
       <TrialSetupModal
-        onComplete={() => setShowTrialModal(false)}
-        onSkip={() => setShowTrialModal(false)}
+        onComplete={() => { dismissTrial(); void refreshSubscription(); }}
+        onSkip={dismissTrial}
       />
     )}
     </>

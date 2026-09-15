@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useSyncExternalStore } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 
 export type SubscriptionStatus =
   | 'loading'
+  | 'unavailable'
   | 'free'
   | 'trialing'
   | 'trial_expired'
@@ -14,6 +16,7 @@ export type SubscriptionStatus =
   | 'unpaid';
 
 export interface SubscriptionInfo {
+  error: string | null;
   status: SubscriptionStatus;
   plan: 'monthly' | 'annual';
   trialStart: string | null;
@@ -29,6 +32,7 @@ export function hasAIAccess(status: SubscriptionStatus): boolean {
 }
 
 const EMPTY: SubscriptionInfo = {
+  error: null,
   status: 'loading',
   plan: 'monthly',
   trialStart: null,
@@ -47,52 +51,123 @@ async function stripePost(action: string, token: string, body?: Record<string, u
   });
 }
 
-export function useSubscription(): SubscriptionInfo {
-  const [info, setInfo] = useState<SubscriptionInfo>(EMPTY);
+// Share one subscription snapshot and request across App, navigation and settings.
+// Auth events may fire again on tab focus; they must not remount payment UI or
+// let a late response from a previous account replace the current account.
+let snapshot: SubscriptionInfo = EMPTY;
+let accountId: string | null = null;
+let revision = 0;
+let pending: { key: string; promise: Promise<void> } | null = null;
+const listeners = new Set<() => void>();
+let stopAuth: (() => void) | undefined;
 
-  useEffect(() => {
-    let cancelled = false;
+function publish(next: SubscriptionInfo) {
+  snapshot = next;
+  listeners.forEach(listener => listener());
+}
 
-    async function load() {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      if (!token) {
-        if (!cancelled) setInfo({ ...EMPTY, status: 'free' });
-        return;
-      }
-
+async function loadSubscription(session: Session | null): Promise<void> {
+  const nextId = session?.user.id ?? null;
+  if (nextId !== accountId) {
+    accountId = nextId;
+    revision++;
+    pending = null;
+    publish(EMPTY);
+  }
+  if (!session) {
+    publish({ ...EMPTY, status: 'free' });
+    return;
+  }
+  const key = `${session.user.id}:${session.access_token}`;
+  if (pending?.key === key) return pending.promise;
+  const requestRevision = ++revision;
+  const request = (async () => {
+    try {
       const devEmail = import.meta.env.VITE_DEVELOPER_EMAIL as string | undefined;
-      if (devEmail && session.user?.email === devEmail) {
-        if (!cancelled) setInfo({ ...EMPTY, status: 'active' });
-        return;
-      }
-
-      try {
-        const res = await stripePost('get-subscription', token);
-        if (!res.ok) throw new Error('failed');
-        const data = await res.json();
-        if (!cancelled) {
-          setInfo({
-            status: (data.status as SubscriptionStatus) ?? 'free',
-            plan: data.plan === 'annual' ? 'annual' : 'monthly',
-            trialStart: data.trialStart ?? null,
-            trialEndsAt: data.trialEndsAt ?? null,
-            extensionStart: data.extensionStart ?? null,
-            extensionEndsAt: data.extensionEndsAt ?? null,
-            currentPeriodEnd: data.currentPeriodEnd ?? null,
-            cancelAtPeriodEnd: data.cancelAtPeriodEnd ?? false,
-          });
-        }
-      } catch {
-        if (!cancelled) setInfo({ ...EMPTY, status: 'free' });
-      }
+      const res = devEmail && session.user.email === devEmail
+        ? null
+        : await fetch('/api/stripe', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'get-subscription' }),
+          signal: AbortSignal.timeout(10_000),
+        });
+      if (res && !res.ok) throw new Error('Subscription lookup failed');
+      const data = res ? await res.json() : { status: 'active' };
+      const statuses: SubscriptionStatus[] = [
+        'free', 'trialing', 'trial_expired', 'trial_extended',
+        'trial_extension_expired', 'active', 'past_due', 'canceled', 'unpaid',
+      ];
+      if (!data || !statuses.includes(data.status)) throw new Error('Invalid subscription response');
+      if (requestRevision !== revision) return;
+      publish({
+        status: data.status,
+        plan: data.plan === 'annual' ? 'annual' : 'monthly',
+        trialStart: data.trialStart ?? null,
+        trialEndsAt: data.trialEndsAt ?? null,
+        extensionStart: data.extensionStart ?? null,
+        extensionEndsAt: data.extensionEndsAt ?? null,
+        currentPeriodEnd: data.currentPeriodEnd ?? null,
+        cancelAtPeriodEnd: data.cancelAtPeriodEnd ?? false,
+        error: null,
+      });
+    } catch {
+      if (requestRevision !== revision) return;
+      publish({
+        ...snapshot,
+        status: snapshot.status === 'loading' ? 'unavailable' : snapshot.status,
+        error: 'Could not verify your subscription. Please try again.',
+      });
     }
+  })();
+  pending = { key, promise: request };
+  await request;
+  if (requestRevision === revision) pending = null;
+}
 
-    load();
-    return () => { cancelled = true; };
-  }, []);
+export async function refreshSubscription(): Promise<void> {
+  const before = revision;
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (before !== revision) return;
+  if (error) {
+    publish({ ...snapshot, error: 'Could not verify your subscription. Please try again.' });
+    return;
+  }
+  await loadSubscription(session);
+}
 
-  return info;
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  if (listeners.size === 1) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      // Clear the previous account synchronously, but defer all asynchronous
+      // work until Supabase releases its auth lock.
+      if ((session?.user.id ?? null) !== accountId) {
+        accountId = session?.user.id ?? null;
+        revision++;
+        pending = null;
+        publish(EMPTY);
+      }
+      clearTimeout(timer);
+      timer = setTimeout(() => { void loadSubscription(session); }, 0);
+    });
+    stopAuth = () => { clearTimeout(timer); subscription.unsubscribe(); };
+  }
+  return () => {
+    listeners.delete(listener);
+    if (!listeners.size) {
+      stopAuth?.();
+      revision++;
+      pending = null;
+      accountId = null;
+      snapshot = EMPTY;
+    }
+  };
+}
+
+export function useSubscription(): SubscriptionInfo {
+  return useSyncExternalStore(subscribe, () => snapshot);
 }
 
 // ── New trial flow (card upfront via Stripe Elements) ─────────────────────────

@@ -185,6 +185,7 @@ let _googleDriveRefreshToken = '';
 // getSubjects() / getTodos() read from here synchronously;
 // setSubjects() / setTodos() update here and diff-sync to Supabase async.
 let _subjects: Subject[] = [];
+let canvasSubjectSync: Promise<Subject[]> = Promise.resolve([]);
 let _todos: Todo[] = [];
 
 function todoFromRow(r: Record<string, unknown>): Todo {
@@ -271,11 +272,12 @@ export const storage = {
 
   async fetchSubjects(): Promise<Subject[]> {
     const id = await uid();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('subjects')
       .select('*')
       .eq('user_id', id)
       .order('order', { ascending: true, nullsFirst: false });
+    if (error) throw new Error(error.message);
     const subjects: Subject[] = (data ?? []).map(r => ({
       id: r.id as string,
       name: r.name as string,
@@ -288,6 +290,47 @@ export const storage = {
     }));
     _subjects = subjects;
     return subjects;
+  },
+
+  // All Canvas entry points use the same awaited, insert-only sync. Serialize
+  // calls in this tab so a double-click cannot create duplicate courses.
+  syncCanvasSubjects(assignments: CanvasAssignment[]): Promise<Subject[]> {
+    const sync = async (): Promise<Subject[]> => {
+      const existing = await storage.fetchSubjects();
+      const subjects = [...existing];
+      const colors: Subject['color'][] = [
+        '#ef5350', '#42a5f5', '#66bb6a', '#ab47bc',
+        '#ffa726', '#26c6da', '#ec407a', '#8d6e63',
+      ];
+      for (const assignment of normalizeIcalAssignments(assignments)) {
+        const name = assignment.courseName.trim();
+        if (!name || subjects.some(s =>
+          s.canvasCourseId === assignment.courseId ||
+          s.name.trim().toLowerCase() === name.toLowerCase()
+        )) continue;
+        subjects.push({
+          id: crypto.randomUUID(), name,
+          color: colors[subjects.length % colors.length],
+          totalTimeToday: 0, source: 'canvas', canvasCourseId: assignment.courseId,
+        });
+      }
+      const created = subjects.slice(existing.length);
+      if (created.length) {
+        const userId = await uid();
+        const { error } = await supabase.from('subjects').insert(created.map(s => ({
+          id: s.id, user_id: userId, name: s.name, color: s.color,
+          source: s.source, canvas_course_id: s.canvasCourseId,
+          archived: false, total_time_today: 0,
+        })));
+        if (error) throw new Error(error.message);
+        // Preserve edits made to existing subjects while the save was pending.
+        _subjects = [..._subjects, ...created];
+        window.dispatchEvent(new Event('soma_subjects_changed'));
+      }
+      return _subjects;
+    };
+    canvasSubjectSync = canvasSubjectSync.catch(() => []).then(sync);
+    return canvasSubjectSync;
   },
 
   async loadSubjects(): Promise<void> {
