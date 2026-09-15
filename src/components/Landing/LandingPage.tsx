@@ -903,6 +903,18 @@ export default function LandingPage() {
     return () => { document.title = prev; };
   }, []);
 
+  // Browsers cache favicons independently from the document. Refresh the
+  // landing route's icon explicitly so returning to `/` cannot retain an old
+  // tab icon from a previous deployment.
+  useEffect(() => {
+    const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    if (!icon) return;
+    const previousHref = icon.href;
+    icon.type = 'image/svg+xml';
+    icon.href = `${window.location.origin}/soma_favicon.svg?v=landing-4`;
+    return () => { icon.href = previousHref; };
+  }, []);
+
   // The landing page is light-only; force it regardless of the app's saved theme.
   useEffect(() => {
     const html = document.documentElement;
