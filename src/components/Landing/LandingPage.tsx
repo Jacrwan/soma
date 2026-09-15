@@ -911,7 +911,7 @@ export default function LandingPage() {
     if (!icon) return;
     const previousHref = icon.href;
     icon.type = 'image/svg+xml';
-    icon.href = `${window.location.origin}/soma_favicon.svg?v=landing-4`;
+    icon.href = `${window.location.origin}/soma_favicon.svg?v=landing-5`;
     return () => { icon.href = previousHref; };
   }, []);
 
