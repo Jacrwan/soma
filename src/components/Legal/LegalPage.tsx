@@ -12,7 +12,7 @@ export type LegalType =
   | 'contact'
   | 'ai';
 
-const UPDATED = 'May 31, 2026';
+const UPDATED = 'September 15, 2026';
 
 function Privacy() {
   return (
@@ -56,15 +56,16 @@ function Privacy() {
             <strong>Google account data</strong> — when you connect Google, Soma requests OAuth
             access to the following scopes:
             <ul>
-              <li><strong>Google Calendar</strong> (read-only) — to display your calendar events alongside your study schedule.</li>
-              <li><strong>Google Drive</strong> (drive.file) — to read files you explicitly select via the Google Picker for AI context.</li>
-              <li><strong>Google Docs</strong> — to create Google Docs containing AI-generated study materials (notes, guides, quizzes).</li>
-              <li><strong>Google Slides</strong> — to create Google Slides presentations from AI-generated content.</li>
+              <li><strong>Google Calendar</strong> (calendar.readonly) — to display your calendar events alongside your study schedule. Soma never creates, edits, or deletes events.</li>
+              <li><strong>Google Drive</strong> (drive.file) — to read the files you explicitly select via the Google Picker, and the files Soma creates for you.</li>
+              <li><strong>Google Drive</strong> (drive.readonly) — to read course material you choose to import as context for AI-generated study material.</li>
+              <li><strong>Google Docs</strong> (documents) — to create Google Docs containing AI-generated study materials (notes, guides, quizzes).</li>
+              <li><strong>Google Slides</strong> (presentations) — to create Google Slides presentations from AI-generated content.</li>
             </ul>
-            Your Google OAuth token is cached locally in your browser and passed through Vercel
-            serverless functions when creating files. Soma does not store Google tokens on its
-            servers. Soma only accesses files you explicitly choose — it cannot browse your
-            entire Drive.
+            Google access and refresh tokens are stored server-side so Soma can keep your
+            connection working without asking you to sign in repeatedly. They are never exposed to
+            the browser and are reachable only by our serverless functions. Section 5 explains how
+            Google user data is used and Section 6 explains how it is protected.
           </li>
           <li>
             <strong>AI chat messages</strong> — when you use AI features, your messages and
@@ -143,7 +144,174 @@ function Privacy() {
       </div>
 
       <div className={styles.section}>
-        <h2>5. Data retention</h2>
+        <h2>5. Google user data and Limited Use</h2>
+        <p>
+          Soma connects to Google only after you explicitly grant permission, and only for the
+          features described below. You can disconnect Google at any time in Settings, or revoke
+          Soma's access from your{' '}
+          <a
+            href="https://myaccount.google.com/permissions"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Google Account permissions page
+          </a>
+          .
+        </p>
+
+        <div className={styles.tableWrap}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>Scope requested</th>
+                <th>Why Soma needs it</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>calendar.readonly</td>
+                <td>
+                  Read your existing calendar events so study blocks are placed around commitments
+                  you already have. Soma never creates, edits, or deletes calendar events.
+                </td>
+              </tr>
+              <tr>
+                <td>drive.file</td>
+                <td>
+                  Access only the individual files you select in the Google Picker, plus files Soma
+                  itself creates. Under this scope Soma cannot see any other file in your Drive.
+                </td>
+              </tr>
+              <tr>
+                <td>drive.readonly</td>
+                <td>
+                  Read course material you choose to import so that notes, outlines, and practice
+                  questions can be generated from it.
+                </td>
+              </tr>
+              <tr>
+                <td>documents, presentations</td>
+                <td>
+                  Create Google Docs and Google Slides in your account when you ask Soma to save
+                  generated study material.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Limited Use commitment</h3>
+        <p>
+          Soma's use and transfer of information received from Google APIs to any other app will
+          adhere to the{' '}
+          <a
+            href="https://developers.google.com/terms/api-services-user-data-policy"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Google API Services User Data Policy
+          </a>
+          , including the Limited Use requirements. The use of raw or derived user data received
+          from Google Workspace APIs will adhere to the Google User Data Policy, including the
+          Limited Use requirements.
+        </p>
+
+        <h3>Artificial intelligence and machine learning</h3>
+        <p>
+          We do not use, transfer, or sell Google user data, whether raw, aggregated, or derived, to
+          develop, train, improve, or personalize foundational or generalized artificial
+          intelligence or machine learning models. This restriction applies to Soma and to every
+          service provider we work with.
+        </p>
+        <p>
+          When you explicitly ask Soma to generate study material from a file you selected, the
+          contents of that file are sent to Anthropic's API for the sole purpose of producing the
+          output you requested and returning it to you. Under Anthropic's commercial terms, inputs
+          and outputs submitted through its API are not used to train Anthropic's models. Soma does
+          not send Google user data to any AI provider except in response to an action you take.
+        </p>
+
+        <h3>Human access</h3>
+        <p>
+          No Soma employee or contractor reads your Google user data. The only exceptions are the
+          narrow cases permitted by the Limited Use requirements: where we have your explicit
+          consent for a specific issue, where it is necessary for security purposes such as
+          investigating abuse, or where we are required to do so by law.
+        </p>
+
+        <h3>No sale or advertising</h3>
+        <p>
+          We do not sell Google user data, and we do not use it for advertising, ad targeting,
+          profiling, or credit assessment. We do not transfer it to data brokers, information
+          resellers, or any other third party except the service providers listed in Section 4 that
+          are strictly necessary to operate the features you use.
+        </p>
+      </div>
+
+      <div className={styles.section}>
+        <h2>6. How we protect your data</h2>
+        <p>
+          We apply the following technical and organizational safeguards to all personal data,
+          including sensitive data obtained through Google APIs:
+        </p>
+        <ul>
+          <li>
+            <strong>Encryption in transit.</strong> All traffic between your browser, Soma, and
+            every third-party API is encrypted using HTTPS with TLS 1.2 or higher. Soma is served
+            strictly over HTTPS.
+          </li>
+          <li>
+            <strong>Encryption at rest.</strong> Account and application data is stored with our
+            infrastructure providers (Supabase and Vercel), which encrypt stored data and backups at
+            rest using AES-256.
+          </li>
+          <li>
+            <strong>OAuth token handling.</strong> Google refresh tokens are held server-side only.
+            They are never exposed to the browser, never written to local storage, and are
+            accessible only to our serverless functions using a privileged key that is not present
+            in client code.
+          </li>
+          <li>
+            <strong>Access control.</strong> User data tables enforce row-level security, so a
+            signed-in user can read and write only their own rows. Administrative credentials are
+            restricted to server-side functions and are not shared.
+          </li>
+          <li>
+            <strong>Least privilege on scopes.</strong> We request the narrowest Google scopes that
+            support the features you enable. File access defaults to the picker-based{' '}
+            <code>drive.file</code> scope so that Soma sees only the files you deliberately choose.
+          </li>
+          <li>
+            <strong>Authentication.</strong> Accounts are authenticated through Supabase Auth.
+            Passwords are salted and hashed by the provider and are never stored or visible to us in
+            plain text.
+          </li>
+          <li>
+            <strong>Segregation and minimization.</strong> We collect only the data needed to
+            deliver the feature you requested, and we do not combine Google user data with data from
+            other sources to build profiles.
+          </li>
+          <li>
+            <strong>Deletion on request.</strong> Disconnecting Google removes the stored tokens.
+            Deleting your account removes associated server-side data on the timeline described in
+            Section 7.
+          </li>
+          <li>
+            <strong>Incident response.</strong> If we become aware of a breach affecting your
+            personal data, we will investigate promptly and notify affected users and any applicable
+            regulator as required by law.
+          </li>
+        </ul>
+        <p>
+          No method of transmission or storage is completely secure, and we cannot guarantee
+          absolute security. If you believe your account has been compromised, contact us
+          immediately using the details on our{' '}
+          <Link to="/contact">Contact page</Link>.
+        </p>
+      </div>
+
+      <div className={styles.section}>
+        <h2>7. Data retention</h2>
         <ul>
           <li>Account and server-side app data is retained until you delete your account.</li>
           <li>
@@ -158,7 +326,7 @@ function Privacy() {
       </div>
 
       <div className={styles.section}>
-        <h2>6. Your rights</h2>
+        <h2>8. Your rights</h2>
         <p>
           Depending on where you live, you may have the following rights regarding your personal
           data:
@@ -194,7 +362,7 @@ function Privacy() {
       </div>
 
       <div className={styles.section}>
-        <h2>7. Children</h2>
+        <h2>9. Children</h2>
         <p>
           Soma is not directed to children under the age of 13. We do not knowingly collect
           personal information from children under 13. If you believe a child under 13 has
@@ -203,7 +371,7 @@ function Privacy() {
       </div>
 
       <div className={styles.section}>
-        <h2>8. Cookies and local storage</h2>
+        <h2>10. Cookies and local storage</h2>
         <p>
           Soma uses browser local storage to cache your settings, Canvas calendar feed data,
           Google OAuth tokens, chat sessions, creation history, and Supabase session tokens. No
@@ -212,7 +380,7 @@ function Privacy() {
       </div>
 
       <div className={styles.section}>
-        <h2>9. Changes to this policy</h2>
+        <h2>11. Changes to this policy</h2>
         <p>
           We may update this policy from time to time. If we make material changes, we will update
           the "Last updated" date and, where appropriate, notify you by email or in-app. Continued
@@ -328,8 +496,23 @@ function Terms() {
           Soma integrates with Canvas (via iCal feeds), Google (Calendar, Drive, Docs, Slides),
           Anthropic (AI), Supabase, Vercel, and Stripe. Use of those services is subject to their
           own terms. Soma is not responsible for the availability, accuracy, or actions of
-          third-party services. Google Drive access is limited to files you explicitly select —
-          Soma cannot browse your entire Drive.
+          third-party services.
+        </p>
+        <p>
+          Soma's use and transfer of information received from Google APIs to any other app will
+          adhere to the{' '}
+          <a
+            href="https://developers.google.com/terms/api-services-user-data-policy"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Google API Services User Data Policy
+          </a>
+          , including the Limited Use requirements. The use of raw or derived user data received
+          from Google Workspace APIs will adhere to the Google User Data Policy, including the
+          Limited Use requirements. We do not use Google user data to train or improve generalized
+          or foundational AI or machine learning models. See Section 5 of our{' '}
+          <Link to="/privacy">Privacy Policy</Link> for full details.
         </p>
       </div>
 

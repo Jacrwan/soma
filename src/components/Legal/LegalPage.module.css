@@ -84,6 +84,14 @@
   margin: 0;
 }
 
+.section h3 {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text-primary, #F0EEE8);
+  letter-spacing: -0.005em;
+  margin: 8px 0 0;
+}
+
 .section p,
 .section li {
   font-size: 14px;
