@@ -1,6 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { supabase } from '../../lib/supabase';
 import { storage } from '../../lib/storage';
 import { getIcalAssignments } from '../../lib/canvas';
 import styles from './OnboardingFlow.module.css';
@@ -29,32 +28,14 @@ interface Props {
 }
 
 export default function OnboardingFlow({ userName, onComplete }: Props) {
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(() => {
-    const params = new URLSearchParams(window.location.search);
-    return params.has('onboarding_source') ? 3 : 1;
-  });
-
-  // Clean up onboarding_source URL param on mount
-  useEffect(() => {
-    const url = new URL(window.location.href);
-    if (url.searchParams.has('onboarding_source')) {
-      url.searchParams.delete('onboarding_source');
-      window.history.replaceState({}, '', url.toString());
-    }
-  }, []);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
   // Step 1 — age
   const [birthday, setBirthday] = useState('');
   const [ageBlocked, setAgeBlocked] = useState(false);
 
-  // Step 2 — education (restored from localStorage if returning from OAuth)
-  const [education, setEducation] = useState<EducationId | ''>(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.has('onboarding_source')) {
-      return (localStorage.getItem('soma_ob_edu') as EducationId) || '';
-    }
-    return '';
-  });
+  // Step 2 — education
+  const [education, setEducation] = useState<EducationId | ''>('');
 
   // Step 3 — integrations
   const [canvasUrl, setCanvasUrl] = useState('');
@@ -66,7 +47,6 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
   const [saving, setSaving] = useState(false);
 
   const firstName = userName.split(' ')[0] || 'there';
-  const gdriveConnected = !!storage.getGoogleDriveToken();
 
   // ── Step 1 ────────────────────────────────────────────────────────────────
 
@@ -101,24 +81,6 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
     } finally {
       setCanvasConnecting(false);
     }
-  }
-
-  async function connectGoogle() {
-    if (education) localStorage.setItem('soma_ob_edu', education);
-    const redirectUrl = new URL(`${window.location.origin}/day-view`);
-    redirectUrl.searchParams.set('onboarding_source', 'gdrive');
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        scopes: [
-          'https://www.googleapis.com/auth/drive.file',
-          'https://www.googleapis.com/auth/documents',
-          'https://www.googleapis.com/auth/presentations',
-        ].join(' '),
-        redirectTo: redirectUrl.toString(),
-        queryParams: { access_type: 'offline', prompt: 'consent' },
-      },
-    });
   }
 
   // ── Completion ────────────────────────────────────────────────────────────
@@ -294,22 +256,6 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
                   </div>
                   {canvasError && <p className={styles.integError}>{canvasError}</p>}
                 </>
-              )}
-            </div>
-
-            {/* Google */}
-            <div className={styles.integBlock}>
-              <div className={styles.integHeader}>
-                <span className={styles.integTitle}>Google</span>
-                {gdriveConnected && <span className={styles.integBadge}>Connected</span>}
-              </div>
-              <p className={styles.integDesc}>
-                Create Docs, Slides, and sync your Google Calendar.
-              </p>
-              {!gdriveConnected && (
-                <button className={styles.connectBtn} onClick={connectGoogle}>
-                  Connect Google
-                </button>
               )}
             </div>
 

@@ -48,9 +48,6 @@ export interface SomaSettings {
   canvasIcalUrl?: string;
   googleToken?: string;
   googleRefreshToken?: string;
-  googleDocsToken?: string;
-  googleDriveToken?: string;
-  googleDriveRefreshToken?: string;
   onboardingCompleted?: boolean;
   educationLevel?: string;
   birthYear?: number;
@@ -121,7 +118,6 @@ const KEYS = {
   googleCacheTimestamp: 'soma_google_cache_timestamp',
   chatSessions: 'soma_chat_sessions',
   activeSessionId: 'soma_active_session_id',
-  studyFolder: 'soma_study_folder',
 };
 
 function get<T>(key: string, fallback: T): T {
@@ -176,9 +172,6 @@ async function uid(): Promise<string> {
 let _canvasIcalUrl = '';
 let _googleToken = '';
 let _googleRefreshToken = '';
-let _googleDocsToken = '';
-let _googleDriveToken = '';
-let _googleDriveRefreshToken = '';
 
 // Resolves once loadTokens() has finished (success or failure) at least once.
 // Components that read the in-memory token cache synchronously on mount
@@ -446,36 +439,6 @@ export const storage = {
     })();
   },
 
-  // ── Google Docs (legacy — kept for backward compatibility) ───────────
-  getGoogleDocsToken: (): string => _googleDocsToken,
-  setGoogleDocsToken: (v: string): void => {
-    _googleDocsToken = v;
-    void (async () => {
-      try {
-        const s = await storage.getSettings();
-        await storage.saveSettings({ ...s, googleDocsToken: v });
-      } catch (err) { console.error('[storage] google docs token persist failed:', err); }
-    })();
-  },
-
-  // ── Google Drive (unified: reads any Drive file + creates Docs) ──────
-  getGoogleDriveToken: (): string => _googleDriveToken,
-  getGoogleDriveRefreshToken: (): string => _googleDriveRefreshToken,
-  setGoogleDriveToken: (v: string, refreshToken?: string): void => {
-    _googleDriveToken = v;
-    if (refreshToken) _googleDriveRefreshToken = refreshToken;
-    void (async () => {
-      try {
-        const s = await storage.getSettings();
-        await storage.saveSettings({
-          ...s,
-          googleDriveToken: v,
-          ...(refreshToken ? { googleDriveRefreshToken: refreshToken } : {}),
-        });
-      } catch (err) { console.error('[storage] google drive token persist failed:', err); }
-    })();
-  },
-
   // Call once after auth resolves. Populates the in-memory token/data caches
   // from Supabase and performs one-time migrations away from localStorage.
   async loadTokens(): Promise<void> {
@@ -500,11 +463,6 @@ export const storage = {
       _canvasIcalUrl = s.canvasIcalUrl ?? '';
       _googleToken = s.googleToken ?? '';
       _googleRefreshToken = s.googleRefreshToken ?? '';
-      _googleDocsToken = s.googleDocsToken ?? '';
-      // Migrate: old Docs-only token carries forward as the Drive token so
-      // existing "save to doc" keeps working until the user reconnects Drive.
-      _googleDriveToken = s.googleDriveToken ?? s.googleDocsToken ?? '';
-      _googleDriveRefreshToken = s.googleDriveRefreshToken ?? '';
       // One-time migration: move plaintext Google token out of localStorage
       const migrateKey = (key: string): string => {
         const raw = localStorage.getItem(key);
@@ -554,15 +512,6 @@ export const storage = {
 
   getGoogleCacheTimestamp: (): number | null => get<number | null>(KEYS.googleCacheTimestamp, null),
   setGoogleCacheTimestamp: (v: number) => set(KEYS.googleCacheTimestamp, v),
-
-  // ── Study folder (localStorage) ─────────────────────────────────────
-  getStudyFolder(): { folderId: string; folderName: string } | null {
-    return get<{ folderId: string; folderName: string } | null>(KEYS.studyFolder, null);
-  },
-  setStudyFolder(v: { folderId: string; folderName: string } | null): void {
-    if (v === null) localStorage.removeItem(KEYS.studyFolder);
-    else set(KEYS.studyFolder, v);
-  },
 
   // ── AI chat sessions localStorage — read-only, used for one-time migration to Supabase ──
   getChatSessions: (): ChatSession[] => get(KEYS.chatSessions, []),
@@ -991,15 +940,11 @@ export const storage = {
     localStorage.removeItem('soma_boss_progress'); // legacy key
     // Study plan cache
     localStorage.removeItem('soma_canvas_study_plan_preview');
-    // Study folder
-    localStorage.removeItem(KEYS.studyFolder);
     // App preferences / theme
     localStorage.removeItem(SOMA_SETTINGS_KEY);
     // In-memory token cache
     _canvasIcalUrl = '';
     _googleToken = '';
-    _googleDocsToken = '';
-    _googleDriveToken = '';
   },
 
   async cleanupTestBlocks(taskName: string): Promise<void> {

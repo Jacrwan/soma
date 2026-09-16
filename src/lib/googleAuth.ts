@@ -13,10 +13,7 @@ async function checkTokenValid(token: string): Promise<boolean> {
   }
 }
 
-async function refreshViaServer(
-  supabaseToken: string,
-  tokenField: 'googleDriveToken' | 'googleToken',
-): Promise<string | null> {
+async function refreshViaServer(supabaseToken: string): Promise<string | null> {
   try {
     const res = await fetch('/api/google', {
       method: 'POST',
@@ -24,7 +21,7 @@ async function refreshViaServer(
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${supabaseToken}`,
       },
-      body: JSON.stringify({ action: 'refresh-token', tokenField }),
+      body: JSON.stringify({ action: 'refresh-token', tokenField: 'googleToken' }),
     });
     if (!res.ok) return null;
     const data = await res.json() as { accessToken?: string };
@@ -35,17 +32,13 @@ async function refreshViaServer(
 }
 
 /**
- * Validates the stored Google access token via tokeninfo. If expired, refreshes
- * it server-side (where the client secret lives), updates client storage, and
- * returns the usable token. Returns null if the token is missing or refresh fails.
+ * Validates the stored Google Calendar access token via tokeninfo. If expired,
+ * refreshes it server-side (where the client secret lives), updates client
+ * storage, and returns the usable token. Returns null if the token is missing
+ * or refresh fails.
  */
-export async function ensureFreshGoogleToken(
-  tokenField: 'googleDriveToken' | 'googleToken',
-): Promise<string | null> {
-  const token = tokenField === 'googleDriveToken'
-    ? storage.getGoogleDriveToken()
-    : storage.getGoogleToken();
-
+export async function ensureFreshGoogleToken(): Promise<string | null> {
+  const token = storage.getGoogleToken();
   if (!token) return null;
 
   const valid = await checkTokenValid(token);
@@ -54,14 +47,9 @@ export async function ensureFreshGoogleToken(
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) return null;
 
-  const fresh = await refreshViaServer(session.access_token, tokenField);
+  const fresh = await refreshViaServer(session.access_token);
   if (!fresh) return null;
 
-  if (tokenField === 'googleDriveToken') {
-    storage.setGoogleDriveToken(fresh);
-  } else {
-    storage.setGoogleToken(fresh);
-  }
-
+  storage.setGoogleToken(fresh);
   return fresh;
 }

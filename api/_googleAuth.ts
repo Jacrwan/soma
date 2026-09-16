@@ -9,21 +9,13 @@ export class GoogleTokenExpiredError extends Error {
 }
 
 /**
- * Exchanges a stored refresh token for a new Google access token and persists
- * the new access token back to the user's settings row in Supabase.
- *
- * For Google Drive (`googleDriveToken`): reads the refresh token from the
- * `user_tokens` table (stored by api/google-oauth-callback.ts), with a
- * fallback to the legacy `settings.googleDriveRefreshToken` field for users
- * who connected before the server-side callback was added.
- *
- * For Google Calendar (`googleToken`): reads from `settings.googleRefreshToken`
- * (Calendar still uses Supabase OAuth, which may or may not have a refresh token).
+ * Exchanges the stored Google Calendar refresh token for a new access token
+ * and persists it back to the user's settings row in Supabase. Calendar uses
+ * Supabase OAuth, so the refresh token (if any) lives in `settings.googleRefreshToken`.
  */
 export async function refreshGoogleToken(
   userId: string,
   admin: SupabaseClient,
-  tokenField: 'googleDriveToken' | 'googleToken',
 ): Promise<string | null> {
   const clientId     = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -32,54 +24,17 @@ export async function refreshGoogleToken(
     return null;
   }
 
-  // ── Resolve the refresh token ─────────────────────────────────────────────
-
-  let refreshToken: string | null = null;
-
-  if (tokenField === 'googleDriveToken') {
-    // Primary: dedicated user_tokens table (written by server-side OAuth callback)
-    const { data: tokenRow, error: tokenErr } = await admin
-      .from('user_tokens')
-      .select('refresh_token')
-      .eq('user_id', userId)
-      .eq('provider', 'google_drive')
-      .maybeSingle();
-
-    if (tokenErr) {
-      console.warn('[googleAuth] user_tokens query error:', tokenErr.message);
-    }
-
-    refreshToken = tokenRow?.refresh_token ?? null;
-
-    // Fallback: legacy settings field (users who connected before the callback existed)
-    if (!refreshToken) {
-      const { data: settingsRow } = await admin
-        .from('settings')
-        .select('data')
-        .eq('user_id', userId)
-        .single();
-      const settings = (settingsRow?.data ?? {}) as Record<string, unknown>;
-      const legacy = settings['googleDriveRefreshToken'];
-      if (typeof legacy === 'string' && legacy) {
-        console.info('[googleAuth] Using legacy googleDriveRefreshToken from settings for user', userId);
-        refreshToken = legacy;
-      }
-    }
-  } else {
-    // Calendar: refresh token lives in settings (Supabase OAuth flow)
-    const { data: row } = await admin
-      .from('settings')
-      .select('data')
-      .eq('user_id', userId)
-      .single();
-    const settings = (row?.data ?? {}) as Record<string, unknown>;
-    const stored = settings['googleRefreshToken'];
-    refreshToken = typeof stored === 'string' && stored ? stored : null;
-  }
+  const { data: row } = await admin
+    .from('settings')
+    .select('data')
+    .eq('user_id', userId)
+    .single();
+  const settings = (row?.data ?? {}) as Record<string, unknown>;
+  const stored = settings['googleRefreshToken'];
+  const refreshToken = typeof stored === 'string' && stored ? stored : null;
 
   if (!refreshToken) {
-    console.warn('[googleAuth] No refresh token found for', tokenField,
-      '— user must reconnect Google');
+    console.warn('[googleAuth] No refresh token found for googleToken — user must reconnect Google');
     return null;
   }
 
@@ -113,11 +68,11 @@ export async function refreshGoogleToken(
     .select('data')
     .eq('user_id', userId)
     .single();
-  const settings = (settingsRow?.data ?? {}) as Record<string, unknown>;
+  const latestSettings = (settingsRow?.data ?? {}) as Record<string, unknown>;
 
   await admin.from('settings').upsert({
     user_id: userId,
-    data:    { ...settings, [tokenField]: json.access_token },
+    data:    { ...latestSettings, googleToken: json.access_token },
   });
 
   return json.access_token;

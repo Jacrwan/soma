@@ -8,7 +8,6 @@ import { supabase } from '../../lib/supabase';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, openBillingPortal } from '../../lib/subscription';
 import { getIcalAssignments } from '../../lib/canvas';
-import { clearFolderContentsCache } from '../../lib/googleDrive';
 import styles from './SettingsTab.module.css';
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
@@ -119,14 +118,8 @@ export default function SettingsTab() {
   // Google Calendar integration state
   const [gcalToken, setGcalToken] = useState(() => storage.getGoogleToken());
 
-  // Google Drive integration state (used for the AI's "save to Doc" feature;
-  // reading study material out of Drive is now the Documents page's job)
-  const [gdriveToken, setGdriveToken] = useState(() => storage.getGoogleDriveToken());
-
   // On mount (and after OAuth redirect back), handle the post-auth source param.
-  // ?source=gdrive  → token was stored server-side by api/google-oauth-callback.ts;
-  //                   reload from Supabase settings (no provider_token in session).
-  // ?source=gcal    → uses Supabase OAuth; read provider_token from session.
+  // ?source=gcal → uses Supabase OAuth; read provider_token from session.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const source = params.get('source');
@@ -137,21 +130,6 @@ export default function SettingsTab() {
       window.history.replaceState({}, '', url.toString());
     };
 
-    if (source === 'gdrive') {
-      // Access token was stored by the server-side callback; read it from Supabase
-      storage.getSettings().then(s => {
-        const tok = s.googleDriveToken ?? '';
-        if (tok) {
-          storage.setGoogleDriveToken(tok);
-          setGdriveToken(tok);
-          window.dispatchEvent(new CustomEvent('soma_gdrive_updated'));
-        }
-        clearSourceParam();
-      });
-      return;
-    }
-
-    // Calendar (and any legacy Supabase OAuth flows)
     supabase.auth.getSession().then(({ data }) => {
       const pt  = data.session?.provider_token;
       const prt = data.session?.provider_refresh_token ?? undefined;
@@ -437,47 +415,6 @@ export default function SettingsTab() {
     window.dispatchEvent(new CustomEvent('soma_gcal_updated'));
   }
 
-  async function connectGdrive() {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.access_token) return;
-
-    // Drive uses a custom server-side OAuth callback so we can capture the
-    // refresh token. The Google Client ID must be exposed as VITE_GOOGLE_CLIENT_ID
-    // (same value as the server-side GOOGLE_CLIENT_ID env var).
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
-    if (!clientId) {
-      console.error('[soma] VITE_GOOGLE_CLIENT_ID is not set — cannot initiate Drive OAuth');
-      return;
-    }
-
-    const driveScopes = [
-      'https://www.googleapis.com/auth/drive.readonly',
-      'https://www.googleapis.com/auth/drive.file',     // Picker-selected files only
-      'https://www.googleapis.com/auth/documents',       // create Docs
-      'https://www.googleapis.com/auth/presentations',  // create Slides
-    ].join(' ');
-
-    const params = new URLSearchParams({
-      client_id:     clientId,
-      redirect_uri:  `${window.location.origin}/api/google-oauth-callback`,
-      response_type: 'code',
-      scope:         driveScopes,
-      access_type:   'offline',
-      prompt:        'consent',   // ensures Google returns a refresh_token every time
-      state:         session.access_token,  // Supabase JWT — used server-side to identify the user
-    });
-
-    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
-  }
-
-  function disconnectGdrive() {
-    clearFolderContentsCache();
-    storage.setGoogleDriveToken('');
-    storage.setGoogleDocsToken(''); // clear legacy docs token too
-    storage.setStudyFolder(null); // clear any leftover study-folder pointer from before Documents existed
-    setGdriveToken('');
-    window.dispatchEvent(new CustomEvent('soma_gdrive_updated'));
-  }
 
   const navItems: [Section, string][] = [
     ['profile',       'Profile'],
@@ -1004,23 +941,6 @@ export default function SettingsTab() {
                     </>
                   ) : (
                     <button className={styles.connectBtn} onClick={connectGcal}>Connect</button>
-                  )}
-                </div>
-              </div>
-
-              <div className={styles.integrationRow}>
-                <div className={styles.integrationInfo}>
-                  <span className={styles.integrationLabel}>Google Drive <span className={styles.testingBadge}>Early access</span></span>
-                  <span className={styles.integrationDescription}>Attach Drive files (Docs, Slides, Sheets) to the AI, and let it create Google Docs and Slides on request</span>
-                </div>
-                <div className={styles.integrationActions}>
-                  {gdriveToken ? (
-                    <>
-                      <span className={styles.connectedBadge}>Connected</span>
-                      <button className={styles.disconnectBtn} onClick={disconnectGdrive}>Disconnect</button>
-                    </>
-                  ) : (
-                    <button className={styles.connectBtn} onClick={connectGdrive}>Connect</button>
                   )}
                 </div>
               </div>

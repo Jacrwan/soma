@@ -3,16 +3,9 @@ import DOMPurify from 'dompurify';
 import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
-import { createGoogleDoc, updateGoogleDoc, createGoogleSlides } from '../../lib/googleDocs';
-import { parseCreateDoc, parseCreateSlides, CREATE_TEMPLATES, generatePreview, CreateTemplate } from '../../lib/aiArtifacts';
-import { readDriveFile, fileTypeLabel, getFolderContentsForPrompt, readCachedFolderSection, getFolderContentsCacheTs, hasTruncatedFolderFiles } from '../../lib/googleDrive';
-import { useGooglePicker, PickedFile } from '../../lib/useGooglePicker';
-import { ensureFreshGoogleToken } from '../../lib/googleAuth';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, hasAIAccess, startCheckout } from '../../lib/subscription';
-import { SavedCreation, loadCreateHistory, appendToCreateHistory, CREATE_HISTORY_EVENT } from '../../lib/createHistory';
-import { Subject, SubjectColor, Todo, ChatMessage, ChatSession, AiTodo, CanvasAssignment } from '../../types';
-import SubjectDot from '../shared/SubjectDot';
+import { SubjectColor, Todo, ChatMessage, ChatSession, AiTodo } from '../../types';
 import { SkeletonBlock } from '../UI/Skeleton';
 import TrialSetupModal from '../Trial/TrialSetupModal';
 import styles from './AITab.module.css';
@@ -517,10 +510,6 @@ function buildSystemPrompt(activeSubjectKey?: string): string {
     return lines.length > 0 ? `${label}:\n${lines.join('\n')}` : '';
   }
 
-  const driveConnected = !!storage.getGoogleDriveToken();
-  const folderSection = readCachedFolderSection();
-  const folderHasTruncated = hasTruncatedFolderFiles();
-
   const scheduleStr = [
     schoolHoursEnabled !== false ? fmtWeek(schoolHours, 'In class (unavailable for studying)') : '',
     workHoursEnabled !== false ? fmtWeek(workHours, 'At work (unavailable for studying)') : '',
@@ -549,7 +538,6 @@ ${assignmentsStr}
 If there are no upcoming assignments, say so clearly and do not make up or hallucinate any assignments.
 
 Use this information to help the user plan their study schedule, prioritize tasks, and answer questions about their workload. Always refer to today's actual date when discussing deadlines.
-${folderSection ? `\nIMPORTANT: The study materials below are real file contents you have already read and fully know. When the user references any topic, subject, or file — even loosely or by nickname — match it to the closest file in your study materials and answer from it directly. Never say you cannot access files, cannot see folders, or need the user to share anything. You already have the content. "AP Government review", "AP Gov study guide", "the review sheet" etc. should all map to the AP Government file.\n\nYou have full knowledge of the following study materials from the user's Google Drive folder. Reference them naturally when relevant, as if you've already read them:\n\n${folderSection}\n${folderHasTruncated ? '\nNote: Some files were too large to include in full. The user may not get complete answers about those files.\n' : ''}` : ''}
 User availability:
 ${availabilityStr || 'Not set — ask the user what time they want to start and end.'}
 ${gcalStr ? `\nExisting calendar events (read-only, do not schedule over these):\n${gcalStr}` : ''}
@@ -562,41 +550,7 @@ Todo item format: [{"text":"...","subjectId":"uuid-here","assignmentId":12345}]
 Use the exact subject IDs from the subjects list above. Use the exact assignment IDs from the assignments list above. Set subjectId to null if no subject applies. Set assignmentId to null if not linked to a Canvas assignment.
 Match subjectId to the user's existing subjects by name (case-insensitive).
 SUBJECT ASSIGNMENT: When assigning a todo to a subject, you MUST match by subject name semantically. Physics study tasks must go under a subject with 'Physics' or 'Berkeley' in the name. Machine Learning tasks go under 'Machine Learning'. Never assign physics content to a machine learning subject. If no matching subject exists, ask the user which subject to use before creating the todos. Never default to an unrelated subject.
-${driveConnected ? `
-GOOGLE DRIVE — CREATING FILES:
-The user has connected Google Drive, so you can create real Google Docs and Google Slides for them when they ask.
 
-When the user asks you to create/write a Google Doc, take notes into a doc, write an essay/summary in Docs, or answer a homework assignment in a doc, respond with:
-1. One short sentence confirming what you're creating.
-2. A <createDoc> block containing the full content:
-<createDoc title="Short descriptive title">
-The full document text goes here. Write it in full — this exact text becomes the Google Doc body. Use plain text with line breaks; you may use simple markdown like ** for emphasis and - for lists.
-</createDoc>
-
-When the user asks you to create a Google Slides presentation / slide deck / slides, respond with:
-1. One short sentence confirming what you're creating.
-2. A <createSlides> block. Use "== " to start each slide (its title) and "- " for each bullet:
-<createSlides title="Deck title">
-== First slide title
-- First bullet point
-- Second bullet point
-== Second slide title
-- A bullet
-- Another bullet
-</createSlides>
-
-CRITICAL rules for file creation:
-- Always close <createDoc> with </createDoc> and <createSlides> with </createSlides>.
-- Put the FULL content inside the block — never say "I'll create it" without the block, and never put placeholder text. The block is what actually gets created.
-- Use a <createDoc> OR a <createSlides> block, never both, and never alongside <todos>.
-- If an assignment or file was attached to the message, use its actual content when answering or summarizing.
-- Keep the natural-language part outside the block very short — the real output lives in the file.
-
-GOOGLE DRIVE — READING FILES:
-When study materials are loaded from Google Drive (textbooks, PDFs, notes, etc.), summarize the relevant content rather than reproducing large portions. Use what you've read to inform your planning and answers, but keep your response concise. Never quote more than a short excerpt from any document.
-` : `
-NOTE: The user has NOT connected Google Drive. If they ask you to create a Google Doc or Slides, briefly tell them to connect Google Drive in Settings → Integrations first, then offer to write the content directly in chat instead.
-`}
 SCHEDULING RULES — follow these exactly when generating a schedule:
 
 What to schedule:
@@ -772,12 +726,6 @@ function SessionRow({ session, isActive, isConfirming, onSelect, onDeleteClick, 
   );
 }
 
-// ── Files panel ─────────────────────────────────────────────────────────────
-
-function fmtFileDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
 function ThinkingIndicator() {
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
@@ -797,103 +745,6 @@ function ThinkingIndicator() {
         </span>
         <span className={styles.thinkingTimer}>{timeStr}</span>
       </div>
-    </div>
-  );
-}
-
-function FilesPanel({ subjects, onClose }: { subjects: Subject[]; onClose: () => void }) {
-  const [history, setHistory] = useState<SavedCreation[]>(() => loadCreateHistory());
-  const [sort, setSort] = useState<'date' | 'type'>('date');
-
-  useEffect(() => {
-    const handler = () => setHistory(loadCreateHistory());
-    window.addEventListener(CREATE_HISTORY_EVENT, handler);
-    return () => window.removeEventListener(CREATE_HISTORY_EVENT, handler);
-  }, []);
-
-  const groups = useMemo(() => {
-    const groupMap = new Map<string, SavedCreation[]>();
-    for (const item of history) {
-      const key = item.subjectId ?? 'general';
-      if (!groupMap.has(key)) groupMap.set(key, []);
-      groupMap.get(key)!.push(item);
-    }
-    for (const items of groupMap.values()) {
-      items.sort((a, b) => {
-        if (sort === 'type' && a.kind !== b.kind) return a.kind === 'doc' ? -1 : 1;
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      });
-    }
-    return [...groupMap.entries()].sort(([keyA, itemsA], [keyB, itemsB]) => {
-      if (keyA === 'general') return 1;
-      if (keyB === 'general') return -1;
-      const latestA = Math.max(...itemsA.map(i => new Date(i.createdAt).getTime()));
-      const latestB = Math.max(...itemsB.map(i => new Date(i.createdAt).getTime()));
-      return latestB - latestA;
-    });
-  }, [history, sort]);
-
-  return (
-    <div className={styles.filesPanel}>
-      <div className={styles.filesPanelHeader}>
-        <span className={styles.filesPanelTitle}>Files</span>
-        <div className={styles.filesSortRow}>
-          <button
-            className={`${styles.filesSortBtn}${sort === 'date' ? ` ${styles.filesSortBtnActive}` : ''}`}
-            onClick={() => setSort('date')}
-          >Date</button>
-          <button
-            className={`${styles.filesSortBtn}${sort === 'type' ? ` ${styles.filesSortBtnActive}` : ''}`}
-            onClick={() => setSort('type')}
-          >Type</button>
-        </div>
-        <button className={styles.filesPanelClose} onClick={onClose} title="Close files panel">✕</button>
-      </div>
-
-      {history.length === 0 ? (
-        <div className={styles.filesEmpty}>No files generated yet</div>
-      ) : (
-        <div className={styles.filesList}>
-          {groups.map(([groupKey, items]) => {
-            const subject = groupKey !== 'general' ? subjects.find(s => s.id === groupKey) : null;
-            return (
-              <div key={groupKey} className={styles.filesGroup}>
-                <div className={styles.filesGroupHeader}>
-                  {subject
-                    ? <SubjectDot color={subject.color} size={7} />
-                    : <span className={styles.filesGroupDotGeneral} />}
-                  <span className={styles.filesGroupLabel}>{subject?.name ?? 'General'}</span>
-                </div>
-                {items.map(item => (
-                  item.url ? (
-                    <a
-                      key={item.id}
-                      href={item.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={styles.filesItem}
-                    >
-                      <span className={styles.filesItemIcon}>{item.kind === 'slides' ? '📊' : '📄'}</span>
-                      <div className={styles.filesItemInfo}>
-                        <span className={styles.filesItemTitle}>{item.title}</span>
-                        <span className={styles.filesItemDate}>{fmtFileDate(item.createdAt)}</span>
-                      </div>
-                    </a>
-                  ) : (
-                    <div key={item.id} className={`${styles.filesItem} ${styles.filesItemUnavailable}`}>
-                      <span className={styles.filesItemIcon}>{item.kind === 'slides' ? '📊' : '📄'}</span>
-                      <div className={styles.filesItemInfo}>
-                        <span className={styles.filesItemTitle}>{item.title}</span>
-                        <span className={styles.filesItemUnavailableLabel}>Unavailable</span>
-                      </div>
-                    </div>
-                  )
-                ))}
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
@@ -1005,7 +856,6 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   const recognitionRef = useRef<any>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const subjects = storage.getSubjects();
 
   // getCanvasIcalUrl() below is read fresh on every render, but the value it
   // reads is populated asynchronously by loadTokens(). If this tab renders
@@ -1021,220 +871,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     return () => { cancelled = true; };
   }, []);
 
-  const [driveToken, setDriveToken] = useState(() => storage.getGoogleDriveToken());
-  const [saveAsDocMode] = useState(false);
-
-  // ── Quick-create ─────────────────────────────────────────────────────────
-  const [quickOpen, setQuickOpen] = useState(false);
-  const [quickTemplate, setQuickTemplate] = useState<CreateTemplate | null>(null);
-  const [quickSourceType, setQuickSourceType] = useState<'topic' | 'assignment' | 'subject' | 'file'>('topic');
-  const [quickTopic, setQuickTopic] = useState('');
-  const [quickAssignmentId, setQuickAssignmentId] = useState<number | null>(null);
-  const [quickSubjectId, setQuickSubjectId] = useState('');
-  const [quickInstructions, setQuickInstructions] = useState('');
-  const [quickGenerating, setQuickGenerating] = useState(false);
-  const [quickError, setQuickError] = useState('');
-  const [quickDriveFile, setQuickDriveFile] = useState<{ id: string; title: string } | null>(null);
-  const [quickDriveLoading, setQuickDriveLoading] = useState(false);
-
-  const QUICK_ICONS: Record<string, string> = {
-    notes: '📝', quiz: '🃏', studyguide: '📋', slides: '📊', outline: '✏️', summary: '📄',
-  };
-
-  const [filesPanelOpen, setFilesPanelOpen] = useState<boolean>(() => {
-    try { return localStorage.getItem('soma_files_panel_open') === 'true'; }
-    catch { return false; }
-  });
-
-  useEffect(() => {
-    try { localStorage.setItem('soma_files_panel_open', String(filesPanelOpen)); }
-    catch { /* ignore */ }
-  }, [filesPanelOpen]);
-
-  // AI-created artifacts (doc / slides) keyed by message id
-  interface Artifact { kind: 'doc' | 'slides'; title: string; status: 'creating' | 'done' | 'error'; url?: string; error?: string }
-  const [artifacts, setArtifacts] = useState<Record<string, Artifact>>({});
-
-  // Attached Google Drive file (via Google Picker)
-  interface AttachedFile { id: string; title: string; content: string; mimeType: string }
-  const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
-  const [attachLoading, setAttachLoading] = useState(false);
-  const [attachError, setAttachError] = useState('');
-
-  useEffect(() => {
-    const handler = () => setDriveToken(storage.getGoogleDriveToken());
-    window.addEventListener('soma_gdrive_updated', handler);
-    return () => window.removeEventListener('soma_gdrive_updated', handler);
-  }, []);
-
-  function friendlyAttachError(err: Error): string {
-    switch (err.message) {
-      case 'no_access':            return "Can't read that file — make sure it's shared with your Google account.";
-      case 'not_found':            return 'File not found.';
-      case 'unsupported_type':     return "This file type can't be read. Open it in Google Docs/Slides first, then attach.";
-      case 'google_token_expired': return 'Google access expired — reconnect Google Drive in Settings.';
-      default:                     return 'Could not read file. Try again.';
-    }
-  }
-
-  function onPickDriveFile(file: PickedFile) {
-    if (!driveToken) return;
-    setAttachLoading(true);
-    setAttachError('');
-    readDriveFile(driveToken, file.id)
-      .then(({ title, content, mimeType }) =>
-        setAttachedFile({ id: file.id, title, content, mimeType }))
-      .catch((err: Error) => setAttachError(friendlyAttachError(err)))
-      .finally(() => setAttachLoading(false));
-  }
-
-  const { openPicker } = useGooglePicker(driveToken, onPickDriveFile);
-
-  function onPickQuickFile(file: PickedFile) {
-    setQuickDriveFile({ id: file.id, title: file.name });
-  }
-  const { openPicker: openQuickPicker } = useGooglePicker(driveToken, onPickQuickFile);
-
-  const assignments: CanvasAssignment[] = storage.getCachedAssignments();
-  const nonArchivedSubjects = subjects.filter(s => !s.archived);
-
-  async function handleQuickGenerate() {
-    if (!quickTemplate || quickGenerating) return;
-    setQuickGenerating(true);
-    setQuickError('');
-
-    try {
-      let sourceLabel = '';
-      let sourceContext = '';
-      const MAX_FILE = 12_000;
-
-      if (quickSourceType === 'topic') {
-        sourceLabel = quickTopic.trim();
-        if (!sourceLabel) { setQuickError('Enter a topic.'); return; }
-      } else if (quickSourceType === 'assignment') {
-        const a = assignments.find(x => x.id === quickAssignmentId);
-        if (!a) { setQuickError('Select an assignment.'); return; }
-        sourceLabel = `${a.name} (${a.courseName})`;
-        sourceContext = [
-          `Assignment: ${a.name}`,
-          `Course: ${a.courseName}`,
-          a.dueAt ? `Due: ${new Date(a.dueAt).toLocaleDateString()}` : '',
-          a.description ? `Details: ${a.description}` : '',
-        ].filter(Boolean).join('\n');
-      } else if (quickSourceType === 'subject') {
-        const s = nonArchivedSubjects.find(x => x.id === quickSubjectId);
-        if (!s) { setQuickError('Select a subject.'); return; }
-        sourceLabel = s.name;
-      } else if (quickSourceType === 'file') {
-        if (!quickDriveFile) { setQuickError('Select a Drive file.'); return; }
-        if (!driveToken) { setQuickError('Connect Google Drive in Settings first.'); return; }
-        setQuickDriveLoading(true);
-        const { title, content } = await readDriveFile(driveToken, quickDriveFile.id);
-        setQuickDriveLoading(false);
-        sourceLabel = title;
-        sourceContext = content.length > MAX_FILE
-          ? `${content.slice(0, MAX_FILE)}\n\n[Truncated]`
-          : content;
-      }
-
-      const preview = await generatePreview({
-        template: quickTemplate,
-        sourceLabel,
-        sourceContext,
-        instructions: quickInstructions.trim() || undefined,
-      });
-
-      // Build a human-readable preview — shown in the bubble after stripTags removes the XML
-      let previewText: string;
-      if (preview.kind === 'slides' && preview.slidesSpec) {
-        previewText = preview.slidesSpec.slides
-          .map(s => `**${s.title}**${s.bullets.length > 0 ? '\n' + s.bullets.map(b => `• ${b}`).join('\n') : ''}`)
-          .join('\n\n');
-      } else {
-        previewText = preview.docSpec?.content ?? '';
-      }
-
-      const icon = QUICK_ICONS[quickTemplate.id] ?? quickTemplate.icon;
-      const msgContent = `${icon} **${quickTemplate.label}: ${preview.title}**\n\n${previewText}\n\n${preview.rawContent}`;
-
-      const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: msgContent };
-      updateSession(activeSessionId, s => ({ ...s, messages: [...s.messages, assistantMsg] }));
-      void runCreation(assistantMsg.id, preview.rawContent, currentSubjectKey);
-
-      setQuickTemplate(null);
-      setQuickTopic('');
-      setQuickAssignmentId(null);
-      setQuickSubjectId('');
-      setQuickInstructions('');
-      setQuickDriveFile(null);
-    } catch (err: unknown) {
-      const msg = (err as Error).message;
-      setQuickDriveLoading(false);
-      setQuickError(
-        msg === 'generation_failed'    ? 'Could not generate content. Try rephrasing.'
-        : msg === 'subscription_required' ? 'Subscription required.'
-        : msg === 'google_token_expired'  ? 'Google access expired — reconnect Drive in Settings.'
-        : 'Something went wrong. Try again.',
-      );
-    } finally {
-      setQuickGenerating(false);
-    }
-  }
-
-  // Execute an AI-requested creation (doc or slides) and track its status per message.
-  async function runCreation(msgId: string, response: string, subjectKey: string, sourceFile?: AttachedFile | null) {
-    const docSpec = parseCreateDoc(response);
-    const slidesSpec = parseCreateSlides(response);
-    if (!docSpec && !slidesSpec) return;
-
-    const isDocUpdate = docSpec && sourceFile && sourceFile.mimeType === 'application/vnd.google-apps.document';
-    const kind: Artifact['kind'] = slidesSpec ? 'slides' : 'doc';
-    const title = isDocUpdate
-      ? sourceFile.title
-      : (slidesSpec?.title ?? docSpec?.title ?? 'Untitled').slice(0, 80);
-
-    if (!driveToken) {
-      setArtifacts(prev => ({
-        ...prev,
-        [msgId]: { kind, title, status: 'error', error: 'Connect Google Drive in Settings to create files.' },
-      }));
-      return;
-    }
-
-    const subjectId = subjectKey.startsWith('subject_') ? subjectKey.slice('subject_'.length) : undefined;
-    setArtifacts(prev => ({ ...prev, [msgId]: { kind, title, status: isDocUpdate ? 'creating' : 'creating' } }));
-    try {
-      let url: string;
-      if (slidesSpec) {
-        const { presentationUrl } = await createGoogleSlides(driveToken, slidesSpec.title, slidesSpec.slides);
-        url = presentationUrl;
-      } else if (isDocUpdate) {
-        const { docUrl } = await updateGoogleDoc(driveToken, sourceFile.id, docSpec!.content);
-        url = docUrl;
-      } else {
-        const { docUrl } = await createGoogleDoc(driveToken, docSpec!.title, docSpec!.content);
-        url = docUrl;
-      }
-      setArtifacts(prev => ({ ...prev, [msgId]: { kind, title, status: 'done', url } }));
-      const label = isDocUpdate ? 'Updated' : 'AI Chat';
-      appendToCreateHistory({ kind, title, url, templateLabel: label, sourceLabel: '', createdAt: new Date().toISOString(), subjectId });
-    } catch (err: unknown) {
-      const e = err as Error & { presentationUrl?: string };
-      if (e.presentationUrl) {
-        setArtifacts(prev => ({ ...prev, [msgId]: { kind, title, status: 'done', url: e.presentationUrl } }));
-        appendToCreateHistory({ kind, title, url: e.presentationUrl!, templateLabel: 'AI Chat', sourceLabel: '', createdAt: new Date().toISOString(), subjectId });
-        return;
-      }
-      const msg = e.message === 'google_token_expired'
-        ? 'Google access expired — reconnect Google Drive in Settings.'
-        : isDocUpdate ? 'Could not update the doc. Try again.'
-        : kind === 'slides' ? 'Could not create the presentation. Try again.'
-        : 'Could not create the doc. Try again.';
-      setArtifacts(prev => ({ ...prev, [msgId]: { kind, title, status: 'error', error: msg } }));
-    }
-  }
-
-  const systemPromptCache = useRef<{ prompt: string; canvasTs: number | null; dateKey: string; folderCacheTs: number; subjectKey: string; subjectsV: number } | null>(null);
+  const systemPromptCache = useRef<{ prompt: string; canvasTs: number | null; dateKey: string; subjectKey: string; subjectsV: number } | null>(null);
   const subjectsVersion = useRef(0);
 
   // Invalidate the prompt cache whenever subjects change mid-conversation
@@ -1247,19 +884,17 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   function getCachedSystemPrompt(subjectKey: string): string {
     const canvasTs = storage.getCacheTimestamp();
     const dateKey = getTodayKey();
-    const folderCacheTs = getFolderContentsCacheTs();
     const subjectsV = subjectsVersion.current;
     const cached = systemPromptCache.current;
     if (
       cached &&
       cached.canvasTs === canvasTs &&
       cached.dateKey === dateKey &&
-      cached.folderCacheTs === folderCacheTs &&
       cached.subjectKey === subjectKey &&
       cached.subjectsV === subjectsV
     ) return cached.prompt;
     const prompt = buildSystemPrompt(subjectKey);
-    systemPromptCache.current = { prompt, canvasTs, dateKey, folderCacheTs, subjectKey, subjectsV };
+    systemPromptCache.current = { prompt, canvasTs, dateKey, subjectKey, subjectsV };
     return prompt;
   }
 
@@ -1497,34 +1132,14 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
     const session = sessions.find(s => s.id === activeSessionId);
     if (!session) return;
 
-    // Build display content (shown in chat bubble) — short, no raw file dump
-    const displayContent = attachedFile
-      ? `📎 **${attachedFile.title}**\n\n${text}`
-      : text;
-
-    // Build API content — includes the full file for the AI's context
-    const MAX_FILE_CHARS = 12_000;
-    let apiContent = text;
-    if (attachedFile) {
-      const fileBody = attachedFile.content.length > MAX_FILE_CHARS
-        ? `${attachedFile.content.slice(0, MAX_FILE_CHARS)}\n\n[Content truncated — file is too long to include in full]`
-        : attachedFile.content;
-      const kind = fileTypeLabel(attachedFile.mimeType);
-      apiContent = `[Attached Google ${kind}: "${attachedFile.title}"]\n\n${fileBody}\n\n---\n\n${text}`;
-    }
-
-    const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: displayContent };
+    const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: text };
     const messagesWithUser = [...session.messages, userMsg];
 
-    const sentAttachedFile = attachedFile;
     setInput('');
-    setAttachedFile(null);
-    setAttachError('');
     setLoading(true);
     updateSession(activeSessionId, s => ({ ...s, messages: messagesWithUser }));
 
     try {
-      await getFolderContentsForPrompt();
       let systemPrompt = getCachedSystemPrompt(currentSubjectKey);
       try {
         const incompleteTodos = await storage.fetchIncompleteTodos();
@@ -1556,7 +1171,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       }
       const apiMessages = [
         ...messagesWithUser.slice(-10, -1).map(m => ({ role: m.role, content: m.content })),
-        { role: 'user' as const, content: apiContent },
+        { role: 'user' as const, content: text },
       ];
       const planningKeywords = ['schedule', 'study plan', 'plan my day', 'generate'];
       const needsSonnet = planningKeywords.some(kw => text.toLowerCase().includes(kw));
@@ -1584,21 +1199,6 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       }
 
       if (isVoice) speakText(response);
-
-      void runCreation(assistantMsg.id, response, currentSubjectKey, sentAttachedFile);
-
-      // Auto-save to Google Doc if mode is on (and the AI didn't already create one)
-      if (saveAsDocMode && driveToken && !parseCreateDoc(response) && !parseCreateSlides(response)) {
-        const docTitle = text.replace(/\s+/g, ' ').trim().slice(0, 60) || 'Soma AI Response';
-        const capturedSubjectKey = currentSubjectKey;
-        createGoogleDoc(driveToken, docTitle, stripTags(response)).then(({ docUrl }) => {
-          appendToCreateHistory({
-            kind: 'doc', title: docTitle, url: docUrl, templateLabel: 'AI Response', sourceLabel: '',
-            createdAt: new Date().toISOString(),
-            subjectId: capturedSubjectKey.startsWith('subject_') ? capturedSubjectKey.slice('subject_'.length) : undefined,
-          });
-        }).catch(() => {});
-      }
     } catch (err: unknown) {
       const code = (err as { message?: string })?.message ?? '';
       const content = code === 'subscription_required'
@@ -1606,7 +1206,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
         : code === 'rate_limit'
         ? 'Rate limit reached — please wait a moment and try again.'
         : code === 'context_too_long'
-        ? 'Your message or study materials were too long for a single response. Try asking for a shorter plan, or remove some files from your study folder.'
+        ? 'Your message was too long for a single response. Try asking for a shorter plan.'
         : code === 'overloaded'
         ? 'The AI is overloaded right now — please try again in a few seconds.'
         : code.startsWith('api_error:')
@@ -1707,14 +1307,6 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
 
       {/* ── Chat area ───────────────────────────────────────────────────── */}
       <div className={styles.chatArea}>
-        <div className={styles.chatHeader}>
-          <button
-            className={`${styles.filesPanelToggle}${filesPanelOpen ? ` ${styles.filesPanelToggleActive}` : ''}`}
-            onClick={() => setFilesPanelOpen(p => !p)}
-            title={filesPanelOpen ? 'Close files panel' : 'View generated files'}
-          >📁</button>
-        </div>
-
         <div className={styles.messageList}>
           {messages.length === 0 && (() => {
             const canvasConnected = Boolean(storage.getCanvasIcalUrl());
@@ -1760,29 +1352,6 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
                   {msg.confirmText}
                 </div>
               )}
-              {msg.role === 'assistant' && artifacts[msg.id] && (
-                <div className={styles.artifactCard}>
-                  <span className={styles.artifactIcon}>{artifacts[msg.id].kind === 'slides' ? '📊' : '📄'}</span>
-                  <div className={styles.artifactInfo}>
-                    <span className={styles.artifactTitle}>{artifacts[msg.id].title}</span>
-                    <span className={styles.artifactStatus}>
-                      {artifacts[msg.id].status === 'creating'
-                        ? `Creating Google ${artifacts[msg.id].kind === 'slides' ? 'Slides' : 'Doc'}…`
-                        : artifacts[msg.id].status === 'error'
-                        ? artifacts[msg.id].error
-                        : `Created in Google ${artifacts[msg.id].kind === 'slides' ? 'Slides' : 'Docs'}`}
-                    </span>
-                  </div>
-                  {artifacts[msg.id].status === 'done' && artifacts[msg.id].url && (
-                    <a
-                      className={styles.artifactOpen}
-                      href={artifacts[msg.id].url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >Open ↗</a>
-                  )}
-                </div>
-              )}
             </div>
           ))}
           {loading && <ThinkingIndicator />}
@@ -1790,198 +1359,11 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
         </div>
 
         <div className={styles.inputAreaWrapper}>
-          {/* Attached Google Drive file chip */}
-          {(attachLoading || attachedFile || attachError) && (
-            <div className={styles.docChip}>
-              {attachLoading && (
-                <span className={styles.docChipLoading}>📎 Reading file…</span>
-              )}
-              {attachError && !attachLoading && (
-                <span className={styles.docChipError}>⚠ {attachError}
-                  <button className={styles.docChipRemove} onClick={() => setAttachError('')}>✕</button>
-                </span>
-              )}
-              {attachedFile && !attachLoading && (
-                <>
-                  <span className={styles.docChipIcon}>📎</span>
-                  <span className={styles.docChipTitle}>{attachedFile.title}</span>
-                  <span className={styles.docChipKind}>{fileTypeLabel(attachedFile.mimeType)}</span>
-                  <button
-                    className={styles.docChipRemove}
-                    onClick={() => { setAttachedFile(null); setAttachError(''); }}
-                    title="Remove attached file"
-                  >✕</button>
-                </>
-              )}
-            </div>
-          )}
-
-
-          {/* Quick-create chips */}
-          {quickOpen && !quickTemplate && (
-            <div className={styles.quickChipsRow}>
-              {CREATE_TEMPLATES.map(t => (
-                <button
-                  key={t.id}
-                  className={styles.quickChip}
-                  onClick={() => { setQuickTemplate(t); setQuickError(''); setQuickSourceType('topic'); }}
-                  disabled={loading || quickGenerating}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Quick-create form */}
-          {quickTemplate && (
-            <div className={styles.quickForm}>
-              <div className={styles.quickFormHeader}>
-                <span className={styles.quickFormTitle}>
-                  {QUICK_ICONS[quickTemplate.id] ?? quickTemplate.icon} {quickTemplate.label}
-                </span>
-                <button className={styles.quickFormClose} onClick={() => { setQuickTemplate(null); setQuickError(''); }}>✕</button>
-              </div>
-              <div className={styles.quickFormBody}>
-                {/* Source type tabs */}
-                <div className={styles.quickSourceTabs}>
-                  {(['topic', 'assignment', 'subject', 'file'] as const).map(st => (
-                    <button
-                      key={st}
-                      className={`${styles.quickSourceTab}${quickSourceType === st ? ` ${styles.quickSourceTabActive}` : ''}`}
-                      onClick={() => { setQuickSourceType(st); setQuickError(''); }}
-                    >
-                      {st === 'topic' ? 'Topic' : st === 'assignment' ? 'Assignment' : st === 'subject' ? 'Subject' : 'Drive file'}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Source input */}
-                {quickSourceType === 'topic' && (
-                  <input
-                    className={styles.quickInput}
-                    placeholder="e.g. Photosynthesis, the French Revolution…"
-                    value={quickTopic}
-                    onChange={e => setQuickTopic(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') handleQuickGenerate(); }}
-                    autoFocus
-                  />
-                )}
-                {quickSourceType === 'assignment' && (
-                  assignments.length > 0 ? (
-                    <select
-                      className={styles.quickSelect}
-                      value={quickAssignmentId ?? ''}
-                      onChange={e => setQuickAssignmentId(e.target.value ? Number(e.target.value) : null)}
-                    >
-                      <option value="">Choose an assignment…</option>
-                      {assignments.map(a => (
-                        <option key={a.id} value={a.id}>{a.name} — {a.courseName}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <p className={styles.quickEmptyNote}>No Canvas assignments synced.</p>
-                  )
-                )}
-                {quickSourceType === 'subject' && (
-                  nonArchivedSubjects.length > 0 ? (
-                    <select
-                      className={styles.quickSelect}
-                      value={quickSubjectId}
-                      onChange={e => setQuickSubjectId(e.target.value)}
-                    >
-                      <option value="">Choose a subject…</option>
-                      {nonArchivedSubjects.map(s => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <p className={styles.quickEmptyNote}>No subjects yet.</p>
-                  )
-                )}
-                {quickSourceType === 'file' && (
-                  driveToken ? (
-                    <div className={styles.quickFileRow}>
-                      <button
-                        className={styles.quickPickFileBtn}
-                        onClick={async () => {
-                          setQuickError('');
-                          const fresh = await ensureFreshGoogleToken('googleDriveToken');
-                          if (!fresh) {
-                            setQuickError('Your Google connection has expired — please reconnect in Settings.');
-                            return;
-                          }
-                          openQuickPicker(fresh);
-                        }}
-                        disabled={quickDriveLoading}
-                      >
-                        {quickDriveFile ? 'Change file' : 'Choose from Drive'}
-                      </button>
-                      {quickDriveFile && (
-                        <span className={styles.quickFileChip}>
-                          <span className={styles.quickFileChipTitle}>{quickDriveFile.title}</span>
-                          <button className={styles.quickFileChipRemove} onClick={() => setQuickDriveFile(null)}>✕</button>
-                        </span>
-                      )}
-                    </div>
-                  ) : (
-                    <p className={styles.quickEmptyNote}>Connect Google Drive in Settings to use Drive files.</p>
-                  )
-                )}
-
-                {/* Extra instructions */}
-                <textarea
-                  className={styles.quickTextarea}
-                  placeholder="Extra instructions (optional)"
-                  value={quickInstructions}
-                  onChange={e => setQuickInstructions(e.target.value)}
-                  rows={2}
-                />
-
-                {/* Actions */}
-                <div className={styles.quickFormActions}>
-                  <button
-                    className={styles.quickGenerateBtn}
-                    onClick={handleQuickGenerate}
-                    disabled={quickGenerating || quickDriveLoading}
-                  >
-                    {quickGenerating ? 'Generating…' : `Generate ${quickTemplate.output === 'slides' ? 'Slides' : 'Doc'}`}
-                  </button>
-                  <button className={styles.quickCancelBtn} onClick={() => { setQuickTemplate(null); setQuickError(''); }}>
-                    Cancel
-                  </button>
-                  {quickError && <span className={styles.quickError}>{quickError}</span>}
-                </div>
-              </div>
-            </div>
-          )}
-
           <div className={styles.inputRow}>
-            <button
-              className={`${styles.quickToggleBtn}${quickOpen ? ` ${styles.quickToggleBtnActive}` : ''}`}
-              onClick={() => { setQuickOpen(p => !p); if (quickOpen) setQuickTemplate(null); }}
-              title={quickOpen ? 'Hide quick actions' : 'Quick create'}
-              disabled={loading}
-            >✨</button>
-            {driveToken && (
-              <button
-                className={styles.driveBtn}
-                onClick={async () => {
-                  const fresh = await ensureFreshGoogleToken('googleDriveToken');
-                  if (!fresh) {
-                    setAttachError('Your Google connection has expired — please reconnect in Settings.');
-                    return;
-                  }
-                  openPicker(fresh);
-                }}
-                disabled={loading || attachLoading}
-                title="Attach a file from Google Drive"
-              >📁</button>
-            )}
             <textarea
               ref={textareaRef}
               className={styles.textInput}
-              placeholder={attachedFile ? `Ask about "${attachedFile.title}"…` : driveToken ? 'Message Soma… (click 📁 to attach a Drive file)' : 'Message Soma…'}
+              placeholder="Message Soma…"
               value={input}
               disabled={loading}
               rows={1}
@@ -2003,16 +1385,11 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
             <button
               className={styles.sendBtn}
               onClick={send}
-              disabled={loading || (!input.trim() && !attachedFile)}
+              disabled={loading || !input.trim()}
             >Send</button>
           </div>
         </div>
       </div>
-
-      {/* ── Files panel ─────────────────────────────────────────────────── */}
-      {filesPanelOpen && (
-        <FilesPanel subjects={subjects} onClose={() => setFilesPanelOpen(false)} />
-      )}
     </div>
   );
 }
