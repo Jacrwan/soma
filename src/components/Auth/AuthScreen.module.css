@@ -32,8 +32,94 @@
   -webkit-font-smoothing: antialiased;
 }
 
+/* Carries the landing page's product-shot + accent-blue visual language into
+   the auth flow, instead of dropping straight into a generic bare card —
+   the brand shouldn't reset the moment someone converts. */
+.stage {
+  display: flex;
+  width: 100%;
+  max-width: 840px;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: var(--card-shadow);
+}
+
+.brandPanel {
+  display: none;
+  text-decoration: none;
+  color: inherit;
+  flex: 1 1 360px;
+  background: linear-gradient(160deg, oklch(30% 0.11 265), oklch(22% 0.09 265));
+  padding: 40px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 32px;
+}
+
+.brandMockWindow {
+  background: oklch(99.5% 0.002 265 / 0.97);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 20px 48px oklch(0% 0 0 / 0.28);
+}
+
+.brandMockDots {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.brandMockDots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: oklch(88% 0.02 265);
+}
+
+.brandMockRow {
+  display: flex;
+}
+
+.brandMockBlock {
+  height: 14px;
+  width: 100%;
+  border-radius: 5px;
+}
+
+.brandCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.brandWordmark {
+  font-family: 'Figtree', sans-serif;
+  font-weight: 700;
+  font-size: 19px;
+  color: oklch(99% 0.005 265);
+  display: flex;
+  align-items: center;
+}
+
+.brandTagline {
+  font-size: 14px;
+  line-height: 1.55;
+  color: oklch(88% 0.02 265);
+  margin: 0;
+  max-width: 32ch;
+}
+
+@media (min-width: 780px) {
+  .brandPanel { display: flex; }
+}
+
 .card {
   width: 380px;
+  max-width: 100%;
+  flex: 1 1 380px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -41,7 +127,11 @@
   display: flex;
   flex-direction: column;
   gap: 22px;
-  box-shadow: var(--card-shadow);
+  box-shadow: none;
+}
+
+@media (min-width: 780px) {
+  .card { border-radius: 0; border: none; }
 }
 
 .wordmark {
@@ -171,6 +261,31 @@
 .submitBtn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.forgotLink {
+  align-self: flex-end;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  margin-top: -4px;
+  font-family: inherit;
+}
+
+.forgotLink:hover {
+  color: var(--accent-link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.resetHint {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin: -6px 0 0;
 }
 
 .error {

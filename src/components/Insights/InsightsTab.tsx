@@ -191,7 +191,7 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [calendarOffset, setCalendarOffset] = useState(0);
   const { data, loading, error, retry } = useInsights(userId);
-  const { weekly, breakdown, estimated, streak, heatmapMinutesMap, peakHoursData,
+  const { weekly, breakdown, estimated, streak, streakAtRisk, heatmapMinutesMap, peakHoursData,
     subjectPacingData, timeAccuracyData, subjects } = useMemo(
     () => summarizeInsights(data, weekOffset, calendarOffset),
     [data, weekOffset, calendarOffset],
@@ -449,8 +449,13 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
             />
           </svg>
           <div className={styles.streakMeta}>
-            <span className={styles.streakBigNum}>{streak}</span>
-            <span className={styles.streakDayLabel}>day streak</span>
+            <div className={styles.streakMetaRow}>
+              <span className={styles.streakBigNum}>{streak}</span>
+              <span className={styles.streakDayLabel}>day streak</span>
+            </div>
+            {streakAtRisk && (
+              <span className={styles.streakAtRiskNote}>Study today to keep it going</span>
+            )}
           </div>
         </div>
 

@@ -180,6 +180,14 @@ let _googleDocsToken = '';
 let _googleDriveToken = '';
 let _googleDriveRefreshToken = '';
 
+// Resolves once loadTokens() has finished (success or failure) at least once.
+// Components that read the in-memory token cache synchronously on mount
+// (getCanvasIcalUrl, etc.) can race ahead of loadTokens() resolving — this
+// lets them re-check after the real value is in, instead of getting stuck
+// showing "not connected" for the rest of the session.
+let _resolveTokensLoaded: () => void;
+const _tokensLoadedPromise = new Promise<void>(resolve => { _resolveTokensLoaded = resolve; });
+
 // In-memory caches for Supabase-backed data.
 // Populated by loadSubjects() / loadTodos() at auth time.
 // getSubjects() / getTodos() read from here synchronously;
@@ -458,11 +466,24 @@ export const storage = {
   // Call once after auth resolves. Populates the in-memory token/data caches
   // from Supabase and performs one-time migrations away from localStorage.
   async loadTokens(): Promise<void> {
-    try {
+    const fetchWithTimeout = (ms: number) => {
       const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('loadTokens timeout')), 5000)
+        setTimeout(() => reject(new Error('loadTokens timeout')), ms)
       );
-      const s = await Promise.race([storage.getSettings(), timeout]);
+      return Promise.race([storage.getSettings(), timeout]);
+    };
+
+    try {
+      // A slow/cold Supabase connection can miss a short timeout; retry once
+      // with more headroom before giving up. Silently falling back to "no
+      // Canvas connected" here previously made a *working* integration look
+      // disconnected in the UI for the rest of the session.
+      let s: SomaSettings;
+      try {
+        s = await fetchWithTimeout(6000);
+      } catch {
+        s = await fetchWithTimeout(10000);
+      }
       _canvasIcalUrl = s.canvasIcalUrl ?? '';
       _googleToken = s.googleToken ?? '';
       _googleRefreshToken = s.googleRefreshToken ?? '';
@@ -484,11 +505,24 @@ export const storage = {
         await storage.saveSettings({ ...s, googleToken: _googleToken });
       }
     } catch (err) {
-      console.error('[storage] loadTokens failed:', err);
+      console.error('[storage] loadTokens failed after retry:', err);
     }
-    // Load subjects before todos (todo migration uses subjects for subjectId inference)
+    // Load subjects before todos (todo migration uses subjects for subjectId inference).
+    // whenTokensLoaded() only resolves after this too — a Documents page that
+    // read getSubjects() on mount hit the exact same race as the original
+    // Canvas bug (subjects genuinely not loaded yet), because this used to
+    // resolve before loadSubjects()/loadTodos() ran at all.
     await storage.loadSubjects().catch(err => console.error('[storage] loadSubjects:', err));
     await storage.loadTodos().catch(err => console.error('[storage] loadTodos:', err));
+    _resolveTokensLoaded();
+  },
+
+  // Resolves once the initial loadTokens() pass has finished (success or
+  // failure). Components that read getCanvasIcalUrl()/etc. synchronously on
+  // mount can use this to re-check after the real value lands, instead of
+  // being stuck with whatever was in memory at their own mount time.
+  whenTokensLoaded(): Promise<void> {
+    return _tokensLoadedPromise;
   },
 
   getGoogleClientId: (): string => get(KEYS.googleClientId, ''),

@@ -184,6 +184,12 @@ export function summarizeInsights(data: InsightsData | null, weekOffset: number,
     avgDeltaMinutes: Math.round(value.delta / value.count), sampleCount: value.count,
   }]));
   const subjectPacingData = Object.fromEntries([...pacing].map(([id, value]) => [id, Math.round(value.seconds / value.count / 60)]));
+  // Count the run of consecutive studied days ending "today". If today has no
+  // session yet, that literally reads as streak=0 even when the user has
+  // studied every day up through yesterday and the day isn't over — punishing
+  // framing right when someone opens Insights mid-streak. streakAtRisk keeps
+  // yesterday's count visible with a "keep it going" framing instead of a
+  // hard zero, and only reports a real 0 once yesterday is also unstudied.
   let streak = 0;
   const day = new Date(now);
   day.setHours(0, 0, 0, 0);
@@ -191,5 +197,24 @@ export function summarizeInsights(data: InsightsData | null, weekOffset: number,
     streak++;
     day.setDate(day.getDate() - 1);
   }
-  return { weekly, breakdown, estimated, streak, heatmapMinutesMap, peakHoursData, subjectPacingData, timeAccuracyData, subjects };
+  const todayKey = dateKey(now);
+  const streakAtRisk = streak === 0 && !studiedDays.has(todayKey);
+  let streakDisplay = streak;
+  if (streakAtRisk) {
+    const yesterday = new Date(now);
+    yesterday.setHours(0, 0, 0, 0);
+    yesterday.setDate(yesterday.getDate() - 1);
+    let runEndingYesterday = 0;
+    const cursor = new Date(yesterday);
+    while (studiedDays.has(dateKey(cursor))) {
+      runEndingYesterday++;
+      cursor.setDate(cursor.getDate() - 1);
+    }
+    streakDisplay = runEndingYesterday;
+  }
+  return {
+    weekly, breakdown, estimated, streak: streakDisplay,
+    streakAtRisk: streakAtRisk && streakDisplay > 0,
+    heatmapMinutesMap, peakHoursData, subjectPacingData, timeAccuracyData, subjects,
+  };
 }

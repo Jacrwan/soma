@@ -1007,6 +1007,20 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const subjects = storage.getSubjects();
 
+  // getCanvasIcalUrl() below is read fresh on every render, but the value it
+  // reads is populated asynchronously by loadTokens(). If this tab renders
+  // before that resolves, the "Connect Canvas" banner can get stuck showing
+  // for an account that's actually connected, since nothing here re-renders
+  // once the real value lands. This forces one re-render when it does.
+  const [, forceCanvasStatusRecheck] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    storage.whenTokensLoaded().then(() => {
+      if (!cancelled) forceCanvasStatusRecheck(n => n + 1);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   const [driveToken, setDriveToken] = useState(() => storage.getGoogleDriveToken());
   const [saveAsDocMode] = useState(false);
 

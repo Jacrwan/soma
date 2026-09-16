@@ -733,25 +733,49 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   }, [selectedDate]);
 
 
+  // storage.getSubjects() below reads an in-memory list populated
+  // asynchronously by loadTokens() -> loadSubjects(). A render that lands
+  // before that resolves can permanently miss the real subject color with
+  // nothing to correct it afterward — force one re-run once loading settles.
+  const [subjectsReadyTick, setSubjectsReadyTick] = useState(0);
   useEffect(() => {
-    const COURSE_COLORS = [
+    let cancelled = false;
+    storage.whenTokensLoaded().then(() => {
+      if (!cancelled) setSubjectsReadyTick(n => n + 1);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    // Fallback palette only — a course only lands here once it has no linked
+    // Subject yet. Subjects are meant to be the stable per-course color
+    // (Settings, time blocks, the subject picker all key off subject.color);
+    // this used to assign colors purely by course order instead, so the same
+    // assignment could show one color here and a different one wherever its
+    // Subject color was used (e.g. the Calendar tab).
+    const FALLBACK_COLORS = [
       '#ef5350', '#42a5f5', '#66bb6a', '#ab47bc',
       '#ffa726', '#26c6da', '#ec407a', '#8d6e63',
     ];
     const assignments = storage.getCachedAssignments();
     const courses = storage.getCachedCourses();
-    const courseColorMap = Object.fromEntries(
-      courses.map((c, i) => [c.id, COURSE_COLORS[i % COURSE_COLORS.length]])
+    const subjectsByName = new Map(storage.getSubjects().map(s => [s.name, s]));
+    const fallbackColorMap = Object.fromEntries(
+      courses.map((c, i) => [c.id, FALLBACK_COLORS[i % FALLBACK_COLORS.length]])
     );
     const due = assignments
       .filter(a => a.dueAt && isOnDate(a.dueAt, selectedDate))
-      .map(a => ({
-        assignment: a,
-        course: courses.find(c => c.id === a.courseId),
-        color: courseColorMap[a.courseId] ?? '#888',
-      }));
+      .map(a => {
+        const course = courses.find(c => c.id === a.courseId);
+        const linkedSubject = course ? subjectsByName.get(course.name) : undefined;
+        return {
+          assignment: a,
+          course,
+          color: linkedSubject?.color ?? fallbackColorMap[a.courseId] ?? '#888',
+        };
+      });
     setDueAssignments(due);
-  }, [selectedDate]);
+  }, [selectedDate, subjectsReadyTick]);
 
   useEffect(() => {
     if (!blockModal) return;
@@ -2149,7 +2173,13 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
                   style={{
                     position: 'absolute',
                     top: topPx,
-                    right: 0,
+                    // Was flush at right: 0, which sat exactly under the
+                    // panel's resize divider and the .left scroll container's
+                    // edge — clipping the pill so only a sliver showed. A
+                    // small inset keeps it fully visible and clear of the
+                    // divider handle.
+                    right: 6,
+                    maxWidth: 'calc(100% - 12px)',
                     ...(isSingle
                       ? { background: firstColor + '26', borderColor: firstColor, color: firstColor }
                       : { background: 'var(--bg-secondary)', borderColor: 'var(--border)', color: 'var(--text-secondary)' }
@@ -2339,6 +2369,13 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
             <div className={styles.emptySubjectsActions}>
               <a href="/canvas" className={styles.emptySubjectsBtnPrimary}>Connect Canvas</a>
               <a href="/ai" className={styles.emptySubjectsBtnSecondary}>Ask the AI</a>
+              <button
+                type="button"
+                className={styles.emptySubjectsBtnSecondary}
+                onClick={() => { setAddSubjectForm({ name: '', color: COLORS[0] }); setShowAddSubject(true); }}
+              >
+                + Add a subject
+              </button>
             </div>
           </div>
         )}

@@ -114,6 +114,33 @@
   margin: 0 0 12px;
 }
 
+.subsectionHintRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.subsectionHintRow .subsectionHint {
+  margin: 0 0 12px;
+}
+
+.copyToAllBtn {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent, oklch(52% 0.16 265));
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 0 12px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.copyToAllBtn:hover {
+  text-decoration: underline;
+}
+
 .categoryToggle {
   font-size: 11px;
   font-weight: 600;
@@ -478,9 +505,12 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: oklch(55% 0.18 50);
-  background: oklch(92% 0.08 50);
-  border: 1px solid oklch(82% 0.1 50);
+  /* Was warning-orange under the literal word "Testing" — read as unfinished
+     dev leftovers, especially next to the (once-broken) Canvas status row.
+     A neutral tone + "Early access" reads as an intentional roadmap note. */
+  color: oklch(48% 0.05 265);
+  background: oklch(94% 0.015 265);
+  border: 1px solid oklch(85% 0.02 265);
   border-radius: 4px;
   padding: 1px 5px;
   margin-left: 6px;
@@ -964,6 +994,23 @@
 }
 
 .dangerBtn:hover { opacity: 0.88; }
+
+/* Archiving is reversible (restorable below, study history preserved) —
+   red should stay reserved for the truly irreversible actions in the
+   Danger Zone (delete account), so this doesn't train users to distrust it. */
+.neutralBtn {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.neutralBtn:hover { border-color: var(--accent); }
 
 /* ── Danger zone layout ── */
 

@@ -8,9 +8,7 @@ import { supabase } from '../../lib/supabase';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, openBillingPortal } from '../../lib/subscription';
 import { getIcalAssignments } from '../../lib/canvas';
-import { listFolderFiles, FolderFile, clearFolderContentsCache } from '../../lib/googleDrive';
-import { useGoogleFolderPicker, PickedFolder } from '../../lib/useGooglePicker';
-import { ensureFreshGoogleToken } from '../../lib/googleAuth';
+import { clearFolderContentsCache } from '../../lib/googleDrive';
 import styles from './SettingsTab.module.css';
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
@@ -54,6 +52,22 @@ export default function SettingsTab() {
   const [canvasIcalInput, setCanvasIcalInput] = useState('');
   const [canvasConnecting, setCanvasConnecting] = useState(false);
   const [canvasError, setCanvasError] = useState('');
+
+  // getCanvasIcalUrl() above reads an in-memory value populated
+  // asynchronously by loadTokens(). If Settings mounts before that resolves
+  // (e.g. direct navigation to /settings), the Integrations row can show
+  // "Connect" for an account that's already connected — re-check once
+  // loading settles.
+  useEffect(() => {
+    if (canvasIcalUrl) return;
+    let cancelled = false;
+    storage.whenTokensLoaded().then(() => {
+      if (cancelled) return;
+      const latest = storage.getCanvasIcalUrl();
+      if (latest) setCanvasIcalUrl(latest);
+    });
+    return () => { cancelled = true; };
+  }, [canvasIcalUrl]);
 
   // Local data state
   const [clearDataLoading, setClearDataLoading] = useState(false);
@@ -105,14 +119,9 @@ export default function SettingsTab() {
   // Google Calendar integration state
   const [gcalToken, setGcalToken] = useState(() => storage.getGoogleToken());
 
-  // Google Drive integration state (unified: reads Drive files + creates Docs)
+  // Google Drive integration state (used for the AI's "save to Doc" feature;
+  // reading study material out of Drive is now the Documents page's job)
   const [gdriveToken, setGdriveToken] = useState(() => storage.getGoogleDriveToken());
-
-  // Study folder state
-  const [studyFolder, setStudyFolder] = useState<{ folderId: string; folderName: string } | null>(() => storage.getStudyFolder());
-  const [studyFolderFiles, setStudyFolderFiles] = useState<FolderFile[]>([]);
-  const [studyFolderLoading, setStudyFolderLoading] = useState(false);
-  const [studyFolderError, setStudyFolderError] = useState('');
 
   // On mount (and after OAuth redirect back), handle the post-auth source param.
   // ?source=gdrive  → token was stored server-side by api/google-oauth-callback.ts;
@@ -157,25 +166,19 @@ export default function SettingsTab() {
     });
   }, []);
 
-  // Load study folder file list on mount if already connected
-  useEffect(() => {
-    const folder = storage.getStudyFolder();
-    const token = storage.getGoogleDriveToken();
-    if (folder && token) {
-      setStudyFolderLoading(true);
-      listFolderFiles(token, folder.folderId)
-        .then(({ files }) => setStudyFolderFiles(files))
-        .catch(() => {})
-        .finally(() => setStudyFolderLoading(false));
-    }
-  }, []);
-
   // Load profile info
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       const u = data.user;
       if (!u) return;
-      setProfileEmail(u.email ?? '');
+      // Google-provider sessions don't always populate top-level `email`
+      // immediately after OAuth; fall back to metadata/identity so this
+      // field doesn't render blank for a genuinely signed-in user.
+      const email = u.email
+        || (u.user_metadata?.email as string | undefined)
+        || u.identities?.find(i => i.identity_data?.email)?.identity_data?.email
+        || '';
+      setProfileEmail(email);
       setProfileName(u.user_metadata?.full_name ?? u.user_metadata?.name ?? '');
       setIsEmailProvider(u.app_metadata?.provider === 'email');
     });
@@ -233,6 +236,22 @@ export default function SettingsTab() {
       },
     });
   }
+
+  // Filling in 3 categories × 7 days × 2 time fields one at a time is the
+  // exact kind of manual planning tedium Soma's own pitch says it removes.
+  // These let one edited day fan out across the rest of the week instead of
+  // requiring 14 separate field edits per category.
+  function copyMondayTo(cat: HoursCategory, days: Day[]) {
+    const monday = settings[cat].monday;
+    const nextCat = { ...settings[cat] };
+    for (const day of days) {
+      nextCat[day] = { start: monday.start, end: monday.end, blocked: monday.blocked.map(b => ({ ...b })) };
+    }
+    save({ ...settings, [cat]: nextCat });
+  }
+
+  const WEEKDAYS: Day[] = ['tuesday', 'wednesday', 'thursday', 'friday'];
+  const ALL_OTHER_DAYS: Day[] = ['tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
   function renderDayRows(cat: HoursCategory) {
     return DAYS.map(day => {
@@ -455,46 +474,9 @@ export default function SettingsTab() {
     clearFolderContentsCache();
     storage.setGoogleDriveToken('');
     storage.setGoogleDocsToken(''); // clear legacy docs token too
-    storage.setStudyFolder(null);
+    storage.setStudyFolder(null); // clear any leftover study-folder pointer from before Documents existed
     setGdriveToken('');
-    setStudyFolder(null);
-    setStudyFolderFiles([]);
     window.dispatchEvent(new CustomEvent('soma_gdrive_updated'));
-  }
-
-  function onFolderPick(picked: PickedFolder) {
-    if (picked.mimeType !== 'application/vnd.google-apps.folder') {
-      setStudyFolderError('Please select a folder, not a file.');
-      return;
-    }
-    clearFolderContentsCache();
-    setStudyFolderLoading(true);
-    setStudyFolderError('');
-    listFolderFiles(gdriveToken, picked.id, picked.name)
-      .then(({ folderName, files }) => {
-        const sf = { folderId: picked.id, folderName };
-        storage.setStudyFolder(sf);
-        setStudyFolder(sf);
-        setStudyFolderFiles(files);
-      })
-      .catch((err: Error) => {
-        setStudyFolderError(
-          err.message === 'no_access'             ? "Can't access that folder."
-          : err.message === 'google_token_expired' ? 'Google access expired — reconnect Google Drive.'
-          : 'Could not read folder. Try again.',
-        );
-      })
-      .finally(() => setStudyFolderLoading(false));
-  }
-
-  const { openPicker: openFolderPicker } = useGoogleFolderPicker(gdriveToken, onFolderPick);
-
-  function disconnectStudyFolder() {
-    clearFolderContentsCache();
-    storage.setStudyFolder(null);
-    setStudyFolder(null);
-    setStudyFolderFiles([]);
-    setStudyFolderError('');
   }
 
   const navItems: [Section, string][] = [
@@ -839,7 +821,12 @@ export default function SettingsTab() {
                   onClick={() => save({ ...settings, schoolHoursEnabled: settings.schoolHoursEnabled === false })}
                 >{settings.schoolHoursEnabled !== false ? 'Enabled' : 'Disabled'}</button>
               </div>
-              <p className={styles.subsectionHint}>When you're in class — unavailable for studying</p>
+              <div className={styles.subsectionHintRow}>
+                <p className={styles.subsectionHint}>When you're in class — unavailable for studying</p>
+                <button type="button" className={styles.copyToAllBtn} onClick={() => copyMondayTo('schoolHours', WEEKDAYS)}>
+                  Copy Monday to weekdays
+                </button>
+              </div>
               <div className={`${styles.availabilityList}${settings.schoolHoursEnabled === false ? ` ${styles.availabilityListDisabled}` : ''}`}>{renderDayRows('schoolHours')}</div>
             </div>
 
@@ -851,7 +838,12 @@ export default function SettingsTab() {
                   onClick={() => save({ ...settings, workHoursEnabled: settings.workHoursEnabled === false })}
                 >{settings.workHoursEnabled !== false ? 'Enabled' : 'Disabled'}</button>
               </div>
-              <p className={styles.subsectionHint}>When you're at work — unavailable for studying</p>
+              <div className={styles.subsectionHintRow}>
+                <p className={styles.subsectionHint}>When you're at work — unavailable for studying</p>
+                <button type="button" className={styles.copyToAllBtn} onClick={() => copyMondayTo('workHours', WEEKDAYS)}>
+                  Copy Monday to weekdays
+                </button>
+              </div>
               <div className={`${styles.availabilityList}${settings.workHoursEnabled === false ? ` ${styles.availabilityListDisabled}` : ''}`}>{renderDayRows('workHours')}</div>
             </div>
 
@@ -863,7 +855,12 @@ export default function SettingsTab() {
                   onClick={() => save({ ...settings, personalHoursEnabled: settings.personalHoursEnabled === false })}
                 >{settings.personalHoursEnabled !== false ? 'Enabled' : 'Disabled'}</button>
               </div>
-              <p className={styles.subsectionHint}>Your free window — available for studying</p>
+              <div className={styles.subsectionHintRow}>
+                <p className={styles.subsectionHint}>Your free window — available for studying</p>
+                <button type="button" className={styles.copyToAllBtn} onClick={() => copyMondayTo('personalHours', ALL_OTHER_DAYS)}>
+                  Copy Monday to all days
+                </button>
+              </div>
               <div className={`${styles.availabilityList}${settings.personalHoursEnabled === false ? ` ${styles.availabilityListDisabled}` : ''}`}>{renderDayRows('personalHours')}</div>
             </div>
 
@@ -996,7 +993,7 @@ export default function SettingsTab() {
 
               <div className={styles.integrationRow}>
                 <div className={styles.integrationInfo}>
-                  <span className={styles.integrationLabel}>Google Calendar <span className={styles.testingBadge}>Testing</span></span>
+                  <span className={styles.integrationLabel}>Google Calendar <span className={styles.testingBadge}>Early access</span></span>
                   <span className={styles.integrationDescription}>See your events alongside your schedule</span>
                 </div>
                 <div className={styles.integrationActions}>
@@ -1013,7 +1010,7 @@ export default function SettingsTab() {
 
               <div className={styles.integrationRow}>
                 <div className={styles.integrationInfo}>
-                  <span className={styles.integrationLabel}>Google Drive <span className={styles.testingBadge}>Testing</span></span>
+                  <span className={styles.integrationLabel}>Google Drive <span className={styles.testingBadge}>Early access</span></span>
                   <span className={styles.integrationDescription}>Attach Drive files (Docs, Slides, Sheets) to the AI, and let it create Google Docs and Slides on request</span>
                 </div>
                 <div className={styles.integrationActions}>
@@ -1028,55 +1025,14 @@ export default function SettingsTab() {
                 </div>
               </div>
 
-              <div className={styles.integrationRow} style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 10 }}>
-                  <div className={styles.integrationInfo}>
-                    <span className={styles.integrationLabel}>Study Folder <span className={styles.testingBadge}>Testing</span></span>
-                    <span className={styles.integrationDescription}>Connect a Google Drive folder so Soma can see its contents</span>
-                  </div>
-                  {!gdriveToken ? (
-                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Connect Google Drive above to choose a study folder.</span>
-                  ) : studyFolder ? (
-                    <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span className={styles.connectedBadge}>{studyFolder.folderName}</span>
-                        <span style={{ fontSize: 12, opacity: 0.55 }}>
-                          {studyFolderLoading ? 'Loading…' : `${studyFolderFiles.length} file${studyFolderFiles.length !== 1 ? 's' : ''}`}
-                        </span>
-                        <button className={styles.disconnectBtn} onClick={disconnectStudyFolder} style={{ marginLeft: 'auto' }}>Disconnect</button>
-                      </div>
-                      {!studyFolderLoading && studyFolderFiles.length > 0 && (
-                        <div style={{ fontSize: 12, opacity: 0.6, display: 'flex', flexDirection: 'column', gap: 3, paddingLeft: 2 }}>
-                          {studyFolderFiles.map(f => (
-                            <span key={f.id}>📄 {f.name}</span>
-                          ))}
-                        </div>
-                      )}
-                      {!studyFolderLoading && studyFolderFiles.length === 0 && (
-                        <span style={{ fontSize: 12, opacity: 0.5 }}>Folder is empty.</span>
-                      )}
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      <button
-                        className={styles.connectBtn}
-                        onClick={async () => {
-                          setStudyFolderError('');
-                          const fresh = await ensureFreshGoogleToken('googleDriveToken');
-                          if (!fresh) {
-                            setStudyFolderError('Your Google connection has expired — please reconnect in Settings → Integrations.');
-                            return;
-                          }
-                          openFolderPicker(fresh);
-                        }}
-                        disabled={studyFolderLoading}
-                      >
-                        {studyFolderLoading ? 'Connecting…' : 'Choose study folder'}
-                      </button>
-                      {studyFolderError && <span style={{ fontSize: 12, color: 'var(--error, #ef5350)' }}>{studyFolderError}</span>}
-                    </div>
-                  )}
+              <div className={styles.integrationRow}>
+                <div className={styles.integrationInfo}>
+                  <span className={styles.integrationLabel}>Study material</span>
+                  <span className={styles.integrationDescription}>
+                    Syllabi, readings, and guides now live on the <a href="/documents">Documents</a> page, organized per subject.
+                  </span>
                 </div>
-
+              </div>
             </div>
           </section>
         )}
@@ -1095,7 +1051,7 @@ export default function SettingsTab() {
                 </p>
               ) : (
                 <button
-                  className={styles.dangerBtn}
+                  className={styles.neutralBtn}
                   onClick={() => setShowSemesterModal(true)}
                 >
                   Archive current courses

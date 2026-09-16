@@ -13,6 +13,19 @@ export interface Subject {
   canvasCourseId?: number;
 }
 
+export type DocumentType = 'syllabus' | 'reading' | 'guide' | 'notes' | 'assignment' | 'slides' | 'other';
+
+export interface SomaDocument {
+  id: string;
+  subjectId: string | null;
+  fileName: string;
+  storagePath: string;
+  fileType: string;
+  sizeBytes: number;
+  docType: DocumentType;
+  createdAt: string;
+}
+
 export interface TimeBlock {
   id: string;
   subjectId: string;

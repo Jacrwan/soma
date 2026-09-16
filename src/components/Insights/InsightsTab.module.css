@@ -535,9 +535,21 @@
 
 .streakMeta {
   display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.streakMetaRow {
+  display: flex;
   align-items: baseline;
   gap: 8px;
-  min-width: 0;
+}
+
+.streakAtRiskNote {
+  color: var(--warm);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .streakBigNum {

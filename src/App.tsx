@@ -5,6 +5,7 @@ import { supabase } from './lib/supabase';
 import AuthScreen from './components/Auth/AuthScreen';
 import DayView from './components/DayView/DayView';
 import CanvasTab from './components/Canvas/CanvasTab';
+import DocumentsTab from './components/Documents/DocumentsTab';
 import AITab from './components/AI/AITab';
 import CalendarTab from './components/Calendar/CalendarTab';
 import InsightsTab from './components/Insights/InsightsTab';
@@ -189,6 +190,7 @@ function AppShell({ user, sessionResolved, onLogout }: {
     const titles: Record<string, string> = {
       '/day-view':  'Day View | Soma',
       '/canvas':    'Canvas | Soma',
+      '/documents': 'Documents | Soma',
       '/ai':        'AI | Soma',
       '/calendar':  'Calendar | Soma',
       '/insights':  'Insights | Soma',
@@ -253,6 +255,15 @@ function AppShell({ user, sessionResolved, onLogout }: {
               <path d="M4.5 5h5M4.5 7.5h5M4.5 10h3"/>
             </svg>
             Canvas
+          </button>
+
+          <button className={nav('/documents')} onClick={() => navigate('/documents')}>
+            <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3.5 1.5h5L11 4v8.5a.5.5 0 0 1-.5.5h-6a.5.5 0 0 1-.5-.5v-10a.5.5 0 0 1 .5-.5Z"/>
+              <path d="M8.5 1.5V4H11"/>
+              <path d="M4.5 6.5h4M4.5 8.5h4M4.5 10.5h2.5"/>
+            </svg>
+            Documents
           </button>
 
           <button className={nav('/calendar')} onClick={() => navigate('/calendar')}>
@@ -524,6 +535,7 @@ export default function App() {
       <Route element={shell}>
         <Route path="/day-view"  element={<DayView selectedDate={selectedDate} onSelectDate={setSelectedDate} />} />
         <Route path="/canvas"    element={<CanvasTab />} />
+        <Route path="/documents" element={<DocumentsTab />} />
         <Route path="/calendar"  element={
           <CalendarTab
             selectedDate={selectedDate}
