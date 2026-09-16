@@ -3,7 +3,7 @@ import { storage } from '../../lib/storage';
 import { Subject, SomaDocument, DocumentType } from '../../types';
 import {
   listDocuments, uploadDocument, updateDocument, deleteDocument, getDocumentUrl,
-  DocumentError, ACCEPT_ATTR, DOCUMENT_TYPES,
+  extractDocumentText, DocumentError, ACCEPT_ATTR, DOCUMENT_TYPES,
 } from '../../lib/documents';
 import styles from './DocumentsTab.module.css';
 
@@ -68,6 +68,14 @@ export default function DocumentsTab() {
       const fetched = await listDocuments();
       setDocs(fetched);
       setState('ready');
+      // Pick up any document whose extraction never ran (e.g. the tab closed
+      // right after upload) or is still mid-flight from a previous visit.
+      const stuck = fetched.filter(d => d.extractionStatus === 'pending' || d.extractionStatus === 'processing');
+      if (stuck.length > 0) {
+        void Promise.all(stuck.map(d => extractDocumentText(d))).then(() => {
+          void listDocuments().then(setDocs).catch(() => {});
+        });
+      }
     } catch (e) {
       if (e instanceof DocumentError && e.message === 'not_set_up') {
         setState('not_set_up');
@@ -106,6 +114,9 @@ export default function DocumentsTab() {
       const doc = await uploadDocument(uploadFile, uploadSubjectId || null, uploadType);
       setDocs(prev => [doc, ...prev]);
       setUploadOpen(false);
+      void extractDocumentText(doc).then(() => {
+        void listDocuments().then(setDocs).catch(() => {});
+      });
     } catch (err) {
       setActionError(err instanceof DocumentError ? err.message : 'Upload failed.');
     } finally {
@@ -205,7 +216,18 @@ export default function DocumentsTab() {
     );
   }
 
+  function extractionHint(doc: SomaDocument): string | null {
+    switch (doc.extractionStatus) {
+      case 'pending':
+      case 'processing': return 'Soma is reading this file…';
+      case 'failed':      return "Soma couldn't read this file";
+      case 'unsupported': return "Soma can't read this file type yet — it's still viewable, just not searchable in chat";
+      default:            return null;
+    }
+  }
+
   function renderListRow(doc: SomaDocument) {
+    const hint = extractionHint(doc);
     return (
       <div key={doc.id} className={styles.fileRow}>
         <span className={styles.fileExt}>{extLabel(doc.fileName, doc.fileType)}</span>
@@ -218,6 +240,7 @@ export default function DocumentsTab() {
         >
           {doc.fileName}
         </button>
+        {hint && <span className={styles.fileExtractionHint} title={hint}>{doc.extractionStatus === 'failed' ? '⚠' : '·'}</span>}
         {subjectBadge(doc)}
         {typeBadge(doc)}
         <span className={styles.fileMeta}>{formatSize(doc.sizeBytes)} · {formatDate(doc.createdAt)}</span>

@@ -149,6 +149,13 @@
 
 .fileName:hover { text-decoration: underline; }
 
+.fileExtractionHint {
+  font-size: 13px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  cursor: default;
+}
+
 .fileMeta {
   font-size: 12px;
   color: var(--text-muted);

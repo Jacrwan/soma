@@ -42,6 +42,8 @@ function rowToDocument(r: Record<string, unknown>): SomaDocument {
     sizeBytes: Number(r.size_bytes),
     docType: (r.doc_type as DocumentType | undefined) ?? 'other',
     createdAt: r.created_at as string,
+    extractionStatus: (r.extraction_status as SomaDocument['extractionStatus'] | undefined) ?? 'pending',
+    extractedText: (r.extracted_text as string | null | undefined) ?? null,
   };
 }
 
@@ -57,6 +59,16 @@ function isMissingTableError(err: unknown): boolean {
     || /bucket not found/i.test(message);
 }
 
+// In-memory cache — lets other parts of the app (the AI system prompt, in
+// particular) read the user's documents synchronously without a network
+// round trip on every chat message. Not persisted; refreshed by listDocuments().
+let _documentsCache: SomaDocument[] = [];
+export function getCachedDocuments(): SomaDocument[] {
+  return _documentsCache;
+}
+
+export const DOCUMENTS_CHANGED_EVENT = 'soma_documents_changed';
+
 export async function listDocuments(): Promise<SomaDocument[]> {
   const id = await uid();
   const { data, error } = await supabase
@@ -68,7 +80,10 @@ export async function listDocuments(): Promise<SomaDocument[]> {
     if (isMissingTableError(error)) throw new DocumentError('not_set_up');
     throw new DocumentError(error.message);
   }
-  return (data ?? []).map(rowToDocument);
+  const docs = (data ?? []).map(rowToDocument);
+  _documentsCache = docs;
+  window.dispatchEvent(new Event(DOCUMENTS_CHANGED_EVENT));
+  return docs;
 }
 
 export async function uploadDocument(file: File, subjectId: string | null, docType: DocumentType): Promise<SomaDocument> {
@@ -143,6 +158,8 @@ export async function deleteDocument(doc: SomaDocument): Promise<void> {
     .eq('id', doc.id)
     .eq('user_id', id);
   if (error) throw new DocumentError(error.message);
+  _documentsCache = _documentsCache.filter(d => d.id !== doc.id);
+  window.dispatchEvent(new Event(DOCUMENTS_CHANGED_EVENT));
 }
 
 export async function getDocumentUrl(doc: SomaDocument): Promise<string> {
@@ -151,4 +168,21 @@ export async function getDocumentUrl(doc: SomaDocument): Promise<string> {
     .createSignedUrl(doc.storagePath, 60 * 10); // 10 minutes
   if (error) throw new DocumentError(error.message);
   return data.signedUrl;
+}
+
+// Kicks off server-side text extraction for a just-uploaded document so the AI
+// can read it (deadlines, policies, etc.). Fire-and-forget from the caller's
+// point of view — errors are swallowed since the row's extraction_status
+// already reflects failure, and the UI polls/refetches to pick it up.
+export async function extractDocumentText(doc: SomaDocument): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) return;
+  try {
+    await fetch('/api/extract-document', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ documentId: doc.id }),
+    });
+  } catch { /* extraction_status stays 'pending'; retried on next visit */ }
 }

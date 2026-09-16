@@ -15,6 +15,8 @@ export interface Subject {
 
 export type DocumentType = 'syllabus' | 'reading' | 'guide' | 'notes' | 'assignment' | 'slides' | 'other';
 
+export type ExtractionStatus = 'pending' | 'processing' | 'done' | 'failed' | 'unsupported';
+
 export interface SomaDocument {
   id: string;
   subjectId: string | null;
@@ -24,6 +26,8 @@ export interface SomaDocument {
   sizeBytes: number;
   docType: DocumentType;
   createdAt: string;
+  extractionStatus: ExtractionStatus;
+  extractedText: string | null;
 }
 
 export interface TimeBlock {

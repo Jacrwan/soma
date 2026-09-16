@@ -3,6 +3,7 @@ import DOMPurify from 'dompurify';
 import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
+import { getCachedDocuments, listDocuments, DOCUMENTS_CHANGED_EVENT } from '../../lib/documents';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, hasAIAccess, startCheckout } from '../../lib/subscription';
 import { SubjectColor, Todo, ChatMessage, ChatSession, AiTodo } from '../../types';
@@ -422,6 +423,36 @@ async function executeSomaAction(action: SomaAction): Promise<string | null> {
 
 // ── System prompt ───────────────────────────────────────────────────────────
 
+const DOCUMENTS_CONTEXT_CHAR_LIMIT = 45_000;
+
+// Builds the "known documents" block fed into the system prompt so the AI can
+// answer from syllabi, readings, and guides the user uploaded to Documents —
+// deadlines, policies, whatever's in them — without being asked to fetch anything.
+function buildDocumentsSection(subjects: { id: string; name: string }[]): string {
+  const docs = getCachedDocuments().filter(d => d.extractionStatus === 'done' && d.extractedText);
+  if (docs.length === 0) return '';
+
+  const subjectById = new Map(subjects.map(s => [s.id, s.name]));
+  let used = 0;
+  const parts: string[] = [];
+  for (const doc of docs) {
+    if (used >= DOCUMENTS_CONTEXT_CHAR_LIMIT) break;
+    const subjectName = doc.subjectId ? (subjectById.get(doc.subjectId) ?? 'Unknown subject') : 'Unassigned';
+    const remaining = DOCUMENTS_CONTEXT_CHAR_LIMIT - used;
+    const text = doc.extractedText!.length > remaining
+      ? `${doc.extractedText!.slice(0, remaining)}\n\n[Truncated]`
+      : doc.extractedText!;
+    used += text.length;
+    parts.push(`### "${doc.fileName}" (${doc.docType}, ${subjectName})\n${text}`);
+  }
+
+  return `\nSTUDENT DOCUMENTS:
+The user has uploaded the following documents to Soma (syllabi, readings, guides, etc.) — you have already read them in full and know their content. When the user asks about a deadline, policy, reading, or anything else that could be in these documents, answer directly from them. Never say you can't access files or need the user to share anything — you already have the content below.
+
+${parts.join('\n\n')}
+`;
+}
+
 function buildSystemPrompt(activeSubjectKey?: string): string {
   const allSubjects = storage.getSubjects();
   const subjects = allSubjects.filter(s => !s.archived);
@@ -538,6 +569,7 @@ ${assignmentsStr}
 If there are no upcoming assignments, say so clearly and do not make up or hallucinate any assignments.
 
 Use this information to help the user plan their study schedule, prioritize tasks, and answer questions about their workload. Always refer to today's actual date when discussing deadlines.
+${buildDocumentsSection(subjects)}
 User availability:
 ${availabilityStr || 'Not set — ask the user what time they want to start and end.'}
 ${gcalStr ? `\nExisting calendar events (read-only, do not schedule over these):\n${gcalStr}` : ''}
@@ -874,11 +906,21 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
   const systemPromptCache = useRef<{ prompt: string; canvasTs: number | null; dateKey: string; subjectKey: string; subjectsV: number } | null>(null);
   const subjectsVersion = useRef(0);
 
-  // Invalidate the prompt cache whenever subjects change mid-conversation
+  // Invalidate the prompt cache whenever subjects or documents change mid-conversation
   useEffect(() => {
     const bump = () => { subjectsVersion.current += 1; };
     window.addEventListener('soma_subjects_changed', bump);
-    return () => window.removeEventListener('soma_subjects_changed', bump);
+    window.addEventListener(DOCUMENTS_CHANGED_EVENT, bump);
+    return () => {
+      window.removeEventListener('soma_subjects_changed', bump);
+      window.removeEventListener(DOCUMENTS_CHANGED_EVENT, bump);
+    };
+  }, []);
+
+  // Populate the documents cache on mount so the system prompt has content
+  // even if the user never visits the Documents page this session.
+  useEffect(() => {
+    void listDocuments().catch(() => {});
   }, []);
 
   function getCachedSystemPrompt(subjectKey: string): string {
