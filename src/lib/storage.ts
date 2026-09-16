@@ -188,6 +188,19 @@ let _googleDriveRefreshToken = '';
 let _resolveTokensLoaded: () => void;
 const _tokensLoadedPromise = new Promise<void>(resolve => { _resolveTokensLoaded = resolve; });
 
+// Bounds a promise to at most `ms` — if it hangs (no response, not even an
+// error) rather than rejecting outright, this still lets callers move on.
+// Used so a stalled network call can never block whenTokensLoaded() forever.
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    promise.then(
+      v => { clearTimeout(timer); resolve(v); },
+      e => { clearTimeout(timer); reject(e); },
+    );
+  });
+}
+
 // In-memory caches for Supabase-backed data.
 // Populated by loadSubjects() / loadTodos() at auth time.
 // getSubjects() / getTodos() read from here synchronously;
@@ -512,8 +525,16 @@ export const storage = {
     // read getSubjects() on mount hit the exact same race as the original
     // Canvas bug (subjects genuinely not loaded yet), because this used to
     // resolve before loadSubjects()/loadTodos() ran at all.
-    await storage.loadSubjects().catch(err => console.error('[storage] loadSubjects:', err));
-    await storage.loadTodos().catch(err => console.error('[storage] loadTodos:', err));
+    //
+    // Neither call had a timeout before this: a stalled network request (not
+    // even an error, just no response) left it awaiting forever, which meant
+    // _resolveTokensLoaded() below never ran — every page gated on
+    // whenTokensLoaded() (Canvas's "Checking your Canvas connection…",
+    // Documents, Settings, AI) would hang indefinitely instead of eventually
+    // showing *something*. withTimeout guarantees this function always
+    // finishes, whether or not the underlying calls ever do.
+    await withTimeout(storage.loadSubjects(), 10_000).catch(err => console.error('[storage] loadSubjects:', err));
+    await withTimeout(storage.loadTodos(), 10_000).catch(err => console.error('[storage] loadTodos:', err));
     _resolveTokensLoaded();
   },
 
