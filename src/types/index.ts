@@ -126,6 +126,30 @@ export interface GoogleCalendarEvent {
   htmlLink?: string;
   start: { dateTime?: string; date?: string };
   end: { dateTime?: string; date?: string };
+  // Which connected account + calendar this came from — populated by the
+  // multi-calendar aggregator so events from different calendars can be
+  // told apart in the UI. Absent for events from the legacy single-token path.
+  source?: {
+    connectionId: string;
+    googleEmail: string;
+    calendarId: string;
+    calendarSummary: string;
+    color?: string;
+  };
+}
+
+export interface GoogleCalendarInfo {
+  id: string;
+  summary: string;
+  backgroundColor?: string;
+  primary?: boolean;
+}
+
+export interface GoogleCalendarConnection {
+  id: string;
+  googleEmail: string;
+  selectedCalendars: GoogleCalendarInfo[];
+  createdAt: string;
 }
 
 export interface AiTodo {

@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
-import { supabase } from '../../lib/supabase';
-import { getEvents, getWeekRange, isCacheStale } from '../../lib/googleCalendar';
-import { TimeBlock, Subject, GoogleCalendarEvent } from '../../types';
+import { getWeekRange, isCacheStale } from '../../lib/googleCalendar';
+import {
+  listConnections, startConnectFlow, fetchAggregatedEvents, GoogleCalendarError,
+} from '../../lib/googleCalendarConnections';
+import { TimeBlock, Subject, GoogleCalendarEvent, GoogleCalendarConnection } from '../../types';
 import styles from './CalendarTab.module.css';
 
 type ViewMode = 'month' | 'week';
@@ -156,7 +159,8 @@ function saveFilters(f: Filters) {
 }
 
 export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToday }: CalendarTabProps) {
-  const [token, setToken] = useState(() => storage.getGoogleToken());
+  const navigate = useNavigate();
+  const [connections, setConnections] = useState<GoogleCalendarConnection[]>([]);
   const [gcalLoading, setGcalLoading] = useState(false);
   const [gcalError, setGcalError] = useState('');
 
@@ -182,23 +186,24 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   const weekModalBoxRef = useRef<HTMLDivElement>(null);
   const preModalFocusRef = useRef<HTMLElement | null>(null);
 
-  const isConnected = !!token;
+  const isConnected = connections.some(c => c.selectedCalendars.length > 0);
 
-  // On mount (and after OAuth redirect back from gcal flow), pull provider_token from session.
-  // Only save if ?source=gcal to avoid clobbering the Calendar token with a Drive token.
-  useEffect(() => {
-    const source = new URLSearchParams(window.location.search).get('source');
-    supabase.auth.getSession().then(({ data }) => {
-      const pt = data.session?.provider_token;
-      if (pt && source === 'gcal') {
-        storage.setGoogleToken(pt);
-        setToken(pt);
-        const url = new URL(window.location.href);
-        url.searchParams.delete('source');
-        window.history.replaceState({}, '', url.toString());
-      }
-    });
+  const loadConnections = useCallback(async () => {
+    try {
+      const fresh = await listConnections();
+      setConnections(fresh);
+      return fresh;
+    } catch {
+      return [];
+    }
   }, []);
+
+  // On mount (including right after the OAuth redirect back from the connect
+  // flow, which lands here via /api/google-calendar-oauth-callback), load
+  // the current set of connections.
+  useEffect(() => {
+    void loadConnections();
+  }, [loadConnections]);
 
   useEffect(() => {
     const handler = () => setDataVersion(v => v + 1);
@@ -207,10 +212,11 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   }, []);
 
   useEffect(() => {
-    if (!token) return;
+    if (connections.length === 0) return;
     if (!isCacheStale(storage.getGoogleCacheTimestamp())) return;
-    fetchGcalEvents(token);
-  }, [token]);
+    void fetchGcalEvents();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connections]);
 
   useEffect(() => {
     const tick = () => {
@@ -257,20 +263,19 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     weekGridRef.current.scrollTop = scrollTop;
   }, [viewMode, viewWeekStart]);
 
-  async function fetchGcalEvents(tk: string) {
+  async function fetchGcalEvents() {
     setGcalLoading(true);
     setGcalError('');
     try {
       const { timeMin, timeMax } = getWeekRange();
-      const data = await getEvents(tk, timeMin, timeMax);
+      const data = await fetchAggregatedEvents(timeMin, timeMax);
       storage.setCachedGoogleEvents(data);
       storage.setGoogleCacheTimestamp(Date.now());
       setDataVersion(v => v + 1);
       window.dispatchEvent(new CustomEvent('soma_gcal_updated'));
     } catch (err) {
-      if (err instanceof Error && err.message === 'auth') {
-        storage.setGoogleToken('');
-        setToken('');
+      if (err instanceof GoogleCalendarError && err.message === 'google_token_expired') {
+        setGcalError('One of your Google Calendar connections expired — reconnect it in Settings.');
       } else {
         setGcalError('Could not load Google Calendar events.');
       }
@@ -280,25 +285,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   }
 
   async function connectGcal() {
-    const redirectUrl = new URL(window.location.href);
-    redirectUrl.searchParams.set('source', 'gcal');
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        scopes: 'https://www.googleapis.com/auth/calendar.readonly',
-        redirectTo: redirectUrl.toString(),
-        queryParams: { access_type: 'offline', prompt: 'consent' },
-      },
-    });
-  }
-
-  function handleDisconnect() {
-    storage.setGoogleToken('');
-    storage.setCachedGoogleEvents([]);
-    storage.setGoogleCacheTimestamp(0);
-    setToken('');
-    setDataVersion(v => v + 1);
-    window.dispatchEvent(new CustomEvent('soma_gcal_updated'));
+    await startConnectFlow();
   }
 
   function toggleFilter(key: keyof Filters) {
@@ -379,7 +366,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
       for (const e of gcalEvents) {
         const dt = e.start.dateTime ?? e.start.date;
         if (!dt) continue;
-        add(new Date(dt), { id: `gcal-${e.id}`, label: e.summary ?? '(No title)', bgColor: GCAL_COLOR, type: 'gcal', sortKey: new Date(dt).getTime() });
+        add(new Date(dt), { id: `gcal-${e.id}`, label: e.summary ?? '(No title)', bgColor: e.source?.color ?? GCAL_COLOR, type: 'gcal', sortKey: new Date(dt).getTime() });
       }
     }
     if (filters.canvas) {
@@ -472,7 +459,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         const durMin = endMin - startMin;
 
         if (durMin < 5) {
-          dots.push({ id: `dot-gcal-${e.id}`, color: GCAL_COLOR, top: weekMinToTop(startMin) });
+          dots.push({ id: `dot-gcal-${e.id}`, color: e.source?.color ?? GCAL_COLOR, top: weekMinToTop(startMin) });
           continue;
         }
 
@@ -722,13 +709,13 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
           aria-pressed={filters.soma}
         >Soma</button>
         {isConnected && (
-          <button className={styles.disconnectBtn} onClick={handleDisconnect}>Disconnect Google</button>
+          <button className={styles.disconnectBtn} onClick={() => navigate('/settings')}>Manage calendars</button>
         )}
         {gcalLoading && <span className={styles.gcalLoading} role="status" aria-live="polite">↻ Syncing…</span>}
         {gcalError && (
           <>
             <span className={styles.gcalError} role="alert">{gcalError}</span>
-            <button className={styles.gcalRetryBtn} onClick={() => token && fetchGcalEvents(token)}>Retry</button>
+            <button className={styles.gcalRetryBtn} onClick={() => void fetchGcalEvents()}>Retry</button>
           </>
         )}
       </div>

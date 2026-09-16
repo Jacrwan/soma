@@ -8,6 +8,10 @@ import { supabase } from '../../lib/supabase';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, openBillingPortal } from '../../lib/subscription';
 import { getIcalAssignments } from '../../lib/canvas';
+import {
+  listConnections, listCalendarsForConnection, updateSelectedCalendars, disconnectConnection, startConnectFlow,
+} from '../../lib/googleCalendarConnections';
+import type { GoogleCalendarConnection, GoogleCalendarInfo } from '../../types';
 import styles from './SettingsTab.module.css';
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
@@ -115,34 +119,84 @@ export default function SettingsTab() {
     setArchivedSubjects(prev => prev.filter(s => s.id !== id));
   }
 
-  // Google Calendar integration state
-  const [gcalToken, setGcalToken] = useState(() => storage.getGoogleToken());
+  // Google Calendar integration state — multiple connected accounts, each
+  // with its own set of calendars to sync.
+  const [gcalConnections, setGcalConnections] = useState<GoogleCalendarConnection[]>([]);
+  const [gcalConnectMsg, setGcalConnectMsg] = useState('');
+  const [gcalActionError, setGcalActionError] = useState('');
+  const [expandedConnectionId, setExpandedConnectionId] = useState<string | null>(null);
+  const [availableCalendars, setAvailableCalendars] = useState<Record<string, GoogleCalendarInfo[]>>({});
+  const [calendarsLoadingId, setCalendarsLoadingId] = useState<string | null>(null);
 
-  // On mount (and after OAuth redirect back), handle the post-auth source param.
-  // ?source=gcal → uses Supabase OAuth; read provider_token from session.
+  const loadGcalConnections = () => { void listConnections().then(setGcalConnections).catch(() => {}); };
+
+  // On mount (including right after the OAuth redirect back from the connect
+  // flow, which lands here via /api/google-calendar-oauth-callback), load
+  // the current connections and surface any ?gcal_connected / ?gcal_error param.
   useEffect(() => {
+    loadGcalConnections();
+
     const params = new URLSearchParams(window.location.search);
-    const source = params.get('source');
-
-    const clearSourceParam = () => {
+    const connected = params.get('gcal_connected');
+    const error = params.get('gcal_error');
+    if (connected) setGcalConnectMsg(`Connected ${connected}`);
+    if (error) setGcalActionError(`Couldn't connect Google Calendar (${error}). Try again.`);
+    if (connected || error) {
       const url = new URL(window.location.href);
-      url.searchParams.delete('source');
+      url.searchParams.delete('gcal_connected');
+      url.searchParams.delete('gcal_error');
       window.history.replaceState({}, '', url.toString());
-    };
-
-    supabase.auth.getSession().then(({ data }) => {
-      const pt  = data.session?.provider_token;
-      const prt = data.session?.provider_refresh_token ?? undefined;
-      if (!pt) return;
-
-      if (source === 'gcal') {
-        storage.setGoogleToken(pt, prt);
-        setGcalToken(pt);
-        window.dispatchEvent(new CustomEvent('soma_gcal_updated'));
-        clearSourceParam();
-      }
-    });
+    }
   }, []);
+
+  async function toggleExpandConnection(connection: GoogleCalendarConnection) {
+    if (expandedConnectionId === connection.id) {
+      setExpandedConnectionId(null);
+      return;
+    }
+    setExpandedConnectionId(connection.id);
+    if (!availableCalendars[connection.id]) {
+      setCalendarsLoadingId(connection.id);
+      setGcalActionError('');
+      try {
+        const calendars = await listCalendarsForConnection(connection.id);
+        setAvailableCalendars(prev => ({ ...prev, [connection.id]: calendars }));
+      } catch {
+        setGcalActionError('Could not load calendars for that account — reconnect it and try again.');
+      } finally {
+        setCalendarsLoadingId(null);
+      }
+    }
+  }
+
+  async function toggleCalendarSelected(connection: GoogleCalendarConnection, cal: GoogleCalendarInfo) {
+    const isSelected = connection.selectedCalendars.some(c => c.id === cal.id);
+    const nextSelected = isSelected
+      ? connection.selectedCalendars.filter(c => c.id !== cal.id)
+      : [...connection.selectedCalendars, cal];
+
+    setGcalConnections(prev => prev.map(c => c.id === connection.id ? { ...c, selectedCalendars: nextSelected } : c));
+    try {
+      await updateSelectedCalendars(connection.id, nextSelected);
+      storage.setGoogleCacheTimestamp(0); // force Calendar tab to refetch with the new selection
+      window.dispatchEvent(new CustomEvent('soma_gcal_updated'));
+    } catch {
+      setGcalConnections(prev => prev.map(c => c.id === connection.id ? connection : c));
+      setGcalActionError("Couldn't update that calendar's selection. Try again.");
+    }
+  }
+
+  async function handleDisconnectGcal(connection: GoogleCalendarConnection) {
+    setGcalConnections(prev => prev.filter(c => c.id !== connection.id));
+    try {
+      await disconnectConnection(connection.id);
+      storage.setGoogleCacheTimestamp(0);
+      window.dispatchEvent(new CustomEvent('soma_gcal_updated'));
+    } catch {
+      loadGcalConnections();
+      setGcalActionError("Couldn't disconnect that account. Try again.");
+    }
+  }
 
   // Load profile info
   useEffect(() => {
@@ -393,28 +447,6 @@ export default function SettingsTab() {
       setClearDataLoading(false);
     }
   }
-
-  async function connectGcal() {
-    const redirectUrl = new URL(window.location.origin + '/settings');
-    redirectUrl.searchParams.set('source', 'gcal');
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        scopes: 'https://www.googleapis.com/auth/calendar.readonly',
-        redirectTo: redirectUrl.toString(),
-        queryParams: { access_type: 'offline', prompt: 'consent' },
-      },
-    });
-  }
-
-  function disconnectGcal() {
-    storage.setGoogleToken('');
-    storage.setCachedGoogleEvents([]);
-    storage.setGoogleCacheTimestamp(0);
-    setGcalToken('');
-    window.dispatchEvent(new CustomEvent('soma_gcal_updated'));
-  }
-
 
   const navItems: [Section, string][] = [
     ['profile',       'Profile'],
@@ -928,21 +960,70 @@ export default function SettingsTab() {
                 </div>
               </div>
 
-              <div className={styles.integrationRow}>
-                <div className={styles.integrationInfo}>
-                  <span className={styles.integrationLabel}>Google Calendar <span className={styles.testingBadge}>Early access</span></span>
-                  <span className={styles.integrationDescription}>See your events alongside your schedule</span>
+              <div className={`${styles.integrationRow} ${styles.gcalSection}`}>
+                <div className={styles.gcalSectionHeader}>
+                  <div className={styles.integrationInfo}>
+                    <span className={styles.integrationLabel}>Google Calendar <span className={styles.testingBadge}>Early access</span></span>
+                    <span className={styles.integrationDescription}>See your events alongside your schedule — connect one or more Google accounts</span>
+                  </div>
+                  <div className={styles.integrationActions}>
+                    <button className={styles.connectBtn} onClick={() => void startConnectFlow()}>+ Add Google account</button>
+                  </div>
                 </div>
-                <div className={styles.integrationActions}>
-                  {gcalToken ? (
-                    <>
-                      <span className={styles.connectedBadge}>Connected</span>
-                      <button className={styles.disconnectBtn} onClick={disconnectGcal}>Disconnect</button>
-                    </>
-                  ) : (
-                    <button className={styles.connectBtn} onClick={connectGcal}>Connect</button>
-                  )}
-                </div>
+
+                {gcalConnectMsg && <span className={styles.integrationHint}>{gcalConnectMsg}</span>}
+                {gcalActionError && <span className={styles.integrationErrorText}>{gcalActionError}</span>}
+
+                {gcalConnections.length > 0 && (
+                  <div className={styles.gcalConnectionList}>
+                    {gcalConnections.map(connection => (
+                      <div key={connection.id} className={styles.gcalConnectionItem}>
+                        <div className={styles.gcalConnectionHeader}>
+                          <button
+                            type="button"
+                            className={styles.gcalConnectionToggle}
+                            onClick={() => void toggleExpandConnection(connection)}
+                          >
+                            <span className={styles.gcalConnectionCaret}>{expandedConnectionId === connection.id ? '▾' : '▸'}</span>
+                            {connection.googleEmail}
+                            <span className={styles.gcalConnectionCount}>
+                              {connection.selectedCalendars.length === 0
+                                ? 'No calendars synced'
+                                : `${connection.selectedCalendars.length} calendar${connection.selectedCalendars.length === 1 ? '' : 's'} synced`}
+                            </span>
+                          </button>
+                          <button className={styles.disconnectBtn} onClick={() => void handleDisconnectGcal(connection)}>Disconnect</button>
+                        </div>
+                        {expandedConnectionId === connection.id && (
+                          <div className={styles.gcalCalendarPicker}>
+                            {calendarsLoadingId === connection.id ? (
+                              <span className={styles.integrationHint}>Loading calendars…</span>
+                            ) : (availableCalendars[connection.id] ?? []).length === 0 ? (
+                              <span className={styles.integrationHint}>No calendars found on this account.</span>
+                            ) : (
+                              (availableCalendars[connection.id] ?? []).map(cal => {
+                                const checked = connection.selectedCalendars.some(c => c.id === cal.id);
+                                return (
+                                  <label key={cal.id} className={styles.gcalCalendarOption}>
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => void toggleCalendarSelected(connection, cal)}
+                                    />
+                                    {cal.backgroundColor && (
+                                      <span className={styles.gcalCalendarDot} style={{ background: cal.backgroundColor }} />
+                                    )}
+                                    {cal.summary}{cal.primary ? ' (primary)' : ''}
+                                  </label>
+                                );
+                              })
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className={styles.integrationRow}>
