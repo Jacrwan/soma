@@ -55,22 +55,29 @@ export default async function handler(req: any, res: any): Promise<void> {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const { data: { user }, error: authErr } = await admin.auth.getUser(state);
+  // state carries "<supabase-access-token>::<redirect_uri>" — see
+  // startConnectFlow() for why the redirect_uri has to ride along here
+  // rather than being reconstructed from request headers.
+  const sepIdx = state.indexOf('::');
+  if (sepIdx === -1) {
+    res.redirect('/settings?gcal_error=invalid_state');
+    return;
+  }
+  const supabaseToken = state.slice(0, sepIdx);
+  const redirectUri = state.slice(sepIdx + 2);
+
+  const { data: { user }, error: authErr } = await admin.auth.getUser(supabaseToken);
   if (authErr || !user) {
     console.warn('[gcal-oauth-callback] Invalid state / JWT:', authErr?.message);
     res.redirect('/settings?gcal_error=invalid_state');
     return;
   }
 
-  const host     = req.headers['host'] as string;
-  const protocol = host.startsWith('localhost') ? 'http' : 'https';
-  const callbackUrl = `${protocol}://${host}/api/google-calendar-oauth-callback`;
-
   const tokenBody = new URLSearchParams({
     code,
     client_id:     clientId,
     client_secret: clientSecret,
-    redirect_uri:  callbackUrl,
+    redirect_uri:  redirectUri,
     grant_type:    'authorization_code',
   });
 

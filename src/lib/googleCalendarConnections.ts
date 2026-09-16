@@ -65,14 +65,22 @@ export async function startConnectFlow(): Promise<void> {
     'https://www.googleapis.com/auth/userinfo.email',
   ].join(' ');
 
+  const redirectUri = `${window.location.origin}/api/google-calendar-oauth-callback`;
+
   const params = new URLSearchParams({
     client_id:     clientId,
-    redirect_uri:  `${window.location.origin}/api/google-calendar-oauth-callback`,
+    redirect_uri:  redirectUri,
     response_type: 'code',
     scope:         scopes,
     access_type:   'offline',
     prompt:        'consent select_account', // force account chooser so adding a 2nd account doesn't silently reuse the 1st
-    state:         session.access_token,
+    // Google only echoes back the params it defines (code/state/scope/…), so
+    // the exact redirect_uri used here rides along inside `state` — the
+    // callback must reuse this same string in its own token exchange, since
+    // Google requires the two to match byte-for-byte and the callback can't
+    // reliably reconstruct it from request headers alone (e.g. behind
+    // Vercel's preview routing).
+    state: `${session.access_token}::${redirectUri}`,
   });
 
   window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
