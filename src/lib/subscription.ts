@@ -31,6 +31,14 @@ export function hasAIAccess(status: SubscriptionStatus): boolean {
   return status === 'trialing' || status === 'trial_extended' || status === 'active';
 }
 
+export const GOOGLE_CALENDAR_LIMIT_FREE = 2;
+export const GOOGLE_CALENDAR_LIMIT_PREMIUM = 3;
+
+// Same tiering hasAIAccess uses — trial counts as premium-equivalent while it lasts.
+export function getGoogleCalendarLimit(status: SubscriptionStatus): number {
+  return hasAIAccess(status) ? GOOGLE_CALENDAR_LIMIT_PREMIUM : GOOGLE_CALENDAR_LIMIT_FREE;
+}
+
 const EMPTY: SubscriptionInfo = {
   error: null,
   status: 'loading',

@@ -1,6 +1,40 @@
 /// <reference types="node" />
 import { createClient } from '@supabase/supabase-js';
 
+const TRIAL_MS     = 21 * 86_400_000;
+const EXTENSION_MS =  7 * 86_400_000;
+const CALENDAR_LIMIT_FREE = 2;
+const CALENDAR_LIMIT_PREMIUM = 3;
+
+function computeStatus(row: {
+  status: string;
+  trial_start: string | null;
+  extension_start: string | null;
+}): string {
+  const now = Date.now();
+  if (row.status === 'trialing' && row.trial_start) {
+    return now > new Date(row.trial_start).getTime() + TRIAL_MS ? 'trial_expired' : 'trialing';
+  }
+  if (row.status === 'trial_extended' && row.extension_start) {
+    return now > new Date(row.extension_start).getTime() + EXTENSION_MS ? 'trial_extension_expired' : 'trial_extended';
+  }
+  return row.status;
+}
+
+// Same tiering the rest of the app uses for premium-gated features — trial
+// counts as premium-equivalent while it lasts.
+async function getCalendarLimit(admin: any, userId: string): Promise<number> {
+  const { data: sub } = await admin
+    .from('subscriptions')
+    .select('status, trial_start, extension_start')
+    .eq('user_id', userId)
+    .single();
+  if (!sub) return CALENDAR_LIMIT_FREE;
+  const status = computeStatus(sub);
+  const premium = status === 'trialing' || status === 'trial_extended' || status === 'active';
+  return premium ? CALENDAR_LIMIT_PREMIUM : CALENDAR_LIMIT_FREE;
+}
+
 /**
  * Server-side Google OAuth callback for connecting a Google Calendar account.
  * Supports multiple accounts per user — each connection is keyed by
@@ -125,6 +159,22 @@ export default async function handler(req: any, res: any): Promise<void> {
   if (!userinfo.email) {
     res.redirect('/settings?gcal_error=no_email');
     return;
+  }
+
+  // Enforce the connection limit — skip it entirely if this is just a
+  // reconnect/refresh of an account already on file, so re-authorizing an
+  // existing connection never gets blocked by its own slot.
+  const { data: existing } = await admin
+    .from('google_calendar_connections')
+    .select('id, google_email')
+    .eq('user_id', user.id);
+  const isReconnect = (existing ?? []).some((c: { google_email: string }) => c.google_email === userinfo.email);
+  if (!isReconnect) {
+    const limit = await getCalendarLimit(admin, user.id);
+    if ((existing ?? []).length >= limit) {
+      res.redirect(`/settings?gcal_error=limit_reached_${limit}`);
+      return;
+    }
   }
 
   const expiresAtIso = new Date(Date.now() + (tokens.expires_in ?? 3600) * 1000).toISOString();

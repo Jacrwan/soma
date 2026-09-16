@@ -6,7 +6,7 @@ import { EDUCATION_OPTIONS, EDUCATION_LABELS, type EducationId } from '../Onboar
 import { applyTheme } from '../../App';
 import { supabase } from '../../lib/supabase';
 import { friendlyError } from '../../lib/errors';
-import { useSubscription, openBillingPortal } from '../../lib/subscription';
+import { useSubscription, openBillingPortal, hasAIAccess, getGoogleCalendarLimit, GOOGLE_CALENDAR_LIMIT_PREMIUM } from '../../lib/subscription';
 import { getIcalAssignments } from '../../lib/canvas';
 import {
   listConnections, listCalendarsForConnection, updateSelectedCalendars, disconnectConnection, startConnectFlow,
@@ -128,6 +128,9 @@ export default function SettingsTab() {
   const [availableCalendars, setAvailableCalendars] = useState<Record<string, GoogleCalendarInfo[]>>({});
   const [calendarsLoadingId, setCalendarsLoadingId] = useState<string | null>(null);
 
+  const gcalLimit = getGoogleCalendarLimit(subscription.status);
+  const gcalAtLimit = gcalConnections.length >= gcalLimit;
+
   const loadGcalConnections = () => { void listConnections().then(setGcalConnections).catch(() => {}); };
 
   // On mount (including right after the OAuth redirect back from the connect
@@ -140,7 +143,12 @@ export default function SettingsTab() {
     const connected = params.get('gcal_connected');
     const error = params.get('gcal_error');
     if (connected) setGcalConnectMsg(`Connected ${connected}`);
-    if (error) setGcalActionError(`Couldn't connect Google Calendar (${error}). Try again.`);
+    if (error?.startsWith('limit_reached_')) {
+      const limit = error.slice('limit_reached_'.length);
+      setGcalActionError(`You've reached your limit of ${limit} connected Google accounts.`);
+    } else if (error) {
+      setGcalActionError(`Couldn't connect Google Calendar (${error}). Try again.`);
+    }
     if (connected || error) {
       const url = new URL(window.location.href);
       url.searchParams.delete('gcal_connected');
@@ -964,10 +972,18 @@ export default function SettingsTab() {
                 <div className={styles.gcalSectionHeader}>
                   <div className={styles.integrationInfo}>
                     <span className={styles.integrationLabel}>Google Calendar <span className={styles.testingBadge}>Early access</span></span>
-                    <span className={styles.integrationDescription}>See your events alongside your schedule — connect one or more Google accounts</span>
+                    <span className={styles.integrationDescription}>
+                      See your events alongside your schedule — connect up to {gcalLimit} Google account{gcalLimit === 1 ? '' : 's'}
+                      {!hasAIAccess(subscription.status) && ` (${GOOGLE_CALENDAR_LIMIT_PREMIUM} for premium)`}
+                    </span>
                   </div>
                   <div className={styles.integrationActions}>
-                    <button className={styles.connectBtn} onClick={() => void startConnectFlow()}>+ Add Google account</button>
+                    <button
+                      className={styles.connectBtn}
+                      onClick={() => void startConnectFlow()}
+                      disabled={gcalAtLimit}
+                      title={gcalAtLimit ? `You've reached your limit of ${gcalLimit} connected accounts` : undefined}
+                    >+ Add Google account</button>
                   </div>
                 </div>
 

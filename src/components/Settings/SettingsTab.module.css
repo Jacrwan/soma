@@ -551,6 +551,11 @@
   transition: opacity 0.12s;
 }
 
+.connectBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .connectBtn:hover {
   opacity: 0.88;
 }
