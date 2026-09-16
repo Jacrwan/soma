@@ -318,12 +318,22 @@
 .filterBar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-sm);
+  gap: 8px;
   padding-bottom: var(--space-sm);
   border-bottom: 1px solid var(--border);
   margin-bottom: var(--space-sm);
   flex-wrap: wrap;
+}
+
+.filterSelect {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
 }
 
 .filterPills {
@@ -368,28 +378,42 @@
   background: var(--bg-secondary);
 }
 
+/* ── Subject-grouped sections ─────────────────────────────────────────── */
+
+.subjectGroups {
+  display: flex;
+  flex-direction: column;
+}
+
 /* ── Assignment list ───────────────────────────────────────────────────── */
 
 .assignmentList {
   display: flex;
   flex-direction: column;
+  gap: 6px;
 }
 
-.assignmentRow {
+/* Compact, boxed row — one line, rounded outline instead of a bottom-border
+   list, so a dense day of assignments still reads as separable pieces. */
+.assignmentCard {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border);
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
 }
 
-.assignmentRow:last-child {
-  border-bottom: none;
+.assignmentCard:hover {
+  border-color: var(--accent);
+  background: var(--bg-secondary);
 }
 
 .dot {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
   transition: opacity 0.2s;
@@ -398,13 +422,13 @@
 .assignmentInfo {
   flex: 1;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: baseline;
+  gap: 6px;
   min-width: 0;
 }
 
 .assignmentName {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
@@ -413,83 +437,66 @@
 }
 
 .assignmentCourse {
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 600;
   color: var(--text-muted);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex-shrink: 0;
 }
 
 .assignmentRight {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.assignmentControls {
+  display: flex;
+  align-items: center;
   gap: 4px;
+}
+
+.dueTime {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
   flex-shrink: 0;
 }
 
-.assignmentScore {
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
+.dateGroups {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.assignmentDue {
-  font-size: 12px;
-  color: var(--text-muted);
-  white-space: nowrap;
+.dateGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.doneToggle {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 1.5px solid var(--border);
-  background: var(--bg);
-  color: var(--text-muted);
+.dateGroupHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 2px;
+}
+
+.dateGroupLabel {
   font-size: 13px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  padding: 0;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
-}
-
-.doneToggle:hover {
-  border-color: #66bb6a;
-  color: #66bb6a;
-}
-
-.doneToggleActive {
-  border-color: #66bb6a;
-  background: #66bb6a;
-  color: #fff;
-}
-
-.clearBtn {
-  min-width: 52px;
-  height: 24px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  padding: 0 8px;
-}
-
-.clearBtn:hover {
-  border-color: var(--text-secondary);
+  font-weight: 700;
   color: var(--text-primary);
-  background: var(--bg-secondary);
+}
+
+.dateGroupLabelOverdue {
+  color: oklch(58% 0.2 25);
+}
+
+.dateGroupCount {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .statusSelect {
@@ -505,6 +512,11 @@
 
 .statusSelect:focus {
   border-color: var(--accent);
+}
+
+.statusSelectDone {
+  border-color: #66bb6a;
+  color: #66bb6a;
 }
 
 .externalLink {
@@ -646,222 +658,6 @@
   color: var(--text-muted);
   font-size: 14px;
   padding: var(--space-md) 0;
-}
-
-/* ── Study Plan ────────────────────────────────────────────────────────── */
-
-.studyPlan {
-  margin-top: var(--space-xl);
-}
-
-.studyPlanHeader {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  margin-bottom: var(--space-md);
-}
-
-.studyPlanTitle {
-  font-size: 14px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.studyPlanRule {
-  flex: 1;
-  height: 1px;
-  background: var(--border);
-}
-
-.studyPlanBody {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  flex-wrap: wrap;
-}
-
-.generateBtn {
-  padding: 7px 16px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: #fff;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-
-.generateBtn:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: oklch(98% 0.006 265);
-}
-
-.generateBtn:disabled {
-  color: var(--text-muted);
-  background: var(--bg-secondary);
-  cursor: not-allowed;
-}
-
-.studyPlanMeta,
-.studyPlanNotice,
-.studyPlanEmpty {
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.studyPlanNotice,
-.studyPlanEmpty {
-  margin-top: var(--space-sm);
-}
-
-.studyPlanDays {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-  margin-top: var(--space-md);
-}
-
-.studyPlanDay {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fff;
-  overflow: hidden;
-}
-
-.studyPlanDayHeader {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-md);
-  padding: 9px 12px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border);
-}
-
-.studyPlanDayLabel {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.studyPlanDayDate {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.studyPlanItems {
-  display: flex;
-  flex-direction: column;
-}
-
-.studyPlanItem {
-  width: 100%;
-  display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 10px;
-  padding: 11px 12px;
-  border: 0;
-  border-bottom: 1px solid var(--border);
-  background: #fff;
-  text-align: left;
-  cursor: pointer;
-}
-
-.studyPlanItem:last-child {
-  border-bottom: 0;
-}
-
-.studyPlanItem:hover {
-  background: var(--bg-secondary);
-}
-
-.studyPlanItemDisabled {
-  cursor: default;
-  opacity: 0.65;
-}
-
-.studyPlanDot {
-  width: 8px;
-  height: 8px;
-  margin-top: 5px;
-  border-radius: 50%;
-}
-
-.studyPlanItemMain {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.studyPlanItemTitle {
-  font-size: 13px;
-  font-weight: 650;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.studyPlanItemCourse,
-.studyPlanReason {
-  font-size: 12px;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.studyPlanAction {
-  font-size: 12px;
-  color: var(--text-secondary);
-  line-height: 1.35;
-}
-
-.studyPlanMinutes {
-  display: inline-flex;
-  justify-content: center;
-  padding: 3px 7px;
-  border-radius: 999px;
-  background: var(--bg-secondary);
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 650;
-  white-space: nowrap;
-}
-
-.studyPlanItemSide {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-}
-
-.studyPlanTaskBtn {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: #fff;
-  color: var(--text-secondary);
-  font-size: 11px;
-  font-weight: 650;
-  padding: 5px 8px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-}
-
-.studyPlanTaskBtn:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: oklch(98% 0.006 265);
-}
-
-.studyPlanTaskBtn:disabled {
-  color: var(--text-muted);
-  background: var(--bg-secondary);
-  cursor: default;
 }
 
 /* ── Grades view ────────────────────────────────────────────────────────── */
@@ -1022,16 +818,6 @@
   font-weight: 600;
   flex-shrink: 0;
 }
-
-/* ── Dark mode overrides ───────────────────────────────────────────────── */
-
-[data-theme="dark"] .generateBtn { background: var(--bg); }
-[data-theme="dark"] .generateBtn:hover:not(:disabled) { background: var(--bg-secondary); }
-[data-theme="dark"] .studyPlanDay { background: var(--bg); }
-[data-theme="dark"] .studyPlanItem { background: var(--bg); }
-[data-theme="dark"] .studyPlanItem:hover { background: var(--bg-secondary); }
-[data-theme="dark"] .studyPlanTaskBtn { background: var(--bg); }
-[data-theme="dark"] .studyPlanTaskBtn:hover:not(:disabled) { background: var(--bg-secondary); }
 
 @media (max-width: 768px) {
   .layout {
