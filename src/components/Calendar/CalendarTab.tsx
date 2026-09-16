@@ -79,6 +79,18 @@ function weekMinToTop(clockMinutes: number): number {
   return (clockMinutes / 60) * WEEK_SLOT_HEIGHT;
 }
 
+// Lightens a #rrggbb color into a translucent fill for an event's background,
+// keeping the full color for its border/accent — same "tinted block, solid
+// accent" look Soma's own time blocks already use.
+function tint(hex: string, alpha: number): string {
+  const clean = hex.replace('#', '');
+  if (!/^[0-9a-fA-F]{6}$/.test(clean)) return `rgba(150, 150, 150, ${alpha})`;
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function isOnDate(iso: string, date: Date): boolean {
   const d = new Date(iso);
   return d.getFullYear() === date.getFullYear()
@@ -463,12 +475,14 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
           continue;
         }
 
+        const gcalColor = e.source?.color ?? GCAL_COLOR;
         events.push({
           id: `gcal-${e.id}`,
           type: 'gcal',
           label: e.summary ?? '(No title)',
-          color: 'rgba(150, 150, 150, 0.15)',
-          borderColor: 'rgba(150, 150, 150, 0.5)',
+          sublabel: e.source?.calendarSummary,
+          color: tint(gcalColor, 0.15),
+          borderColor: gcalColor,
           textColor: 'var(--text-primary)',
           startMin,
           endMin: endMin > startMin ? endMin : startMin + 30,
@@ -908,8 +922,8 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                           style={{
                             top: ev.top,
                             height: ev.height,
-                            left: `calc(${ev.left * 100}% + 1px)`,
-                            width: `calc(${ev.width * 100}% - 2px)`,
+                            left: `calc(${ev.left * 100}% + 2px)`,
+                            width: `calc(${ev.width * 100}% - 3px)`,
                             background: ev.color,
                             borderColor: ev.borderColor,
                           }}
