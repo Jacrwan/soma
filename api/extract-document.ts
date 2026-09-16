@@ -33,6 +33,17 @@ function truncate(text: string): { text: string; truncated: boolean } {
 }
 
 // Returns null for a file type we don't know how to extract text from.
+function htmlToText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<\/(p|div|h[1-6]|li|tr|br)>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"')
+    .replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 async function extract(fileType: string, bytes: Uint8Array): Promise<string | null> {
   if (fileType === 'application/pdf') {
     const { text } = await extractPdfText(bytes, { mergePages: true });
@@ -44,6 +55,9 @@ async function extract(fileType: string, bytes: Uint8Array): Promise<string | nu
   }
   if (fileType === 'text/plain') {
     return Buffer.from(bytes).toString('utf-8');
+  }
+  if (fileType === 'text/html') {
+    return htmlToText(Buffer.from(bytes).toString('utf-8'));
   }
   return null;
 }

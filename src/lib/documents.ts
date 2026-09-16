@@ -21,8 +21,9 @@ export const ACCEPTED_DOCUMENT_TYPES = [
   'application/vnd.ms-powerpoint',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   'text/plain',
+  'text/html',
 ];
-export const ACCEPT_ATTR = '.pdf,.doc,.docx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.webp';
+export const ACCEPT_ATTR = '.pdf,.doc,.docx,.ppt,.pptx,.txt,.html,.htm,.jpg,.jpeg,.png,.webp';
 
 export class DocumentError extends Error {}
 
