@@ -45,6 +45,8 @@ function rowToDocument(r: Record<string, unknown>): SomaDocument {
     createdAt: r.created_at as string,
     extractionStatus: (r.extraction_status as SomaDocument['extractionStatus'] | undefined) ?? 'pending',
     extractedText: (r.extracted_text as string | null | undefined) ?? null,
+    needsRag: (r.needs_rag as boolean | undefined) ?? false,
+    chunkStatus: (r.chunk_status as SomaDocument['chunkStatus'] | undefined) ?? 'not_applicable',
   };
 }
 
@@ -186,4 +188,32 @@ export async function extractDocumentText(doc: SomaDocument): Promise<void> {
       body: JSON.stringify({ documentId: doc.id }),
     });
   } catch { /* extraction_status stays 'pending'; retried on next visit */ }
+}
+
+export interface DocumentChunkMatch {
+  documentId: string;
+  chunkIndex: number;
+  content: string;
+  similarity: number;
+}
+
+// Semantic search over the user's chunked (RAG) documents — textbooks and
+// other large readings that are too big to stuff whole into the prompt.
+// Returns [] on any failure so a search hiccup never blocks a chat message.
+export async function searchDocuments(query: string, matchCount = 8): Promise<DocumentChunkMatch[]> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) return [];
+  try {
+    const res = await fetch('/api/search-documents', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ query, matchCount }),
+    });
+    if (!res.ok) return [];
+    const data = await res.json() as { matches?: DocumentChunkMatch[] };
+    return data.matches ?? [];
+  } catch {
+    return [];
+  }
 }

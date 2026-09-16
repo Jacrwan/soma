@@ -16,6 +16,7 @@ export interface Subject {
 export type DocumentType = 'syllabus' | 'reading' | 'guide' | 'notes' | 'assignment' | 'slides' | 'other';
 
 export type ExtractionStatus = 'pending' | 'processing' | 'done' | 'failed' | 'unsupported';
+export type ChunkStatus = 'not_applicable' | 'pending' | 'processing' | 'done' | 'failed';
 
 export interface SomaDocument {
   id: string;
@@ -28,6 +29,10 @@ export interface SomaDocument {
   createdAt: string;
   extractionStatus: ExtractionStatus;
   extractedText: string | null;
+  // Large documents (textbooks, long readings) are chunked + embedded for
+  // retrieval instead of being stuffed whole into the chat prompt.
+  needsRag: boolean;
+  chunkStatus: ChunkStatus;
 }
 
 export interface TimeBlock {

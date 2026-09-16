@@ -3,7 +3,7 @@ import DOMPurify from 'dompurify';
 import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { sendMessage } from '../../lib/ai';
-import { getCachedDocuments, listDocuments, DOCUMENTS_CHANGED_EVENT } from '../../lib/documents';
+import { getCachedDocuments, listDocuments, searchDocuments, DOCUMENTS_CHANGED_EVENT } from '../../lib/documents';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, hasAIAccess, startCheckout } from '../../lib/subscription';
 import { SubjectColor, Todo, ChatMessage, ChatSession, AiTodo } from '../../types';
@@ -429,7 +429,9 @@ const DOCUMENTS_CONTEXT_CHAR_LIMIT = 45_000;
 // answer from syllabi, readings, and guides the user uploaded to Documents —
 // deadlines, policies, whatever's in them — without being asked to fetch anything.
 function buildDocumentsSection(subjects: { id: string; name: string }[]): string {
-  const docs = getCachedDocuments().filter(d => d.extractionStatus === 'done' && d.extractedText);
+  // Large documents (textbooks, long readings) are chunked + embedded and
+  // pulled in per-message via search instead — see searchRelevantChunks().
+  const docs = getCachedDocuments().filter(d => d.extractionStatus === 'done' && d.extractedText && !d.needsRag);
   if (docs.length === 0) return '';
 
   const subjectById = new Map(subjects.map(s => [s.id, s.name]));
@@ -450,6 +452,20 @@ function buildDocumentsSection(subjects: { id: string; name: string }[]): string
 The user has uploaded the following documents to Soma (syllabi, readings, guides, etc.) — you have already read them in full and know their content. When the user asks about a deadline, policy, reading, or anything else that could be in these documents, answer directly from them. Never say you can't access files or need the user to share anything — you already have the content below.
 
 ${parts.join('\n\n')}
+`;
+}
+
+// Large documents don't get their content stuffed into every prompt (see
+// buildDocumentsSection) — instead relevant excerpts are searched and
+// injected per-message (see searchRelevantChunks). This just lets the AI
+// know these documents exist at all, so "do you have my chem textbook?"
+// gets a real answer even on a message that didn't happen to search well.
+function buildRagDocumentsHint(): string {
+  const docs = getCachedDocuments().filter(d => d.needsRag && d.chunkStatus === 'done');
+  if (docs.length === 0) return '';
+  const list = docs.map(d => `- "${d.fileName}" (${d.docType})`).join('\n');
+  return `\nThe user has also uploaded these larger documents (textbooks, long readings) to Soma. They're too long to include in full here, but you can search them — relevant excerpts will appear below as "RELEVANT EXCERPTS" when applicable to the user's message:
+${list}
 `;
 }
 
@@ -569,7 +585,7 @@ ${assignmentsStr}
 If there are no upcoming assignments, say so clearly and do not make up or hallucinate any assignments.
 
 Use this information to help the user plan their study schedule, prioritize tasks, and answer questions about their workload. Always refer to today's actual date when discussing deadlines.
-${buildDocumentsSection(subjects)}
+${buildDocumentsSection(subjects)}${buildRagDocumentsHint()}
 User availability:
 ${availabilityStr || 'Not set — ask the user what time they want to start and end.'}
 ${gcalStr ? `\nExisting calendar events (read-only, do not schedule over these):\n${gcalStr}` : ''}
@@ -1206,6 +1222,17 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
             return `- ${s.todoText ?? 'Untitled'} | session_id: ${s.id} | subject: ${subjectName} | ${start}–${end}`;
           }).join('\n');
           systemPrompt += `\n\nThe user's scheduled sessions for today (use these exact session_ids for update/delete):\n${sessionsStr}`;
+        }
+      } catch { /* non-critical */ }
+      try {
+        if (getCachedDocuments().some(d => d.needsRag && d.chunkStatus === 'done')) {
+          const matches = await searchDocuments(text);
+          if (matches.length > 0) {
+            const excerptsStr = matches
+              .map(m => `--- (similarity ${m.similarity.toFixed(2)})\n${m.content}`)
+              .join('\n\n');
+            systemPrompt += `\n\nRELEVANT EXCERPTS (from the user's larger uploaded documents — matched to this specific message):\n${excerptsStr}\n\nUse these if they help answer the question. They're search results, not the whole document — if they don't actually cover what the user asked, say so rather than guessing.`;
+          }
         }
       } catch { /* non-critical */ }
       if (isVoice) {

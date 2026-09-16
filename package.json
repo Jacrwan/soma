@@ -15,6 +15,7 @@
     "@stripe/stripe-js": "^9.7.0",
     "@supabase/supabase-js": "^2.106.1",
     "@types/dompurify": "^3.0.5",
+    "ai": "^7.0.102",
     "cors": "^2.8.6",
     "dompurify": "^3.4.6",
     "dotenv": "^17.4.2",

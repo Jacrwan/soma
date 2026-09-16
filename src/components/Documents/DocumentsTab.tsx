@@ -236,8 +236,22 @@ export default function DocumentsTab() {
       case 'processing': return 'Soma is reading this file…';
       case 'failed':      return "Soma couldn't read this file";
       case 'unsupported': return "Soma can't read this file type yet — it's still viewable, just not searchable in chat";
-      default:            return null;
+      default: break;
     }
+    if (doc.needsRag) {
+      switch (doc.chunkStatus) {
+        case 'pending':
+        case 'processing': return "This file is large — Soma is indexing it for search…";
+        case 'failed':      return "Soma read this file but couldn't index it for search — ask about it directly and it may still work";
+        case 'done':        return 'Indexed for search — Soma pulls in relevant excerpts as needed';
+        default:            return null;
+      }
+    }
+    return null;
+  }
+
+  function extractionHintIsWarning(doc: SomaDocument): boolean {
+    return doc.extractionStatus === 'failed' || doc.chunkStatus === 'failed';
   }
 
   function renderListRow(doc: SomaDocument) {
@@ -254,7 +268,7 @@ export default function DocumentsTab() {
         >
           {doc.fileName}
         </button>
-        {hint && <span className={styles.fileExtractionHint} title={hint}>{doc.extractionStatus === 'failed' ? '⚠' : '·'}</span>}
+        {hint && <span className={styles.fileExtractionHint} title={hint}>{extractionHintIsWarning(doc) ? '⚠' : '·'}</span>}
         {subjectBadge(doc)}
         {typeBadge(doc)}
         <span className={styles.fileMeta}>{formatSize(doc.sizeBytes)} · {formatDate(doc.createdAt)}</span>

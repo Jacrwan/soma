@@ -2,12 +2,22 @@
 import { createClient } from '@supabase/supabase-js';
 import { extractText as extractPdfText } from 'unpdf';
 import { extractRawText as extractDocxText } from 'mammoth';
+import { embedMany } from 'ai';
 import { isRateLimited } from './_rateLimit';
+import { chunkText } from './_chunking';
 
-export const config = { api: { bodyParser: { sizeLimit: '1kb' } } };
+export const config = { api: { bodyParser: { sizeLimit: '1kb' } }, maxDuration: 300 };
 
 const BUCKET = 'documents';
-const TEXT_CHAR_LIMIT = 20_000;
+// Documents at or under this size are stuffed directly into the chat system
+// prompt (see AITab.tsx's buildDocumentsSection). Anything larger — a
+// textbook, a long reading — gets chunked and embedded for retrieval instead,
+// so it's fully searchable rather than silently cut off.
+const RAG_THRESHOLD_CHARS = 20_000;
+// Sanity cap so one degenerate file (e.g. a huge OCR dump) can't produce an
+// unbounded number of chunks/embedding calls. ~650k tokens of source text.
+const MAX_EXTRACT_CHARS = 2_600_000;
+const EMBEDDING_MODEL = 'openai/text-embedding-3-small';
 
 const ALLOWED_ORIGINS = [
   'https://somastudy.app',
@@ -26,13 +36,10 @@ function applyCors(req: any, res: any): boolean {
   return false;
 }
 
-function truncate(text: string): { text: string; truncated: boolean } {
-  const cleaned = text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-  if (cleaned.length <= TEXT_CHAR_LIMIT) return { text: cleaned, truncated: false };
-  return { text: cleaned.slice(0, TEXT_CHAR_LIMIT), truncated: true };
+function clean(text: string): string {
+  return text.replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, MAX_EXTRACT_CHARS);
 }
 
-// Returns null for a file type we don't know how to extract text from.
 function htmlToText(html: string): string {
   return html
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -44,6 +51,7 @@ function htmlToText(html: string): string {
     .replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+// Returns null for a file type we don't know how to extract text from.
 async function extract(fileType: string, bytes: Uint8Array): Promise<string | null> {
   if (fileType === 'application/pdf') {
     const { text } = await extractPdfText(bytes, { mergePages: true });
@@ -60,6 +68,36 @@ async function extract(fileType: string, bytes: Uint8Array): Promise<string | nu
     return htmlToText(Buffer.from(bytes).toString('utf-8'));
   }
   return null;
+}
+
+async function chunkAndEmbed(
+  admin: any,
+  documentId: string,
+  userId: string,
+  text: string,
+): Promise<void> {
+  await admin.from('documents').update({ chunk_status: 'processing' }).eq('id', documentId);
+
+  const pieces = chunkText(text);
+  const { embeddings } = await embedMany({ model: EMBEDDING_MODEL, values: pieces });
+
+  // Clear out any chunks from a previous extraction attempt so re-running
+  // this doesn't leave stale/duplicate rows behind.
+  await admin.from('document_chunks').delete().eq('document_id', documentId);
+
+  const rows = pieces.map((content, i) => ({
+    document_id: documentId,
+    user_id: userId,
+    chunk_index: i,
+    content,
+    embedding: embeddings[i],
+  }));
+
+  const BATCH = 500;
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const { error } = await admin.from('document_chunks').insert(rows.slice(i, i + BATCH));
+    if (error) throw new Error(`chunk_insert_failed: ${error.message}`);
+  }
 }
 
 export default async function handler(req: any, res: any) {
@@ -109,7 +147,7 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ status: 'unsupported' });
     }
 
-    const { text, truncated } = truncate(raw);
+    const text = clean(raw);
     if (!text) {
       await admin.from('documents').update({
         extraction_status: 'failed', extracted_text: null, extraction_error: 'empty_content',
@@ -117,12 +155,45 @@ export default async function handler(req: any, res: any) {
       return res.status(200).json({ status: 'failed' });
     }
 
+    const needsRag = text.length > RAG_THRESHOLD_CHARS;
+
+    if (needsRag) {
+      try {
+        await chunkAndEmbed(admin, documentId, doc.user_id as string, text);
+        await admin.from('documents').update({
+          extraction_status: 'done',
+          extracted_text: text,
+          extraction_error: null,
+          needs_rag: true,
+          chunk_status: 'done',
+          chunk_error: null,
+        }).eq('id', documentId);
+        return res.status(200).json({ status: 'done', mode: 'rag', textLength: text.length });
+      } catch (chunkErr: unknown) {
+        const message = chunkErr instanceof Error ? chunkErr.message : String(chunkErr);
+        console.error(JSON.stringify({ endpoint: '/api/extract-document', event: 'chunk_error', documentId, message }));
+        // Extraction itself succeeded — the raw text is stored and the doc
+        // page can still open the file — only the search index failed.
+        await admin.from('documents').update({
+          extraction_status: 'done',
+          extracted_text: text,
+          extraction_error: null,
+          needs_rag: true,
+          chunk_status: 'failed',
+          chunk_error: message.slice(0, 300),
+        }).eq('id', documentId);
+        return res.status(200).json({ status: 'done', mode: 'rag_failed', textLength: text.length });
+      }
+    }
+
     await admin.from('documents').update({
       extraction_status: 'done',
-      extracted_text: truncated ? `${text}\n\n[Truncated]` : text,
+      extracted_text: text,
       extraction_error: null,
+      needs_rag: false,
+      chunk_status: 'not_applicable',
     }).eq('id', documentId);
-    return res.status(200).json({ status: 'done', textLength: text.length, truncated });
+    return res.status(200).json({ status: 'done', mode: 'direct', textLength: text.length });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(JSON.stringify({ endpoint: '/api/extract-document', event: 'error', documentId, message }));
