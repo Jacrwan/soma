@@ -8,9 +8,6 @@ import {
 import styles from './DocumentsTab.module.css';
 
 type LoadState = 'loading' | 'ready' | 'not_set_up' | 'error';
-type ViewMode = 'list' | 'block';
-
-const VIEW_MODE_KEY = 'soma_documents_view_mode';
 
 function extLabel(fileName: string, fileType: string): string {
   const fromName = fileName.split('.').pop();
@@ -34,9 +31,6 @@ export default function DocumentsTab() {
   const [state, setState] = useState<LoadState>('loading');
   const [actionError, setActionError] = useState('');
 
-  const [viewMode, setViewMode] = useState<ViewMode>(() => {
-    try { return (localStorage.getItem(VIEW_MODE_KEY) as ViewMode) || 'list'; } catch { return 'list'; }
-  });
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<DocumentType | 'all'>('all');
   const [subjectFilter, setSubjectFilter] = useState<'all' | 'unassigned' | string>('all');
@@ -67,10 +61,6 @@ export default function DocumentsTab() {
       window.removeEventListener('soma_subjects_changed', onSubjectsChanged);
     };
   }, []);
-
-  useEffect(() => {
-    try { localStorage.setItem(VIEW_MODE_KEY, viewMode); } catch { /* ignore */ }
-  }, [viewMode]);
 
   async function load() {
     setState('loading');
@@ -236,33 +226,6 @@ export default function DocumentsTab() {
     );
   }
 
-  function renderBlockCard(doc: SomaDocument) {
-    const subject = doc.subjectId ? subjectById.get(doc.subjectId) : undefined;
-    return (
-      <div key={doc.id} className={styles.card}>
-        <button
-          type="button"
-          className={styles.cardMain}
-          onClick={() => handleOpen(doc)}
-          disabled={openingId === doc.id}
-          title="Open"
-        >
-          <span className={styles.cardExt}>{extLabel(doc.fileName, doc.fileType)}</span>
-          <span className={styles.cardName}>{doc.fileName}</span>
-        </button>
-        <div className={styles.cardTags}>
-          {subjectBadge(doc)}
-          {typeBadge(doc)}
-        </div>
-        <div className={styles.cardFooter}>
-          <span className={styles.fileMeta}>{formatSize(doc.sizeBytes)} · {formatDate(doc.createdAt)}</span>
-          <button type="button" className={styles.fileDelete} onClick={() => handleDelete(doc)} title="Delete">×</button>
-        </div>
-        {subject && <span className={styles.cardStripe} style={{ background: subject.color }} />}
-      </div>
-    );
-  }
-
   return (
     <div className={styles.container}>
       <div className={styles.header}>
@@ -287,31 +250,6 @@ export default function DocumentsTab() {
           <option value="unassigned">Unassigned</option>
           {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
-        <div className={styles.viewToggle}>
-          <button
-            type="button"
-            className={`${styles.viewToggleBtn}${viewMode === 'list' ? ` ${styles.viewToggleBtnActive}` : ''}`}
-            onClick={() => setViewMode('list')}
-            title="List view"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-              <path d="M2 3.5h10M2 7h10M2 10.5h10"/>
-            </svg>
-          </button>
-          <button
-            type="button"
-            className={`${styles.viewToggleBtn}${viewMode === 'block' ? ` ${styles.viewToggleBtnActive}` : ''}`}
-            onClick={() => setViewMode('block')}
-            title="Block view"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round">
-              <rect x="2" y="2" width="4.3" height="4.3" rx="0.8"/>
-              <rect x="7.7" y="2" width="4.3" height="4.3" rx="0.8"/>
-              <rect x="2" y="7.7" width="4.3" height="4.3" rx="0.8"/>
-              <rect x="7.7" y="7.7" width="4.3" height="4.3" rx="0.8"/>
-            </svg>
-          </button>
-        </div>
         <button type="button" className={styles.uploadBtn} onClick={openUploadModal}>+ Upload</button>
       </div>
 
@@ -327,10 +265,8 @@ export default function DocumentsTab() {
         <div className={styles.empty}>
           <p className={styles.emptyBody}>No documents match your search or filters.</p>
         </div>
-      ) : viewMode === 'list' ? (
-        <div className={styles.list}>{filtered.map(renderListRow)}</div>
       ) : (
-        <div className={styles.grid}>{filtered.map(renderBlockCard)}</div>
+        <div className={styles.list}>{filtered.map(renderListRow)}</div>
       )}
 
       {uploadOpen && (
