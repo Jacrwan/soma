@@ -36,7 +36,10 @@ export default function DocumentsTab() {
   const [subjectFilter, setSubjectFilter] = useState<'all' | 'unassigned' | string>('all');
 
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadMode, setUploadMode] = useState<'file' | 'paste'>('file');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [pasteTitle, setPasteTitle] = useState('');
+  const [pasteContent, setPasteContent] = useState('');
   const [uploadSubjectId, setUploadSubjectId] = useState<string>('');
   const [uploadType, setUploadType] = useState<DocumentType>('other');
   const [uploading, setUploading] = useState(false);
@@ -99,7 +102,10 @@ export default function DocumentsTab() {
   }, [docs, search, typeFilter, subjectFilter]);
 
   function openUploadModal() {
+    setUploadMode('file');
     setUploadFile(null);
+    setPasteTitle('');
+    setPasteContent('');
     setUploadSubjectId('');
     setUploadType('other');
     setActionError('');
@@ -107,11 +113,19 @@ export default function DocumentsTab() {
   }
 
   async function handleUpload() {
-    if (!uploadFile) return;
+    let fileToUpload: File | null = uploadFile;
+    if (uploadMode === 'paste') {
+      const title = pasteTitle.trim();
+      const content = pasteContent;
+      if (!title || !content.trim()) return;
+      const fileName = /\.txt$/i.test(title) ? title : `${title}.txt`;
+      fileToUpload = new File([content], fileName, { type: 'text/plain' });
+    }
+    if (!fileToUpload) return;
     setUploading(true);
     setActionError('');
     try {
-      const doc = await uploadDocument(uploadFile, uploadSubjectId || null, uploadType);
+      const doc = await uploadDocument(fileToUpload, uploadSubjectId || null, uploadType);
       setDocs(prev => [doc, ...prev]);
       setUploadOpen(false);
       void extractDocumentText(doc).then(() => {
@@ -297,16 +311,51 @@ export default function DocumentsTab() {
           <div className={styles.modal} onClick={e => e.stopPropagation()}>
             <span className={styles.modalTitle}>Upload document</span>
 
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={ACCEPT_ATTR}
-              className={styles.hiddenInput}
-              onChange={e => setUploadFile(e.target.files?.[0] ?? null)}
-            />
-            <button type="button" className={styles.chooseFileBtn} onClick={() => fileInputRef.current?.click()}>
-              {uploadFile ? uploadFile.name : 'Choose file…'}
-            </button>
+            <div className={styles.modalModeToggle}>
+              <button
+                type="button"
+                className={`${styles.modalModeBtn}${uploadMode === 'file' ? ` ${styles.modalModeBtnActive}` : ''}`}
+                onClick={() => setUploadMode('file')}
+              >Upload file</button>
+              <button
+                type="button"
+                className={`${styles.modalModeBtn}${uploadMode === 'paste' ? ` ${styles.modalModeBtnActive}` : ''}`}
+                onClick={() => setUploadMode('paste')}
+              >Paste text</button>
+            </div>
+
+            {uploadMode === 'file' ? (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={ACCEPT_ATTR}
+                  className={styles.hiddenInput}
+                  onChange={e => setUploadFile(e.target.files?.[0] ?? null)}
+                />
+                <button type="button" className={styles.chooseFileBtn} onClick={() => fileInputRef.current?.click()}>
+                  {uploadFile ? uploadFile.name : 'Choose file…'}
+                </button>
+              </>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  className={styles.modalTextInput}
+                  placeholder="Title (e.g. AP Chem Syllabus)"
+                  value={pasteTitle}
+                  onChange={e => setPasteTitle(e.target.value)}
+                />
+                <textarea
+                  className={styles.modalPasteArea}
+                  placeholder="Paste the syllabus text here…"
+                  value={pasteContent}
+                  onChange={e => setPasteContent(e.target.value)}
+                  rows={10}
+                  spellCheck={false}
+                />
+              </>
+            )}
 
             <label className={styles.modalLabel}>
               Subject
@@ -329,7 +378,7 @@ export default function DocumentsTab() {
               type="button"
               className={styles.modalUploadBtn}
               onClick={handleUpload}
-              disabled={!uploadFile || uploading}
+              disabled={uploading || (uploadMode === 'file' ? !uploadFile : !pasteTitle.trim() || !pasteContent.trim())}
             >
               {uploading ? 'Uploading…' : 'Upload'}
             </button>

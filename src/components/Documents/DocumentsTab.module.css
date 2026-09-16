@@ -192,7 +192,7 @@
 }
 
 .modal {
-  width: 340px;
+  width: 420px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -206,6 +206,59 @@
   font-size: 15px;
   font-weight: 700;
   color: var(--text-primary);
+}
+
+.modalModeToggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.modalModeBtn {
+  flex: 1;
+  padding: 7px 10px;
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.modalModeBtn + .modalModeBtn { border-left: 1px solid var(--border); }
+
+.modalModeBtnActive {
+  background: var(--accent);
+  color: #fff;
+}
+
+.modalTextInput {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.modalPasteArea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  resize: vertical;
+  box-sizing: border-box;
 }
 
 .chooseFileBtn {
