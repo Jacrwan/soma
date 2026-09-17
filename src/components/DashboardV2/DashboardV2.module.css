@@ -184,3 +184,7 @@
   .page[data-time-format="12h"] .gap>span{min-width:108px}
   .page[data-time-format="12h"] .blockTime{font-size:10px}
 }
+
+/* Untimed work sits above the timed agenda, separated by a rule. */
+.unscheduledGroup{padding-bottom:12px;margin-bottom:4px;border-bottom:1px solid var(--border)}
+.unscheduledLabel{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary);margin-bottom:8px}
