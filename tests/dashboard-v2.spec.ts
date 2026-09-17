@@ -44,7 +44,7 @@ test('desktop dashboard fits one screen at common laptop sizes', async ({ page }
   for (const size of [{width:1440,height:900},{width:1366,height:768},{width:1280,height:720}]) {
     await page.setViewportSize(size);
     await page.goto('/dashboard-v2');
-    await expect(page.getByRole('heading', {name:'Study pulse'})).toBeVisible();
+    await expect(page.getByRole('heading', {name:'Ask Soma'})).toBeVisible();
     await page.screenshot({path:'test-results/dashboard-v2-compact.png',fullPage:true});
     expect(await page.evaluate(() => ({height:document.documentElement.scrollHeight, viewport:innerHeight}))).toEqual({height:size.height,viewport:size.height});
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

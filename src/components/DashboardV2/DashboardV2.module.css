@@ -115,3 +115,58 @@
 .editor input[type=checkbox]{width:auto;min-height:0;margin-right:6px}
 
 .red{--tone:oklch(52% .13 25);--tint:oklch(96% .018 25)}.orange{--tone:oklch(55% .12 60);--tint:oklch(96% .018 60)}.cyan{--tone:oklch(50% .09 200);--tint:oklch(96% .018 200)}.pink{--tone:oklch(53% .12 350);--tint:oklch(96% .018 350)}.brown{--tone:oklch(48% .05 60);--tint:oklch(96% .010 60)}
+
+/* Dashboard layout refresh — the progress rail and seven-day strip moved into
+   the plan column, so they measure the same width as the agenda blocks. The
+   right column now stretches the full height and absorbs the freed space. */
+.columns{grid-template-columns:minmax(0,1fr) 400px;gap:34px;margin-top:28px;align-items:stretch}
+.planColumn{min-width:0;display:flex;flex-direction:column}
+.planColumn .progress{margin-top:0}
+.planColumn .week{margin:22px 0 28px}
+.planColumn>.section:last-child{margin-bottom:0}
+
+/* Back-to-back entries were flush against each other; separate every row. */
+.agenda{gap:8px}
+.single,.concurrent{gap:8px}
+
+/* Right column fills the plan column's height: the chat takes the slack. */
+.right{display:flex;flex-direction:column;gap:16px;min-width:0}
+.right .chat{flex:1;min-height:320px;margin-bottom:0;padding:20px}
+.right .conversation{flex:1;height:auto;min-height:200px}
+.right .chat textarea{height:80px;min-height:80px}
+.right .focus{margin-bottom:0;padding:24px}
+.right .editor{margin-bottom:0}
+.right .timer{font-size:54px;margin:24px 0}
+
+@media(max-width:1100px){
+  .columns{grid-template-columns:minmax(0,1fr) 320px;gap:24px}
+  .right .chat{min-height:280px}
+  .right .timer{font-size:46px}
+}
+@media(max-width:780px){
+  .columns{grid-template-columns:1fr;margin-top:20px}
+  .right{gap:14px}
+  .right .chat{min-height:260px}
+}
+
+/* Short laptop screens: the dashboard still has to fit without scrolling, so
+   the chat and focus panels give back the height they take on taller screens. */
+@media(max-height:820px){
+  .columns{margin-top:22px}
+  .planColumn .week{margin:16px 0 22px}
+  .planColumn .week button{padding:9px 3px}
+  .right{gap:12px}
+  .right .chat{min-height:0;padding:16px}
+  .right .conversation{min-height:130px;padding:10px 0}
+  .right .chat textarea{height:64px;min-height:64px}
+  .right .focus{padding:18px}
+  .right .timer{font-size:42px;margin:14px 0}
+  .right .focus small{margin-top:12px}
+}
+@media(max-height:740px){
+  .planColumn .week{margin:12px 0 18px}
+  .right .conversation{min-height:104px}
+  .right .timer{font-size:36px;margin:10px 0}
+  .right .focus{padding:15px}
+  .right .chat{padding:14px}
+}

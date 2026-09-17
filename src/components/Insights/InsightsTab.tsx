@@ -273,8 +273,8 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
         <div className={styles.insightsEmpty}>
           <div className={styles.insightsEmptyIllo}>📊</div>
           <h2 className={styles.insightsEmptyHeading}>No study data yet</h2>
-          <p className={styles.insightsEmptyBody}>Start a task in Day View to begin tracking your study time.</p>
-          <a href="/day-view" className={styles.insightsEmptyBtn}>Go to Day View</a>
+          <p className={styles.insightsEmptyBody}>Start a task from your dashboard to begin tracking your study time.</p>
+          <a href="/dashboard" className={styles.insightsEmptyBtn}>Go to Dashboard</a>
         </div>
       </div>
     );

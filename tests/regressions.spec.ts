@@ -57,6 +57,15 @@ async function setup(page: Page, status = 'active', initialSubjects: Record<stri
   return state;
 }
 
+// Day View is no longer in the sidebar. Drive the SPA router in place so these
+// tests still exercise the already-mounted app rather than a fresh page load.
+async function openDayView(page: Page) {
+  await page.evaluate(() => {
+    history.pushState({}, '', '/day-view');
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  });
+}
+
 async function authRefresh(page: Page) {
   await page.evaluate(async () => {
     // Exercise the real Supabase auth listener with a fresh user object.
@@ -80,7 +89,7 @@ for (const entry of ['canvas', 'settings']) {
     await page.getByPlaceholder(/https:\/\/.*instructure/).fill('https://school.instructure.com/feed.ics');
     await page.getByRole('button', { name: /^(Connect|Connect Canvas)$/ }).last().click();
     await expect.poll(() => state.subjects.length).toBe(1);
-    await page.getByRole('button', { name: 'Day View', exact: true }).click();
+    await openDayView(page);
     await expect(page.getByText('Biology 101', { exact: true }).first()).toBeVisible();
     await page.reload();
     await expect(page.getByText('Biology 101', { exact: true }).first()).toBeVisible();
@@ -97,7 +106,7 @@ test('dismissed payment prompt stays closed after auth refresh and navigation', 
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Start your free trial' })).toHaveCount(0);
   await page.reload();
-  await expect(page.getByRole('button', { name: 'Day View', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Dashboard', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Start your free trial' })).toHaveCount(0);
 });
 
@@ -105,7 +114,7 @@ test('failed billing lookup never prompts an existing user to pay', async ({ pag
   const state = await setup(page);
   state.failBilling = true;
   await page.goto('/day-view');
-  await expect(page.getByRole('button', { name: 'Day View', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Dashboard', exact: true })).toBeVisible();
   await expect(page.getByRole('alert').filter({ hasText: /subscription/i })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Start your free trial' })).toHaveCount(0);
   state.failBilling = false;
@@ -135,7 +144,7 @@ test('opening Day View preserves archived and manual subjects', async ({ page })
     await storage.fetchSubjects();
     storage.setCachedIcalAssignments(assignments);
   }, assignments);
-  await page.getByRole('button', { name: 'Day View', exact: true }).click();
+  await openDayView(page);
   await expect(page.getByText('Math', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
   expect(state.deletes).toBe(0);

@@ -970,7 +970,7 @@ export default function LegalPage({ type }: { type: LegalType }) {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
-      if (data.session) setBackTo('/day-view');
+      if (data.session) setBackTo('/dashboard');
     });
   }, []);
 

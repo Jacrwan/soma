@@ -242,15 +242,9 @@ function AppShell({ user, sessionResolved, onLogout }: {
 
         <div className={styles.navItems}>
           <button className={nav('/dashboard')} onClick={() => navigate('/dashboard')}>Dashboard</button>
-          <button className={nav('/day-view')} onClick={() => navigate('/day-view')}>
-            <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
-              <rect x="1" y="2" width="12" height="11" rx="1.5"/>
-              <path d="M1 5.5h12"/>
-              <path d="M4.5 1v2M9.5 1v2"/>
-              <path d="M4.5 8.5h2"/>
-            </svg>
-            Day View
-          </button>
+          {/* Day View is retired from the sidebar; the Dashboard is the planning
+              surface. The /day-view route below still works if you open it
+              directly, so this nav entry can be restored by uncommenting it. */}
 
           <button className={nav('/canvas')} onClick={() => navigate('/canvas')}>
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
@@ -537,6 +531,7 @@ export default function App() {
       {/* Protected app routes inside shell */}
       <Route element={shell}>
         <Route path="/dashboard" element={user ? <LiveDashboard key={user.id} userId={user.id}/> : <Navigate to="/login" replace/>} />
+        {/* Kept as a backup: unlinked from the UI, still reachable at /day-view. */}
         <Route path="/day-view"  element={<DayView selectedDate={selectedDate} onSelectDate={setSelectedDate} />} />
         <Route path="/canvas"    element={<CanvasTab />} />
         <Route path="/documents" element={<DocumentsTab />} />
@@ -544,10 +539,10 @@ export default function App() {
           <CalendarTab
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
-            onSwitchToToday={() => navigate('/day-view')}
+            onSwitchToToday={() => navigate('/dashboard')}
           />
         } />
-        <Route path="/ai"       element={<AITab onSwitchToToday={() => navigate('/day-view')} />} />
+        <Route path="/ai"       element={<AITab onSwitchToToday={() => navigate('/dashboard')} />} />
         <Route path="/insights" element={<InsightsTab userId={user?.id ?? null} />} />
         <Route path="/settings" element={<SettingsTab />} />
         {/* Unknown app routes → dashboard */}
