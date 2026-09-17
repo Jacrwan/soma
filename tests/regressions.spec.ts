@@ -195,6 +195,10 @@ test('subscription is refreshed after a free user completes checkout in another 
 test('onboarding Canvas sync creates courses in the already mounted Day View', async ({ page }) => {
   const state = await setup(page, 'active', [], true);
   await page.goto('/day-view?onboarding_source=canvas');
+  await page.getByLabel('Date of birth').fill('2000-01-01');
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  await page.getByRole('button', { name: /College \/ University/ }).click();
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Connect your tools' })).toBeVisible();
   await page.getByPlaceholder(/https:\/\/.*instructure/).fill('https://school.instructure.com/feed.ics');
   await page.getByRole('button', { name: 'Connect', exact: true }).click();

@@ -46,10 +46,7 @@ export default function TimerOverlay() {
 
   function handleStop() {
     setIsStopping(true);
-    setTimeout(() => {
-      ctx.stopSession();
-      setIsStopping(false);
-    }, 300);
+    void ctx.stopSession().finally(() => setIsStopping(false));
   }
 
   if (ctx.pendingSession) {
@@ -102,8 +99,10 @@ export default function TimerOverlay() {
         <span className={styles.bannerTimer}>{fmtElapsed(ctx.elapsed)}</span>
       </div>
       <div className={styles.bannerRight}>
+        {ctx.error && <span role="alert">{ctx.error}</span>}
         <button
           className={styles.bannerBtn}
+          disabled={ctx.saving || ctx.savePending}
           title={ctx.isPaused || !ctx.isRunning ? 'Resume' : 'Pause'}
           onClick={() => ctx.isPaused || !ctx.isRunning ? ctx.resumeSession() : ctx.pauseSession()}
         >
@@ -111,6 +110,7 @@ export default function TimerOverlay() {
         </button>
         <button
           className={styles.bannerStopBtn}
+          disabled={ctx.saving}
           title="Stop"
           onClick={handleStop}
         >

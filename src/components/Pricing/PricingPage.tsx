@@ -51,7 +51,7 @@ export default function PricingPage() {
     supabase.auth.getSession().then(({ data }) => {
       const loggedIn = !!data.session;
       setIsLoggedIn(loggedIn);
-      if (loggedIn) setBackTo('/day-view');
+      if (loggedIn) setBackTo('/dashboard');
     });
     return () => { document.title = 'Soma'; };
   }, []);
@@ -108,8 +108,7 @@ export default function PricingPage() {
     <div className={styles.wrap}>
       <div className={styles.topbar}>
         <Link to={backTo} className={styles.wordmark}>
-          <img src="/favicon.png" width="24" height="24" alt="" style={{ borderRadius: 5, verticalAlign: 'middle', marginRight: 8 }} />
-          Soma
+          soma
         </Link>
         <Link to={backTo} className={styles.back}>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
@@ -223,7 +222,7 @@ export default function PricingPage() {
 
       {showModal && (
         <TrialSetupModal
-          onComplete={() => navigate('/day-view')}
+          onComplete={() => navigate('/dashboard')}
           onSkip={() => setShowModal(false)}
         />
       )}

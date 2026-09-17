@@ -28,7 +28,7 @@
   padding: 24px 16px;
   background: var(--bg);
   color: var(--text);
-  font-family: 'Figtree', system-ui, sans-serif;
+  font-family: 'DM Sans', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -96,7 +96,7 @@
 }
 
 .brandWordmark {
-  font-family: 'Figtree', sans-serif;
+  font-family: 'DM Sans', sans-serif;
   font-weight: 700;
   font-size: 19px;
   color: oklch(99% 0.005 265);
@@ -135,7 +135,7 @@
 }
 
 .wordmark {
-  font-family: 'Figtree', sans-serif;
+  font-family: 'DM Sans', sans-serif;
   font-weight: 700;
   font-size: 19px;
   color: var(--text);

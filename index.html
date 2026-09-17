@@ -54,7 +54,7 @@
       (function() {
         try {
           var s = JSON.parse(localStorage.getItem('soma_settings') || '{}');
-          var theme = s.theme || 'dark';
+          var theme = s.theme || 'light';
           document.documentElement.dataset.theme = theme;
           if (theme === 'dark') {
             document.documentElement.style.background = 'oklch(13% 0.009 265)';

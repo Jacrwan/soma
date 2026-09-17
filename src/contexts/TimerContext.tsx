@@ -7,10 +7,6 @@ function toLocalISO(date: Date): string {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, -1);
 }
 
-function toDateStr(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
 export interface ActiveSession {
   subject: Subject;
   task: string;
@@ -28,7 +24,10 @@ interface TimerContextValue {
   startSession: (subject: Subject, task: string, preSeconds: number) => void;
   pauseSession: () => void;
   resumeSession: () => void;
-  stopSession: () => void;
+  stopSession: () => Promise<boolean>;
+  saving: boolean;
+  savePending: boolean;
+  error: string;
 }
 
 const TimerContext = createContext<TimerContextValue | null>(null);
@@ -44,6 +43,10 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
   const [pendingSession, setPendingSession] = useState<{ subject: Subject; initialTask: string } | null>(null);
 
+  const [saving,setSaving]=useState(false);
+  const [error,setError]=useState('');
+  const savingRef=useRef(false);
+  const pendingSaveRef=useRef<TimerSession | null>(null);
   const elapsedRef             = useRef(0);
   const activeSessionRef       = useRef<ActiveSession | null>(null);
   const mergedBlockIdRef       = useRef<string | null>(null);
@@ -57,10 +60,12 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   // Recover any in-progress timer from Supabase on app load
   useEffect(() => {
     void storage.cleanupTestBlocks('Semester II Graded Assignments').catch(() => {});
-    storage.getActiveTimer().then(row => {
+    storage.getActiveTimer().then(async row => {
       if (!row) return;
+      await storage.loadSubjects();
+      if(activeSessionRef.current)return;
       const subj = storage.getSubjects().find(s => s.id === row.subject_id);
-      if (!subj) { void storage.deleteActiveTimer().catch(() => {}); return; }
+      if (!subj) { setError('Could not recover your timer subject. Refresh to retry; your saved timer has been kept.'); return; }
       const resumedElapsed = row.is_paused
         ? row.accumulated_seconds
         : row.accumulated_seconds + Math.floor((Date.now() - new Date(row.start_time).getTime()) / 1000);
@@ -75,65 +80,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Merge running timer into a matching scheduled block (runs globally, not per-tab).
-  // Case 1: timer started ≤60 min before block — stretch block startTime back.
-  // Case 2: timer started mid-block — split: pre-portion becomes missed block, timer attaches to remainder.
-  useEffect(() => {
-    if (!activeSession) {
-      mergedBlockIdRef.current = null;
-      return;
-    }
-    const timerStartMs = new Date(activeSession.sessionStartTimeISO).getTime();
-    const now = Date.now();
-    const todayStr = toDateStr(new Date());
-    const blocks = storage.getTimeBlocks();
-
-    const candidate = blocks.find((b: import('../types').TimeBlock) => {
-      if (b.timerSessionId) return false;
-      if (b.subjectId !== activeSession.subject.id) return false;
-      if (b.task !== activeSession.task) return false;
-      const blockStartMs = new Date(b.startTime).getTime();
-      const blockEndMs = new Date(b.endTime).getTime();
-      if (b.startTime.slice(0, 10) !== todayStr) return false;
-      if (now < blockStartMs) return false;
-      if (timerStartMs < blockStartMs) {
-        if (blockStartMs - timerStartMs > 60 * 60 * 1000) return false;
-        return timerStartMs < blockEndMs;
-      }
-      return timerStartMs < blockEndMs;
-    });
-
-    if (!candidate || mergedBlockIdRef.current === candidate.id) return;
-
-    mergedBlockIdRef.current = candidate.id;
-
-    if (timerStartMs < new Date(candidate.startTime).getTime()) {
-      // Case 1: early start — stretch block startTime back to timer start
-      const timerStartISO = toLocalISO(new Date(timerStartMs));
-      storage.setTimeBlocks(blocks.map((b: import('../types').TimeBlock) =>
-        b.id === candidate.id ? { ...b, startTime: timerStartISO } : b,
-      ));
-      window.dispatchEvent(new CustomEvent('soma_merge_applied'));
-    } else {
-      // Case 2: late start — split block at timer start time
-      // The portion before timerStart becomes a separate block (will be detected as missed).
-      // The original block's startTime is trimmed to timerStart.
-      const timerStartISO = toLocalISO(new Date(timerStartMs));
-      const preBlock: TimeBlock = {
-        id: crypto.randomUUID(),
-        subjectId: candidate.subjectId,
-        task: candidate.task ?? '',
-        startTime: candidate.startTime,
-        endTime: timerStartISO,
-        source: candidate.source,
-      };
-      const updatedBlocks = blocks.map((b: import('../types').TimeBlock) =>
-        b.id === candidate.id ? { ...b, startTime: timerStartISO } : b,
-      );
-      storage.setTimeBlocks([...updatedBlocks, preBlock]);
-      window.dispatchEvent(new CustomEvent('soma_merge_applied'));
-    }
-  }, [activeSession]);
+  // Planned blocks remain unchanged; timer history records actual work separately.
 
   const openInputModal = useCallback((subject: Subject, initialTask = '') => {
     if (activeSessionRef.current) return;
@@ -143,6 +90,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   const closeInputModal = useCallback(() => setPendingSession(null), []);
 
   const startSession = useCallback((subject: Subject, task: string, preSeconds: number) => {
+    if(activeSessionRef.current || savingRef.current)return;
+    setError('');pendingSaveRef.current=null;
     const now = new Date();
     const sessionStartMs = now.getTime() - preSeconds * 1000;
     const sessionStartISO = toLocalISO(new Date(sessionStartMs));
@@ -168,6 +117,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     }
 
     const session: ActiveSession = { subject, task, sessionStartTimeISO: sessionStartISO };
+    activeSessionRef.current=session;
     setActiveSession(session);
     setPendingSession(null);
     start(preSeconds);
@@ -179,14 +129,14 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       start_time: toLocalISO(now),
       accumulated_seconds: preSeconds,
       is_paused: false,
-    }).catch(() => {});
+    }).catch(() => setError('Timer is running on this device, but could not sync. Keep this page open and retry saving when you stop.'));
   }, [start]);
 
   const pauseSession = useCallback(() => {
     const session = activeSessionRef.current;
-    if (!session) return;
-    pause();
-    const acc = elapsedRef.current;
+    if (!session || savingRef.current) return;
+    const acc = pause();
+    elapsedRef.current=acc;
     void storage.upsertActiveTimer({
       subject_id: session.subject.id,
       subject_name: session.subject.name,
@@ -195,12 +145,12 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       start_time: toLocalISO(new Date()),
       accumulated_seconds: acc,
       is_paused: true,
-    }).catch(() => {});
+    }).catch(() => setError('Pause could not sync. Keep this page open until the session is saved.'));
   }, [pause]);
 
   const resumeSession = useCallback(() => {
     const session = activeSessionRef.current;
-    if (!session) return;
+    if (!session || savingRef.current || pendingSaveRef.current) return;
     resume();
     const acc = elapsedRef.current;
     void storage.upsertActiveTimer({
@@ -211,25 +161,26 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       start_time: toLocalISO(new Date()),
       accumulated_seconds: acc,
       is_paused: false,
-    }).catch(() => {});
+    }).catch(() => setError('Resume could not sync. Keep this page open until the session is saved.'));
   }, [resume]);
 
-  const stopSession = useCallback(() => {
+  const stopSession = useCallback(async (): Promise<boolean> => {
     const session = activeSessionRef.current;
-    if (!session) return;
-    stop();
-    setActiveSession(null);
+    if (!session || savingRef.current) return false;
+    savingRef.current=true;setSaving(true);setError('');
+    const durationSeconds = pause();
+    elapsedRef.current=durationSeconds;
     const endTime = toLocalISO(new Date());
-    const durationSeconds = elapsedRef.current;
 
     // Capture continuation state before clearing refs
     const continuationBlockId = continuationBlockIdRef.current;
-    continuationBlockIdRef.current = null;
     const pauseDuration = pauseDurationRef.current;
-    pauseDurationRef.current = 0;
 
-    const timerSession: TimerSession = {
-      id: crypto.randomUUID(),
+    // Stable across retries and recovery so an interrupted save cannot duplicate history.
+    const digest=new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(`${session.subject.id}:${new Date(session.sessionStartTimeISO).toISOString()}`)));
+    const hex=Array.from(digest.slice(0,16),b=>b.toString(16).padStart(2,'0')).join('');
+    const timerSession: TimerSession = pendingSaveRef.current ?? {
+      id: `${hex.slice(0,8)}-${hex.slice(8,12)}-5${hex.slice(13,16)}-a${hex.slice(17,20)}-${hex.slice(20,32)}`,
       subjectId: session.subject.id,
       task: session.task,
       startTime: session.sessionStartTimeISO,
@@ -237,9 +188,15 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       durationSeconds,
       ...(pauseDuration > 0 ? { pauseDurationSeconds: pauseDuration } : {}),
     };
-    storage.setTimerSessions([...storage.getTimerSessions(), timerSession]);
-    void storage.saveTimerSession(timerSession, session.subject.name).catch(() => {});
-    void storage.deleteActiveTimer().catch(() => {});
+    pendingSaveRef.current=timerSession;
+    try {
+      await storage.upsertActiveTimer({subject_id:session.subject.id,subject_name:session.subject.name,task_text:session.task,session_start_time:session.sessionStartTimeISO,start_time:toLocalISO(new Date()),accumulated_seconds:timerSession.durationSeconds,is_paused:true});
+      await storage.saveTimerSession(timerSession, session.subject.name);
+      await storage.deleteActiveTimer();
+    } catch {setError('Could not finish saving focus. Your timer is paused; press Stop to retry.');savingRef.current=false;setSaving(false);return false;}
+    stop();setActiveSession(null);activeSessionRef.current=null;pendingSaveRef.current=null;continuationBlockIdRef.current=null;pauseDurationRef.current=0;
+    savingRef.current=false;setSaving(false);
+    storage.setTimerSessions([...storage.getTimerSessions().filter(s=>s.id!==timerSession.id), timerSession]);
     // Let the Bosses feature credit this study time as damage.
     window.dispatchEvent(new Event('soma_focus_logged'));
 
@@ -256,7 +213,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       ));
       mergedBlockIdRef.current = null;
       window.dispatchEvent(new CustomEvent('soma_timer_stopped', { detail: { mergedBlockId: null, stopTime: endTime } }));
-      return;
+      return true;
     }
 
     const newBlock: TimeBlock = {
@@ -273,11 +230,12 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     const mergedBlockId = mergedBlockIdRef.current;
     mergedBlockIdRef.current = null;
     window.dispatchEvent(new CustomEvent('soma_timer_stopped', { detail: { mergedBlockId, stopTime: endTime } }));
-  }, [stop]);
+    return true;
+  }, [stop,pause]);
 
   return (
     <TimerContext.Provider value={{
-      elapsed, isRunning, isPaused,
+      elapsed, isRunning, isPaused, saving, error, savePending: !!pendingSaveRef.current,
       activeSession, pendingSession,
       openInputModal, closeInputModal,
       startSession, pauseSession, resumeSession, stopSession,

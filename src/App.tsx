@@ -4,6 +4,7 @@ import type { User } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import AuthScreen from './components/Auth/AuthScreen';
 import DayView from './components/DayView/DayView';
+import LiveDashboard from './components/DashboardV2/LiveDashboard';
 import CanvasTab from './components/Canvas/CanvasTab';
 import DocumentsTab from './components/Documents/DocumentsTab';
 import AITab from './components/AI/AITab';
@@ -98,7 +99,7 @@ function AppSkeleton() {
   return (
     <div className={styles.app}>
       <nav className={styles.sidebar}>
-        <div className={styles.brand}><img src="/favicon.png" width="22" height="22" alt="" style={{ borderRadius: 5, flexShrink: 0 }} />Soma <span className={styles.betaBadge}>beta</span></div>
+        <div className={styles.brand}>soma<span>study with intention</span></div>
         <div className={styles.navItems}>
           {[100, 80, 90, 50, 85].map((w, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, height: 40, padding: '0 20px' }}>
@@ -188,6 +189,7 @@ function AppShell({ user, sessionResolved, onLogout }: {
   // Document title
   useEffect(() => {
     const titles: Record<string, string> = {
+      '/dashboard': 'Dashboard | Soma',
       '/day-view':  'Day View | Soma',
       '/canvas':    'Canvas | Soma',
       '/documents': 'Documents | Soma',
@@ -217,9 +219,9 @@ function AppShell({ user, sessionResolved, onLogout }: {
   }
 
   return (
-    <TimerProvider>
+    <TimerProvider key={user?.id}>
     <div className={styles.app}>
-      <TimerOverlay />
+      {p !== '/dashboard' && <TimerOverlay />}
       {showSemesterModal && (
         <SemesterEndModal
           onConfirm={() => {
@@ -236,9 +238,10 @@ function AppShell({ user, sessionResolved, onLogout }: {
         />
       )}
       <nav className={styles.sidebar}>
-        <div className={styles.brand}><img src="/favicon.png" width="22" height="22" alt="" style={{ borderRadius: 5, flexShrink: 0 }} />Soma <span className={styles.betaBadge}>beta</span></div>
+        <div className={styles.brand}>soma<span>study with intention</span></div>
 
         <div className={styles.navItems}>
+          <button className={nav('/dashboard')} onClick={() => navigate('/dashboard')}>Dashboard</button>
           <button className={nav('/day-view')} onClick={() => navigate('/day-view')}>
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
               <rect x="1" y="2" width="12" height="11" rx="1.5"/>
@@ -391,7 +394,7 @@ export default function App() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    applyTheme(storage.getSomaSettings().theme ?? 'dark');
+    applyTheme(storage.getSomaSettings().theme ?? 'light');
   }, []);
 
   // Show trial modal for logged-in users with no subscription once status resolves
@@ -474,7 +477,7 @@ export default function App() {
         }
         const path = window.location.pathname;
         if (path === '/' || path === '/login' || path === '/signup') {
-          navigate('/day-view', { replace: true });
+          navigate('/dashboard', { replace: true });
         }
       }
     });
@@ -516,8 +519,8 @@ export default function App() {
       <Route path="/" element={<LandingPage />} />
 
       {/* Auth routes */}
-      <Route path="/login"  element={user ? <Navigate to="/day-view" replace /> : <AuthScreen initialMode="login"  />} />
-      <Route path="/signup" element={user ? <Navigate to="/day-view" replace /> : <AuthScreen initialMode="signup" />} />
+      <Route path="/login"  element={user ? <Navigate to="/dashboard" replace /> : <AuthScreen initialMode="login"  />} />
+      <Route path="/signup" element={user ? <Navigate to="/dashboard" replace /> : <AuthScreen initialMode="signup" />} />
 
       {/* Pricing */}
       <Route path="/pricing" element={<PricingPage />} />
@@ -533,6 +536,7 @@ export default function App() {
 
       {/* Protected app routes inside shell */}
       <Route element={shell}>
+        <Route path="/dashboard" element={user ? <LiveDashboard key={user.id} userId={user.id}/> : <Navigate to="/login" replace/>} />
         <Route path="/day-view"  element={<DayView selectedDate={selectedDate} onSelectDate={setSelectedDate} />} />
         <Route path="/canvas"    element={<CanvasTab />} />
         <Route path="/documents" element={<DocumentsTab />} />
@@ -546,8 +550,8 @@ export default function App() {
         <Route path="/ai"       element={<AITab onSwitchToToday={() => navigate('/day-view')} />} />
         <Route path="/insights" element={<InsightsTab userId={user?.id ?? null} />} />
         <Route path="/settings" element={<SettingsTab />} />
-        {/* Unknown app routes → day view */}
-        <Route path="*" element={<Navigate to="/day-view" replace />} />
+        {/* Unknown app routes → dashboard */}
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>
     </Routes>
     {showOnboarding && user && !['/','/login','/signup','/pricing'].includes(window.location.pathname) && (

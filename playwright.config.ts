@@ -11,6 +11,8 @@ export default defineConfig({
     command: 'npm run dev -- --host 127.0.0.1 --port 5179',
     url: 'http://127.0.0.1:5179',
     env: {
+      DASHBOARD_V2: 'true',
+      DASHBOARD_V2_DATA_MODE: 'mock',
       VITE_SUPABASE_URL: 'https://soma-regression.supabase.co',
       VITE_SUPABASE_ANON_KEY: 'regression-test-key',
       VITE_DEVELOPER_EMAIL: '',

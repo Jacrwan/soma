@@ -86,7 +86,7 @@ export async function startConnectFlow(): Promise<void> {
   window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
 }
 
-export async function fetchAggregatedEvents(timeMin: string, timeMax: string): Promise<GoogleCalendarEvent[]> {
+export async function fetchAggregatedEvents(timeMin: string, timeMax: string, requireComplete = false): Promise<GoogleCalendarEvent[]> {
   const token = await getSupabaseToken();
   if (!token) return [];
   const res = await fetch('/api/google-calendar-events', {
@@ -95,6 +95,7 @@ export async function fetchAggregatedEvents(timeMin: string, timeMax: string): P
     body: JSON.stringify({ timeMin, timeMax }),
   });
   if (!res.ok) throw new GoogleCalendarError('fetch_failed');
-  const data = await res.json() as { events: GoogleCalendarEvent[] };
+  const data = await res.json() as { events: GoogleCalendarEvent[]; incomplete?: boolean };
+  if (requireComplete && data.incomplete) throw new GoogleCalendarError('incomplete_calendar');
   return data.events;
 }

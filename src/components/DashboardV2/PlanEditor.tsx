@@ -1,0 +1,31 @@
+import { useState } from 'react';
+import styles from './DashboardV2.module.css';
+export type PlanState = 'Planned' | 'Completed' | 'Partially completed' | 'Missed' | 'Proposal';
+export type PlanBlock = { id:string | number; title:string; subject:string; time:string; minutes:number; color:string; state:PlanState; day:number; actualSeconds?:number; external?:boolean; manual?:boolean };
+export type EditorDraft = { block?:PlanBlock; start:string; end:string; day:number };
+const colors:Record<string,string>={Biology:'green',Mathematics:'blue',Literature:'purple',Personal:'blue'};
+export const minuteValue = (s:string) => {const [h,m]=s.split(':').map(Number);return h*60+m;};
+export default function PlanEditor({draft,blocks,onSave,onCancel,live=false}:{live?:boolean;draft:EditorDraft;blocks:PlanBlock[];onSave:(block:PlanBlock)=>void | Promise<void>;onCancel:()=>void}) {
+ const [title,setTitle]=useState(draft.block?.title ?? '');
+ const [subject,setSubject]=useState(draft.block?.external ? 'Personal' : draft.block?.subject ?? 'Personal');
+ const [type,setType]=useState(draft.block?.external ? 'commitment' : 'study');
+ const [start,setStart]=useState(draft.start);
+ const [end,setEnd]=useState(draft.end);
+ const [state,setState]=useState<PlanState>(draft.block?.state ?? 'Planned');
+ const [error,setError]=useState('');
+ const [saving,setSaving]=useState(false);
+ const [scheduled,setScheduled]=useState(!draft.block || !!draft.block.time);
+ const hasTime=!live || scheduled || type==='commitment';
+ const collisions=blocks.filter(b=>b.day===draft.day && b.id!==draft.block?.id && b.time && start && end && minuteValue(b.time.split('–')[0])<minuteValue(end) && minuteValue(b.time.split('–')[1])>minuteValue(start));
+ return <section className={styles.editor} aria-label="Block editor"><div className={styles.sectionHeading}><h2>{draft.block ? 'Edit block' : 'Add a block'}</h2><button onClick={onCancel} aria-label="Close block editor">Close</button></div><p className={styles.description}>{live ? 'Title, subject, and completion apply to the task and all of its scheduled sessions. Times apply only to this block.' : 'Changes update your plan and subject progress.'}</p><form onSubmit={async e=>{e.preventDefault();if(saving)return;if(!title.trim() || !subject.trim()){setError('Enter a title and subject.');return;}if(hasTime && (!start || !end || minuteValue(end)<=minuteValue(start))){setError('End time must be later than start time.');return;}setSaving(true);setError('');try {await onSave({...draft.block,id:draft.block?.id ?? Date.now(),title:title.trim(),subject:type==='commitment' ? 'Personal commitment' : subject.trim(),time:hasTime ? `${start}–${end}` : '',minutes:hasTime ? minuteValue(end)-minuteValue(start) : 0,color:type==='commitment' ? 'neutral' : colors[subject.trim()] ?? 'blue',state:type==='commitment' ? 'Planned' : state,day:draft.day,external:type==='commitment',manual:true});}catch(err){setError(err instanceof Error ? err.message : 'Could not save. Please try again.');}finally{setSaving(false);}}}>
+ <label>Title<input autoFocus required maxLength={150} value={title} onChange={e=>setTitle(e.target.value)}/></label>
+ <div className={styles.editorFields}><label>Type<select aria-label="Type" value={type} onChange={e=>setType(e.target.value)}><option value="study">Study session</option><option value="commitment">Personal commitment</option></select></label><label>Subject<input list="plan-subjects" value={subject} disabled={type==='commitment'} onChange={e=>setSubject(e.target.value)}/><datalist id="plan-subjects">{Array.from(new Set(['Personal',...blocks.filter(b=>!b.external).map(b=>b.subject)])).map(s=><option key={s} value={s}/>)}</datalist></label></div>
+ {live && type==='study' && <label><span><input type="checkbox" checked={scheduled} onChange={e=>setScheduled(e.target.checked)}/> Schedule a time</span></label>}
+ {hasTime && <div className={styles.editorFields}><label>Start time<input type="time" required value={start} onChange={e=>setStart(e.target.value)}/></label><label>End time<input type="time" required value={end} onChange={e=>setEnd(e.target.value)}/></label></div>}
+ {type==='study' && <label>Status<select aria-label="Status" value={state} onChange={e=>setState(e.target.value as PlanState)}><option value="Planned">Incomplete</option><option value="Completed">Completed</option><option value="Partially completed">Partially completed</option>{!live && <option value="Missed">Missed</option>}{state==='Proposal' && <option value="Proposal">Proposal</option>}</select></label>}
+ {draft.block?.actualSeconds ? <p className={styles.editorNote}>{Math.round(draft.block.actualSeconds/60)} minutes worked will be kept. Marking incomplete removes completion credit, not actual study time.</p> : null}
+ {hasTime && collisions.length>0 && <p className={styles.overlapNotice}>Overlaps {collisions.map(b=>b.title).join(', ')}. You can save it alongside these blocks.</p>}
+ {error && <p role="alert">{error}</p>}
+ <div className={styles.editorButtons}><button type="button" onClick={onCancel}>Cancel</button><button disabled={saving} type="submit">{saving ? "Saving…" : "Save block"}</button></div>
+ </form></section>;
+}

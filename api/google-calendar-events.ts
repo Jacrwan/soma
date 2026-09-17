@@ -30,14 +30,17 @@ async function fetchCalendarEvents(
   timeMin: string,
   timeMax: string,
 ): Promise<any[]> {
-  const params = new URLSearchParams({ timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime' });
-  const res = await fetch(
-    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } },
-  );
-  if (!res.ok) return [];
-  const data = await res.json() as { items?: any[] };
-  return data.items ?? [];
+  const items: any[] = [];
+  let pageToken: string | undefined;
+  do {
+    const params = new URLSearchParams({ timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime', maxResults: '2500', ...(pageToken ? { pageToken } : {}) });
+    const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!res.ok) throw new Error('calendar_fetch_failed');
+    const data = await res.json() as { items?: any[]; nextPageToken?: string };
+    items.push(...(data.items ?? []));
+    pageToken = data.nextPageToken;
+  } while (pageToken);
+  return items;
 }
 
 export default async function handler(req: any, res: any) {
@@ -69,16 +72,17 @@ export default async function handler(req: any, res: any) {
   if (connErr) return res.status(500).json({ error: connErr.message });
 
   const events: any[] = [];
+  let incomplete = false;
 
   await Promise.all((connections ?? []).map(async (row: CalendarConnectionRow & { selected_calendars: SelectedCalendar[] }) => {
     const calendars = row.selected_calendars ?? [];
     if (calendars.length === 0) return;
 
-    const accessToken = await getFreshAccessToken(admin, row);
-    if (!accessToken) return; // this account's token is stale; skip it rather than fail the whole request
+    const accessToken = await getFreshAccessToken(admin, row).catch(() => null);
+    if (!accessToken) { incomplete = true; return; } // this account's token is stale; skip it rather than fail the whole request
 
     await Promise.all(calendars.map(async cal => {
-      const items = await fetchCalendarEvents(accessToken, cal.id, timeMin, timeMax);
+      const items = await fetchCalendarEvents(accessToken, cal.id, timeMin, timeMax).catch(() => { incomplete = true; return []; });
       for (const item of items) {
         events.push({
           ...item,
@@ -94,5 +98,5 @@ export default async function handler(req: any, res: any) {
     }));
   }));
 
-  return res.status(200).json({ events });
+  return res.status(200).json({ events, incomplete });
 }

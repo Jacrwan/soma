@@ -78,8 +78,7 @@ export default function AuthScreen({ initialMode = 'login' }: { initialMode?: 'l
           </div>
           <div className={styles.brandCopy}>
             <div className={styles.brandWordmark}>
-              <img src="/favicon.png" width="24" height="24" alt="" style={{ borderRadius: 6, verticalAlign: 'middle', marginRight: 8 }} />
-              Soma
+              soma
             </div>
             <p className={styles.brandTagline}>
               Connect Canvas, get a plan for the day, and know what's next — free to use, no credit card required.
@@ -89,8 +88,7 @@ export default function AuthScreen({ initialMode = 'login' }: { initialMode?: 'l
 
         <div className={styles.card}>
           <a href="/" className={styles.wordmark}>
-            <img src="/favicon.png" width="28" height="28" alt="" style={{ borderRadius: 6, verticalAlign: 'middle', marginRight: 8 }} />
-            Soma
+            soma
           </a>
 
           <div className={styles.heading}>

@@ -1,0 +1,8 @@
+.claude/
+.agents/
+files/
+test-results/
+playwright-report/
+node_modules/
+dist/
+.env*

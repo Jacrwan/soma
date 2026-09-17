@@ -962,8 +962,7 @@ export default function LandingPage() {
 
       <nav className="ln-nav">
         <a href="/" className="ln-brand">
-          <img src="/favicon.png" width="28" height="28" alt="" style={{ borderRadius: 6, flexShrink: 0 }} />
-          <span className="ln-word">Soma</span>
+          <span className="ln-word">soma</span>
         </a>
         <div className="ln-nav-links">
           <a href="#how">How it works</a>
@@ -992,7 +991,7 @@ export default function LandingPage() {
           <div className="ln-shot">
             <div className="ln-shot-bar">
               <span className="ln-dot" /><span className="ln-dot" /><span className="ln-dot" />
-              <span className="ln-shot-title">Soma</span>
+              <span className="ln-shot-title">soma</span>
             </div>
             <div className="ln-shot-body">
               <aside className="ln-side">
@@ -1319,8 +1318,7 @@ export default function LandingPage() {
         <div className="ln-foot-in">
           <div>
             <div className="ln-foot-brand">
-              <img src="/favicon.png" width="24" height="24" alt="" style={{ borderRadius: 5, flexShrink: 0 }} />
-              <span className="ln-foot-word">Soma</span>
+              <span className="ln-foot-word">soma</span>
             </div>
             <p className="ln-foot-copy">
               Soma turns your Canvas deadlines into a plan for the day, tracks the time you

@@ -98,7 +98,7 @@ const DEFAULT_SETTINGS: SomaSettings = {
     verbosity: 'concise',
     defaultOutput: 'schedule',
   },
-  theme: 'dark',
+  theme: 'light',
 };
 
 // ── localStorage helpers (Canvas cache, tokens, session state) ────────────
@@ -614,7 +614,8 @@ export const storage = {
 
   async fetchAllTodos(): Promise<Todo[]> {
     const id = await uid();
-    const { data } = await supabase.from('todos').select('*').eq('user_id', id);
+    const { data, error } = await supabase.from('todos').select('*').eq('user_id', id);
+    if (error) throw error;
     const todos = (data ?? []).map(r => todoFromRow(r as Record<string, unknown>));
     _todos = todos;
     return todos;
@@ -683,7 +684,7 @@ export const storage = {
 
   async saveTodo(todo: Todo): Promise<void> {
     const id = await uid();
-    await supabase.from('todos').upsert({
+    const { error } = await supabase.from('todos').upsert({
       id: todo.id,
       user_id: id,
       text: todo.text,
@@ -696,6 +697,7 @@ export const storage = {
       notes: todo.notes ?? null,
       order: todo.order ?? null,
     });
+    if (error) throw new Error(error.message);
   },
 
   async deleteTodo(todoId: string): Promise<void> {
@@ -822,16 +824,20 @@ export const storage = {
     is_paused: boolean;
   }): Promise<void> {
     const id = await uid();
-    await supabase.from('active_timer').upsert({
+    const { error } = await supabase.from('active_timer').upsert({
       user_id: id,
       ...row,
+      session_start_time: new Date(row.session_start_time).toISOString(),
+      start_time: new Date(row.start_time).toISOString(),
       updated_at: new Date().toISOString(),
     });
+    if (error) throw new Error(error.message);
   },
 
   async deleteActiveTimer(): Promise<void> {
     const id = await uid();
-    await supabase.from('active_timer').delete().eq('user_id', id);
+    const { error } = await supabase.from('active_timer').delete().eq('user_id', id);
+    if (error) throw new Error(error.message);
   },
 
   // ── Timer sessions (Supabase) ────────────────────────────────────────
@@ -867,16 +873,16 @@ export const storage = {
 
   async saveTimerSession(session: TimerSession, subjectName: string): Promise<void> {
     const id = await uid();
-    const { error } = await supabase.from('timer_sessions').insert({
+    const { error } = await supabase.from('timer_sessions').upsert({
       id: session.id,
       user_id: id,
       subject_id: session.subjectId,
       subject_name: subjectName,
       task_text: session.task || null,
-      start_time: session.startTime,
-      end_time: session.endTime,
+      start_time: new Date(session.startTime).toISOString(),
+      end_time: new Date(session.endTime).toISOString(),
       duration_seconds: session.durationSeconds,
-      date: session.startTime.slice(0, 10),
+      date: (() => { const d = new Date(session.startTime); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })(),
     });
     if (error) throw new Error(error.message);
     window.dispatchEvent(new Event('soma_insights_changed'));
