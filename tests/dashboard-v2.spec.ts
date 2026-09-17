@@ -24,11 +24,11 @@ test('focus pause and completion preserve planned times', async ({ page }) => {
   await page.goto('/dashboard-v2');
   await page.getByRole('button', {name:'Start focus: Problem set 04',exact:true}).click();
   await page.getByRole('button', {name:'Pause',exact:true}).click();
-  await expect(page.getByText('13:00–14:00')).toBeVisible();
+  await expect(page.getByText('1:00 PM–2:00 PM')).toBeVisible();
   await page.getByRole('button', {name:'Stop',exact:true}).click();
   await page.getByRole('button', {name:'Finished',exact:true}).click();
   await expect(page.getByTestId('progress-Mathematics')).toHaveAttribute('style',/--fill: 100%/);
-  await expect(page.getByText('13:00–14:00')).toBeVisible();
+  await expect(page.getByText('1:00 PM–2:00 PM')).toBeVisible();
 });
 
 test('mobile dashboard fits viewport and chat has reply space', async ({ page }) => {

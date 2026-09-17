@@ -6,6 +6,7 @@ import {
   listConnections, startConnectFlow, fetchAggregatedEvents, GoogleCalendarError,
 } from '../../lib/googleCalendarConnections';
 import { TimeBlock, Subject, GoogleCalendarEvent, GoogleCalendarConnection } from '../../types';
+import { formatDateTime, formatHourLabel, useTimeFormat, type TimeFormat } from '../../lib/timeFormat';
 import styles from './CalendarTab.module.css';
 
 type ViewMode = 'month' | 'week';
@@ -69,11 +70,10 @@ const FILTER_KEY = 'soma_calendar_filters';
 const WEEK_SLOT_HEIGHT = 60;
 const WEEK_TOTAL_HOURS = 24;
 const WEEK_GRID_HEIGHT = WEEK_TOTAL_HOURS * WEEK_SLOT_HEIGHT;
-const weekHourSlots = Array.from({ length: WEEK_TOTAL_HOURS }, (_, i) => {
-  const ampm = i >= 12 ? 'PM' : 'AM';
-  const h12 = i % 12 || 12;
-  return { label: i === 0 ? '' : `${h12} ${ampm}` };
-});
+const weekHourSlotsFor = (format: TimeFormat) =>
+  Array.from({ length: WEEK_TOTAL_HOURS }, (_, i) => ({
+    label: i === 0 ? '' : formatHourLabel(i, format),
+  }));
 
 function weekMinToTop(clockMinutes: number): number {
   return (clockMinutes / 60) * WEEK_SLOT_HEIGHT;
@@ -99,10 +99,7 @@ function isOnDate(iso: string, date: Date): boolean {
 }
 
 function fmtTime(iso: string): string {
-  const d = new Date(iso);
-  const h = d.getHours(), m = d.getMinutes();
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`;
+  return formatDateTime(new Date(iso));
 }
 
 function fmtDuration(startISO: string, endISO: string): string {
@@ -193,6 +190,9 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     task: '', startHour: 9, startMinute: 0, startAmPm: 'AM',
     endHour: 10, endMinute: 0, endAmPm: 'AM',
   });
+
+  const timeFormat = useTimeFormat();
+  const weekHourSlots = useMemo(() => weekHourSlotsFor(timeFormat), [timeFormat]);
 
   const weekGridRef = useRef<HTMLDivElement>(null);
   const weekModalBoxRef = useRef<HTMLDivElement>(null);

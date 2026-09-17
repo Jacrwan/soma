@@ -13,7 +13,7 @@ test('undoing completion keeps actual time and updates subject progress',async({
 test('gap editor updates schedule, priorities, progress, and proposal availability',async({page})=>{
  await page.goto('/dashboard-v2');
  await page.getByRole('button',{name:'Edit plan',exact:true}).click();
- await page.getByRole('button',{name:'Add block in gap 11:00–13:00',exact:true}).click();
+ await page.getByRole('button',{name:'Add block in gap 11:00 AM–1:00 PM',exact:true}).click();
  await expect(page.getByLabel('Start time',{exact:true})).toHaveValue('11:00');
  await expect(page.getByLabel('End time',{exact:true})).toHaveValue('13:00');
  await page.getByLabel('Title',{exact:true}).fill('Chemistry revision');
@@ -25,7 +25,7 @@ test('gap editor updates schedule, priorities, progress, and proposal availabili
  await page.getByRole('button',{name:'Done editing',exact:true}).click();
  await page.getByLabel('What do you need to work on?').fill('Read history');
  await page.getByRole('button',{name:'Send to Soma',exact:true}).click();
- await expect(page.getByRole('log')).toContainText('14:00–14:30');
+ await expect(page.getByRole('log')).toContainText('2:00 PM–2:30 PM');
  await expect(page.getByRole('log')).toContainText('300 study minutes');
 });
 

@@ -4,6 +4,7 @@ import { storage, SomaSettings } from '../../lib/storage';
 import SemesterEndModal from '../shared/SemesterEndModal';
 import { EDUCATION_OPTIONS, EDUCATION_LABELS, type EducationId } from '../Onboarding/OnboardingFlow';
 import { applyTheme } from '../../App';
+import { applyTimeFormat } from '../../lib/timeFormat';
 import { supabase } from '../../lib/supabase';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, openBillingPortal, hasAIAccess, getGoogleCalendarLimit, GOOGLE_CALENDAR_LIMIT_PREMIUM } from '../../lib/subscription';
@@ -780,6 +781,30 @@ export default function SettingsTab() {
                     </svg>
                     Dark
                   </button>
+                </div>
+              </div>
+
+              <div className={styles.prefRow}>
+                <label className={styles.prefLabel}>Time format</label>
+                <div className={styles.themeToggle}>
+                  <button
+                    className={`${styles.themeBtn}${(settings.timeFormat ?? '12h') === '12h' ? ` ${styles.themeBtnActive}` : ''}`}
+                    aria-pressed={(settings.timeFormat ?? '12h') === '12h'}
+                    onClick={() => {
+                      const next = { ...settings, timeFormat: '12h' as const };
+                      save(next);
+                      applyTimeFormat('12h');
+                    }}
+                  >12-hour <span className={styles.prefHint}>1:30 PM</span></button>
+                  <button
+                    className={`${styles.themeBtn}${(settings.timeFormat ?? '12h') === '24h' ? ` ${styles.themeBtnActive}` : ''}`}
+                    aria-pressed={(settings.timeFormat ?? '12h') === '24h'}
+                    onClick={() => {
+                      const next = { ...settings, timeFormat: '24h' as const };
+                      save(next);
+                      applyTimeFormat('24h');
+                    }}
+                  >24-hour <span className={styles.prefHint}>13:30</span></button>
                 </div>
               </div>
             </div>

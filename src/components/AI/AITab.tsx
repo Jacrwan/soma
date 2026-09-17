@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import DOMPurify from 'dompurify';
 import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
+import { formatDateTime, useTimeFormat } from '../../lib/timeFormat';
 import { sendMessage } from '../../lib/ai';
 import { getCachedDocuments, listDocuments, DOCUMENTS_CHANGED_EVENT } from '../../lib/documents';
 import { friendlyError } from '../../lib/errors';
@@ -38,7 +39,7 @@ function fmtSessionTimestamp(iso: string): string {
   const d = new Date(iso);
   const now = new Date();
   if (d.toDateString() === now.toDateString()) {
-    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    return formatDateTime(d);
   }
   const yesterday = new Date(now);
   yesterday.setDate(now.getDate() - 1);
@@ -871,6 +872,7 @@ function AILockedScreen({ status }: { status: string }) {
 // ── Main component ──────────────────────────────────────────────────────────
 
 export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void }) {
+  useTimeFormat(); // re-render when the 12h/24h preference changes
   const subscription = useSubscription();
 
   const [sessions, setSessions] = useState<ChatSession[]>([]);

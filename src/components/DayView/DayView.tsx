@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
 import { storage } from '../../lib/storage';
+import { formatDateTime, useTimeFormat } from '../../lib/timeFormat';
 import { supabase } from '../../lib/supabase';
 import { sendMessage } from '../../lib/ai';
 import { Subject, TimeBlock, TimerSession, SubjectColor, Todo, TodoSession, GoogleCalendarEvent, CanvasAssignment, CanvasCourse } from '../../types';
@@ -125,10 +126,7 @@ function durToHeight(minutes: number) {
 }
 
 function fmtTime(iso: string) {
-  const d = new Date(iso);
-  const h = d.getHours(), m = d.getMinutes();
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${ampm}`;
+  return formatDateTime(new Date(iso));
 }
 
 
@@ -416,6 +414,7 @@ interface DayViewProps {
 }
 
 export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
+  useTimeFormat(); // re-render when the 12h/24h preference changes
   const [blocks, setBlocks] = useState<TimeBlock[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [currentMinutes, setCurrentMinutes] = useState(0);

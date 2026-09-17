@@ -1182,6 +1182,15 @@
   color: var(--accent);
 }
 
+.prefHint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.themeBtnActive .prefHint { color: inherit; opacity: 0.75; }
+
 /* ── Dark mode overrides ───────────────────────────────────────────────── */
 
 [data-theme="dark"] .timeInput { background: var(--bg-secondary); }

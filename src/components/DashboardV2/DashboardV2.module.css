@@ -170,3 +170,17 @@
   .right .focus{padding:15px}
   .right .chat{padding:14px}
 }
+
+/* 12-hour labels ("11:00 AM–12:30 PM") are wider than 24-hour ones, so the
+   time column reserves more room and the block text stays aligned. */
+.page[data-time-format="12h"] .blockTime,
+.page[data-time-format="12h"] .concurrent .blockTime{min-width:124px}
+.page[data-time-format="12h"] .gap>span{min-width:124px}
+/* Narrower plan columns cannot spare the full label width without wrapping
+   block titles, which would push the dashboard past one screen. */
+@media(max-width:1340px){
+  .page[data-time-format="12h"] .blockTime,
+  .page[data-time-format="12h"] .concurrent .blockTime,
+  .page[data-time-format="12h"] .gap>span{min-width:108px}
+  .page[data-time-format="12h"] .blockTime{font-size:10px}
+}

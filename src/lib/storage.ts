@@ -45,6 +45,8 @@ export interface SomaSettings {
     defaultOutput: 'schedule' | 'todos';
   };
   theme: 'dark' | 'light';
+  /** Clock display preference. Stored times stay canonical 24-hour `HH:MM`. */
+  timeFormat?: '12h' | '24h';
   canvasIcalUrl?: string;
   googleToken?: string;
   googleRefreshToken?: string;
@@ -99,6 +101,7 @@ const DEFAULT_SETTINGS: SomaSettings = {
     defaultOutput: 'schedule',
   },
   theme: 'light',
+  timeFormat: '12h',
 };
 
 // ── localStorage helpers (Canvas cache, tokens, session state) ────────────

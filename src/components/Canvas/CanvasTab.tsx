@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { storage } from '../../lib/storage';
+import { formatDateTime, useTimeFormat } from '../../lib/timeFormat';
 import { CanvasCourse, CanvasAssignment, Todo } from '../../types';
 import { getIcalAssignments } from '../../lib/canvas';
 import { SkeletonBlock } from '../UI/Skeleton';
@@ -30,7 +31,7 @@ const COURSE_COLORS = [
 const CACHE_MAX_AGE = 10 * 60 * 1000;
 
 function fmtDueTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return formatDateTime(new Date(iso));
 }
 
 function dayKey(date: Date) {
@@ -70,6 +71,7 @@ function fmtSynced(ts: number): string {
 }
 
 export default function CanvasTab() {
+  useTimeFormat(); // re-render when the 12h/24h preference changes
   const [icalUrl, setIcalUrl] = useState(() => storage.getCanvasIcalUrl());
   const [setupIcalUrl, setSetupIcalUrl] = useState('');
   const [connectLoading, setConnectLoading] = useState(false);
