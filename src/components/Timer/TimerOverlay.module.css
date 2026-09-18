@@ -290,3 +290,11 @@
   .pill, .pillOut { animation: none; }
   .pillDotLive { animation: none; }
 }
+
+/* Dragging: the body is the handle, so it takes a grab cursor and the pointer
+   keeps control of the gesture even when it leaves the pill. */
+.pillBody { touch-action: none; cursor: grab; }
+.pillDragging { cursor: grabbing; box-shadow: 0 12px 34px oklch(0% 0 0 / 0.16), 0 2px 6px oklch(0% 0 0 / 0.08); }
+.pillDragging .pillBody { cursor: grabbing; }
+.pillDragging, .pillDragging * { user-select: none; }
+

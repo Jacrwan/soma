@@ -190,3 +190,109 @@ test('the sidebar collapses to icons and the choice is remembered', async ({ pag
   expect(await page.evaluate(() => localStorage.getItem('soma_nav_collapsed'))).toBe('0');
   expect(state.tables.subjects).toHaveLength(1);
 });
+
+test('the timer pill can be dragged, and the position sticks', async ({ page }) => {
+  const state = await setup(page);
+  await startFocus(page, state);
+  await page.getByRole('button', { name: 'Insights', exact: true }).click();
+  const pill = page.getByRole('complementary', { name: 'Focus timer' });
+  await expect(pill).toBeVisible();
+
+  const before = (await pill.boundingBox())!;
+  const handle = pill.getByRole('button', { name: /Open the dashboard/ });
+  const grip = (await handle.boundingBox())!;
+
+  await page.mouse.move(grip.x + 20, grip.y + grip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(grip.x + 20 - 300, grip.y + grip.height / 2 - 260, { steps: 12 });
+  await page.mouse.up();
+
+  const after = (await pill.boundingBox())!;
+  expect(after.x).toBeLessThan(before.x - 100);
+  expect(after.y).toBeLessThan(before.y - 100);
+
+  const stored = await page.evaluate(() => localStorage.getItem('soma_timer_pos'));
+  expect(stored).not.toBeNull();
+
+  await page.reload();
+  await expect(pill).toBeVisible();
+  const restored = (await pill.boundingBox())!;
+  expect(Math.abs(restored.x - after.x)).toBeLessThan(4);
+  expect(Math.abs(restored.y - after.y)).toBeLessThan(4);
+});
+
+test('dragging the pill does not trigger its click', async ({ page }) => {
+  const state = await setup(page);
+  await startFocus(page, state);
+  await page.getByRole('button', { name: 'Insights', exact: true }).click();
+  const pill = page.getByRole('complementary', { name: 'Focus timer' });
+  const grip = (await pill.getByRole('button', { name: /Open the dashboard/ }).boundingBox())!;
+
+  await page.mouse.move(grip.x + 20, grip.y + grip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(grip.x + 20 - 200, grip.y + grip.height / 2 - 150, { steps: 10 });
+  await page.mouse.up();
+
+  // The drag must not navigate to the dashboard.
+  await expect(page).toHaveURL(/\/insights$/);
+  await expect(pill).toBeVisible();
+});
+
+test('a plain click on the pill still opens the dashboard', async ({ page }) => {
+  const state = await setup(page);
+  await startFocus(page, state);
+  await page.getByRole('button', { name: 'Insights', exact: true }).click();
+  const pill = page.getByRole('complementary', { name: 'Focus timer' });
+  await pill.getByRole('button', { name: /Open the dashboard/ }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+});
+
+test('a stored off-screen position is pulled back into view', async ({ page }) => {
+  const state = await setup(page);
+  // As if saved on a much larger display.
+  await page.addInitScript(() => localStorage.setItem('soma_timer_pos', JSON.stringify({ x: 4000, y: 3000 })));
+  await startFocus(page, state);
+  await page.getByRole('button', { name: 'Insights', exact: true }).click();
+  const pill = page.getByRole('complementary', { name: 'Focus timer' });
+  await expect(pill).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  await pill.evaluate(el => Promise.all(el.getAnimations().map(a => a.finished)));
+
+  const box = (await pill.boundingBox())!;
+  const vp = page.viewportSize()!;
+  expect(box.x + box.width).toBeLessThanOrEqual(vp.width);
+  expect(box.y + box.height).toBeLessThanOrEqual(vp.height);
+});
+
+test('arrow keys nudge the pill and Escape resets it', async ({ page }) => {
+  const state = await setup(page);
+  await startFocus(page, state);
+  await page.getByRole('button', { name: 'Insights', exact: true }).click();
+  const pill = page.getByRole('complementary', { name: 'Focus timer' });
+  const handle = pill.getByRole('button', { name: /Open the dashboard/ });
+
+  await page.evaluate(() => document.fonts.ready);
+  await pill.evaluate(el => Promise.all(el.getAnimations().map(a => a.finished)));
+  const start = (await pill.boundingBox())!;
+  await handle.focus();
+  await page.keyboard.press('ArrowUp');
+  await page.keyboard.press('ArrowUp');
+  const nudged = (await pill.boundingBox())!;
+  expect(nudged.y).toBeLessThan(start.y);
+
+  // Escape rather than double-click: a double-click also fires a click, which
+  // would navigate to the dashboard and unmount the pill.
+  await page.keyboard.press('Escape');
+  expect(await page.evaluate(() => localStorage.getItem('soma_timer_pos'))).toBeNull();
+  await expect(page).toHaveURL(/\/insights$/);
+
+  // Back to the default corner: bottom-right, clear of the footer. Asserted by
+  // position rather than against `start`, whose height can still be settling.
+  const vp = page.viewportSize()!;
+  await expect.poll(async () => {
+    const b = (await pill.boundingBox())!;
+    return Math.round(vp.width - (b.x + b.width));
+  }).toBe(20);
+  const reset = (await pill.boundingBox())!;
+  expect(Math.round(vp.height - (reset.y + reset.height))).toBe(52);
+});
