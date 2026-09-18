@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { formatDateTime, useTimeFormat } from '../../lib/timeFormat';
 import { sendMessage } from '../../lib/ai';
-import { getCachedDocuments, listDocuments, DOCUMENTS_CHANGED_EVENT } from '../../lib/documents';
+import { listDocuments, DOCUMENTS_CHANGED_EVENT } from '../../lib/documents';
+import { buildDocumentsSection } from '../../lib/aiContext';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, hasAIAccess, startCheckout } from '../../lib/subscription';
 import { SubjectColor, Todo, ChatMessage, ChatSession, AiTodo } from '../../types';
@@ -423,36 +424,6 @@ async function executeSomaAction(action: SomaAction): Promise<string | null> {
 }
 
 // ── System prompt ───────────────────────────────────────────────────────────
-
-const DOCUMENTS_CONTEXT_CHAR_LIMIT = 45_000;
-
-// Builds the "known documents" block fed into the system prompt so the AI can
-// answer from syllabi, readings, and guides the user uploaded to Documents —
-// deadlines, policies, whatever's in them — without being asked to fetch anything.
-function buildDocumentsSection(subjects: { id: string; name: string }[]): string {
-  const docs = getCachedDocuments().filter(d => d.extractionStatus === 'done' && d.extractedText);
-  if (docs.length === 0) return '';
-
-  const subjectById = new Map(subjects.map(s => [s.id, s.name]));
-  let used = 0;
-  const parts: string[] = [];
-  for (const doc of docs) {
-    if (used >= DOCUMENTS_CONTEXT_CHAR_LIMIT) break;
-    const subjectName = doc.subjectId ? (subjectById.get(doc.subjectId) ?? 'Unknown subject') : 'Unassigned';
-    const remaining = DOCUMENTS_CONTEXT_CHAR_LIMIT - used;
-    const text = doc.extractedText!.length > remaining
-      ? `${doc.extractedText!.slice(0, remaining)}\n\n[Truncated]`
-      : doc.extractedText!;
-    used += text.length;
-    parts.push(`### "${doc.fileName}" (${doc.docType}, ${subjectName})\n${text}`);
-  }
-
-  return `\nSTUDENT DOCUMENTS:
-The user has uploaded the following documents to Soma (syllabi, readings, guides, etc.) — you have already read them in full and know their content. When the user asks about a deadline, policy, reading, or anything else that could be in these documents, answer directly from them. Never say you can't access files or need the user to share anything — you already have the content below.
-
-${parts.join('\n\n')}
-`;
-}
 
 function buildSystemPrompt(activeSubjectKey?: string): string {
   const allSubjects = storage.getSubjects();
