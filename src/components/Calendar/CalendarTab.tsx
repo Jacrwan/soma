@@ -376,7 +376,6 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
 
   const getPositionedEventsForDay = useCallback((day: Date): {
     events: PositionedEvent[];
-    dots: { id: string; color: string; top: number }[];
   } => {
     const subjects = storage.getSubjects();
     const gcalEvents = storage.getCachedGoogleEvents();
@@ -397,7 +396,6 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     }
 
     const events: RawEvent[] = [];
-    const dots: { id: string; color: string; top: number }[] = [];
 
     if (filters.soma) {
       for (const b of blocks) {
@@ -409,12 +407,9 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         const endMin = end.getHours() * 60 + end.getMinutes();
         const durMin = endMin - startMin;
 
-        if (durMin < 5) {
-          const subject = subjects.find(s => s.id === b.subjectId);
-          const dotColor = subject?.color ?? '#9e9e9e';
-          dots.push({ id: `dot-soma-${b.id}`, color: dotColor, top: weekMinToTop(startMin) });
-          continue;
-        }
+        // Under five minutes is almost always a focus session stopped by
+        // accident; it used to render as a dot, which added noise, not signal.
+        if (durMin < 5) continue;
 
         const subject = subjects.find(s => s.id === b.subjectId);
         const baseColor = subject?.color ?? '#9e9e9e';
@@ -445,10 +440,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         const endMin = end.getHours() * 60 + end.getMinutes();
         const durMin = endMin - startMin;
 
-        if (durMin < 5) {
-          dots.push({ id: `dot-gcal-${e.id}`, color: e.source?.color ?? GCAL_COLOR, top: weekMinToTop(startMin) });
-          continue;
-        }
+        if (durMin < 5) continue;
 
         const gcalColor = e.source?.color ?? GCAL_COLOR;
         events.push({
@@ -527,7 +519,6 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         block: ev.block,
         gcalEvent: ev.gcalEvent,
       })),
-      dots,
     };
   }, [filters]);
 
@@ -844,7 +835,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                     <>
                     {weekDays.map((day, dayIndex) => {
                   const isToday = isSameDay(day, today);
-                  const { events: posEvents, dots: posDots } = weekPositionedDays[dayIndex];
+                  const { events: posEvents } = weekPositionedDays[dayIndex];
 
                   return (
                     <div
@@ -862,28 +853,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                         <div className={styles.weekViewNowDot} style={{ top: nowTop }} />
                       )}
 
-                      {/* Short-session dots — stacked when within 5 min of each other */}
-                      {(() => {
-                        const sorted = [...posDots].sort((a, b) => a.top - b.top);
-                        const positioned: { dot: typeof posDots[0]; renderTop: number }[] = [];
-                        let groupBase = -Infinity;
-                        let groupCount = 0;
-                        for (const dot of sorted) {
-                          if (dot.top - groupBase > 5) {
-                            groupBase = dot.top;
-                            groupCount = 0;
-                          }
-                          positioned.push({ dot, renderTop: groupBase + groupCount * 8 });
-                          groupCount++;
-                        }
-                        return positioned.map(({ dot, renderTop }) => (
-                          <div
-                            key={dot.id}
-                            className={styles.weekViewDot}
-                            style={{ top: renderTop, background: dot.color }}
-                          />
-                        ));
-                      })()}
+
 
                       {/* Event blocks */}
                       {posEvents.map(ev => (

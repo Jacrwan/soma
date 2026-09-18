@@ -175,3 +175,32 @@ test('the three-day view has no horizontal overflow at 1280px', async ({ page })
   await expect(dayHeaders(page)).toHaveCount(3);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test('events under five minutes are hidden; short real events still show', async ({ page }) => {
+  const at = (t: string) => { const d = new Date(); const [h, m] = t.split(':').map(Number); d.setHours(h, m, 0, 0); return d.toISOString(); };
+  await page.addInitScript(({ a, blocks }) => {
+    localStorage.setItem('sb-soma-regression-auth-token', JSON.stringify({ access_token: 't', refresh_token: 'r', token_type: 'bearer', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, user: a }));
+    localStorage.setItem('soma_blocks', JSON.stringify(blocks));
+  }, { a: account, blocks: [
+    // An accidental two-minute focus session — the old dot.
+    { id: 'tiny', subjectId: 'bio', task: 'Accidental start', startTime: at('10:00'), endTime: at('10:02'), source: 'manual' },
+    // A genuine ten-minute block, which must stay visible.
+    { id: 'short', subjectId: 'bio', task: 'Quick review', startTime: at('14:00'), endTime: at('14:10'), source: 'manual' },
+  ] });
+  await page.route('https://soma-regression.supabase.co/**', route => {
+    const req = route.request(), url = new URL(req.url()), table = url.pathname.split('/').pop()!;
+    if (url.pathname.includes('/auth/v1/')) return route.fulfill({ json: account });
+    if (table === 'settings') return route.fulfill({ json: { data: { onboardingCompleted: true, theme: 'light' } } });
+    if (table === 'subjects') return route.fulfill({ json: [{ id: 'bio', user_id: account.id, name: 'Biology', color: '#66bb6a', archived: false }] });
+    return route.fulfill({ json: req.headers().accept?.includes('vnd.pgrst.object') ? null : [] });
+  });
+  await page.route('**/api/stripe', r => r.fulfill({ json: { status: 'active' } }));
+  await page.route('**/api/google-calendar-events', r => r.fulfill({ json: { events: [], incomplete: false } }));
+  await page.route('**/api/google-calendar-connections', r => r.fulfill({ json: { connections: [] } }));
+  await page.goto('/calendar');
+  await page.getByRole('button', { name: 'Week', exact: true }).click();
+
+  await expect(page.getByTitle(/Quick review/)).toBeVisible();
+  await expect(page.getByTitle(/Accidental start/)).toHaveCount(0);
+  await expect(page.locator('[class*="weekViewDot"]:not([class*="NowDot"])')).toHaveCount(0);
+});
