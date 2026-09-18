@@ -194,3 +194,16 @@
 .newSubjectPalette{display:flex;gap:6px}
 .newSubjectSwatch{width:20px;height:20px;min-height:0;padding:0;border-radius:50%;border:2px solid transparent}
 .newSubjectSwatchOn{border-color:var(--text-primary)}
+
+/* Recorded focus time on the task being edited. Actual work, kept separate
+   from the planned times above it. */
+.focusLog{border-top:1px solid var(--border);padding-top:12px}
+.focusLog h3{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-secondary);margin-bottom:8px}
+.focusLog ul{list-style:none;display:grid;gap:5px;margin:0 0 8px}
+.focusLog li{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:var(--text-secondary)}
+.focusLog li strong{font-weight:550;color:var(--text-primary);font-variant-numeric:tabular-nums}
+.focusLog small{display:block;font-size:10px;color:var(--text-secondary);line-height:1.6}
+
+/* The block body is a button now; it must not inherit the page button chrome. */
+.block > .blockBody{background:none;border:none;padding:0;min-height:0;text-align:left;display:block;cursor:pointer;border-radius:5px}
+.block > button.blockBody:hover{background:color-mix(in oklch,var(--tone),transparent 92%)}

@@ -8,7 +8,8 @@ export type EditorDraft = { block?:PlanBlock; start:string; end:string; day:numb
 const colors:Record<string,string>={Biology:'green',Mathematics:'blue',Literature:'purple',Personal:'blue'};
 const NEW_COURSE='__new_course__';
 export const minuteValue = (s:string) => {const [h,m]=s.split(':').map(Number);return h*60+m;};
-export default function PlanEditor({draft,blocks,onSave,onCancel,live=false,knownSubjects=[],usedColors=[]}:{live?:boolean;draft:EditorDraft;blocks:PlanBlock[];knownSubjects?:string[];usedColors?:SubjectColor[];onSave:(block:PlanBlock)=>void | Promise<void>;onCancel:()=>void}) {
+export type FocusLog = { date:string; minutes:number };
+export default function PlanEditor({draft,blocks,onSave,onCancel,live=false,knownSubjects=[],usedColors=[],logs=[]}:{live?:boolean;draft:EditorDraft;blocks:PlanBlock[];knownSubjects?:string[];usedColors?:SubjectColor[];logs?:FocusLog[];onSave:(block:PlanBlock)=>void | Promise<void>;onCancel:()=>void}) {
  const [title,setTitle]=useState(draft.block?.title ?? '');
  const [subject,setSubject]=useState(draft.block?.external ? 'Personal' : draft.block?.subject ?? 'Personal');
  const [type,setType]=useState(draft.block?.external ? 'commitment' : 'study');
@@ -40,6 +41,7 @@ export default function PlanEditor({draft,blocks,onSave,onCancel,live=false,know
  {type==='study' && <label>Status<select aria-label="Status" value={state} onChange={e=>setState(e.target.value as PlanState)}><option value="Planned">Incomplete</option><option value="Completed">Completed</option><option value="Partially completed">Partially completed</option>{!live && <option value="Missed">Missed</option>}{state==='Proposal' && <option value="Proposal">Proposal</option>}</select></label>}
  {draft.block?.actualSeconds ? <p className={styles.editorNote}>{Math.round(draft.block.actualSeconds/60)} minutes worked will be kept. Marking incomplete removes completion credit, not actual study time.</p> : null}
  {hasTime && collisions.length>0 && <p className={styles.overlapNotice}>Overlaps {collisions.map(b=>b.title).join(', ')}. You can save it alongside these blocks.</p>}
+ {logs.length>0 && <section className={styles.focusLog} aria-label="Past focus sessions"><h3>Past sessions</h3><ul>{logs.slice(0,6).map((l,i)=><li key={`${l.date}-${i}`}><span>{new Date(`${l.date}T00:00:00`).toLocaleDateString(undefined,{month:'short',day:'numeric'})}</span><strong>{l.minutes} min</strong></li>)}</ul>{logs.length>6 && <small>{logs.length-6} earlier {logs.length-6===1 ? 'session' : 'sessions'} not shown.</small>}<small>{logs.reduce((n,l)=>n+l.minutes,0)} minutes recorded on this task.</small></section>}
  {error && <p role="alert">{error}</p>}
  <div className={styles.editorButtons}><button type="button" onClick={onCancel}>Cancel</button><button disabled={saving} type="submit">{saving ? "Saving…" : "Save block"}</button></div>
  </form></section>;
