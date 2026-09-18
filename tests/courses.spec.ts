@@ -106,18 +106,49 @@ test('archiving moves a course to the archived list and it can be restored', asy
   expect(state.deletes).toBe(0);
 });
 
-test('a course created from the dashboard block editor uses the chosen colour', async ({ page }) => {
+test('a course created from the dashboard block editor gets an unused colour', async ({ page }) => {
   const state = await setup(page);
   await page.goto('/dashboard');
   await page.getByRole('button', { name: 'Edit plan', exact: true }).click();
   await page.getByRole('button', { name: /^Add block in gap/ }).first().click();
 
   await page.getByLabel('Title', { exact: true }).fill('Reading week 3');
-  await page.getByLabel('Subject', { exact: true }).fill('World History');
-  // The name matches no existing course, so the colour picker appears.
-  await page.getByRole('group', { name: 'New course colour' }).getByRole('button', { name: 'Colour #ec407a' }).click();
+  await page.getByLabel('Subject', { exact: true }).selectOption({ label: '+ New course…' });
+  await page.getByLabel('New course name', { exact: true }).fill('World History');
   await page.getByRole('button', { name: 'Save block', exact: true }).click();
 
+  // Colour is not chosen here any more — it takes the first unused palette
+  // colour and is changed in Settings → Courses.
   await expect.poll(() => state.subjects.length).toBe(1);
-  expect(state.subjects[0]).toMatchObject({ name: 'World History', color: '#ec407a' });
+  expect(state.subjects[0]).toMatchObject({ name: 'World History', color: '#ef5350' });
+});
+
+test('editing a task on an archived course keeps it on that course', async ({ page }) => {
+  // The dashboard still shows work belonging to an archived course. The subject
+  // dropdown is built from active courses, so without the current course being
+  // added back in, opening the editor would silently reassign the task.
+  const archived = { id: 'chem', user_id: account.id, name: 'Chem 1A', color: '#ef5350', archived: true, source: 'canvas' };
+  const state = await setup(page, [archived, { ...biology, id: 'bio' }]);
+  const day = new Date();
+  const date = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+  const iso = (t: string) => new Date(`${date}T${t}:00`).toISOString();
+
+  await page.route('https://soma-regression.supabase.co/rest/v1/todos*', r => r.fulfill({
+    json: [{ id: 't1', user_id: account.id, text: 'Old lab writeup', subject_id: 'chem', status: 'nothing', date, estimated_minutes: 45 }],
+  }));
+  await page.route('https://soma-regression.supabase.co/rest/v1/todo_sessions*', r => r.fulfill({
+    json: [{ id: 's1', user_id: account.id, todo_id: 't1', date, start_time: iso('10:00'), end_time: iso('10:45') }],
+  }));
+
+  await page.goto('/dashboard');
+  await expect(page.getByText('Old lab writeup')).toBeVisible();
+  await page.getByRole('button', { name: 'Edit plan', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit: Old lab writeup' }).click();
+
+  // The archived course is preselected and offered, not replaced by an active one.
+  await expect(page.getByLabel('Subject', { exact: true })).toHaveValue('Chem 1A');
+  await page.getByRole('button', { name: 'Save block', exact: true }).click();
+
+  await expect.poll(() => state.subjects.filter(s => s.name === 'Chem 1A')).toHaveLength(1);
+  expect(state.subjects.map(s => s.name).sort()).toEqual(['Biology 101', 'Chem 1A']);
 });

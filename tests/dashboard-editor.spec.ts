@@ -17,7 +17,8 @@ test('gap editor updates schedule, priorities, progress, and proposal availabili
  await expect(page.getByLabel('Start time',{exact:true})).toHaveValue('11:00');
  await expect(page.getByLabel('End time',{exact:true})).toHaveValue('13:00');
  await page.getByLabel('Title',{exact:true}).fill('Chemistry revision');
- await page.getByLabel('Subject',{exact:true}).fill('Chemistry');
+ await page.getByLabel('Subject',{exact:true}).selectOption({label:'+ New course…'});
+ await page.getByLabel('New course name',{exact:true}).fill('Chemistry');
  await page.screenshot({path:'test-results/dashboard-editor.png',fullPage:true});
  await page.getByRole('button',{name:'Save block',exact:true}).click();
  await expect(page.getByText('300 min planned across your subjects')).toBeVisible();

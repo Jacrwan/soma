@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { SUBJECT_COLORS, nextUnusedColor } from '../../lib/subjectColors';
+import { nextUnusedColor } from '../../lib/subjectColors';
 import type { SubjectColor } from '../../types';
 import styles from './DashboardV2.module.css';
 export type PlanState = 'Planned' | 'Completed' | 'Partially completed' | 'Missed' | 'Proposal';
 export type PlanBlock = { id:string | number; title:string; subject:string; time:string; minutes:number; color:string; state:PlanState; day:number; actualSeconds?:number; external?:boolean; manual?:boolean; subjectColor?:SubjectColor };
 export type EditorDraft = { block?:PlanBlock; start:string; end:string; day:number };
 const colors:Record<string,string>={Biology:'green',Mathematics:'blue',Literature:'purple',Personal:'blue'};
+const NEW_COURSE='__new_course__';
 export const minuteValue = (s:string) => {const [h,m]=s.split(':').map(Number);return h*60+m;};
 export default function PlanEditor({draft,blocks,onSave,onCancel,live=false,knownSubjects=[],usedColors=[]}:{live?:boolean;draft:EditorDraft;blocks:PlanBlock[];knownSubjects?:string[];usedColors?:SubjectColor[];onSave:(block:PlanBlock)=>void | Promise<void>;onCancel:()=>void}) {
  const [title,setTitle]=useState(draft.block?.title ?? '');
@@ -17,16 +18,23 @@ export default function PlanEditor({draft,blocks,onSave,onCancel,live=false,know
  const [error,setError]=useState('');
  const [saving,setSaving]=useState(false);
  const [scheduled,setScheduled]=useState(!draft.block || !!draft.block.time);
- const [subjectColor,setSubjectColor]=useState<SubjectColor>(()=>nextUnusedColor(usedColors.map(color=>({color}))));
- // A typed name that matches nothing creates a course on save, so let the user
- // choose its colour instead of silently assigning one.
- const isNewSubject=type==='study' && !!subject.trim() && !knownSubjects.some(n=>n.toLowerCase()===subject.trim().toLowerCase());
+ const [newCourse,setNewCourse]=useState('');
+ const [creatingCourse,setCreatingCourse]=useState(false);
+ // The course a block already belongs to must stay selectable even when it has
+ // been archived, otherwise opening the editor would silently reassign the task.
+ const courseOptions=Array.from(new Set([
+  ...(draft.block && !draft.block.external ? [draft.block.subject] : []),
+  ...knownSubjects,
+  'Personal',
+ ].filter(Boolean)));
+ const chosenSubject=creatingCourse ? newCourse.trim() : subject;
+ const isNewSubject=type==='study' && !!chosenSubject && !courseOptions.some(n=>n.toLowerCase()===chosenSubject.toLowerCase());
  const hasTime=!live || scheduled || type==='commitment';
  const collisions=blocks.filter(b=>b.day===draft.day && b.id!==draft.block?.id && b.time && start && end && minuteValue(b.time.split('–')[0])<minuteValue(end) && minuteValue(b.time.split('–')[1])>minuteValue(start));
- return <section className={styles.editor} aria-label="Block editor"><div className={styles.sectionHeading}><h2>{draft.block ? 'Edit block' : 'Add a block'}</h2><button onClick={onCancel} aria-label="Close block editor">Close</button></div><p className={styles.description}>{live ? 'Title, subject, and completion apply to the task and all of its scheduled sessions. Times apply only to this block.' : 'Changes update your plan and subject progress.'}</p><form onSubmit={async e=>{e.preventDefault();if(saving)return;if(!title.trim() || !subject.trim()){setError('Enter a title and subject.');return;}if(hasTime && (!start || !end || minuteValue(end)<=minuteValue(start))){setError('End time must be later than start time.');return;}setSaving(true);setError('');try {await onSave({...draft.block,id:draft.block?.id ?? Date.now(),title:title.trim(),subject:type==='commitment' ? 'Personal commitment' : subject.trim(),time:hasTime ? `${start}–${end}` : '',minutes:hasTime ? minuteValue(end)-minuteValue(start) : 0,color:type==='commitment' ? 'neutral' : colors[subject.trim()] ?? 'blue',subjectColor:isNewSubject ? subjectColor : undefined,state:type==='commitment' ? 'Planned' : state,day:draft.day,external:type==='commitment',manual:true});}catch(err){setError(err instanceof Error ? err.message : 'Could not save. Please try again.');}finally{setSaving(false);}}}>
+ return <section className={styles.editor} aria-label="Block editor"><div className={styles.sectionHeading}><h2>{draft.block ? 'Edit block' : 'Add a block'}</h2><button onClick={onCancel} aria-label="Close block editor">Close</button></div><p className={styles.description}>{live ? 'Title, subject, and completion apply to the task and all of its scheduled sessions. Times apply only to this block.' : 'Changes update your plan and subject progress.'}</p><form onSubmit={async e=>{e.preventDefault();if(saving)return;if(!title.trim() || !chosenSubject){setError(creatingCourse && !newCourse.trim() ? 'Name the new course.' : 'Enter a title and subject.');return;}if(hasTime && (!start || !end || minuteValue(end)<=minuteValue(start))){setError('End time must be later than start time.');return;}setSaving(true);setError('');try {await onSave({...draft.block,id:draft.block?.id ?? Date.now(),title:title.trim(),subject:type==='commitment' ? 'Personal commitment' : chosenSubject,time:hasTime ? `${start}–${end}` : '',minutes:hasTime ? minuteValue(end)-minuteValue(start) : 0,color:type==='commitment' ? 'neutral' : colors[chosenSubject] ?? 'blue',subjectColor:isNewSubject ? nextUnusedColor(usedColors.map(color=>({color}))) : undefined,state:type==='commitment' ? 'Planned' : state,day:draft.day,external:type==='commitment',manual:true});}catch(err){setError(err instanceof Error ? err.message : 'Could not save. Please try again.');}finally{setSaving(false);}}}>
  <label>Title<input autoFocus required maxLength={150} value={title} onChange={e=>setTitle(e.target.value)}/></label>
- <div className={styles.editorFields}><label>Type<select aria-label="Type" value={type} onChange={e=>setType(e.target.value)}><option value="study">Study session</option><option value="commitment">Personal commitment</option></select></label><label>Subject<input list="plan-subjects" value={subject} disabled={type==='commitment'} onChange={e=>setSubject(e.target.value)}/><datalist id="plan-subjects">{Array.from(new Set(['Personal',...blocks.filter(b=>!b.external).map(b=>b.subject)])).map(s=><option key={s} value={s}/>)}</datalist></label></div>
- {isNewSubject && <div className={styles.newSubject}><span>New course colour</span><div className={styles.newSubjectPalette} role="group" aria-label="New course colour">{SUBJECT_COLORS.map(c=><button key={c} type="button" aria-label={`Colour ${c}`} aria-pressed={subjectColor===c} className={`${styles.newSubjectSwatch} ${subjectColor===c ? styles.newSubjectSwatchOn : ''}`} style={{background:c}} onClick={()=>setSubjectColor(c)}/>)}</div></div>}
+ <div className={styles.editorFields}><label>Type<select aria-label="Type" value={type} onChange={e=>setType(e.target.value)}><option value="study">Study session</option><option value="commitment">Personal commitment</option></select></label><label>Subject<select aria-label="Subject" disabled={type==='commitment'} value={creatingCourse ? NEW_COURSE : subject} onChange={e=>{if(e.target.value===NEW_COURSE){setCreatingCourse(true);}else{setCreatingCourse(false);setSubject(e.target.value);}}}>{courseOptions.map(s=><option key={s} value={s}>{s}</option>)}<option value={NEW_COURSE}>+ New course…</option></select></label></div>
+ {creatingCourse && <><label>New course name<input aria-label="New course name" autoFocus maxLength={80} value={newCourse} onChange={e=>setNewCourse(e.target.value)} placeholder="e.g. World History"/></label><p className={styles.editorNote}>Pick its colour in Settings → Courses.</p></>}
  {live && type==='study' && <label><span><input type="checkbox" checked={scheduled} onChange={e=>setScheduled(e.target.checked)}/> Schedule a time</span></label>}
  {hasTime && <div className={styles.editorFields}><label>Start time<input type="time" required value={start} onChange={e=>setStart(e.target.value)}/></label><label>End time<input type="time" required value={end} onChange={e=>setEnd(e.target.value)}/></label></div>}
  {type==='study' && <label>Status<select aria-label="Status" value={state} onChange={e=>setState(e.target.value as PlanState)}><option value="Planned">Incomplete</option><option value="Completed">Completed</option><option value="Partially completed">Partially completed</option>{!live && <option value="Missed">Missed</option>}{state==='Proposal' && <option value="Proposal">Proposal</option>}</select></label>}

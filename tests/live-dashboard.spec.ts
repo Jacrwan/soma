@@ -51,7 +51,7 @@ test('live progress, completion and undo persist across reload',async({page})=>{
 
 test('manual overlapping block persists with subject and revised allocation',async({page})=>{
  const state=await setup(page);await page.goto('/dashboard');await page.getByRole('button',{name:'Edit plan',exact:true}).click();await page.getByRole('button',{name:'+ Add block',exact:true}).click();
- await page.getByLabel('Title',{exact:true}).fill('Extra revision');await page.getByLabel('Subject',{exact:true}).fill('Biology');await page.getByLabel('Start time',{exact:true}).fill('09:15');await page.getByLabel('End time',{exact:true}).fill('09:45');
+ await page.getByLabel('Title',{exact:true}).fill('Extra revision');await page.getByLabel('Subject',{exact:true}).selectOption('Biology');await page.getByLabel('Start time',{exact:true}).fill('09:15');await page.getByLabel('End time',{exact:true}).fill('09:45');
  await expect(page.getByText('Overlaps Cell review.')).toBeVisible();await page.getByRole('button',{name:'Save block',exact:true}).click();
  await expect(page.getByLabel('Day progress')).toContainText('105 min planned');expect(state.tables.todo_sessions).toHaveLength(3);
  await page.reload();await expect(page.getByRole('heading',{name:'Extra revision',exact:true})).toBeVisible();
@@ -59,7 +59,7 @@ test('manual overlapping block persists with subject and revised allocation',asy
 
 test('failed session save compensates new task and leaves editor retryable',async({page})=>{
  const state=await setup(page);await page.goto('/dashboard');await page.getByRole('button',{name:'Edit plan',exact:true}).click();await page.getByRole('button',{name:'+ Add block',exact:true}).click();
- await page.getByLabel('Title',{exact:true}).fill('Failed block');await page.getByLabel('Subject',{exact:true}).fill('Biology');state.failTable='todo_sessions';await page.getByRole('button',{name:'Save block',exact:true}).click();
+ await page.getByLabel('Title',{exact:true}).fill('Failed block');await page.getByLabel('Subject',{exact:true}).selectOption('Biology');state.failTable='todo_sessions';await page.getByRole('button',{name:'Save block',exact:true}).click();
  await expect(page.getByLabel('Block editor').getByRole('alert')).toContainText('Database unavailable');expect(state.tables.todos).toHaveLength(2);expect(state.tables.todo_sessions).toHaveLength(2);
  state.failTable='';await page.getByRole('button',{name:'Save block',exact:true}).click();await expect(page.getByRole('heading',{name:'Failed block',exact:true})).toBeVisible();
 });
