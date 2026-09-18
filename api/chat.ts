@@ -97,10 +97,17 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
    const lastContent=messages[messages.length-1].content;
    const query=typeof lastContent==='string' ? lastContent : lastContent.filter((b:any)=>b.type==='text').map((b:any)=>b.text).join(' ');
    const savedMemory=await (deps.memory??loadMemoryContext)(auth.userId,query);
-   const effectiveSystem=[systemPrompt,savedMemory].filter(Boolean).join('\n\n');
+   // Memory is ranked per request, so it changes nearly every call. It goes in
+   // its own block after the cache breakpoint: prompt caching is a prefix match,
+   // and folding it into the cached block would miss the cache on every message
+   // and re-bill the full system prompt (documents included) each time.
+   const system=[
+    ...(systemPrompt ? [{type:'text' as const,text:systemPrompt,cache_control:{type:'ephemeral' as const}}] : []),
+    ...(savedMemory ? [{type:'text' as const,text:savedMemory}] : []),
+   ];
    const response=await (deps.request??fetch)('https://api.anthropic.com/v1/messages',{
     method:'POST',signal:AbortSignal.timeout(45_000),headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json'},
-    body:JSON.stringify({model:model==='sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001',max_tokens:4096,...(effectiveSystem ? {system:[{type:'text',text:effectiveSystem,cache_control:{type:'ephemeral'}}]} : {}),messages}),
+    body:JSON.stringify({model:model==='sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001',max_tokens:4096,...(system.length ? {system} : {}),messages}),
    });
    if(response.status===429)return res.status(429).json({error:'rate_limit'});
    if(response.status===529)return res.status(529).json({error:'overloaded'});
