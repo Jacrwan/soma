@@ -77,12 +77,16 @@ today is within `[viewWeekStart, +6d]`; 3-day view → today is within
   [:678](../src/components/Calendar/CalendarTab.tsx)).
 - The view toggle gains a third button; check it still fits at 1280px.
 
-### Open decision
+### Decided
 
-**Does the 3-day view start on today, or centre today (yesterday/today/tomorrow)?**
-Default if unanswered: **start on today**, so the view is "today and what's
-coming", which matches how the dashboard reads. Easy to flip.
+**The 3-day view starts on today** — today, tomorrow, the day after — rather
+than centring today. Confirmed 2026-09-17. So "anchor on today" in the table
+above means today is the *first* of the three columns, and stepping forward
+moves to the next three days.
 
+Note this makes the 3-day view asymmetric with the week view, which still snaps
+to that week's Sunday. That is intentional: the week view is a calendar grid,
+the 3-day view is a near-term working window.
 ### Tests
 
 Pure-function tests for all twelve rows of the table (fast, no browser), plus
