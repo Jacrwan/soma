@@ -1893,7 +1893,6 @@ Write a brief daily summary with bullet points highlighting what to focus on tod
   return (
     <>
     <div className={styles.wrapper}>
-      {timerCtx.activeSession && <div className={styles.focusBannerSpacer} />}
       {/* ── Date bar ── */}
       <div
         className={styles.dateBar}

@@ -2233,16 +2233,6 @@
   }
 }
 
-/* ── Focus mode banner spacer ──────────────────────────────────────────── */
-
-.focusBannerSpacer {
-  height: 52px;
-  flex-shrink: 0;
-}
-
-@media (max-width: 768px) {
-  .focusBannerSpacer { height: 52px; }
-}
 
 /* ── Focus mode theme overrides ────────────────────────────────────────── */
 
