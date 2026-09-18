@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
 import { storage } from '../../lib/storage';
 import { formatDateTime, useTimeFormat } from '../../lib/timeFormat';
+import { SUBJECT_COLORS } from '../../lib/subjectColors';
 import { supabase } from '../../lib/supabase';
 import { sendMessage } from '../../lib/ai';
 import { Subject, TimeBlock, TimerSession, SubjectColor, Todo, TodoSession, GoogleCalendarEvent, CanvasAssignment, CanvasCourse } from '../../types';
@@ -46,10 +47,7 @@ function logicalToday(): Date {
   d.setHours(0, 0, 0, 0);
   return d;
 }
-const COLORS: SubjectColor[] = [
-  '#ef5350', '#42a5f5', '#66bb6a', '#ab47bc',
-  '#ffa726', '#26c6da', '#ec407a', '#8d6e63',
-];
+const COLORS = SUBJECT_COLORS;
 const DAY_ABBRS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 function toLocalISO(date: Date): string {

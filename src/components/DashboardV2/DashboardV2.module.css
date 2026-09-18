@@ -188,3 +188,9 @@
 /* Untimed work sits above the timed agenda, separated by a rule. */
 .unscheduledGroup{padding-bottom:12px;margin-bottom:4px;border-bottom:1px solid var(--border)}
 .unscheduledLabel{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary);margin-bottom:8px}
+
+/* Colour choice for a course the block editor is about to create. */
+.newSubject{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--text-secondary)}
+.newSubjectPalette{display:flex;gap:6px}
+.newSubjectSwatch{width:20px;height:20px;min-height:0;padding:0;border-radius:50%;border:2px solid transparent}
+.newSubjectSwatchOn{border-color:var(--text-primary)}

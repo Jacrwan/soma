@@ -76,7 +76,7 @@ export async function savePlanBlock(userId:string,origin:Date,block:PlanBlock,sn
  const original=snapshot.blocks.find(b=>b.id===block.id);
  if(original?.external && !original.manual)throw new Error('Google Calendar commitments are read-only.');
  let subject=snapshot.subjects.find(s=>s.name.toLowerCase()===(block.external ? commitmentSubject : block.subject).toLowerCase());
- if(!subject){subject={id:crypto.randomUUID(),name:block.external ? commitmentSubject : block.subject,color:'#42a5f5',totalTimeToday:0};await checkedWrite('subjects',{id:subject.id,user_id:userId,name:subject.name,color:subject.color,archived:false});}
+ if(!subject){subject={id:crypto.randomUUID(),name:block.external ? commitmentSubject : block.subject,color:block.subjectColor ?? '#42a5f5',totalTimeToday:0};await checkedWrite('subjects',{id:subject.id,user_id:userId,name:subject.name,color:subject.color,archived:false});}
  const previous=snapshot.todos.find(t=>t.id===original?.todoId);
  const todo:Todo={...previous,id:previous?.id??crypto.randomUUID(),text:block.title,subjectId:subject.id,status:block.state==='Completed' ? 'done' : block.state==='Partially completed' ? 'in_progress' : 'nothing',date:previous?.date??localDate(dateAt(origin,block.day)),estimatedMinutes:previous?.estimatedMinutes??block.minutes};
  await storage.saveTodo(todo);

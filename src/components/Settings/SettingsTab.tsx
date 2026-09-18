@@ -12,7 +12,8 @@ import { getIcalAssignments } from '../../lib/canvas';
 import {
   listConnections, listCalendarsForConnection, updateSelectedCalendars, disconnectConnection, startConnectFlow,
 } from '../../lib/googleCalendarConnections';
-import type { GoogleCalendarConnection, GoogleCalendarInfo } from '../../types';
+import { SUBJECT_COLORS, nextUnusedColor } from '../../lib/subjectColors';
+import type { GoogleCalendarConnection, GoogleCalendarInfo, Subject, SubjectColor } from '../../types';
 import styles from './SettingsTab.module.css';
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
@@ -94,30 +95,79 @@ export default function SettingsTab() {
   // Semester archive
   const [showSemesterModal, setShowSemesterModal] = useState(false);
   const [archiveDone, setArchiveDone] = useState(false);
-  const [archivedSubjects, setArchivedSubjects] = useState(() =>
-    storage.getSubjects().filter(s => s.archived),
-  );
+  const [subjects, setSubjectsState] = useState<Subject[]>(() => storage.getSubjects());
+  const activeSubjects = subjects.filter(s => !s.archived);
+  const archivedSubjects = subjects.filter(s => s.archived);
+
+  // Course editing state
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [paletteId, setPaletteId] = useState<string | null>(null);
+  const [addingCourse, setAddingCourse] = useState(false);
+  const [newCourseName, setNewCourseName] = useState('');
+  const [newCourseColor, setNewCourseColor] = useState<SubjectColor>(SUBJECT_COLORS[0]);
+  const [courseError, setCourseError] = useState('');
+
+  // Courses live in Supabase, so pick up the loaded list and any change made
+  // elsewhere (Canvas sync, the dashboard's block editor).
+  useEffect(() => {
+    const sync = () => setSubjectsState(storage.getSubjects());
+    void storage.loadSubjects().then(sync).catch(sync);
+    window.addEventListener('soma_subjects_changed', sync);
+    return () => window.removeEventListener('soma_subjects_changed', sync);
+  }, []);
+
+  function commitSubjects(next: Subject[]) {
+    storage.setSubjects(next);
+    setSubjectsState(next);
+    window.dispatchEvent(new Event('soma_subjects_changed'));
+  }
 
   function archiveCanvasCourses() {
-    const updated = storage.getSubjects().map(s =>
-      s.source === 'canvas' ? { ...s, archived: true } : s,
-    );
-    storage.setSubjects(updated);
-    setArchivedSubjects(updated.filter(s => s.archived));
+    commitSubjects(storage.getSubjects().map(s => s.source === 'canvas' ? { ...s, archived: true } : s));
     setShowSemesterModal(false);
     setArchiveDone(true);
   }
 
   function restoreSubject(id: string) {
-    const updated = storage.getSubjects().map(s => s.id === id ? { ...s, archived: false } : s);
-    storage.setSubjects(updated);
-    setArchivedSubjects(updated.filter(s => s.archived));
+    commitSubjects(storage.getSubjects().map(s => s.id === id ? { ...s, archived: false } : s));
   }
 
   function deleteArchivedSubject(id: string) {
-    const updated = storage.getSubjects().filter(s => s.id !== id);
-    storage.setSubjects(updated);
-    setArchivedSubjects(prev => prev.filter(s => s.id !== id));
+    commitSubjects(storage.getSubjects().filter(s => s.id !== id));
+  }
+
+  function archiveSubject(id: string) {
+    commitSubjects(storage.getSubjects().map(s => s.id === id ? { ...s, archived: true } : s));
+  }
+
+  function recolorSubject(id: string, color: SubjectColor) {
+    commitSubjects(storage.getSubjects().map(s => s.id === id ? { ...s, color } : s));
+    setPaletteId(null);
+  }
+
+  function saveRename(id: string) {
+    const name = renameDraft.trim();
+    if (!name) { setRenamingId(null); return; }
+    commitSubjects(storage.getSubjects().map(s => s.id === id ? { ...s, name } : s));
+    setRenamingId(null);
+  }
+
+  function addCourse() {
+    const name = newCourseName.trim();
+    if (!name) return;
+    const current = storage.getSubjects();
+    if (current.some(s => !s.archived && s.name.toLowerCase() === name.toLowerCase())) {
+      setCourseError('You already have a course with that name.');
+      return;
+    }
+    commitSubjects([...current, {
+      id: crypto.randomUUID(), name, color: newCourseColor,
+      totalTimeToday: 0, archived: false, source: 'manual',
+    }]);
+    setNewCourseName('');
+    setCourseError('');
+    setAddingCourse(false);
   }
 
   // Google Calendar integration state — multiple connected accounts, each
@@ -1083,21 +1133,120 @@ export default function SettingsTab() {
           <section className={styles.section}>
             <h2 className={styles.sectionTitle}>Courses</h2>
             <p className={styles.sectionDescription}>
-              Archive your Canvas courses at the end of a semester. Archived courses are hidden from
-              Day View, the AI, and Canvas, but your study history in Insights is preserved.
+              Your courses and their colours. Archived courses are hidden from your plan, the AI,
+              and Canvas, but your study history in Insights is preserved.
             </p>
-            <div style={{ marginTop: 16 }}>
+
+            <div className={styles.courseList}>
+              {activeSubjects.length === 0 ? (
+                <p className={styles.archivedEmpty}>No courses yet. Add one below, or sync them from Canvas.</p>
+              ) : activeSubjects.map(s => (
+                <div key={s.id} className={styles.courseRow}>
+                  <button
+                    className={styles.courseDot}
+                    style={{ background: s.color }}
+                    aria-label={`Change colour for ${s.name}`}
+                    onClick={() => setPaletteId(paletteId === s.id ? null : s.id)}
+                  />
+                  {renamingId === s.id ? (
+                    <input
+                      className={styles.courseNameInput}
+                      autoFocus
+                      value={renameDraft}
+                      aria-label={`Course name for ${s.name}`}
+                      onChange={e => setRenameDraft(e.target.value)}
+                      onBlur={() => saveRename(s.id)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') saveRename(s.id);
+                        if (e.key === 'Escape') setRenamingId(null);
+                      }}
+                    />
+                  ) : (
+                    <span className={styles.courseName}>{s.name}</span>
+                  )}
+                  <div className={styles.courseActions}>
+                    {s.source === 'canvas' && <span className={styles.courseSource}>Canvas</span>}
+                    <button
+                      className={styles.restoreBtn}
+                      onClick={() => { setRenamingId(s.id); setRenameDraft(s.name); }}
+                    >Rename</button>
+                    <button
+                      className={styles.deleteSubjectBtn}
+                      onClick={() => archiveSubject(s.id)}
+                    >Archive</button>
+                  </div>
+                  {paletteId === s.id && (
+                    <div className={styles.coursePalette} role="group" aria-label={`Colours for ${s.name}`}>
+                      {SUBJECT_COLORS.map(c => (
+                        <button
+                          key={c}
+                          className={`${styles.colorSwatch}${s.color === c ? ` ${styles.colorSwatchSelected}` : ''}`}
+                          style={{ background: c }}
+                          aria-label={`Colour ${c}`}
+                          aria-pressed={s.color === c}
+                          onClick={() => recolorSubject(s.id, c)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {addingCourse ? (
+              <div className={styles.addCourseForm}>
+                <input
+                  className={styles.courseNameInput}
+                  autoFocus
+                  placeholder="Course name"
+                  aria-label="New course name"
+                  value={newCourseName}
+                  onChange={e => { setNewCourseName(e.target.value); setCourseError(''); }}
+                  onKeyDown={e => { if (e.key === 'Enter') addCourse(); if (e.key === 'Escape') setAddingCourse(false); }}
+                />
+                <div className={styles.coursePalette} role="group" aria-label="New course colour">
+                  {SUBJECT_COLORS.map(c => (
+                    <button
+                      key={c}
+                      className={`${styles.colorSwatch}${newCourseColor === c ? ` ${styles.colorSwatchSelected}` : ''}`}
+                      style={{ background: c }}
+                      aria-label={`Colour ${c}`}
+                      aria-pressed={newCourseColor === c}
+                      onClick={() => setNewCourseColor(c)}
+                    />
+                  ))}
+                </div>
+                <div className={styles.courseActions}>
+                  <button className={styles.restoreBtn} disabled={!newCourseName.trim()} onClick={addCourse}>Add</button>
+                  <button className={styles.deleteSubjectBtn} onClick={() => { setAddingCourse(false); setCourseError(''); }}>Cancel</button>
+                </div>
+                {courseError && <p className={styles.courseError} role="alert">{courseError}</p>}
+              </div>
+            ) : (
+              <button
+                className={styles.neutralBtn}
+                onClick={() => { setAddingCourse(true); setNewCourseColor(nextUnusedColor(subjects)); }}
+              >+ Add a course</button>
+            )}
+
+            <div className={styles.endOfSemester}>
+              <h3 className={styles.archivedTitle}>End of semester</h3>
               {archiveDone ? (
-                <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
+                <p className={styles.archivedEmpty}>
                   Courses archived. You can restore them below.
                 </p>
               ) : (
-                <button
-                  className={styles.neutralBtn}
-                  onClick={() => setShowSemesterModal(true)}
-                >
-                  Archive current courses
-                </button>
+                <>
+                  <p className={styles.archivedEmpty}>
+                    Archive every Canvas course at once when the term ends.
+                  </p>
+                  <button
+                    className={styles.neutralBtn}
+                    onClick={() => setShowSemesterModal(true)}
+                  >
+                    Archive current courses
+                  </button>
+                </>
               )}
             </div>
 
