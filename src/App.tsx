@@ -468,7 +468,6 @@ export default function App() {
   }
 
   useEffect(() => {
-    console.log('[App] starting auth setup');
 
     // Fallback: if INITIAL_SESSION never fires (very unusual), unblock the
     // skeleton after 5 s but leave sessionResolved=false so AppShell does NOT
@@ -480,20 +479,17 @@ export default function App() {
     }, 5000);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[App] onAuthStateChange:', event, 'user:', !!session?.user);
       const u = session?.user ?? null;
       setUser(u);
 
       if (event === 'INITIAL_SESSION') {
         if (u) {
-          console.log('[App] INITIAL_SESSION — logged in, loading tokens');
           storage.loadTokens().catch(() => {});
           if (!onboardingChecked.current) {
             onboardingChecked.current = true;
             checkOnboarding(u);
           }
         } else {
-          console.log('[App] INITIAL_SESSION — no session');
         }
         clearTimeout(forceReady);
         setSessionResolved(true);

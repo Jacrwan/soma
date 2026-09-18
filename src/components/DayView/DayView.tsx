@@ -988,7 +988,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
   }
 
   function markAsStudied(block: TimeBlock) {
-    console.log('[markAsStudied] called — block.id:', block.id, 'task:', block.task);
     const allSessions = storage.getTimerSessions();
     const existing = allSessions.find(s => s.linkedBlockId === block.id);
     if (existing) {
@@ -1023,7 +1022,6 @@ export default function DayView({ selectedDate, onSelectDate }: DayViewProps) {
       [block.subjectId]: (prev[block.subjectId] ?? 0) + Math.round(durationSeconds / 60),
     }));
     setBlockModal(null);
-    console.log('[markAsStudied] done — session created, durationSeconds:', durationSeconds);
   }
 
   function unmarkAsStudied(block: TimeBlock) {

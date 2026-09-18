@@ -296,7 +296,6 @@ async function executeSomaAction(action: SomaAction): Promise<string | null> {
       return `✓ Deleted subject: "${subj.name}"`;
     }
     case 'create_todo': {
-      console.log('[soma] create_todo action payload:', JSON.stringify(action));
       // Validate subject_id — reject silently-wrong assignments
       let resolvedSubjectId: string | undefined = undefined;
       if (action.subject_id) {
@@ -325,7 +324,6 @@ async function executeSomaAction(action: SomaAction): Promise<string | null> {
       let todoId: string;
       if (existingTodo) {
         todoId = existingTodo.id;
-        console.log('[soma] create_todo — reusing existing todo:', todoId, action.title);
       } else {
         const newTodo: Todo = {
           id: crypto.randomUUID(),
@@ -378,8 +376,6 @@ async function executeSomaAction(action: SomaAction): Promise<string | null> {
     case 'delete_todo': {
       const allTodos = storage.getTodos();
       const todo = allTodos.find(t => t.id === action.todo_id);
-      console.log('[soma] delete_todo fired — todo_id:', action.todo_id,
-        '| found in cache:', todo ? `"${todo.text}"` : 'NOT FOUND — firing direct Supabase delete anyway');
       // Await the direct Supabase delete so the row is gone before this promise resolves
       try {
         await storage.deleteTodo(action.todo_id);
@@ -1005,8 +1001,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
       const next = prev.map(s => s.id !== id ? s : fn(s));
       const updated = next.find(s => s.id === id);
       if (updated) {
-        console.log('[storage] upsertChatSession payload:', updated);
-        void storage.upsertChatSession(updated).catch(err => console.error('[AITab] upsertChatSession:', err));
+        void storage.upsertChatSession(updated).catch(err => console.error('[AITab] upsertChatSession failed:', err.message ?? err));
       }
       return next;
     });
