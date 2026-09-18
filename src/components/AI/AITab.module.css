@@ -843,3 +843,179 @@
   color: var(--danger);
   margin: 0;
 }
+/* ── Redesign ─────────────────────────────────────────────────────────────
+   Brings the AI tab in line with the dashboard: DM Sans, restrained neutrals,
+   a readable measure instead of full-bleed text, and a composer with real
+   presence. Layout and type only — no behaviour depends on anything here. */
+
+/* The app nav is already 220px; a second full-width rail ate the page. */
+.sidebar {
+  width: 190px;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+}
+
+.sidebarHeader {
+  padding: 20px 14px 10px;
+}
+
+.sidebarHeader::before {
+  content: 'Chats';
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.newChatBtnFull {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.newChatBtnFull:hover { background: var(--bg-tertiary); }
+
+.sessionRow {
+  padding: 9px 12px;
+  margin: 0 8px;
+  border-radius: 8px;
+}
+
+/* Neutral, not a blue wash fighting the subject colours elsewhere. */
+.sessionRowActive,
+.sessionRowActive:hover { background: var(--bg-tertiary); }
+
+.sessionTitle { font-size: 12.5px; font-weight: 500; }
+.sessionTimestamp { font-size: 10px; }
+
+/* ── Reading column ─────────────────────────────────────────────────────── */
+
+.messageList {
+  padding: 8px 24px 20px;
+  gap: 22px;
+  scroll-padding-bottom: 24px;
+}
+
+/* One measure for the conversation and the composer so they line up. */
+.messageList > *,
+.inputRow {
+  width: 100%;
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.messageRow { gap: 6px; }
+
+.userRow { align-self: center; align-items: flex-end; max-width: 720px; }
+.assistantRow { align-self: center; align-items: flex-start; max-width: 720px; }
+
+.bubble {
+  font-size: 14.5px;
+  line-height: 1.68;
+}
+
+.bubble p { margin: 0 0 10px; }
+.bubble p:last-child { margin-bottom: 0; }
+
+/* The user's own words sit in a quiet surface; Soma's answer is plain text,
+   which reads better at length and matches the dashboard's chat. */
+.userBubble {
+  max-width: 78%;
+  padding: 11px 14px;
+  background: var(--bg-tertiary);
+  border-radius: 14px 14px 4px 14px;
+}
+
+.assistantBubble { padding: 0; }
+
+.assistantRow::before {
+  content: 'Soma';
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+/* ── Composer ───────────────────────────────────────────────────────────── */
+
+.inputAreaWrapper {
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.inputRow {
+  align-items: flex-end;
+  gap: 8px;
+  padding: 14px 24px 18px;
+}
+
+.textInput {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--bg);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.textInput:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px oklch(55% 0.22 266 / 0.10);
+}
+
+.sendBtn {
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+/* ── Starting state ─────────────────────────────────────────────────────── */
+
+.suggestions {
+  max-width: 560px;
+  gap: 8px;
+}
+
+.suggestionBtn {
+  padding: 9px 14px;
+  border-radius: 9px;
+  font-size: 12.5px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.suggestionBtn:hover { background: var(--bg-tertiary); border-color: var(--text-muted); }
+
+@media (max-width: 900px) {
+  .sidebar { width: 150px; }
+  .messageList { padding: 8px 16px 16px; }
+  .inputRow { padding: 12px 16px 16px; }
+}
+
+/* The header is a flex row by default, which put the label beside the button. */
+.sidebarHeader {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  border-bottom: none;
+}
+
+/* The composer's own padding sits outside the 720px measure, so its field
+   lines up with the conversation above rather than running narrower. */
+.inputRow { max-width: 768px; }
+
+.micBtn {
+  align-self: flex-end;
+  margin-bottom: 2px;
+}
+
+/* The active row is already marked by its surface; a blue title on top of that
+   competes with the subject colours used elsewhere in the app. */
+.sessionRowActive .sessionTitle { color: var(--text-primary); font-weight: 600; }
