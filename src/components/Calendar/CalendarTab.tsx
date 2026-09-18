@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { getWeekRange, isCacheStale } from '../../lib/googleCalendar';
@@ -7,9 +7,13 @@ import {
 } from '../../lib/googleCalendarConnections';
 import { TimeBlock, Subject, GoogleCalendarEvent, GoogleCalendarConnection } from '../../types';
 import { formatDateTime, formatHourLabel, useTimeFormat, type TimeFormat } from '../../lib/timeFormat';
+import {
+  addDays, getSundayOfWeek, getFirstOfMonth, startOfDay,
+  nextAnchors, rangeLength, type CalendarView, type ViewAnchors,
+} from '../../lib/calendarView';
 import styles from './CalendarTab.module.css';
 
-type ViewMode = 'month' | 'week';
+type ViewMode = CalendarView;
 
 interface Filters {
   gcal: boolean;
@@ -117,36 +121,6 @@ function isSameDay(a: Date, b: Date): boolean {
     && a.getDate() === b.getDate();
 }
 
-function addDays(date: Date, n: number): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() + n);
-  return d;
-}
-
-function getSundayOfWeek(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() - d.getDay());
-  return d;
-}
-
-function getFirstOfMonth(date: Date): Date {
-  const d = new Date(date.getFullYear(), date.getMonth(), 1);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function getMonthToRestoreFromWeek(weekStart: Date, originMonth: Date): Date {
-  const weekEnd = addDays(weekStart, 6);
-  if (
-    weekStart.getFullYear() === weekEnd.getFullYear()
-    && weekStart.getMonth() === weekEnd.getMonth()
-  ) {
-    return getFirstOfMonth(weekStart);
-  }
-  return originMonth;
-}
-
 function dateKey(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
@@ -177,6 +151,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   const [viewMonth, setViewMonth] = useState<Date>(() => getFirstOfMonth(selectedDate));
   const [originMonth, setOriginMonth] = useState<Date>(() => getFirstOfMonth(selectedDate));
   const [viewWeekStart, setViewWeekStart] = useState<Date>(() => getSundayOfWeek(selectedDate));
+  const dayColumns = rangeLength(viewMode) || 7;
   const [filters, setFilters] = useState<Filters>(() => loadFilters());
   const [dataVersion, setDataVersion] = useState(0);
 
@@ -267,9 +242,9 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     };
   }, [weekBlockModal]);
 
-  // Auto-scroll to current time when entering week view
+  // Auto-scroll to current time when entering a timed day view
   useEffect(() => {
-    if (viewMode !== 'week' || !weekGridRef.current) return;
+    if (viewMode === 'month' || !weekGridRef.current) return;
     const now = new Date();
     const scrollTop = Math.max(0, weekMinToTop(now.getHours() * 60 + now.getMinutes()) - 200);
     weekGridRef.current.scrollTop = scrollTop;
@@ -557,41 +532,29 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   }, [filters]);
 
   function goToPrev() {
-    if (viewMode === 'month') {
-      setViewMonth(d => new Date(d.getFullYear(), d.getMonth() - 1, 1));
-    } else {
-      const next = addDays(viewWeekStart, -7);
-      setViewWeekStart(next);
-    }
+    if (viewMode === 'month') setViewMonth(d => new Date(d.getFullYear(), d.getMonth() - 1, 1));
+    else setViewWeekStart(addDays(viewWeekStart, -dayColumns));
   }
 
   function goToNext() {
-    if (viewMode === 'month') {
-      setViewMonth(d => new Date(d.getFullYear(), d.getMonth() + 1, 1));
-    } else {
-      const next = addDays(viewWeekStart, 7);
-      setViewWeekStart(next);
-    }
+    if (viewMode === 'month') setViewMonth(d => new Date(d.getFullYear(), d.getMonth() + 1, 1));
+    else setViewWeekStart(addDays(viewWeekStart, dayColumns));
   }
 
   function goToToday() {
-    const today = new Date();
-    if (viewMode === 'month') {
-      setViewMonth(getFirstOfMonth(today));
-    } else {
-      const next = getSundayOfWeek(today);
-      setViewWeekStart(next);
-    }
+    const now = new Date();
+    if (viewMode === 'month') setViewMonth(getFirstOfMonth(now));
+    // Week snaps to its Sunday; the three-day view starts on today.
+    else setViewWeekStart(viewMode === 'week' ? getSundayOfWeek(now) : startOfDay(now));
   }
 
   function switchViewMode(mode: ViewMode) {
     if (mode === viewMode) return;
-    if (mode === 'week') {
-      setOriginMonth(viewMonth);
-      setViewWeekStart(getSundayOfWeek(viewMonth));
-    } else {
-      setViewMonth(getMonthToRestoreFromWeek(viewWeekStart, originMonth));
-    }
+    const anchors: ViewAnchors = { month: viewMonth, rangeStart: viewWeekStart, originMonth };
+    const next = nextAnchors(mode, viewMode, anchors, new Date());
+    setViewMonth(next.month);
+    setViewWeekStart(next.rangeStart);
+    setOriginMonth(next.originMonth);
     setViewMode(mode);
   }
 
@@ -603,7 +566,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   const headerTitle = viewMode === 'month'
     ? `${MONTH_NAMES[viewMonth.getMonth()]} ${viewMonth.getFullYear()}`
     : (() => {
-        const end = addDays(viewWeekStart, 6);
+        const end = addDays(viewWeekStart, dayColumns - 1);
         const sm = MONTH_NAMES[viewWeekStart.getMonth()];
         const em = MONTH_NAMES[end.getMonth()];
         if (viewWeekStart.getMonth() === end.getMonth()) {
@@ -625,8 +588,8 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   }, [viewMonth]);
 
   const weekDays = useMemo(
-    () => Array.from({ length: 7 }, (_, i) => addDays(viewWeekStart, i)),
-    [viewWeekStart],
+    () => Array.from({ length: dayColumns }, (_, i) => addDays(viewWeekStart, i)),
+    [viewWeekStart, dayColumns],
   );
 
   // Computed once per data/filter/week change — not on every clock tick
@@ -675,8 +638,8 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
       {/* ── Header ── */}
       <div className={styles.header}>
         <div className={styles.headerLeft}>
-          <button className={styles.navArrow} onClick={goToPrev} aria-label={viewMode === 'month' ? 'Previous month' : 'Previous week'}>‹</button>
-          <button className={styles.navArrow} onClick={goToNext} aria-label={viewMode === 'month' ? 'Next month' : 'Next week'}>›</button>
+          <button className={styles.navArrow} onClick={goToPrev} aria-label={viewMode === 'month' ? 'Previous month' : viewMode === 'week' ? 'Previous week' : 'Previous three days'}>‹</button>
+          <button className={styles.navArrow} onClick={goToNext} aria-label={viewMode === 'month' ? 'Next month' : viewMode === 'week' ? 'Next week' : 'Next three days'}>›</button>
           <span className={styles.navTitle}>{headerTitle}</span>
         </div>
         <div className={styles.headerRight}>
@@ -692,6 +655,11 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
               onClick={() => switchViewMode('week')}
               aria-pressed={viewMode === 'week'}
             >Week</button>
+            <button
+              className={`${styles.viewToggleBtn}${viewMode === 'threeDay' ? ` ${styles.viewToggleBtnActive}` : ''}`}
+              onClick={() => switchViewMode('threeDay')}
+              aria-pressed={viewMode === 'threeDay'}
+            >3 days</button>
           </div>
         </div>
       </div>
@@ -766,9 +734,12 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         </>
       )}
 
-      {/* ── Week view ── */}
-      {viewMode === 'week' && (
-        <div className={styles.weekViewOuter}>
+      {/* ── Week / three-day view ── */}
+      {(viewMode === 'week' || viewMode === 'threeDay') && (
+        <div
+          className={styles.weekViewOuter}
+          style={{ '--week-day-count': dayColumns } as CSSProperties}
+        >
 
           {/* Day headers row */}
           <div className={styles.weekViewHeaderRow}>

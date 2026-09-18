@@ -441,7 +441,7 @@
 /* Day headers row */
 .weekViewHeaderRow {
   display: grid;
-  grid-template-columns: var(--week-time-col-width) repeat(7, minmax(0, 1fr));
+  grid-template-columns: var(--week-time-col-width) repeat(var(--week-day-count, 7), minmax(0, 1fr));
   padding-right: var(--week-scrollbar-width);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -506,7 +506,7 @@
 /* All-day row */
 .weekViewAllDayRow {
   display: grid;
-  grid-template-columns: var(--week-time-col-width) repeat(7, minmax(0, 1fr));
+  grid-template-columns: var(--week-time-col-width) repeat(var(--week-day-count, 7), minmax(0, 1fr));
   padding-right: var(--week-scrollbar-width);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -668,7 +668,7 @@
 .weekViewDayCols {
   flex: 1;
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(var(--week-day-count, 7), 1fr);
   position: relative;
   min-width: 0;
 }
