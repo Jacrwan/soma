@@ -180,3 +180,28 @@ test('the dashboard conversation is cleared by a reload', async ({ page }) => {
   await expect(page.getByText('Read chapter 4')).toBeVisible();
   await expect(page.getByRole('log')).not.toContainText('remember this message');
 });
+
+test('a long conversation scrolls inside the chat instead of stretching the page', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await setup(page);
+  await page.goto('/dashboard');
+  const log = page.getByRole('log');
+  await expect(log).toBeVisible();
+  const size = () => page.evaluate(() => {
+    const el = document.querySelector('[role="log"]') as HTMLElement;
+    return { panel: Math.round((el.closest('aside') as HTMLElement).getBoundingClientRect().height), page: document.documentElement.scrollHeight, visible: el.clientHeight, content: el.scrollHeight, atBottom: Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop) < 4 };
+  });
+  const before = await size();
+
+  for (let i = 0; i < 8; i++) {
+    await page.getByLabel('What do you need to work on?').fill(`message ${i} about my week`);
+    await page.getByRole('button', { name: 'Send to Soma' }).click();
+    await expect(log.getByText(`message ${i} about my week`)).toBeVisible();
+  }
+  const after = await size();
+
+  expect(after.panel).toBe(before.panel);
+  expect(after.page).toBe(before.page);
+  expect(after.content).toBeGreaterThan(after.visible);   // it overflows, so it scrolls
+  expect(after.atBottom).toBe(true);                      // newest message in view
+});

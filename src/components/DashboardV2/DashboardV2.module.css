@@ -132,7 +132,10 @@
 /* Right column fills the plan column's height: the chat takes the slack. */
 .right{display:flex;flex-direction:column;gap:16px;min-width:0}
 .right .chat{flex:1;min-height:320px;margin-bottom:0;padding:20px}
-.right .conversation{flex:1;height:auto;min-height:200px}
+/* Fills the space the column gives it and scrolls inside — it must never grow
+   with its content, or a long conversation stretches the whole dashboard. A
+   zero basis keeps the messages out of the layout's height calculation. */
+.right .conversation{flex:1 1 0;height:0;min-height:200px;overflow-y:auto}
 .right .chat textarea{height:80px;min-height:80px}
 .right .focus{margin-bottom:0;padding:24px}
 .right .editor{margin-bottom:0}
@@ -212,3 +215,8 @@
    collapse into one dense paragraph. */
 .conversation p{white-space:pre-wrap}
 .conversation .somaMessage p+p{margin-top:8px}
+
+/* The status line ("Soma is thinking…") comes and goes on every message.
+   Reserve its line so the panel doesn't jump each time. */
+.right .chat .message,
+.right .chat .message:empty{display:block;min-height:1.7em;margin-top:6px}
