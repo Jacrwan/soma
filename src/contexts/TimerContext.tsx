@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { type Subject, type TimeBlock, type TimerSession } from '../types';
 import { storage } from '../lib/storage';
+import { readMirror, writeMirror, clearMirror, elapsedFromMirror } from '../lib/activeTimerMirror';
+import type { SubjectColor } from '../types';
 import { useTimer } from '../hooks/useTimer';
 
 function toLocalISO(date: Date): string {
@@ -38,7 +40,7 @@ export function useTimerContext() {
   return ctx;
 }
 
-export function TimerProvider({ children }: { children: ReactNode }) {
+export function TimerProvider({ children, userId = null }: { children: ReactNode; userId?: string | null }) {
   const { elapsed, isRunning, isPaused, start, pause, resume, stop } = useTimer();
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(null);
   const [pendingSession, setPendingSession] = useState<{ subject: Subject; initialTask: string } | null>(null);
@@ -53,31 +55,90 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   // Behavior 2: track a recent block to extend on continuation
   const continuationBlockIdRef = useRef<string | null>(null);
   const pauseDurationRef       = useRef<number>(0);
+  const userIdRef              = useRef<string | null>(userId);
+  useEffect(() => { userIdRef.current = userId; }, [userId]);
+
+  // Snapshot the running session locally so a reload can restore it without
+  // waiting on (or depending on) the network.
+  const mirror = useCallback((session: ActiveSession, accumulatedSeconds: number, isPaused: boolean) => {
+    writeMirror({
+      userId: userIdRef.current,
+      subjectId: session.subject.id,
+      subjectName: session.subject.name,
+      subjectColor: session.subject.color,
+      task: session.task,
+      sessionStartTimeISO: session.sessionStartTimeISO,
+      accumulatedSeconds, isPaused, markedAtMs: Date.now(),
+    });
+  }, []);
 
   useEffect(() => { elapsedRef.current = elapsed; }, [elapsed]);
   useEffect(() => { activeSessionRef.current = activeSession; }, [activeSession]);
 
-  // Recover any in-progress timer from Supabase on app load
+  // Restore the timer on load: local mirror first so it is back instantly and
+  // survives an auth or network hiccup, then Supabase for cross-device pickup.
   useEffect(() => {
     void storage.cleanupTestBlocks('Semester II Graded Assignments').catch(() => {});
+
+    const local = readMirror();
+    if (local && !activeSessionRef.current) {
+      const session: ActiveSession = {
+        subject: { id: local.subjectId, name: local.subjectName, color: local.subjectColor as SubjectColor, totalTimeToday: 0 },
+        task: local.task,
+        sessionStartTimeISO: local.sessionStartTimeISO,
+      };
+      activeSessionRef.current = session;
+      setActiveSession(session);
+      start(elapsedFromMirror(local));
+      if (local.isPaused) pause();
+    }
+
     storage.getActiveTimer().then(async row => {
-      if (!row) return;
-      await storage.loadSubjects();
-      if(activeSessionRef.current)return;
-      const subj = storage.getSubjects().find(s => s.id === row.subject_id);
-      if (!subj) { setError('Could not recover your timer subject. Refresh to retry; your saved timer has been kept.'); return; }
-      const resumedElapsed = row.is_paused
-        ? row.accumulated_seconds
-        : row.accumulated_seconds + Math.floor((Date.now() - new Date(row.start_time).getTime()) / 1000);
+      // A mirror belonging to a different account must never leak into this one.
+      const stale = local && local.userId && userIdRef.current && local.userId !== userIdRef.current;
+      if (stale) {
+        clearMirror();
+        stop();
+        activeSessionRef.current = null;
+        setActiveSession(null);
+      }
+      if (!row) {
+        // Nothing server-side: a mirror with no counterpart is the local
+        // record of a session that never synced, so it is left running.
+        return;
+      }
+      await storage.loadSubjects().catch(() => {});
+      // Fall back to the name stored on the row so an unloadable subject list
+      // can no longer strand a running timer.
+      const subj = storage.getSubjects().find(s => s.id === row.subject_id)
+        ?? { id: row.subject_id, name: row.subject_name ?? 'Focus session', color: '#42a5f5' as SubjectColor, totalTimeToday: 0 };
       const session: ActiveSession = {
         subject: subj,
         task: row.task_text ?? '',
         sessionStartTimeISO: row.session_start_time,
       };
+      if (activeSessionRef.current) {
+        // Already restored from the mirror — keep its clock, but take the
+        // fuller subject record now that subjects have loaded.
+        activeSessionRef.current = { ...activeSessionRef.current, subject: subj };
+        setActiveSession(prev => prev ? { ...prev, subject: subj } : prev);
+        return;
+      }
+      const startedMs = new Date(row.start_time).getTime();
+      const drift = Number.isFinite(startedMs) ? Math.floor((Date.now() - startedMs) / 1000) : 0;
+      const resumedElapsed = row.is_paused
+        ? row.accumulated_seconds
+        : row.accumulated_seconds + Math.max(0, drift);
+      activeSessionRef.current = session;
       setActiveSession(session);
       start(resumedElapsed);
       if (row.is_paused) pause();
-    }).catch(() => {});
+      mirror(session, resumedElapsed, row.is_paused);
+    }).catch(() => {
+      if (!activeSessionRef.current && local) {
+        setError('Your timer is running on this device but could not be checked against your account.');
+      }
+    });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Planned blocks remain unchanged; timer history records actual work separately.
@@ -121,6 +182,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     setActiveSession(session);
     setPendingSession(null);
     start(preSeconds);
+    mirror(session, preSeconds, false);
     void storage.upsertActiveTimer({
       subject_id: subject.id,
       subject_name: subject.name,
@@ -130,13 +192,14 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       accumulated_seconds: preSeconds,
       is_paused: false,
     }).catch(() => setError('Timer is running on this device, but could not sync. Keep this page open and retry saving when you stop.'));
-  }, [start]);
+  }, [start, mirror]);
 
   const pauseSession = useCallback(() => {
     const session = activeSessionRef.current;
     if (!session || savingRef.current) return;
     const acc = pause();
     elapsedRef.current=acc;
+    mirror(session, acc, true);
     void storage.upsertActiveTimer({
       subject_id: session.subject.id,
       subject_name: session.subject.name,
@@ -146,13 +209,14 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       accumulated_seconds: acc,
       is_paused: true,
     }).catch(() => setError('Pause could not sync. Keep this page open until the session is saved.'));
-  }, [pause]);
+  }, [pause, mirror]);
 
   const resumeSession = useCallback(() => {
     const session = activeSessionRef.current;
     if (!session || savingRef.current || pendingSaveRef.current) return;
     resume();
     const acc = elapsedRef.current;
+    mirror(session, acc, false);
     void storage.upsertActiveTimer({
       subject_id: session.subject.id,
       subject_name: session.subject.name,
@@ -162,7 +226,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       accumulated_seconds: acc,
       is_paused: false,
     }).catch(() => setError('Resume could not sync. Keep this page open until the session is saved.'));
-  }, [resume]);
+  }, [resume, mirror]);
 
   const stopSession = useCallback(async (): Promise<boolean> => {
     const session = activeSessionRef.current;
@@ -170,6 +234,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     savingRef.current=true;setSaving(true);setError('');
     const durationSeconds = pause();
     elapsedRef.current=durationSeconds;
+    mirror(session, durationSeconds, true);
     const endTime = toLocalISO(new Date());
 
     // Capture continuation state before clearing refs
@@ -194,6 +259,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       await storage.saveTimerSession(timerSession, session.subject.name);
       await storage.deleteActiveTimer();
     } catch {setError('Could not finish saving focus. Your timer is paused; press Stop to retry.');savingRef.current=false;setSaving(false);return false;}
+    clearMirror();
     stop();setActiveSession(null);activeSessionRef.current=null;pendingSaveRef.current=null;continuationBlockIdRef.current=null;pauseDurationRef.current=0;
     savingRef.current=false;setSaving(false);
     storage.setTimerSessions([...storage.getTimerSessions().filter(s=>s.id!==timerSession.id), timerSession]);
@@ -231,7 +297,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     mergedBlockIdRef.current = null;
     window.dispatchEvent(new CustomEvent('soma_timer_stopped', { detail: { mergedBlockId, stopTime: endTime } }));
     return true;
-  }, [stop,pause]);
+  }, [stop,pause,mirror]);
 
   return (
     <TimerContext.Provider value={{

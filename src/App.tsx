@@ -14,6 +14,7 @@ import SettingsTab from './components/Settings/SettingsTab';
 import { storage } from './lib/storage';
 import { useSubscription, refreshSubscription, hasAIAccess } from './lib/subscription';
 import { TimerProvider } from './contexts/TimerContext';
+import { clearMirror } from './lib/activeTimerMirror';
 import TimerOverlay from './components/Timer/TimerOverlay';
 import LandingPage from './components/Landing/LandingPage';
 import LegalPage from './components/Legal/LegalPage';
@@ -133,6 +134,17 @@ function AppShell({ user, sessionResolved, onLogout }: {
   const navigate = useNavigate();
   const subscription = useSubscription();
   const aiLocked = subscription.status !== 'loading' && !hasAIAccess(subscription.status);
+  // Collapsed sidebar is a per-device preference, like the theme.
+  const [navCollapsed, setNavCollapsed] = useState(() => {
+    try { return localStorage.getItem('soma_nav_collapsed') === '1'; } catch { return false; }
+  });
+  function toggleNav() {
+    setNavCollapsed(v => {
+      const next = !v;
+      try { localStorage.setItem('soma_nav_collapsed', next ? '1' : '0'); } catch { /* non-fatal */ }
+      return next;
+    });
+  }
 
   // Paywall: block the app for past_due / unpaid / canceled
   const paywallStatus = (
@@ -218,8 +230,9 @@ function AppShell({ user, sessionResolved, onLogout }: {
     return `${styles.navItem}${p === path ? ` ${styles.navItemActive}` : ''}`;
   }
 
+
   return (
-    <TimerProvider key={user?.id}>
+    <TimerProvider key={user?.id} userId={user?.id ?? null}>
     <div className={styles.app}>
       {p !== '/dashboard' && <TimerOverlay />}
       {showSemesterModal && (
@@ -237,11 +250,34 @@ function AppShell({ user, sessionResolved, onLogout }: {
           }}
         />
       )}
-      <nav className={styles.sidebar}>
-        <div className={styles.brand}>soma<span>study with intention</span></div>
+      <nav className={`${styles.sidebar}${navCollapsed ? ` ${styles.sidebarCollapsed}` : ''}`}>
+        <div className={styles.brandRow}>
+          <div className={styles.brand}>soma<span>study with intention</span></div>
+          <div className={styles.brandMark} aria-hidden="true">s</div>
+          <button
+            className={styles.navToggle}
+            onClick={toggleNav}
+            aria-label={navCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!navCollapsed}
+            title={navCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="1" y="2" width="12" height="10" rx="1.5"/>
+              <path d="M5.5 2v10"/>
+            </svg>
+          </button>
+        </div>
 
         <div className={styles.navItems}>
-          <button className={nav('/dashboard')} onClick={() => navigate('/dashboard')}>Dashboard</button>
+          <button className={nav('/dashboard')} onClick={() => navigate('/dashboard')} title="Dashboard">
+            <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="1.5" y="1.5" width="4.5" height="5.5" rx="1"/>
+              <rect x="8" y="1.5" width="4.5" height="3" rx="1"/>
+              <rect x="1.5" y="9" width="4.5" height="3.5" rx="1"/>
+              <rect x="8" y="6.5" width="4.5" height="6" rx="1"/>
+            </svg>
+            <span className={styles.navLabel}>Dashboard</span>
+          </button>
           {/* Day View is retired from the sidebar; the Dashboard is the planning
               surface. The /day-view route below still works if you open it
               directly, so this nav entry can be restored by uncommenting it. */}
@@ -251,7 +287,7 @@ function AppShell({ user, sessionResolved, onLogout }: {
               <rect x="2" y="1" width="10" height="12" rx="1.5"/>
               <path d="M4.5 5h5M4.5 7.5h5M4.5 10h3"/>
             </svg>
-            Canvas
+            <span className={styles.navLabel}>Canvas</span>
           </button>
 
           <button className={nav('/documents')} onClick={() => navigate('/documents')}>
@@ -260,7 +296,7 @@ function AppShell({ user, sessionResolved, onLogout }: {
               <path d="M8.5 1.5V4H11"/>
               <path d="M4.5 6.5h4M4.5 8.5h4M4.5 10.5h2.5"/>
             </svg>
-            Documents
+            <span className={styles.navLabel}>Documents</span>
           </button>
 
           <button className={nav('/calendar')} onClick={() => navigate('/calendar')}>
@@ -269,14 +305,14 @@ function AppShell({ user, sessionResolved, onLogout }: {
               <path d="M1 5.5h12M5 5.5v7.5M9 5.5v7.5"/>
               <path d="M4.5 1v2M9.5 1v2"/>
             </svg>
-            Calendar
+            <span className={styles.navLabel}>Calendar</span>
           </button>
 
           <button className={nav('/ai')} onClick={() => navigate('/ai')}>
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
               <path d="M7 1L8.1 5.9L13 7L8.1 8.1L7 13L5.9 8.1L1 7L5.9 5.9Z"/>
             </svg>
-            AI
+            <span className={styles.navLabel}>AI</span>
             {aiLocked && (
               <svg className={styles.navLock} width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-label="Premium">
                 <rect x="3" y="6.5" width="8" height="6" rx="1"/>
@@ -290,7 +326,7 @@ function AppShell({ user, sessionResolved, onLogout }: {
               <path d="M2 10.5l3-3.5 2.5 2 3-4 1.5 2"/>
               <path d="M1 13h12"/>
             </svg>
-            Insights
+            <span className={styles.navLabel}>Insights</span>
           </button>
         </div>
 
@@ -300,7 +336,7 @@ function AppShell({ user, sessionResolved, onLogout }: {
               <circle cx="7" cy="7" r="1.8"/>
               <path d="M7 1.5v1M7 11.5v1M1.5 7h1M11.5 7h1M3.2 3.2l.7.7M10.1 10.1l.7.7M10.1 3.2l-.7.7M3.2 10.1l.7.7"/>
             </svg>
-            Settings
+            <span className={styles.navLabel}>Settings</span>
           </button>
           <button className={styles.navItem} onClick={onLogout} title="Log out">
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
@@ -308,7 +344,7 @@ function AppShell({ user, sessionResolved, onLogout }: {
               <path d="M9.5 10l3-3-3-3"/>
               <path d="M12.5 7H5"/>
             </svg>
-            Log out
+            <span className={styles.navLabel}>Log out</span>
           </button>
         </div>
       </nav>
@@ -483,6 +519,8 @@ export default function App() {
   }, []);
 
   async function handleLogout() {
+    // The mirrored timer is device-local, so it must not outlive the session.
+    clearMirror();
     await supabase.auth.signOut();
     navigate('/');
   }

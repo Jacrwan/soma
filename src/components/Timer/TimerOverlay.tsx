@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Pause, Play, Square } from 'lucide-react';
 import { useTimerContext } from '../../contexts/TimerContext';
 import styles from './TimerOverlay.module.css';
 
@@ -18,6 +20,7 @@ function parsePreElapsed(s: string): number {
 
 export default function TimerOverlay() {
   const ctx = useTimerContext();
+  const navigate = useNavigate();
   const [taskInput, setTaskInput] = useState('');
   const [preElapsedInput, setPreElapsedInput] = useState('00:00');
   const [isStopping, setIsStopping] = useState(false);
@@ -83,40 +86,48 @@ export default function TimerOverlay() {
   }
 
   const { subject, task } = ctx.activeSession!;
+  const running = ctx.isRunning && !ctx.isPaused;
   return (
-    <div className={`${styles.focusBanner}${isStopping ? ` ${styles.focusBannerOut}` : ''}`}>
-      <div className={styles.bannerLeft}>
-        <span className={styles.bannerDot} style={{ background: subject.color }} />
-        <span className={styles.bannerSubject}>{subject.name}</span>
-        {task && (
-          <>
-            <span className={styles.bannerSep}>/</span>
-            <span className={styles.bannerTask}>{task}</span>
-          </>
-        )}
-      </div>
-      <div className={styles.bannerCenter}>
-        <span className={styles.bannerTimer}>{fmtElapsed(ctx.elapsed)}</span>
-      </div>
-      <div className={styles.bannerRight}>
-        {ctx.error && <span role="alert">{ctx.error}</span>}
+    <aside
+      className={`${styles.pill}${isStopping ? ` ${styles.pillOut}` : ''}`}
+      aria-label="Focus timer"
+    >
+      <button
+        className={styles.pillBody}
+        onClick={() => navigate('/dashboard')}
+        aria-label={`Focus: ${task || subject.name}. Open the dashboard.`}
+      >
+        <span
+          className={`${styles.pillDot}${running ? ` ${styles.pillDotLive}` : ''}`}
+          style={{ background: subject.color }}
+        />
+        <span className={styles.pillText}>
+          <span className={styles.pillTask}>{task || subject.name}</span>
+          <span className={styles.pillSubject}>{task ? subject.name : 'Focus session'}</span>
+        </span>
+        <span className={styles.pillTime}>{fmtElapsed(ctx.elapsed)}</span>
+      </button>
+
+      <div className={styles.pillActions}>
         <button
-          className={styles.bannerBtn}
+          className={styles.pillBtn}
           disabled={ctx.saving || ctx.savePending}
-          title={ctx.isPaused || !ctx.isRunning ? 'Resume' : 'Pause'}
-          onClick={() => ctx.isPaused || !ctx.isRunning ? ctx.resumeSession() : ctx.pauseSession()}
+          aria-label={running ? 'Pause focus' : 'Resume focus'}
+          onClick={() => running ? ctx.pauseSession() : ctx.resumeSession()}
         >
-          {ctx.isPaused || !ctx.isRunning ? '▶' : '⏸'}
+          {running ? <Pause size={14} /> : <Play size={14} />}
         </button>
         <button
-          className={styles.bannerStopBtn}
+          className={`${styles.pillBtn} ${styles.pillStop}`}
           disabled={ctx.saving}
-          title="Stop"
+          aria-label="Stop focus and save"
           onClick={handleStop}
         >
-          ■
+          <Square size={12} />
         </button>
       </div>
-    </div>
+
+      {ctx.error && <p className={styles.pillError} role="alert">{ctx.error}</p>}
+    </aside>
   );
 }

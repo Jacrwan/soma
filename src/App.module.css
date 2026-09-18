@@ -280,3 +280,92 @@
 @media(max-width:768px){.brand{font-size:22px;padding:12px 16px}.brand span{display:none}}
 
 .main{background:var(--bg-secondary)}
+
+/* ── Collapsible sidebar ──────────────────────────────────────────────────
+   Collapsed, the nav becomes an icon rail. Labels are removed from the
+   accessibility tree rather than merely hidden, so each button falls back to
+   its title attribute instead of announcing an invisible name. */
+
+.brandRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding-right: 10px;
+}
+
+.brandRow .brand { flex: 1; min-width: 0; }
+
+.navToggle {
+  flex-shrink: 0;
+  margin-top: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  border-radius: 7px;
+  color: var(--nav-text);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.navToggle:hover {
+  color: var(--nav-active);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.sidebarCollapsed { width: 64px; }
+
+.sidebarCollapsed .brandRow {
+  flex-direction: column;
+  align-items: center;
+  padding-right: 0;
+  gap: 0;
+}
+
+.brandMark {
+  display: none;
+  font-family: 'Figtree', sans-serif;
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: -0.03em;
+  color: var(--nav-active);
+  padding: 24px 0 10px;
+  user-select: none;
+}
+
+.sidebarCollapsed .brand { display: none; }
+.sidebarCollapsed .brandMark { display: block; }
+
+.sidebarCollapsed .navToggle { margin-top: 0; margin-bottom: 10px; }
+
+.sidebarCollapsed .navItems,
+.sidebarCollapsed .sidebarBottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.sidebarCollapsed .navItem {
+  width: 40px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+}
+
+.sidebarCollapsed .navLabel { display: none; }
+.sidebarCollapsed .navLock { display: none; }
+
+/* The active marker is a left rail on the expanded nav; centred icons need it
+   drawn as a ring instead so it does not sit under the icon. */
+.sidebarCollapsed .navItemActive::before { display: none; }
+
+@media (max-width: 640px) {
+  .sidebarCollapsed { width: 56px; }
+  .sidebarCollapsed .navItem { width: 36px; }
+}
