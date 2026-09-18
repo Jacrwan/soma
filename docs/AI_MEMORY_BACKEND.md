@@ -72,3 +72,26 @@ Database tests use a fake revision store, and browser tests mock the API. The ac
 Final local results: production build, API TypeScript check, and `git diff --check` passed. All 16 new memory tests passed. The final full serial run passed 160/163 tests; the three existing date/Canvas/timer tests timed out, then all three passed unchanged in an isolated rerun. Earlier runs also had intermittent browser/server failures. No assertion or timeout in the existing tests was relaxed. This is not a claim of one uninterrupted green full-suite run.
 
 Release verification on 2026-09-18: a fresh full run passed **163/163 tests** in one uninterrupted run, and the production build passed. Supabase migration remains blocked by the saved browser permission; memory has not been enabled.
+
+## Automatic learning (added 2026-09-18)
+
+Soma now saves lasting facts without the user typing a command.
+
+- **When:** after each chat reply is sent, via `waitUntil` from
+  `@vercel/functions`, so learning never adds latency or breaks a reply.
+- **Input:** only the student's newest message, plus the last 600 characters of
+  the previous assistant reply to interpret short answers ("until 7"). The system
+  prompt — documents, Canvas data, the plan — is never passed in, so uploaded
+  content cannot plant a memory.
+- **What it keeps:** lasting preferences, routines, goals and standing
+  constraints. Not one-off tasks, not facts the student did not state, not
+  passwords, contact details or sensitive personal information.
+- **Safety net:** model output is parsed strictly; every suggestion goes through
+  the same `parseMemoryAction` validation as a manual save; at most five
+  saves and five forgets per message; forgets only apply to keys that exist.
+  Unreadable output writes nothing. Paused memory skips the model call entirely.
+- **Visibility:** Settings → Memory lists every entry, marked "Learned" or
+  "Saved by you", with Forget, Forget everything (confirmed), and an on/off
+  switch.
+- **Cost:** one small Haiku call per substantive message (four words or more);
+  existing memories are passed truncated to 160 characters each.

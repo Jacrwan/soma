@@ -1,5 +1,5 @@
 /** Explicit memory commands are handled by the API, never by model-generated actions. */
-export type MemoryEntry = { key: string; content: string; category: 'preference' | 'goal' | 'fact'; updatedAt: string; expiresAt: string | null };
+export type MemoryEntry = { key: string; content: string; category: 'preference' | 'goal' | 'fact'; updatedAt: string; expiresAt: string | null; source?: 'manual' | 'auto' };
 export type MemoryState = { revision: number; enabled: boolean; entries: MemoryEntry[] };
 export type MemoryMutation = { action: 'remember'; key: string; content: string; category?: MemoryEntry['category']; expiresAt?: string | null } | { action:'forget'; key:string } | { action:'clear' } | { action:'set_enabled'; enabled:boolean };
 export function parseMemoryCommand(text: string): MemoryMutation | 'list' | 'help' | null {

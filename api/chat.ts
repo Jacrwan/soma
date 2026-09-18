@@ -1,6 +1,7 @@
 /// <reference types="node" />
 import { createClient } from '@supabase/supabase-js';
-import { loadMemoryContext } from './_memory';
+import { loadMemoryContext, learnFromMessage } from './_memory';
+import { waitUntil } from '@vercel/functions';
 
 export const config = { api: { bodyParser: { sizeLimit: '4.5mb' } } };
 export const maxDuration = 60;
@@ -75,7 +76,7 @@ function rateLimited(userId:string){
  hits.set(userId,[...times,now]);return false;
 }
 
-export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Authorization>;request?:typeof fetch;apiKey?:()=>string|undefined;limited?:(id:string)=>boolean;memory?:(userId:string,query:string)=>Promise<string>}={}){
+export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Authorization>;request?:typeof fetch;apiKey?:()=>string|undefined;limited?:(id:string)=>boolean;memory?:(userId:string,query:string)=>Promise<string>;learn?:(userId:string,message:string,assistantContext:string,apiKey:string)=>Promise<void>;defer?:(task:Promise<unknown>)=>void}={}){
  return async function handler(req:any,res:any){
   const origin=req.headers.origin;
   if(origin==='https://somastudy.app' || (process.env.NODE_ENV!=='production' && origin==='http://localhost:5173'))res.setHeader('Access-Control-Allow-Origin',origin);
@@ -120,6 +121,11 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
    if(data?.stop_reason==='max_tokens')return res.status(502).json({error:'response_incomplete'});
    const text=data?.content?.filter(b=>b.type==='text' && typeof b.text==='string').map(b=>b.text).join('\n');
    if(!text?.trim())return res.status(502).json({error:'invalid_ai_response'});
+   // Learn from what the student said, after the reply is on its way. A failure
+   // here must never affect the conversation, so it is detached and swallowed.
+   const previous=messages.length>1 ? messages[messages.length-2] : null;
+   const assistantContext=previous?.role==='assistant' ? (typeof previous.content==='string' ? previous.content : previous.content.filter((b:any)=>b.type==='text').map((b:any)=>b.text).join(' ')) : '';
+   (deps.defer??waitUntil)((deps.learn??learnFromMessage)(auth.userId,query,assistantContext,key).catch(()=>{}));
    return res.status(200).json({content:[{type:'text',text}],stop_reason:data?.stop_reason});
   }catch(error){
    const timedOut=error instanceof Error && ['TimeoutError','AbortError'].includes(error.name);

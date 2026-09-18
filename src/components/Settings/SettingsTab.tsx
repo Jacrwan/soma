@@ -5,6 +5,7 @@ import SemesterEndModal from '../shared/SemesterEndModal';
 import { EDUCATION_OPTIONS, EDUCATION_LABELS, type EducationId } from '../Onboarding/OnboardingFlow';
 import { applyTheme } from '../../App';
 import { applyTimeFormat } from '../../lib/timeFormat';
+import { requestMemory, type MemoryState, type MemoryMutation } from '../../lib/aiMemory';
 import { supabase } from '../../lib/supabase';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, openBillingPortal, hasAIAccess, getGoogleCalendarLimit, GOOGLE_CALENDAR_LIMIT_PREMIUM } from '../../lib/subscription';
@@ -19,7 +20,7 @@ import styles from './SettingsTab.module.css';
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 type Day = typeof DAYS[number];
 type HoursCategory = 'schoolHours' | 'workHours' | 'personalHours';
-type Section = 'profile' | 'subscription' | 'appearance' | 'availability' | 'study' | 'ai' | 'integrations' | 'courses';
+type Section = 'profile' | 'subscription' | 'appearance' | 'availability' | 'study' | 'ai' | 'memory' | 'integrations' | 'courses';
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -98,6 +99,31 @@ export default function SettingsTab() {
   const [subjects, setSubjectsState] = useState<Subject[]>(() => storage.getSubjects());
   const activeSubjects = subjects.filter(s => !s.archived);
   const archivedSubjects = subjects.filter(s => s.archived);
+
+  // Memory: what Soma has learned, reviewable and deletable here because it is
+  // saved automatically without asking.
+  const [memory, setMemory] = useState<MemoryState | null>(null);
+  const [memoryError, setMemoryError] = useState('');
+  const [memoryBusy, setMemoryBusy] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  async function memoryCall(action?: MemoryMutation) {
+    setMemoryBusy(true);
+    setMemoryError('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('Sign in again to manage your memories.');
+      setMemory(await requestMemory(session.access_token, action));
+    } catch (e) {
+      setMemoryError(e instanceof Error ? e.message : 'Memory is not available right now.');
+    } finally {
+      setMemoryBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (activeSection === 'memory' && !memory && !memoryBusy) void memoryCall();
+  }, [activeSection]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Course editing state
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -514,6 +540,7 @@ export default function SettingsTab() {
     ['availability',  'Availability'],
     ['study',         'Study Preferences'],
     ['ai',            'AI Behavior'],
+    ['memory',        'Memory'],
     ['integrations',  'Integrations'],
     ['courses',       'Courses'],
   ];
@@ -1126,6 +1153,76 @@ export default function SettingsTab() {
                 </div>
               </div>
             </div>
+          </section>
+        )}
+
+        {activeSection === 'memory' && (
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>Memory</h2>
+            <p className={styles.sectionDescription}>
+              Soma remembers lasting things you tell it — how you like to study, your routines, your goals —
+              so you don't have to repeat yourself. It learns only from what you type, never from your
+              documents. Everything it remembers is listed here, and you can delete any of it.
+            </p>
+
+            {memoryError && <p className={styles.courseError} role="alert">{memoryError}</p>}
+
+            {memory && (
+              <>
+                <div className={styles.prefRow}>
+                  <label className={styles.prefLabel}>Remember things I tell Soma</label>
+                  <div className={styles.themeToggle}>
+                    <button
+                      className={`${styles.themeBtn}${memory.enabled ? ` ${styles.themeBtnActive}` : ''}`}
+                      aria-pressed={memory.enabled}
+                      disabled={memoryBusy}
+                      onClick={() => void memoryCall({ action: 'set_enabled', enabled: true })}
+                    >On</button>
+                    <button
+                      className={`${styles.themeBtn}${!memory.enabled ? ` ${styles.themeBtnActive}` : ''}`}
+                      aria-pressed={!memory.enabled}
+                      disabled={memoryBusy}
+                      onClick={() => void memoryCall({ action: 'set_enabled', enabled: false })}
+                    >Off</button>
+                  </div>
+                </div>
+                {!memory.enabled && (
+                  <p className={styles.archivedEmpty}>Paused. Soma won't learn anything new or use what it has saved until you turn this back on.</p>
+                )}
+
+                <div className={styles.courseList} aria-label="Saved memories">
+                  {memory.entries.length === 0 ? (
+                    <p className={styles.archivedEmpty}>Nothing remembered yet. Mention your routines or preferences in a chat and they'll show up here.</p>
+                  ) : memory.entries.map(entry => (
+                    <div key={entry.key} className={styles.courseRow}>
+                      <span className={styles.courseName}>{entry.content}</span>
+                      <div className={styles.courseActions}>
+                        <span className={styles.courseSource}>{entry.source === 'auto' ? 'Learned' : 'Saved by you'}</span>
+                        <button
+                          className={styles.deleteSubjectBtn}
+                          disabled={memoryBusy}
+                          aria-label={`Forget: ${entry.content}`}
+                          onClick={() => void memoryCall({ action: 'forget', key: entry.key })}
+                        >Forget</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {memory.entries.length > 0 && (
+                  confirmClear ? (
+                    <div className={styles.courseActions}>
+                      <span className={styles.archivedEmpty}>Forget everything Soma has remembered?</span>
+                      <button className={styles.deleteSubjectBtn} disabled={memoryBusy} onClick={() => { setConfirmClear(false); void memoryCall({ action: 'clear' }); }}>Forget all</button>
+                      <button className={styles.restoreBtn} onClick={() => setConfirmClear(false)}>Cancel</button>
+                    </div>
+                  ) : (
+                    <button className={styles.neutralBtn} onClick={() => setConfirmClear(true)}>Forget everything</button>
+                  )
+                )}
+              </>
+            )}
+            {!memory && !memoryError && <p className={styles.archivedEmpty}>Loading…</p>}
           </section>
         )}
 

@@ -15,6 +15,7 @@
     "@stripe/stripe-js": "^9.7.0",
     "@supabase/supabase-js": "^2.106.1",
     "@types/dompurify": "^3.0.5",
+    "@vercel/functions": "^3.9.8",
     "cors": "^2.8.6",
     "dompurify": "^3.4.6",
     "dotenv": "^17.4.2",
