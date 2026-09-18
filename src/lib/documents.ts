@@ -64,6 +64,8 @@ function isMissingTableError(err: unknown): boolean {
 // particular) read the user's documents synchronously without a network
 // round trip on every chat message. Not persisted; refreshed by listDocuments().
 let _documentsCache: SomaDocument[] = [];
+let _documentsOwner:string|null=null;
+supabase.auth.onAuthStateChange((_event,session)=>{if(_documentsOwner!==session?.user.id){_documentsCache=[];_documentsOwner=session?.user.id??null;}});
 export function getCachedDocuments(): SomaDocument[] {
   return _documentsCache;
 }
@@ -72,6 +74,7 @@ export const DOCUMENTS_CHANGED_EVENT = 'soma_documents_changed';
 
 export async function listDocuments(): Promise<SomaDocument[]> {
   const id = await uid();
+  if(_documentsOwner!==id){_documentsCache=[];_documentsOwner=id;}
   const { data, error } = await supabase
     .from('documents')
     .select('*')
@@ -82,7 +85,7 @@ export async function listDocuments(): Promise<SomaDocument[]> {
     throw new DocumentError(error.message);
   }
   const docs = (data ?? []).map(rowToDocument);
-  _documentsCache = docs;
+  if(_documentsOwner===id)_documentsCache = docs;
   window.dispatchEvent(new Event(DOCUMENTS_CHANGED_EVENT));
   return docs;
 }

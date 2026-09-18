@@ -1,213 +1,118 @@
 /// <reference types="node" />
 import { createClient } from '@supabase/supabase-js';
 
-// Raised from 1mb so uploaded images/PDFs (sent as base64 content blocks) fit.
 export const config = { api: { bodyParser: { sizeLimit: '4.5mb' } } };
+export const maxDuration = 60;
+type Authorization = { ok:true; userId:string } | { ok:false; status:number; error:string };
+const TRIAL_MS=21*86_400_000, EXTENSION_MS=7*86_400_000;
 
-const TRIAL_MS     = 21 * 86_400_000;
-const EXTENSION_MS =  7 * 86_400_000;
-
-function computeStatus(row: {
-  status: string;
-  trial_start: string | null;
-  extension_start: string | null;
-}): string {
-  const now = Date.now();
-  if (row.status === 'trialing' && row.trial_start) {
-    return now > new Date(row.trial_start).getTime() + TRIAL_MS
-      ? 'trial_expired'
-      : 'trialing';
-  }
-  if (row.status === 'trial_extended' && row.extension_start) {
-    return now > new Date(row.extension_start).getTime() + EXTENSION_MS
-      ? 'trial_extension_expired'
-      : 'trial_extended';
-  }
-  return row.status;
+export function computeStatus(row:{status:string;trial_start:string|null;extension_start:string|null},now=Date.now()):string {
+ const start=row.status==='trial_extended' ? row.extension_start : row.trial_start;
+ if(row.status==='trialing' || row.status==='trial_extended'){
+  const timestamp=start ? Date.parse(start) : NaN;
+  if(!Number.isFinite(timestamp) || now>=timestamp+(row.status==='trialing' ? TRIAL_MS : EXTENSION_MS))return 'trial_expired';
+ }
+ return row.status;
 }
 
-const ALLOWED_ORIGINS = [
-  'https://somastudy.app',
-  ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:5173'] : []),
-];
-
-const rateLimitMap = new Map<string, number[]>();
-
-function isRateLimited(ip: string): boolean {
-  const now = Date.now();
-  const windowMs = 60_000;
-  const max = 20;
-  const timestamps = (rateLimitMap.get(ip) ?? []).filter(t => now - t < windowMs);
-  if (timestamps.length >= max) return true;
-  timestamps.push(now);
-  rateLimitMap.set(ip, timestamps);
-  return false;
+// Exported separately so database failures and entitlement decisions can be tested without network access.
+export async function authorizeChat(admin:ReturnType<typeof createClient>,token:string,devEmail?:string):Promise<Authorization>{
+ try {
+  const {data:{user},error}=await admin.auth.getUser(token);
+  if(error && (!error.status || error.status>=500))return {ok:false,status:503,error:'auth_service_unavailable'};
+  if(error || !user)return {ok:false,status:401,error:'auth_required'};
+  if(devEmail && user.email?.toLowerCase()===devEmail.trim().toLowerCase())return {ok:true,userId:user.id};
+  const {data:sub,error:lookupError}=await admin.from('subscriptions').select('status, trial_start, extension_start').eq('user_id',user.id).maybeSingle();
+  if(lookupError)return {ok:false,status:503,error:'subscription_unavailable'};
+  const status=sub ? computeStatus(sub) : 'free';
+  if(!['trialing','trial_extended','active'].includes(status))return {ok:false,status:402,error:'subscription_required'};
+  return {ok:true,userId:user.id};
+ }catch{return {ok:false,status:503,error:'auth_service_unavailable'};}
+}
+async function verifyUserAndSubscription(token:string):Promise<Authorization>{
+ const url=process.env.VITE_SUPABASE_URL,key=process.env.SUPABASE_SERVICE_ROLE_KEY;
+ if(!url || !key)return {ok:false,status:503,error:'server_not_configured'};
+ return authorizeChat(createClient(url,key,{auth:{autoRefreshToken:false,persistSession:false}}),token,process.env.DEVELOPER_EMAIL);
 }
 
-function applyCors(req: any, res: any): boolean {
-  const origin = req.headers['origin'] as string | undefined;
-  if (origin && ALLOWED_ORIGINS.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
+export function validateChatInput(body:unknown):string|null{
+ if(!body || typeof body!=='object')return 'invalid_request';
+ const {messages,systemPrompt,model}=body as Record<string,unknown>;
+ if(systemPrompt!==undefined && typeof systemPrompt!=='string')return 'invalid_system_prompt';
+ if(model!==undefined && model!=='sonnet')return 'invalid_model';
+ if(!Array.isArray(messages) || !messages.length || messages.length>50)return 'invalid_messages';
+ let chars=typeof systemPrompt==='string' ? systemPrompt.length : 0;
+ for(const msg of messages){
+  if(!msg || !['user','assistant'].includes(msg.role))return 'invalid_role';
+  if(typeof msg.content==='string'){
+   if(!msg.content.trim() || msg.content.length>(msg.role==='assistant' ? 32_000 : 10_000))return 'invalid_message_content';
+   chars+=msg.content.length;continue;
   }
-  res.setHeader('Vary', 'Origin');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  if (req.method === 'OPTIONS') {
-    res.status(204).end();
-    return true;
+  if(!Array.isArray(msg.content) || !msg.content.length || msg.content.length>8)return 'invalid_message_content';
+  for(const block of msg.content){
+   if(block?.type==='text'){
+    if(typeof block.text!=='string' || !block.text.trim() || block.text.length>10_000)return 'invalid_text_block';
+    chars+=block.text.length;
+   }else if(block?.type==='image' || block?.type==='document'){
+    const src=block.source,types=block.type==='image' ? ['image/jpeg','image/png','image/gif','image/webp'] : ['application/pdf'];
+    if(msg.role!=='user' || !src || src.type!=='base64' || !types.includes(src.media_type) || typeof src.data!=='string' || !src.data.length || src.data.length>6_000_000 || !/^[A-Za-z0-9+/]*={0,2}$/.test(src.data))return 'invalid_attachment';
+   }else return 'unsupported_content_block';
   }
-  return false;
+ }
+ if(messages[messages.length-1].role!=='user')return 'last_message_must_be_user';
+ return chars>600_000 ? 'context_too_long' : null;
 }
 
-async function verifyUserAndSubscription(
-  token: string,
-): Promise<{ ok: true; userId: string } | { ok: false; status: number; error: string }> {
-  const supabaseUrl = process.env.VITE_SUPABASE_URL ?? '';
-  const serviceKey  = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
-  if (!supabaseUrl || !serviceKey) {
-    return { ok: false, status: 500, error: 'Server not configured' };
-  }
-
-  const admin = createClient(supabaseUrl, serviceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-
-  const { data: { user }, error } = await admin.auth.getUser(token);
-  if (error || !user) return { ok: false, status: 401, error: 'Invalid token' };
-
-  const devEmail = process.env.DEVELOPER_EMAIL;
-  if (devEmail && user.email === devEmail) {
-    return { ok: true, userId: user.id };
-  }
-
-  const { data: sub } = await admin
-    .from('subscriptions')
-    .select('status, trial_start, extension_start')
-    .eq('user_id', user.id)
-    .single();
-
-  const status = sub ? computeStatus(sub) : 'free';
-  const hasAccess = status === 'trialing' || status === 'trial_extended' || status === 'active';
-  if (!hasAccess) {
-    return { ok: false, status: 402, error: 'subscription_required' };
-  }
-
-  return { ok: true, userId: user.id };
+const hits=new Map<string,number[]>();
+function rateLimited(userId:string){
+ const now=Date.now();
+ // This is a per-instance burst guard; provider/account quotas are still required across instances.
+ for(const [key,times] of hits)if(!times.length || now-times[times.length-1]>=60_000)hits.delete(key);
+ if(hits.size>=10_000 && !hits.has(userId))return true;
+ const times=(hits.get(userId)??[]).filter(t=>now-t<60_000);
+ if(times.length>=20)return true;
+ hits.set(userId,[...times,now]);return false;
 }
 
-export default async function handler(req: any, res: any) {
-  const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ?? 'unknown';
-  console.log(JSON.stringify({ timestamp: new Date().toISOString(), method: req.method, endpoint: '/api/chat' }));
-
-  if (applyCors(req, res)) return;
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
-  if (isRateLimited(ip)) {
-    return res.status(429).json({ error: 'Too many requests' });
-  }
-
-  const authHeader = req.headers['authorization'] as string | undefined;
-  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!token) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-
-  const authResult = await verifyUserAndSubscription(token);
-  if (!authResult.ok) {
-    return res.status(authResult.status).json({ error: authResult.error });
-  }
-
-  const { messages, systemPrompt, model } = req.body ?? {};
-
-  // Guard against system prompts large enough to exceed Anthropic's context window.
-  // Claude Haiku/Sonnet max is 200k tokens; 1 token ≈ 4 chars so 600k chars is a safe ceiling.
-  const SYSTEM_PROMPT_CHAR_LIMIT = 600_000;
-  if (typeof systemPrompt === 'string' && systemPrompt.length > SYSTEM_PROMPT_CHAR_LIMIT) {
-    console.warn(JSON.stringify({
-      endpoint: '/api/chat', event: 'system_prompt_too_large',
-      chars: systemPrompt.length, limit: SYSTEM_PROMPT_CHAR_LIMIT,
-    }));
-    return res.status(400).json({ error: 'context_too_long' });
-  }
-
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return res.status(400).json({ error: 'messages must be a non-empty array' });
-  }
-  if (messages.length > 50) {
-    return res.status(400).json({ error: 'Too many messages (max 50)' });
-  }
-  const ALLOWED_BLOCKS = new Set(['text', 'image', 'document']);
-  for (const msg of messages) {
-    if (typeof msg?.role !== 'string') {
-      return res.status(400).json({ error: 'Each message must have a role' });
-    }
-    // Content may be a plain string (text chats) or an array of content blocks
-    // (text + uploaded image/PDF attachments).
-    if (typeof msg.content === 'string') {
-      if (msg.content.length > 10_000) {
-        return res.status(400).json({ error: 'Message content too long (max 10000 chars)' });
-      }
-      continue;
-    }
-    if (!Array.isArray(msg.content) || msg.content.length > 8) {
-      return res.status(400).json({ error: 'Invalid message content' });
-    }
-    for (const block of msg.content) {
-      if (!block || !ALLOWED_BLOCKS.has(block.type)) {
-        return res.status(400).json({ error: 'Unsupported content block' });
-      }
-      if (block.type === 'text' && (typeof block.text !== 'string' || block.text.length > 10_000)) {
-        return res.status(400).json({ error: 'Text block too long' });
-      }
-      if (block.type === 'image' || block.type === 'document') {
-        const src = block.source;
-        if (!src || src.type !== 'base64' || typeof src.data !== 'string' || src.data.length > 6_000_000) {
-          return res.status(400).json({ error: 'Invalid attachment' });
-        }
-      }
-    }
-  }
-
+export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Authorization>;request?:typeof fetch;apiKey?:()=>string|undefined;limited?:(id:string)=>boolean}={}){
+ return async function handler(req:any,res:any){
+  const origin=req.headers.origin;
+  if(origin==='https://somastudy.app' || (process.env.NODE_ENV!=='production' && origin==='http://localhost:5173'))res.setHeader('Access-Control-Allow-Origin',origin);
+  res.setHeader('Vary','Origin');res.setHeader('Access-Control-Allow-Methods','POST, OPTIONS');res.setHeader('Access-Control-Allow-Headers','Content-Type, Authorization');
+  if(req.method==='OPTIONS')return res.status(204).end();
+  if(req.method!=='POST')return res.status(405).json({error:'method_not_allowed'});
+  const header=req.headers.authorization;
+  const token=typeof header==='string' && header.startsWith('Bearer ') ? header.slice(7).trim() : '';
+  if(!token)return res.status(401).json({error:'auth_required'});
+  const invalid=validateChatInput(req.body);
+  if(invalid)return res.status(400).json({error:invalid});
   try {
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': process.env.ANTHROPIC_API_KEY ?? '',
-        'anthropic-version': '2023-06-01',
-        'anthropic-beta': 'prompt-caching-2024-07-31,pdfs-2024-09-25',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: model === 'sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001',
-        max_tokens: 4096,
-        system: [{ type: 'text', text: systemPrompt ?? '', cache_control: { type: 'ephemeral' } }],
-        messages,
-      }),
-    });
-
-    const data = await response.json() as Record<string, unknown>;
-    if (!response.ok) {
-      const anthropicErr = (data?.error as Record<string, unknown> | undefined) ?? {};
-      const errType    = (anthropicErr.type    as string | undefined) ?? '';
-      const errMessage = (anthropicErr.message as string | undefined) ?? '';
-      console.error(JSON.stringify({
-        endpoint: '/api/chat', event: 'upstream_error',
-        status: response.status, type: errType, message: errMessage,
-      }));
-      // Surface specific error codes the client knows how to handle
-      if (response.status === 429) return res.status(429).json({ error: 'rate_limit' });
-      if (response.status === 529) return res.status(529).json({ error: 'overloaded' });
-      if (response.status === 400 && (errMessage.includes('too long') || errMessage.includes('token'))) {
-        return res.status(400).json({ error: 'context_too_long' });
-      }
-      return res.status(502).json({ error: `upstream_${response.status}`, detail: errMessage });
-    }
-    res.json(data);
-  } catch (err: any) {
-    console.error(JSON.stringify({ endpoint: '/api/chat', event: 'error', message: err?.message }));
-    res.status(500).json({ error: 'AI request failed' });
+   const auth=await (deps.authorize??verifyUserAndSubscription)(token);
+   if(!auth.ok)return res.status(auth.status).json({error:auth.error});
+   if((deps.limited??rateLimited)(auth.userId)){res.setHeader('Retry-After','60');return res.status(429).json({error:'rate_limit'});}
+   const key=(deps.apiKey??(()=>process.env.ANTHROPIC_API_KEY))();
+   if(!key)return res.status(503).json({error:'server_not_configured'});
+   const {messages,systemPrompt,model}=req.body;
+   const response=await (deps.request??fetch)('https://api.anthropic.com/v1/messages',{
+    method:'POST',signal:AbortSignal.timeout(45_000),headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json'},
+    body:JSON.stringify({model:model==='sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001',max_tokens:4096,...(systemPrompt ? {system:[{type:'text',text:systemPrompt,cache_control:{type:'ephemeral'}}]} : {}),messages}),
+   });
+   if(response.status===429)return res.status(429).json({error:'rate_limit'});
+   if(response.status===529)return res.status(529).json({error:'overloaded'});
+   const data=await response.json().catch(()=>null) as {error?:{message?:string};content?:{type:string;text?:string}[];stop_reason?:string}|null;
+   if(!response.ok){
+    if(response.status===400 && /too long|token|context/i.test(data?.error?.message??''))return res.status(400).json({error:'context_too_long'});
+    console.error(JSON.stringify({endpoint:'/api/chat',event:'upstream_error',status:response.status}));
+    return res.status(502).json({error:'upstream_unavailable'});
+   }
+   if(data?.stop_reason==='max_tokens')return res.status(502).json({error:'response_incomplete'});
+   const text=data?.content?.filter(b=>b.type==='text' && typeof b.text==='string').map(b=>b.text).join('\n');
+   if(!text?.trim())return res.status(502).json({error:'invalid_ai_response'});
+   return res.status(200).json({content:[{type:'text',text}],stop_reason:data?.stop_reason});
+  }catch(error){
+   const timedOut=error instanceof Error && ['TimeoutError','AbortError'].includes(error.name);
+   return res.status(timedOut ? 504 : 503).json({error:timedOut ? 'request_timeout' : 'service_unavailable'});
   }
+ };
 }
+export default createChatHandler();

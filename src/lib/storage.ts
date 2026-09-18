@@ -166,8 +166,9 @@ function normalizeIcalAssignments(assignments: CanvasAssignment[]): CanvasAssign
 }
 
 async function uid(): Promise<string> {
-  const { data: { user } } = await supabase.auth.getUser();
-  return user!.id;
+  const { data: { user },error } = await supabase.auth.getUser();
+  if(error || !user)throw new Error('auth_required');
+  return user.id;
 }
 
 // In-memory token cache — populated by loadTokens() at auth time.
@@ -243,6 +244,8 @@ export function inferSubjectId(
 // ── storage object ────────────────────────────────────────────────────────
 
 export const storage = {
+  getUserId: uid,
+  async assertUser(expectedId:string):Promise<void>{if(await uid()!==expectedId)throw new Error('account_changed');},
 
   // ── Subjects (Supabase, write-through cache) ─────────────────────────
   getSubjects(): Subject[] {
@@ -285,6 +288,18 @@ export const storage = {
         console.error('[storage] setSubjects sync failed:', err);
       }
     })();
+  },
+
+  async saveSubject(subject: Subject): Promise<void> {
+    const userId = await uid();
+    const { error } = await supabase.from('subjects').upsert({id:subject.id,user_id:userId,name:subject.name,color:subject.color,source:subject.source ?? 'manual',archived:subject.archived ?? false,order:subject.order ?? null,total_time_today:subject.totalTimeToday,canvas_course_id:subject.canvasCourseId ?? null});
+    if(error)throw new Error(error.message);
+  },
+  async deleteSubject(subjectId: string): Promise<void> {
+    const userId = await uid();
+    const { data,error }=await supabase.from('subjects').delete().eq('id',subjectId).eq('user_id',userId).select('id');
+    if(error)throw new Error(error.message);
+    if(!data?.length)throw new Error('Subject not found. Nothing was deleted.');
   },
 
   async fetchSubjects(): Promise<Subject[]> {
@@ -541,8 +556,9 @@ export const storage = {
     }));
   },
 
-  async upsertChatSession(session: ChatSession): Promise<void> {
+  async upsertChatSession(session: ChatSession, expectedUserId?:string): Promise<void> {
     const userId = await uid();
+    if(expectedUserId && userId!==expectedUserId)throw new Error('account_changed');
     const payload = {
       id: session.id,
       user_id: userId,
@@ -553,7 +569,8 @@ export const storage = {
       subject_key: session.subjectKey ?? null,
       updated_at: new Date().toISOString(),
     };
-    await supabase.from('chat_sessions').upsert(payload);
+    const {error}=await supabase.from('chat_sessions').upsert(payload);
+    if(error)throw new Error(error.message);
   },
 
   async deleteChatSession(sessionId: string): Promise<void> {
@@ -616,9 +633,16 @@ export const storage = {
 
   async fetchAllTodos(): Promise<Todo[]> {
     const id = await uid();
-    const { data, error } = await supabase.from('todos').select('*').eq('user_id', id);
-    if (error) throw error;
-    const todos = (data ?? []).map(r => todoFromRow(r as Record<string, unknown>));
+    const todos: Todo[] = [];
+    const pageSize = 1000;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase.from('todos').select('*').eq('user_id', id)
+        .order('id').range(from, from + pageSize - 1);
+      if (error) throw error;
+      todos.push(...(data ?? []).map(r => todoFromRow(r as Record<string, unknown>)));
+      if (!data || data.length < pageSize) break;
+    }
+    await storage.assertUser(id);
     _todos = todos;
     return todos;
   },
@@ -704,7 +728,9 @@ export const storage = {
 
   async deleteTodo(todoId: string): Promise<void> {
     const id = await uid();
-    await supabase.from('todos').delete().eq('id', todoId).eq('user_id', id);
+    const {data,error}=await supabase.from('todos').delete().eq('id', todoId).eq('user_id', id).select('id');
+    if(error)throw new Error(error.message);
+    if(!data?.length)throw new Error('Task not found. Nothing was deleted.');
   },
 
   async saveTodoSession(session: { id?: string; todoId: string; date: string; startTime?: string; endTime?: string }): Promise<string> {
@@ -732,26 +758,41 @@ export const storage = {
 
   async deleteTodoSession(id: string): Promise<void> {
     const userId = await uid();
-    await supabase.from('todo_sessions').delete().eq('id', id).eq('user_id', userId);
+    const {data,error}=await supabase.from('todo_sessions').delete().eq('id', id).eq('user_id', userId).select('id');
+    if(error)throw new Error(error.message);
+    if(!data?.length)throw new Error('Session not found. Nothing was deleted.');
   },
 
   async updateTodoSession(id: string, updates: { startTime?: string; endTime?: string }): Promise<void> {
     const userId = await uid();
     const toUtc = (iso: string) => new Date(iso).toISOString();
     const patch: Record<string, unknown> = {};
-    if (updates.startTime !== undefined) patch.start_time = updates.startTime ? toUtc(updates.startTime) : null;
+    if (updates.startTime !== undefined) {
+      patch.start_time = updates.startTime ? toUtc(updates.startTime) : null;
+      if(updates.startTime){const d=new Date(updates.startTime);patch.date=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+    }
     if (updates.endTime !== undefined) patch.end_time = updates.endTime ? toUtc(updates.endTime) : null;
     if (Object.keys(patch).length === 0) return;
-    await supabase.from('todo_sessions').update(patch).eq('id', id).eq('user_id', userId);
+    const {data,error}=await supabase.from('todo_sessions').update(patch).eq('id', id).eq('user_id', userId).select('id');
+    if(error)throw new Error(error.message);
+    if(!data?.length)throw new Error('Session not found. Nothing was updated.');
+  },
+
+  async fetchTodoSessionById(id:string):Promise<TodoSession> {
+    const userId=await uid();
+    const {data,error}=await supabase.from('todo_sessions').select('id,todo_id,date,start_time,end_time').eq('id',id).eq('user_id',userId).single();
+    if(error || !data)throw new Error('Session not found or could not be loaded.');
+    return {id:data.id,todoId:data.todo_id,date:data.date,startTime:data.start_time ? ensureUtcSuffix(data.start_time) : undefined,endTime:data.end_time ? ensureUtcSuffix(data.end_time) : undefined};
   },
 
   async fetchTodoSessions(date: string): Promise<TodoSession[]> {
     const userId = await uid();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('todo_sessions')
       .select('id, todo_id, date, start_time, end_time, todos(text, subject_id)')
       .eq('user_id', userId)
       .eq('date', date);
+    if(error)throw new Error(error.message);
     return (data ?? []).map((r: Record<string, unknown>) => ({
       id: r.id as string,
       todoId: r.todo_id as string,
@@ -765,12 +806,13 @@ export const storage = {
 
   async fetchTodoSessionsByTodoId(todoId: string): Promise<TodoSession[]> {
     const userId = await uid();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('todo_sessions')
       .select('id, todo_id, date, start_time, end_time, todos(text, subject_id)')
       .eq('user_id', userId)
       .eq('todo_id', todoId)
       .order('start_time', { ascending: true });
+    if(error)throw new Error(error.message);
     return (data ?? []).map((r: Record<string, unknown>) => ({
       id: r.id as string,
       todoId: r.todo_id as string,
@@ -789,11 +831,12 @@ export const storage = {
 
   async fetchIncompleteTodos(): Promise<Todo[]> {
     const id = await uid();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('todos')
       .select('*')
       .eq('user_id', id)
       .neq('status', 'done');
+    if(error)throw new Error(error.message);
     return (data ?? []).map(r => todoFromRow(r as Record<string, unknown>));
   },
 

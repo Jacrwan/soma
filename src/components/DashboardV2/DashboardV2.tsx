@@ -5,9 +5,10 @@ import PlanEditor, { type PlanState, type PlanBlock, type EditorDraft } from './
 import { formatClock, formatClockRange, formatClockWithSeconds, useTimeFormat } from '../../lib/timeFormat';
 import type { SubjectColor } from '../../types';
 import styles from './DashboardV2.module.css';
+import { aiErrorMessage } from '../../lib/aiResponse';
 
 type State = PlanState;
-let liveConversation: {role: string; text: string}[] = [];
+
 type Block = PlanBlock;
 const initial: Block[] = [
   { id: 1, title: 'Cell structure review', subject: 'Biology', time: '09:00–09:45', minutes: 45, color: 'green', state: 'Completed', actualSeconds: 25*60, day: 0 },
@@ -21,6 +22,7 @@ const initial: Block[] = [
   { id: 6, title: 'Practice derivatives', subject: 'Mathematics', time: '13:00–14:00', minutes: 60, color: 'blue', state: 'Planned', day: 1 },
 ];
 export interface DashboardRuntime {
+ initialConversation: {role:string;text:string}[]; onConversationChange:(items:{role:string;text:string}[])=>void;
  blocks: Block[]; focus: ReactNode; activeId: string | number | null; timerActive: boolean;
  onSave: (block: Block) => Promise<void>;
  onState: (id: string | number, state: State) => Promise<void>;
@@ -45,8 +47,8 @@ export default function DashboardV2({runtime}:{runtime?:DashboardRuntime}) {
   const [elapsed, setElapsed] = useState(0);
   const [tracking, setTracking] = useState(true);
   const [stopping, setStopping] = useState(false);
-  const [conversation, setConversation] = useState<{role: string; text: string}[]>(() => runtime ? liveConversation : []);
-  useEffect(() => { if (runtime) liveConversation = conversation; }, [conversation, runtime]);
+  const [conversation, setConversation] = useState<{role: string; text: string}[]>(() => runtime?.initialConversation ?? []);
+  useEffect(() => { runtime?.onConversationChange(conversation); }, [conversation, runtime]);
   const [draft, setDraft] = useState('');
   const [message, setMessage] = useState('');
   const [editing,setEditing]=useState(false);
@@ -84,7 +86,7 @@ export default function DashboardV2({runtime}:{runtime?:DashboardRuntime}) {
   }
   async function propose() {
     if (!draft.trim()) return;
-    if(runtime){const text=draft.trim();setDraft('');setConversation(items=>[...items,{role:'You',text}]);setMessage('Soma is thinking…');try{const reply=await runtime.onPropose(text,day);setConversation(items=>[...items,{role:'Soma',text:reply}]);setMessage('');}catch(err){setMessage(err instanceof Error ? err.message : 'Could not reach Soma.');setDraft(text);}return;}
+    if(runtime){const text=draft.trim();setDraft('');setConversation(items=>[...items,{role:'You',text}]);setMessage('Soma is thinking…');try{const reply=await runtime.onPropose(text,day);setConversation(items=>[...items,{role:'Soma',text:reply}]);setMessage('');}catch(err){setMessage(aiErrorMessage(err));setDraft(text);}return;}
     let slot=9*60;
     for(const group of groups){if(group.end<=slot)continue;if(group.start-slot>=30)break;slot=Math.max(slot,group.end);}
     if(slot+30>24*60){setConversation(items=>[...items,{role:'You',text:draft.trim()},{role:'Soma',text:'Your current plan has no free 30-minute slot after 09:00. Edit a block or choose another day.'}]);setDraft('');return;}

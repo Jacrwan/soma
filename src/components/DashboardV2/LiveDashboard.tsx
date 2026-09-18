@@ -10,47 +10,13 @@ import { listDocuments } from '../../lib/documents';
 import { sendMessage } from '../../lib/ai';
 import styles from './DashboardV2.module.css';
 
-// Survives navigating away from the dashboard, but not a reload.
-let liveHistory:{role:'user'|'assistant';content:string}[]=[];
-let liveChatSessionId='';
-let liveDisplay:{role:'user'|'assistant';content:string}[]=[];
+import { dashboardChatFor, type DashboardChatMemory } from '../../lib/dashboardChatMemory';
+import { validateProposal } from '../../lib/aiPlanning';
 
-/**
- * Mirror the dashboard conversation into an AI-page chat session, so clearing
- * the dashboard panel on reload never loses what was said. One session per
- * dashboard conversation, updated in place as it grows.
- */
-async function mirrorToChatSession(history:{role:'user'|'assistant';content:string}[]) {
- if(history.length===0)return;
- const now=new Date();
- if(!liveChatSessionId)liveChatSessionId=crypto.randomUUID();
- const firstUser=history.find(m=>m.role==='user')?.content ?? 'Dashboard chat';
- await storage.upsertChatSession({
-  id:liveChatSessionId,
-  date:localDate(now),
-  title:firstUser.length>60 ? `${firstUser.slice(0,60)}…` : firstUser,
-  messages:history.map((m,i)=>({id:`${liveChatSessionId}-${i}`,role:m.role,content:m.content})),
-  createdAt:now.toISOString(),
- });
-}
-
-export function validateProposal(block:PlanBlock,snapshot:Snapshot,origin:Date) {
- if(snapshot.calendarError)throw new Error(snapshot.calendarError);
- const [start,end]=block.time.split('–');
- if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(start??'') || !/^([01]\d|2[0-3]):[0-5]\d$/.test(end??''))throw new Error('Soma returned an invalid time. Ask for another proposal.');
- const from=minuteValue(start),to=minuteValue(end),date=dateAt(origin,block.day);
- if(to<=from || to-from>240)throw new Error('Study proposals must be between 1 minute and 4 hours.');
- if(new Date(`${localDate(date)}T${start}:00`)<new Date())throw new Error('That start time has passed. Ask Soma for a new time.');
- const starts=new Date(`${localDate(date)}T${start}:00`),ends=new Date(`${localDate(date)}T${end}:00`);
- if(snapshot.sessions.some(s=>s.startTime && s.endTime && new Date(s.startTime)<ends && new Date(s.endTime)>starts))throw new Error('That time overlaps a scheduled session. Ask Soma for another time.');
- if(snapshot.blocks.some(b=>b.day===block.day && b.time && minuteValue(b.time.split('–')[0])<to && minuteValue(b.time.split('–')[1])>from))throw new Error('That time overlaps your current plan. Ask Soma for another time.');
- const settings=storage.getSomaSettings();
- const day=['sunday','monday','tuesday','wednesday','thursday','friday','saturday'][date.getDay()] as keyof typeof settings.personalHours;
- const personal=settings.personalHours[day];
- if(settings.personalHoursEnabled && personal.start && personal.end && (from<minuteValue(personal.start)||to>minuteValue(personal.end)))throw new Error('That time is outside your available study hours.');
- const conflicts=(a:string,b:string)=>!!a && !!b && minuteValue(a)<to && minuteValue(b)>from;
- if(settings.personalHoursEnabled && personal.blocked.some(b=>conflicts(b.start,b.end)))throw new Error('That time is blocked in your availability settings.');
- for(const [enabled,hours] of [[settings.schoolHoursEnabled,settings.schoolHours],[settings.workHoursEnabled,settings.workHours]] as const){if(enabled && conflicts(hours[day].start,hours[day].end))throw new Error('That time overlaps school or work hours.');}
+async function mirrorToChatSession(memory:DashboardChatMemory) {
+ if(!memory.display.length)return;
+ const firstUser=memory.display.find(m=>m.role==='user')?.content??'Dashboard chat';
+ await storage.upsertChatSession({id:memory.id,date:localDate(new Date(memory.createdAt)),title:firstUser.slice(0,60),messages:memory.display.map((m,i)=>({id:`${memory.id}-${i}`,role:m.role,content:m.content})),createdAt:memory.createdAt},memory.userId);
 }
 
 export default function LiveDashboard({userId}:{userId:string}) {
@@ -61,8 +27,8 @@ export default function LiveDashboard({userId}:{userId:string}) {
  const [proposals,setProposals]=useState<PlanBlock[]>([]);
  const timer=useTimerContext();
  const generation=useRef(0),mounted=useRef(true),writing=useRef(false);
- const conversation=useRef<{role:'user'|'assistant';content:string}[]>(liveHistory);
- useEffect(()=>{liveHistory=conversation.current;});
+ const memory=dashboardChatFor(userId);
+ const conversation=useRef(memory.history);
  const reload=useCallback(async()=>{const gen=++generation.current;const data=await readPlan(userId,origin);if(mounted.current && gen===generation.current)setSnapshot(data);return data;},[userId,origin]);
  // Warm the documents cache so Ask Soma can answer from uploaded files even if
  // the user never opens the Documents page this session.
@@ -73,7 +39,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   writing.current=true;setBusy(true);setError('');
   try {
    const fresh=await readPlan(userId,origin);
-   if(proposal)validateProposal(block,fresh,origin);
+   if(proposal)validateProposal(block,fresh,origin,storage.getSomaSettings());
    else if(snapshot?.blocks.some(b=>b.id===block.id) && !fresh.blocks.some(b=>b.id===block.id))throw new Error('This block changed elsewhere. Refresh and try again.');
    await savePlanBlock(userId,origin,{...block,state:block.state==='Proposal' ? 'Planned' : block.state},fresh);
    setProposals(items=>items.filter(p=>p.id!==block.id));
@@ -95,6 +61,8 @@ export default function LiveDashboard({userId}:{userId:string}) {
  async function propose(text:string,day:number){
   if(writing.current)throw new Error('Please wait for your plan to finish saving.');
   const fresh=await reload();
+  await storage.whenTokensLoaded();
+  await listDocuments().catch(()=>{});
   const settings=storage.getSomaSettings();
   const nowDate=new Date();
   const weekday=(d:Date)=>d.toLocaleDateString('en-US',{weekday:'long'});
@@ -135,23 +103,24 @@ PROPOSING BLOCKS: up to 5 new study blocks on the selected date only. They must 
   const rejected:string[]=[];
   for(const value of result.blocks){const p=value as Record<string,unknown>;if(!p || typeof p.title!=='string' || !p.title.trim() || p.title.length>150 || typeof p.subject!=='string' || !p.subject.trim() || p.subject.length>100 || typeof p.start!=='string' || typeof p.end!=='string'){rejected.push('One suggestion came back incomplete.');continue;}
    const block:PlanBlock={id:`proposal:${crypto.randomUUID()}`,title:p.title.trim(),subject:p.subject.trim(),time:`${p.start}–${p.end}`,minutes:minuteValue(p.end)-minuteValue(p.start),color:'blue',state:'Proposal',day};
-   try{validateProposal(block,{...fresh,blocks:[...fresh.blocks,...proposed]},origin);proposed.push(block);}
+   try{validateProposal(block,{...fresh,blocks:[...fresh.blocks,...proposed]},origin,settings);proposed.push(block);}
    catch(err){rejected.push(`${block.title}: ${err instanceof Error ? err.message : 'could not be scheduled.'}`);}
   }
   conversation.current=[...messages,{role:'assistant',content:raw}];
+  memory.history=conversation.current;
   setProposals(items=>[...items.filter(b=>b.day!==day),...proposed]);
   const notes=[
    proposed.length ? 'Review the proposed blocks in your plan, then accept the ones you want.' : '',
    rejected.length ? `Couldn't place ${rejected.length===1 ? 'one suggestion' : `${rejected.length} suggestions`}:\n- ${rejected.join('\n- ')}` : '',
   ].filter(Boolean);
   const display=[result.reply,...notes].join('\n\n');
-  liveDisplay.push({role:'user',content:text},{role:'assistant',content:display});
-  void mirrorToChatSession(liveDisplay).catch(()=>{});
+  memory.display.push({role:'user',content:text},{role:'assistant',content:display});
+  await mirrorToChatSession(memory).catch(()=>setError('Your reply is available here, but chat history could not be saved. Keep this page open.'));
   return display;
  }
  if(!snapshot)return <div className={styles.loading}>{error ? <><p role="alert">{error}</p><button onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Retry dashboard</button></> : <p role="status">Loading your plan…</p>}</div>;
  const active=snapshot.blocks.find(b=>!b.external && b.subjectId===timer.activeSession?.subject.id && b.title===timer.activeSession?.task && localDate(dateAt(origin,b.day))===localDate(new Date(timer.activeSession.sessionStartTimeISO)));
  const blocks=snapshot.blocks.map(b=>b.id===active?.id ? {...b,actualSeconds:(b.actualSeconds??0)+timer.elapsed} : b);
  const pulseDays=Array.from({length:7},(_,i)=>snapshot.history.filter(h=>h.date===localDate(dateAt(origin,i-6))).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0));
- return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 runtime={{blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>setProposals(items=>items.filter(b=>b.id!==id)),onPropose:propose,onFocus:b=>{const live=snapshot.blocks.find(x=>x.id===b.id);const subject=snapshot.subjects.find(s=>s.id===live?.subjectId);if(subject)timer.startSession(subject,b.title,0);else setError('Choose a subject with Edit plan before starting focus.');},pulseSeconds:pulseDays.reduce((a,b)=>a+b,0),pulseDays,subjectNames:snapshot.subjects.filter(s=>!s.archived).map(s=>s.name),usedColors:snapshot.subjects.map(s=>s.color),logsFor:(b)=>{const live=snapshot.blocks.find(x=>x.id===b.id);if(!live)return [];return snapshot.history.filter(h=>h.subject_id===live.subjectId && h.task_text===live.title && (h.duration_seconds||0)>0).map(h=>({date:h.date,minutes:Math.round((h.duration_seconds||0)/60)})).sort((a,c)=>c.date.localeCompare(a.date));},focus:<section className={styles.focus} aria-label="Focus timer"><h2>Focus</h2><p className={styles.description}>{timer.activeSession?.subject.name??'One thing at a time.'}</p><h3>{timer.activeSession?.task??'Ready when you are'}</h3><div className={styles.timer}>{String(Math.floor(timer.elapsed/60)).padStart(2,'0')}<span>:</span>{String(timer.elapsed%60).padStart(2,'0')}</div>{timer.activeSession ? <div className={styles.focusActions}><button disabled={timer.saving || timer.savePending} onClick={()=>timer.isPaused ? timer.resumeSession() : timer.pauseSession()}>{timer.isPaused ? 'Resume' : 'Pause'}</button><button disabled={timer.saving} onClick={()=>void timer.stopSession()}>{timer.saving ? 'Saving…' : 'Stop & save'}</button></div> : <p className={styles.description}>Choose Focus on a study block to begin.</p>}{timer.error && <p role="alert">{timer.error}</p>}<small>Actual work is tracked separately from your plan. Complete the task when it is finished.</small></section>}}/></>;
+ return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>setProposals(items=>items.filter(b=>b.id!==id)),onPropose:propose,onFocus:b=>{const live=snapshot.blocks.find(x=>x.id===b.id);const subject=snapshot.subjects.find(s=>s.id===live?.subjectId);if(subject)timer.startSession(subject,b.title,0);else setError('Choose a subject with Edit plan before starting focus.');},pulseSeconds:pulseDays.reduce((a,b)=>a+b,0),pulseDays,subjectNames:snapshot.subjects.filter(s=>!s.archived).map(s=>s.name),usedColors:snapshot.subjects.map(s=>s.color),logsFor:(b)=>{const live=snapshot.blocks.find(x=>x.id===b.id);if(!live)return [];return snapshot.history.filter(h=>h.subject_id===live.subjectId && h.task_text===live.title && (h.duration_seconds||0)>0).map(h=>({date:h.date,minutes:Math.round((h.duration_seconds||0)/60)})).sort((a,c)=>c.date.localeCompare(a.date));},focus:<section className={styles.focus} aria-label="Focus timer"><h2>Focus</h2><p className={styles.description}>{timer.activeSession?.subject.name??'One thing at a time.'}</p><h3>{timer.activeSession?.task??'Ready when you are'}</h3><div className={styles.timer}>{String(Math.floor(timer.elapsed/60)).padStart(2,'0')}<span>:</span>{String(timer.elapsed%60).padStart(2,'0')}</div>{timer.activeSession ? <div className={styles.focusActions}><button disabled={timer.saving || timer.savePending} onClick={()=>timer.isPaused ? timer.resumeSession() : timer.pauseSession()}>{timer.isPaused ? 'Resume' : 'Pause'}</button><button disabled={timer.saving} onClick={()=>void timer.stopSession()}>{timer.saving ? 'Saving…' : 'Stop & save'}</button></div> : <p className={styles.description}>Choose Focus on a study block to begin.</p>}{timer.error && <p role="alert">{timer.error}</p>}<small>Actual work is tracked separately from your plan. Complete the task when it is finished.</small></section>}}/></>;
 }

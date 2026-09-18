@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { readAIResponse } from './aiResponse';
 import type { Attachment } from './uploads';
 
 type Block =
@@ -19,6 +20,7 @@ export async function sendMessage(
 ): Promise<string> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
+  if (!token) throw new Error('auth_required');
 
   // Attach uploaded files (images/PDFs) to the final user turn as content blocks.
   let outMessages: unknown[] = messages;
@@ -32,39 +34,17 @@ export async function sendMessage(
   }
 
   const res = await fetch('/api/chat', {
+    signal: AbortSignal.timeout(55_000),
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({ messages: outMessages, systemPrompt, ...(model ? { model } : {}) }),
-  });
+  }).catch(error => { if (error instanceof Error && ['TimeoutError','AbortError'].includes(error.name)) throw new Error('request_timeout'); throw error; });
 
-  if (res.status === 401) throw new Error('auth_required');
-  if (res.status === 402) throw new Error('subscription_required');
-  if (res.status === 429) throw new Error('rate_limit');
-  if (res.status === 529) throw new Error('overloaded');
-
-  if (!res.ok) {
-    const rawBody = await res.text().catch(() => '');
-    // Always log non-ok responses so we can see what's happening.
-    console.error('[soma/ai] /api/chat error', res.status, rawBody);
-
-    // Server returns JSON with a specific error code we can act on.
-    try {
-      const parsed = JSON.parse(rawBody) as { error?: string; detail?: string };
-      const code = parsed.error ?? '';
-      if (code === 'context_too_long' || code === 'rate_limit' || code === 'overloaded') throw new Error(code);
-      if (code) throw new Error(`api_error:${res.status}`);
-    } catch (e) {
-      if ((e as Error).message !== rawBody) throw e; // rethrow our own errors
-    }
-    // Fallback text-based detection.
-    if (rawBody.includes('too long') || rawBody.includes('context_length') || rawBody.includes('max_tokens'))
-      throw new Error('context_too_long');
-    if (rawBody.includes('overloaded')) throw new Error('overloaded');
-    throw new Error(`api_error:${res.status}`);
-  }
-  const data = await res.json() as { content: { text: string }[] };
-  return data.content[0].text;
+  const text=await readAIResponse(res);
+  const {data:{session:current}}=await supabase.auth.getSession();
+  if(current?.user.id!==session?.user.id)throw new Error('account_changed');
+  return text;
 }
