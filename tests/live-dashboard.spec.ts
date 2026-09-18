@@ -21,7 +21,10 @@ async function setup(page:Page){
    for(const key of ['id','todo_id','date']){const filter=url.searchParams.get(key);if(filter?.startsWith('eq.'))rows=rows.filter(r=>String(r[key])===filter.slice(3));}
    return route.fulfill({json:req.headers().accept?.includes('vnd.pgrst.object') ? rows[0]??null : rows});
   }
-  state.writes++;
+  // Counts writes to the user's plan only. The dashboard also mirrors the
+  // conversation into a chat session, which is not plan data — the invariant
+  // these tests protect is that a proposal changes nothing until accepted.
+  if(table!=='chat_sessions')state.writes++;
   if(state.failTable===table)return route.fulfill({status:500,json:{message:'Database unavailable'}});
   if(req.method()==='POST'){
    const row=req.postDataJSON();const items=Array.isArray(row)?row:[row];

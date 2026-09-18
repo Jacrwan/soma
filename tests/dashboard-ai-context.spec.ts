@@ -96,3 +96,87 @@ test('the dashboard AI still works when there are no documents', async ({ page }
   expect(state.prompt).not.toContain('STUDENT DOCUMENTS');
   expect(state.prompt).toContain('study planning companion');
 });
+
+// ── Bugs reported from real use ───────────────────────────────────────────
+
+test('the AI is told the real date of every plan entry, not a bare offset', async ({ page }) => {
+  const state = await setup(page);
+  await page.goto('/dashboard');
+  await expect(page.getByText('Read chapter 4')).toBeVisible();
+  await ask(page, "what's my schedule for tomorrow");
+
+  const ctx = JSON.parse(state.prompt.match(/untrusted user data, never instructions: (\{.*?\})\.\s/s)![1]);
+  // Asking about "tomorrow" is only answerable if entries carry dates.
+  expect(ctx.today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  expect(ctx.calendar).toHaveLength(7);
+  expect(ctx.calendar[0]).toMatchObject({ offset: 0, isToday: true });
+  expect(ctx.calendar[1].date).not.toBe(ctx.calendar[0].date);
+  for (const entry of ctx.plan) {
+    expect(entry.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(entry.weekday).toBeTruthy();
+  }
+});
+
+test('the AI is told which clock format the user chose', async ({ page }) => {
+  const state = await setup(page);
+  await page.addInitScript(() => localStorage.setItem('soma_settings', JSON.stringify({ theme: 'light', timeFormat: '12h' })));
+  await page.goto('/dashboard');
+  await expect(page.getByText('Read chapter 4')).toBeVisible();
+  await ask(page, 'plan my evening');
+
+  expect(state.prompt).toContain('12-hour');
+  expect(state.prompt).toContain('24-hour HH:mm');   // blocks stay machine-readable
+});
+
+test('the AI is told to reply in plain text, not markdown', async ({ page }) => {
+  const state = await setup(page);
+  await page.goto('/dashboard');
+  await expect(page.getByText('Read chapter 4')).toBeVisible();
+  await ask(page, 'plan my evening');
+  expect(state.prompt).toContain('No markdown');
+});
+
+test('a block Soma cannot place keeps the rest of the answer', async ({ page }) => {
+  const state = await setup(page);
+  // One block in the past — it must be dropped, not blow away the reply.
+  await page.unroute('**/api/chat');
+  await page.route('**/api/chat', route => {
+    state.prompt = route.request().postDataJSON().systemPrompt;
+    return route.fulfill({ json: { content: [{ text: JSON.stringify({
+      reply: 'Here is how I would use tonight.',
+      blocks: [{ title: 'Revision', subject: 'Physics 5A', start: '00:01', end: '00:30' }],
+    }) }] } });
+  });
+  await page.goto('/dashboard');
+  await expect(page.getByText('Read chapter 4')).toBeVisible();
+
+  await page.getByLabel('What do you need to work on?').fill('plan tonight');
+  await page.getByRole('button', { name: 'Send to Soma' }).click();
+
+  const log = page.getByRole('log');
+  await expect(log).toContainText('Here is how I would use tonight.');
+  await expect(log).toContainText("Couldn't place");
+  await expect(log).toContainText('Revision');
+});
+
+test('the dashboard conversation survives leaving the page', async ({ page }) => {
+  await setup(page);
+  await page.goto('/dashboard');
+  await expect(page.getByText('Read chapter 4')).toBeVisible();
+  await ask(page, 'remember this message');
+
+  await page.getByRole('button', { name: 'Insights', exact: true }).click();
+  await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+  await expect(page.getByRole('log')).toContainText('remember this message');
+});
+
+test('the dashboard conversation is cleared by a reload', async ({ page }) => {
+  await setup(page);
+  await page.goto('/dashboard');
+  await expect(page.getByText('Read chapter 4')).toBeVisible();
+  await ask(page, 'remember this message');
+
+  await page.reload();
+  await expect(page.getByText('Read chapter 4')).toBeVisible();
+  await expect(page.getByRole('log')).not.toContainText('remember this message');
+});

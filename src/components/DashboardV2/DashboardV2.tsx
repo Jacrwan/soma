@@ -7,6 +7,7 @@ import type { SubjectColor } from '../../types';
 import styles from './DashboardV2.module.css';
 
 type State = PlanState;
+let liveConversation: {role: string; text: string}[] = [];
 type Block = PlanBlock;
 const initial: Block[] = [
   { id: 1, title: 'Cell structure review', subject: 'Biology', time: '09:00–09:45', minutes: 45, color: 'green', state: 'Completed', actualSeconds: 25*60, day: 0 },
@@ -44,7 +45,8 @@ export default function DashboardV2({runtime}:{runtime?:DashboardRuntime}) {
   const [elapsed, setElapsed] = useState(0);
   const [tracking, setTracking] = useState(true);
   const [stopping, setStopping] = useState(false);
-  const [conversation, setConversation] = useState<{role: string; text: string}[]>([]);
+  const [conversation, setConversation] = useState<{role: string; text: string}[]>(() => runtime ? liveConversation : []);
+  useEffect(() => { if (runtime) liveConversation = conversation; }, [conversation, runtime]);
   const [draft, setDraft] = useState('');
   const [message, setMessage] = useState('');
   const [editing,setEditing]=useState(false);

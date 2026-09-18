@@ -553,7 +553,6 @@ export const storage = {
       subject_key: session.subjectKey ?? null,
       updated_at: new Date().toISOString(),
     };
-    console.log('[storage] upsertChatSession payload:', payload);
     await supabase.from('chat_sessions').upsert(payload);
   },
 
