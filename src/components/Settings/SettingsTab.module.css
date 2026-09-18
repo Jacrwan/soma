@@ -1525,3 +1525,44 @@
 .siteImportTitle { color: var(--text-primary); min-width: 0; }
 .siteImportDue { font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .siteImportWarn { display: block; margin: 4px 0 0 26px; font-size: 11px; color: #b26a00; }
+
+/* Import receipt — tinted with the destination course's colour so it's
+   obvious at a glance where the deadlines went. */
+.importReceipt {
+  border: 1px solid color-mix(in srgb, var(--course) 45%, var(--border));
+  border-left: 4px solid var(--course);
+  background: color-mix(in srgb, var(--course) 7%, var(--bg));
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.importReceiptHead { display: flex; gap: 10px; align-items: flex-start; }
+.importReceiptHead strong { display: block; font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.importReceiptHead small { display: block; margin-top: 2px; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+.importReceiptTick {
+  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--course); color: #fff; font-size: 12px; font-weight: 700;
+}
+.importReceiptCourse { display: inline-flex; align-items: center; gap: 5px; }
+.importReceiptCourse i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.importReceiptList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.importReceiptList li { display: grid; grid-template-columns: 96px 1fr auto; gap: 10px; align-items: center; font-size: 12.5px; }
+.importReceiptMark { font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-secondary); }
+.importReceiptMark[data-change="added"] { color: #2e7d32; }
+.importReceiptMark[data-change="updated"] { color: #b26a00; }
+.importCourseDot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--border); display: inline-block; }
+
+/* Course list: upcoming-deadline count, and a brief highlight on the course
+   that just received an import. */
+.courseDeadlines { font-size: 11px; color: var(--text-secondary); white-space: nowrap; }
+.courseRowFlash { animation: courseFlash 2.4s ease-out; border-radius: 6px; }
+@keyframes courseFlash {
+  0%, 35% { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  100% { background: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .courseRowFlash { animation: none; background: color-mix(in srgb, var(--accent) 10%, transparent); }
+}

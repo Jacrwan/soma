@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import type React from 'react';
 import { supabase } from '../../lib/supabase';
 import { storage } from '../../lib/storage';
 import type { Subject } from '../../types';
@@ -13,6 +14,8 @@ import styles from './SettingsTab.module.css';
 
 type Item = { title: string; type: string; due: string; time: string | null; evidence: string; unverified?: boolean };
 type Result = { course: string | null; items: Item[]; source: string | null; truncated: boolean };
+/** What an import actually did, shown back so the student can see it landed. */
+type Receipt = { course: { id: string; name: string; color: string }; rows: { title: string; due: string; time: string | null; change: 'added' | 'updated' | 'unchanged' }[] };
 
 const ERRORS: Record<string, string> = {
   https_required: 'Use a link that starts with https://.',
@@ -37,9 +40,10 @@ const pretty = (due: string, time: string | null) => {
   return time ? `${date}, ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}` : date;
 };
 
-export default function CourseSiteImport({ courses, createCourse }: {
+export default function CourseSiteImport({ courses, createCourse, onImported }: {
   courses: Subject[];
   createCourse: (name: string) => Subject;
+  onImported?: (courseId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState('');
@@ -51,7 +55,7 @@ export default function CourseSiteImport({ courses, createCourse }: {
   const [error, setError] = useState('');
   const [result, setResult] = useState<Result | null>(null);
   const [chosen, setChosen] = useState<Set<number>>(new Set());
-  const [done, setDone] = useState('');
+  const [done, setDone] = useState<Receipt | null>(null);
   const today = localToday();
 
   const creating = courseId === '__new__';
@@ -60,7 +64,7 @@ export default function CourseSiteImport({ courses, createCourse }: {
   const pastCount = useMemo(() => result?.items.filter(i => i.due < today).length ?? 0, [result, today]);
 
   async function read() {
-    setBusy(true); setError(''); setResult(null); setDone('');
+    setBusy(true); setError(''); setResult(null); setDone(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Sign in again to import.');
@@ -95,6 +99,7 @@ export default function CourseSiteImport({ courses, createCourse }: {
     if (!creating && !courseId) { setError('Choose which course these belong to.'); return; }
     setBusy(true); setError('');
     let created = 0, updated = 0;
+    const rows: Receipt['rows'] = [];
     try {
       const subject = creating ? createCourse(name) : courses.find(c => c.id === courseId)!;
       await storage.fetchAllTodos();
@@ -103,18 +108,25 @@ export default function CourseSiteImport({ courses, createCourse }: {
         // Re-importing updates a date rather than adding the same task twice.
         const existing = storage.getTodos().find(t => t.subjectId === subject.id && t.text.trim().toLowerCase() === item.title.trim().toLowerCase());
         if (existing) {
-          if (existing.dueDate === item.due) continue;
+          if (existing.dueDate === item.due) { rows.push({ title: item.title, due: item.due, time: item.time, change: 'unchanged' }); continue; }
           await storage.saveTodo({ ...existing, dueDate: item.due, date: existing.date === existing.dueDate ? item.due : existing.date });
           updated++;
+          rows.push({ title: item.title, due: item.due, time: item.time, change: 'updated' });
         } else {
           await storage.saveTodo({ id: crypto.randomUUID(), text: item.title, status: 'nothing', subjectId: subject.id, dueDate: item.due, date: item.due });
           created++;
+          rows.push({ title: item.title, due: item.due, time: item.time, change: 'added' });
         }
       }
       await storage.fetchAllTodos();
       window.dispatchEvent(new Event('soma_todos_changed'));
-      setDone(`Imported ${created} new ${created === 1 ? 'deadline' : 'deadlines'}${updated ? `, updated ${updated}` : ''} into ${subject.name}. They appear on your dashboard on each due date.`);
+      // Confirm against what is actually stored now, not just what was sent.
+      const stored = storage.getTodos().filter(t => t.subjectId === subject.id);
+      const confirmed = rows.filter(r => stored.some(t => t.text.trim().toLowerCase() === r.title.trim().toLowerCase() && t.dueDate === r.due));
+      if (confirmed.length !== rows.length) throw new Error(`only ${confirmed.length} of ${rows.length} could be confirmed after saving`);
+      setDone({ course: { id: subject.id, name: subject.name, color: subject.color }, rows });
       setResult(null);
+      onImported?.(subject.id);
     } catch (e) {
       setError(`Saved ${created + updated} before an error stopped the import: ${e instanceof Error ? e.message : 'unknown error'}. Import again to finish — nothing will be duplicated.`);
     } finally {
@@ -143,11 +155,34 @@ export default function CourseSiteImport({ courses, createCourse }: {
         <button className={styles.linkBtn} onClick={() => { setPasteMode(m => !m); setError(''); }}>
           {pasteMode ? 'Use a web address instead' : 'Site needs a login? Paste the page text'}
         </button>
-        <button className={styles.linkBtn} onClick={() => { setOpen(false); setResult(null); setError(''); setDone(''); }}>Close</button>
+        <button className={styles.linkBtn} onClick={() => { setOpen(false); setResult(null); setError(''); setDone(null); }}>Close</button>
       </div>
 
       {error && <p className={styles.courseError} role="alert">{error}</p>}
-      {done && <p className={styles.archivedEmpty} role="status">{done}</p>}
+      {done && (() => {
+        const added = done.rows.filter(r => r.change === 'added').length;
+        const updated = done.rows.filter(r => r.change === 'updated').length;
+        return (
+          <div className={styles.importReceipt} role="status" aria-label={`Imported into ${done.course.name}`} style={{ '--course': done.course.color } as React.CSSProperties}>
+            <div className={styles.importReceiptHead}>
+              <span className={styles.importReceiptTick} aria-hidden="true">✓</span>
+              <span>
+                <strong>Added to <span className={styles.importReceiptCourse}><i style={{ background: done.course.color }} />{done.course.name}</span></strong>
+                <small>Imported {added} new {added === 1 ? 'deadline' : 'deadlines'}{updated ? `, updated ${updated}` : ''} into {done.course.name}. Each shows on your dashboard on its due date.</small>
+              </span>
+            </div>
+            <ul className={styles.importReceiptList}>
+              {done.rows.map(r => (
+                <li key={`${r.title}-${r.due}`}>
+                  <span className={styles.importReceiptMark} data-change={r.change}>{r.change === 'added' ? 'Added' : r.change === 'updated' ? 'Date updated' : 'Already there'}</span>
+                  <span className={styles.siteImportTitle}>{r.title}</span>
+                  <span className={styles.siteImportDue}>{pretty(r.due, r.time)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })()}
 
       {result && (
         result.items.length === 0 ? (
@@ -157,6 +192,7 @@ export default function CourseSiteImport({ courses, createCourse }: {
             <div className={styles.courseActions}>
               <label className={styles.siteImportCourse}>
                 Course
+                <i className={styles.importCourseDot} aria-hidden="true" style={{ background: courses.find(c => c.id === courseId)?.color ?? 'transparent', borderStyle: courseId ? 'solid' : 'dashed' }} />
                 <select aria-label="Course for these deadlines" value={courseId} onChange={e => setCourseId(e.target.value)}>
                   <option value="">Choose…</option>
                   {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}

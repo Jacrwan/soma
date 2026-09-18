@@ -126,6 +126,26 @@ export default function SettingsTab() {
     if (activeSection === 'memory' && !memory && !memoryBusy) void memoryCall();
   }, [activeSection]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Upcoming deadlines per course, and which course just received an import —
+  // so an import visibly lands in the course it was meant for.
+  const [deadlineCounts, setDeadlineCounts] = useState<Record<string, number>>({});
+  const [justImported, setJustImported] = useState<string | null>(null);
+  useEffect(() => {
+    if (activeSection !== 'courses') return;
+    const refresh = () => {
+      const d = new Date();
+      const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const counts: Record<string, number> = {};
+      for (const t of storage.getTodos()) {
+        if (t.subjectId && t.dueDate && t.dueDate.slice(0, 10) >= today && t.status !== 'done') counts[t.subjectId] = (counts[t.subjectId] ?? 0) + 1;
+      }
+      setDeadlineCounts(counts);
+    };
+    void storage.fetchAllTodos().then(refresh, refresh);
+    window.addEventListener('soma_todos_changed', refresh);
+    return () => window.removeEventListener('soma_todos_changed', refresh);
+  }, [activeSection]);
+
   // Course editing state
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState('');
@@ -1239,7 +1259,7 @@ export default function SettingsTab() {
               {activeSubjects.length === 0 ? (
                 <p className={styles.archivedEmpty}>No courses yet. Add one below, or sync them from Canvas.</p>
               ) : activeSubjects.map(s => (
-                <div key={s.id} className={styles.courseRow}>
+                <div key={s.id} className={`${styles.courseRow}${justImported === s.id ? ` ${styles.courseRowFlash}` : ''}`}>
                   <button
                     className={styles.courseDot}
                     style={{ background: s.color }}
@@ -1260,7 +1280,10 @@ export default function SettingsTab() {
                       }}
                     />
                   ) : (
-                    <span className={styles.courseName}>{s.name}</span>
+                    <span className={styles.courseName}>
+                      {s.name}
+                      {deadlineCounts[s.id] ? <span className={styles.courseDeadlines}> · {deadlineCounts[s.id]} upcoming {deadlineCounts[s.id] === 1 ? 'deadline' : 'deadlines'}</span> : null}
+                    </span>
                   )}
                   <div className={styles.courseActions}>
                     {s.source === 'canvas' && <span className={styles.courseSource}>Canvas</span>}
@@ -1328,6 +1351,7 @@ export default function SettingsTab() {
             )}
 
             <CourseSiteImport
+              onImported={id => { setJustImported(id); window.setTimeout(() => setJustImported(v => (v === id ? null : v)), 2600); }}
               courses={activeSubjects}
               createCourse={name => {
                 const current = storage.getSubjects();

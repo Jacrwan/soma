@@ -96,3 +96,48 @@ test('pasting page text is an alternative for sites behind a login', async ({ pa
   expect(state.requests[0]).toMatchObject({ text: expect.stringContaining('Lab 3') });
   expect(state.requests[0]).not.toHaveProperty('url');
 });
+
+test('the receipt shows the destination course and what happened to each deadline', async ({ page }) => {
+  const cs = { id: 'cs', user_id: account.id, name: 'CS 61A', color: '#26c6da', archived: false };
+  await setup(page, [cs], [
+    { id: 'hw3', user_id: account.id, text: 'Homework 3', status: 'nothing', subject_id: 'cs', due_date: offset(4), date: offset(4) },
+    { id: 'lab3', user_id: account.id, text: 'Lab 3', status: 'nothing', subject_id: 'cs', due_date: offset(5), date: offset(5) },
+  ]);
+  await page.getByLabel('Course website address').fill('https://cs61a.org');
+  await page.getByRole('button', { name: 'Find deadlines' }).click();
+  await page.getByRole('button', { name: 'Import 3 deadlines' }).click();
+
+  const receipt = page.getByRole('status', { name: 'Imported into CS 61A' });
+  await expect(receipt).toContainText('Added to CS 61A');
+  await expect(receipt.getByRole('listitem').filter({ hasText: 'Hog project' })).toContainText('Added');
+  await expect(receipt.getByRole('listitem').filter({ hasText: 'Homework 3' })).toContainText('Date updated');
+  await expect(receipt.getByRole('listitem').filter({ hasText: 'Lab 3' })).toContainText('Already there');
+});
+
+test('the course list shows the new deadlines on the right course', async ({ page }) => {
+  const cs = { id: 'cs', user_id: account.id, name: 'CS 61A', color: '#26c6da', archived: false };
+  const phys = { id: 'phys', user_id: account.id, name: 'Physics 5A', color: '#ef5350', archived: false };
+  await setup(page, [phys, cs]);
+  await page.getByLabel('Course website address').fill('https://cs61a.org');
+  await page.getByRole('button', { name: 'Find deadlines' }).click();
+  await page.getByRole('button', { name: 'Import 3 deadlines' }).click();
+  await expect(page.getByRole('status', { name: 'Imported into CS 61A' })).toBeVisible();
+
+  const rows = page.locator('[class*="courseRow"]');
+  await expect(rows.filter({ hasText: 'CS 61A' })).toContainText('3 upcoming deadlines');
+  await expect(rows.filter({ hasText: 'Physics 5A' })).not.toContainText('upcoming');
+  await expect(rows.filter({ hasText: 'CS 61A' })).toHaveClass(/courseRowFlash/);
+});
+
+test("an import whose saves didn't stick is reported as an error, not a success", async ({ page }) => {
+  const cs = { id: 'cs', user_id: account.id, name: 'CS 61A', color: '#26c6da', archived: false };
+  await setup(page, [cs]);
+  // The database accepts the writes but nothing is actually stored.
+  await page.route('https://soma-regression.supabase.co/rest/v1/todos*', route => route.fulfill({ json: route.request().method() === 'GET' ? [] : null }));
+  await page.getByLabel('Course website address').fill('https://cs61a.org');
+  await page.getByRole('button', { name: 'Find deadlines' }).click();
+  await page.getByRole('button', { name: 'Import 3 deadlines' }).click();
+
+  await expect(page.getByRole('alert')).toContainText('could be confirmed after saving');
+  await expect(page.getByRole('status', { name: /Imported into/ })).toHaveCount(0);
+});
