@@ -3,7 +3,7 @@ import { nextUnusedColor } from '../../lib/subjectColors';
 import type { SubjectColor } from '../../types';
 import styles from './DashboardV2.module.css';
 export type PlanState = 'Planned' | 'Completed' | 'Partially completed' | 'Missed' | 'Proposal';
-export type PlanBlock = { id:string | number; title:string; subject:string; time:string; minutes:number; color:string; state:PlanState; day:number; actualSeconds?:number; external?:boolean; manual?:boolean; subjectColor?:SubjectColor };
+export type PlanBlock = { id:string | number; title:string; subject:string; time:string; minutes:number; color:string; state:PlanState; day:number; actualSeconds?:number; external?:boolean; manual?:boolean; subjectColor?:SubjectColor; /** Shown on a proposal card, e.g. which calendar event it overlaps. */ note?:string };
 export type EditorDraft = { block?:PlanBlock; start:string; end:string; day:number };
 const colors:Record<string,string>={Biology:'green',Mathematics:'blue',Literature:'purple',Personal:'blue'};
 const NEW_COURSE='__new_course__';
