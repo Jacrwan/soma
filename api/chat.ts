@@ -31,7 +31,7 @@ export async function authorizeChat(admin:ReturnType<typeof createClient>,token:
   return {ok:true,userId:user.id};
  }catch{return {ok:false,status:503,error:'auth_service_unavailable'};}
 }
-async function verifyUserAndSubscription(token:string):Promise<Authorization>{
+export async function verifyUserAndSubscription(token:string):Promise<Authorization>{
  const url=process.env.VITE_SUPABASE_URL,key=process.env.SUPABASE_SERVICE_ROLE_KEY;
  if(!url || !key)return {ok:false,status:503,error:'server_not_configured'};
  return authorizeChat(createClient(url,key,{auth:{autoRefreshToken:false,persistSession:false}}),token,process.env.DEVELOPER_EMAIL);

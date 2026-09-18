@@ -1,2 +1,2 @@
 import { defineConfig } from '@playwright/test';
-export default defineConfig({testDir:'.',testMatch:['ai-backend.spec.ts','ai-actions.spec.ts','ai-memory.spec.ts'],fullyParallel:false,workers:1,timeout:10000});
+export default defineConfig({testDir:'.',testMatch:['ai-backend.spec.ts','ai-actions.spec.ts','ai-memory.spec.ts','import-schedule.spec.ts'],fullyParallel:false,workers:1,timeout:10000});

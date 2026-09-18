@@ -6,6 +6,7 @@ import { EDUCATION_OPTIONS, EDUCATION_LABELS, type EducationId } from '../Onboar
 import { applyTheme } from '../../App';
 import { applyTimeFormat } from '../../lib/timeFormat';
 import { requestMemory, type MemoryState, type MemoryMutation } from '../../lib/aiMemory';
+import CourseSiteImport from './CourseSiteImport';
 import { supabase } from '../../lib/supabase';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, openBillingPortal, hasAIAccess, getGoogleCalendarLimit, GOOGLE_CALENDAR_LIMIT_PREMIUM } from '../../lib/subscription';
@@ -1325,6 +1326,18 @@ export default function SettingsTab() {
                 onClick={() => { setAddingCourse(true); setNewCourseColor(nextUnusedColor(subjects)); }}
               >+ Add a course</button>
             )}
+
+            <CourseSiteImport
+              courses={activeSubjects}
+              createCourse={name => {
+                const current = storage.getSubjects();
+                const existing = current.find(s => !s.archived && s.name.toLowerCase() === name.toLowerCase());
+                if (existing) return existing;
+                const subject: Subject = { id: crypto.randomUUID(), name, color: nextUnusedColor(current), totalTimeToday: 0, archived: false, source: 'manual' };
+                commitSubjects([...current, subject]);
+                return subject;
+              }}
+            />
 
             <div className={styles.endOfSemester}>
               <h3 className={styles.archivedTitle}>End of semester</h3>
