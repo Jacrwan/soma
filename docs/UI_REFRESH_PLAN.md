@@ -87,6 +87,7 @@ moves to the next three days.
 Note this makes the 3-day view asymmetric with the week view, which still snaps
 to that week's Sunday. That is intentional: the week view is a calendar grid,
 the 3-day view is a near-term working window.
+
 ### Tests
 
 Pure-function tests for all twelve rows of the table (fast, no browser), plus
@@ -157,7 +158,7 @@ Currently fixed at bottom-right
 ## Suggested order
 
 1. Timer pill dragging — smallest, self-contained, no open questions.
-2. Calendar — well specified once the 3-day anchoring question is answered.
+2. Calendar — fully specified; the 3-day anchoring question is answered.
 3. AI tab — design pass and approval first, then build.
 
 ## Still open from earlier sessions
