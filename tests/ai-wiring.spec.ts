@@ -32,3 +32,12 @@ test('dashboard chat and AI history do not transfer into a second account',async
  },state.user);
  await expect(page.getByRole('log')).not.toContainText('First account private message');await expect(page.getByRole('log')).not.toContainText('Private reply for first account');
 });
+for(const surface of ['dashboard','ai'])test(`${surface} saves and lists memory without model calls or task writes`,async({page})=>{
+ const state=await setup(page);let entries:{key:string;content:string}[]=[],requests=0,modelCalls=0;
+ await page.route('**/api/chat',route=>{modelCalls++;return route.fulfill({status:500,json:{error:'should_not_call_model'}});});
+ await page.route('**/api/memory',route=>{requests++;expect(route.request().headers().authorization).toBe('Bearer test-token');if(route.request().method()==='POST'){const body=route.request().postDataJSON();entries=[{key:body.key,content:body.content}];}return route.fulfill({json:{revision:requests,enabled:true,entries}});});
+ await page.goto(`/${surface}`);
+ const send=async(text:string)=>{if(surface==='ai')await ask(page,text);else{await page.getByLabel('What do you need to work on?').fill(text);await page.getByRole('button',{name:'Send to Soma',exact:true}).click();}};
+ await send('/remember study-time: Morning study works best');await expect(page.getByText('Saved memory: study-time. You can update it using the same key.',{exact:true})).toBeVisible();
+ await page.reload();await send('/memories');await expect(page.getByText(/^Memory is on\.\s*study-time: Morning study works best$/)).toBeVisible();expect(modelCalls).toBe(0);expect(state.rows.todos).toHaveLength(1);expect(state.deletes).toBe(0);
+});

@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { parseMemoryCommand, runMemoryCommand } from './aiMemory';
 import { readAIResponse } from './aiResponse';
 import type { Attachment } from './uploads';
 
@@ -17,10 +18,20 @@ export async function sendMessage(
   systemPrompt: string,
   model?: 'sonnet',
   attachments?: Attachment[],
+  responseFormat?: 'dashboard',
 ): Promise<string> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   if (!token) throw new Error('auth_required');
+  const last=messages[messages.length-1];
+  const command=last?.role==='user' ? parseMemoryCommand(last.content) : null;
+  if(command) {
+    if(attachments?.length) throw new Error('Send memory commands without attachments.');
+    const reply=await runMemoryCommand(command,token);
+    const {data:{session:current}}=await supabase.auth.getSession();
+    if(current?.user.id!==session.user.id) throw new Error('account_changed');
+    return responseFormat==='dashboard' ? JSON.stringify({reply,blocks:[]}) : reply;
+  }
 
   // Attach uploaded files (images/PDFs) to the final user turn as content blocks.
   let outMessages: unknown[] = messages;

@@ -1,5 +1,6 @@
 /// <reference types="node" />
 import { createClient } from '@supabase/supabase-js';
+import { loadMemoryContext } from './_memory';
 
 export const config = { api: { bodyParser: { sizeLimit: '4.5mb' } } };
 export const maxDuration = 60;
@@ -74,7 +75,7 @@ function rateLimited(userId:string){
  hits.set(userId,[...times,now]);return false;
 }
 
-export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Authorization>;request?:typeof fetch;apiKey?:()=>string|undefined;limited?:(id:string)=>boolean}={}){
+export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Authorization>;request?:typeof fetch;apiKey?:()=>string|undefined;limited?:(id:string)=>boolean;memory?:(userId:string,query:string)=>Promise<string>}={}){
  return async function handler(req:any,res:any){
   const origin=req.headers.origin;
   if(origin==='https://somastudy.app' || (process.env.NODE_ENV!=='production' && origin==='http://localhost:5173'))res.setHeader('Access-Control-Allow-Origin',origin);
@@ -93,9 +94,13 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
    const key=(deps.apiKey??(()=>process.env.ANTHROPIC_API_KEY))();
    if(!key)return res.status(503).json({error:'server_not_configured'});
    const {messages,systemPrompt,model}=req.body;
+   const lastContent=messages[messages.length-1].content;
+   const query=typeof lastContent==='string' ? lastContent : lastContent.filter((b:any)=>b.type==='text').map((b:any)=>b.text).join(' ');
+   const savedMemory=await (deps.memory??loadMemoryContext)(auth.userId,query);
+   const effectiveSystem=[systemPrompt,savedMemory].filter(Boolean).join('\n\n');
    const response=await (deps.request??fetch)('https://api.anthropic.com/v1/messages',{
     method:'POST',signal:AbortSignal.timeout(45_000),headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json'},
-    body:JSON.stringify({model:model==='sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001',max_tokens:4096,...(systemPrompt ? {system:[{type:'text',text:systemPrompt,cache_control:{type:'ephemeral'}}]} : {}),messages}),
+    body:JSON.stringify({model:model==='sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001',max_tokens:4096,...(effectiveSystem ? {system:[{type:'text',text:effectiveSystem,cache_control:{type:'ephemeral'}}]} : {}),messages}),
    });
    if(response.status===429)return res.status(429).json({error:'rate_limit'});
    if(response.status===529)return res.status(529).json({error:'overloaded'});
