@@ -220,3 +220,15 @@
    Reserve its line so the panel doesn't jump each time. */
 .right .chat .message,
 .right .chat .message:empty{display:block;min-height:1.7em;margin-top:6px}
+
+/* Accept every pending suggestion at once. */
+.planTools .acceptAll{background:var(--text-primary);color:var(--bg);border-color:var(--text-primary)}
+.planTools .acceptAll:hover:not(:disabled){background:var(--text-primary);opacity:.88}
+
+/* Overlapping blocks share a row in two narrow columns. Put the time on its
+   own line so the title gets the full width instead of breaking mid-word. */
+.concurrent .block{flex-wrap:wrap;align-items:flex-start;row-gap:4px}
+.concurrent .blockTime,.page[data-time-format="12h"] .concurrent .blockTime{flex-basis:100%;min-width:0;display:flex;gap:8px;align-items:baseline}
+.concurrent .blockTime span{margin-top:0}
+.concurrent .blockBody{flex:1 1 140px;min-width:0}
+.concurrent .block h3{overflow-wrap:break-word;word-break:normal}
