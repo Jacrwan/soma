@@ -17,8 +17,9 @@ async function rows(table:string,userId:string) {
  for(let offset=0;;offset+=1000){const {data,error}=await supabase.from(table).select('*').eq('user_id',userId).order('id').range(offset,offset+999);if(error)throw new Error(`Could not load ${table.replace(/_/g,' ')}. Please retry.`);all.push(...(data??[]));if(!data || data.length<1000)return all;}
 }
 function todoRow(r:Record<string,unknown>):Todo {return {id:String(r.id),text:String(r.text??''),status:r.status as Todo['status'],subjectId:r.subject_id as string|undefined,date:String(r.date??''),estimatedMinutes:r.estimated_minutes as number|undefined,dueDate:r.due_date as string|undefined,assignmentId:r.assignment_id as number|undefined,notes:r.notes as string|undefined,order:r.order as number|undefined};}
-export async function readPlan(userId:string,origin:Date):Promise<Snapshot> {
- const calendar=fetchAggregatedEvents(dateAt(origin,0).toISOString(),dateAt(origin,7).toISOString(),true).then(events=>({events,error:''})).catch(()=>({events:[] as GoogleCalendarEvent[],error:'Calendar could not be fully loaded. Reconnect or retry before accepting AI schedules.'}));
+/** The plan for `days` days starting `startDay` days from origin (negative = the past). */
+export async function readPlan(userId:string,origin:Date,startDay=0,days=7):Promise<Snapshot> {
+ const calendar=fetchAggregatedEvents(dateAt(origin,startDay).toISOString(),dateAt(origin,startDay+days).toISOString(),true).then(events=>({events,error:''})).catch(()=>({events:[] as GoogleCalendarEvent[],error:'Calendar could not be fully loaded. Reconnect or retry before accepting AI schedules.'}));
  const [subjectRows,todoRows,sessionRows,historyRows,google]=await Promise.all([rows('subjects',userId),rows('todos',userId),rows('todo_sessions',userId),rows('timer_sessions',userId),calendar]);
  const subjects=subjectRows.map(r=>({id:String(r.id),name:String(r.name),color:r.color as Subject['color'],archived:!!r.archived,totalTimeToday:0}));
  const todos=todoRows.map(todoRow);
@@ -27,7 +28,7 @@ export async function readPlan(userId:string,origin:Date):Promise<Snapshot> {
  const blocks:LiveBlock[]=[];
  const tones:Record<string,string>={'#ef5350':'red','#42a5f5':'blue','#66bb6a':'green','#ab47bc':'purple','#ffa726':'orange','#26c6da':'cyan','#ec407a':'pink','#8d6e63':'brown'};
  const color=(subjectId?:string)=>tones[subjects.find(s=>s.id===subjectId)?.color??'']??'blue';
- for(let day=0;day<7;day++){
+ for(let day=startDay;day<startDay+days;day++){
   const date=localDate(dateAt(origin,day));
   const scheduled=sessions.filter(s=>s.date===date);
   const add=(todo:Todo,session?:TodoSession)=>{
@@ -51,7 +52,7 @@ export async function readPlan(userId:string,origin:Date):Promise<Snapshot> {
  // Keep legacy Day View plans visible without counting timer-generated history as plans.
  for(const legacy of storage.getTimeBlocks().filter(b=>!b.timerSessionId)){
   const start=new Date(legacy.startTime),end=new Date(legacy.endTime);
-  const day=Array.from({length:7},(_,i)=>i).find(i=>localDate(dateAt(origin,i))===localDate(start));
+  const day=Array.from({length:days},(_,i)=>startDay+i).find(i=>localDate(dateAt(origin,i))===localDate(start));
   if(day===undefined || blocks.some(b=>b.title===legacy.task && b.subjectId===legacy.subjectId && b.day===day))continue;
   blocks.push({id:`legacy:${legacy.id}`,legacyId:legacy.id,subjectId:legacy.subjectId,title:legacy.task||'Study session',subject:subjects.find(s=>s.id===legacy.subjectId)?.name??'Personal',time:`${timeLabel(start)}–${timeLabel(end)}`,minutes:Math.max(0,Math.round((+end-+start)/60000)),color:color(legacy.subjectId),state:'Planned',day});
  }
@@ -63,7 +64,7 @@ export async function readPlan(userId:string,origin:Date):Promise<Snapshot> {
   block.actualSeconds=total*(weight ? block.minutes/weight : 1/peers.length);
  }
  // Preserve subject-level time when a task was renamed or history has no task text.
- for(let day=0;day<7;day++)for(const subject of subjects){
+ for(let day=startDay;day<startDay+days;day++)for(const subject of subjects){
   const peers=blocks.filter(b=>!b.external && b.day===day && b.subjectId===subject.id);
   const unmatched=history.filter(h=>h.date===localDate(dateAt(origin,day)) && h.subject_id===subject.id && !peers.some(b=>b.title===h.task_text)).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0);
   const weight=peers.reduce((n,b)=>n+b.minutes,0);

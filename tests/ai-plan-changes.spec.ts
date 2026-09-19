@@ -29,8 +29,9 @@ function plan() {
   };
 }
 
-async function setup(page: Page, reply: unknown) {
+async function setup(page: Page, reply: unknown, edit?: (db: Record<string, Row[]>) => void) {
   const db: Record<string, Row[]> = { ...plan(), timer_sessions: [] };
+  edit?.(db);
   const state = { db, prompt: '', deletes: [] as string[] };
   await page.addInitScript(a => {
     localStorage.setItem('sb-soma-regression-auth-token', JSON.stringify({ access_token: 't', refresh_token: 'r', token_type: 'bearer', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, user: a }));
@@ -145,4 +146,57 @@ test('changes aimed at unknown blocks are rejected with a reason', async ({ page
   await setup(page, { reply: 'Tried.', blocks: [], changes: [{ action: 'move', id: 'google:c:k:lecture:1', date: TOMORROW, start: '15:00', end: '16:00' }] });
   await ask(page, 'move my lecture');
   await expect(page.getByRole('log')).toContainText("isn't in your plan");
+});
+
+test('rename: an existing block is renamed in place, not recreated', async ({ page }) => {
+  const state = await setup(page, { reply: 'Renamed it.', blocks: [], changes: [{ action: 'update', id: 's-cs', title: 'Hog project — final review' }] });
+  await ask(page, 'rename the cs block to hog project final review');
+  await expect(page.getByRole('log')).toContainText('Renamed it.');
+  await expect(page.getByRole('log')).not.toContainText("Couldn't place");
+  await expect(page.getByText(/Soma suggests renaming this to "Hog project — final review"/)).toBeVisible();
+  await expect(page.getByText(/Renamed from "Hog project review"/)).toBeVisible();
+  await page.getByRole('button', { name: /Accept all \(1\)/ }).click();
+  await expect(page.getByRole('button', { name: /Accept all/ })).toHaveCount(0);
+  await expect.poll(() => state.db.todos.find(t => t.id === 't-cs')?.text).toBe('Hog project — final review');
+  expect(state.db.todos).toHaveLength(3);
+  expect(state.db.todo_sessions.find(x => x.id === 's-cs')!.start_time).toBe(at(1, '17:30'));   // time untouched
+});
+
+test('update can rename and retime together; omitted fields keep their values', async ({ page }) => {
+  const state = await setup(page, { reply: 'Done.', blocks: [], changes: [{ action: 'update', id: 's-cs', title: 'Hog final', start: '20:00', end: '21:00' }] });
+  await ask(page, 'push hog later and rename');
+  await expect(page.getByText(/Renamed from "Hog project review" · Moves from 5:30/)).toBeVisible();
+  await page.getByRole('button', { name: /Accept all \(1\)/ }).click();
+  await expect(page.getByRole('button', { name: /Accept all/ })).toHaveCount(0);
+  const s = state.db.todo_sessions.find(x => x.id === 's-cs')!;
+  expect(s.start_time).toBe(at(1, '20:00'));
+  expect(s.end_time).toBe(at(1, '21:00'));
+  expect(state.db.todos.find(t => t.id === 't-cs')?.text).toBe('Hog final');
+});
+
+test('the prompt offers update and states the 4-hour limit', async ({ page }) => {
+  const state = await setup(page, { reply: 'ok', blocks: [] });
+  await ask(page, 'hi');
+  await expect(page.getByRole('log')).toContainText('ok');
+  expect(state.prompt).toContain('"action":"update"');
+  expect(state.prompt).toContain('never say you cannot edit existing blocks');
+  expect(state.prompt).toContain('Each block is at most 4 hours');
+  expect(state.prompt).not.toContain('Changes to existing tasks must be made with Edit plan');
+});
+
+test('past weeks: the arrows show earlier days and their blocks, without Focus', async ({ page }) => {
+  const past = key(offset(-3));
+  await setup(page, { reply: 'ok', blocks: [] }, db => {
+    db.todos.push({ id: 't-old', user_id: account.id, text: 'Old lab writeup', subject_id: 'phys', status: 'nothing', date: past });
+    db.todo_sessions.push({ id: 's-old', user_id: account.id, todo_id: 't-old', date: past, start_time: at(-3, '14:00'), end_time: at(-3, '15:00') });
+  });
+  await page.getByRole('button', { name: 'Earlier week' }).click();
+  const strip = page.getByLabel('Seven days shown');
+  await expect(strip).toBeVisible();
+  await strip.getByRole('button').nth(4).click();                // -7 + 4 = three days ago
+  await expect(page.getByText('Old lab writeup')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Start focus/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Back to this week' }).click();
+  await expect(page.getByLabel('Next seven days')).toBeVisible();
+  await expect(page.getByLabel('Next seven days').getByRole('button').first()).toHaveAttribute('aria-pressed', 'true');
 });
