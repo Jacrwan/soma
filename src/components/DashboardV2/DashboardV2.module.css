@@ -232,3 +232,10 @@
 .concurrent .blockTime span{margin-top:0}
 .concurrent .blockBody{flex:1 1 140px;min-width:0}
 .concurrent .block h3{overflow-wrap:break-word;word-break:normal}
+
+/* Dictation: a mic beside Send; red and pulsing while it listens. */
+.composerActions{display:flex;align-items:center;gap:6px}
+.micButton{width:34px;padding:0!important}
+.micOn{color:#d32f2f!important;border-color:color-mix(in oklch,#d32f2f,transparent 55%)!important;animation:micPulse 1.4s ease-in-out infinite}
+@keyframes micPulse{0%,100%{box-shadow:0 0 0 0 color-mix(in oklch,#d32f2f,transparent 70%)}50%{box-shadow:0 0 0 5px color-mix(in oklch,#d32f2f,transparent 100%)}}
+@media(prefers-reduced-motion:reduce){.micOn{animation:none}}
