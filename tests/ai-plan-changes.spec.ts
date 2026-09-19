@@ -62,7 +62,7 @@ async function setup(page: Page, reply: unknown, edit?: (db: Record<string, Row[
   await page.route('**/api/google-calendar-events', r => r.fulfill({ json: { events: [], incomplete: false } }));
   await page.route('**/api/chat', route => {
     state.prompt = route.request().postDataJSON().systemPrompt;
-    return route.fulfill({ json: { content: [{ text: JSON.stringify(reply) }] } });
+    return route.fulfill({ json: { content: [{ text: typeof reply === "string" ? reply : JSON.stringify(reply) }] } });
   });
   await page.goto('/dashboard');
   await page.getByLabel('Next seven days').getByRole('button').nth(1).click();
@@ -199,4 +199,47 @@ test('past weeks: the arrows show earlier days and their blocks, without Focus',
   await page.getByRole('button', { name: 'Back to this week' }).click();
   await expect(page.getByLabel('Next seven days')).toBeVisible();
   await expect(page.getByLabel('Next seven days').getByRole('button').first()).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('a reply with changes but no "blocks" list is still applied', async ({ page }) => {
+  const state = await setup(page, { reply: 'Renamed.', changes: [{ action: 'update', id: 's-cs', title: 'Hog final' }] });
+  await ask(page, 'rename hog');
+  await expect(page.getByRole('log')).toContainText('Renamed.');
+  await page.getByRole('button', { name: /Accept all \(1\)/ }).click();
+  await expect.poll(() => state.db.todos.find(t => t.id === 't-cs')?.text).toBe('Hog final');
+});
+
+test('a reply wrapped in prose is still read', async ({ page }) => {
+  await setup(page, 'Sure! Here you go:\n{"reply":"Moved it.","blocks":[],"changes":[{"action":"move","id":"s-cs","date":"' + TOMORROW + '","start":"20:00","end":"21:00"}]}');
+  await ask(page, 'move hog to 8');
+  await expect(page.getByRole('log')).toContainText('Moved it.');
+  await expect(page.getByRole('button', { name: /Accept all \(1\)/ })).toBeVisible();
+});
+
+test('a failed request is answered in the chat, not only in the status line', async ({ page }) => {
+  await setup(page, 'not json at all');
+  await ask(page, 'move everything');
+  await expect(page.getByRole('log').getByText(/unreadable|try again/i)).toBeVisible();
+});
+
+test('"back" means later, and past blocks today are left alone', async ({ page }) => {
+  const state = await setup(page, { reply: 'ok', blocks: [] });
+  await ask(page, 'push everything back an hour');
+  await expect(page.getByRole('log')).toContainText('ok');
+  expect(state.prompt).toContain('"push back" or "move back" means later');
+});
+
+test('shifting back-to-back blocks an hour later moves all of them', async ({ page }) => {
+  const state = await setup(page, { reply: 'Pushed everything back an hour.', changes: [
+    { action: 'move', id: 's-phys', date: TOMORROW, start: '10:00', end: '12:00' },
+    { action: 'move', id: 's-lit', date: TOMORROW, start: '12:00', end: '13:30' },
+    { action: 'move', id: 's-cs', date: TOMORROW, start: '18:30', end: '20:30' },
+  ] });
+  await ask(page, 'push everything back an hour');
+  await expect(page.getByRole('log')).toContainText('Pushed everything back');
+  await expect(page.getByRole('log')).not.toContainText("Couldn't place");
+  await page.getByRole('button', { name: /Accept all \(3\)/ }).click();
+  await expect(page.getByRole('button', { name: /Accept all/ })).toHaveCount(0);
+  const byId = Object.fromEntries(state.db.todo_sessions.map(x => [x.id, x]));
+  expect([byId['s-phys'].start_time, byId['s-lit'].start_time, byId['s-cs'].start_time]).toEqual([at(1, '10:00'), at(1, '12:00'), at(1, '18:30')]);
 });

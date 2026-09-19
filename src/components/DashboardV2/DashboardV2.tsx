@@ -104,7 +104,7 @@ export default function DashboardV2({runtime}:{runtime?:DashboardRuntime}) {
   }
   async function propose() {
     if (!draft.trim()) return;
-    if(runtime){const text=draft.trim();setDraft('');setConversation(items=>[...items,{role:'You',text}]);setMessage('Soma is thinking…');try{const result=await runtime.onPropose(text,day);setConversation(items=>[...items,{role:'Soma',text:result.reply}]);if(result.day!==undefined && result.day!==day){setDay(result.day);setEditor(null);}setMessage('');}catch(err){setMessage(aiErrorMessage(err));setDraft(text);}return;}
+    if(runtime){const text=draft.trim();setDraft('');setConversation(items=>[...items,{role:'You',text}]);setMessage('Soma is thinking…');try{const result=await runtime.onPropose(text,day);setConversation(items=>[...items,{role:'Soma',text:result.reply}]);if(result.day!==undefined && result.day!==day){setDay(result.day);setEditor(null);}setMessage('');}catch(err){setMessage('');setConversation(items=>[...items,{role:'Soma',text:`${aiErrorMessage(err)} Your message is still in the box — press Send to try again.`}]);setDraft(text);}return;}
     let slot=9*60;
     for(const group of groups){if(group.end<=slot)continue;if(group.start-slot>=30)break;slot=Math.max(slot,group.end);}
     if(slot+30>24*60){setConversation(items=>[...items,{role:'You',text:draft.trim()},{role:'Soma',text:'Your current plan has no free 30-minute slot after 09:00. Edit a block or choose another day.'}]);setDraft('');return;}
