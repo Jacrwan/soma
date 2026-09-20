@@ -106,7 +106,7 @@ test('recovered timer retries after history saved but active-record deletion fai
 });
 
 test('malformed AI output never writes a task',async({page})=>{
- const state=await setup(page);await page.route('**/api/chat',route=>route.fulfill({json:{content:[{text:'not valid JSON'}]}}));await page.goto('/dashboard');await expect(page.getByLabel('Day progress')).toBeVisible();const before=state.writes;await page.getByLabel('What do you need to work on?').fill('Plan revision');await page.getByRole('button',{name:'Send to Soma',exact:true}).click();await expect(page.getByRole('status')).toContainText('Nothing was saved');expect(state.writes).toBe(before);
+ const state=await setup(page);await page.route('**/api/chat',route=>route.fulfill({json:{content:[{text:'not valid JSON'}]}}));await page.goto('/dashboard');await expect(page.getByLabel('Day progress')).toBeVisible();const before=state.writes;await page.getByLabel('What do you need to work on?').fill('Plan revision');await page.getByRole('button',{name:'Send to Soma',exact:true}).click();await expect(page.getByRole('log')).toContainText('Nothing was saved');expect(state.writes).toBe(before);
 });
 
 test('live dashboard requires authentication',async({page})=>{
