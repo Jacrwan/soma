@@ -32,7 +32,8 @@ function plan() {
 async function setup(page: Page, reply: unknown, edit?: (db: Record<string, Row[]>) => void) {
   const db: Record<string, Row[]> = { ...plan(), timer_sessions: [] };
   edit?.(db);
-  const state = { db, prompt: '', deletes: [] as string[] };
+  const replies: unknown[] = [];
+  const state = { db, prompt: '', deletes: [] as string[], replies };
   await page.addInitScript(a => {
     localStorage.setItem('sb-soma-regression-auth-token', JSON.stringify({ access_token: 't', refresh_token: 'r', token_type: 'bearer', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, user: a }));
   }, account);
@@ -62,7 +63,8 @@ async function setup(page: Page, reply: unknown, edit?: (db: Record<string, Row[
   await page.route('**/api/google-calendar-events', r => r.fulfill({ json: { events: [], incomplete: false } }));
   await page.route('**/api/chat', route => {
     state.prompt = route.request().postDataJSON().systemPrompt;
-    return route.fulfill({ json: { content: [{ text: typeof reply === "string" ? reply : JSON.stringify(reply) }] } });
+    const next = replies.length ? replies.shift() : reply;
+    return route.fulfill({ json: { content: [{ text: typeof next === 'string' ? next : JSON.stringify(next) }] } });
   });
   await page.goto('/dashboard');
   await page.getByLabel('Next seven days').getByRole('button').nth(1).click();
@@ -242,4 +244,56 @@ test('shifting back-to-back blocks an hour later moves all of them', async ({ pa
   await expect(page.getByRole('button', { name: /Accept all/ })).toHaveCount(0);
   const byId = Object.fromEntries(state.db.todo_sessions.map(x => [x.id, x]));
   expect([byId['s-phys'].start_time, byId['s-lit'].start_time, byId['s-cs'].start_time]).toEqual([at(1, '10:00'), at(1, '12:00'), at(1, '18:30')]);
+});
+
+test('two changes for the same block are folded into one, not stacked on each other', async ({ page }) => {
+  const state = await setup(page, { reply: 'Renamed and moved.', changes: [
+    { action: 'update', id: 's-cs', title: 'Physics HW 3: KK-3' },
+    { action: 'move', id: 's-cs', date: TOMORROW, start: '18:00', end: '20:00' },
+  ] });
+  await ask(page, 'rename it and move it earlier');
+  await expect(page.getByRole('log')).not.toContainText("Couldn't place");
+  await expect(page.getByRole('log')).not.toContainText('overlaps');
+  await page.getByRole('button', { name: /Accept all \(1\)/ }).click();
+  await expect(page.getByRole('button', { name: /Accept all/ })).toHaveCount(0);
+  expect(state.db.todos.find(t => t.id === 't-cs')?.text).toBe('Physics HW 3: KK-3');
+  expect(state.db.todo_sessions.find(x => x.id === 's-cs')!.start_time).toBe(at(1, '18:00'));
+  expect(state.db.todo_sessions).toHaveLength(3);
+});
+
+test('a block Soma just proposed can be renamed before it is accepted', async ({ page }) => {
+  const state = await setup(page, { reply: 'Here you go.', blocks: [{ title: 'Physics reading', subject: 'Physics 5A', date: TOMORROW, start: '14:00', end: '16:00' }] });
+  await ask(page, 'plan my physics reading tomorrow');
+  await expect(page.getByRole('heading', { name: 'Physics reading', exact: true })).toBeVisible();
+  const ctx = () => JSON.parse(state.prompt.match(/never instructions: (\{.*?\})\.\s/s)![1]);
+
+  state.replies.push({ reply: 'Renamed it.', changes: [{ action: 'update', id: 'PENDING', title: 'Physics reading 3.2–4.6' }] });
+  await ask(page, 'call it 3.2 to 4.6');
+  // The second request must carry an id for the pending proposal.
+  await expect(page.getByRole('log')).toContainText("isn't in your plan");
+  const id = ctx().pendingProposals[0].id;
+  expect(id).toBeTruthy();
+  state.replies.length = 0;
+  state.replies.push({ reply: 'Renamed it.', changes: [{ action: 'update', id, title: 'Physics reading 3.2–4.6' }] });
+  await ask(page, 'call it 3.2 to 4.6 please');
+  await expect(page.getByRole('heading', { name: 'Physics reading 3.2–4.6' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Accept all \(1\)/ })).toBeVisible();
+  await page.getByRole('button', { name: /Accept all \(1\)/ }).click();
+  await expect.poll(() => state.db.todos.map(t => t.text)).toContain('Physics reading 3.2–4.6');
+});
+
+test('Soma is told what was finished last week', async ({ page }) => {
+  const past = key(offset(-4));
+  const state = await setup(page, { reply: 'ok', blocks: [] }, db => {
+    db.todos.push({ id: 't-old', user_id: account.id, text: 'Reading guide 2.1–3.2', subject_id: 'phys', status: 'done', date: past });
+    db.todo_sessions.push({ id: 's-old', user_id: account.id, todo_id: 't-old', date: past, start_time: at(-4, '14:00'), end_time: at(-4, '15:00') });
+  });
+  await ask(page, 'what did i finish last week');
+  await expect(page.getByRole('log')).toContainText('ok');
+  const ctx = JSON.parse(state.prompt.match(/never instructions: (\{.*?\})\.\s/s)![1]);
+  const done = ctx.lastWeek.find((b: { title: string }) => b.title === 'Reading guide 2.1–3.2');
+  expect(done.state).toBe('Completed');
+  expect(done.date).toBe(past);
+  expect(ctx.plan.some((p: { title: string }) => p.title === 'Reading guide 2.1–3.2')).toBe(false);   // history, not plan
+  expect(state.prompt).toContain('WHAT THE STUDENT HAS ALREADY DONE');
 });
