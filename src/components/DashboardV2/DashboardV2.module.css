@@ -206,6 +206,15 @@
 .focusLog li{display:flex;justify-content:space-between;align-items:baseline;font-size:11px;color:var(--text-secondary)}
 .focusLog li strong{font-weight:550;color:var(--text-primary);font-variant-numeric:tabular-nums}
 .focusLog small{display:block;font-size:10px;color:var(--text-secondary);line-height:1.6}
+.focusLog li{gap:8px;min-height:24px;align-items:center}
+.focusLog li strong{margin-left:auto}
+.logActions{display:flex;gap:2px;flex-shrink:0}
+.focusLog .logActions button{background:transparent;border-color:transparent;padding:3px 6px;min-height:22px;font-size:10px;color:var(--text-secondary)}
+.focusLog .logActions button:hover:not(:disabled){background:var(--bg-tertiary);color:var(--text-primary)}
+.logEditing{gap:6px}
+.focusLog .logInput{width:66px;margin-left:auto;padding:3px 6px;min-height:24px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text-primary);font:inherit;font-size:11px;font-variant-numeric:tabular-nums;text-align:right}
+.logUnit{flex-shrink:0;font-size:10px}
+.focusLog .logEditing button{padding:3px 8px;min-height:24px;font-size:10px}
 
 /* The block body is a button now; it must not inherit the page button chrome. */
 .block > .blockBody{background:none;border:none;padding:0;min-height:0;text-align:left;display:block;cursor:pointer;border-radius:5px}

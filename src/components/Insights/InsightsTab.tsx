@@ -131,7 +131,7 @@ function InsightsSkeleton() {
       </header>
 
       {/* Full-width: bar chart */}
-      <section className={`${styles.section} ${styles.spanFull}`}>
+      <section className={styles.section}>
         <div style={{ height: 20, width: 120, marginBottom: 18 }}>
           <SkeletonBlock width={120} height={14} />
         </div>
@@ -148,6 +148,9 @@ function InsightsSkeleton() {
           ))}
         </div>
       </section>
+
+      <div className={styles.columns}>
+      <div className={styles.column}>
 
       {/* Left col: donut + legend */}
       <section className={styles.section}>
@@ -167,6 +170,9 @@ function InsightsSkeleton() {
         </div>
       </section>
 
+      </div>
+      <div className={styles.column}>
+
       {/* Right col: EVA rows */}
       <section className={styles.section}>
         <div style={{ marginBottom: 18 }}>
@@ -183,6 +189,9 @@ function InsightsSkeleton() {
           ))}
         </div>
       </section>
+
+      </div>
+      </div>
     </div>
   );
 }
@@ -271,7 +280,12 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
       <div className={styles.page} aria-busy={loading}>
         {errorNotice}
         <div className={styles.insightsEmpty}>
-          <div className={styles.insightsEmptyIllo}>📊</div>
+          <div className={styles.insightsEmptyIllo}>
+            <svg width="36" height="28" viewBox="0 0 18 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" aria-hidden="true">
+              <path d="M1 13V8M6 13V4M11 13V6M16 13V1"/>
+              <path d="M1 13h16" strokeOpacity="0.25"/>
+            </svg>
+          </div>
           <h2 className={styles.insightsEmptyHeading}>No study data yet</h2>
           <p className={styles.insightsEmptyBody}>Start a task from your dashboard to begin tracking your study time.</p>
           <a href="/dashboard" className={styles.insightsEmptyBtn}>Go to Dashboard</a>
@@ -289,15 +303,15 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
           <p className={styles.pageSubtitle}>Your study rhythm, organized by time, subject, and follow-through.</p>
         </div>
         <div className={styles.summaryRail} aria-label="Insights summary">
-          <div className={styles.summaryItem} style={{ '--stat-accent': 'oklch(58% 0.2 266)' } as React.CSSProperties}>
+          <div className={styles.summaryItem}>
             <span className={styles.summaryLabel}>This week</span>
             <span className={styles.summaryValue}>{formatHours(totalWeeklyMinutes) || '0m'}</span>
           </div>
-          <div className={styles.summaryItem} style={{ '--stat-accent': 'oklch(62% 0.17 145)' } as React.CSSProperties}>
+          <div className={styles.summaryItem}>
             <span className={styles.summaryLabel}>Best day</span>
             <span className={styles.summaryValue}>{bestDay.minutes > 0 ? dayLabel(bestDay.day) : 'None'}</span>
           </div>
-          <div className={styles.summaryItem} style={{ '--stat-accent': 'oklch(68% 0.16 52)' } as React.CSSProperties}>
+          <div className={styles.summaryItem}>
             <span className={styles.summaryLabel}>Top subject</span>
             <span className={styles.summaryValue}>{breakdown[0]?.subjectName ?? 'None'}</span>
           </div>
@@ -305,7 +319,7 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
       </header>
 
       {/* ── Study time — full width ── */}
-      <section className={`${styles.section} ${styles.spanFull}`}>
+      <section className={styles.section}>
         <div className={styles.weekNavRow}>
           <button
             className={styles.weekNavBtn}
@@ -313,7 +327,7 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
             aria-label="Previous week"
           ><ChevronIcon direction="left" /></button>
           <div className={styles.weekNavCenter}>
-            <h2 className={`${styles.sectionTitle} ${styles.sectionTitleStudy}`}>Study time</h2>
+            <h2 className={styles.sectionTitle}>Study time</h2>
             <span className={styles.weekRange}>{fmtDateRange(weekOffset)}</span>
           </div>
           <button
@@ -333,7 +347,7 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
                   {showLabel ? formatHours(minutes) : ''}
                 </span>
                 <div
-                  className={`${styles.barTrack}${minutes === 0 ? ` ${styles.barTrackEmpty}` : ''}`}
+                  className={styles.barTrack}
                   title={minutes > 0 ? `${formatHours(minutes)} studied` : 'No study time'}
                 >
                   <div
@@ -348,12 +362,39 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
         </div>
       </section>
 
-      {/* ── Subject breakdown — left col ── */}
-      <section
-        className={styles.section}
-        style={{ '--section-accent': donutSlices[0]?.color } as React.CSSProperties}
-      >
-        <h2 className={`${styles.sectionTitle} ${styles.sectionTitleDynamic}`}>Subject breakdown — last 7 days</h2>
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Peak study hours</h2>
+        {maxPeakMinutes === 1 && PEAK_HOURS.every(h => !peakHoursData[h]) ? (
+          <EmptyState message="No study sessions recorded yet." />
+        ) : (
+          <div className={styles.peakChart}>
+            {PEAK_HOURS.map(h => {
+              const minutes = peakHoursData[h] ?? 0;
+              const isTop = top3PeakHours.includes(h);
+              return (
+                <div key={h} className={styles.peakCol}>
+                  <div className={styles.peakTrack} title={minutes > 0 ? `${formatHours(minutes)} at ${hourLabel(h)}` : `No study time at ${hourLabel(h)}`}>
+                    <div
+                      className={`${styles.peakBar}${isTop ? ` ${styles.peakBarTop}` : ''}`}
+                      style={{ height: `${(minutes / maxPeakMinutes) * 100}%` }}
+                    />
+                  </div>
+                  <span className={`${styles.peakLabel}${isTop ? ` ${styles.peakLabelTop}` : ''}`}>
+                    {hourLabel(h)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <div className={styles.columns}>
+      <div className={styles.column}>
+
+      {/* ── Subject breakdown ── */}
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Subject breakdown — last 7 days</h2>
         {breakdown.length === 0 ? (
           <EmptyState message="No study sessions recorded yet." />
         ) : (
@@ -368,6 +409,7 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
                     fill="none"
                     stroke={slice.color}
                     strokeWidth={DONUT_STROKE}
+                    strokeLinecap="butt"
                     strokeDasharray={`${slice.arc} ${DONUT_C}`}
                     transform={`rotate(${slice.startAngle} 65 65)`}
                   />
@@ -397,66 +439,15 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
         )}
       </section>
 
-      {/* ── Estimated vs actual — right col ── */}
-      <section className={styles.section}>
-        <h2 className={`${styles.sectionTitle} ${styles.sectionTitleEva}`}>Estimated vs actual</h2>
-        {estimated.length === 0 ? (
-          <EmptyState message="Complete todos with time estimates to see this data." />
-        ) : (
-          <div className={styles.evaList}>
-            <div className={styles.evaHeader}>
-              <span>Task</span>
-              <span>Est.</span>
-              <span>Actual</span>
-              <span>Delta</span>
-            </div>
-            {estimated.map(({ text, estimated: est, actual }) => {
-              const delta = formatDelta(est, actual);
-              return (
-                <div key={text} className={styles.evaRow}>
-                  <span className={styles.evaText}>{truncate(text, 40)}</span>
-                  <span className={styles.evaEst}>{formatHours(est)}</span>
-                  <span className={styles.evaActual}>{formatHours(actual)}</span>
-                  <span className={delta.over ? styles.evaOver : styles.evaUnder}>
-                    {delta.label}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
       {/* ── Study streak — half col, pairs with Time Accuracy ── */}
       <section className={styles.section}>
-        <h2 className={`${styles.sectionTitle} ${styles.sectionTitleStreak}`}>Study streak</h2>
+        <h2 className={styles.sectionTitle}>Study streak</h2>
         <div className={styles.streakHero}>
-          <svg width="32" height="44" viewBox="0 0 32 44" fill="none" className={styles.flameSvg} aria-hidden="true">
-            <defs>
-              <linearGradient id="flameGrad" x1="16" y1="43" x2="16" y2="0" gradientUnits="userSpaceOnUse">
-                <stop offset="0%" stopColor="#FF4500" />
-                <stop offset="100%" stopColor="#FFB700" />
-              </linearGradient>
-            </defs>
-            <path
-              d="M16 43C5 43 1 33 4 24C6 17 9 13 13 8C15 4 15 1 18 0C22 3 26 10 27 17C29 24 28 33 25 39C22 43 27 43 16 43Z"
-              fill="url(#flameGrad)"
-            />
-            <path
-              d="M16 34C13 34 11 29 12 24C13 20 15 17 16 13C18 17 20 20 21 24C22 29 20 34 16 34Z"
-              fill="#FFFDE7"
-              opacity="0.55"
-            />
-          </svg>
-          <div className={styles.streakMeta}>
-            <div className={styles.streakMetaRow}>
-              <span className={styles.streakBigNum}>{streak}</span>
-              <span className={styles.streakDayLabel}>day streak</span>
-            </div>
-            {streakAtRisk && (
-              <span className={styles.streakAtRiskNote}>Study today to keep it going</span>
-            )}
-          </div>
+          <span className={styles.streakBigNum}>{streak}</span>
+          <span className={styles.streakDayLabel}>day streak</span>
+          {streakAtRisk && (
+            <span className={styles.streakAtRiskNote}>Study today to keep it going</span>
+          )}
         </div>
 
         <div className={styles.heatmapSection}>
@@ -487,7 +478,6 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
             ))}
             {heatmapData.cells.map(({ day, minutes, isToday }) => {
               const level = heatLevel(minutes);
-              const isDark = level >= 3;
               const timeLabel = fmtCellTime(minutes);
               return (
                 <div
@@ -499,13 +489,9 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
                   ].filter(Boolean).join(' ')}
                   title={minutes > 0 ? `${minutes}m studied` : 'No study time'}
                 >
-                  <span className={[styles.heatmapDayNum, isDark ? styles.heatmapDayNumDark : ''].filter(Boolean).join(' ')}>
-                    {day}
-                  </span>
+                  <span className={styles.heatmapDayNum}>{day}</span>
                   {timeLabel && (
-                    <span className={[styles.heatmapTimeLabel, isDark ? styles.heatmapTimeLabelDark : ''].filter(Boolean).join(' ')}>
-                      {timeLabel}
-                    </span>
+                    <span className={styles.heatmapTimeLabel}>{timeLabel}</span>
                   )}
                 </div>
               );
@@ -514,7 +500,38 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
         </div>
       </section>
 
-      {/* ── AI Memory sections ── */}
+      </div>
+      <div className={styles.column}>
+
+      {/* ── Estimated vs actual ── */}
+      <section className={styles.section}>
+        <h2 className={styles.sectionTitle}>Estimated vs actual</h2>
+        {estimated.length === 0 ? (
+          <EmptyState message="Complete todos with time estimates to see this data." />
+        ) : (
+          <div className={styles.evaList}>
+            <div className={styles.evaHeader}>
+              <span>Task</span>
+              <span>Est.</span>
+              <span>Actual</span>
+              <span>Delta</span>
+            </div>
+            {estimated.map(({ text, estimated: est, actual }) => {
+              const delta = formatDelta(est, actual);
+              return (
+                <div key={text} className={styles.evaRow}>
+                  <span className={styles.evaText}>{truncate(text, 40)}</span>
+                  <span className={styles.evaEst}>{formatHours(est)}</span>
+                  <span className={styles.evaActual}>{formatHours(actual)}</span>
+                  <span className={delta.over ? styles.evaOver : styles.evaUnder}>
+                    {delta.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Time accuracy</h2>
@@ -544,33 +561,6 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
         })()}
       </section>
 
-      <section className={`${styles.section} ${styles.spanFull}`}>
-        <h2 className={styles.sectionTitle}>Peak study hours</h2>
-        {maxPeakMinutes === 1 && PEAK_HOURS.every(h => !peakHoursData[h]) ? (
-          <EmptyState message="No study sessions recorded yet." />
-        ) : (
-          <div className={styles.peakChart}>
-            {PEAK_HOURS.map(h => {
-              const minutes = peakHoursData[h] ?? 0;
-              const isTop = top3PeakHours.includes(h);
-              return (
-                <div key={h} className={styles.peakCol}>
-                  <div className={styles.peakTrack} title={minutes > 0 ? `${formatHours(minutes)} at ${hourLabel(h)}` : `No study time at ${hourLabel(h)}`}>
-                    <div
-                      className={`${styles.peakBar}${isTop ? ` ${styles.peakBarTop}` : ''}`}
-                      style={{ height: `${(minutes / maxPeakMinutes) * 100}%` }}
-                    />
-                  </div>
-                  <span className={`${styles.peakLabel}${isTop ? ` ${styles.peakLabelTop}` : ''}`}>
-                    {hourLabel(h)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
-
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Subject pacing</h2>
         {(() => {
@@ -596,6 +586,8 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
         })()}
       </section>
 
+      </div>
+      </div>
     </div>
   );
 }
