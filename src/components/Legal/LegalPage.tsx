@@ -432,7 +432,7 @@ function Terms() {
         <p>
           Soma has a free tier that provides access to day view, canvas sync, calendar, and
           insights. AI features require <strong>Soma Premium</strong>, available at{' '}
-          <strong>$5.99 USD per month</strong> or <strong>$47.88 USD per year</strong> ($3.99/mo).
+          <strong>$4.99 USD per month</strong> or <strong>$49.99 USD per year</strong> ($4.17/mo).
           Soma Premium begins with a <strong>30-day free trial</strong> — no charge during the trial
           period. After the trial, your subscription renews automatically on your chosen billing
           cycle until you cancel. See our{' '}
@@ -620,13 +620,13 @@ function Billing() {
             <tbody>
               <tr>
                 <td>Monthly</td>
-                <td>$5.99 / month</td>
+                <td>$4.99 / month</td>
                 <td>—</td>
               </tr>
               <tr>
                 <td>Annual</td>
-                <td>$47.88 / year</td>
-                <td>$3.99 / month (save 33%)</td>
+                <td>$49.99 / year</td>
+                <td>$4.17 / month (save 17%)</td>
               </tr>
             </tbody>
           </table>

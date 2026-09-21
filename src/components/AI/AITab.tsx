@@ -533,7 +533,7 @@ function AILockedScreen({ status }: { status: string }) {
           <button className={styles.lockedBtn} onClick={() => setShowModal(true)}>
             Start free trial
           </button>
-          <p className={styles.lockedMeta}>$5.99/mo after trial · Cancel anytime</p>
+          <p className={styles.lockedMeta}>$4.99/mo after trial · Cancel anytime</p>
         </div>
       </div>
     </>
