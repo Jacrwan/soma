@@ -50,14 +50,14 @@ export default function LiveDashboard({userId}:{userId:string}) {
     else {
      const edited={...target,title:block.title,time:block.time,day:block.day,minutes:block.minutes};
      // A rename leaves the time alone, so it works on blocks already underway or past.
-     if(edited.time!==target.time || edited.day!==target.day)validateProposal(edited,{...fresh,blocks:fresh.blocks.filter(b=>b.id!==target.id),sessions:fresh.sessions.filter(sn=>sn.id!==target.sessionId)},origin,storage.getSomaSettings(),true);
+     if(edited.time!==target.time || edited.day!==target.day)validateProposal(edited,{...fresh,blocks:fresh.blocks.filter(b=>b.id!==target.id),sessions:fresh.sessions.filter(sn=>sn.id!==target.sessionId)},origin,storage.getSomaSettings(),true,true);
      await savePlanBlock(userId,origin,edited,fresh);
     }
     setProposals(items=>items.filter(p=>p.id!==block.id));
     try{await reload();}catch{throw new Error('Your change saved, but refreshing failed. Refresh the page before making another change.');}
     return;
    }
-   if(proposal)validateProposal(block,fresh,origin,storage.getSomaSettings(),true);
+   if(proposal)validateProposal(block,fresh,origin,storage.getSomaSettings(),true,true);
    else if(snapshot?.blocks.some(b=>b.id===block.id) && !fresh.blocks.some(b=>b.id===block.id))throw new Error('This block changed elsewhere. Refresh and try again.');
    await savePlanBlock(userId,origin,{...block,state:block.state==='Proposal' ? 'Planned' : block.state},fresh);
    setProposals(items=>items.filter(p=>p.id!==block.id));
@@ -157,6 +157,9 @@ CHANGING THE EXISTING PLAN: you can rename, move or remove the user's own study 
   const proposalEdits=new Map<string|number,PlanBlock>();
   const droppedProposals=new Set<string>();
   const editedProposals:string[]=[];
+ // Blocks the model re-emitted instead of moving. Reported to the model so its
+ // next turn knows the work is already in the plan, not to the user as a failure.
+ const folded:string[]=[];
   const targetOf=(c:Record<string,unknown>)=>fresh.blocks.find(b=>String(b.id)===c.id && (!b.external || b.manual));
   const lifted=new Set(changes.map(targetOf).filter(Boolean).map(b=>b!.id));
   let working={...fresh,blocks:fresh.blocks.filter(b=>!lifted.has(b.id)),sessions:fresh.sessions.filter(sn=>!fresh.blocks.some(b=>lifted.has(b.id) && b.sessionId===sn.id))};
@@ -219,12 +222,32 @@ CHANGING THE EXISTING PLAN: you can rename, move or remove the user's own study 
    // landed on today, read as already past, and was rejected wholesale.
    let blockDay=day;
    if(typeof p.date==='string'){const found=calendar.find(c=>c.date===p.date);if(!found){rejected.push(`${p.title.trim()}: ${p.date} is outside the next seven days.`);continue;}blockDay=found.offset;}
-   const block:PlanBlock={id:`proposal:${crypto.randomUUID()}`,title:p.title.trim(),subject:p.subject.trim(),time:`${p.start}–${p.end}`,minutes:minuteValue(p.end)-minuteValue(p.start),color:'blue',state:'Proposal',day:blockDay};
+   // The model is told never to recreate a block that already exists, and still
+   // does — then the copy collides with the very block it duplicates, which the
+   // user sees as "overlaps a scheduled session". Treat a same-day, same-title
+   // entry as that block: retime it, or drop the suggestion when it already
+   // sits where the user asked. Titles repeated on OTHER days are left alone;
+   // studying the same thing on Monday and Wednesday is not a duplicate.
+   const title=p.title.trim();
+   const sameTask=(b:PlanBlock)=>b.day===blockDay && !(b.external && !b.manual) && b.title.trim().toLowerCase()===title.toLowerCase();
+   const existing=working.blocks.find(sameTask);
+   if(!existing && fresh.blocks.some(sameTask)){folded.push(`"${title}" is already being changed in this reply; the duplicate was dropped`);continue;}
+   if(existing){
+    const time=`${p.start}–${p.end}`;
+    if(time===existing.time){folded.push(`"${title}" is already in the plan at ${formatClockRange(time)}; nothing to add`);continue;}
+    const was=existing.time ? formatClockRange(existing.time) : 'unscheduled';
+    const moved:PlanBlock={...existing,id:`change:${crypto.randomUUID()}`,state:'Proposal',time,minutes:minuteValue(p.end)-minuteValue(p.start),day:blockDay,replaces:existing.id,changeKind:'move',note:`Moves from ${was}`};
+    try{const overlaps=validateProposal(moved,{...working,blocks:[...working.blocks.filter(b=>b.id!==existing.id),...proposed.filter(b=>b.time)]},origin,settings,true);if(overlaps.length)moved.note=`${moved.note} · overlaps ${overlaps.join(', ')}`;proposed.push(moved);}
+    catch(err){rejected.push(`Move ${title}: ${err instanceof Error ? err.message : 'could not be moved.'}`);}
+    continue;
+   }
+   const block:PlanBlock={id:`proposal:${crypto.randomUUID()}`,title,subject:p.subject.trim(),time:`${p.start}–${p.end}`,minutes:minuteValue(p.end)-minuteValue(p.start),color:'blue',state:'Proposal',day:blockDay};
    try{const overlaps=validateProposal(block,{...working,blocks:[...working.blocks,...proposed.filter(b=>b.time)]},origin,settings,true);if(overlaps.length)block.note=`Overlaps ${overlaps.join(', ')}`;proposed.push(block);}
    catch(err){rejected.push(`${block.title}: ${err instanceof Error ? err.message : 'could not be scheduled.'}`);}
   }
   const outcome=[
    ...editedProposals,
+   ...folded,
    ...proposed.map(b=>b.changeKind==='remove' ? `proposed removing "${b.title}" (awaiting Accept)` : `${b.changeKind==='update' ? 'proposed changing a block to' : b.changeKind==='move' ? 'proposed moving' : 'placed'} "${b.title}" ${b.time} on ${localDate(dateAt(origin,b.day))} (awaiting Accept${b.note ? `; ${b.note.toLowerCase()}` : ''})`),
    ...rejected.map(r=>`not placed: ${r}`),
   ];
@@ -272,5 +295,18 @@ CHANGING THE EXISTING PLAN: you can rename, move or remove the user's own study 
   else setError('');
  }
  const pulseDays=Array.from({length:7},(_,i)=>snapshot.history.filter(h=>h.date===localDate(dateAt(origin,i-6))).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0));
- return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>setProposals(items=>items.filter(b=>b.id!==id)),onAcceptAll:acceptAll,rangeStart,onRange:setRangeStart,onPropose:propose,onFocus:b=>{const live=snapshot.blocks.find(x=>x.id===b.id);const subject=snapshot.subjects.find(s=>s.id===live?.subjectId);if(subject)timer.startSession(subject,b.title,0);else setError('Choose a subject with Edit plan before starting focus.');},pulseSeconds:pulseDays.reduce((a,b)=>a+b,0),pulseDays,subjectNames:snapshot.subjects.filter(s=>!s.archived).map(s=>s.name),usedColors:snapshot.subjects.map(s=>s.color),onEditSession:async(sessionId,minutes)=>{writing.current=true;try{await storage.updateTimerSessionDuration(sessionId,minutes*60);await reload();}finally{writing.current=false;}},onDeleteSession:async(sessionId)=>{writing.current=true;try{await storage.deleteTimerSession(sessionId);await reload();}finally{writing.current=false;}},logsFor:(b)=>{const live=snapshot.blocks.find(x=>x.id===b.id);if(!live)return [];return snapshot.history.filter(h=>h.subject_id===live.subjectId && h.task_text===live.title && (h.duration_seconds||0)>0).map(h=>({id:h.id,date:h.date,minutes:Math.round((h.duration_seconds||0)/60)})).sort((a,c)=>c.date.localeCompare(a.date));},focus:<section className={styles.focus} aria-label="Focus timer"><h2>Focus</h2><p className={styles.description}>{timer.activeSession?.subject.name??'One thing at a time.'}</p><h3>{timer.activeSession?.task??'Ready when you are'}</h3><div className={styles.timer}>{String(Math.floor(timer.elapsed/60)).padStart(2,'0')}<span>:</span>{String(timer.elapsed%60).padStart(2,'0')}</div>{timer.activeSession ? <div className={styles.focusActions}><button disabled={timer.saving || timer.savePending} onClick={()=>timer.isPaused ? timer.resumeSession() : timer.pauseSession()}>{timer.isPaused ? 'Resume' : 'Pause'}</button><button disabled={timer.saving} onClick={()=>void timer.stopSession()}>{timer.saving ? 'Saving…' : 'Stop & save'}</button></div> : <p className={styles.description}>Choose Focus on a study block to begin.</p>}{timer.error && <p role="alert">{timer.error}</p>}<small>Actual work is tracked separately from your plan. Complete the task when it is finished.</small></section>}}/></>;
+ return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>setProposals(items=>items.filter(b=>b.id!==id)),onAcceptAll:acceptAll,rangeStart,onRange:setRangeStart,onPropose:propose,onFocus:b=>{const live=snapshot.blocks.find(x=>x.id===b.id);const subject=snapshot.subjects.find(s=>s.id===live?.subjectId);if(subject)timer.startSession(subject,b.title,0);else setError('Choose a subject with Edit plan before starting focus.');},pulseSeconds:pulseDays.reduce((a,b)=>a+b,0),pulseDays,subjectNames:snapshot.subjects.filter(s=>!s.archived).map(s=>s.name),usedColors:snapshot.subjects.map(s=>s.color),onEditSession:async(sessionId,minutes)=>{writing.current=true;try{await storage.updateTimerSessionDuration(sessionId,minutes*60);await reload();}finally{writing.current=false;}},onDeleteSession:async(sessionId)=>{writing.current=true;try{await storage.deleteTimerSession(sessionId);await reload();}finally{writing.current=false;}},onAddSession:async(target,date,minutes)=>{
+ const live=snapshot.blocks.find(x=>x.id===target.id);
+ if(!live?.subjectId)throw new Error('Give this task a subject before adding study time.');
+ const subject=snapshot.subjects.find(sn=>sn.id===live.subjectId);
+ // Sit the entry at the block's planned start so it lands in the right part of
+ // Peak study hours; noon is the fallback for an unscheduled task.
+ const [planned]=live.time ? live.time.split('\u2013') : [];
+ const start=new Date(`${date}T${/^([01]\d|2[0-3]):[0-5]\d$/.test(planned??'') ? planned : '12:00'}:00`);
+ writing.current=true;
+ try{
+  await storage.saveTimerSession({id:crypto.randomUUID(),subjectId:live.subjectId,task:live.title,startTime:start.toISOString(),endTime:new Date(start.getTime()+minutes*60000).toISOString(),durationSeconds:minutes*60},subject?.name??live.subject);
+  await reload();
+ }finally{writing.current=false;}
+},logsFor:(b)=>{const live=snapshot.blocks.find(x=>x.id===b.id);if(!live)return [];return snapshot.history.filter(h=>h.subject_id===live.subjectId && h.task_text===live.title && (h.duration_seconds||0)>0).map(h=>({id:h.id,date:h.date,minutes:Math.round((h.duration_seconds||0)/60)})).sort((a,c)=>c.date.localeCompare(a.date));},focus:<section className={styles.focus} aria-label="Focus timer"><h2>Focus</h2><p className={styles.description}>{timer.activeSession?.subject.name??'One thing at a time.'}</p><h3>{timer.activeSession?.task??'Ready when you are'}</h3><div className={styles.timer}>{String(Math.floor(timer.elapsed/60)).padStart(2,'0')}<span>:</span>{String(timer.elapsed%60).padStart(2,'0')}</div>{timer.activeSession ? <div className={styles.focusActions}><button disabled={timer.saving || timer.savePending} onClick={()=>timer.isPaused ? timer.resumeSession() : timer.pauseSession()}>{timer.isPaused ? 'Resume' : 'Pause'}</button><button disabled={timer.saving} onClick={()=>void timer.stopSession()}>{timer.saving ? 'Saving…' : 'Stop & save'}</button></div> : <p className={styles.description}>Choose Focus on a study block to begin.</p>}{timer.error && <p role="alert">{timer.error}</p>}<small>Actual work is tracked separately from your plan. Complete the task when it is finished.</small></section>}}/></>;
 }
