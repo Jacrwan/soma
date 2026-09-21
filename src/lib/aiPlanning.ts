@@ -5,19 +5,29 @@ const minuteValue=(s:string)=>{const [h,m]=s.split(':').map(Number);return h*60+
 const dateAt=(origin:Date,day:number)=>{const d=new Date(origin);d.setDate(d.getDate()+day);return d;};
 const localDate=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 /**
+ * How far into the past a proposed start may sit. The prompt hands the model
+ * currentTime to the minute and freeTime quantises open slots to 15 minutes, so
+ * "start this now" arrives as a time that is already a few seconds or minutes
+ * old by the time it is validated. Without this, that request could never be
+ * satisfied at all.
+ */
+const START_GRACE_MS=15*60*1000;
+/**
  * Throws when a proposed block cannot be placed. With allowCommitmentOverlap, a
  * read-only calendar event (e.g. a lecture the student says they'll skip) no
  * longer blocks the proposal; its title is returned instead so the card can
  * show the overlap before the student accepts. Overlaps with the student's own
- * study sessions are always refused.
+ * study sessions are always refused. With allowPastStart, the start may be in
+ * the past: used when the student accepts a proposal, where the time they spent
+ * reading it must not invalidate the block they are deliberately confirming.
  */
-export function validateProposal(block:PlanBlock,snapshot:Snapshot,origin:Date,settings:SomaSettings,allowCommitmentOverlap=false):string[] {
+export function validateProposal(block:PlanBlock,snapshot:Snapshot,origin:Date,settings:SomaSettings,allowCommitmentOverlap=false,allowPastStart=false):string[] {
  if(snapshot.calendarError)throw new Error(snapshot.calendarError);
  const [start,end]=block.time.split('–');
  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(start??'') || !/^([01]\d|2[0-3]):[0-5]\d$/.test(end??''))throw new Error('Soma returned an invalid time. Ask for another proposal.');
  const from=minuteValue(start),to=minuteValue(end),date=dateAt(origin,block.day);
  if(to<=from || to-from>240)throw new Error('Study proposals must be between 1 minute and 4 hours.');
- if(new Date(`${localDate(date)}T${start}:00`)<new Date())throw new Error('That start time has passed. Ask Soma for a new time.');
+ if(!allowPastStart && new Date(`${localDate(date)}T${start}:00`).getTime()<Date.now()-START_GRACE_MS)throw new Error('That start time has passed. Ask Soma for a new time.');
  const starts=new Date(`${localDate(date)}T${start}:00`),ends=new Date(`${localDate(date)}T${end}:00`);
  if(snapshot.sessions.some(s=>s.startTime && s.endTime && new Date(s.startTime)<ends && new Date(s.endTime)>starts))throw new Error('That time overlaps a scheduled session. Ask Soma for another time.');
  const overlapping=snapshot.blocks.filter(b=>b.day===block.day && b.time && b.id!==block.id && minuteValue(b.time.split('–')[0])<to && minuteValue(b.time.split('–')[1])>from);

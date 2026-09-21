@@ -8,8 +8,10 @@ export type EditorDraft = { block?:PlanBlock; start:string; end:string; day:numb
 const colors:Record<string,string>={Biology:'green',Mathematics:'blue',Literature:'purple',Personal:'blue'};
 const NEW_COURSE='__new_course__';
 export const minuteValue = (s:string) => {const [h,m]=s.split(':').map(Number);return h*60+m;};
+/** Evaluated per render: a module-level constant would go stale past midnight. */
+const todayLocal=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 export type FocusLog = { id:string; date:string; minutes:number };
-export default function PlanEditor({draft,blocks,onSave,onCancel,live=false,knownSubjects=[],usedColors=[],logs=[],onEditSession,onDeleteSession}:{live?:boolean;draft:EditorDraft;blocks:PlanBlock[];knownSubjects?:string[];usedColors?:SubjectColor[];logs?:FocusLog[];onSave:(block:PlanBlock)=>void | Promise<void>;onCancel:()=>void;onEditSession?:(sessionId:string,minutes:number)=>Promise<void>;onDeleteSession?:(sessionId:string)=>Promise<void>}) {
+export default function PlanEditor({draft,blocks,onSave,onCancel,live=false,knownSubjects=[],usedColors=[],logs=[],onEditSession,onDeleteSession,onAddSession}:{live?:boolean;draft:EditorDraft;blocks:PlanBlock[];knownSubjects?:string[];usedColors?:SubjectColor[];logs?:FocusLog[];onSave:(block:PlanBlock)=>void | Promise<void>;onCancel:()=>void;onEditSession?:(sessionId:string,minutes:number)=>Promise<void>;onDeleteSession?:(sessionId:string)=>Promise<void>;onAddSession?:(date:string,minutes:number)=>Promise<void>}) {
  const [title,setTitle]=useState(draft.block?.title ?? '');
  const [subject,setSubject]=useState(draft.block?.external ? 'Personal' : draft.block?.subject ?? 'Personal');
  const [type,setType]=useState(draft.block?.external ? 'commitment' : 'study');
@@ -27,9 +29,13 @@ export default function PlanEditor({draft,blocks,onSave,onCancel,live=false,know
  const [logBusy,setLogBusy]=useState<string|null>(null);
  const [logError,setLogError]=useState('');
  const canEditLogs=!!onEditSession && !!onDeleteSession;
+ // Adding a session covers the case the timer was never started at all.
+ const [adding,setAdding]=useState(false);
+ const [addDate,setAddDate]=useState(todayLocal);
+ const [addMinutes,setAddMinutes]=useState('');
  const runLog=async(id:string,fn:()=>Promise<void>)=>{
   setLogBusy(id);setLogError('');
-  try{await fn();setEditingLog(null);}
+  try{await fn();if(id!=='add')setEditingLog(null);}
   catch(err){setLogError(err instanceof Error ? err.message : 'Could not update that session.');}
   finally{setLogBusy(null);}
  };
@@ -53,7 +59,7 @@ export default function PlanEditor({draft,blocks,onSave,onCancel,live=false,know
  {type==='study' && <label>Status<select aria-label="Status" value={state} onChange={e=>setState(e.target.value as PlanState)}><option value="Planned">Incomplete</option><option value="Completed">Completed</option><option value="Partially completed">Partially completed</option>{!live && <option value="Missed">Missed</option>}{state==='Proposal' && <option value="Proposal">Proposal</option>}</select></label>}
  {draft.block?.actualSeconds ? <p className={styles.editorNote}>{Math.round(draft.block.actualSeconds/60)} minutes worked will be kept. Marking incomplete removes completion credit, not actual study time.</p> : null}
  {hasTime && collisions.length>0 && <p className={styles.overlapNotice}>Overlaps {collisions.map(b=>b.title).join(', ')}. You can save it alongside these blocks.</p>}
- {logs.length>0 && <section className={styles.focusLog} aria-label="Past focus sessions"><h3>Past sessions</h3><ul>{logs.slice(0,6).map(l=>{
+ {(logs.length>0 || (live && !!onAddSession)) && <section className={styles.focusLog} aria-label="Past focus sessions"><h3>Past sessions</h3><ul>{logs.slice(0,6).map(l=>{
   const day=new Date(`${l.date}T00:00:00`).toLocaleDateString(undefined,{month:'short',day:'numeric'});
   const busy=logBusy===l.id;
   if(canEditLogs && editingLog===l.id) return <li key={l.id} className={styles.logEditing}>
@@ -80,7 +86,14 @@ export default function PlanEditor({draft,blocks,onSave,onCancel,live=false,know
     }}>{busy ? '…' : 'Delete'}</button>
    </span>}
   </li>;
- })}</ul>{logError && <p role="alert" className={styles.editorNote}>{logError}</p>}{logs.length>6 && <small>{logs.length-6} earlier {logs.length-6===1 ? 'session' : 'sessions'} not shown.</small>}<small>{logs.reduce((n,l)=>n+l.minutes,0)} minutes recorded on this task.</small>{canEditLogs && <small>Slept with the timer running? Correct the minutes or delete the session.</small>}</section>}
+ })}</ul>{logError && <p role="alert" className={styles.editorNote}>{logError}</p>}{logs.length>6 && <small>{logs.length-6} earlier {logs.length-6===1 ? 'session' : 'sessions'} not shown.</small>}{logs.length>0 && <><small>{logs.reduce((n,l)=>n+l.minutes,0)} minutes recorded on this task.</small>{canEditLogs && <small>Slept with the timer running? Correct the minutes or delete the session.</small>}</>}{logs.length===0 && <small>No study time recorded on this task yet.</small>}{onAddSession && (adding ? <div className={styles.logAdd}>
+  <label>Date<input type="date" max={todayLocal()} value={addDate} onChange={e=>setAddDate(e.target.value)}/></label>
+  <label>Minutes<input type="number" min={1} max={1440} step={1} autoFocus value={addMinutes} placeholder="45" onChange={e=>setAddMinutes(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setAdding(false);}}}/></label>
+  <div className={styles.logAddButtons}>
+   <button type="button" disabled={logBusy==='add' || !addDate || addMinutes.trim()==='' || Number(addMinutes)<1 || Number(addMinutes)>1440} onClick={()=>void runLog('add',async()=>{await onAddSession(addDate,Math.round(Number(addMinutes)));setAdding(false);setAddMinutes('');})}>{logBusy==='add' ? 'Adding…' : 'Add session'}</button>
+   <button type="button" disabled={logBusy==='add'} aria-label="Cancel adding a session" onClick={()=>setAdding(false)}>Cancel</button>
+  </div>
+ </div> : <button type="button" className={styles.logAddOpen} onClick={()=>{setLogError('');setAdding(true);setAddDate(todayLocal());setAddMinutes('');}}>Forgot to start the timer? Add a session</button>)}</section>}
  {error && <p role="alert">{error}</p>}
  <div className={styles.editorButtons}><button type="button" onClick={onCancel}>Cancel</button><button disabled={saving} type="submit">{saving ? "Saving…" : "Save block"}</button></div>
  </form></section>;

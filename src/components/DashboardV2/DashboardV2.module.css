@@ -215,6 +215,13 @@
 .focusLog .logInput{width:66px;margin-left:auto;padding:3px 6px;min-height:24px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text-primary);font:inherit;font-size:11px;font-variant-numeric:tabular-nums;text-align:right}
 .logUnit{flex-shrink:0;font-size:10px}
 .focusLog .logEditing button{padding:3px 8px;min-height:24px;font-size:10px}
+.focusLog .logAddOpen{margin-top:8px;width:100%;background:transparent;border:1px dashed var(--border);color:var(--text-secondary);font-size:11px;padding:7px;min-height:30px}
+.focusLog .logAddOpen:hover{border-style:solid;color:var(--text-primary);background:var(--bg-tertiary)}
+.logAdd{margin-top:8px;padding:10px;border:1px solid var(--border);border-radius:7px;background:var(--bg);display:grid;gap:8px}
+.logAdd label{display:flex;flex-direction:column;gap:4px;font-size:10px;color:var(--text-secondary)}
+.logAdd input{min-height:28px;padding:4px 7px;border:1px solid var(--border);border-radius:5px;background:var(--bg-secondary);color:var(--text-primary);font:inherit;font-size:11px}
+.logAddButtons{display:flex;gap:6px;justify-content:flex-end}
+.focusLog .logAddButtons button{padding:4px 10px;min-height:26px;font-size:10px}
 
 /* The block body is a button now; it must not inherit the page button chrome. */
 .block > .blockBody{background:none;border:none;padding:0;min-height:0;text-align:left;display:block;cursor:pointer;border-radius:5px}

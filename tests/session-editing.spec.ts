@@ -171,3 +171,66 @@ test('deleting a session invalidates the Insights cache', async ({ page }) => {
  await page.getByRole('button',{name:'Insights',exact:true}).click();
  await expect(page.getByLabel('Insights summary')).toContainText('25m');
 });
+
+const today=date;
+
+test('a session can be added when the timer was never started',async({page})=>{
+ const state=await setup(page);
+ await openEditor(page);
+ await expect(logs(page)).toContainText('847 minutes recorded on this task.');
+
+ await page.getByRole('button',{name:/Forgot to start the timer/}).click();
+ await page.getByLabel('Minutes',{exact:true}).fill('45');
+ await page.getByRole('button',{name:'Add session',exact:true}).click();
+
+ await expect(logs(page)).toContainText('892 minutes recorded on this task.');
+ const added=state.tables.timer_sessions.find(r=>r.id!=='slept' && r.id!=='real');
+ expect(added?.duration_seconds).toBe(45*60);
+ expect(added?.task_text).toBe('Cell review');
+ expect(added?.subject_id).toBe('biology');
+ expect(added?.date).toBe(today);
+});
+
+test('an added session sits at the block\'s planned start, not an arbitrary hour',async({page})=>{
+ const state=await setup(page);
+ await openEditor(page);
+ await page.getByRole('button',{name:/Forgot to start the timer/}).click();
+ await page.getByLabel('Minutes',{exact:true}).fill('30');
+ await page.getByRole('button',{name:'Add session',exact:true}).click();
+ await expect(logs(page)).toContainText('877 minutes recorded');
+
+ // The block is planned 09:00-09:45, so the entry belongs at 09:00 rather than
+ // defaulting to noon and skewing Peak study hours.
+ const added=state.tables.timer_sessions.find(r=>r.id!=='slept' && r.id!=='real')!;
+ expect(new Date(String(added.start_time)).getHours()).toBe(9);
+ expect(new Date(String(added.end_time)).getTime()-new Date(String(added.start_time)).getTime()).toBe(30*60*1000);
+});
+
+test('the add row can be cancelled and writes nothing',async({page})=>{
+ const state=await setup(page);
+ await openEditor(page);
+ await page.getByRole('button',{name:/Forgot to start the timer/}).click();
+ await page.getByLabel('Minutes',{exact:true}).fill('45');
+ await page.getByRole('button',{name:'Cancel adding a session'}).click();
+
+ await expect(logs(page)).toContainText('847 minutes recorded on this task.');
+ expect(state.tables.timer_sessions).toHaveLength(2);
+});
+
+test('adding a session invalidates the Insights cache',async({page})=>{
+ await setup(page);
+ await page.goto('/insights');
+ await expect(page.getByLabel('Insights summary')).toContainText('14h 7m');
+ await page.getByRole('button',{name:'Dashboard',exact:true}).click();
+
+ await page.getByRole('button',{name:'Edit plan',exact:true}).click();
+ await page.getByRole('button',{name:'Edit: Cell review',exact:true}).click();
+ await expect(logs(page)).toBeVisible();
+ await page.getByRole('button',{name:/Forgot to start the timer/}).click();
+ await page.getByLabel('Minutes',{exact:true}).fill('60');
+ await page.getByRole('button',{name:'Add session',exact:true}).click();
+ await expect(logs(page)).toContainText('907 minutes recorded');
+
+ await page.getByRole('button',{name:'Insights',exact:true}).click();
+ await expect(page.getByLabel('Insights summary')).toContainText('15h 7m');
+});

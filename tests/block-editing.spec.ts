@@ -72,10 +72,17 @@ test('the editor lists past focus sessions for the task', async ({ page }) => {
   await expect(log).toContainText('70 minutes recorded');
 });
 
-test('a task with no recorded focus shows no past-sessions section', async ({ page }) => {
+test('a task with no recorded focus offers to add one rather than listing sessions', async ({ page }) => {
   await setup(page);
   await page.goto('/dashboard');
   await page.getByRole('button', { name: 'Edit: Cell review' }).click();
   await expect(page.getByLabel('Block editor', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('Past focus sessions')).toHaveCount(0);
+  // The section now renders empty so a session can be entered by hand when the
+  // timer was never started; it must not imply any time was recorded.
+  const log = page.getByLabel('Past focus sessions');
+  await expect(log).toBeVisible();
+  await expect(log).toContainText('No study time recorded on this task yet.');
+  await expect(log).not.toContainText('minutes recorded on this task.');
+  await expect(log.getByRole('listitem')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Forgot to start the timer/ })).toBeVisible();
 });
