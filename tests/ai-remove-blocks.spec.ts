@@ -9,11 +9,12 @@ const off=(n:number)=>{const d=new Date();d.setDate(d.getDate()+n);return d;};
 const at=(n:number,t:string)=>{const d=off(n);const [h,m]=t.split(':').map(Number);d.setHours(h,m,0,0);return d.toISOString();};
 const TOM=key(off(1));
 
-type Opts={scheduled?:boolean;logged?:boolean};
+type Opts={scheduled?:boolean;logged?:boolean;twice?:boolean};
 async function setup(page:Page,opts:Opts){
  const st={
   todos:[{id:'quiz',user_id:account.id,text:'Quiz 2 Study',subject_id:'cs',status:'nothing',date:TOM}] as Record<string,unknown>[],
-  sessions:(opts.scheduled?[{id:'quiz-slot',user_id:account.id,todo_id:'quiz',date:TOM,start_time:at(1,'18:00'),end_time:at(1,'19:00')}]:[]) as Record<string,unknown>[],
+  sessions:(opts.scheduled?[{id:'quiz-slot',user_id:account.id,todo_id:'quiz',date:TOM,start_time:at(1,'18:00'),end_time:at(1,'19:00')},
+    ...(opts.twice?[{id:'quiz-slot-2',user_id:account.id,todo_id:'quiz',date:key(off(2)),start_time:at(2,'18:00'),end_time:at(2,'19:00')}]:[])]:[]) as Record<string,unknown>[],
   timers:(opts.logged?[{id:'log1',user_id:account.id,subject_id:'cs',subject_name:'CS 61A',task_text:'Quiz 2 Study',date:key(off(-1)),start_time:at(-1,'18:00'),duration_seconds:40*60}]:[]) as Record<string,unknown>[],
   deletes:[] as string[],
  };
@@ -96,5 +97,26 @@ test('a task with no recorded time offers no choice about it', async ({ page }) 
  await setup(page,{scheduled:true});
  await propose(page);
  await expect(page.getByText('Delete from plan')).toBeVisible();
+ await expect(page.getByRole('checkbox',{name:/Also delete/})).toHaveCount(0);
+});
+
+test('deleting one block of a task scheduled twice keeps the other block', async ({ page }) => {
+ // Deleting the task would silently take its other blocks with it; the student
+ // asked for this block, not the whole task.
+ const st=await setup(page,{scheduled:true,twice:true});
+ await propose(page);
+ await expect(page.getByText('the task keeps 1 other block')).toBeVisible();
+ await page.getByRole('button',{name:'Accept',exact:true}).click();
+ await expect.poll(()=>st.deletes).toContain('todo_sessions:quiz-slot');
+ expect(st.todos).toHaveLength(1);                        // the task survives
+ expect(st.sessions.map(s=>s.id)).toEqual(['quiz-slot-2']);
+ expect(st.deletes.some(d=>d==='todos:quiz')).toBe(false);
+});
+
+test('a task scheduled twice offers no choice about recorded time', async ({ page }) => {
+ // Nothing is being deleted for good, so there is nothing to ask about.
+ await setup(page,{scheduled:true,twice:true,logged:true});
+ await propose(page);
+ await expect(page.getByText('the task keeps 1 other block')).toBeVisible();
  await expect(page.getByRole('checkbox',{name:/Also delete/})).toHaveCount(0);
 });
