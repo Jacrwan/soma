@@ -1,14 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { useSubscription, startCheckout } from '../../lib/subscription';
+import { useSubscription, startCheckout, requestStudentVerification, refreshSubscription } from '../../lib/subscription';
+import { price, perMonth, annualSavings, studentSavings } from '../../lib/pricing';
 import TrialSetupModal from '../Trial/TrialSetupModal';
 import styles from './PricingPage.module.css';
-
-const MONTHLY_PRICE    = '$4.99';
-const ANNUAL_PRICE     = '$49.99';
-const ANNUAL_PER_MONTH = '$4.17';
-const ANNUAL_SAVINGS   = '17%';
 
 function CheckIcon() {
   return (
@@ -45,6 +41,40 @@ export default function PricingPage() {
   const [showModal, setShowModal] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
   const [backTo, setBackTo]     = useState('/');
+  const [schoolEmail, setSchoolEmail] = useState('');
+  const [verifyState, setVerifyState] = useState<'idle' | 'sending' | 'sent'>('idle');
+  const [verifyNote, setVerifyNote]   = useState<string | null>(null);
+
+  // A verified student is charged the student price; the server decides that,
+  // from the address it confirmed, not from anything chosen here.
+  const tier = subscription.student ? 'student' : 'base';
+  const MONTHLY_PRICE    = price(tier, 'monthly');
+  const ANNUAL_PRICE     = price(tier, 'annual');
+  const ANNUAL_PER_MONTH = perMonth(tier);
+  const ANNUAL_SAVINGS   = `${annualSavings(tier)}%`;
+
+  // Where the emailed link lands.
+  useEffect(() => {
+    const result = new URLSearchParams(window.location.search).get('student');
+    if (!result) return;
+    if (result === 'verified') { setVerifyNote('Your school email is confirmed — the student price is yours.'); void refreshSubscription(); }
+    if (result === 'invalid')  setVerifyNote('That link has expired. Send yourself a new one.');
+    if (result === 'error')    setVerifyNote("We couldn't confirm that link. Please try again.");
+    window.history.replaceState({}, '', '/pricing');
+  }, []);
+
+  async function sendVerification(e: React.FormEvent) {
+    e.preventDefault();
+    setVerifyState('sending'); setVerifyNote(null);
+    try {
+      await requestStudentVerification(schoolEmail.trim());
+      setVerifyState('sent');
+      setVerifyNote(`Check ${schoolEmail.trim()} for a link. It works for the next hour.`);
+    } catch (err) {
+      setVerifyState('idle');
+      setVerifyNote(err instanceof Error ? err.message : 'Could not send the email.');
+    }
+  }
 
   useEffect(() => {
     document.title = 'Pricing | Soma';
@@ -200,6 +230,38 @@ export default function PricingPage() {
               </div>
             ))}
           </div>
+        </div>
+
+        <div className={styles.student}>
+          {subscription.student ? (
+            <p className={styles.studentOn}>Student price applied — you save {studentSavings('annual')}% on the year plan.</p>
+          ) : isLoggedIn ? (
+            <>
+              <p className={styles.studentLead}>
+                <strong>Students save {studentSavings('annual')}% on the year plan</strong> ({studentSavings('monthly')}% monthly).
+                Confirm your school email to get {price('student', 'monthly')}/mo or {price('student', 'annual')}/yr.
+              </p>
+              <form className={styles.studentForm} onSubmit={sendVerification}>
+                <label className={styles.srOnly} htmlFor="school-email">School email address</label>
+                <input
+                  id="school-email"
+                  type="email"
+                  value={schoolEmail}
+                  placeholder="you@university.edu"
+                  onChange={e => { setSchoolEmail(e.target.value); setVerifyState('idle'); }}
+                  disabled={verifyState === 'sending'}
+                />
+                <button type="submit" disabled={!schoolEmail.trim() || verifyState === 'sending'}>
+                  {verifyState === 'sending' ? 'Sending…' : 'Send link'}
+                </button>
+              </form>
+            </>
+          ) : (
+            <p className={styles.studentLead}>
+              <strong>Students save {studentSavings('annual')}% on the year plan.</strong> Sign in and confirm your school email to get it.
+            </p>
+          )}
+          {verifyNote && <p role="status" className={styles.studentNote}>{verifyNote}</p>}
         </div>
 
         <div className={styles.ctaWrap}>

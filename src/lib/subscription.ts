@@ -25,6 +25,8 @@ export interface SubscriptionInfo {
   extensionEndsAt: string | null;
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
+  /** The account has a confirmed school email, so it is charged the student price. */
+  student: boolean;
 }
 
 export function hasAIAccess(status: SubscriptionStatus): boolean {
@@ -49,6 +51,7 @@ const EMPTY: SubscriptionInfo = {
   extensionEndsAt: null,
   currentPeriodEnd: null,
   cancelAtPeriodEnd: false,
+  student: false,
 };
 
 async function stripePost(action: string, token: string, body?: Record<string, unknown>) {
@@ -117,6 +120,7 @@ async function loadSubscription(session: Session | null): Promise<void> {
         extensionEndsAt: data.extensionEndsAt ?? null,
         currentPeriodEnd: data.currentPeriodEnd ?? null,
         cancelAtPeriodEnd: data.cancelAtPeriodEnd ?? false,
+        student: data.student === true,
         error: null,
       });
     } catch {
@@ -221,6 +225,30 @@ export async function startCheckout(plan: 'monthly' | 'annual' = 'monthly'): Pro
   }
   const { url } = await res.json() as { url: string };
   window.location.href = url;
+}
+
+/**
+ * Ask for a verification link at a school address. The student price follows
+ * the address the server confirms, never anything sent from here.
+ */
+export async function requestStudentVerification(email: string): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error('Not authenticated');
+
+  const res = await fetch('/api/student', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'request', email }),
+  });
+  if (res.ok) return;
+  const body = await res.json().catch(() => ({})) as { error?: string };
+  throw new Error({
+    not_a_school_email: 'That does not look like a school email address. Use the one your school gave you.',
+    rate_limit: 'Too many verification emails. Try again in an hour.',
+    email_failed: "We couldn't send that email. Please try again in a minute.",
+    verification_not_configured: 'Student verification is not available yet. Please try again later.',
+  }[body.error ?? ''] ?? 'Could not send the verification email. Please try again.');
 }
 
 export async function openBillingPortal(): Promise<void> {

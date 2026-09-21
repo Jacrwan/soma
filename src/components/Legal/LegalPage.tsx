@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { price, perMonth, annualSavings, studentSavings } from '../../lib/pricing';
 import styles from './LegalPage.module.css';
 
 export type LegalType =
@@ -432,7 +433,9 @@ function Terms() {
         <p>
           Soma has a free tier that provides access to day view, canvas sync, calendar, and
           insights. AI features require <strong>Soma Premium</strong>, available at{' '}
-          <strong>$4.99 USD per month</strong> or <strong>$49.99 USD per year</strong> ($4.17/mo).
+          <strong>{price('base', 'monthly')} USD per month</strong> or <strong>{price('base', 'annual')} USD per year</strong> ({perMonth('base')}/mo).
+          Students who confirm a school email address pay <strong>{price('student', 'monthly')} USD per month</strong> or{' '}
+          <strong>{price('student', 'annual')} USD per year</strong> ({perMonth('student')}/mo).
           Soma Premium begins with a <strong>30-day free trial</strong> — no charge during the trial
           period. After the trial, your subscription renews automatically on your chosen billing
           cycle until you cancel. See our{' '}
@@ -620,13 +623,23 @@ function Billing() {
             <tbody>
               <tr>
                 <td>Monthly</td>
-                <td>$4.99 / month</td>
+                <td>{price('base', 'monthly')} / month</td>
                 <td>—</td>
               </tr>
               <tr>
                 <td>Annual</td>
-                <td>$49.99 / year</td>
-                <td>$4.17 / month (save 17%)</td>
+                <td>{price('base', 'annual')} / year</td>
+                <td>{perMonth('base')} / month (save {annualSavings('base')}%)</td>
+              </tr>
+              <tr>
+                <td>Monthly (verified student)</td>
+                <td>{price('student', 'monthly')} / month</td>
+                <td>save {studentSavings('monthly')}%</td>
+              </tr>
+              <tr>
+                <td>Annual (verified student)</td>
+                <td>{price('student', 'annual')} / year</td>
+                <td>{perMonth('student')} / month (save {studentSavings('annual')}%)</td>
               </tr>
             </tbody>
           </table>

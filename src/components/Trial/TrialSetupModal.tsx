@@ -1,13 +1,9 @@
 import { useState } from 'react';
-import { startCheckout } from '../../lib/subscription';
+import { startCheckout, useSubscription } from '../../lib/subscription';
+import { PRICES, perMonth, annualSavings } from '../../lib/pricing';
 import styles from './TrialSetupModal.module.css';
 
 type Plan = 'monthly' | 'annual';
-
-const MONTHLY_PRICE = 4.99;
-const ANNUAL_PRICE  = 49.99;
-const ANNUAL_MONTHLY_EQUIV = (ANNUAL_PRICE / 12).toFixed(2);            // "4.17"
-const ANNUAL_SAVINGS = Math.round((1 - ANNUAL_PRICE / (MONTHLY_PRICE * 12)) * 100);   // 17
 
 interface Props {
   onComplete: () => void;
@@ -16,6 +12,8 @@ interface Props {
 
 export default function TrialSetupModal({ onSkip }: Props) {
   const [plan, setPlan]     = useState<Plan>('monthly');
+  // Confirmed students see the price they will actually be charged.
+  const tier = useSubscription().student ? 'student' : 'base';
   const [loading, setLoading] = useState(false);
   const [error, setError]   = useState('');
 
@@ -52,7 +50,7 @@ export default function TrialSetupModal({ onSkip }: Props) {
               onClick={() => setPlan('monthly')}
             >
               <span className={styles.planName}>Monthly</span>
-              <span className={styles.planPrice}>${MONTHLY_PRICE}</span>
+              <span className={styles.planPrice}>${PRICES[tier].monthly}</span>
               <span className={styles.planPriceSub}>per month</span>
             </button>
             <button
@@ -60,9 +58,9 @@ export default function TrialSetupModal({ onSkip }: Props) {
               className={`${styles.planCard}${plan === 'annual' ? ` ${styles.planCardActive}` : ''}`}
               onClick={() => setPlan('annual')}
             >
-              <span className={styles.planBadge}>SAVE {ANNUAL_SAVINGS}%</span>
+              <span className={styles.planBadge}>SAVE {annualSavings(tier)}%</span>
               <span className={styles.planName}>Annual</span>
-              <span className={styles.planPrice}>${ANNUAL_MONTHLY_EQUIV}</span>
+              <span className={styles.planPrice}>{perMonth(tier)}</span>
               <span className={styles.planPriceSub}>per month · billed yearly</span>
             </button>
           </div>

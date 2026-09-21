@@ -11,6 +11,7 @@ import { validateProposal } from '../../lib/aiPlanning';
 import { listDocuments } from '../../lib/documents';
 import { buildDocumentsSection } from '../../lib/aiContext';
 import { useSubscription, hasAIAccess, startCheckout } from '../../lib/subscription';
+import { price } from '../../lib/pricing';
 import { ChatMessage, ChatSession, AiTodo } from '../../types';
 import { SkeletonBlock } from '../UI/Skeleton';
 import TrialSetupModal from '../Trial/TrialSetupModal';
@@ -456,6 +457,7 @@ function ThinkingIndicator() {
 // ── Locked screen ───────────────────────────────────────────────────────────
 
 function AILockedScreen({ status }: { status: string }) {
+  const monthly = `${price(useSubscription().student ? 'student' : 'base', 'monthly')}/mo`;
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -480,13 +482,13 @@ function AILockedScreen({ status }: { status: string }) {
           {starIcon}
           <h2 className={styles.lockedTitle}>Your free trial has ended</h2>
           <p className={styles.lockedDesc}>
-            Add a payment method to get <strong>7 more days free</strong>, then $4.99/mo after that. Cancel anytime.
+            Add a payment method to get <strong>7 more days free</strong>, then {monthly} after that. Cancel anytime.
           </p>
           {error && <p className={styles.lockedError}>{error}</p>}
           <button className={styles.lockedBtn} onClick={handleExtend} disabled={loading}>
             {loading ? 'Loading…' : 'Get 7 more days free'}
           </button>
-          <p className={styles.lockedMeta}>$4.99/mo after trial · Cancel anytime</p>
+          <p className={styles.lockedMeta}>{monthly} after trial · Cancel anytime</p>
         </div>
       </div>
     );
@@ -503,7 +505,7 @@ function AILockedScreen({ status }: { status: string }) {
             Subscribe to Soma Premium to continue using AI features.
           </p>
           <button className={styles.lockedBtn} onClick={() => navigate('/pricing')}>
-            Subscribe — $4.99/mo
+            Subscribe — {monthly}
           </button>
           <p className={styles.lockedMeta}>Cancel anytime</p>
         </div>
@@ -533,7 +535,7 @@ function AILockedScreen({ status }: { status: string }) {
           <button className={styles.lockedBtn} onClick={() => setShowModal(true)}>
             Start free trial
           </button>
-          <p className={styles.lockedMeta}>$4.99/mo after trial · Cancel anytime</p>
+          <p className={styles.lockedMeta}>{monthly} after trial · Cancel anytime</p>
         </div>
       </div>
     </>

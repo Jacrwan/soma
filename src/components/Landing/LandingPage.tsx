@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { price } from '../../lib/pricing';
 
 const BRIEF_SCRIPT = [
   { kind: 'lead', text: 'You have two assignments due today that need attention.' },
@@ -1280,7 +1281,7 @@ export default function LandingPage() {
           <h2 className="ln-h2">Questions students ask</h2>
           <div className="ln-faq-grid">
             {[
-              ['Is Soma free?', "The core features (day view, Canvas sync, calendar, time tracking, and insights) are free forever. AI features (chat, schedule generation, study materials) have a 21-day free trial, then $4.99/month."],
+              ['Is Soma free?', "The core features (day view, Canvas sync, calendar, time tracking, and insights) are free forever. AI features (chat, schedule generation, study materials) have a 21-day free trial, then " + price('base', 'monthly') + "/month — or " + price('student', 'monthly') + "/month for students with a confirmed school email."],
               ["Does it work with my school's Canvas?", 'Yes. Soma works with any school that uses Canvas LMS. Paste your Canvas calendar feed URL and your assignments sync automatically.'],
               ['Can I use it in high school?', 'Yes. Soma is built for both high school and college, including AP classes, honors courses, and anything else running on Canvas.'],
               ['What does the AI actually do?', 'It reads your deadlines and free hours, then builds a study schedule for your day. It can also generate study notes, practice quizzes, slide decks, and essay outlines.'],

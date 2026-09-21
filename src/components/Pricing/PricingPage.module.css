@@ -287,3 +287,20 @@
 }
 
 .loginNote a:hover { text-decoration: underline; }
+
+/* Student verification: confirm a school address, get the student price. */
+.student{grid-column:1/-1;width:100%;max-width:420px;margin:18px auto 0;padding:18px 20px;text-align:center;
+  background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.09);border-radius:14px}
+.studentLead{font-size:13px;line-height:1.65;color:#9a9a96;margin:0}
+.studentLead strong{color:#e8e8e4;font-weight:600}
+.studentOn{font-size:13px;line-height:1.65;color:#e8e8e4;font-weight:600;margin:0}
+.studentForm{display:flex;gap:8px;justify-content:center;margin-top:13px;flex-wrap:wrap}
+.studentForm input{flex:1 1 200px;min-width:0;padding:9px 12px;font-size:13px;color:#e8e8e4;
+  background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.12);border-radius:9px}
+.studentForm input::placeholder{color:#6b6b6b}
+.studentForm input:focus{outline:2px solid #5b6af0;outline-offset:1px}
+.studentForm button{padding:9px 16px;font-size:13px;font-weight:600;color:#fff;background:#5b6af0;
+  border:none;border-radius:9px;cursor:pointer}
+.studentForm button:disabled{opacity:.45;cursor:not-allowed}
+.studentNote{font-size:12px;line-height:1.6;color:#9a9a96;margin:11px 0 0}
+.srOnly{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}

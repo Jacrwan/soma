@@ -10,6 +10,7 @@ import CourseSiteImport from './CourseSiteImport';
 import { supabase } from '../../lib/supabase';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, openBillingPortal, hasAIAccess, getGoogleCalendarLimit, GOOGLE_CALENDAR_LIMIT_PREMIUM } from '../../lib/subscription';
+import { price } from '../../lib/pricing';
 import { getIcalAssignments } from '../../lib/canvas';
 import {
   listConnections, listCalendarsForConnection, updateSelectedCalendars, disconnectConnection, startConnectFlow,
@@ -823,7 +824,7 @@ export default function SettingsTab() {
 
               {(subscription.status === 'trial_expired' || subscription.status === 'trial_extension_expired') && (
                 <button className={styles.subBtnPrimary} onClick={() => navigate('/pricing')}>
-                  {subscription.status === 'trial_expired' ? 'Get 7 more days free' : 'Subscribe — $4.99/mo'}
+                  {subscription.status === 'trial_expired' ? 'Get 7 more days free' : `Subscribe — ${price(subscription.student ? 'student' : 'base', 'monthly')}/mo`}
                 </button>
               )}
 

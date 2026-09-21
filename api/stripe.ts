@@ -3,6 +3,24 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { isRateLimited } from './_rateLimit';
 
+/**
+ * Which Stripe price a user gets. The student rate follows the address they
+ * verified, recorded in app_metadata by the server; nothing the browser sends
+ * can select it. A verified student always gets the cheaper price.
+ */
+export function isVerifiedStudent(user: { app_metadata?: Record<string, unknown> | null } | null | undefined): boolean {
+  return typeof user?.app_metadata?.student_verified_at === 'string';
+}
+
+export function priceIdFor(plan: 'monthly' | 'annual', student: boolean, env: NodeJS.ProcessEnv = process.env): string {
+  const id = student
+    ? (plan === 'annual' ? env.STRIPE_PRICE_ID_STUDENT_YEARLY : env.STRIPE_PRICE_ID_STUDENT_MONTHLY)
+    : (plan === 'annual' ? env.STRIPE_PRICE_ID_YEARLY : env.STRIPE_PRICE_ID_MONTHLY);
+  // A student whose price is not configured falls back to the ordinary one
+  // rather than being unable to subscribe at all.
+  return id || (plan === 'annual' ? env.STRIPE_PRICE_ID_YEARLY : env.STRIPE_PRICE_ID_MONTHLY) || '';
+}
+
 const TRIAL_DAYS   = 21;
 const TRIAL_MS     = TRIAL_DAYS * 86_400_000;
 const EXTENSION_MS = 7 * 86_400_000;
@@ -56,7 +74,8 @@ export async function getSubscription(user: any, admin: any, res: any) {
     .maybeSingle();
 
   if (error) return res.status(503).json({ error: 'Could not verify subscription. Please try again.' });
-  if (!sub) return res.json({ status: 'free' });
+  const student = isVerifiedStudent(user);
+  if (!sub) return res.json({ status: 'free', student });
 
   const status = computeStatus(sub);
 
@@ -72,6 +91,7 @@ export async function getSubscription(user: any, admin: any, res: any) {
 
   return res.json({
     status,
+    student,
     plan: sub.plan ?? 'monthly',
     trialStart: sub.trial_start,
     trialEndsAt,
@@ -123,12 +143,11 @@ async function createSetupIntent(user: any, admin: any, stripe: Stripe, res: any
 }
 
 async function createSubscription(user: any, admin: any, stripe: Stripe, body: Record<string, unknown>, res: any) {
-  const monthlyPriceId = process.env.STRIPE_PRICE_ID_MONTHLY ?? '';
-  const annualPriceId  = process.env.STRIPE_PRICE_ID_YEARLY ?? '';
-  if (!monthlyPriceId || !annualPriceId) return res.status(500).json({ error: 'Price IDs not configured' });
+  const plan = body.plan === 'annual' ? 'annual' : 'monthly';
+  const priceId = priceIdFor(plan, isVerifiedStudent(user));
+  if (!priceId) return res.status(500).json({ error: 'Price IDs not configured' });
 
   const paymentMethodId = typeof body.paymentMethodId === 'string' ? body.paymentMethodId : '';
-  const plan = body.plan === 'annual' ? 'annual' : 'monthly';
   if (!paymentMethodId) return res.status(400).json({ error: 'paymentMethodId required' });
 
   const { data: sub } = await admin
@@ -153,7 +172,7 @@ async function createSubscription(user: any, admin: any, stripe: Stripe, body: R
   const trialEnd = Math.floor(Date.now() / 1000) + TRIAL_DAYS * 86_400;
   const subscription = await stripe.subscriptions.create({
     customer: customerId,
-    items: [{ price: plan === 'annual' ? annualPriceId : monthlyPriceId }],
+    items: [{ price: priceId }],
     trial_end: trialEnd,
     default_payment_method: paymentMethodId,
     metadata: { supabase_user_id: user.id, plan },
@@ -181,9 +200,7 @@ async function createSubscription(user: any, admin: any, stripe: Stripe, body: R
 
 async function createCheckoutSession(user: any, admin: any, stripe: Stripe, body: Record<string, unknown>, req: any, res: any) {
   const plan = body.plan === 'annual' ? 'annual' : 'monthly';
-  const monthlyPriceId = process.env.STRIPE_PRICE_ID_MONTHLY ?? '';
-  const annualPriceId  = process.env.STRIPE_PRICE_ID_YEARLY ?? '';
-  const priceId = plan === 'annual' ? annualPriceId : monthlyPriceId;
+  const priceId = priceIdFor(plan, isVerifiedStudent(user));
   if (!priceId) return res.status(500).json({ error: 'Price ID not configured' });
 
   const { data: sub } = await admin
