@@ -5,10 +5,10 @@ import { useSubscription, startCheckout } from '../../lib/subscription';
 import TrialSetupModal from '../Trial/TrialSetupModal';
 import styles from './PricingPage.module.css';
 
-const MONTHLY_PRICE    = '$5.99';
-const ANNUAL_PRICE     = '$47.88';
-const ANNUAL_PER_MONTH = '$3.99';
-const ANNUAL_SAVINGS   = '33%';
+const MONTHLY_PRICE    = '$4.99';
+const ANNUAL_PRICE     = '$49.99';
+const ANNUAL_PER_MONTH = '$4.17';
+const ANNUAL_SAVINGS   = '17%';
 
 function CheckIcon() {
   return (
