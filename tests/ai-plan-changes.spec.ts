@@ -135,13 +135,16 @@ test('moving onto a block that stays put is still refused', async ({ page }) => 
   await expect(page.getByRole('log')).toContainText('overlaps');
 });
 
-test('remove unschedules a block but keeps the task', async ({ page }) => {
+test('remove deletes the block and the task behind it', async ({ page }) => {
+  // This used to only clear the block's time, so the task came straight back as
+  // an unscheduled "Any time" entry and nothing was removed.
   const state = await setup(page, { reply: 'Dropped physics for today.', blocks: [], changes: [{ action: 'remove', id: 's-phys' }] });
   await ask(page, 'skip physics');
-  await expect(page.getByText('Soma suggests removing this')).toBeVisible();
+  await expect(page.getByText('Soma suggests deleting this')).toBeVisible();
   await page.getByRole('button', { name: /Accept all \(1\)/ }).click();
   await expect.poll(() => state.deletes).toContain('todo_sessions:s-phys');
-  expect(state.db.todos.some(t => t.id === 't-phys')).toBe(true);
+  await expect.poll(() => state.deletes).toContain('todos:t-phys');
+  expect(state.db.todos.some(t => t.id === 't-phys')).toBe(false);
 });
 
 test('changes aimed at unknown blocks are rejected with a reason', async ({ page }) => {

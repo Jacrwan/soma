@@ -222,6 +222,9 @@
 .logAdd input{min-height:28px;padding:4px 7px;border:1px solid var(--border);border-radius:5px;background:var(--bg-secondary);color:var(--text-primary);font:inherit;font-size:11px}
 .logAddButtons{display:flex;gap:6px;justify-content:flex-end}
 .focusLog .logAddButtons button{padding:4px 10px;min-height:26px;font-size:10px}
+.dropLogged{flex-basis:100%;order:1;display:flex;align-items:center;gap:7px;font-size:10px;color:var(--text-secondary);cursor:pointer;user-select:none;padding-top:2px}
+.dropLogged input{flex-shrink:0;margin:0}
+.blockWithChoice{flex-wrap:wrap}
 
 /* The block body is a button now; it must not inherit the page button chrome. */
 .block > .blockBody{background:none;border:none;padding:0;min-height:0;text-align:left;display:block;cursor:pointer;border-radius:5px}
