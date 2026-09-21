@@ -236,16 +236,13 @@ export async function requestStudentVerification(email: string): Promise<void> {
   const token = session?.access_token;
   if (!token) throw new Error('Not authenticated');
 
-  const res = await fetch('/api/student', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'request', email }),
-  });
+  const res = await stripePost('verify-student', token, { email });
   if (res.ok) return;
   const body = await res.json().catch(() => ({})) as { error?: string };
   throw new Error({
     not_a_school_email: 'That does not look like a school email address. Use the one your school gave you.',
     rate_limit: 'Too many verification emails. Try again in an hour.',
+    'Too many requests': 'Too many verification emails. Try again in an hour.',
     email_failed: "We couldn't send that email. Please try again in a minute.",
     verification_not_configured: 'Student verification is not available yet. Please try again later.',
   }[body.error ?? ''] ?? 'Could not send the verification email. Please try again.');

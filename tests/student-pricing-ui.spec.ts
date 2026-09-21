@@ -12,10 +12,10 @@ async function visit(page: Page, { student }: { student: boolean }) {
     if (route.request().url().includes('/auth/v1/')) return route.fulfill({ json: account });
     return route.fulfill({ json: [] });
   });
-  await page.route('**/api/stripe', route => route.fulfill({ json: { status: 'free', student } }));
-  await page.route('**/api/student', route => {
-    requests.push(route.request().postDataJSON());
-    return route.fulfill({ json: { sent: true } });
+  await page.route('**/api/stripe', route => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    if (body?.action === 'verify-student') { requests.push(body); return route.fulfill({ json: { sent: true } }); }
+    return route.fulfill({ json: { status: 'free', student } });
   });
   await page.goto('/pricing');
   return requests;
@@ -40,13 +40,17 @@ test('asking for a link sends the address to the server and says where to look',
   await page.getByLabel('School email address').fill('me@berkeley.edu');
   await page.getByRole('button', { name: 'Send link' }).click();
   await expect(page.getByRole('status')).toContainText('me@berkeley.edu');
-  expect(requests).toEqual([{ action: 'request', email: 'me@berkeley.edu' }]);
+  expect(requests).toEqual([{ action: 'verify-student', email: 'me@berkeley.edu' }]);
 });
 
 test('a personal address is refused with an explanation, and nothing is unlocked', async ({ page }) => {
   await visit(page, { student: false });
-  await page.unroute('**/api/student');
-  await page.route('**/api/student', route => route.fulfill({ status: 400, json: { error: 'not_a_school_email' } }));
+  await page.unroute('**/api/stripe');
+  await page.route('**/api/stripe', route => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    if (body?.action === 'verify-student') return route.fulfill({ status: 400, json: { error: 'not_a_school_email' } });
+    return route.fulfill({ json: { status: 'free', student: false } });
+  });
   await page.getByLabel('School email address').fill('me@gmail.com');
   await page.getByRole('button', { name: 'Send link' }).click();
   await expect(page.getByRole('status')).toContainText('does not look like a school email');

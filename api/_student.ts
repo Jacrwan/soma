@@ -1,5 +1,6 @@
 /// <reference types="node" />
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createClient } from '@supabase/supabase-js';
 
 /**
  * Student verification: a student proves they hold a school address, and the
@@ -131,7 +132,7 @@ export function createStudentHandler(deps: StudentDeps) {
     if ((deps.limited ?? defaultLimited)(auth.userId)) { res.setHeader('Retry-After', '3600'); return res.status(429).json({ error: 'rate_limit' }); }
 
     const email = normaliseEmail(body.email as string);
-    const link = `${deps.appUrl()}/api/student?token=${encodeURIComponent(signClaim(secret, claimFor(auth.userId, email, now())))}`;
+    const link = `${deps.appUrl()}/api/stripe?token=${encodeURIComponent(signClaim(secret, claimFor(auth.userId, email, now())))}`;
     try { await deps.sendEmail(email, verificationEmail(link, email)); }
     catch { return res.status(502).json({ error: 'email_failed' }); }
     return res.status(200).json({ sent: true, email });
@@ -141,3 +142,56 @@ export function createStudentHandler(deps: StudentDeps) {
 function safeParse(value: string) {
   try { return JSON.parse(value); } catch { return {}; }
 }
+
+// ── Runtime wiring ───────────────────────────────────────────────────────────
+// Served by api/stripe.ts rather than its own file: this project's hosting plan
+// allows twelve serverless functions, and billing is where this belongs anyway.
+
+const APP_URL = 'https://somastudy.app';
+
+function admin() {
+  const url = process.env.VITE_SUPABASE_URL ?? '';
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+  if (!url || !key) return null;
+  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
+}
+
+export const studentHandler = createStudentHandler({
+  secret: () => process.env.STUDENT_VERIFY_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY || undefined,
+  appUrl: () => process.env.PUBLIC_APP_URL || APP_URL,
+
+  authorize: async (token: string) => {
+    const db = admin();
+    if (!db) return { ok: false as const, status: 503, error: 'server_not_configured' };
+    const { data: { user }, error } = await db.auth.getUser(token);
+    if (error || !user) return { ok: false as const, status: 401, error: 'invalid_token' };
+    return { ok: true as const, userId: user.id };
+  },
+
+  markVerified: async (userId: string, email: string) => {
+    const db = admin();
+    if (!db) throw new Error('server_not_configured');
+    const { error } = await db.auth.admin.updateUserById(userId, {
+      app_metadata: { student_email: email, student_verified_at: new Date().toISOString() },
+    });
+    if (error) throw new Error(error.message);
+  },
+
+  sendEmail: async (to: string, message: { subject: string; html: string; text: string }) => {
+    const key = process.env.RESEND_API_KEY ?? '';
+    if (!key) throw new Error('email_not_configured');
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      signal: AbortSignal.timeout(15_000),
+      headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        from: process.env.VERIFY_EMAIL_FROM || 'Soma <noreply@somastudy.app>',
+        to: [to],
+        subject: message.subject,
+        html: message.html,
+        text: message.text,
+      }),
+    });
+    if (!response.ok) throw new Error(`resend_${response.status}`);
+  },
+});

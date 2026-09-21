@@ -2,6 +2,7 @@
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { isRateLimited } from './_rateLimit';
+import { studentHandler } from './_student';
 
 /**
  * Which Stripe price a user gets. The student rate follows the address they
@@ -286,10 +287,16 @@ const RATE_LIMITS: Record<string, { max: number; windowMs: number }> = {
   'create-subscription':      { max: 10, windowMs: 60_000 },
   'create-checkout-session':  { max: 5,  windowMs: 60_000 },
   'create-billing-portal':    { max: 5,  windowMs: 60_000 },
+  'verify-student':           { max: 5,  windowMs: 3_600_000 },
 };
 
 export default async function handler(req: any, res: any) {
   if (applyCors(req, res)) return;
+  // The link in a student's verification email lands here.
+  if (req.method === 'GET' && req.query?.token) {
+    if (isRateLimited(req, 'stripe:student-confirm', { max: 20, windowMs: 60_000 })) return res.status(429).json({ error: 'Too many requests' });
+    return studentHandler(req, res);
+  }
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   let body = req.body as Record<string, unknown> | string | undefined;
@@ -323,6 +330,7 @@ export default async function handler(req: any, res: any) {
   if (authErr || !user) return res.status(401).json({ error: 'Invalid token' });
 
   if (action === 'get-subscription') return getSubscription(user, admin, res);
+  if (action === 'verify-student')  return studentHandler({ ...req, body: { action: 'request', email: body.email } }, res);
 
   const stripeKey = process.env.STRIPE_SECRET_KEY ?? '';
   if (!stripeKey) return res.status(500).json({ error: 'Stripe not configured' });
