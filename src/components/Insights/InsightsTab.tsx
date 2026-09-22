@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { summarizeInsights } from '../../lib/insights';
 import { useInsights } from '../../lib/useInsights';
-import { SkeletonBlock } from '../UI/Skeleton';
+import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './InsightsTab.module.css';
 
 const PEAK_HOURS = Array.from({ length: 18 }, (_, i) => i + 6); // 6am–11pm
@@ -112,7 +112,7 @@ function ChevronIcon({ direction }: { direction: 'left' | 'right' }) {
 function InsightsSkeleton() {
   const BAR_HEIGHTS = [55, 80, 40, 100, 70, 30, 90];
   return (
-    <div className={styles.page} role="status" aria-label="Loading insights" aria-busy="true">
+    <SkeletonPage label="Loading your insights…"><div className={styles.page}>
       <header className={styles.pageHeader}>
         <div>
           <SkeletonBlock width={110} height={32} />
@@ -192,7 +192,7 @@ function InsightsSkeleton() {
 
       </div>
       </div>
-    </div>
+    </div></SkeletonPage>
   );
 }
 

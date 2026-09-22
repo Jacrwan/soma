@@ -12,7 +12,7 @@ import { listDocuments } from '../../lib/documents';
 import { buildDocumentsSection } from '../../lib/aiContext';
 import { useSubscription, hasAIAccess, startCheckout } from '../../lib/subscription';
 import { ChatMessage, ChatSession, AiTodo } from '../../types';
-import { SkeletonBlock } from '../UI/Skeleton';
+import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import TrialSetupModal from '../Trial/TrialSetupModal';
 import styles from './AITab.module.css';
 
@@ -901,7 +901,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
 
   if (subscription.status === 'loading') {
     return (
-      <div className={styles.layout}>
+      <SkeletonPage label="Loading Soma…"><div className={styles.layout}>
         <div className={styles.sidebar}>
           <div className={styles.sidebarHeader}>
             <SkeletonBlock width={60} height={13} />
@@ -922,7 +922,7 @@ export default function AITab({ onSwitchToToday }: { onSwitchToToday: () => void
             <SkeletonBlock width={160} height={14} borderRadius={10} />
           </div>
         </div>
-      </div>
+      </div></SkeletonPage>
     );
   }
 

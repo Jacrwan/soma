@@ -71,7 +71,7 @@ test('first load stays in loading state until study data arrives', async ({ page
     await page.goto('/insights');
     await expect.poll(() => state.requests).toBeGreaterThan(0);
     await expect(page.getByRole('heading', { name: 'No study data yet' })).toHaveCount(0);
-    await expect(page.getByRole('status', { name: 'Loading insights' })).toBeVisible();
+    await expect(page.getByRole('status')).toContainText('Loading your insights…');
     state.release();
     await expect(summary(page)).toContainText('1h');
     expect(state.requests).toBe(1);
@@ -184,7 +184,7 @@ test('changing accounts never displays the previous account cached data', async 
         ...session, user: { ...session.user, id: '22222222-2222-4222-8222-222222222222' },
       });
     });
-    await expect(page.getByRole('status', { name: 'Loading insights' })).toBeVisible();
+    await expect(page.getByRole('status')).toContainText('Loading your insights…');
     await expect(summary(page)).toHaveCount(0);
     state.release();
     await expect(page.getByRole('heading', { name: 'No study data yet' })).toBeVisible();

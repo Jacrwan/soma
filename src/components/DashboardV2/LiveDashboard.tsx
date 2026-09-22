@@ -8,6 +8,7 @@ import { buildDocumentsSection, buildCanvasSection } from '../../lib/aiContext';
 import { getTimeFormat, formatClockRange } from '../../lib/timeFormat';
 import { listDocuments } from '../../lib/documents';
 import { sendMessage } from '../../lib/ai';
+import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './DashboardV2.module.css';
 
 import { dashboardChatFor, type DashboardChatMemory } from '../../lib/dashboardChatMemory';
@@ -17,6 +18,99 @@ async function mirrorToChatSession(memory:DashboardChatMemory) {
  if(!memory.display.length)return;
  const firstUser=memory.display.find(m=>m.role==='user')?.content??'Dashboard chat';
  await storage.upsertChatSession({id:memory.id,date:localDate(new Date(memory.createdAt)),title:firstUser.slice(0,60),messages:memory.display.map((m,i)=>({id:`${memory.id}-${i}`,role:m.role,content:m.content})),createdAt:memory.createdAt},memory.userId);
+}
+
+/**
+ * The dashboard while its plan loads. It mirrors the real layout — progress
+ * rail, week strip, agenda, and the right column's chat and focus panels — so
+ * the page settles into place rather than snapping from a line of text to a
+ * full screen.
+ */
+function DashboardSkeleton() {
+  return (
+    <div className={`${styles.page} ${styles.live}`}>
+      <main className={styles.main}>
+        <SkeletonPage label="Loading your plan…">
+          <header className={styles.header}>
+            <div>
+              <SkeletonBlock width={128} height={10}/>
+              <div style={{height:10}}/>
+              <SkeletonBlock width={270} height={25}/>
+            </div>
+            <SkeletonBlock width={94} height={14}/>
+          </header>
+
+          <div className={styles.columns}>
+            <div className={styles.planColumn}>
+              <section className={styles.progress}>
+                <SkeletonBlock width={240} height={12}/>
+                <div className={styles.rail} style={{gap:5}}>
+                  {[3,2,2,1].map((flex,i)=>(
+                    <span key={i} style={{flexGrow:flex}}><SkeletonBlock height={8} borderRadius={3}/></span>
+                  ))}
+                </div>
+                <div style={{display:'flex',gap:14,marginTop:12,flexWrap:'wrap'}}>
+                  {[96,108,84].map((w,i)=><SkeletonBlock key={i} width={w} height={11}/>)}
+                </div>
+              </section>
+
+              <div className={styles.week}>
+                {Array.from({length:7},(_,i)=>(
+                  <div key={i} style={{display:'flex',flexDirection:'column',gap:6,padding:'12px 3px',alignItems:'center'}}>
+                    <SkeletonBlock width={26} height={10}/>
+                    <SkeletonBlock width={20} height={18}/>
+                    <SkeletonBlock width={38} height={9}/>
+                  </div>
+                ))}
+              </div>
+
+              <section className={styles.section}>
+                <SkeletonBlock width={132} height={17}/>
+                <div style={{height:18}}/>
+                <div className={styles.agenda}>
+                  {[0,1,2,3].map(i=>(
+                    <div key={i} className={`${styles.block} ${styles.neutral}`}>
+                      <div className={styles.blockTime}>
+                        <SkeletonBlock width={66} height={11}/>
+                        <div style={{height:7}}/>
+                        <SkeletonBlock width={42} height={10}/>
+                      </div>
+                      <div className={styles.blockBody}>
+                        <SkeletonBlock width={72} height={10}/>
+                        <div style={{height:6}}/>
+                        <SkeletonBlock width={`${[64,78,52,70][i]}%`} height={13}/>
+                        <div style={{height:6}}/>
+                        <SkeletonBlock width={58} height={10}/>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+
+            <aside className={styles.right}>
+              <section className={styles.chat}>
+                <SkeletonBlock width={90} height={17}/>
+                <div style={{height:16}}/>
+                {[86,64,78].map((w,i)=>(
+                  <div key={i} style={{marginBottom:10}}><SkeletonBlock width={`${w}%`} height={34} borderRadius={9}/></div>
+                ))}
+              </section>
+              <section className={styles.focus}>
+                <SkeletonBlock width={62} height={17}/>
+                <div style={{height:14}}/>
+                <SkeletonBlock width={112} height={11}/>
+                <div style={{height:8}}/>
+                <SkeletonBlock width={160} height={14}/>
+                <div style={{height:20}}/>
+                <SkeletonBlock width={148} height={44}/>
+              </section>
+            </aside>
+          </div>
+        </SkeletonPage>
+      </main>
+    </div>
+  );
 }
 
 export default function LiveDashboard({userId}:{userId:string}) {
@@ -295,7 +389,9 @@ CHANGING THE EXISTING PLAN: you can rename, move or remove the user's own study 
   if(proposed.length && rangeRef.current!==0)setRangeStart(0);
   return {reply:display,day:showDay};
  }
- if(!snapshot)return <div className={styles.loading}>{error ? <><p role="alert">{error}</p><button onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Retry dashboard</button></> : <p role="status">Loading your plan…</p>}</div>;
+ if(!snapshot)return error
+  ? <div className={styles.loading}><p role="alert">{error}</p><button onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Retry dashboard</button></div>
+  : <DashboardSkeleton/>;
  const active=snapshot.blocks.find(b=>!b.external && b.subjectId===timer.activeSession?.subject.id && b.title===timer.activeSession?.task && localDate(dateAt(origin,b.day))===localDate(new Date(timer.activeSession.sessionStartTimeISO)));
  const weekdayName=(d:number)=>dateAt(origin,d).toLocaleDateString('en-US',{weekday:'long'});
  const pendingChange=new Map(proposals.filter(p=>p.replaces!==undefined).map(p=>[p.replaces,p]));
