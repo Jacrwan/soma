@@ -209,6 +209,8 @@
 .focusLog li{gap:8px;min-height:24px;align-items:center}
 .focusLog li strong{margin-left:auto}
 .logActions{display:flex;gap:2px;flex-shrink:0}
+/* The clock range a session actually ran, beside its date. */
+.logRange{font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--text-secondary);opacity:.85}
 .focusLog .logActions button{background:transparent;border-color:transparent;padding:3px 6px;min-height:22px;font-size:10px;color:var(--text-secondary)}
 .focusLog .logActions button:hover:not(:disabled){background:var(--bg-tertiary);color:var(--text-primary)}
 .logEditing{gap:6px}
@@ -222,6 +224,10 @@
 .logAdd input{min-height:28px;padding:4px 7px;border:1px solid var(--border);border-radius:5px;background:var(--bg-secondary);color:var(--text-primary);font:inherit;font-size:11px}
 .logAddButtons{display:flex;gap:6px;justify-content:flex-end}
 .focusLog .logAddButtons button{padding:4px 10px;min-height:26px;font-size:10px}
+/* Length vs start-and-end, for however the student remembers the session. */
+.logAddMode{display:flex;gap:4px}
+.focusLog .logAddMode button{flex:1;padding:4px 8px;min-height:26px;font-size:10px;background:transparent;color:var(--text-secondary)}
+.focusLog .logAddMode button[aria-pressed="true"]{background:var(--bg-tertiary);color:var(--text-primary);border-color:var(--border)}
 .dropLogged{flex-basis:100%;order:1;display:flex;align-items:center;gap:7px;font-size:10px;color:var(--text-secondary);cursor:pointer;user-select:none;padding-top:2px}
 .dropLogged input{flex-shrink:0;margin:0}
 .blockWithChoice{flex-wrap:wrap}

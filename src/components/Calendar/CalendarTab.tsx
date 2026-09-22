@@ -5,7 +5,7 @@ import { getWeekRange, isCacheStale } from '../../lib/googleCalendar';
 import {
   listConnections, startConnectFlow, fetchAggregatedEvents, GoogleCalendarError,
 } from '../../lib/googleCalendarConnections';
-import { TimeBlock, Subject, GoogleCalendarEvent, GoogleCalendarConnection } from '../../types';
+import { TimeBlock, Subject, GoogleCalendarEvent, GoogleCalendarConnection, TimerSession, Todo } from '../../types';
 import { formatDateTime, formatHourLabel, useTimeFormat, type TimeFormat } from '../../lib/timeFormat';
 import {
   addDays, getSundayOfWeek, getFirstOfMonth, startOfDay,
@@ -155,6 +155,15 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   const [filters, setFilters] = useState<Filters>(() => loadFilters());
   const [dataVersion, setDataVersion] = useState(0);
 
+  // Recorded study time, read from Supabase rather than the localStorage
+  // blocks: a session added by hand, corrected or deleted never reached those,
+  // so the calendar showed the timer's sessions only and kept ghosts of
+  // deleted ones.
+  const [sessions, setSessions] = useState<TimerSession[]>([]);
+  // Deadlines from a course website are tasks with a due date, and belong in
+  // the all-day row beside the Canvas ones.
+  const [dueTasks, setDueTasks] = useState<Todo[]>(() => storage.getTodos().filter(t => !!t.dueDate));
+
   const [currentMinutes, setCurrentMinutes] = useState(() => {
     const now = new Date();
     return now.getHours() * 60 + now.getMinutes();
@@ -174,6 +183,9 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   const preModalFocusRef = useRef<HTMLElement | null>(null);
 
   const isConnected = connections.some(c => c.selectedCalendars.length > 0);
+
+  const subjectName = (subjectId?: string) =>
+    (subjectId ? storage.getSubjects().find(s => s.id === subjectId)?.name : '') ?? '';
 
   const loadConnections = useCallback(async () => {
     try {
@@ -196,6 +208,32 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     const handler = () => setDataVersion(v => v + 1);
     window.addEventListener('soma_gcal_updated', handler);
     return () => window.removeEventListener('soma_gcal_updated', handler);
+  }, []);
+
+  // saveTimerSession, updateTimerSessionDuration and deleteTimerSession all
+  // dispatch soma_insights_changed, so adding, correcting or deleting a
+  // session anywhere in the app redraws the calendar.
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      void storage.fetchTimerSessions()
+        .then(rows => { if (!cancelled) { setSessions(rows); setDataVersion(v => v + 1); } })
+        .catch(() => { /* the calendar still draws everything else */ });
+    };
+    refresh();
+    window.addEventListener('soma_insights_changed', refresh);
+    return () => { cancelled = true; window.removeEventListener('soma_insights_changed', refresh); };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      if (!cancelled) { setDueTasks(storage.getTodos().filter(t => !!t.dueDate)); setDataVersion(v => v + 1); }
+    };
+    void storage.fetchAllTodos().then(refresh).catch(() => { /* non-fatal */ });
+    void storage.whenTokensLoaded().then(refresh);
+    window.addEventListener('soma_todos_changed', refresh);
+    return () => { cancelled = true; window.removeEventListener('soma_todos_changed', refresh); };
   }, []);
 
   useEffect(() => {
@@ -361,10 +399,21 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         if (!a.dueAt) continue;
         add(new Date(a.dueAt), { id: `canvas-${a.id}`, label: a.name, bgColor: CANVAS_COLOR, type: 'canvas', sortKey: new Date(a.dueAt).getTime() });
       }
+      for (const t of dueTasks) {
+        const due = new Date(`${t.dueDate}T23:59:00`);
+        add(due, { id: `due-${t.id}`, label: t.text, bgColor: CANVAS_COLOR, type: 'canvas', sortKey: due.getTime() });
+      }
     }
     if (filters.soma) {
+      // Recorded study time, from the synced sessions.
+      for (const session of sessions) {
+        const subj = subjects.find(s => s.id === session.subjectId);
+        add(new Date(session.startTime), { id: `session-${session.id}`, label: session.task || subj?.name || 'Study', bgColor: subj?.color ?? '#9e9e9e', type: 'soma', sortKey: new Date(session.startTime).getTime() });
+      }
+      // Legacy Day View plans. Blocks carrying a timerSessionId are the old
+      // per-device copy of a session above, and would draw it twice.
       for (const b of blocks) {
-        if (!b.startTime) continue;
+        if (!b.startTime || b.timerSessionId) continue;
         const subj = subjects.find(s => s.id === b.subjectId);
         add(new Date(b.startTime), { id: `soma-${b.id}`, label: b.task || subj?.name || 'Block', bgColor: subj?.color ?? '#9e9e9e', type: 'soma', sortKey: new Date(b.startTime).getTime() });
       }
@@ -372,7 +421,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     for (const chips of map.values()) chips.sort((a, b) => a.sortKey - b.sortKey);
     return map;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, dataVersion]);
+  }, [filters, dataVersion, sessions, dueTasks]);
 
   const getPositionedEventsForDay = useCallback((day: Date): {
     events: PositionedEvent[];
@@ -398,9 +447,39 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     const events: RawEvent[] = [];
 
     if (filters.soma) {
+      // Recorded study time comes from the synced sessions, so time added by
+      // hand shows up and deleted time disappears.
+      for (const session of sessions) {
+        if (!isOnDate(session.startTime, day)) continue;
+        const start = new Date(session.startTime);
+        const end = session.endTime
+          ? new Date(session.endTime)
+          : new Date(start.getTime() + session.durationSeconds * 1000);
+        const startMin = start.getHours() * 60 + start.getMinutes();
+        const endMin = end.getHours() * 60 + end.getMinutes();
+        // Under five minutes is almost always a focus session stopped by
+        // accident; it used to render as a dot, which added noise, not signal.
+        if (endMin - startMin < 5) continue;
+        const subject = subjects.find(s => s.id === session.subjectId);
+        const baseColor = subject?.color ?? '#9e9e9e';
+        const label = (subject?.name ?? session.task) || 'Study';
+        events.push({
+          id: `session-${session.id}`,
+          type: 'soma',
+          label,
+          sublabel: session.task && session.task !== subject?.name ? session.task : undefined,
+          color: tint(baseColor, 0.3),
+          borderColor: baseColor,
+          textColor: 'var(--text-primary)',
+          startMin,
+          endMin: endMin > startMin ? endMin : startMin + 30,
+        });
+      }
       for (const b of blocks) {
         if (!b.startTime || !isOnDate(b.startTime, day)) continue;
         if (b.source === 'canvas') continue;
+        // Drawn from the session above; this is only this device's copy.
+        if (b.timerSessionId) continue;
         const start = new Date(b.startTime);
         const end = new Date(b.endTime);
         const startMin = start.getHours() * 60 + start.getMinutes();
@@ -520,7 +599,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         gcalEvent: ev.gcalEvent,
       })),
     };
-  }, [filters]);
+  }, [filters, sessions]);
 
   function goToPrev() {
     if (viewMode === 'month') setViewMonth(d => new Date(d.getFullYear(), d.getMonth() - 1, 1));
@@ -675,7 +754,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
           style={filters.canvas ? { background: CANVAS_COLOR, borderColor: CANVAS_COLOR } : {}}
           onClick={() => toggleFilter('canvas')}
           aria-pressed={filters.canvas}
-        >Canvas</button>
+        >Courses</button>
         <button
           className={`${styles.filterPill}${filters.soma ? ` ${styles.filterPillActive}` : ''}`}
           onClick={() => toggleFilter('soma')}
@@ -755,42 +834,49 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
             })}
           </div>
 
-          {/* All-day row (Canvas assignments) */}
+          {/* All-day row: everything due that day, whatever its source. */}
           {filters.canvas && (() => {
             const assignments = storage.getCachedAssignments();
-            const hasAny = weekDays.some(day =>
-              assignments.some(a => a.dueAt && isSameDay(new Date(a.dueAt), day))
-            );
-            if (!hasAny) return null;
+            type DueChip = { id: string; name: string; course: string; dueKey: string; url?: string };
+            const chipsFor = (day: Date): DueChip[] => [
+              ...assignments
+                .filter(a => a.dueAt && isSameDay(new Date(a.dueAt), day))
+                .map(a => ({ id: `canvas-${a.id}`, name: a.name, course: a.courseName, dueKey: a.dueAt, url: a.htmlUrl })),
+              ...dueTasks
+                .filter(t => isSameDay(new Date(`${t.dueDate}T12:00:00`), day))
+                .map(t => ({
+                  id: `due-${t.id}`,
+                  name: t.text,
+                  course: subjectName(t.subjectId),
+                  dueKey: `${t.dueDate}T23:59:00`,
+                })),
+            ];
+            if (!weekDays.some(day => chipsFor(day).length > 0)) return null;
             return (
               <div className={styles.weekViewAllDayRow}>
                 <div className={styles.weekViewAllDayLabel}>all-day</div>
-                {weekDays.map((day, i) => {
-                  const chips = assignments.filter(a => a.dueAt && isSameDay(new Date(a.dueAt), day));
-                  return (
-                    <div key={i} className={styles.weekViewAllDayCell}>
-                      {chips.map(a => {
-                        const dueDate = new Date(a.dueAt);
-                        const dueFmt = dueDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-                        return (
-                          <div key={a.id} className={styles.weekViewAllDayChipWrap}>
-                            <span className={styles.weekViewAllDayChip}>{a.name}</span>
-                            <div className={styles.weekViewAllDayChipPanel} onClick={e => e.stopPropagation()}>
-                              <div className={styles.weekViewChipPanelName}>{a.name}</div>
-                              <div className={styles.weekViewChipPanelMeta}>Due {dueFmt}</div>
-                              <div className={styles.weekViewChipPanelCourse}>{a.courseName}</div>
-                              {a.htmlUrl && (
-                                <a className={styles.weekViewChipPanelLink} href={a.htmlUrl} target="_blank" rel="noopener noreferrer">
-                                  Open in Canvas ↗
-                                </a>
-                              )}
-                            </div>
+                {weekDays.map((day, i) => (
+                  <div key={i} className={styles.weekViewAllDayCell}>
+                    {chipsFor(day).map(chip => {
+                      const dueFmt = new Date(chip.dueKey).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                      return (
+                        <div key={chip.id} className={styles.weekViewAllDayChipWrap}>
+                          <span className={styles.weekViewAllDayChip}>{chip.name}</span>
+                          <div className={styles.weekViewAllDayChipPanel} onClick={e => e.stopPropagation()}>
+                            <div className={styles.weekViewChipPanelName}>{chip.name}</div>
+                            <div className={styles.weekViewChipPanelMeta}>Due {dueFmt}</div>
+                            {chip.course && <div className={styles.weekViewChipPanelCourse}>{chip.course}</div>}
+                            {chip.url && (
+                              <a className={styles.weekViewChipPanelLink} href={chip.url} target="_blank" rel="noopener noreferrer">
+                                Open in Canvas ↗
+                              </a>
+                            )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
             );
           })()}

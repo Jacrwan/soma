@@ -928,6 +928,41 @@ export const storage = {
     window.dispatchEvent(new Event('soma_insights_changed'));
   },
 
+  /**
+   * Every recorded study session, for surfaces that draw actual study time
+   * rather than the plan (the Calendar). This is the synced source of truth:
+   * `soma_blocks` in localStorage holds only this device's copy, so a session
+   * added by hand, corrected, or deleted would not be reflected there.
+   */
+  async fetchTimerSessions(): Promise<TimerSession[]> {
+    const id = await uid();
+    const rows: TimerSession[] = [];
+    const pageSize = 1000;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase
+        .from('timer_sessions')
+        .select('id,subject_id,task_text,start_time,end_time,duration_seconds')
+        .eq('user_id', id)
+        .order('id')
+        .range(from, from + pageSize - 1);
+      if (error) throw new Error(error.message);
+      for (const r of data ?? []) {
+        const row = r as Record<string, unknown>;
+        if (!row.start_time) continue;
+        rows.push({
+          id: String(row.id),
+          subjectId: String(row.subject_id ?? ''),
+          task: String(row.task_text ?? ''),
+          startTime: ensureUtcSuffix(String(row.start_time)),
+          endTime: row.end_time ? ensureUtcSuffix(String(row.end_time)) : '',
+          durationSeconds: Number(row.duration_seconds ?? 0),
+        });
+      }
+      if (!data || data.length < pageSize) break;
+    }
+    return rows;
+  },
+
   async saveTimerSession(session: TimerSession, subjectName: string): Promise<void> {
     const id = await uid();
     const { error } = await supabase.from('timer_sessions').upsert({

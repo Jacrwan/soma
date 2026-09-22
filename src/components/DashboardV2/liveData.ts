@@ -5,12 +5,15 @@ import type { Subject, Todo, TodoSession, GoogleCalendarEvent } from '../../type
 import type { PlanBlock } from './PlanEditor';
 
 export type LiveBlock = PlanBlock & { todoId?: string; sessionId?: string; subjectId?: string; legacyId?: string };
-export type History = { id:string; subject_id:string; task_text:string; duration_seconds:number; date:string };
+export type History = { id:string; subject_id:string; task_text:string; duration_seconds:number; date:string; start_time?:string; end_time?:string };
 export type Snapshot = { blocks:LiveBlock[]; subjects:Subject[]; todos:Todo[]; sessions:TodoSession[]; history:History[]; calendarError:string };
 export const localDate = (date:Date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 export function dateAt(origin:Date,day:number) { const d=new Date(origin);d.setHours(0,0,0,0);d.setDate(d.getDate()+day);return d; }
 const timeLabel = (d:Date) => `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-const utc = (s:string) => /Z$|[+-]\d\d:\d\d$/.test(s) ? s : `${s}Z`;
+/** Supabase returns timestamptz without a zone suffix often enough that
+ *  parsing it raw would read as local time and shift the clock. */
+export const utcIso = (s:string) => /Z$|[+-]\d\d:\d\d$/.test(s) ? s : `${s}Z`;
+const utc = utcIso;
 const commitmentSubject = 'Personal commitments';
 async function rows(table:string,userId:string) {
  const all:Record<string,unknown>[]=[];
