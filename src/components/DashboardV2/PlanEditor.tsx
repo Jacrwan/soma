@@ -15,6 +15,12 @@ const clockOf=(iso:string)=>{const d=new Date(iso);return `${String(d.getHours()
 /** "9:05 AM – 9:50 AM", or nothing when the row never recorded its clock times. */
 const sessionRange=(log:{start?:string;end?:string},format:'12h'|'24h')=>
  log.start && log.end ? `${formatClock(clockOf(log.start),format)} – ${formatClock(clockOf(log.end),format)}` : '';
+/** Where a session of `minutes` starting at `start` ends. Editing the length
+ *  keeps the start and moves the end, so this is what will be saved. */
+const endAfter=(start:string,minutes:number,format:'12h'|'24h')=>{
+ const end=new Date(new Date(start).getTime()+minutes*60000);
+ return `${formatClock(clockOf(start),format)} – ${formatClock(clockOf(end.toISOString()),format)}`;
+};
 /** `start`/`end` are ISO instants when the session recorded them; older rows
  *  and some imports have only a duration, so both are optional. */
 export type FocusLog = { id:string; date:string; minutes:number; start?:string; end?:string };
@@ -100,6 +106,8 @@ export default function PlanEditor({draft,blocks,onSave,onCancel,live=false,know
        onChange={e=>setLogMinutes(e.target.value)}
        onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setEditingLog(null);}}}/>
       <span className={styles.logUnit}>min</span>
+      {l.start && logLength>=1 && logLength<=1440 &&
+       <span className={styles.logRange} aria-live="polite">{endAfter(l.start,logLength,timeFormat)}</span>}
      </div>
     : <div className={styles.logEditing}>
       <label>Start<input type="time" autoFocus aria-label={`Start time on ${day}`} value={logStart} disabled={busy} onChange={e=>setLogStart(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setEditingLog(null);}}}/></label>
