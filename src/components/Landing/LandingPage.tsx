@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 
 const BRIEF_SCRIPT = [
-  { kind: 'lead', text: 'You have two assignments due today that need attention.' },
-  { kind: 'bullet', text: 'Finish the Chemistry 210 lab report by Tuesday' },
+  { kind: 'lead', text: "Here's what I'd do with the four hours you have free today." },
+  { kind: 'bullet', text: 'Finish the Chemistry 210 lab report, due Tuesday' },
   { kind: 'bullet', text: 'Start the Statistics 200 problem set, due Thursday' },
-  { kind: 'bullet', text: "Begin the English 102 essay draft, due Friday" },
+  { kind: 'bullet', text: 'Block an hour for the English 102 essay, due Friday' },
 ] as const;
 
 const BRIEF_COURSES = [
@@ -260,35 +260,71 @@ const LANDING_CSS = `
 .ln-blk.b2 { background: var(--s2-bg); border: 1px solid var(--s2-br); color: var(--s2-tx); top: 102px; height: 44px; }
 .ln-blk.b3 { background: var(--s3-bg); border: 1px solid var(--s3-br); color: var(--s3-tx); top: 180px; height: 44px; }
 .ln-blk.b4 { background: var(--s4-bg); border: 1px solid var(--s4-br); color: var(--s4-tx); top: 248px; height: 44px; }
+/* A commitment read in from Google Calendar: neutral, never a study colour. */
+.ln-blk.ext {
+  background: var(--slate-100); border: 1px dashed var(--slate-300); color: var(--slate-600);
+  top: 153px; height: 25px;
+  flex-direction: row; align-items: center; gap: 6px;
+  padding: 0 10px; font-size: 11.5px;
+}
 
-.ln-now { position: absolute; left: 56px; right: 0; height: 1.5px; background: #dc2626; top: 164px; z-index: 4; }
+.ln-now { position: absolute; left: 56px; right: 0; height: 1.5px; background: #dc2626; top: 234px; z-index: 4; }
 .ln-now::before {
   content: ''; position: absolute; left: -4px; top: -3.5px;
   width: 8px; height: 8px; border-radius: 50%; background: #dc2626;
 }
 
-.ln-next {
-  width: 220px; flex-shrink: 0;
+
+/* Dashboard right rail: Ask Soma + the focus timer */
+.ln-rail {
+  width: 228px; flex-shrink: 0;
   border-left: 1px solid var(--slate-200);
   padding: 14px;
+  display: flex; flex-direction: column; gap: 14px;
 }
-.ln-next-t { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--slate-400); margin-bottom: 12px; }
-.ln-next-card {
-  border: 1px solid var(--slate-200);
-  border-radius: 9px;
-  padding: 11px;
+.ln-rail-t {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--slate-400);
   margin-bottom: 9px;
-  background: #fff;
 }
-.ln-next-name { font-size: 12.5px; font-weight: 600; color: var(--slate-900); margin-bottom: 3px; line-height: 1.35; }
-.ln-next-meta { font-size: 11.5px; color: var(--slate-500); display: flex; align-items: center; gap: 6px; }
-.ln-pill {
-  display: inline-block;
+.ln-ask-msg {
+  font-size: 11.5px; line-height: 1.45;
+  border-radius: 9px; padding: 8px 10px; margin-bottom: 7px;
+}
+.ln-ask-msg.me { background: var(--blue-800); color: #fff; margin-left: 28px; }
+.ln-ask-msg.bot { background: var(--slate-100); color: var(--slate-700); }
+.ln-prop {
+  border: 1px dashed var(--blue-200);
+  background: var(--blue-50);
+  border-radius: 9px; padding: 9px 10px;
+}
+.ln-prop-blk { font-size: 11.5px; font-weight: 600; color: var(--slate-900); }
+.ln-prop-blk span { display: block; font-size: 11px; font-weight: 500; color: var(--slate-500); margin-top: 1px; }
+.ln-prop-acts { display: flex; gap: 6px; margin-top: 9px; }
+.ln-prop-acts span {
   font-size: 10.5px; font-weight: 600;
-  padding: 2px 7px; border-radius: 999px;
+  padding: 4px 10px; border-radius: 999px;
 }
-.ln-pill.hot { background: #fef2f2; color: #b91c1c; }
-.ln-pill.warm { background: var(--s2-bg); color: var(--s2-tx); }
+.ln-prop-acts span:first-child { background: var(--blue-800); color: #fff; }
+.ln-prop-acts span:last-child { background: #fff; color: var(--slate-500); border: 1px solid var(--slate-200); }
+
+.ln-focus-box {
+  border-top: 1px solid var(--slate-200);
+  padding-top: 13px;
+  margin-top: auto;
+}
+.ln-focus-sub { font-size: 11px; color: var(--slate-500); }
+.ln-focus-name { font-size: 12.5px; font-weight: 600; color: var(--slate-900); margin: 2px 0 7px; }
+.ln-focus-time {
+  font-size: 27px; font-weight: 600; letter-spacing: -0.03em;
+  color: var(--slate-900); font-variant-numeric: tabular-nums;
+}
+.ln-focus-acts { display: flex; gap: 6px; margin-top: 9px; }
+.ln-focus-acts span {
+  font-size: 10.5px; font-weight: 600;
+  padding: 4px 11px; border-radius: 7px;
+  background: #fff; border: 1px solid var(--slate-200); color: var(--slate-600);
+}
 
 /* ─────────────  Sections  ───────────── */
 .ln-sec { max-width: 1160px; margin: 0 auto; padding: 88px 24px; }
@@ -776,7 +812,7 @@ const LANDING_CSS = `
   .ln-logo img { max-width: 88px; max-height: 42px; }
   .ln-logo.is-wide img { max-width: 112px; max-height: 28px; }
   .ln-shot-body { min-height: 0; }
-  .ln-side, .ln-next { display: none; }
+  .ln-side, .ln-rail { display: none; }
   .ln-sec { padding: 60px 20px; }
   .ln-steps { grid-template-columns: 1fr; gap: 14px; margin-top: 34px; }
   .ln-feat { grid-template-columns: 1fr; gap: 30px; padding: 40px 0; }
@@ -810,7 +846,7 @@ const LANDING_CSS = `
 
 const BRIEF_TOTAL = BRIEF_SCRIPT.reduce((n, l) => n + l.text.length, 0);
 
-function DailyBrief() {
+function AskSomaPanel() {
   const ref = useRef<HTMLDivElement>(null);
   const [chars, setChars] = useState(0);
 
@@ -866,13 +902,13 @@ function DailyBrief() {
           <div className="ln-brief-day">Saturday</div>
           <div className="ln-brief-date">September 19</div>
         </div>
-        <span className="ln-brief-add">+ Add Task</span>
+        <span className="ln-brief-add">Edit plan</span>
       </div>
 
       <div className="ln-brief">
         <div className="ln-brief-hd">
-          DAILY BRIEF
-          <span className="ln-brief-gen">{done ? 'Updated just now' : 'Generating…'}</span>
+          ASK SOMA
+          <span className="ln-brief-gen">{done ? 'Awaiting your approval' : 'Thinking…'}</span>
         </div>
         {lines.map((line, i) => {
           const base = line.kind === 'lead' ? 'ln-brief-lead' : 'ln-brief-item';
@@ -888,7 +924,7 @@ function DailyBrief() {
 
       {BRIEF_COURSES.map(c => (
         <div className="ln-brief-course" key={c.name}>
-          <i style={{ background: c.color }} />{c.name}<em>{c.time}</em><b>Add task</b>
+          <i style={{ background: c.color }} />{c.name}<em>{c.time}</em><b>today</b>
         </div>
       ))}
     </div>
@@ -995,10 +1031,11 @@ export default function LandingPage() {
             </div>
             <div className="ln-shot-body">
               <aside className="ln-side">
-                <div className="ln-side-item on"><span className="ln-side-ic" />Today</div>
-                <div className="ln-side-item"><span className="ln-side-ic" />Calendar</div>
+                <div className="ln-side-item on"><span className="ln-side-ic" />Dashboard</div>
                 <div className="ln-side-item"><span className="ln-side-ic" />Canvas</div>
-                <div className="ln-side-item"><span className="ln-side-ic" />Grades</div>
+                <div className="ln-side-item"><span className="ln-side-ic" />Documents</div>
+                <div className="ln-side-item"><span className="ln-side-ic" />Calendar</div>
+                <div className="ln-side-item"><span className="ln-side-ic" />AI</div>
                 <div className="ln-side-item"><span className="ln-side-ic" />Insights</div>
               </aside>
               <div className="ln-main">
@@ -1013,24 +1050,28 @@ export default function LandingPage() {
                     ))}
                     <div className="ln-blk b1">AP Calculus BC<span>9:00 - 10:30 AM · Problem set 6</span></div>
                     <div className="ln-blk b2">AP Chemistry<span>11:00 - 11:45 AM · Lab report</span></div>
+                    <div className="ln-blk ext">Office hours<span>12:30 - 1:00 PM · Google Calendar</span></div>
                     <div className="ln-blk b3">English Literature<span>1:15 - 2:00 PM · Essay draft</span></div>
                     <div className="ln-blk b4">AP US History<span>3:00 - 3:45 PM · DBQ practice</span></div>
                     <div className="ln-now" />
                   </div>
                 </div>
-                <aside className="ln-next">
-                  <div className="ln-next-t">Due soon</div>
-                  <div className="ln-next-card">
-                    <div className="ln-next-name">Integration by Parts: Problem Set 6</div>
-                    <div className="ln-next-meta">AP Calculus <span className="ln-pill hot">Tomorrow</span></div>
+                <aside className="ln-rail">
+                  <div>
+                    <div className="ln-rail-t">Ask Soma</div>
+                    <div className="ln-ask-msg me">Move chem to after office hours</div>
+                    <div className="ln-ask-msg bot">Moved it to 1:00. Here's the change:</div>
+                    <div className="ln-prop">
+                      <div className="ln-prop-blk">Lab report<span>AP Chemistry · 1:00 - 1:45 PM</span></div>
+                      <div className="ln-prop-acts"><span>Accept</span><span>Dismiss</span></div>
+                    </div>
                   </div>
-                  <div className="ln-next-card">
-                    <div className="ln-next-name">Thermodynamics Lab Report</div>
-                    <div className="ln-next-meta">AP Chemistry <span className="ln-pill warm">3 days</span></div>
-                  </div>
-                  <div className="ln-next-card">
-                    <div className="ln-next-name">Gatsby Essay: Final Draft</div>
-                    <div className="ln-next-meta">English Lit <span className="ln-pill warm">Friday</span></div>
+                  <div className="ln-focus-box">
+                    <div className="ln-rail-t">Focus</div>
+                    <div className="ln-focus-sub">AP Calculus BC</div>
+                    <div className="ln-focus-name">Problem set 6</div>
+                    <div className="ln-focus-time">24:08</div>
+                    <div className="ln-focus-acts"><span>Pause</span><span>Stop</span></div>
                   </div>
                 </aside>
               </div>
@@ -1109,7 +1150,7 @@ export default function LandingPage() {
                   One message builds the whole day. Soma knows your deadlines, your free hours,
                   and how long tasks usually take you.
                 </p>
-                <p className="ln-step-note">Adjust any block by dragging it.</p>
+                <p className="ln-step-note">Every change arrives as a proposal you accept or dismiss.</p>
               </div>
             </div>
 
@@ -1131,13 +1172,13 @@ export default function LandingPage() {
               <div className="ln-step-body">
                 <div className="ln-step-hd">
                   <span className="ln-step-n">3</span>
-                  <h3 className="ln-step-t">Study while Soma tracks it</h3>
+                  <h3 className="ln-step-t">Press focus and work</h3>
                 </div>
                 <p className="ln-step-b">
-                  Open your day view and work. Time is recorded as you go, so your weekly
-                  insights build up without any extra effort.
+                  Hit Focus on a block and Soma times the session against that subject.
+                  Your weekly insights build from the hours you actually put in.
                 </p>
-                <p className="ln-step-note">No timers to start or stop.</p>
+                <p className="ln-step-note">Forgot to start it? Add the time afterwards.</p>
               </div>
             </div>
           </div>
@@ -1151,10 +1192,11 @@ export default function LandingPage() {
 
           <div className="ln-feat">
             <div className="ln-feat-text">
-              <h3 className="ln-feat-t">Build a study schedule in seconds</h3>
+              <h3 className="ln-feat-t">Plan the day by asking for it</h3>
               <p className="ln-feat-b">
-                Tell Soma what you need to get done. It reads your Canvas deadlines, checks
-                your free hours, and lays out a realistic plan for the day.
+                Tell Soma what you need to get done, by typing or out loud. It reads your Canvas
+                deadlines and free hours and lays out the day. Ask it to move, rename or drop
+                blocks later and nothing changes until you accept it.
               </p>
             </div>
             <div className="ln-feat-vis">
@@ -1166,6 +1208,7 @@ export default function LandingPage() {
                   <div className="ln-sched"><i className="ln-sdot" style={{ background: '#2563eb' }} />9:00 AM · AP Calculus BC · 90 min</div>
                   <div className="ln-sched"><i className="ln-sdot" style={{ background: '#f59e0b' }} />11:00 AM · AP Chemistry · 45 min</div>
                   <div className="ln-sched"><i className="ln-sdot" style={{ background: '#14b8a6' }} />1:15 PM · English Lit · 45 min</div>
+                  <div className="ln-prop-acts"><span>Accept all (3)</span><span>Dismiss</span></div>
                 </div>
               </div>
             </div>
@@ -1173,10 +1216,11 @@ export default function LandingPage() {
 
           <div className="ln-feat">
             <div className="ln-feat-text">
-              <h3 className="ln-feat-t">Every Canvas assignment, synced</h3>
+              <h3 className="ln-feat-t">Every assignment, synced</h3>
               <p className="ln-feat-b">
-                Soma pulls your assignments and due dates straight from Canvas. Your whole
-                workload in one list, always current, with no manual entry.
+                Soma pulls your assignments and due dates straight from Canvas. For the classes
+                that live on their own course site instead, paste the page and Soma reads the
+                deadlines off it.
               </p>
             </div>
             <div className="ln-feat-vis">
@@ -1202,10 +1246,11 @@ export default function LandingPage() {
 
           <div className="ln-feat">
             <div className="ln-feat-text">
-              <h3 className="ln-feat-t">Study time tracked automatically</h3>
+              <h3 className="ln-feat-t">A focus timer that keeps your real hours</h3>
               <p className="ln-feat-b">
-                As the day moves through your scheduled blocks, Soma records what you studied.
-                No timers to start, no logs to fill in afterwards.
+                Start a block and the timer runs against that subject, surviving a reload or a
+                closed tab. Logged a session wrong, or studied without starting it? Correct the
+                minutes or add them by hand.
               </p>
             </div>
             <div className="ln-feat-vis">
@@ -1271,6 +1316,36 @@ export default function LandingPage() {
               </div>
             </div>
           </div>
+
+          <div className="ln-feat">
+            <div className="ln-feat-text">
+              <h3 className="ln-feat-t">Classes, commitments and course files together</h3>
+              <p className="ln-feat-b">
+                Connect Google Calendar and your lectures, shifts and office hours sit read-only
+                beside your study blocks, so Soma plans around them instead of over them. Syllabi,
+                readings and guides live on the Documents page, filed by subject.
+              </p>
+            </div>
+            <div className="ln-feat-vis">
+              <div className="ln-assigns">
+                {[
+                  { c: '#94a3b8', n: 'Calculus lecture', s: 'Google Calendar · read-only', d: '10:00 AM', hot: false },
+                  { c: '#94a3b8', n: 'Office hours', s: 'Google Calendar · read-only', d: '12:30 PM', hot: false },
+                  { c: '#2563eb', n: 'Calculus syllabus.pdf', s: 'AP Calculus BC · Syllabus', d: 'Document', hot: false },
+                  { c: '#f59e0b', n: 'Thermo study guide.pdf', s: 'AP Chemistry · Guide', d: 'Document', hot: false },
+                ].map((a, i) => (
+                  <div className="ln-assign" data-d={i * 130} key={a.n}>
+                    <i className="ln-adot" style={{ background: a.c }} />
+                    <div className="ln-ainfo">
+                      <div className="ln-aname">{a.n}</div>
+                      <div className="ln-acourse">{a.s}</div>
+                    </div>
+                    <div className="ln-adue">{a.d}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -1280,12 +1355,14 @@ export default function LandingPage() {
           <h2 className="ln-h2">Questions students ask</h2>
           <div className="ln-faq-grid">
             {[
-              ['Is Soma free?', "The core features (day view, Canvas sync, calendar, time tracking, and insights) are free forever. AI features (chat, schedule generation, study materials) have a 21-day free trial, then $4.99/month."],
+              ['Is Soma free?', "The core features (your dashboard, Canvas sync, calendar, the focus timer, documents, and insights) are free forever. The AI features have a 3-week free trial, then $4.99 a month or $49.99 a year. Signing up takes no card; starting the trial does."],
               ["Does it work with my school's Canvas?", 'Yes. Soma works with any school that uses Canvas LMS. Paste your Canvas calendar feed URL and your assignments sync automatically.'],
+              ['What about a class that is not on Canvas?', "Paste the course site's schedule page into Soma and it reads the dated homework, labs, projects and exams off it, then asks which ones to add and to which course."],
               ['Can I use it in high school?', 'Yes. Soma is built for both high school and college, including AP classes, honors courses, and anything else running on Canvas.'],
-              ['What does the AI actually do?', 'It reads your deadlines and free hours, then builds a study schedule for your day. It can also generate study notes, practice quizzes, slide decks, and essay outlines.'],
-              ['Do I need a Google account?', 'Only if you want it. Google Drive is optional and is used to save AI-generated study materials as Docs and Slides. Scheduling, tracking, and Canvas sync all work without it.'],
-              ['Is my data private?', 'Yes. Soma reads your Canvas calendar feed and nothing else. Your study data is stored securely and never shared with third parties.'],
+              ['What does the AI actually do?', "It reads your deadlines, your free hours and what is already on your plan, then builds or rearranges your day. It can add, move, rename and remove blocks, and it remembers lasting facts about how you work. Every change is a proposal you accept or dismiss before anything is saved."],
+              ['Do I need a Google account?', 'Only if you want your lectures, shifts and office hours on the plan. Google Calendar access is read-only and optional, and scheduling, the timer and Canvas sync all work without it.'],
+              ['Is my study time tracked for me?', "Not silently. You press Focus on a block and Soma times that session against the subject; the timer survives a reload or a closed tab. If you studied without starting it, or left it running overnight, you can add or correct the minutes afterwards."],
+              ['Is my data private?', "Soma reads the sources you connect: your Canvas feed, any Google Calendar you link, and the documents you upload. Nothing else. Your study data is stored securely and never shared with third parties, and deleting your account deletes it."],
               ['Is connecting Canvas safe?', "Your calendar feed is read-only. It can see assignment names and due dates, and nothing else. It can't reach your grades, files, or account, and you can regenerate the feed URL in Canvas at any time."],
             ].map(([q, a]) => (
               <div className="ln-faq-item" key={q}>
@@ -1302,14 +1379,15 @@ export default function LandingPage() {
           <div>
             <h2>Spend less time planning.<br />Start using Soma today.</h2>
             <p className="ln-cta-lead">
-              Soma pulls every Canvas assignment into one place, plans your day, and writes
-              you a brief each morning, so you never have to wonder what's due next.
+              Soma pulls every assignment into one place, plans the day around what you've
+              already committed to, and keeps the hours you actually study, so you never have
+              to wonder what's due next.
             </p>
             <a href="/signup" className="ln-cta-btn">Get Started For Free</a>
           </div>
 
           <div className="ln-cta-vis">
-            <DailyBrief />
+            <AskSomaPanel />
           </div>
         </div>
       </div>
@@ -1321,8 +1399,8 @@ export default function LandingPage() {
               <span className="ln-foot-word">soma</span>
             </div>
             <p className="ln-foot-copy">
-              Soma turns your Canvas deadlines into a plan for the day, tracks the time you
-              actually study, and keeps every course in one place.
+              Soma turns your deadlines into a plan for the day, keeps the time you actually
+              study, and holds every course in one place.
             </p>
           </div>
 
