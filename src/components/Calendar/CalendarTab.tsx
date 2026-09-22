@@ -15,6 +15,83 @@ import styles from './CalendarTab.module.css';
 
 type ViewMode = CalendarView;
 
+/** One drawn stretch of study time, from whichever source described it. */
+interface StudySpan {
+  id: string;
+  subjectId: string;
+  task: string;
+  start: Date;
+  end: Date;
+}
+
+/**
+ * Reconcile the two records of study time.
+ *
+ * `timer_sessions` is the synced truth about what was studied, but it is not
+ * one row per drawn block: resuming a task writes another session and only
+ * extends the block it continues, so a block can cover several sessions and
+ * names just the first. Drawing every session separately turns one afternoon
+ * into a stack of slivers.
+ *
+ * So a timer-linked block stays the drawn span, sized to the sessions that are
+ * still there — it shrinks when one is corrected or deleted, and disappears
+ * when the last one goes instead of lingering as a ghost. Sessions no block
+ * accounts for are drawn on their own; that is how time added by hand, which
+ * never writes a block, reaches the calendar. Legacy Day View blocks carry no
+ * session and are drawn as they always were.
+ *
+ * `sessionsLoaded` is false until the fetch settles, and stays false if it
+ * failed. Blocks are then drawn untouched rather than suppressed as ghosts —
+ * an unreachable network must not empty the calendar.
+ */
+function studySpans(sessions: TimerSession[], blocks: TimeBlock[], sessionsLoaded: boolean): StudySpan[] {
+  const spans: StudySpan[] = [];
+  const claimed = new Set<string>();
+  const ms = (iso: string) => new Date(iso).getTime();
+  const sessionEnd = (s: TimerSession) =>
+    s.endTime ? ms(s.endTime) : ms(s.startTime) + s.durationSeconds * 1000;
+
+  for (const block of blocks) {
+    if (!block.startTime || block.source === 'canvas') continue;
+
+    if (!block.timerSessionId) {
+      spans.push({ id: `soma-${block.id}`, subjectId: block.subjectId, task: block.task, start: new Date(block.startTime), end: new Date(block.endTime) });
+      continue;
+    }
+
+    if (!sessionsLoaded) {
+      spans.push({ id: `soma-${block.id}`, subjectId: block.subjectId, task: block.task, start: new Date(block.startTime), end: new Date(block.endTime) });
+      continue;
+    }
+
+    // The sessions this block stands for: the one it names, plus any later
+    // continuation of the same subject that it was extended to cover.
+    const from = ms(block.startTime), to = ms(block.endTime);
+    const mine = sessions.filter(s =>
+      s.id === block.timerSessionId ||
+      (s.subjectId === block.subjectId && ms(s.startTime) >= from && ms(s.startTime) <= to));
+    for (const s of mine) claimed.add(s.id);
+    if (mine.length === 0) continue;   // every session gone: so is the block
+
+    spans.push({
+      id: `soma-${block.id}`,
+      subjectId: block.subjectId,
+      task: block.task,
+      start: new Date(Math.min(...mine.map(s => ms(s.startTime)))),
+      end: new Date(Math.max(...mine.map(sessionEnd))),
+    });
+  }
+
+  if (sessionsLoaded) {
+    for (const s of sessions) {
+      if (claimed.has(s.id)) continue;
+      spans.push({ id: `session-${s.id}`, subjectId: s.subjectId, task: s.task, start: new Date(s.startTime), end: new Date(sessionEnd(s)) });
+    }
+  }
+  return spans;
+}
+
+
 interface Filters {
   gcal: boolean;
   canvas: boolean;
@@ -160,6 +237,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   // so the calendar showed the timer's sessions only and kept ghosts of
   // deleted ones.
   const [sessions, setSessions] = useState<TimerSession[]>([]);
+  const [sessionsLoaded, setSessionsLoaded] = useState(false);
   // Deadlines from a course website are tasks with a due date, and belong in
   // the all-day row beside the Canvas ones.
   const [dueTasks, setDueTasks] = useState<Todo[]>(() => storage.getTodos().filter(t => !!t.dueDate));
@@ -217,8 +295,8 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     let cancelled = false;
     const refresh = () => {
       void storage.fetchTimerSessions()
-        .then(rows => { if (!cancelled) { setSessions(rows); setDataVersion(v => v + 1); } })
-        .catch(() => { /* the calendar still draws everything else */ });
+        .then(rows => { if (!cancelled) { setSessions(rows); setSessionsLoaded(true); setDataVersion(v => v + 1); } })
+        .catch(() => { /* leave sessionsLoaded false: blocks are drawn untouched */ });
     };
     refresh();
     window.addEventListener('soma_insights_changed', refresh);
@@ -405,23 +483,15 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
       }
     }
     if (filters.soma) {
-      // Recorded study time, from the synced sessions.
-      for (const session of sessions) {
-        const subj = subjects.find(s => s.id === session.subjectId);
-        add(new Date(session.startTime), { id: `session-${session.id}`, label: session.task || subj?.name || 'Study', bgColor: subj?.color ?? '#9e9e9e', type: 'soma', sortKey: new Date(session.startTime).getTime() });
-      }
-      // Legacy Day View plans. Blocks carrying a timerSessionId are the old
-      // per-device copy of a session above, and would draw it twice.
-      for (const b of blocks) {
-        if (!b.startTime || b.timerSessionId) continue;
-        const subj = subjects.find(s => s.id === b.subjectId);
-        add(new Date(b.startTime), { id: `soma-${b.id}`, label: b.task || subj?.name || 'Block', bgColor: subj?.color ?? '#9e9e9e', type: 'soma', sortKey: new Date(b.startTime).getTime() });
+      for (const span of studySpans(sessions, blocks, sessionsLoaded)) {
+        const subj = subjects.find(s => s.id === span.subjectId);
+        add(span.start, { id: span.id, label: span.task || subj?.name || 'Study', bgColor: subj?.color ?? '#9e9e9e', type: 'soma', sortKey: span.start.getTime() });
       }
     }
     for (const chips of map.values()) chips.sort((a, b) => a.sortKey - b.sortKey);
     return map;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, dataVersion, sessions, dueTasks]);
+  }, [filters, dataVersion, sessions, sessionsLoaded, dueTasks]);
 
   const getPositionedEventsForDay = useCallback((day: Date): {
     events: PositionedEvent[];
@@ -447,65 +517,28 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     const events: RawEvent[] = [];
 
     if (filters.soma) {
-      // Recorded study time comes from the synced sessions, so time added by
-      // hand shows up and deleted time disappears.
-      for (const session of sessions) {
-        if (!isOnDate(session.startTime, day)) continue;
-        const start = new Date(session.startTime);
-        const end = session.endTime
-          ? new Date(session.endTime)
-          : new Date(start.getTime() + session.durationSeconds * 1000);
-        const startMin = start.getHours() * 60 + start.getMinutes();
-        const endMin = end.getHours() * 60 + end.getMinutes();
+      for (const span of studySpans(sessions, blocks, sessionsLoaded)) {
+        if (!isOnDate(span.start.toISOString(), day)) continue;
+        const startMin = span.start.getHours() * 60 + span.start.getMinutes();
+        const endMin = span.end.getHours() * 60 + span.end.getMinutes();
         // Under five minutes is almost always a focus session stopped by
         // accident; it used to render as a dot, which added noise, not signal.
         if (endMin - startMin < 5) continue;
-        const subject = subjects.find(s => s.id === session.subjectId);
+        const subject = subjects.find(s => s.id === span.subjectId);
         const baseColor = subject?.color ?? '#9e9e9e';
-        const label = (subject?.name ?? session.task) || 'Study';
+        const label = (subject?.name ?? span.task) || 'Study';
+        const block = blocks.find(b => `soma-${b.id}` === span.id);
         events.push({
-          id: `session-${session.id}`,
+          id: span.id,
           type: 'soma',
           label,
-          sublabel: session.task && session.task !== subject?.name ? session.task : undefined,
+          sublabel: span.task && span.task !== subject?.name ? span.task : undefined,
           color: tint(baseColor, 0.3),
           borderColor: baseColor,
           textColor: 'var(--text-primary)',
           startMin,
           endMin: endMin > startMin ? endMin : startMin + 30,
-        });
-      }
-      for (const b of blocks) {
-        if (!b.startTime || !isOnDate(b.startTime, day)) continue;
-        if (b.source === 'canvas') continue;
-        // Drawn from the session above; this is only this device's copy.
-        if (b.timerSessionId) continue;
-        const start = new Date(b.startTime);
-        const end = new Date(b.endTime);
-        const startMin = start.getHours() * 60 + start.getMinutes();
-        const endMin = end.getHours() * 60 + end.getMinutes();
-        const durMin = endMin - startMin;
-
-        // Under five minutes is almost always a focus session stopped by
-        // accident; it used to render as a dot, which added noise, not signal.
-        if (durMin < 5) continue;
-
-        const subject = subjects.find(s => s.id === b.subjectId);
-        const baseColor = subject?.color ?? '#9e9e9e';
-        const label = (subject?.name ?? b.task) || 'Block';
-        const sublabel = b.task && b.task !== subject?.name ? b.task : undefined;
-
-        events.push({
-          id: `soma-${b.id}`,
-          type: 'soma',
-          label,
-          sublabel,
-          color: tint(baseColor, 0.3),
-          borderColor: baseColor,
-          textColor: 'var(--text-primary)',
-          startMin,
-          endMin: endMin > startMin ? endMin : startMin + 30,
-          block: b,
+          block,
         });
       }
     }
@@ -599,7 +632,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         gcalEvent: ev.gcalEvent,
       })),
     };
-  }, [filters, sessions]);
+  }, [filters, sessions, sessionsLoaded]);
 
   function goToPrev() {
     if (viewMode === 'month') setViewMonth(d => new Date(d.getFullYear(), d.getMonth() - 1, 1));

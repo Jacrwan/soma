@@ -150,6 +150,46 @@ test('deleting a past session takes it off the calendar too',async({page})=>{
  await expect(page.getByText('Biology')).toHaveCount(0);
 });
 
+/**
+ * Resuming a task writes another timer_sessions row but only extends the
+ * existing block, so one block covers several sessions. Drawing each session
+ * separately turned one afternoon of study into a stack of slivers.
+ */
+test('a task resumed through the day draws once, not once per session',async({page})=>{
+ const state=await setup(page);
+ state.tables.timer_sessions=[
+  {id:'s1',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Cell review',date,start_time:iso('13:00'),end_time:iso('13:30'),duration_seconds:30*60},
+  {id:'s2',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Cell review',date,start_time:iso('13:40'),end_time:iso('14:10'),duration_seconds:30*60},
+  {id:'s3',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Cell review',date,start_time:iso('14:20'),end_time:iso('15:00'),duration_seconds:40*60},
+ ];
+ // The block the timer extended across all three, naming only the first.
+ await page.addInitScript(({start,end})=>{
+  localStorage.setItem('soma_blocks',JSON.stringify([
+   {id:'block-1',subjectId:'biology',task:'Cell review',startTime:start,endTime:end,source:'manual',timerSessionId:'s1'},
+  ]));
+ },{start:iso('13:00'),end:iso('15:00')});
+
+ await openWeek(page);
+ await expect(page.getByText('Biology').first()).toBeVisible();
+ await expect(page.getByText('Biology')).toHaveCount(1);
+});
+
+test('a failed session load leaves the calendar drawn, not emptied',async({page})=>{
+ const state=await setup(page);
+ await page.addInitScript(({start,end})=>{
+  localStorage.setItem('soma_blocks',JSON.stringify([
+   {id:'block-1',subjectId:'biology',task:'Cell review',startTime:start,endTime:end,source:'manual',timerSessionId:'real'},
+  ]));
+ },{start:iso('08:00'),end:iso('08:25')});
+ // Suppressing a block because its session is missing must not happen when
+ // the sessions simply could not be read.
+ state.tables.timer_sessions=[];
+ await page.route('https://soma-regression.supabase.co/rest/v1/timer_sessions**',r=>r.fulfill({status:500,json:{message:'unavailable'}}));
+
+ await openWeek(page);
+ await expect(page.getByText('Biology').first()).toBeVisible();
+});
+
 test('a deadline imported from a course site shows in the all-day row',async({page})=>{
  await setup(page,{todos:[
   {id:'lab3',user_id:account.id,text:'Lab 3',subject_id:'biology',status:'nothing',date,due_date:date},
