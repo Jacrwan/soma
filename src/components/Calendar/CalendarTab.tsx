@@ -22,75 +22,98 @@ interface StudySpan {
   task: string;
   start: Date;
   end: Date;
+  blockId?: string;
 }
 
 /**
- * Reconcile the two records of study time.
+ * Reconcile every record of study time into one span per stretch worked.
  *
- * `timer_sessions` is the synced truth about what was studied, but it is not
- * one row per drawn block: resuming a task writes another session and only
- * extends the block it continues, so a block can cover several sessions and
- * names just the first. Drawing every session separately turns one afternoon
- * into a stack of slivers.
+ * Three things describe the same afternoon, and the calendar used to draw
+ * whichever it knew about:
  *
- * So a timer-linked block stays the drawn span, sized to the sessions that are
- * still there — it shrinks when one is corrected or deleted, and disappears
- * when the last one goes instead of lingering as a ghost. Sessions no block
- * accounts for are drawn on their own; that is how time added by hand, which
- * never writes a block, reaches the calendar. Legacy Day View blocks carry no
- * session and are drawn as they always were.
+ *  - a block in localStorage, which may be a plan or the timer's own copy;
+ *  - one timer_sessions row per sitting, since resuming a task writes another
+ *    row and only extends the block it continues;
+ *  - nothing at all, when time was added by hand, which writes no block.
+ *
+ * Counting them separately is what turned one afternoon into a stack of
+ * slivers. Rather than special-case how each source links to the others —
+ * blocks name at most their first session, and a planned block names none —
+ * every record becomes a candidate span and overlapping candidates for the
+ * same subject are merged. Anything describing the same stretch collapses,
+ * whichever record it came from, and two sittings hours apart stay two.
  *
  * `sessionsLoaded` is false until the fetch settles, and stays false if it
- * failed. Blocks are then drawn untouched rather than suppressed as ghosts —
- * an unreachable network must not empty the calendar.
+ * failed. A block is only treated as a ghost of a deleted session when the
+ * sessions were actually read — an unreachable network must not empty the
+ * calendar.
  */
 function studySpans(sessions: TimerSession[], blocks: TimeBlock[], sessionsLoaded: boolean): StudySpan[] {
-  const spans: StudySpan[] = [];
-  const claimed = new Set<string>();
   const ms = (iso: string) => new Date(iso).getTime();
   const sessionEnd = (s: TimerSession) =>
     s.endTime ? ms(s.endTime) : ms(s.startTime) + s.durationSeconds * 1000;
 
+  const candidates: StudySpan[] = [];
+
   for (const block of blocks) {
     if (!block.startTime || block.source === 'canvas') continue;
 
-    if (!block.timerSessionId) {
-      spans.push({ id: `soma-${block.id}`, subjectId: block.subjectId, task: block.task, start: new Date(block.startTime), end: new Date(block.endTime) });
+    if (block.timerSessionId && sessionsLoaded) {
+      // The timer's own copy of a session. Size it to the sessions still
+      // there, so a correction shrinks it and the last delete removes it.
+      const from = ms(block.startTime), to = ms(block.endTime);
+      const mine = sessions.filter(s =>
+        s.id === block.timerSessionId ||
+        (s.subjectId === block.subjectId && ms(s.startTime) >= from && ms(s.startTime) <= to));
+      if (mine.length === 0) continue;
+      candidates.push({
+        id: `soma-${block.id}`,
+        blockId: block.id,
+        subjectId: block.subjectId,
+        task: block.task,
+        start: new Date(Math.min(...mine.map(s => ms(s.startTime)))),
+        end: new Date(Math.max(...mine.map(sessionEnd))),
+      });
       continue;
     }
 
-    if (!sessionsLoaded) {
-      spans.push({ id: `soma-${block.id}`, subjectId: block.subjectId, task: block.task, start: new Date(block.startTime), end: new Date(block.endTime) });
-      continue;
-    }
-
-    // The sessions this block stands for: the one it names, plus any later
-    // continuation of the same subject that it was extended to cover.
-    const from = ms(block.startTime), to = ms(block.endTime);
-    const mine = sessions.filter(s =>
-      s.id === block.timerSessionId ||
-      (s.subjectId === block.subjectId && ms(s.startTime) >= from && ms(s.startTime) <= to));
-    for (const s of mine) claimed.add(s.id);
-    if (mine.length === 0) continue;   // every session gone: so is the block
-
-    spans.push({
+    candidates.push({
       id: `soma-${block.id}`,
+      blockId: block.id,
       subjectId: block.subjectId,
       task: block.task,
-      start: new Date(Math.min(...mine.map(s => ms(s.startTime)))),
-      end: new Date(Math.max(...mine.map(sessionEnd))),
+      start: new Date(block.startTime),
+      end: new Date(block.endTime),
     });
   }
 
   if (sessionsLoaded) {
     for (const s of sessions) {
-      if (claimed.has(s.id)) continue;
-      spans.push({ id: `session-${s.id}`, subjectId: s.subjectId, task: s.task, start: new Date(s.startTime), end: new Date(sessionEnd(s)) });
+      candidates.push({
+        id: `session-${s.id}`,
+        subjectId: s.subjectId,
+        task: s.task,
+        start: new Date(s.startTime),
+        end: new Date(sessionEnd(s)),
+      });
     }
   }
-  return spans;
-}
 
+  // Merge overlapping candidates for the same subject. Touching is not
+  // overlapping: work that ends as the next begins stays two blocks.
+  const merged: StudySpan[] = [];
+  for (const span of [...candidates].sort((a, b) => +a.start - +b.start)) {
+    const hit = merged.find(m =>
+      m.subjectId === span.subjectId && +span.start < +m.end && +span.end > +m.start);
+    if (!hit) { merged.push({ ...span }); continue; }
+    if (+span.start < +hit.start) hit.start = span.start;
+    if (+span.end > +hit.end) hit.end = span.end;
+    // Keep whichever record can be opened, and a name over none.
+    if (!hit.blockId && span.blockId) { hit.blockId = span.blockId; hit.id = span.id; }
+    if (!hit.task && span.task) hit.task = span.task;
+  }
+  return merged;
+}
 
 interface Filters {
   gcal: boolean;
@@ -527,7 +550,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         const subject = subjects.find(s => s.id === span.subjectId);
         const baseColor = subject?.color ?? '#9e9e9e';
         const label = (subject?.name ?? span.task) || 'Study';
-        const block = blocks.find(b => `soma-${b.id}` === span.id);
+        const block = span.blockId ? blocks.find(b => b.id === span.blockId) : undefined;
         events.push({
           id: span.id,
           type: 'soma',

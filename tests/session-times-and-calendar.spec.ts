@@ -174,6 +174,39 @@ test('a task resumed through the day draws once, not once per session',async({pa
  await expect(page.getByText('Biology')).toHaveCount(1);
 });
 
+/**
+ * The shape a real week actually has: a planned block, and the sessions that
+ * were worked inside it. Drawing the block and each session separately is how
+ * one afternoon became three crowded slivers.
+ */
+test('a block and the sessions worked inside it draw as one',async({page})=>{
+ const state=await setup(page);
+ state.tables.timer_sessions=[
+  {id:'s1',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Cell review',date,start_time:iso('14:19'),end_time:iso('14:35'),duration_seconds:16*60},
+  {id:'s2',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Cell review',date,start_time:iso('14:35'),end_time:iso('15:47'),duration_seconds:72*60},
+ ];
+ // The planned block covering them, carrying no session id of its own.
+ await page.addInitScript(({start,end})=>{
+  localStorage.setItem('soma_blocks',JSON.stringify([
+   {id:'plan-1',subjectId:'biology',task:'Cell review',startTime:start,endTime:end,source:'manual'},
+  ]));
+ },{start:iso('14:12'),end:iso('16:00')});
+
+ await openWeek(page);
+ await expect(page.getByText('Biology').first()).toBeVisible();
+ await expect(page.getByText('Biology')).toHaveCount(1);
+});
+
+test('two sittings on the same subject at different times stay separate',async({page})=>{
+ const state=await setup(page);
+ state.tables.timer_sessions=[
+  {id:'afternoon',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Reading',date,start_time:iso('14:00'),end_time:iso('15:00'),duration_seconds:60*60},
+  {id:'evening',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Homework',date,start_time:iso('19:47'),end_time:iso('22:00'),duration_seconds:133*60},
+ ];
+ await openWeek(page);
+ await expect(page.getByText('Biology')).toHaveCount(2);
+});
+
 test('a failed session load leaves the calendar drawn, not emptied',async({page})=>{
  const state=await setup(page);
  await page.addInitScript(({start,end})=>{
