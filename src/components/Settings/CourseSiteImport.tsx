@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type React from 'react';
 import { supabase } from '../../lib/supabase';
 import { storage } from '../../lib/storage';
-import type { Subject } from '../../types';
+import { asTodoKind, type Subject } from '../../types';
 import styles from './SettingsTab.module.css';
 
 /**
@@ -108,12 +108,19 @@ export default function CourseSiteImport({ courses, createCourse, onImported }: 
         // Re-importing updates a date rather than adding the same task twice.
         const existing = storage.getTodos().find(t => t.subjectId === subject.id && t.text.trim().toLowerCase() === item.title.trim().toLowerCase());
         if (existing) {
-          if (existing.dueDate === item.due) { rows.push({ title: item.title, due: item.due, time: item.time, change: 'unchanged' }); continue; }
-          await storage.saveTodo({ ...existing, dueDate: item.due, date: existing.date === existing.dueDate ? item.due : existing.date });
+          if (existing.dueDate === item.due) {
+            // Same date, but the row may predate the kind column: fill it in
+            // so re-importing is how older tasks get classified.
+            const kind = asTodoKind(item.type);
+            if (kind && existing.kind !== kind) await storage.saveTodo({ ...existing, kind });
+            rows.push({ title: item.title, due: item.due, time: item.time, change: 'unchanged' });
+            continue;
+          }
+          await storage.saveTodo({ ...existing, dueDate: item.due, date: existing.date === existing.dueDate ? item.due : existing.date, kind: asTodoKind(item.type) ?? existing.kind });
           updated++;
           rows.push({ title: item.title, due: item.due, time: item.time, change: 'updated' });
         } else {
-          await storage.saveTodo({ id: crypto.randomUUID(), text: item.title, status: 'nothing', subjectId: subject.id, dueDate: item.due, date: item.due });
+          await storage.saveTodo({ id: crypto.randomUUID(), text: item.title, status: 'nothing', subjectId: subject.id, dueDate: item.due, date: item.due, kind: asTodoKind(item.type) });
           created++;
           rows.push({ title: item.title, due: item.due, time: item.time, change: 'added' });
         }

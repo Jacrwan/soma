@@ -2,21 +2,25 @@ import { supabase } from '../../lib/supabase';
 import { storage } from '../../lib/storage';
 import { fetchAggregatedEvents } from '../../lib/googleCalendarConnections';
 import type { Subject, Todo, TodoSession, GoogleCalendarEvent } from '../../types';
+import { asTodoKind } from '../../types';
 import type { PlanBlock } from './PlanEditor';
 
 export type LiveBlock = PlanBlock & { todoId?: string; sessionId?: string; subjectId?: string; legacyId?: string };
-export type History = { id:string; subject_id:string; task_text:string; duration_seconds:number; date:string };
+export type History = { id:string; subject_id:string; task_text:string; duration_seconds:number; date:string; start_time?:string; end_time?:string };
 export type Snapshot = { blocks:LiveBlock[]; subjects:Subject[]; todos:Todo[]; sessions:TodoSession[]; history:History[]; calendarError:string };
 export const localDate = (date:Date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 export function dateAt(origin:Date,day:number) { const d=new Date(origin);d.setHours(0,0,0,0);d.setDate(d.getDate()+day);return d; }
 const timeLabel = (d:Date) => `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-const utc = (s:string) => /Z$|[+-]\d\d:\d\d$/.test(s) ? s : `${s}Z`;
+/** Supabase returns timestamptz without a zone suffix often enough that
+ *  parsing it raw would read as local time and shift the clock. */
+export const utcIso = (s:string) => /Z$|[+-]\d\d:\d\d$/.test(s) ? s : `${s}Z`;
+const utc = utcIso;
 const commitmentSubject = 'Personal commitments';
 async function rows(table:string,userId:string) {
  const all:Record<string,unknown>[]=[];
  for(let offset=0;;offset+=1000){const {data,error}=await supabase.from(table).select('*').eq('user_id',userId).order('id').range(offset,offset+999);if(error)throw new Error(`Could not load ${table.replace(/_/g,' ')}. Please retry.`);all.push(...(data??[]));if(!data || data.length<1000)return all;}
 }
-function todoRow(r:Record<string,unknown>):Todo {return {id:String(r.id),text:String(r.text??''),status:r.status as Todo['status'],subjectId:r.subject_id as string|undefined,date:String(r.date??''),estimatedMinutes:r.estimated_minutes as number|undefined,dueDate:r.due_date as string|undefined,assignmentId:r.assignment_id as number|undefined,notes:r.notes as string|undefined,order:r.order as number|undefined};}
+function todoRow(r:Record<string,unknown>):Todo {return {id:String(r.id),text:String(r.text??''),status:r.status as Todo['status'],subjectId:r.subject_id as string|undefined,date:String(r.date??''),estimatedMinutes:r.estimated_minutes as number|undefined,dueDate:r.due_date as string|undefined,kind:asTodoKind(r.kind),assignmentId:r.assignment_id as number|undefined,notes:r.notes as string|undefined,order:r.order as number|undefined};}
 /** The plan for `days` days starting `startDay` days from origin (negative = the past). */
 export async function readPlan(userId:string,origin:Date,startDay=0,days=7):Promise<Snapshot> {
  const calendar=fetchAggregatedEvents(dateAt(origin,startDay).toISOString(),dateAt(origin,startDay+days).toISOString(),true).then(events=>({events,error:''})).catch(()=>({events:[] as GoogleCalendarEvent[],error:'Calendar could not be fully loaded. Reconnect or retry before accepting AI schedules.'}));

@@ -19,11 +19,12 @@ function CheckIcon() {
 }
 
 const FREE_FEATURES = [
-  'Day View & schedule blocks',
+  'Dashboard & schedule blocks',
   'Canvas assignment sync',
-  'Calendar integration',
+  'Google Calendar (read-only)',
+  'Documents, filed by subject',
   'Insights & study tracking',
-  'Manual todos & study timer',
+  'Manual todos & focus timer',
 ];
 
 const PREMIUM_FEATURES = [
@@ -31,7 +32,7 @@ const PREMIUM_FEATURES = [
   'AI chat assistant',
   'AI schedule generation',
   'AI todo generation',
-  'Future AI planning features',
+  'Import deadlines from a course site',
 ];
 
 type Plan = 'monthly' | 'yearly';

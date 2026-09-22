@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Subject, TimeBlock, TimerSession, CanvasAssignment, CanvasCourse, Todo, TodoSession, GoogleCalendarEvent, ChatMessage, ChatSession } from '../types';
+import { Subject, TimeBlock, TimerSession, CanvasAssignment, CanvasCourse, Todo, TodoSession, GoogleCalendarEvent, ChatMessage, ChatSession, asTodoKind } from '../types';
 
 const SOMA_TODOS_KEY = 'soma_todos';
 const SOMA_BLOCKS_KEY = 'soma_blocks';
@@ -216,6 +216,7 @@ function todoFromRow(r: Record<string, unknown>): Todo {
     date: r.date as string,
     estimatedMinutes: (r.estimated_minutes as number | null) ?? undefined,
     dueDate: (r.due_date as string | null) ?? undefined,
+    kind: asTodoKind(r.kind),
     notes: (r.notes as string | null) ?? undefined,
     order: (r.order as number | null) ?? undefined,
   };
@@ -720,6 +721,7 @@ export const storage = {
       status: todo.status,
       date: todo.date,
       due_date: todo.dueDate ?? null,
+      kind: todo.kind ?? null,
       notes: todo.notes ?? null,
       order: todo.order ?? null,
     });
@@ -893,12 +895,32 @@ export const storage = {
     window.dispatchEvent(new Event('soma_insights_changed'));
   },
 
-  async updateTimerSessionDuration(sessionId: string, durationSeconds: number): Promise<void> {
+  /**
+   * Correct a recorded session. Start, end and duration are written together
+   * because everything downstream reads a different one of them: Insights
+   * totals the duration, the Calendar draws the span, and the AI is told when
+   * the work happened. Writing the duration alone, as this used to, left a
+   * session that claimed 90 minutes while still ending three hours after it
+   * started.
+   */
+  async updateTimerSession(
+    sessionId: string,
+    patch: { startTime: string; endTime: string; durationSeconds: number },
+  ): Promise<void> {
     const id = await uid();
-    const seconds = Math.max(0, Math.round(durationSeconds));
+    const start = new Date(patch.startTime), end = new Date(patch.endTime);
+    if (Number.isNaN(+start) || Number.isNaN(+end)) throw new Error('That is not a valid time.');
+    if (+end <= +start) throw new Error('End time must be later than start time.');
+    const seconds = Math.max(0, Math.round(patch.durationSeconds));
+    if (seconds > 24 * 60 * 60) throw new Error('A session cannot be longer than a day.');
     const { error } = await supabase
       .from('timer_sessions')
-      .update({ duration_seconds: seconds })
+      .update({
+        start_time: start.toISOString(),
+        end_time: end.toISOString(),
+        duration_seconds: seconds,
+        date: `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`,
+      })
       .eq('id', sessionId)
       .eq('user_id', id);
     if (error) throw new Error(error.message);
@@ -926,6 +948,41 @@ export const storage = {
       .eq('subject_id', subjectId);
     if (error) throw new Error(error.message);
     window.dispatchEvent(new Event('soma_insights_changed'));
+  },
+
+  /**
+   * Every recorded study session, for surfaces that draw actual study time
+   * rather than the plan (the Calendar). This is the synced source of truth:
+   * `soma_blocks` in localStorage holds only this device's copy, so a session
+   * added by hand, corrected, or deleted would not be reflected there.
+   */
+  async fetchTimerSessions(): Promise<TimerSession[]> {
+    const id = await uid();
+    const rows: TimerSession[] = [];
+    const pageSize = 1000;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase
+        .from('timer_sessions')
+        .select('id,subject_id,task_text,start_time,end_time,duration_seconds')
+        .eq('user_id', id)
+        .order('id')
+        .range(from, from + pageSize - 1);
+      if (error) throw new Error(error.message);
+      for (const r of data ?? []) {
+        const row = r as Record<string, unknown>;
+        if (!row.start_time) continue;
+        rows.push({
+          id: String(row.id),
+          subjectId: String(row.subject_id ?? ''),
+          task: String(row.task_text ?? ''),
+          startTime: ensureUtcSuffix(String(row.start_time)),
+          endTime: row.end_time ? ensureUtcSuffix(String(row.end_time)) : '',
+          durationSeconds: Number(row.duration_seconds ?? 0),
+        });
+      }
+      if (!data || data.length < pageSize) break;
+    }
+    return rows;
   },
 
   async saveTimerSession(session: TimerSession, subjectName: string): Promise<void> {

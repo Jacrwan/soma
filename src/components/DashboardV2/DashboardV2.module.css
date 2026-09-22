@@ -209,9 +209,16 @@
 .focusLog li{gap:8px;min-height:24px;align-items:center}
 .focusLog li strong{margin-left:auto}
 .logActions{display:flex;gap:2px;flex-shrink:0}
+/* The clock range a session actually ran, beside its date. */
+.logRange{font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--text-secondary);opacity:.85}
 .focusLog .logActions button{background:transparent;border-color:transparent;padding:3px 6px;min-height:22px;font-size:10px;color:var(--text-secondary)}
 .focusLog .logActions button:hover:not(:disabled){background:var(--bg-tertiary);color:var(--text-primary)}
 .logEditing{gap:6px}
+/* Correcting a session opens a small form, so it stops being one flex row. */
+.logEditingBox{display:flex;flex-direction:column;align-items:stretch;gap:6px;padding:8px;border:1px solid var(--border);border-radius:7px}
+.logEditingHead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.focusLog .logEditingBox label{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-secondary)}
+.focusLog .logEditingBox input[type="time"]{padding:3px 6px;min-height:24px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text-primary);font:inherit;font-size:11px}
 .focusLog .logInput{width:66px;margin-left:auto;padding:3px 6px;min-height:24px;border:1px solid var(--border);border-radius:5px;background:var(--bg);color:var(--text-primary);font:inherit;font-size:11px;font-variant-numeric:tabular-nums;text-align:right}
 .logUnit{flex-shrink:0;font-size:10px}
 .focusLog .logEditing button{padding:3px 8px;min-height:24px;font-size:10px}
@@ -222,6 +229,10 @@
 .logAdd input{min-height:28px;padding:4px 7px;border:1px solid var(--border);border-radius:5px;background:var(--bg-secondary);color:var(--text-primary);font:inherit;font-size:11px}
 .logAddButtons{display:flex;gap:6px;justify-content:flex-end}
 .focusLog .logAddButtons button{padding:4px 10px;min-height:26px;font-size:10px}
+/* Length vs start-and-end, for however the student remembers the session. */
+.logAddMode{display:flex;gap:4px}
+.focusLog .logAddMode button{flex:1;padding:4px 8px;min-height:26px;font-size:10px;background:transparent;color:var(--text-secondary)}
+.focusLog .logAddMode button[aria-pressed="true"]{background:var(--bg-tertiary);color:var(--text-primary);border-color:var(--border)}
 .dropLogged{flex-basis:100%;order:1;display:flex;align-items:center;gap:7px;font-size:10px;color:var(--text-secondary);cursor:pointer;user-select:none;padding-top:2px}
 .dropLogged input{flex-shrink:0;margin:0}
 .blockWithChoice{flex-wrap:wrap}

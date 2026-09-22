@@ -5,7 +5,7 @@ import { getWeekRange, isCacheStale } from '../../lib/googleCalendar';
 import {
   listConnections, startConnectFlow, fetchAggregatedEvents, GoogleCalendarError,
 } from '../../lib/googleCalendarConnections';
-import { TimeBlock, Subject, GoogleCalendarEvent, GoogleCalendarConnection } from '../../types';
+import { TimeBlock, Subject, GoogleCalendarEvent, GoogleCalendarConnection, TimerSession, Todo } from '../../types';
 import { formatDateTime, formatHourLabel, useTimeFormat, type TimeFormat } from '../../lib/timeFormat';
 import {
   addDays, getSundayOfWeek, getFirstOfMonth, startOfDay,
@@ -14,6 +14,106 @@ import {
 import styles from './CalendarTab.module.css';
 
 type ViewMode = CalendarView;
+
+/** One drawn stretch of study time, from whichever source described it. */
+interface StudySpan {
+  id: string;
+  subjectId: string;
+  task: string;
+  start: Date;
+  end: Date;
+  blockId?: string;
+}
+
+/**
+ * Reconcile every record of study time into one span per stretch worked.
+ *
+ * Three things describe the same afternoon, and the calendar used to draw
+ * whichever it knew about:
+ *
+ *  - a block in localStorage, which may be a plan or the timer's own copy;
+ *  - one timer_sessions row per sitting, since resuming a task writes another
+ *    row and only extends the block it continues;
+ *  - nothing at all, when time was added by hand, which writes no block.
+ *
+ * Counting them separately is what turned one afternoon into a stack of
+ * slivers. Rather than special-case how each source links to the others —
+ * blocks name at most their first session, and a planned block names none —
+ * every record becomes a candidate span and overlapping candidates for the
+ * same subject are merged. Anything describing the same stretch collapses,
+ * whichever record it came from, and two sittings hours apart stay two.
+ *
+ * `sessionsLoaded` is false until the fetch settles, and stays false if it
+ * failed. A block is only treated as a ghost of a deleted session when the
+ * sessions were actually read — an unreachable network must not empty the
+ * calendar.
+ */
+function studySpans(sessions: TimerSession[], blocks: TimeBlock[], sessionsLoaded: boolean): StudySpan[] {
+  const ms = (iso: string) => new Date(iso).getTime();
+  const sessionEnd = (s: TimerSession) =>
+    s.endTime ? ms(s.endTime) : ms(s.startTime) + s.durationSeconds * 1000;
+
+  const candidates: StudySpan[] = [];
+
+  for (const block of blocks) {
+    if (!block.startTime || block.source === 'canvas') continue;
+
+    if (block.timerSessionId && sessionsLoaded) {
+      // The timer's own copy of a session. Size it to the sessions still
+      // there, so a correction shrinks it and the last delete removes it.
+      const from = ms(block.startTime), to = ms(block.endTime);
+      const mine = sessions.filter(s =>
+        s.id === block.timerSessionId ||
+        (s.subjectId === block.subjectId && ms(s.startTime) >= from && ms(s.startTime) <= to));
+      if (mine.length === 0) continue;
+      candidates.push({
+        id: `soma-${block.id}`,
+        blockId: block.id,
+        subjectId: block.subjectId,
+        task: block.task,
+        start: new Date(Math.min(...mine.map(s => ms(s.startTime)))),
+        end: new Date(Math.max(...mine.map(sessionEnd))),
+      });
+      continue;
+    }
+
+    candidates.push({
+      id: `soma-${block.id}`,
+      blockId: block.id,
+      subjectId: block.subjectId,
+      task: block.task,
+      start: new Date(block.startTime),
+      end: new Date(block.endTime),
+    });
+  }
+
+  if (sessionsLoaded) {
+    for (const s of sessions) {
+      candidates.push({
+        id: `session-${s.id}`,
+        subjectId: s.subjectId,
+        task: s.task,
+        start: new Date(s.startTime),
+        end: new Date(sessionEnd(s)),
+      });
+    }
+  }
+
+  // Merge overlapping candidates for the same subject. Touching is not
+  // overlapping: work that ends as the next begins stays two blocks.
+  const merged: StudySpan[] = [];
+  for (const span of [...candidates].sort((a, b) => +a.start - +b.start)) {
+    const hit = merged.find(m =>
+      m.subjectId === span.subjectId && +span.start < +m.end && +span.end > +m.start);
+    if (!hit) { merged.push({ ...span }); continue; }
+    if (+span.start < +hit.start) hit.start = span.start;
+    if (+span.end > +hit.end) hit.end = span.end;
+    // Keep whichever record can be opened, and a name over none.
+    if (!hit.blockId && span.blockId) { hit.blockId = span.blockId; hit.id = span.id; }
+    if (!hit.task && span.task) hit.task = span.task;
+  }
+  return merged;
+}
 
 interface Filters {
   gcal: boolean;
@@ -155,6 +255,16 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   const [filters, setFilters] = useState<Filters>(() => loadFilters());
   const [dataVersion, setDataVersion] = useState(0);
 
+  // Recorded study time, read from Supabase rather than the localStorage
+  // blocks: a session added by hand, corrected or deleted never reached those,
+  // so the calendar showed the timer's sessions only and kept ghosts of
+  // deleted ones.
+  const [sessions, setSessions] = useState<TimerSession[]>([]);
+  const [sessionsLoaded, setSessionsLoaded] = useState(false);
+  // Deadlines from a course website are tasks with a due date, and belong in
+  // the all-day row beside the Canvas ones.
+  const [dueTasks, setDueTasks] = useState<Todo[]>(() => storage.getTodos().filter(t => !!t.dueDate));
+
   const [currentMinutes, setCurrentMinutes] = useState(() => {
     const now = new Date();
     return now.getHours() * 60 + now.getMinutes();
@@ -174,6 +284,9 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   const preModalFocusRef = useRef<HTMLElement | null>(null);
 
   const isConnected = connections.some(c => c.selectedCalendars.length > 0);
+
+  const subjectName = (subjectId?: string) =>
+    (subjectId ? storage.getSubjects().find(s => s.id === subjectId)?.name : '') ?? '';
 
   const loadConnections = useCallback(async () => {
     try {
@@ -196,6 +309,32 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     const handler = () => setDataVersion(v => v + 1);
     window.addEventListener('soma_gcal_updated', handler);
     return () => window.removeEventListener('soma_gcal_updated', handler);
+  }, []);
+
+  // saveTimerSession, updateTimerSessionDuration and deleteTimerSession all
+  // dispatch soma_insights_changed, so adding, correcting or deleting a
+  // session anywhere in the app redraws the calendar.
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      void storage.fetchTimerSessions()
+        .then(rows => { if (!cancelled) { setSessions(rows); setSessionsLoaded(true); setDataVersion(v => v + 1); } })
+        .catch(() => { /* leave sessionsLoaded false: blocks are drawn untouched */ });
+    };
+    refresh();
+    window.addEventListener('soma_insights_changed', refresh);
+    return () => { cancelled = true; window.removeEventListener('soma_insights_changed', refresh); };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      if (!cancelled) { setDueTasks(storage.getTodos().filter(t => !!t.dueDate)); setDataVersion(v => v + 1); }
+    };
+    void storage.fetchAllTodos().then(refresh).catch(() => { /* non-fatal */ });
+    void storage.whenTokensLoaded().then(refresh);
+    window.addEventListener('soma_todos_changed', refresh);
+    return () => { cancelled = true; window.removeEventListener('soma_todos_changed', refresh); };
   }, []);
 
   useEffect(() => {
@@ -361,18 +500,21 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         if (!a.dueAt) continue;
         add(new Date(a.dueAt), { id: `canvas-${a.id}`, label: a.name, bgColor: CANVAS_COLOR, type: 'canvas', sortKey: new Date(a.dueAt).getTime() });
       }
+      for (const t of dueTasks) {
+        const due = new Date(`${t.dueDate}T23:59:00`);
+        add(due, { id: `due-${t.id}`, label: t.text, bgColor: CANVAS_COLOR, type: 'canvas', sortKey: due.getTime() });
+      }
     }
     if (filters.soma) {
-      for (const b of blocks) {
-        if (!b.startTime) continue;
-        const subj = subjects.find(s => s.id === b.subjectId);
-        add(new Date(b.startTime), { id: `soma-${b.id}`, label: b.task || subj?.name || 'Block', bgColor: subj?.color ?? '#9e9e9e', type: 'soma', sortKey: new Date(b.startTime).getTime() });
+      for (const span of studySpans(sessions, blocks, sessionsLoaded)) {
+        const subj = subjects.find(s => s.id === span.subjectId);
+        add(span.start, { id: span.id, label: span.task || subj?.name || 'Study', bgColor: subj?.color ?? '#9e9e9e', type: 'soma', sortKey: span.start.getTime() });
       }
     }
     for (const chips of map.values()) chips.sort((a, b) => a.sortKey - b.sortKey);
     return map;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, dataVersion]);
+  }, [filters, dataVersion, sessions, sessionsLoaded, dueTasks]);
 
   const getPositionedEventsForDay = useCallback((day: Date): {
     events: PositionedEvent[];
@@ -398,35 +540,28 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     const events: RawEvent[] = [];
 
     if (filters.soma) {
-      for (const b of blocks) {
-        if (!b.startTime || !isOnDate(b.startTime, day)) continue;
-        if (b.source === 'canvas') continue;
-        const start = new Date(b.startTime);
-        const end = new Date(b.endTime);
-        const startMin = start.getHours() * 60 + start.getMinutes();
-        const endMin = end.getHours() * 60 + end.getMinutes();
-        const durMin = endMin - startMin;
-
+      for (const span of studySpans(sessions, blocks, sessionsLoaded)) {
+        if (!isOnDate(span.start.toISOString(), day)) continue;
+        const startMin = span.start.getHours() * 60 + span.start.getMinutes();
+        const endMin = span.end.getHours() * 60 + span.end.getMinutes();
         // Under five minutes is almost always a focus session stopped by
         // accident; it used to render as a dot, which added noise, not signal.
-        if (durMin < 5) continue;
-
-        const subject = subjects.find(s => s.id === b.subjectId);
+        if (endMin - startMin < 5) continue;
+        const subject = subjects.find(s => s.id === span.subjectId);
         const baseColor = subject?.color ?? '#9e9e9e';
-        const label = (subject?.name ?? b.task) || 'Block';
-        const sublabel = b.task && b.task !== subject?.name ? b.task : undefined;
-
+        const label = (subject?.name ?? span.task) || 'Study';
+        const block = span.blockId ? blocks.find(b => b.id === span.blockId) : undefined;
         events.push({
-          id: `soma-${b.id}`,
+          id: span.id,
           type: 'soma',
           label,
-          sublabel,
+          sublabel: span.task && span.task !== subject?.name ? span.task : undefined,
           color: tint(baseColor, 0.3),
           borderColor: baseColor,
           textColor: 'var(--text-primary)',
           startMin,
           endMin: endMin > startMin ? endMin : startMin + 30,
-          block: b,
+          block,
         });
       }
     }
@@ -520,7 +655,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         gcalEvent: ev.gcalEvent,
       })),
     };
-  }, [filters]);
+  }, [filters, sessions, sessionsLoaded]);
 
   function goToPrev() {
     if (viewMode === 'month') setViewMonth(d => new Date(d.getFullYear(), d.getMonth() - 1, 1));
@@ -675,7 +810,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
           style={filters.canvas ? { background: CANVAS_COLOR, borderColor: CANVAS_COLOR } : {}}
           onClick={() => toggleFilter('canvas')}
           aria-pressed={filters.canvas}
-        >Canvas</button>
+        >Courses</button>
         <button
           className={`${styles.filterPill}${filters.soma ? ` ${styles.filterPillActive}` : ''}`}
           onClick={() => toggleFilter('soma')}
@@ -755,42 +890,49 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
             })}
           </div>
 
-          {/* All-day row (Canvas assignments) */}
+          {/* All-day row: everything due that day, whatever its source. */}
           {filters.canvas && (() => {
             const assignments = storage.getCachedAssignments();
-            const hasAny = weekDays.some(day =>
-              assignments.some(a => a.dueAt && isSameDay(new Date(a.dueAt), day))
-            );
-            if (!hasAny) return null;
+            type DueChip = { id: string; name: string; course: string; dueKey: string; url?: string };
+            const chipsFor = (day: Date): DueChip[] => [
+              ...assignments
+                .filter(a => a.dueAt && isSameDay(new Date(a.dueAt), day))
+                .map(a => ({ id: `canvas-${a.id}`, name: a.name, course: a.courseName, dueKey: a.dueAt, url: a.htmlUrl })),
+              ...dueTasks
+                .filter(t => isSameDay(new Date(`${t.dueDate}T12:00:00`), day))
+                .map(t => ({
+                  id: `due-${t.id}`,
+                  name: t.text,
+                  course: subjectName(t.subjectId),
+                  dueKey: `${t.dueDate}T23:59:00`,
+                })),
+            ];
+            if (!weekDays.some(day => chipsFor(day).length > 0)) return null;
             return (
               <div className={styles.weekViewAllDayRow}>
                 <div className={styles.weekViewAllDayLabel}>all-day</div>
-                {weekDays.map((day, i) => {
-                  const chips = assignments.filter(a => a.dueAt && isSameDay(new Date(a.dueAt), day));
-                  return (
-                    <div key={i} className={styles.weekViewAllDayCell}>
-                      {chips.map(a => {
-                        const dueDate = new Date(a.dueAt);
-                        const dueFmt = dueDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-                        return (
-                          <div key={a.id} className={styles.weekViewAllDayChipWrap}>
-                            <span className={styles.weekViewAllDayChip}>{a.name}</span>
-                            <div className={styles.weekViewAllDayChipPanel} onClick={e => e.stopPropagation()}>
-                              <div className={styles.weekViewChipPanelName}>{a.name}</div>
-                              <div className={styles.weekViewChipPanelMeta}>Due {dueFmt}</div>
-                              <div className={styles.weekViewChipPanelCourse}>{a.courseName}</div>
-                              {a.htmlUrl && (
-                                <a className={styles.weekViewChipPanelLink} href={a.htmlUrl} target="_blank" rel="noopener noreferrer">
-                                  Open in Canvas ↗
-                                </a>
-                              )}
-                            </div>
+                {weekDays.map((day, i) => (
+                  <div key={i} className={styles.weekViewAllDayCell}>
+                    {chipsFor(day).map(chip => {
+                      const dueFmt = new Date(chip.dueKey).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                      return (
+                        <div key={chip.id} className={styles.weekViewAllDayChipWrap}>
+                          <span className={styles.weekViewAllDayChip}>{chip.name}</span>
+                          <div className={styles.weekViewAllDayChipPanel} onClick={e => e.stopPropagation()}>
+                            <div className={styles.weekViewChipPanelName}>{chip.name}</div>
+                            <div className={styles.weekViewChipPanelMeta}>Due {dueFmt}</div>
+                            {chip.course && <div className={styles.weekViewChipPanelCourse}>{chip.course}</div>}
+                            {chip.url && (
+                              <a className={styles.weekViewChipPanelLink} href={chip.url} target="_blank" rel="noopener noreferrer">
+                                Open in Canvas ↗
+                              </a>
+                            )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
             );
           })()}

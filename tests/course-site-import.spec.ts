@@ -70,6 +70,36 @@ test('importing creates the course and one task per deadline on its due date', a
   expect(byTitle['Homework 3']).toMatchObject({ due_date: offset(6), date: offset(6), subject_id: state.subjects[0].id });
 });
 
+test('what each deadline is gets stored, not just shown while picking', async ({ page }) => {
+  const state = await setup(page);
+  await page.getByLabel('Course website address').fill('https://cs61a.org');
+  await page.getByRole('button', { name: 'Find deadlines' }).click();
+  await page.getByRole('button', { name: 'Import 3 deadlines' }).click();
+  await expect(page.getByRole('status')).toContainText('Imported 3 new deadlines');
+
+  // The classification the import already makes is what lets Deadlines show
+  // work to hand in and leave readings out of it.
+  const byTitle = Object.fromEntries(state.todos.map(t => [t.text, t]));
+  expect(byTitle['Homework 3'].kind).toBe('homework');
+  expect(byTitle['Lab 3'].kind).toBe('lab');
+  expect(byTitle['Hog project'].kind).toBe('project');
+});
+
+test('re-importing classifies tasks saved before the kind column', async ({ page }) => {
+  const cs = { id: 'cs', user_id: account.id, name: 'CS 61A', color: '#26c6da', archived: false };
+  // Same date, so this row is "unchanged" — it still needs its kind.
+  const state = await setup(page, [cs], [
+    { id: 'lab3', user_id: account.id, text: 'Lab 3', status: 'nothing', subject_id: 'cs', due_date: offset(5), date: offset(5) },
+  ]);
+  await page.getByLabel('Course website address').fill('https://cs61a.org');
+  await page.getByRole('button', { name: 'Find deadlines' }).click();
+  await page.getByRole('button', { name: 'Import 3 deadlines' }).click();
+  await expect(page.getByRole('status')).toContainText('Imported');
+
+  await expect.poll(() => state.todos.find(t => t.text === 'Lab 3')?.kind).toBe('lab');
+  expect(state.todos.filter(t => t.text === 'Lab 3')).toHaveLength(1);
+});
+
 test('re-importing updates a changed date instead of duplicating', async ({ page }) => {
   const cs = { id: 'cs', user_id: account.id, name: 'CS 61A', color: '#26c6da', archived: false };
   const state = await setup(page, [cs], [
