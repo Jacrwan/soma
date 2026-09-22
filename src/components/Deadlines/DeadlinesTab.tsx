@@ -1,10 +1,51 @@
 import { useState, useEffect } from 'react';
 import { storage } from '../../lib/storage';
 import { formatDateTime, useTimeFormat } from '../../lib/timeFormat';
-import { CanvasCourse, CanvasAssignment, Todo } from '../../types';
+import { CanvasAssignment, Todo } from '../../types';
 import { getIcalAssignments } from '../../lib/canvas';
 import { SkeletonBlock } from '../UI/Skeleton';
-import styles from './CanvasTab.module.css';
+import styles from './DeadlinesTab.module.css';
+
+/**
+ * Everything that is due, whatever it came from. Canvas assignments arrive
+ * from the calendar feed; classes that keep their schedule on their own site
+ * (cs61a.org and the like) are imported as tasks with a due date, and so are
+ * the tasks a student writes themselves. All of it is one list grouped by
+ * day, because "what is due on Thursday" does not care which source it
+ * came from.
+ *
+ * Canvas and tasks keep their own storage: assignment status lives in the
+ * assignmentStatus/clearedAssignments maps that Day View and the AI context
+ * also read, while a task's status is a column on the row. The two are
+ * mapped onto one status here rather than merged underneath.
+ */
+
+type Status = 'not_started' | 'in_progress' | 'done';
+
+/** A row in the list, from either source. */
+type Deadline = {
+  key: string;
+  source: 'canvas' | 'task';
+  canvasId: number | null;
+  todoId: string | null;
+  title: string;
+  courseName: string;
+  color: string;
+  dueKey: string;
+  dueLabel: string;
+  status: Status;
+  url: string | null;
+};
+
+const TODO_TO_STATUS: Record<Todo['status'], Status> = {
+  nothing: 'not_started', in_progress: 'in_progress', done: 'done',
+};
+const STATUS_TO_TODO: Record<Status, Todo['status']> = {
+  not_started: 'nothing', in_progress: 'in_progress', done: 'done',
+};
+
+/** Tasks with no course still have to appear; they group under one label. */
+const NO_COURSE = 'No course';
 
 function AssignmentSkeleton() {
   const widths = [170, 210, 145, 192, 128];
@@ -70,7 +111,7 @@ function fmtSynced(ts: number): string {
   return `${mins} mins ago`;
 }
 
-export default function CanvasTab() {
+export default function DeadlinesTab() {
   useTimeFormat(); // re-render when the 12h/24h preference changes
   const [icalUrl, setIcalUrl] = useState(() => storage.getCanvasIcalUrl());
   const [setupIcalUrl, setSetupIcalUrl] = useState('');
@@ -88,9 +129,17 @@ export default function CanvasTab() {
   const [clearedAssignments, setClearedAssignments] = useState<Record<number, boolean>>(
     () => storage.getClearedAssignments(),
   );
-  const [selectedCourseId, setSelectedCourseId] = useState<number | null>(null);
+  // Courses are filtered by name: Canvas courses are synced into Subjects by
+  // name already, so it is the one key both sources share.
+  const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
   const [lastSynced, setLastSynced] = useState<number | null>(() => storage.getCacheTimestamp());
   const [statusFilter, setStatusFilter] = useState<'all' | 'not_started' | 'in_progress' | 'done'>('all');
+
+  // Imported and hand-written tasks. getTodos() is a synchronous read of a
+  // list filled in asynchronously, so this starts with whatever is cached and
+  // is refreshed once the real load settles.
+  const [todos, setTodos] = useState<Todo[]>(() => storage.getTodos());
+  const [taskError, setTaskError] = useState('');
 
   // storage.getSubjects() (used below to color-link each course to its
   // Subject) reads an in-memory list populated asynchronously by
@@ -107,6 +156,20 @@ export default function CanvasTab() {
       if (!cancelled) forceSubjectColorRecheck(n => n + 1);
     });
     return () => { cancelled = true; };
+  }, []);
+
+  // Tasks come from Supabase, not the feed cache, and the import flow, the
+  // dashboard and the AI all change them from elsewhere — so refresh on the
+  // same event those paths already dispatch.
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => { if (!cancelled) setTodos(storage.getTodos()); };
+    void storage.whenTokensLoaded().then(refresh);
+    void storage.fetchAllTodos()
+      .then(refresh)
+      .catch(e => { if (!cancelled) setTaskError(e instanceof Error ? e.message : 'Could not load your tasks.'); });
+    window.addEventListener('soma_todos_changed', refresh);
+    return () => { cancelled = true; window.removeEventListener('soma_todos_changed', refresh); };
   }, []);
 
   useEffect(() => {
@@ -231,12 +294,33 @@ export default function CanvasTab() {
     setClearedAssignments(updated);
   }
 
-  function getStatus(id: number) {
-    return assignmentStatus[id] ?? 'not_started';
+  // A task's status is a column, so this writes through to the row. Applied
+  // optimistically and rolled back on failure, because the list is grouped
+  // and filtered by status — a silent failure would move the row and then
+  // leave it in the wrong group.
+  async function updateTaskStatus(todoId: string, status: Status) {
+    const previous = storage.getTodos().find(t => t.id === todoId);
+    if (!previous) return;
+    const next: Todo = { ...previous, status: STATUS_TO_TODO[status] };
+    setTaskError('');
+    setTodos(ts => ts.map(t => (t.id === todoId ? next : t)));
+    try {
+      await storage.saveTodo(next);
+      await storage.fetchAllTodos();
+      window.dispatchEvent(new Event('soma_todos_changed'));
+    } catch (e) {
+      setTodos(ts => ts.map(t => (t.id === todoId ? previous : t)));
+      setTaskError(e instanceof Error ? e.message : 'Could not save that change.');
+    }
   }
 
+  const datedTodos = todos.filter(t => !!t.dueDate);
+
   // ── Setup card ──────────────────────────────────────────────────────────────
-  if (!icalUrl) {
+  // Only when there is genuinely nothing to show. A student who imports from a
+  // course site and never connects Canvas still has deadlines, and used to be
+  // shown this prompt instead of them.
+  if (!icalUrl && datedTodos.length === 0) {
     return (
       <div className={styles.setupOverlay}>
         <div className={styles.setupCard}>
@@ -272,78 +356,132 @@ export default function CanvasTab() {
   }
 
   // ── Main view ────────────────────────────────────────────────────────────────
-  const archivedCourseNames = new Set(
-    storage.getSubjects().filter(s => s.archived).map(s => s.name),
-  );
+  const subjects = storage.getSubjects();
+  const archivedCourseNames = new Set(subjects.filter(s => s.archived).map(s => s.name));
+  const subjectsByName = new Map(subjects.map(s => [s.name, s]));
+  const subjectsById = new Map(subjects.map(s => [s.id, s]));
 
-  const courses: CanvasCourse[] = [...new Map(
+  const canvasCourseIds = [...new Map(
     assignments
       .filter(a => a.courseId && a.courseName && !archivedCourseNames.has(a.courseName))
-      .map(a => [a.courseId, { id: a.courseId, name: a.courseName, courseCode: '' } as CanvasCourse]),
-  ).values()];
-
+      .map(a => [a.courseId, a.courseName]),
+  )];
   const courseColorMap = Object.fromEntries(
-    courses.map((c, i) => [c.id, COURSE_COLORS[i % COURSE_COLORS.length]]),
+    canvasCourseIds.map(([id], i) => [id, COURSE_COLORS[i % COURSE_COLORS.length]]),
   );
-
-  const activeAssignments = assignments.filter(a => !archivedCourseNames.has(a.courseName));
-
-  const filtered = activeAssignments
-    .filter(a => selectedCourseId === null || a.courseId === selectedCourseId)
-    .filter(a => statusFilter === 'done' ? !!clearedAssignments[a.id] : !clearedAssignments[a.id])
-    .filter(a => statusFilter === 'all' || statusFilter === 'done' || (assignmentStatus[a.id] ?? 'not_started') === statusFilter)
-    .sort((a, b) => new Date(b.dueAt).getTime() - new Date(a.dueAt).getTime());
-
-  const subjectsByName = new Map(storage.getSubjects().map(s => [s.name, s]));
   const courseColor = (courseId: number, courseName: string) =>
     subjectsByName.get(courseName)?.color ?? courseColorMap[courseId] ?? '#888';
 
+  const canvasItems: Deadline[] = assignments
+    .filter(a => !archivedCourseNames.has(a.courseName))
+    .map(a => ({
+      key: `canvas-${a.id}`,
+      source: 'canvas' as const,
+      canvasId: a.id,
+      todoId: null,
+      title: a.name,
+      courseName: a.courseName,
+      color: courseColor(a.courseId, a.courseName),
+      dueKey: dayKey(new Date(a.dueAt)),
+      dueLabel: fmtDueTime(a.dueAt),
+      status: (assignmentStatus[a.id] ?? 'not_started') as Status,
+      url: a.htmlUrl,
+    }));
+
+  // A task imported from a course site already exists as a Canvas assignment
+  // when a course is on both; assignmentId is what links them, so those are
+  // dropped rather than listed twice.
+  const canvasIds = new Set(assignments.map(a => a.id));
+  const taskItems: Deadline[] = datedTodos
+    .filter(t => !(t.assignmentId && canvasIds.has(t.assignmentId)))
+    .map(t => {
+      const subject = t.subjectId ? subjectsById.get(t.subjectId) : undefined;
+      return {
+        key: `task-${t.id}`,
+        source: 'task' as const,
+        canvasId: null,
+        todoId: t.id,
+        title: t.text,
+        courseName: subject?.name ?? NO_COURSE,
+        color: subject?.color ?? '#888',
+        // Tasks carry a date with no time of day, so the day heading is the
+        // whole story and the time column says as much.
+        dueKey: t.dueDate!,
+        dueLabel: 'All day',
+        status: TODO_TO_STATUS[t.status],
+        url: null,
+      };
+    })
+    .filter(item => item.courseName === NO_COURSE || !archivedCourseNames.has(item.courseName));
+
+  const allItems = [...canvasItems, ...taskItems];
+
+  const courseNames = [...new Set(allItems.map(i => i.courseName))].sort((a, b) =>
+    a === NO_COURSE ? 1 : b === NO_COURSE ? -1 : a.localeCompare(b),
+  );
+
+  const isDone = (item: Deadline) =>
+    item.source === 'canvas' ? !!clearedAssignments[item.canvasId!] : item.status === 'done';
+
+  const filtered = allItems
+    .filter(i => selectedCourse === null || i.courseName === selectedCourse)
+    .filter(i => (statusFilter === 'done' ? isDone(i) : !isDone(i)))
+    .filter(i => statusFilter === 'all' || statusFilter === 'done' || i.status === statusFilter)
+    .sort((a, b) => (a.dueKey === b.dueKey ? a.title.localeCompare(b.title) : a.dueKey.localeCompare(b.dueKey)));
+
+  const doneCount = allItems.filter(isDone).length;
+
   // Group by due date (Today, Tomorrow, weekday...) so the page reads the
   // way Canvas's own dashboard does — what's due when — while course stays
-  // visible per row via its subject color and a filter chip row above,
-  // instead of owning the top-level grouping.
-  const dateGroups = new Map<string, typeof filtered>();
-  for (const a of filtered) {
-    const key = dayKey(new Date(a.dueAt));
-    if (!dateGroups.has(key)) dateGroups.set(key, []);
-    dateGroups.get(key)!.push(a);
+  // visible per row via its subject color and a filter above, instead of
+  // owning the top-level grouping.
+  const dateGroups = new Map<string, Deadline[]>();
+  for (const item of filtered) {
+    if (!dateGroups.has(item.dueKey)) dateGroups.set(item.dueKey, []);
+    dateGroups.get(item.dueKey)!.push(item);
   }
   const orderedDateKeys = [...dateGroups.keys()].sort();
 
-  function renderAssignmentRow(a: CanvasAssignment) {
-    const status = getStatus(a.id);
-    const done = status === 'done';
-    const cleared = !!clearedAssignments[a.id];
-    const color = courseColor(a.courseId, a.courseName);
+  function renderRow(item: Deadline) {
+    const done = isDone(item);
+    const open = () => { if (item.url) window.open(item.url, '_blank', 'noopener,noreferrer'); };
     return (
       <div
-        key={a.id}
-        className={`${styles.assignmentCard}${done ? ` ${styles.done}` : ''}${cleared ? ` ${styles.cleared}` : ''}`}
-        onClick={() => window.open(a.htmlUrl, '_blank', 'noopener,noreferrer')}
+        key={item.key}
+        className={`${styles.assignmentCard}${item.status === 'done' ? ` ${styles.done}` : ''}${done ? ` ${styles.cleared}` : ''}`}
+        onClick={item.url ? open : undefined}
+        style={item.url ? undefined : { cursor: 'default' }}
       >
-        <span className={styles.dot} style={{ background: color, opacity: done ? 0.3 : 1 }} />
+        <span className={styles.dot} style={{ background: item.color, opacity: done ? 0.3 : 1 }} />
         <div className={styles.assignmentInfo}>
-          <span className={styles.assignmentCourse}>{a.courseName}</span>
-          <span className={styles.assignmentName}>{a.name}</span>
+          <span className={styles.assignmentCourse}>{item.courseName}</span>
+          <span className={styles.assignmentName}>{item.title}</span>
         </div>
-        <span className={styles.dueTime}>{fmtDueTime(a.dueAt)}</span>
+        <span className={styles.dueTime}>{item.dueLabel}</span>
         <div className={styles.assignmentControls} onClick={e => e.stopPropagation()}>
           <select
-            className={`${styles.statusSelect}${done ? ` ${styles.statusSelectDone}` : ''}`}
-            value={status}
-            onChange={e => updateStatus(a.id, e.target.value)}
+            className={`${styles.statusSelect}${item.status === 'done' ? ` ${styles.statusSelectDone}` : ''}`}
+            value={item.status}
+            aria-label={`Status: ${item.title}`}
+            onChange={e => {
+              const next = e.target.value as Status;
+              if (item.source === 'canvas') updateStatus(item.canvasId!, next);
+              else void updateTaskStatus(item.todoId!, next);
+            }}
           >
             <option value="not_started">Not started</option>
             <option value="in_progress">In progress</option>
             <option value="done">Done</option>
           </select>
-          <a
-            className={styles.externalLink}
-            href={a.htmlUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Open in Canvas"
-          >↗</a>
+          {item.url && (
+            <a
+              className={styles.externalLink}
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Open in Canvas"
+            >↗</a>
+          )}
         </div>
       </div>
     );
@@ -353,38 +491,52 @@ export default function CanvasTab() {
     <div className={styles.container}>
       <div className={styles.topBar}>
         <div className={styles.subNav}>
-          <button className={`${styles.subNavBtn} ${styles.subNavBtnActive}`}>Assignments</button>
+          <button className={`${styles.subNavBtn} ${styles.subNavBtnActive}`}>Everything due</button>
         </div>
         <div className={styles.syncRow}>
-          {lastSynced && (
+          {icalUrl && lastSynced && (
             <span className={styles.syncLabel}>
               📅 Calendar Feed · Last synced: {fmtSynced(lastSynced)}
             </span>
           )}
           {icalError && <span className={styles.syncError}>{icalError}</span>}
-          <button
-            className={styles.refreshBtn}
-            onClick={loadIcalData}
-            disabled={icalSyncing}
-            title="Refresh"
-          >{icalSyncing ? '…' : '↻'}</button>
+          {taskError && <span className={styles.syncError} role="alert">{taskError}</span>}
+          {icalUrl && (
+            <button
+              className={styles.refreshBtn}
+              onClick={loadIcalData}
+              disabled={icalSyncing}
+              title="Refresh"
+            >{icalSyncing ? '…' : '↻'}</button>
+          )}
         </div>
-        <button className={styles.disconnectLink} onClick={handleDisconnect}>Disconnect</button>
+        {icalUrl && (
+          <button className={styles.disconnectLink} onClick={handleDisconnect}>Disconnect</button>
+        )}
       </div>
 
       <div className={styles.main}>
-        {icalSyncing && assignments.length === 0 && <AssignmentSkeleton />}
+        {/* Canvas is not connected but there are deadlines to show, so this
+            offers the connection rather than standing in front of them. */}
+        {!icalUrl && (
+          <div className={styles.setupHintNoBorder} style={{ marginBottom: 14 }}>
+            These are your imported and hand-written deadlines.{' '}
+            <a href="/settings">Connect Canvas</a> to pull your assignments in too.
+          </div>
+        )}
 
-        {!icalSyncing && (
+        {icalSyncing && assignments.length === 0 && datedTodos.length === 0 && <AssignmentSkeleton />}
+
+        {!(icalSyncing && assignments.length === 0 && datedTodos.length === 0) && (
           <>
             <div className={styles.filterBar}>
               <select
                 className={styles.filterSelect}
                 value={statusFilter}
+                aria-label="Filter by status"
                 onChange={e => setStatusFilter(e.target.value as typeof statusFilter)}
               >
                 {(['all', 'not_started', 'in_progress', 'done'] as const).map(f => {
-                  const doneCount = Object.keys(clearedAssignments).length;
                   const label =
                     f === 'all' ? 'Active' :
                     f === 'not_started' ? 'Not started' :
@@ -396,24 +548,25 @@ export default function CanvasTab() {
 
               <select
                 className={styles.filterSelect}
-                value={selectedCourseId ?? ''}
-                onChange={e => setSelectedCourseId(e.target.value ? Number(e.target.value) : null)}
+                value={selectedCourse ?? ''}
+                aria-label="Filter by course"
+                onChange={e => setSelectedCourse(e.target.value || null)}
               >
                 <option value="">All courses</option>
-                {courses.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                {courseNames.map(name => (
+                  <option key={name} value={name}>{name}</option>
                 ))}
               </select>
             </div>
 
             {filtered.length === 0 ? (
               <div className={styles.empty}>
-                {statusFilter === 'done' ? 'No completed assignments.' : 'No active assignments.'}
+                {statusFilter === 'done' ? 'Nothing completed yet.' : 'Nothing due.'}
               </div>
             ) : (
               <div className={styles.dateGroups}>
                 {orderedDateKeys.map(key => {
-                  const dayAssignments = dateGroups.get(key) ?? [];
+                  const dayItems = dateGroups.get(key) ?? [];
                   const { label, overdue } = assignmentDayLabel(key);
                   return (
                     <div key={key} className={styles.dateGroup}>
@@ -421,10 +574,10 @@ export default function CanvasTab() {
                         <span className={`${styles.dateGroupLabel}${overdue ? ` ${styles.dateGroupLabelOverdue}` : ''}`}>
                           {label}
                         </span>
-                        <span className={styles.dateGroupCount}>{dayAssignments.length}</span>
+                        <span className={styles.dateGroupCount}>{dayItems.length}</span>
                       </div>
                       <div className={styles.assignmentList}>
-                        {dayAssignments.map(renderAssignmentRow)}
+                        {dayItems.map(renderRow)}
                       </div>
                     </div>
                   );

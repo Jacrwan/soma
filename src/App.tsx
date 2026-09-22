@@ -5,7 +5,7 @@ import { supabase } from './lib/supabase';
 import AuthScreen from './components/Auth/AuthScreen';
 import DayView from './components/DayView/DayView';
 import LiveDashboard from './components/DashboardV2/LiveDashboard';
-import CanvasTab from './components/Canvas/CanvasTab';
+import DeadlinesTab from './components/Deadlines/DeadlinesTab';
 import DocumentsTab from './components/Documents/DocumentsTab';
 import AITab from './components/AI/AITab';
 import CalendarTab from './components/Calendar/CalendarTab';
@@ -226,8 +226,9 @@ function AppShell({ user, sessionResolved, onLogout }: {
     );
   }
 
-  function nav(path: string) {
-    return `${styles.navItem}${p === path ? ` ${styles.navItemActive}` : ''}`;
+  function nav(path: string, ...alsoActiveOn: string[]) {
+    const active = p === path || alsoActiveOn.includes(p);
+    return `${styles.navItem}${active ? ` ${styles.navItemActive}` : ''}`;
   }
 
 
@@ -282,12 +283,12 @@ function AppShell({ user, sessionResolved, onLogout }: {
               surface. The /day-view route below still works if you open it
               directly, so this nav entry can be restored by uncommenting it. */}
 
-          <button className={nav('/canvas')} onClick={() => navigate('/canvas')}>
+          <button className={nav('/deadlines', '/canvas')} onClick={() => navigate('/deadlines')}>
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
               <rect x="2" y="1" width="10" height="12" rx="1.5"/>
               <path d="M4.5 5h5M4.5 7.5h5M4.5 10h3"/>
             </svg>
-            <span className={styles.navLabel}>Canvas</span>
+            <span className={styles.navLabel}>Deadlines</span>
           </button>
 
           <button className={nav('/documents')} onClick={() => navigate('/documents')}>
@@ -567,7 +568,10 @@ export default function App() {
         <Route path="/dashboard" element={user ? <LiveDashboard key={user.id} userId={user.id}/> : <Navigate to="/login" replace/>} />
         {/* Kept as a backup: unlinked from the UI, still reachable at /day-view. */}
         <Route path="/day-view"  element={<DayView selectedDate={selectedDate} onSelectDate={setSelectedDate} />} />
-        <Route path="/canvas"    element={<CanvasTab />} />
+        {/* Renamed to Deadlines once it covered more than Canvas; the old
+            path still works so existing links and bookmarks do not break. */}
+        <Route path="/deadlines" element={<DeadlinesTab />} />
+        <Route path="/canvas"    element={<DeadlinesTab />} />
         <Route path="/documents" element={<DocumentsTab />} />
         <Route path="/calendar"  element={
           <CalendarTab

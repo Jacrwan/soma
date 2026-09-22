@@ -1032,7 +1032,7 @@ export default function LandingPage() {
             <div className="ln-shot-body">
               <aside className="ln-side">
                 <div className="ln-side-item on"><span className="ln-side-ic" />Dashboard</div>
-                <div className="ln-side-item"><span className="ln-side-ic" />Canvas</div>
+                <div className="ln-side-item"><span className="ln-side-ic" />Deadlines</div>
                 <div className="ln-side-item"><span className="ln-side-ic" />Documents</div>
                 <div className="ln-side-item"><span className="ln-side-ic" />Calendar</div>
                 <div className="ln-side-item"><span className="ln-side-ic" />AI</div>
