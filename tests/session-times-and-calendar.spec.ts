@@ -134,6 +134,21 @@ test('correcting the length moves the end, not just the number',async({page})=>{
  expect(new Date(String(row.end_time)).getTime()-new Date(String(row.start_time)).getTime()).toBe(50*60*1000);
 });
 
+test('typing a new length shows the end time it lands on',async({page})=>{
+ await setup(page);
+ await openEditor(page);
+ await page.getByRole('button',{name:/Edit the 25 minute session/}).click();
+
+ // The session ran 8:00-8:25. The end follows the length as it is typed, so
+ // the change is visible before it is saved.
+ const row=page.getByLabel('Past focus sessions').getByRole('listitem').filter({hasText:'min'}).first();
+ await expect(row).toContainText('8:00 AM – 8:25 AM');
+ await page.getByRole('spinbutton',{name:/Minutes studied on/}).fill('50');
+ await expect(row).toContainText('8:00 AM – 8:50 AM');
+ await page.getByRole('spinbutton',{name:/Minutes studied on/}).fill('90');
+ await expect(row).toContainText('8:00 AM – 9:30 AM');
+});
+
 test('a session can be corrected by when it ran',async({page})=>{
  const state=await setup(page);
  await openEditor(page);
