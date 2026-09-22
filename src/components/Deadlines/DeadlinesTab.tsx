@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { storage } from '../../lib/storage';
 import { formatDateTime, useTimeFormat } from '../../lib/timeFormat';
-import { CanvasAssignment, Todo } from '../../types';
+import { CanvasAssignment, Todo, isSubmittable } from '../../types';
 import { getIcalAssignments } from '../../lib/canvas';
 import { SkeletonBlock } from '../UI/Skeleton';
 import styles from './DeadlinesTab.module.css';
@@ -315,12 +315,13 @@ export default function DeadlinesTab() {
   }
 
   const datedTodos = todos.filter(t => !!t.dueDate);
+  const anyToShow = datedTodos.some(t => isSubmittable(t.kind) || !!t.assignmentId || !t.kind);
 
   // ── Setup card ──────────────────────────────────────────────────────────────
   // Only when there is genuinely nothing to show. A student who imports from a
   // course site and never connects Canvas still has deadlines, and used to be
   // shown this prompt instead of them.
-  if (!icalUrl && datedTodos.length === 0) {
+  if (!icalUrl && !anyToShow) {
     return (
       <div className={styles.setupOverlay}>
         <div className={styles.setupCard}>
@@ -392,7 +393,18 @@ export default function DeadlinesTab() {
   // when a course is on both; assignmentId is what links them, so those are
   // dropped rather than listed twice.
   const canvasIds = new Set(assignments.map(a => a.id));
+
+  // This page is for work that has to be handed in. A reading or a study block
+  // a student wrote for themselves has a date without being a deadline, and
+  // burying Lab 3 among the chapters to read is how the page stopped being
+  // useful. A task linked to a Canvas assignment counts whatever its kind.
+  const submittable = (t: Todo) => isSubmittable(t.kind) || !!t.assignmentId;
+  // Saved before the kind column existed, so it is unknown rather than
+  // excluded. Re-importing the course site classifies these.
+  const unclassified = datedTodos.filter(t => !t.kind && !t.assignmentId);
+
   const taskItems: Deadline[] = datedTodos
+    .filter(submittable)
     .filter(t => !(t.assignmentId && canvasIds.has(t.assignmentId)))
     .map(t => {
       const subject = t.subjectId ? subjectsById.get(t.subjectId) : undefined;
@@ -522,6 +534,14 @@ export default function DeadlinesTab() {
           <div className={styles.setupHintNoBorder} style={{ marginBottom: 14 }}>
             These are your imported and hand-written deadlines.{' '}
             <a href="/settings">Connect Canvas</a> to pull your assignments in too.
+          </div>
+        )}
+
+        {unclassified.length > 0 && (
+          <div className={styles.setupHintNoBorder} style={{ marginBottom: 14 }}>
+            {unclassified.length} {unclassified.length === 1 ? 'task is' : 'tasks are'} not sorted into
+            work to hand in and work to prepare, so {unclassified.length === 1 ? 'it is' : 'they are'} left
+            off this page. <a href="/settings">Re-import the course site</a> to sort {unclassified.length === 1 ? 'it' : 'them'}.
           </div>
         )}
 

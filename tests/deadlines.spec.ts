@@ -47,7 +47,7 @@ async function setup(page: Page, { subjects = [] as Row[], todos = [] as Row[], 
 /** One imported deadline, exactly as CourseSiteImport saves it. */
 const importedTask = (over: Row = {}) => ({
   id: 'task-lab3', text: 'Lab 3', status: 'nothing', subject_id: 'cs61a',
-  due_date: offset(2), date: offset(2), ...over,
+  due_date: offset(2), date: offset(2), kind: 'lab', ...over,
 });
 
 test('imported deadlines show even when Canvas was never connected', async ({ page }) => {
@@ -78,10 +78,44 @@ test('Canvas assignments and imported deadlines share one list', async ({ page }
 });
 
 test('a task with no course still appears rather than being dropped', async ({ page }) => {
-  await setup(page, { todos: [importedTask({ id: 'loose', text: 'Read chapter 6', subject_id: null })] });
+  await setup(page, { todos: [importedTask({ id: 'loose', text: 'Problem set 4', subject_id: null, kind: 'homework' })] });
   await page.goto('/deadlines');
-  await expect(page.getByText('Read chapter 6')).toBeVisible();
+  await expect(page.getByText('Problem set 4')).toBeVisible();
   await expect(page.getByText('No course', { exact: true }).last()).toBeVisible();
+});
+
+test('work to prepare is left off; work to hand in is not', async ({ page }) => {
+  await setup(page, { subjects: [CS61A], todos: [
+    importedTask(),
+    importedTask({ id: 'reading', text: 'Read chapter 3.1-3.7', kind: 'reading' }),
+    importedTask({ id: 'disc', text: 'Discussion post 2', kind: 'discussion' }),
+    importedTask({ id: 'exam', text: 'Midterm 1', kind: 'exam' }),
+  ] });
+  await page.goto('/deadlines');
+
+  await expect(page.getByText('Lab 3')).toBeVisible();
+  await expect(page.getByText('Midterm 1')).toBeVisible();
+  await expect(page.getByText('Read chapter 3.1-3.7')).toHaveCount(0);
+  await expect(page.getByText('Discussion post 2')).toHaveCount(0);
+});
+
+test('a task linked to a Canvas assignment counts whatever its kind', async ({ page }) => {
+  await setup(page, { subjects: [CS61A], todos: [
+    importedTask({ id: 'linked', text: 'Reading quiz', kind: 'reading', assignment_id: 999 }),
+  ] });
+  await page.goto('/deadlines');
+  await expect(page.getByText('Reading quiz')).toBeVisible();
+});
+
+test('tasks saved before the kind column are named, not silently dropped', async ({ page }) => {
+  await setup(page, { subjects: [CS61A], todos: [
+    importedTask({ id: 'old', text: 'Lab 2', kind: null }),
+  ] });
+  await page.goto('/deadlines');
+
+  await expect(page.getByText('Lab 2')).toHaveCount(0);
+  await expect(page.getByText(/1 task is not sorted/)).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Re-import the course site' })).toBeVisible();
 });
 
 test('marking an imported deadline done writes through to the task', async ({ page }) => {

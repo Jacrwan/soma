@@ -107,12 +107,35 @@ export interface CanvasGrade {
   finalGrade: string | null;
 }
 
+/**
+ * What a task is, as the course-site import classifies it. Only some of these
+ * are work that gets handed in; the rest are how you prepare for it.
+ */
+export type TodoKind =
+  | 'homework' | 'lab' | 'project' | 'exam' | 'quiz'
+  | 'reading' | 'discussion' | 'other';
+
+export const TODO_KINDS: TodoKind[] =
+  ['homework', 'lab', 'project', 'exam', 'quiz', 'reading', 'discussion', 'other'];
+
+/** The kinds that have to be submitted, and so belong on Deadlines. */
+export const SUBMITTABLE_KINDS: TodoKind[] = ['homework', 'lab', 'project', 'exam', 'quiz'];
+
+export const isSubmittable = (kind?: TodoKind | null): boolean =>
+  !!kind && (SUBMITTABLE_KINDS as string[]).includes(kind);
+
+/** Anything the import did not classify, or that was written by hand. */
+export const asTodoKind = (value: unknown): TodoKind | undefined =>
+  typeof value === 'string' && (TODO_KINDS as string[]).includes(value) ? value as TodoKind : undefined;
+
 export interface Todo {
   id: string;
   text: string;
   status: 'nothing' | 'in_progress' | 'done';
   subjectId?: string;
   dueDate?: string;
+  /** Unset for tasks written by hand, and for rows older than the column. */
+  kind?: TodoKind;
   assignmentId?: number;
   date: string; // YYYY-MM-DD
   estimatedMinutes?: number;

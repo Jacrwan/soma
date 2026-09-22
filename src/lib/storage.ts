@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Subject, TimeBlock, TimerSession, CanvasAssignment, CanvasCourse, Todo, TodoSession, GoogleCalendarEvent, ChatMessage, ChatSession } from '../types';
+import { Subject, TimeBlock, TimerSession, CanvasAssignment, CanvasCourse, Todo, TodoSession, GoogleCalendarEvent, ChatMessage, ChatSession, asTodoKind } from '../types';
 
 const SOMA_TODOS_KEY = 'soma_todos';
 const SOMA_BLOCKS_KEY = 'soma_blocks';
@@ -216,6 +216,7 @@ function todoFromRow(r: Record<string, unknown>): Todo {
     date: r.date as string,
     estimatedMinutes: (r.estimated_minutes as number | null) ?? undefined,
     dueDate: (r.due_date as string | null) ?? undefined,
+    kind: asTodoKind(r.kind),
     notes: (r.notes as string | null) ?? undefined,
     order: (r.order as number | null) ?? undefined,
   };
@@ -720,6 +721,7 @@ export const storage = {
       status: todo.status,
       date: todo.date,
       due_date: todo.dueDate ?? null,
+      kind: todo.kind ?? null,
       notes: todo.notes ?? null,
       order: todo.order ?? null,
     });

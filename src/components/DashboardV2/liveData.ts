@@ -2,6 +2,7 @@ import { supabase } from '../../lib/supabase';
 import { storage } from '../../lib/storage';
 import { fetchAggregatedEvents } from '../../lib/googleCalendarConnections';
 import type { Subject, Todo, TodoSession, GoogleCalendarEvent } from '../../types';
+import { asTodoKind } from '../../types';
 import type { PlanBlock } from './PlanEditor';
 
 export type LiveBlock = PlanBlock & { todoId?: string; sessionId?: string; subjectId?: string; legacyId?: string };
@@ -19,7 +20,7 @@ async function rows(table:string,userId:string) {
  const all:Record<string,unknown>[]=[];
  for(let offset=0;;offset+=1000){const {data,error}=await supabase.from(table).select('*').eq('user_id',userId).order('id').range(offset,offset+999);if(error)throw new Error(`Could not load ${table.replace(/_/g,' ')}. Please retry.`);all.push(...(data??[]));if(!data || data.length<1000)return all;}
 }
-function todoRow(r:Record<string,unknown>):Todo {return {id:String(r.id),text:String(r.text??''),status:r.status as Todo['status'],subjectId:r.subject_id as string|undefined,date:String(r.date??''),estimatedMinutes:r.estimated_minutes as number|undefined,dueDate:r.due_date as string|undefined,assignmentId:r.assignment_id as number|undefined,notes:r.notes as string|undefined,order:r.order as number|undefined};}
+function todoRow(r:Record<string,unknown>):Todo {return {id:String(r.id),text:String(r.text??''),status:r.status as Todo['status'],subjectId:r.subject_id as string|undefined,date:String(r.date??''),estimatedMinutes:r.estimated_minutes as number|undefined,dueDate:r.due_date as string|undefined,kind:asTodoKind(r.kind),assignmentId:r.assignment_id as number|undefined,notes:r.notes as string|undefined,order:r.order as number|undefined};}
 /** The plan for `days` days starting `startDay` days from origin (negative = the past). */
 export async function readPlan(userId:string,origin:Date,startDay=0,days=7):Promise<Snapshot> {
  const calendar=fetchAggregatedEvents(dateAt(origin,startDay).toISOString(),dateAt(origin,startDay+days).toISOString(),true).then(events=>({events,error:''})).catch(()=>({events:[] as GoogleCalendarEvent[],error:'Calendar could not be fully loaded. Reconnect or retry before accepting AI schedules.'}));
