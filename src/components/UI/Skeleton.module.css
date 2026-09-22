@@ -26,3 +26,22 @@
   animation: skshimmer 1.6s ease-in-out infinite;
   flex-shrink: 0;
 }
+
+/* A page of shimmering bars is a lot of motion. Hold it still instead. */
+@media (prefers-reduced-motion: reduce) {
+  .block {
+    animation: none;
+    background: var(--sk-base);
+  }
+}
+
+/* The loading message exists for screen readers; the bars carry it visually. */
+.srOnly {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

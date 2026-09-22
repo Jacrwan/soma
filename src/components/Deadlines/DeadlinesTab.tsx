@@ -3,7 +3,7 @@ import { storage } from '../../lib/storage';
 import { formatDateTime, useTimeFormat } from '../../lib/timeFormat';
 import { CanvasAssignment, Todo, isSubmittable } from '../../types';
 import { getIcalAssignments } from '../../lib/canvas';
-import { SkeletonBlock } from '../UI/Skeleton';
+import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './DeadlinesTab.module.css';
 
 /**
@@ -47,21 +47,37 @@ const STATUS_TO_TODO: Record<Status, Todo['status']> = {
 /** Tasks with no course still have to appear; they group under one label. */
 const NO_COURSE = 'No course';
 
-function AssignmentSkeleton() {
-  const widths = [170, 210, 145, 192, 128];
+function DeadlinesSkeleton() {
   return (
-    <div>
-      {widths.map((w, i) => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-          <SkeletonBlock width={10} height={10} borderRadius="50%" />
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <SkeletonBlock width={w} height={13} />
-            <SkeletonBlock width={76} height={11} />
+    <SkeletonPage label="Loading your deadlines…">
+      <div className={styles.filterBar}>
+        <SkeletonBlock width={132} height={34} borderRadius={8} />
+        <SkeletonBlock width={148} height={34} borderRadius={8} />
+      </div>
+      <div className={styles.dateGroups}>
+        {[3, 2].map((rows, group) => (
+          <div key={group} className={styles.dateGroup}>
+            <div className={styles.dateGroupHeader}>
+              <SkeletonBlock width={group === 0 ? 132 : 104} height={12} />
+              <SkeletonBlock width={16} height={12} />
+            </div>
+            <div className={styles.assignmentList}>
+              {Array.from({ length: rows }, (_, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                  <SkeletonBlock width={10} height={10} borderRadius="50%" />
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    <SkeletonBlock width={[196, 150, 224, 168, 140][i % 5]} height={13} />
+                    <SkeletonBlock width={82} height={11} />
+                  </div>
+                  <SkeletonBlock width={64} height={11} />
+                  <SkeletonBlock width={96} height={26} borderRadius={6} />
+                </div>
+              ))}
+            </div>
           </div>
-          <SkeletonBlock width={64} height={11} />
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+    </SkeletonPage>
   );
 }
 
@@ -139,6 +155,9 @@ export default function DeadlinesTab() {
   // list filled in asynchronously, so this starts with whatever is cached and
   // is refreshed once the real load settles.
   const [todos, setTodos] = useState<Todo[]>(() => storage.getTodos());
+  // Tasks come from Supabase, so until that settles the page cannot tell an
+  // empty account from one that simply has not answered yet.
+  const [tasksLoaded, setTasksLoaded] = useState(false);
   const [taskError, setTaskError] = useState('');
 
   // storage.getSubjects() (used below to color-link each course to its
@@ -167,7 +186,8 @@ export default function DeadlinesTab() {
     void storage.whenTokensLoaded().then(refresh);
     void storage.fetchAllTodos()
       .then(refresh)
-      .catch(e => { if (!cancelled) setTaskError(e instanceof Error ? e.message : 'Could not load your tasks.'); });
+      .catch(e => { if (!cancelled) setTaskError(e instanceof Error ? e.message : 'Could not load your tasks.'); })
+      .finally(() => { if (!cancelled) setTasksLoaded(true); });
     window.addEventListener('soma_todos_changed', refresh);
     return () => { cancelled = true; window.removeEventListener('soma_todos_changed', refresh); };
   }, []);
@@ -315,13 +335,17 @@ export default function DeadlinesTab() {
   }
 
   const datedTodos = todos.filter(t => !!t.dueDate);
+  // Still waiting on whichever source could fill the page, with nothing cached
+  // to show in the meantime.
+  const loading = (!tasksLoaded || (icalSyncing && assignments.length === 0))
+    && assignments.length === 0 && datedTodos.length === 0;
   const anyToShow = datedTodos.some(t => isSubmittable(t.kind) || !!t.assignmentId || !t.kind);
 
   // ── Setup card ──────────────────────────────────────────────────────────────
   // Only when there is genuinely nothing to show. A student who imports from a
   // course site and never connects Canvas still has deadlines, and used to be
   // shown this prompt instead of them.
-  if (!icalUrl && !anyToShow) {
+  if (!icalUrl && !anyToShow && tasksLoaded) {
     return (
       <div className={styles.setupOverlay}>
         <div className={styles.setupCard}>
@@ -530,14 +554,14 @@ export default function DeadlinesTab() {
       <div className={styles.main}>
         {/* Canvas is not connected but there are deadlines to show, so this
             offers the connection rather than standing in front of them. */}
-        {!icalUrl && (
+        {!loading && !icalUrl && (
           <div className={styles.setupHintNoBorder} style={{ marginBottom: 14 }}>
             These are your imported and hand-written deadlines.{' '}
             <a href="/settings">Connect Canvas</a> to pull your assignments in too.
           </div>
         )}
 
-        {unclassified.length > 0 && (
+        {!loading && unclassified.length > 0 && (
           <div className={styles.setupHintNoBorder} style={{ marginBottom: 14 }}>
             {unclassified.length} {unclassified.length === 1 ? 'task is' : 'tasks are'} not sorted into
             work to hand in and work to prepare, so {unclassified.length === 1 ? 'it is' : 'they are'} left
@@ -545,9 +569,9 @@ export default function DeadlinesTab() {
           </div>
         )}
 
-        {icalSyncing && assignments.length === 0 && datedTodos.length === 0 && <AssignmentSkeleton />}
+        {loading && <DeadlinesSkeleton />}
 
-        {!(icalSyncing && assignments.length === 0 && datedTodos.length === 0) && (
+        {!loading && (
           <>
             <div className={styles.filterBar}>
               <select

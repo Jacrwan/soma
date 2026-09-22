@@ -5,6 +5,7 @@ import {
   listDocuments, uploadDocument, updateDocument, deleteDocument, getDocumentUrl,
   extractDocumentText, DocumentError, ACCEPT_ATTR, DOCUMENT_TYPES,
 } from '../../lib/documents';
+import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './DocumentsTab.module.css';
 
 type LoadState = 'loading' | 'ready' | 'not_set_up' | 'error';
@@ -173,7 +174,37 @@ export default function DocumentsTab() {
   }
 
   if (state === 'loading') {
-    return <div className={styles.container}><div className={styles.loading}>Loading documents…</div></div>;
+    // Shaped like the page it becomes — header, toolbar, then file rows — so
+    // nothing jumps when the real content replaces it.
+    return (
+      <div className={styles.container}>
+        <SkeletonPage label="Loading documents…">
+          <div className={styles.header}>
+            <SkeletonBlock width={168} height={27} />
+            <SkeletonBlock width="min(460px, 80%)" height={13} />
+          </div>
+          <div className={styles.toolbar}>
+            <SkeletonBlock width={220} height={34} borderRadius={8} />
+            <SkeletonBlock width={120} height={34} borderRadius={8} />
+            <SkeletonBlock width={140} height={34} borderRadius={8} />
+            <SkeletonBlock width={92} height={34} borderRadius={8} />
+          </div>
+          <div className={styles.list}>
+            {[78, 62, 84, 55, 70, 66].map((name, i) => (
+              <div key={i} className={styles.fileRow}>
+                <SkeletonBlock width={34} height={18} borderRadius={4} />
+                {/* The name takes the slack, as the real one does, so the
+                    fixed badges beside it cannot push the row off screen. */}
+                <span style={{ flex: 1, minWidth: 0 }}><SkeletonBlock width={`${name}%`} height={13} /></span>
+                <SkeletonBlock width={78} height={20} borderRadius={6} />
+                <SkeletonBlock width={64} height={20} borderRadius={6} />
+                <SkeletonBlock width={104} height={11} />
+              </div>
+            ))}
+          </div>
+        </SkeletonPage>
+      </div>
+    );
   }
 
   if (state === 'not_set_up') {
