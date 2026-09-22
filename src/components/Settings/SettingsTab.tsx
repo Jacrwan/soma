@@ -6,6 +6,7 @@ import { EDUCATION_OPTIONS, EDUCATION_LABELS, type EducationId } from '../Onboar
 import { applyTheme } from '../../App';
 import { applyTimeFormat } from '../../lib/timeFormat';
 import { requestMemory, type MemoryState, type MemoryMutation } from '../../lib/aiMemory';
+import { SkeletonBlock } from '../UI/Skeleton';
 import CourseSiteImport from './CourseSiteImport';
 import { supabase } from '../../lib/supabase';
 import { friendlyError } from '../../lib/errors';
@@ -65,16 +66,17 @@ export default function SettingsTab() {
   // (e.g. direct navigation to /settings), the Integrations row can show
   // "Connect" for an account that's already connected — re-check once
   // loading settles.
+  const [tokensLoaded, setTokensLoaded] = useState(false);
   useEffect(() => {
-    if (canvasIcalUrl) return;
     let cancelled = false;
     storage.whenTokensLoaded().then(() => {
       if (cancelled) return;
       const latest = storage.getCanvasIcalUrl();
       if (latest) setCanvasIcalUrl(latest);
+      setTokensLoaded(true);
     });
     return () => { cancelled = true; };
-  }, [canvasIcalUrl]);
+  }, []);
 
   // Local data state
   const [clearDataLoading, setClearDataLoading] = useState(false);
@@ -1079,8 +1081,10 @@ export default function SettingsTab() {
                   <span className={styles.integrationLabel}>Canvas</span>
                   <span className={styles.integrationDescription}>Sync assignment due dates via your Canvas calendar feed URL</span>
                 </div>
-                <div className={styles.integrationActions}>
-                  {canvasIcalUrl ? (
+                <div className={styles.integrationActions} data-testid="canvas-connection">
+                  {!tokensLoaded && !canvasIcalUrl ? (
+                    <SkeletonBlock width={96} height={32} borderRadius={7} />
+                  ) : canvasIcalUrl ? (
                     <>
                       <span className={styles.connectedBadge}>Connected</span>
                       <button className={styles.disconnectBtn} onClick={disconnectIcal}>Disconnect</button>

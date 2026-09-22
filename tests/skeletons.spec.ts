@@ -25,10 +25,11 @@ async function setup(page: Page, stall: string[] = []) {
   await page.route('https://soma-regression.supabase.co/**', async route => {
     const req = route.request(), url = new URL(req.url()), table = url.pathname.split('/').pop()!;
     if (url.pathname.includes('/auth/v1/')) return route.fulfill({ json: account });
-    if (table === 'settings') return route.fulfill({ json: { data: { onboardingCompleted: true, theme: 'light' } } });
+    // The stall goes first, or a table answered above could never be held.
     if (stall.includes(table) && req.method() === 'GET' && !released) {
       await new Promise<void>(resolve => waiting.push(resolve));
     }
+    if (table === 'settings') return route.fulfill({ json: { data: { onboardingCompleted: true, theme: 'light' } } });
     if (table === 'subjects') return route.fulfill({ json: [{ id: 'bio', user_id: account.id, name: 'Biology', color: '#66bb6a', archived: false }] });
     if (table === 'todos') return route.fulfill({ json: [{ id: 't1', user_id: account.id, text: 'Lab 3', subject_id: 'bio', status: 'nothing', date, due_date: date, kind: 'lab' }] });
     return route.fulfill({ json: req.headers().accept?.includes('vnd.pgrst.object') ? null : [] });
@@ -118,6 +119,53 @@ test('documents shows its shape while files load', async ({ page }) => {
 
   await gate.release();
   await expect(skeleton(page)).toHaveCount(0);
+});
+
+test('insights announces loading once, not one box at a time', async ({ page }) => {
+  const gate = await setup(page, ['timer_sessions']);
+  await page.goto('/insights');
+
+  await expect(skeleton(page)).toBeVisible();
+  await expect(page.getByRole('status')).toContainText('Loading your insights…');
+  await expect(skeleton(page)).toHaveAttribute('aria-hidden', 'true');
+  await gate.release();
+});
+
+test('the AI page announces loading the same way', async ({ page }) => {
+  const gate = await setup(page, ['chat_sessions']);
+  await page.route('**/api/stripe', async r => { await new Promise(res => setTimeout(res, 1200)); return r.fulfill({ json: { status: 'active' } }); });
+  await page.goto('/ai');
+
+  await expect(skeleton(page)).toBeVisible();
+  await expect(page.getByRole('status')).toContainText('Loading Soma…');
+  await gate.release();
+});
+
+test('settings does not offer Connect to an account already connected', async ({ page }) => {
+  const gate = await setup(page, ['settings']);
+  await page.goto('/settings');
+  await page.getByRole('button', { name: 'Integrations', exact: true }).click();
+
+  // Scoped to the Canvas row: Google Calendar has a Connect button of its own.
+  const canvas = page.getByTestId('canvas-connection');
+  await expect(canvas).toBeVisible();
+  // The row waits rather than guessing, which is what stopped it flashing
+  // "Connect" at a student whose Canvas is already set up.
+  await expect(canvas.getByRole('button', { name: 'Connect', exact: true })).toHaveCount(0);
+
+  await gate.release();
+  // Once the answer is in, the row commits to it.
+  await expect(canvas.getByRole('button', { name: 'Connect', exact: true })).toBeVisible();
+});
+
+test('the calendar keeps its grid and says what is still arriving', async ({ page }) => {
+  const gate = await setup(page, ['timer_sessions']);
+  await page.goto('/calendar');
+
+  // The grid is real structure, so it is not replaced by placeholder blocks.
+  await expect(page.getByRole('status')).toContainText(/Loading your study time|Syncing/);
+  await expect(skeleton(page)).toHaveCount(0);
+  await gate.release();
 });
 
 test('skeletons hold still when motion is not wanted', async ({ page }) => {

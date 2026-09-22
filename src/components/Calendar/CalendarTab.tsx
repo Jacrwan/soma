@@ -819,7 +819,15 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         {isConnected && (
           <button className={styles.disconnectBtn} onClick={() => navigate('/settings')}>Manage calendars</button>
         )}
-        {gcalLoading && <span className={styles.gcalLoading} role="status" aria-live="polite">↻ Syncing…</span>}
+        {/* A calendar's own grid is real structure and useful straight away, so
+            it is not replaced by a skeleton. Drawing placeholder blocks at
+            particular hours would read as commitments the student does not
+            have; this says what is still arriving instead. */}
+        {(gcalLoading || !sessionsLoaded) && (
+          <span className={styles.gcalLoading} role="status" aria-live="polite">
+            ↻ {gcalLoading ? 'Syncing…' : 'Loading your study time…'}
+          </span>
+        )}
         {gcalError && (
           <>
             <span className={styles.gcalError} role="alert">{gcalError}</span>
