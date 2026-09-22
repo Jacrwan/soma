@@ -120,6 +120,55 @@ test('adding by length still works',async({page})=>{
  expect(state.tables.timer_sessions.find(r=>r.id!=='real')!.duration_seconds).toBe(40*60);
 });
 
+test('correcting the length moves the end, not just the number',async({page})=>{
+ const state=await setup(page);
+ await openEditor(page);
+ await page.getByRole('button',{name:/Edit the 25 minute session/}).click();
+ await page.getByRole('spinbutton',{name:/Minutes studied on/}).fill('50');
+ await page.getByRole('button',{name:'Save',exact:true}).click();
+
+ await expect.poll(()=>state.tables.timer_sessions[0].duration_seconds).toBe(50*60);
+ // The bug: duration alone was written, leaving a session that claimed 50
+ // minutes while still ending at 8:25 — so the calendar drew the old span.
+ const row=state.tables.timer_sessions[0];
+ expect(new Date(String(row.end_time)).getTime()-new Date(String(row.start_time)).getTime()).toBe(50*60*1000);
+});
+
+test('a session can be corrected by when it ran',async({page})=>{
+ const state=await setup(page);
+ await openEditor(page);
+ await page.getByRole('button',{name:/Edit the 25 minute session/}).click();
+ await page.getByRole('button',{name:'Start and end',exact:true}).click();
+ await page.getByLabel(/Start time on/).fill('10:00');
+ await page.getByLabel(/End time on/).fill('11:15');
+ await expect(page.getByText('75 minutes.')).toBeVisible();
+ await page.getByRole('button',{name:'Save',exact:true}).click();
+
+ await expect.poll(()=>state.tables.timer_sessions[0].duration_seconds).toBe(75*60);
+ const row=state.tables.timer_sessions[0];
+ expect(new Date(String(row.start_time)).getHours()).toBe(10);
+ expect(new Date(String(row.end_time)).getHours()).toBe(11);
+});
+
+test('a correction reaches the calendar',async({page})=>{
+ await setup(page);
+ await openEditor(page);
+ await page.getByRole('button',{name:/Edit the 25 minute session/}).click();
+ await page.getByRole('button',{name:'Start and end',exact:true}).click();
+ await page.getByLabel(/Start time on/).fill('10:00');
+ await page.getByLabel(/End time on/).fill('11:15');
+ await page.getByRole('button',{name:'Save',exact:true}).click();
+ await expect(logs(page)).toContainText('75 minutes recorded on this task.');
+
+ await openWeek(page);
+ const block=page.getByText('Biology').first();
+ await expect(block).toBeVisible();
+ // Moved to 10:00, so it no longer sits where the 8:00 session was drawn.
+ const top=await block.evaluate(el=>el.getBoundingClientRect().top);
+ const eight=await page.getByText('8 AM').first().evaluate(el=>el.getBoundingClientRect().top);
+ expect(top).toBeGreaterThan(eight);
+});
+
 test('a session added by hand appears on the calendar',async({page})=>{
  await setup(page);
  await openEditor(page);

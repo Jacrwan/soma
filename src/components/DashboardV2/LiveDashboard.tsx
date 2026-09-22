@@ -320,7 +320,22 @@ CHANGING THE EXISTING PLAN: you can rename, move or remove the user's own study 
   else setError('');
  }
  const pulseDays=Array.from({length:7},(_,i)=>snapshot.history.filter(h=>h.date===localDate(dateAt(origin,i-6))).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0));
- return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>setProposals(items=>items.filter(b=>b.id!==id)),onAcceptAll:acceptAll,rangeStart,onRange:setRangeStart,onPropose:propose,onFocus:b=>{const live=snapshot.blocks.find(x=>x.id===b.id);const subject=snapshot.subjects.find(s=>s.id===live?.subjectId);if(subject)timer.startSession(subject,b.title,0);else setError('Choose a subject with Edit plan before starting focus.');},pulseSeconds:pulseDays.reduce((a,b)=>a+b,0),pulseDays,subjectNames:snapshot.subjects.filter(s=>!s.archived).map(s=>s.name),usedColors:snapshot.subjects.map(s=>s.color),onEditSession:async(sessionId,minutes)=>{writing.current=true;try{await storage.updateTimerSessionDuration(sessionId,minutes*60);await reload();}finally{writing.current=false;}},onDeleteSession:async(sessionId)=>{writing.current=true;try{await storage.deleteTimerSession(sessionId);await reload();}finally{writing.current=false;}},onAddSession:async(target,date,minutes,startTime)=>{
+ return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>setProposals(items=>items.filter(b=>b.id!==id)),onAcceptAll:acceptAll,rangeStart,onRange:setRangeStart,onPropose:propose,onFocus:b=>{const live=snapshot.blocks.find(x=>x.id===b.id);const subject=snapshot.subjects.find(s=>s.id===live?.subjectId);if(subject)timer.startSession(subject,b.title,0);else setError('Choose a subject with Edit plan before starting focus.');},pulseSeconds:pulseDays.reduce((a,b)=>a+b,0),pulseDays,subjectNames:snapshot.subjects.filter(s=>!s.archived).map(s=>s.name),usedColors:snapshot.subjects.map(s=>s.color),onEditSession:async(sessionId,minutes,startTime)=>{
+ const row=snapshot.history.find(h=>h.id===sessionId);
+ if(!row)throw new Error('That session is no longer there. Refresh and try again.');
+ // Keep where it started unless the correction moved it, then let the length
+ // decide the end, so start, end and duration always agree.
+ const was=row.start_time ? new Date(utcIso(row.start_time)) : new Date(`${row.date}T12:00:00`);
+ const clock=/^([01]\d|2[0-3]):[0-5]\d$/;
+ const start=clock.test(startTime??'')
+  ? new Date(`${row.date}T${startTime}:00`)
+  : was;
+ writing.current=true;
+ try{
+  await storage.updateTimerSession(sessionId,{startTime:start.toISOString(),endTime:new Date(start.getTime()+minutes*60000).toISOString(),durationSeconds:minutes*60});
+  await reload();
+ }finally{writing.current=false;}
+},onDeleteSession:async(sessionId)=>{writing.current=true;try{await storage.deleteTimerSession(sessionId);await reload();}finally{writing.current=false;}},onAddSession:async(target,date,minutes,startTime)=>{
  const live=snapshot.blocks.find(x=>x.id===target.id);
  if(!live?.subjectId)throw new Error('Give this task a subject before adding study time.');
  const subject=snapshot.subjects.find(sn=>sn.id===live.subjectId);

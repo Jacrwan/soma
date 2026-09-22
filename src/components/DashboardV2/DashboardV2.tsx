@@ -40,7 +40,9 @@ export interface DashboardRuntime {
  /** Recorded focus sessions for a block, newest first. */
  logsFor: (block: Block) => { id: string; date: string; minutes: number }[];
  /** Correct a recorded session's length, e.g. after leaving the timer running overnight. */
- onEditSession: (sessionId: string, minutes: number) => Promise<void>;
+ /** `startTime` ("HH:MM") is set when the session was corrected by when it
+  *  ran rather than how long; without it the start is left where it was. */
+ onEditSession: (sessionId: string, minutes: number, startTime?: string) => Promise<void>;
  /** Remove a recorded session entirely. */
  onDeleteSession: (sessionId: string) => Promise<void>;
  /** Record study time the timer never captured, e.g. a session run without starting it. */
