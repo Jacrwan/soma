@@ -69,10 +69,10 @@ function heatLevel(minutes: number): number {
  */
 const HEAT_SCALE: { level: number; label: string; description: string }[] = [
   { level: 0, label: '0',   description: 'no study time' },
-  { level: 1, label: '2h',  description: 'up to 2 hours' },
-  { level: 2, label: '4h',  description: '2 to 4 hours' },
-  { level: 3, label: '6h',  description: '4 to 6 hours' },
-  { level: 4, label: '6h+', description: 'over 6 hours' },
+  { level: 1, label: '\u22642h', description: 'up to 2 hours' },
+  { level: 2, label: '\u22644h', description: '2 to 4 hours' },
+  { level: 3, label: '\u22646h', description: '4 to 6 hours' },
+  { level: 4, label: '>6h',  description: 'over 6 hours' },
 ];
 
 function HeatScale() {
@@ -95,11 +95,31 @@ function HeatScale() {
   );
 }
 
+/**
+ * A day's total, as it appears in its cell. The minutes used to be thrown
+ * away: six hours and forty-two read as "6h", which lost three quarters of
+ * an hour and, now that the key labels a bound "6h", made a day in the top
+ * band look like one below it.
+ */
 function fmtCellTime(minutes: number): string {
   if (minutes <= 0) return '';
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  return h > 0 ? `${h}h` : `${m}m`;
+  if (h <= 0) return `${m}m`;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+/**
+ * The same total in tenths of an hour, for comparing one day against
+ * another without doing the arithmetic in your head: 6h 42m against
+ * 5h 55m is work, 6.7 against 5.9 is not.
+ *
+ * Only when it says something the line above does not. A round two hours is
+ * already 2.0, and under an hour the minutes are the clearer number.
+ */
+function fmtCellDecimal(minutes: number): string {
+  if (minutes < 60 || minutes % 60 === 0) return '';
+  return `${(minutes / 60).toFixed(1)}h`;
 }
 
 function fmtDateRange(weekOffset: number): string {
@@ -517,6 +537,7 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
             {heatmapData.cells.map(({ day, minutes, isToday }) => {
               const level = heatLevel(minutes);
               const timeLabel = fmtCellTime(minutes);
+              const decimalLabel = fmtCellDecimal(minutes);
               return (
                 <div
                   key={day}
@@ -525,11 +546,16 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
                     styles[`heatLevel${level}` as keyof typeof styles],
                     isToday ? styles.heatmapCellToday : '',
                   ].filter(Boolean).join(' ')}
-                  title={minutes > 0 ? `${minutes}m studied` : 'No study time'}
+                  title={minutes > 0
+                    ? `${fmtCellTime(minutes)}${decimalLabel ? ` (${decimalLabel})` : ''} studied`
+                    : 'No study time'}
                 >
                   <span className={styles.heatmapDayNum}>{day}</span>
                   {timeLabel && (
                     <span className={styles.heatmapTimeLabel}>{timeLabel}</span>
+                  )}
+                  {decimalLabel && (
+                    <span className={styles.heatmapDecimalLabel}>{decimalLabel}</span>
                   )}
                 </div>
               );
