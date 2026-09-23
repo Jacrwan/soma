@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { summarizeInsights } from '../../lib/insights';
 import { useInsights } from '../../lib/useInsights';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
@@ -55,6 +55,106 @@ function heatLevel(minutes: number): number {
   if (minutes <= 120) return 3;
   if (minutes <= 180) return 4;
   return 5;
+}
+
+/**
+ * The scale under the calendar, so a shade can be read rather than guessed at.
+ * Built from the same thresholds heatLevel() uses, so the guide cannot drift
+ * away from the colours it explains: each entry is labelled with the most time
+ * that still lands on that shade.
+ */
+const HEAT_SCALE: { level: number; label: string; description: string }[] = [
+  { level: 0, label: '0',   description: 'no study time' },
+  { level: 1, label: '30m', description: 'up to 30 minutes' },
+  { level: 2, label: '1h',  description: '30 minutes to 1 hour' },
+  { level: 3, label: '2h',  description: '1 to 2 hours' },
+  { level: 4, label: '3h',  description: '2 to 3 hours' },
+  { level: 5, label: '3h+', description: 'over 3 hours' },
+];
+
+const MILESTONES: Record<number, string> = {
+  7: 'One week.',
+  30: 'One month.',
+  100: 'One hundred days.',
+  365: 'One year.',
+};
+
+const prefersReducedMotion = () => {
+  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
+  catch { return false; }
+};
+
+/**
+ * Whether the streak has grown since this student last looked at it.
+ *
+ * The number on its own cannot tell you that: 4 looks the same whether it was
+ * just earned or has been sitting there all day. So the last seen value is
+ * remembered per account — per account because a shared device must never
+ * congratulate one student on another's work.
+ *
+ * Nothing is marked on a first ever visit. A streak that already existed was
+ * not earned in front of us, and saying otherwise would be a small lie the
+ * whole feature would then rest on.
+ */
+function useStreakAdvance(userId: string | null, streak: number, ready: boolean) {
+  const [advance, setAdvance] = useState<{ from: number } | null>(null);
+  useEffect(() => {
+    if (!ready || !userId || streak <= 0) return;
+    const key = `soma_seen_streak_${userId}`;
+    let seen: string | null = null;
+    try { seen = localStorage.getItem(key); } catch { return; }
+    try { localStorage.setItem(key, String(streak)); } catch { /* non-fatal */ }
+    if (seen === null) return;
+    const before = Number(seen) || 0;
+    if (streak > before) setAdvance({ from: before });
+  }, [userId, streak, ready]);
+  return advance;
+}
+
+/**
+ * Counts from one number to the next. The streak is the thing that changed,
+ * so the change is what gets shown, rather than the new value simply being
+ * there as though it always had been.
+ */
+function CountUp({ from, to }: { from: number; to: number }) {
+  const [shown, setShown] = useState(from);
+  useEffect(() => {
+    if (prefersReducedMotion()) { setShown(to); return; }
+    const span = to - from;
+    if (span <= 0) { setShown(to); return; }
+    const DURATION = 550;
+    let raf = 0, start = 0;
+    const step = (now: number) => {
+      if (!start) start = now;
+      const t = Math.min(1, (now - start) / DURATION);
+      // Ease-out-quart: quick to arrive, unhurried to settle.
+      setShown(Math.round(from + span * (1 - Math.pow(1 - t, 4))));
+      if (t < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [from, to]);
+  return <>{shown}</>;
+}
+
+function HeatScale() {
+  return (
+    <div className={styles.heatScale}>
+      <span className={styles.heatScaleEnd}>Less</span>
+      <ul className={styles.heatScaleSteps}>
+        {HEAT_SCALE.map(step => (
+          <li key={step.level} className={styles.heatScaleStep}>
+            <span
+              className={[styles.heatScaleSwatch, styles[`heatLevel${step.level}` as keyof typeof styles]].join(' ')}
+              title={step.description}
+            />
+            <span className={styles.heatScaleLabel}>{step.label}</span>
+          </li>
+        ))}
+      </ul>
+      <span className={styles.heatScaleEnd}>More</span>
+    </div>
+  );
 }
 
 function fmtCellTime(minutes: number): string {
@@ -205,6 +305,11 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
     () => summarizeInsights(data, weekOffset, calendarOffset),
     [data, weekOffset, calendarOffset],
   );
+
+  // Only once the figures are real: celebrating a zero that is still loading
+  // would be worse than saying nothing.
+  const advance = useStreakAdvance(userId, streak, !loading && !!data);
+  const milestone = advance ? MILESTONES[streak] : undefined;
 
   const subjectNameMap = useMemo(() => new Map(subjects.map(s => [s.id, s.name])), [subjects]);
   const archivedSubjectNames = useMemo(() => new Set(subjects.filter(s => s.archived).map(s => s.name)), [subjects]);
@@ -443,9 +548,12 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
       <section className={styles.section}>
         <h2 className={styles.sectionTitle}>Study streak</h2>
         <div className={styles.streakHero}>
-          <span className={styles.streakBigNum}>{streak}</span>
+          <span className={`${styles.streakBigNum}${advance ? ` ${styles.streakBigNumAdvanced}` : ''}`}>
+            {advance ? <CountUp from={advance.from} to={streak} /> : streak}
+          </span>
           <span className={styles.streakDayLabel}>day streak</span>
-          {streakAtRisk && (
+          {milestone && <span className={styles.streakMilestone}>{milestone}</span>}
+          {streakAtRisk && !milestone && (
             <span className={styles.streakAtRiskNote}>Study today to keep it going</span>
           )}
         </div>
@@ -486,6 +594,7 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
                     styles.heatmapCell,
                     styles[`heatLevel${level}` as keyof typeof styles],
                     isToday ? styles.heatmapCellToday : '',
+                    isToday && advance ? styles.heatmapCellAdvanced : '',
                   ].filter(Boolean).join(' ')}
                   title={minutes > 0 ? `${minutes}m studied` : 'No study time'}
                 >
@@ -497,6 +606,7 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
               );
             })}
           </div>
+          <HeatScale />
         </div>
       </section>
 

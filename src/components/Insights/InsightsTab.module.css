@@ -869,3 +869,110 @@
     transition: none;
   }
 }
+
+/* ── Heat scale ──────────────────────────────────────────────────────────
+   A key for the calendar above it. Swatches are the same six levels the
+   cells use; the label under each is the most time that still lands on it,
+   so "1h" means up to an hour, not exactly one. */
+.heatScale {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.heatScaleEnd {
+  font-size: 10px;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.heatScaleSteps {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.heatScaleStep {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.heatScaleSwatch {
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+  display: block;
+}
+
+.heatScaleLabel {
+  font-size: 9px;
+  line-height: 1;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The key is a reading aid, not a control: below the widest layouts it can
+   drop the words and keep the swatches. */
+@media (max-width: 520px) {
+  .heatScaleEnd { display: none; }
+  .heatScale { justify-content: space-between; }
+}
+
+/* ── The streak advancing ────────────────────────────────────────────────
+   Shown once, when the number is higher than it was the last time this
+   student looked. It marks a state change, which is the only thing motion
+   is for here: there is no confetti, nothing to dismiss, and nothing that
+   happens again on the next visit.
+
+   A ring leaving the day it was earned on, and the number settling into
+   place. Ease-out-quart throughout, so it arrives quickly and stops without
+   bouncing. */
+
+@keyframes streakRing {
+  from {
+    box-shadow: 0 0 0 0 oklch(52% 0.150 266 / 0.55);
+  }
+  to {
+    box-shadow: 0 0 0 14px oklch(52% 0.150 266 / 0);
+  }
+}
+
+@keyframes streakSettle {
+  from { opacity: 0.55; }
+  to   { opacity: 1; }
+}
+
+.heatmapCellAdvanced {
+  animation: streakRing 1100ms cubic-bezier(0.22, 1, 0.36, 1) 120ms both;
+}
+
+.streakBigNumAdvanced {
+  animation: streakSettle 550ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.streakMilestone {
+  margin-left: auto;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* A page that marks an achievement by flashing is a page some people cannot
+   use. The moment still happens, it simply holds still. */
+@media (prefers-reduced-motion: reduce) {
+  .heatmapCellAdvanced,
+  .streakBigNumAdvanced {
+    animation: none;
+  }
+  /* Kept so the day is still pointed at, without the motion. */
+  .heatmapCellAdvanced {
+    box-shadow: 0 0 0 2px oklch(52% 0.150 266 / 0.5);
+  }
+}

@@ -234,3 +234,89 @@ test('consolidated data preserves the calculations for every chart', async ({ pa
   expect(metrics.subjectPacingData).toEqual({ biology: 47 });
   expect(metrics.timeAccuracyData).toEqual({ biology: { avgDeltaMinutes: 7, sampleCount: 3 } });
 });
+
+/**
+ * The streak scale, and the one moment on this page worth marking.
+ *
+ * The calendar shades days by how long was studied, but nothing said what a
+ * shade meant, so a darker square was a guess. And the number on its own
+ * cannot tell you it just went up: 4 looks the same whether it was earned a
+ * minute ago or has sat there all day.
+ */
+
+const ACCOUNT_ID = '11111111-1111-4111-8111-111111111111';
+/** Seeds the last seen streak once, before the first load. It must not run
+ *  again on a reload, or it would overwrite what the page just stored and
+ *  stage a second advance that never happened. */
+const seenStreak = (page: Page, value: string | null) => page.addInitScript(
+  ([id, v]) => {
+    if (sessionStorage.getItem('__soma_seeded')) return;
+    sessionStorage.setItem('__soma_seeded', '1');
+    const key = `soma_seen_streak_${id}`;
+    if (v === null) localStorage.removeItem(key); else localStorage.setItem(key, v);
+  },
+  [ACCOUNT_ID, value] as [string, string | null],
+);
+
+test('the calendar says what each shade is worth', async ({ page }) => {
+  await setup(page);
+  await page.goto('/insights');
+  await expect(summary(page)).toBeVisible();
+
+  // Every step of the scale the cells use, labelled with the most time that
+  // still lands on it.
+  for (const label of ['0', '30m', '1h', '2h', '3h', '3h+']) {
+    await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
+  }
+  await expect(page.getByText('Less', { exact: true })).toBeVisible();
+  await expect(page.getByText('More', { exact: true })).toBeVisible();
+});
+
+test('a streak that has not moved is not celebrated', async ({ page }) => {
+  await setup(page);
+  // Already seen at its current length.
+  await seenStreak(page, '1');
+  await page.goto('/insights');
+  await expect(summary(page)).toBeVisible();
+  await expect(page.locator('[class*="streakBigNumAdvanced"]')).toHaveCount(0);
+});
+
+test('a streak already there on a first visit is recorded, not congratulated', async ({ page }) => {
+  await setup(page);
+  await seenStreak(page, null);
+  await page.goto('/insights');
+  await expect(summary(page)).toBeVisible();
+
+  // Nothing was earned in front of us, so nothing is claimed.
+  await expect(page.locator('[class*="streakBigNumAdvanced"]')).toHaveCount(0);
+  // But it is remembered, so the next advance can be told apart.
+  expect(await page.evaluate(id => localStorage.getItem(`soma_seen_streak_${id}`), ACCOUNT_ID)).toBe('1');
+});
+
+test('a streak that grew since last time is marked once', async ({ page }) => {
+  await setup(page);
+  await seenStreak(page, '0');
+  await page.goto('/insights');
+  await expect(summary(page)).toBeVisible();
+
+  await expect(page.locator('[class*="streakBigNumAdvanced"]')).toBeVisible();
+  // And the new value is stored, so a reload does not mark it again.
+  expect(await page.evaluate(id => localStorage.getItem(`soma_seen_streak_${id}`), ACCOUNT_ID)).toBe('1');
+  await page.reload();
+  await expect(summary(page)).toBeVisible();
+  await expect(page.locator('[class*="streakBigNumAdvanced"]')).toHaveCount(0);
+});
+
+test('the moment holds still when motion is not wanted', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await setup(page);
+  await seenStreak(page, '0');
+  await page.goto('/insights');
+  await expect(summary(page)).toBeVisible();
+
+  const num = page.locator('[class*="streakBigNumAdvanced"]');
+  await expect(num).toBeVisible();
+  expect(await num.evaluate(el => getComputedStyle(el).animationName)).toBe('none');
+  // The count-up is skipped rather than shown at its starting value.
+  await expect(num).toHaveText('1');
+});
