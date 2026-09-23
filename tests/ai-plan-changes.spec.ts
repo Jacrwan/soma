@@ -222,7 +222,10 @@ test('a reply wrapped in prose is still read', async ({ page }) => {
 });
 
 test('a failed request is answered in the chat, not only in the status line', async ({ page }) => {
-  await setup(page, 'not json at all');
+  await setup(page, { reply: 'ok', blocks: [] });
+  // A body that is not JSON is now read as a prose answer, so this needs a
+  // failure that is unambiguously one.
+  await page.route('**/api/chat', r => r.fulfill({ status: 500, json: { error: 'server_error' } }));
   await ask(page, 'move everything');
   await expect(page.getByRole('log').getByText(/unreadable|try again/i)).toBeVisible();
 });
@@ -299,4 +302,39 @@ test('Soma is told what was finished last week', async ({ page }) => {
   expect(done.date).toBe(past);
   expect(ctx.plan.some((p: { title: string }) => p.title === 'Reading guide 2.1–3.2')).toBe(false);   // history, not plan
   expect(state.prompt).toContain('WHAT THE STUDENT HAS ALREADY DONE');
+});
+
+/**
+ * Asked a plain question the model sometimes answers it straight out instead
+ * of wrapping the answer in the JSON envelope. That used to be thrown away
+ * with "Soma returned an unreadable answer", so a student asking what they
+ * were doing tomorrow got nothing back, twice, and the answer was sitting
+ * right there.
+ */
+test('a question answered in prose is shown, not discarded', async ({ page }) => {
+  await setup(page, 'You have English Literature at 4pm tomorrow — the Gatsby essay draft.');
+  await ask(page, 'what am i doing in english tmr');
+
+  await expect(page.getByLabel('Conversation')).toContainText('English Literature at 4pm tomorrow');
+  await expect(page.getByLabel('Conversation')).not.toContainText('unreadable answer');
+});
+
+test('a broken envelope is still an error rather than raw JSON on screen', async ({ page }) => {
+  // Truncated mid-object: showing this to a student would be worse than
+  // admitting it could not be read.
+  await setup(page, '{"reply":"Here is your plan","blocks":[{"title":"Essay ');
+  await ask(page, 'plan my day');
+
+  await expect(page.getByLabel('Conversation')).toContainText('unreadable answer');
+  await expect(page.getByLabel('Conversation')).not.toContainText('"blocks"');
+});
+
+test('prose answers propose nothing', async ({ page }) => {
+  const state = await setup(page, 'Nothing is scheduled for English tomorrow.');
+  await ask(page, 'what am i doing in english tmr');
+
+  await expect(page.getByLabel('Conversation')).toContainText('Nothing is scheduled');
+  // An answer read out of prose must never be mistaken for a plan change.
+  await expect(page.getByRole('button', { name: 'Accept' })).toHaveCount(0);
+  expect(state.db.todos.length).toBe(state.db.todos.length);
 });
