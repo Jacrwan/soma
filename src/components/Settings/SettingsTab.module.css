@@ -1566,3 +1566,21 @@
 @media (prefers-reduced-motion: reduce) {
   .courseRowFlash { animation: none; background: color-mix(in srgb, var(--accent) 10%, transparent); }
 }
+
+/* Feedback: a plain box to write in, sized for a paragraph not a sentence. */
+.feedbackText {
+  width: 100%;
+  max-width: 560px;
+  resize: vertical;
+  min-height: 132px;
+  padding: 11px 12px;
+  margin-bottom: 14px;
+  background: var(--bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.feedbackText:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
