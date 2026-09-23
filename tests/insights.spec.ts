@@ -234,3 +234,21 @@ test('consolidated data preserves the calculations for every chart', async ({ pa
   expect(metrics.subjectPacingData).toEqual({ biology: 47 });
   expect(metrics.timeAccuracyData).toEqual({ biology: { avgDeltaMinutes: 7, sampleCount: 3 } });
 });
+
+/**
+ * The calendar shaded days by how long was studied and never said what a
+ * shade meant, so a darker square was a guess.
+ */
+test('the calendar says what each shade is worth', async ({ page }) => {
+  await setup(page);
+  await page.goto('/insights');
+  await expect(summary(page)).toBeVisible();
+
+  // Every step of the scale the cells use, labelled with the most time that
+  // still lands on it.
+  for (const label of ['0', '2h', '4h', '6h', '6h+']) {
+    await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
+  }
+  await expect(page.getByText('Less', { exact: true })).toBeVisible();
+  await expect(page.getByText('More', { exact: true })).toBeVisible();
+});

@@ -48,13 +48,51 @@ function truncate(text: string, max: number): string {
   return text.length > max ? text.slice(0, max).trimEnd() + '…' : text;
 }
 
+/**
+ * Five steps, in hours. A half hour and two hours used to be different
+ * shades, which made an ordinary evening look like a heavy one; the scale
+ * now only separates days that were actually different.
+ */
 function heatLevel(minutes: number): number {
   if (minutes <= 0) return 0;
-  if (minutes <= 30) return 1;
-  if (minutes <= 60) return 2;
-  if (minutes <= 120) return 3;
-  if (minutes <= 180) return 4;
-  return 5;
+  if (minutes <= 120) return 1;
+  if (minutes <= 240) return 2;
+  if (minutes <= 360) return 3;
+  return 4;
+}
+
+/**
+ * The key under the calendar, so a shade can be read rather than guessed at.
+ * Built from the same thresholds heatLevel() uses, so the guide cannot drift
+ * away from the colours it explains: each entry is labelled with the most
+ * time that still lands on that shade.
+ */
+const HEAT_SCALE: { level: number; label: string; description: string }[] = [
+  { level: 0, label: '0',   description: 'no study time' },
+  { level: 1, label: '2h',  description: 'up to 2 hours' },
+  { level: 2, label: '4h',  description: '2 to 4 hours' },
+  { level: 3, label: '6h',  description: '4 to 6 hours' },
+  { level: 4, label: '6h+', description: 'over 6 hours' },
+];
+
+function HeatScale() {
+  return (
+    <div className={styles.heatScale}>
+      <span className={styles.heatScaleEnd}>Less</span>
+      <ul className={styles.heatScaleSteps}>
+        {HEAT_SCALE.map(step => (
+          <li key={step.level} className={styles.heatScaleStep}>
+            <span
+              className={[styles.heatScaleSwatch, styles[`heatLevel${step.level}` as keyof typeof styles]].join(' ')}
+              title={step.description}
+            />
+            <span className={styles.heatScaleLabel}>{step.label}</span>
+          </li>
+        ))}
+      </ul>
+      <span className={styles.heatScaleEnd}>More</span>
+    </div>
+  );
 }
 
 function fmtCellTime(minutes: number): string {
@@ -497,6 +535,7 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
               );
             })}
           </div>
+          <HeatScale />
         </div>
       </section>
 
