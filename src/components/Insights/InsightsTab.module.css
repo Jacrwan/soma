@@ -542,18 +542,19 @@
   border-radius: 5px;
 }
 
+/* Five steps. Lightness falls and chroma rises together, so the ramp reads
+   as one scale rather than five unrelated blues, and the ends stay far
+   enough apart to tell a light day from a long one at a glance. */
 .heatLevel0 { background: var(--bg-tertiary); }
-.heatLevel1 { background: oklch(94% 0.018 266); }
-.heatLevel2 { background: oklch(87% 0.042 266); }
-.heatLevel3 { background: oklch(78% 0.075 266); }
-.heatLevel4 { background: oklch(66% 0.110 266); }
-.heatLevel5 { background: oklch(52% 0.150 266); }
+.heatLevel1 { background: oklch(92% 0.024 266); }
+.heatLevel2 { background: oklch(81% 0.065 266); }
+.heatLevel3 { background: oklch(67% 0.108 266); }
+.heatLevel4 { background: oklch(52% 0.150 266); }
 
-[data-theme="dark"] .heatLevel1 { background: oklch(23% 0.026 266); }
-[data-theme="dark"] .heatLevel2 { background: oklch(29% 0.050 266); }
-[data-theme="dark"] .heatLevel3 { background: oklch(36% 0.080 266); }
-[data-theme="dark"] .heatLevel4 { background: oklch(44% 0.115 266); }
-[data-theme="dark"] .heatLevel5 { background: oklch(55% 0.150 266); }
+[data-theme="dark"] .heatLevel1 { background: oklch(25% 0.032 266); }
+[data-theme="dark"] .heatLevel2 { background: oklch(33% 0.065 266); }
+[data-theme="dark"] .heatLevel3 { background: oklch(43% 0.110 266); }
+[data-theme="dark"] .heatLevel4 { background: oklch(55% 0.150 266); }
 
 .heatmapCellToday {
   outline: 1.5px solid var(--text-secondary);
@@ -572,17 +573,17 @@
 }
 
 /* The day number is 10px, so it needs the darker ink once the cell stops being pale. */
-.heatLevel3 .heatmapDayNum,
-.heatLevel4 .heatmapDayNum {
+.heatLevel2 .heatmapDayNum,
+.heatLevel3 .heatmapDayNum {
   color: var(--text-primary);
 }
 
-.heatLevel5 .heatmapDayNum,
+.heatLevel4 .heatmapDayNum,
 [data-theme="dark"] .heatLevel4 .heatmapDayNum {
   color: oklch(99% 0 0);
 }
 
-[data-theme="dark"] .heatLevel3 .heatmapDayNum {
+[data-theme="dark"] .heatLevel2 .heatmapDayNum {
   color: var(--text-secondary);
 }
 
@@ -601,7 +602,7 @@
   white-space: nowrap;
 }
 
-.heatLevel5 .heatmapTimeLabel,
+.heatLevel4 .heatmapTimeLabel,
 [data-theme="dark"] .heatLevel4 .heatmapTimeLabel {
   color: oklch(99% 0 0);
 }
@@ -868,4 +869,59 @@
   .peakBar {
     transition: none;
   }
+}
+
+/* ── Heat scale ──────────────────────────────────────────────────────────
+   A key for the calendar above it. Swatches are the same five levels the
+   cells use; the label under each is the most time that still lands on it,
+   so "4h" means up to four hours, not exactly four. */
+.heatScale {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.heatScaleEnd {
+  font-size: 10px;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.heatScaleSteps {
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.heatScaleStep {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.heatScaleSwatch {
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+  display: block;
+}
+
+.heatScaleLabel {
+  font-size: 9px;
+  line-height: 1;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The key is a reading aid, not a control: below the widest layouts it can
+   drop the words and keep the swatches. */
+@media (max-width: 520px) {
+  .heatScaleEnd { display: none; }
+  .heatScale { justify-content: space-between; }
 }
