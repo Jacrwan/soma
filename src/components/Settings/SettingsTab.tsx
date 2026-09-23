@@ -22,7 +22,7 @@ import styles from './SettingsTab.module.css';
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 type Day = typeof DAYS[number];
 type HoursCategory = 'schoolHours' | 'workHours' | 'personalHours';
-type Section = 'profile' | 'subscription' | 'appearance' | 'availability' | 'study' | 'ai' | 'memory' | 'integrations' | 'courses' | 'feedback';
+type Section = 'profile' | 'subscription' | 'appearance' | 'availability' | 'study' | 'ai' | 'memory' | 'integrations' | 'courses';
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -67,45 +67,6 @@ export default function SettingsTab() {
   // "Connect" for an account that's already connected — re-check once
   // loading settles.
   const [tokensLoaded, setTokensLoaded] = useState(false);
-
-  // Feedback and bug reports.
-  const [fbKind, setFbKind] = useState<'bug' | 'idea' | 'other'>('bug');
-  const [fbMessage, setFbMessage] = useState('');
-  const [fbBusy, setFbBusy] = useState(false);
-  const [fbError, setFbError] = useState('');
-  const [fbSent, setFbSent] = useState(false);
-
-  async function sendFeedback() {
-    const message = fbMessage.trim();
-    if (!message) return;
-    setFbBusy(true); setFbError('');
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Sign in again to send this.');
-      const response = await fetch('/api/feedback', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          kind: fbKind,
-          message,
-          // Where they were, so a report can be followed up without asking.
-          page: typeof window !== 'undefined' ? window.location.pathname : null,
-          appVersion: __APP_VERSION__,
-        }),
-      });
-      if (!response.ok) {
-        const body = await response.json().catch(() => null);
-        throw new Error(body?.error === 'rate_limit'
-          ? 'That is a lot of reports in one minute. Please wait and try again.'
-          : 'That could not be sent. Please try again.');
-      }
-      setFbSent(true); setFbMessage('');
-    } catch (e) {
-      setFbError(e instanceof Error ? e.message : 'That could not be sent.');
-    } finally {
-      setFbBusy(false);
-    }
-  }
   useEffect(() => {
     let cancelled = false;
     storage.whenTokensLoaded().then(() => {
@@ -605,7 +566,6 @@ export default function SettingsTab() {
     ['memory',        'Memory'],
     ['integrations',  'Integrations'],
     ['courses',       'Courses'],
-    ['feedback',      'Feedback'],
   ];
 
   return (
@@ -625,60 +585,6 @@ export default function SettingsTab() {
       </nav>
 
       <div className={styles.settingsContent}>
-
-        {activeSection === 'feedback' && (
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>Feedback</h2>
-            <p className={styles.sectionDescription}>
-              Tell us what broke or what would help. Reports go straight to the people building Soma.
-            </p>
-
-            <label className={styles.prefLabel} htmlFor="fb-kind">What is this?</label>
-            <select
-              id="fb-kind"
-              className={styles.prefSelect}
-              value={fbKind}
-              onChange={e => { setFbKind(e.target.value as typeof fbKind); setFbSent(false); }}
-            >
-              <option value="bug">Something is broken</option>
-              <option value="idea">An idea, or something missing</option>
-              <option value="other">Something else</option>
-            </select>
-
-            <label className={styles.prefLabel} htmlFor="fb-message">
-              {fbKind === 'bug' ? 'What happened, and what did you expect?' : 'What would you like to say?'}
-            </label>
-            <textarea
-              id="fb-message"
-              className={styles.feedbackText}
-              rows={6}
-              maxLength={4000}
-              value={fbMessage}
-              placeholder={fbKind === 'bug'
-                ? 'I clicked Focus on a block and the timer stayed at zero…'
-                : 'It would help if…'}
-              onChange={e => { setFbMessage(e.target.value); setFbSent(false); }}
-            />
-
-            {/* Said plainly, because a report carries more than the message. */}
-            <p className={styles.sectionDescription}>
-              Sent with this: the page you are on, your account email, and your browser version.
-              Nothing else — not your coursework, notes, or documents.
-            </p>
-
-            {fbError && <p role="alert" className={styles.courseError}>{fbError}</p>}
-            {fbSent && <p role="status" className={styles.sectionDescription}>Sent. Thank you — we read every one.</p>}
-
-            <button
-              type="button"
-              className={styles.saveBtn}
-              disabled={fbBusy || !fbMessage.trim()}
-              onClick={() => void sendFeedback()}
-            >
-              {fbBusy ? 'Sending…' : 'Send'}
-            </button>
-          </section>
-        )}
 
         {activeSection === 'profile' && (
           <section className={styles.section}>
