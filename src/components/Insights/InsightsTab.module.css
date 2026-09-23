@@ -607,6 +607,31 @@
   color: oklch(99% 0 0);
 }
 
+/* The same total in tenths, under the exact one. Quieter, because it is the
+   second way of saying it, not a second fact. */
+.heatmapDecimalLabel {
+  position: absolute;
+  left: 50%;
+  top: 76%;
+  transform: translate(-50%, -50%);
+  color: var(--text-secondary);
+  font-size: 9px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  user-select: none;
+  pointer-events: none;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+
+.heatLevel3 .heatmapDecimalLabel,
+.heatLevel4 .heatmapDecimalLabel,
+[data-theme="dark"] .heatLevel4 .heatmapDecimalLabel {
+  color: oklch(99% 0 0);
+  opacity: 0.75;
+}
+
 /* Empty state */
 
 .emptyState {

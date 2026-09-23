@@ -246,9 +246,70 @@ test('the calendar says what each shade is worth', async ({ page }) => {
 
   // Every step of the scale the cells use, labelled with the most time that
   // still lands on it.
-  for (const label of ['0', '2h', '4h', '6h', '6h+']) {
+  for (const label of ['0', '\u22642h', '\u22644h', '\u22646h', '>6h']) {
     await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
   }
   await expect(page.getByText('Less', { exact: true })).toBeVisible();
   await expect(page.getByText('More', { exact: true })).toBeVisible();
+});
+
+test('a day shows the time it actually was, minutes included', async ({ page }) => {
+  const state = await setup(page);
+  const d = new Date();
+  const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  // Six hours forty-two: in the top band, and nowhere near a round six.
+  state.sessions = [{
+    id: 'long', date: day, subject_id: 'biology', subject_name: 'Biology',
+    task_text: 'Homework', start_time: `${day}T09:00:00`, duration_seconds: 402 * 60,
+  }];
+  await page.goto('/insights');
+  await expect(summary(page)).toBeVisible();
+
+  // Scoped to the calendar: the rest of the page already said "6h 42m", and
+  // the cell was the one place that did not.
+  const cells = page.locator('[class*="heatmapTimeLabel"]');
+  await expect(cells).toHaveText(['6h 42m']);
+});
+
+test('a round hour stays round, and under an hour stays in minutes', async ({ page }) => {
+  const state = await setup(page);
+  const d = new Date();
+  const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  state.sessions = [{
+    id: 'round', date: day, subject_id: 'biology', subject_name: 'Biology',
+    task_text: 'Homework', start_time: `${day}T09:00:00`, duration_seconds: 120 * 60,
+  }];
+  await page.goto('/insights');
+  await expect(summary(page)).toBeVisible();
+  // No trailing "0m" on the hour.
+  await expect(page.locator('[class*="heatmapTimeLabel"]')).toHaveText(['2h']);
+});
+
+/** Days of a given length, one per cell, for reading the labels back. */
+async function withDays(page: Page, state: Awaited<ReturnType<typeof setup>>, minutes: number[]) {
+  state.sessions = minutes.map((m, i) => {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return { id: `s${i}`, date: day, subject_id: 'biology', subject_name: 'Biology',
+             task_text: 'Homework', start_time: `${day}T09:00:00`, duration_seconds: m * 60 };
+  });
+  await page.goto('/insights');
+  await expect(summary(page)).toBeVisible();
+}
+
+test('a day also shows its length in tenths of an hour', async ({ page }) => {
+  const state = await setup(page);
+  // Two evenings a quarter of an hour apart. In hours and minutes that is
+  // arithmetic; in tenths it is not.
+  await withDays(page, state, [355, 340]);
+  // Cells render in calendar order, so yesterday comes before today.
+  await expect(page.locator('[class*="heatmapDecimalLabel"]')).toHaveText(['5.7h', '5.9h']);
+});
+
+test('the tenths are left off when they say nothing new', async ({ page }) => {
+  const state = await setup(page);
+  // A round two hours is already 2.0, and 45 minutes reads worse as 0.8.
+  await withDays(page, state, [120, 45]);
+  await expect(page.locator('[class*="heatmapTimeLabel"]')).toHaveText(['45m', '2h']);
+  await expect(page.locator('[class*="heatmapDecimalLabel"]')).toHaveCount(0);
 });
