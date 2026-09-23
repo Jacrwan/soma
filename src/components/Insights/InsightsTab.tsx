@@ -58,21 +58,23 @@ function heatLevel(minutes: number): number {
   if (minutes <= 120) return 1;
   if (minutes <= 240) return 2;
   if (minutes <= 360) return 3;
-  return 4;
+  if (minutes <= 480) return 4;
+  return 5;
 }
 
 /**
  * The key under the calendar, so a shade can be read rather than guessed at.
  * Built from the same thresholds heatLevel() uses, so the guide cannot drift
- * away from the colours it explains: each entry is labelled with the most
- * time that still lands on that shade.
+ * away from the colours it explains. Each label is where its shade starts,
+ * so they read up the scale the way the colours do.
  */
 const HEAT_SCALE: { level: number; label: string; description: string }[] = [
-  { level: 0, label: '0',   description: 'no study time' },
-  { level: 1, label: '\u22642h', description: 'up to 2 hours' },
-  { level: 2, label: '\u22644h', description: '2 to 4 hours' },
-  { level: 3, label: '\u22646h', description: '4 to 6 hours' },
-  { level: 4, label: '>6h',  description: 'over 6 hours' },
+  { level: 0, label: 'none', description: 'no study time' },
+  { level: 1, label: '0+',   description: 'up to 2 hours' },
+  { level: 2, label: '2+',   description: '2 to 4 hours' },
+  { level: 3, label: '4+',   description: '4 to 6 hours' },
+  { level: 4, label: '6+',   description: '6 to 8 hours' },
+  { level: 5, label: '8+',   description: 'over 8 hours' },
 ];
 
 function HeatScale() {

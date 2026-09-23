@@ -246,7 +246,7 @@ test('the calendar says what each shade is worth', async ({ page }) => {
 
   // Every step of the scale the cells use, labelled with the most time that
   // still lands on it.
-  for (const label of ['0', '\u22642h', '\u22644h', '\u22646h', '>6h']) {
+  for (const label of ['none', '0+', '2+', '4+', '6+', '8+']) {
     await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
   }
   await expect(page.getByText('Less', { exact: true })).toBeVisible();

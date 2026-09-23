@@ -542,19 +542,23 @@
   border-radius: 5px;
 }
 
-/* Five steps. Lightness falls and chroma rises together, so the ramp reads
-   as one scale rather than five unrelated blues, and the ends stay far
-   enough apart to tell a light day from a long one at a glance. */
+/* Five steps of orange. Chroma climbs hard while lightness falls only a
+   little, which is what keeps it bright: orange loses its colour and turns
+   brown if it is darkened the way a blue can be, so the scale is carried by
+   saturation instead. Hue warms slightly toward the top so the strongest
+   step reads as orange rather than amber. */
 .heatLevel0 { background: var(--bg-tertiary); }
-.heatLevel1 { background: oklch(92% 0.024 266); }
-.heatLevel2 { background: oklch(81% 0.065 266); }
-.heatLevel3 { background: oklch(67% 0.108 266); }
-.heatLevel4 { background: oklch(52% 0.150 266); }
+.heatLevel1 { background: oklch(96% 0.026 64); }
+.heatLevel2 { background: oklch(91% 0.062 61); }
+.heatLevel3 { background: oklch(85% 0.102 57); }
+.heatLevel4 { background: oklch(78% 0.142 53); }
+.heatLevel5 { background: oklch(70% 0.180 49); }
 
-[data-theme="dark"] .heatLevel1 { background: oklch(25% 0.032 266); }
-[data-theme="dark"] .heatLevel2 { background: oklch(33% 0.065 266); }
-[data-theme="dark"] .heatLevel3 { background: oklch(43% 0.110 266); }
-[data-theme="dark"] .heatLevel4 { background: oklch(55% 0.150 266); }
+[data-theme="dark"] .heatLevel1 { background: oklch(27% 0.035 61); }
+[data-theme="dark"] .heatLevel2 { background: oklch(34% 0.070 58); }
+[data-theme="dark"] .heatLevel3 { background: oklch(43% 0.108 55); }
+[data-theme="dark"] .heatLevel4 { background: oklch(53% 0.146 52); }
+[data-theme="dark"] .heatLevel5 { background: oklch(63% 0.180 49); }
 
 .heatmapCellToday {
   outline: 1.5px solid var(--text-secondary);
@@ -573,18 +577,18 @@
 }
 
 /* The day number is 10px, so it needs the darker ink once the cell stops being pale. */
-.heatLevel2 .heatmapDayNum,
-.heatLevel3 .heatmapDayNum {
+/* Every orange step stays light enough that dark ink reads on it. White
+   would be the weaker choice even on the strongest, which is the opposite
+   of what the blue scale needed. */
+.heatLevel3 .heatmapDayNum,
+.heatLevel4 .heatmapDayNum,
+.heatLevel5 .heatmapDayNum {
   color: var(--text-primary);
 }
 
-.heatLevel4 .heatmapDayNum,
-[data-theme="dark"] .heatLevel4 .heatmapDayNum {
-  color: oklch(99% 0 0);
-}
-
-[data-theme="dark"] .heatLevel2 .heatmapDayNum {
-  color: var(--text-secondary);
+[data-theme="dark"] .heatLevel4 .heatmapDayNum,
+[data-theme="dark"] .heatLevel5 .heatmapDayNum {
+  color: oklch(21% 0.020 50);
 }
 
 .heatmapTimeLabel {
@@ -602,9 +606,9 @@
   white-space: nowrap;
 }
 
-.heatLevel4 .heatmapTimeLabel,
-[data-theme="dark"] .heatLevel4 .heatmapTimeLabel {
-  color: oklch(99% 0 0);
+[data-theme="dark"] .heatLevel4 .heatmapTimeLabel,
+[data-theme="dark"] .heatLevel5 .heatmapTimeLabel {
+  color: oklch(21% 0.020 50);
 }
 
 /* The same total in tenths, under the exact one. Quieter, because it is the
@@ -625,11 +629,10 @@
   opacity: 0.85;
 }
 
-.heatLevel3 .heatmapDecimalLabel,
-.heatLevel4 .heatmapDecimalLabel,
-[data-theme="dark"] .heatLevel4 .heatmapDecimalLabel {
-  color: oklch(99% 0 0);
-  opacity: 0.75;
+[data-theme="dark"] .heatLevel4 .heatmapDecimalLabel,
+[data-theme="dark"] .heatLevel5 .heatmapDecimalLabel {
+  color: oklch(21% 0.020 50);
+  opacity: 0.8;
 }
 
 /* Empty state */
