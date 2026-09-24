@@ -557,10 +557,10 @@
 }
 
 [data-theme="dark"] .page {
-  --chart-bar:      oklch(40% 0.100 55);
-  --chart-bar-peak: oklch(68% 0.180 50);
-  --chart-hour:     oklch(36% 0.085 57);
-  --chart-hour-top: oklch(66% 0.175 51);
+  --chart-bar:      oklch(47% 0.110 55);
+  --chart-bar-peak: oklch(72% 0.180 49);
+  --chart-hour:     oklch(44% 0.098 57);
+  --chart-hour-top: oklch(70% 0.176 50);
 }
 
 /* Five steps of orange. Chroma climbs hard while lightness falls only a
@@ -575,11 +575,14 @@
 .heatLevel4 { background: oklch(78% 0.142 53); }
 .heatLevel5 { background: oklch(70% 0.180 49); }
 
-[data-theme="dark"] .heatLevel1 { background: oklch(27% 0.035 61); }
-[data-theme="dark"] .heatLevel2 { background: oklch(34% 0.070 58); }
-[data-theme="dark"] .heatLevel3 { background: oklch(43% 0.108 55); }
-[data-theme="dark"] .heatLevel4 { background: oklch(53% 0.146 52); }
-[data-theme="dark"] .heatLevel5 { background: oklch(63% 0.180 49); }
+/* Every step has to clear --bg-tertiary, which an empty day is painted in.
+   These were tuned against a near-black page; on a grey one the first two
+   would have sunk below the squares they are meant to stand out from. */
+[data-theme="dark"] .heatLevel1 { background: oklch(41% 0.055 60); }
+[data-theme="dark"] .heatLevel2 { background: oklch(48% 0.092 57); }
+[data-theme="dark"] .heatLevel3 { background: oklch(56% 0.128 54); }
+[data-theme="dark"] .heatLevel4 { background: oklch(64% 0.162 51); }
+[data-theme="dark"] .heatLevel5 { background: oklch(72% 0.180 48); }
 
 .heatmapCellToday {
   outline: 1.5px solid var(--text-secondary);
