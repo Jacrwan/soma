@@ -639,8 +639,8 @@ function Billing() {
         <p>
           Soma Premium begins with a <strong>{TRIAL_DAYS}-day free trial</strong>. You will not be charged
           during the trial period. A valid payment method is required to start the trial. If you
-          cancel before the trial ends, you will not be charged. Each account is eligible for one
-          free trial.
+          cancel before the trial ends, you will not be charged. Otherwise your first payment is
+          taken automatically when the trial ends. Each account is eligible for one free trial.
         </p>
       </div>
 

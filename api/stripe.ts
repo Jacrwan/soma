@@ -195,16 +195,9 @@ async function createCheckoutSession(user: any, admin: any, stripe: Stripe, body
   const hasFreeTrial  = !!sub?.trial_start;
   const trialExpired  = hasFreeTrial && Date.now() > new Date(sub.trial_start).getTime() + trialLengthMs(sub.trial_start);
 
-  let trialDays: number;
-  if (!hasFreeTrial) {
-    trialDays = TRIAL_DAYS; // new user — free trial
-  } else if (trialExpired && !sub.extension_start) {
-    trialDays = 7; // expired free trial — 7-day extension
-  } else if (!trialExpired) {
-    return res.status(409).json({ error: 'Free trial has not ended yet' });
-  } else {
-    return res.status(409).json({ error: 'Already extended' });
-  }
+  // One free trial per account. Someone whose trial has ended pays from day one.
+  if (hasFreeTrial && !trialExpired) return res.status(409).json({ error: 'Free trial has not ended yet' });
+  const trialDays = hasFreeTrial ? 0 : TRIAL_DAYS;
 
   let customerId = sub?.stripe_customer_id as string | undefined;
   if (!customerId) {
@@ -227,7 +220,7 @@ async function createCheckoutSession(user: any, admin: any, stripe: Stripe, body
     payment_method_collection: 'always',
     line_items: [{ price: priceId, quantity: 1 }],
     subscription_data: {
-      trial_period_days: trialDays,
+      ...(trialDays > 0 ? { trial_period_days: trialDays } : {}),
       metadata: { supabase_user_id: user.id, plan },
     },
     success_url: `${org}/day-view?subscription=started`,

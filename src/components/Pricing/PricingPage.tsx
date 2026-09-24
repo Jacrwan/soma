@@ -71,14 +71,13 @@ export default function PricingPage() {
     }
 
     if (isTrialExpired) {
-      // Trial ended — go straight to Stripe extension checkout
+      // Trial ended — straight to Stripe checkout for the chosen plan, charged today
       setLoading(true);
       setError(null);
       try {
-        await startCheckout();
+        await startCheckout(plan);
       } catch (e: any) {
-        setError(e?.message === 'Already extended' ? "You've already used your extension."
-               : e?.message === 'Already subscribed' ? "You're already subscribed."
+        setError(e?.message === 'Already subscribed' ? "You're already subscribed."
                : 'Something went wrong. Please try again.');
         setLoading(false);
       }
@@ -90,14 +89,13 @@ export default function PricingPage() {
   }
 
   const ctaLabel = isTrialExpired
-    ? 'Get 7 more days free'
+    ? 'Subscribe'
     : loading ? 'Starting…' : `Start free ${TRIAL_DAYS}-day trial`;
 
+  const billed = plan === 'monthly' ? `${MONTHLY_PRICE}/month` : `${SEMESTER_PRICE} every 4 months`;
   const ctaMeta = isTrialExpired
-    ? `${MONTHLY_PRICE}/month after 7-day extension · Cancel anytime`
-    : plan === 'monthly'
-      ? `${MONTHLY_PRICE}/month after trial · Cancel anytime`
-      : `${SEMESTER_PRICE} every 4 months after trial · Cancel anytime`;
+    ? `${billed}, starting today · Cancel anytime`
+    : `${billed} after trial · Cancel anytime`;
 
   return (
     <div className={styles.wrap}>
@@ -118,7 +116,7 @@ export default function PricingPage() {
         {isTrialExpired ? (
           <>
             <h1 className={styles.headline}>Your free trial has ended</h1>
-            <p className={styles.sub}>Add a payment method to get 7 more days free, then {MONTHLY_PRICE}/mo.</p>
+            <p className={styles.sub}>Subscribe to keep using the AI features.</p>
           </>
         ) : (
           <>
@@ -127,8 +125,8 @@ export default function PricingPage() {
           </>
         )}
 
-        {/* Plan toggle — shown for free users choosing post-trial billing */}
-        {!isTrialExpired && (
+        {/* Plan toggle */}
+        {(
           <div className={styles.toggle}>
             <button
               className={`${styles.toggleBtn}${plan === 'monthly' ? ` ${styles.toggleBtnActive}` : ''}`}
@@ -166,12 +164,7 @@ export default function PricingPage() {
         <div className={`${styles.card} ${styles.cardPro}`}>
           <div className={styles.cardHeader}>
             <span className={`${styles.planName} ${styles.planNamePro}`}>Premium</span>
-            {isTrialExpired ? (
-              <>
-                <span className={styles.price}>{MONTHLY_PRICE}</span>
-                <span className={styles.priceSub}>/mo</span>
-              </>
-            ) : plan === 'monthly' ? (
+            {plan === 'monthly' ? (
               <>
                 <span className={styles.price}>{MONTHLY_PRICE}</span>
                 <span className={styles.priceSub}>/mo</span>
@@ -183,9 +176,9 @@ export default function PricingPage() {
                 <span className={styles.priceEquiv}>{SEMESTER_PER_MONTH}/mo</span>
               </>
             )}
-            <span className={styles.trial}>
-              {isTrialExpired ? '7-day extension' : `${TRIAL_DAYS}-day free trial`}
-            </span>
+            {!isTrialExpired && (
+              <span className={styles.trial}>{TRIAL_DAYS}-day free trial</span>
+            )}
           </div>
           <div className={styles.featureList}>
             {PREMIUM_FEATURES.map(f => (
