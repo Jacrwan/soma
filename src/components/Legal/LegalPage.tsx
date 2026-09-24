@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import styles from './LegalPage.module.css';
+import { MONTHLY_PRICE, SEMESTER_PRICE, SEMESTER_PER_MONTH, SEMESTER_SAVINGS } from '../../lib/pricing';
 
 export type LegalType =
   | 'privacy'
@@ -432,7 +433,7 @@ function Terms() {
         <p>
           Soma has a free tier that provides access to day view, canvas sync, calendar, and
           insights. AI features require <strong>Soma Premium</strong>, available at{' '}
-          <strong>$4.99 USD per month</strong> or <strong>$49.99 USD per year</strong> ($4.17/mo).
+          <strong>{MONTHLY_PRICE} USD per month</strong> or <strong>{SEMESTER_PRICE} USD every 4 months</strong> ({SEMESTER_PER_MONTH}/mo).
           Soma Premium begins with a <strong>30-day free trial</strong> — no charge during the trial
           period. After the trial, your subscription renews automatically on your chosen billing
           cycle until you cancel. See our{' '}
@@ -620,13 +621,13 @@ function Billing() {
             <tbody>
               <tr>
                 <td>Monthly</td>
-                <td>$4.99 / month</td>
+                <td>{MONTHLY_PRICE} / month</td>
                 <td>—</td>
               </tr>
               <tr>
-                <td>Annual</td>
-                <td>$49.99 / year</td>
-                <td>$4.17 / month (save 17%)</td>
+                <td>4 months</td>
+                <td>{SEMESTER_PRICE} / 4 months</td>
+                <td>{SEMESTER_PER_MONTH} / month (save {SEMESTER_SAVINGS})</td>
               </tr>
             </tbody>
           </table>
@@ -647,7 +648,7 @@ function Billing() {
         <h2>Billing cycle and auto-renewal</h2>
         <p>
           Your subscription begins on the day your free trial ends and renews automatically at
-          the end of each billing period — monthly (every 30 days) or annually (every 365 days),
+          the end of each billing period — monthly or every 4 months,
           depending on the plan you chose at checkout. You will be charged to the payment method
           on file at the start of each renewal period.
         </p>
@@ -752,7 +753,7 @@ function Refund() {
       <div className={styles.section}>
         <h2>Renewals</h2>
         <p>
-          Refunds are not issued for subsequent billing renewals (monthly or annual). If you no
+          Refunds are not issued for subsequent billing renewals (monthly or 4-month). If you no
           longer want to be charged, cancel your subscription before your next billing date from{' '}
           <strong>Settings → Subscription</strong>.
         </p>

@@ -123,12 +123,12 @@ async function createSetupIntent(user: any, admin: any, stripe: Stripe, res: any
 }
 
 async function createSubscription(user: any, admin: any, stripe: Stripe, body: Record<string, unknown>, res: any) {
-  const monthlyPriceId = process.env.STRIPE_PRICE_ID_MONTHLY ?? '';
-  const annualPriceId  = process.env.STRIPE_PRICE_ID_YEARLY ?? '';
-  if (!monthlyPriceId || !annualPriceId) return res.status(500).json({ error: 'Price IDs not configured' });
+  const monthlyPriceId  = process.env.STRIPE_PRICE_ID_MONTHLY ?? '';
+  const semesterPriceId = process.env.STRIPE_PRICE_ID_SEMESTER ?? '';
+  if (!monthlyPriceId || !semesterPriceId) return res.status(500).json({ error: 'Price IDs not configured' });
 
   const paymentMethodId = typeof body.paymentMethodId === 'string' ? body.paymentMethodId : '';
-  const plan = body.plan === 'annual' ? 'annual' : 'monthly';
+  const plan = body.plan === 'semester' ? 'semester' : 'monthly';
   if (!paymentMethodId) return res.status(400).json({ error: 'paymentMethodId required' });
 
   const { data: sub } = await admin
@@ -153,7 +153,7 @@ async function createSubscription(user: any, admin: any, stripe: Stripe, body: R
   const trialEnd = Math.floor(Date.now() / 1000) + TRIAL_DAYS * 86_400;
   const subscription = await stripe.subscriptions.create({
     customer: customerId,
-    items: [{ price: plan === 'annual' ? annualPriceId : monthlyPriceId }],
+    items: [{ price: plan === 'semester' ? semesterPriceId : monthlyPriceId }],
     trial_end: trialEnd,
     default_payment_method: paymentMethodId,
     metadata: { supabase_user_id: user.id, plan },
@@ -180,10 +180,10 @@ async function createSubscription(user: any, admin: any, stripe: Stripe, body: R
 }
 
 async function createCheckoutSession(user: any, admin: any, stripe: Stripe, body: Record<string, unknown>, req: any, res: any) {
-  const plan = body.plan === 'annual' ? 'annual' : 'monthly';
-  const monthlyPriceId = process.env.STRIPE_PRICE_ID_MONTHLY ?? '';
-  const annualPriceId  = process.env.STRIPE_PRICE_ID_YEARLY ?? '';
-  const priceId = plan === 'annual' ? annualPriceId : monthlyPriceId;
+  const plan = body.plan === 'semester' ? 'semester' : 'monthly';
+  const priceId = plan === 'semester'
+    ? process.env.STRIPE_PRICE_ID_SEMESTER ?? ''
+    : process.env.STRIPE_PRICE_ID_MONTHLY ?? '';
   if (!priceId) return res.status(500).json({ error: 'Price ID not configured' });
 
   const { data: sub } = await admin
