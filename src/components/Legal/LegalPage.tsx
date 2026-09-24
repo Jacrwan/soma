@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import styles from './LegalPage.module.css';
-import { MONTHLY_PRICE, SEMESTER_PRICE, SEMESTER_PER_MONTH, SEMESTER_SAVINGS } from '../../lib/pricing';
+import { MONTHLY_PRICE, SEMESTER_PRICE, SEMESTER_PER_MONTH, SEMESTER_SAVINGS, TRIAL_DAYS } from '../../lib/pricing';
 
 export type LegalType =
   | 'privacy'
@@ -434,7 +434,7 @@ function Terms() {
           Soma has a free tier that provides access to day view, canvas sync, calendar, and
           insights. AI features require <strong>Soma Premium</strong>, available at{' '}
           <strong>{MONTHLY_PRICE} USD per month</strong> or <strong>{SEMESTER_PRICE} USD every 4 months</strong> ({SEMESTER_PER_MONTH}/mo).
-          Soma Premium begins with a <strong>30-day free trial</strong> — no charge during the trial
+          Soma Premium begins with a <strong>{TRIAL_DAYS}-day free trial</strong> — no charge during the trial
           period. After the trial, your subscription renews automatically on your chosen billing
           cycle until you cancel. See our{' '}
           <Link to="/billing">Billing & Subscription</Link> page for full details.
@@ -637,7 +637,7 @@ function Billing() {
       <div className={styles.section}>
         <h2>Free trial</h2>
         <p>
-          Soma Premium begins with a <strong>30-day free trial</strong>. You will not be charged
+          Soma Premium begins with a <strong>{TRIAL_DAYS}-day free trial</strong>. You will not be charged
           during the trial period. A valid payment method is required to start the trial. If you
           cancel before the trial ends, you will not be charged. Each account is eligible for one
           free trial.

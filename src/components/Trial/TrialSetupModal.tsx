@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { startCheckout } from '../../lib/subscription';
-import { MONTHLY_PRICE, SEMESTER_PER_MONTH, SEMESTER_SAVINGS, type Plan } from '../../lib/pricing';
+import { MONTHLY_PRICE, SEMESTER_PER_MONTH, SEMESTER_SAVINGS, TRIAL_DAYS, type Plan } from '../../lib/pricing';
 import styles from './TrialSetupModal.module.css';
 
 interface Props {
@@ -35,7 +35,7 @@ export default function TrialSetupModal({ onSkip }: Props) {
           <h2 className={styles.title}>Start your free trial</h2>
         </div>
         <p className={styles.sub}>
-          Full access to all AI features for 21 days. Pick a plan — you won't be charged until the trial ends.
+          Full access to all AI features for {TRIAL_DAYS} days. Pick a plan — you won't be charged until the trial ends.
         </p>
 
         <form onSubmit={handleSubmit}>
@@ -62,7 +62,7 @@ export default function TrialSetupModal({ onSkip }: Props) {
           </div>
 
           <p className={styles.trialNotice}>
-            <strong>21-day free trial.</strong> You'll enter payment details on Stripe's secure checkout page. No charge until the trial ends — cancel anytime before then.
+            <strong>{TRIAL_DAYS}-day free trial.</strong> You'll enter payment details on Stripe's secure checkout page. No charge until the trial ends — cancel anytime before then.
           </p>
 
           {error && <p className={styles.error}>{error}</p>}

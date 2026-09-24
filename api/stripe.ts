@@ -2,10 +2,7 @@
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { isRateLimited } from './_rateLimit';
-
-const TRIAL_DAYS   = 21;
-const TRIAL_MS     = TRIAL_DAYS * 86_400_000;
-const EXTENSION_MS = 7 * 86_400_000;
+import { TRIAL_DAYS, EXTENSION_MS, trialLengthMs } from './_trial';
 
 const ALLOWED_ORIGINS = [
   'https://somastudy.app',
@@ -38,7 +35,7 @@ function computeStatus(row: {
   if (row.stripe_subscription_id) return row.status;
   const now = Date.now();
   if (row.status === 'trialing' && row.trial_start) {
-    return now > new Date(row.trial_start).getTime() + TRIAL_MS ? 'trial_expired' : 'trialing';
+    return now > new Date(row.trial_start).getTime() + trialLengthMs(row.trial_start) ? 'trial_expired' : 'trialing';
   }
   if (row.status === 'trial_extended' && row.extension_start) {
     return now > new Date(row.extension_start).getTime() + EXTENSION_MS ? 'trial_extension_expired' : 'trial_extended';
@@ -63,7 +60,7 @@ export async function getSubscription(user: any, admin: any, res: any) {
   const trialEndsAt = sub.stripe_subscription_id
     ? (sub.current_period_end ?? null)
     : (sub.trial_start
-        ? new Date(new Date(sub.trial_start).getTime() + TRIAL_MS).toISOString()
+        ? new Date(new Date(sub.trial_start).getTime() + trialLengthMs(sub.trial_start)).toISOString()
         : null);
 
   const extensionEndsAt = sub.extension_start
@@ -196,11 +193,11 @@ async function createCheckoutSession(user: any, admin: any, stripe: Stripe, body
   if (sub?.status === 'active')     return res.status(409).json({ error: 'Already subscribed' });
 
   const hasFreeTrial  = !!sub?.trial_start;
-  const trialExpired  = hasFreeTrial && Date.now() > new Date(sub.trial_start).getTime() + TRIAL_MS;
+  const trialExpired  = hasFreeTrial && Date.now() > new Date(sub.trial_start).getTime() + trialLengthMs(sub.trial_start);
 
   let trialDays: number;
   if (!hasFreeTrial) {
-    trialDays = TRIAL_DAYS; // new user — 21-day trial
+    trialDays = TRIAL_DAYS; // new user — free trial
   } else if (trialExpired && !sub.extension_start) {
     trialDays = 7; // expired free trial — 7-day extension
   } else if (!trialExpired) {

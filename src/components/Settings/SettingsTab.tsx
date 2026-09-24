@@ -18,7 +18,7 @@ import {
 import { SUBJECT_COLORS, nextUnusedColor } from '../../lib/subjectColors';
 import type { GoogleCalendarConnection, GoogleCalendarInfo, Subject, SubjectColor } from '../../types';
 import styles from './SettingsTab.module.css';
-import { MONTHLY_PRICE } from '../../lib/pricing';
+import { MONTHLY_PRICE, TRIAL_DAYS } from '../../lib/pricing';
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 type Day = typeof DAYS[number];
@@ -820,7 +820,7 @@ export default function SettingsTab() {
             <div className={styles.subActions}>
               {subscription.status === 'free' && (
                 <button className={styles.subBtnPrimary} onClick={() => navigate('/pricing')}>
-                  Start free 3-week trial
+                  Start free {TRIAL_DAYS}-day trial
                 </button>
               )}
 
