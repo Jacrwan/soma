@@ -151,7 +151,8 @@ function classTomorrow(ctx: Ctx) {
   if (prep.length) lines.push(`To walk in prepared:\n${prep.join('\n')}`);
   const dueCourses = new Set(due.map(a => a.courseName));
   const dueWork = due.map(a => WORK.find(w => a.name.includes(w.match))?.title).filter(Boolean) as string[];
-  const planned = ctx.plan.filter(p => !p.readOnly && dueWork.includes(p.title) && p.date <= tomorrow.date);
+  const planned = ctx.plan.filter(p => !p.readOnly && dueWork.includes(p.title) && p.date <= tomorrow.date)
+    .sort((a, b) => a.date.localeCompare(b.date) || mins(a.time) - mins(b.time));
   if (planned.length) lines.push(`Already on your plan:\n${planned.map(p => `- ${p.date === today.date ? 'Tonight' : tomorrow.weekday.slice(0, 3)} ${clock(p.time.split('–')[0])}  ${p.title}`).join('\n')}`);
   const items = [
     ...workItems(ctx, c => dueCourses.has(c)).filter(i => ymd(new Date(i.due)) <= tomorrow.date),
