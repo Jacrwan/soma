@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { storage, SomaSettings } from '../../lib/storage';
 import SemesterEndModal from '../shared/SemesterEndModal';
+import UniversityPicker from '../shared/UniversityPicker';
+import { countryName, type University } from '../../lib/universities';
 import { EDUCATION_OPTIONS, EDUCATION_LABELS, type EducationId } from '../Onboarding/OnboardingFlow';
 import { applyTheme } from '../../App';
 import { applyTimeFormat } from '../../lib/timeFormat';
@@ -54,6 +56,13 @@ export default function SettingsTab() {
   const [editingEducation, setEditingEducation] = useState(false);
   const [pendingEducation, setPendingEducation] = useState<EducationId | ''>('');
   const [eduSaving, setEduSaving]             = useState(false);
+
+  // University — only asked of college and grad students
+  const [university, setUniversity]           = useState<University | null>(() => storage.getSomaSettings().university ?? null);
+  const [editingUniversity, setEditingUniversity] = useState(false);
+  const [pendingUniversity, setPendingUniversity] = useState<University | null>(null);
+  const [uniSaving, setUniSaving]             = useState(false);
+  const asksUniversity = educationLevel === 'college' || educationLevel === 'grad';
 
   // Canvas integration state
   const [canvasIcalUrl, setCanvasIcalUrl] = useState(() => storage.getCanvasIcalUrl());
@@ -329,6 +338,7 @@ export default function SettingsTab() {
   useEffect(() => {
     storage.getSettings().then(s => {
       if (s.educationLevel) setEducationLevel(s.educationLevel);
+      setUniversity(s.university ?? null);
     });
   }, []);
 
@@ -456,14 +466,31 @@ export default function SettingsTab() {
     if (!pendingEducation) return;
     setEduSaving(true);
     try {
+      // A university only means something for college and grad students.
+      const keepsUniversity = pendingEducation === 'college' || pendingEducation === 'grad';
+      const nextUniversity = keepsUniversity ? university ?? undefined : undefined;
       const remote = await storage.getSettings();
-      await storage.saveSettings({ ...remote, educationLevel: pendingEducation });
+      await storage.saveSettings({ ...remote, educationLevel: pendingEducation, university: nextUniversity });
       const local = storage.getSomaSettings();
-      storage.setSomaSettings({ ...local, educationLevel: pendingEducation });
+      storage.setSomaSettings({ ...local, educationLevel: pendingEducation, university: nextUniversity });
       setEducationLevel(pendingEducation);
+      setUniversity(nextUniversity ?? null);
       setEditingEducation(false);
     } catch { /* fail silently */ }
     setEduSaving(false);
+  }
+
+  async function handleSaveUniversity(next: University | null) {
+    setUniSaving(true);
+    try {
+      const remote = await storage.getSettings();
+      await storage.saveSettings({ ...remote, university: next ?? undefined });
+      const local = storage.getSomaSettings();
+      storage.setSomaSettings({ ...local, university: next ?? undefined });
+      setUniversity(next);
+      setEditingUniversity(false);
+    } catch { /* fail silently */ }
+    setUniSaving(false);
   }
 
   async function handlePasswordChange(e: React.FormEvent) {
@@ -668,6 +695,64 @@ export default function SettingsTab() {
                 </div>
               )}
             </div>
+
+            {asksUniversity && (
+              <>
+                <div className={styles.profileSep} />
+
+                {/* University */}
+                <div className={styles.profileBlock}>
+                  <span className={styles.profileLabel}>University</span>
+                  {!editingUniversity ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span className={styles.profileName} style={{ fontWeight: 500 }}>
+                        {university
+                          ? <>{university.name} <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: 13 }}>· {countryName(university.country)}</span></>
+                          : <span style={{ color: 'var(--text-muted)', fontWeight: 400, fontSize: 13 }}>Not set</span>}
+                      </span>
+                      <button
+                        className={styles.profilePassBtn}
+                        style={{ padding: '4px 12px', fontSize: 11 }}
+                        onClick={() => {
+                          setPendingUniversity(university);
+                          setEditingUniversity(true);
+                        }}
+                      >
+                        {university ? 'Edit' : 'Add'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <UniversityPicker value={pendingUniversity} onChange={setPendingUniversity} autoFocus />
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          className={styles.profilePassBtn}
+                          onClick={() => handleSaveUniversity(pendingUniversity)}
+                          disabled={!pendingUniversity || uniSaving}
+                        >
+                          {uniSaving ? 'Saving…' : 'Save'}
+                        </button>
+                        {university && (
+                          <button
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, color: 'var(--text-muted)', padding: '7px 4px' }}
+                            onClick={() => handleSaveUniversity(null)}
+                            disabled={uniSaving}
+                          >
+                            Remove
+                          </button>
+                        )}
+                        <button
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit', fontSize: 12, color: 'var(--text-muted)', padding: '7px 4px' }}
+                          onClick={() => setEditingUniversity(false)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
 
             <div className={styles.profileSep} />
 

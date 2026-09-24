@@ -52,6 +52,8 @@ export interface SomaSettings {
   googleRefreshToken?: string;
   onboardingCompleted?: boolean;
   educationLevel?: string;
+  /** Picked from src/data/universities.json; only asked of college and grad students. */
+  university?: { name: string; country: string };
   birthYear?: number;
   bossState?: unknown; // Bosses feature state blob (synced as-is)
 }
