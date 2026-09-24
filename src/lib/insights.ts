@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { addSessionToHours } from './studyHours';
 
 interface StudySession {
   id: string;
@@ -7,6 +8,7 @@ interface StudySession {
   subject_name: string | null;
   task_text: string | null;
   start_time: string | null;
+  end_time?: string | null;
   duration_seconds: number;
 }
 interface InsightSubject { id: string; name: string; color: string; archived: boolean }
@@ -79,7 +81,7 @@ export function loadInsights(userId: string, force = false): Promise<void> {
   const version = entry.version;
   publish(entry, { ...entry.snapshot, loading: true, error: null });
   const request = Promise.all([
-    fetchRows<StudySession>('timer_sessions', 'id,date,subject_id,subject_name,task_text,start_time,duration_seconds', userId),
+    fetchRows<StudySession>('timer_sessions', 'id,date,subject_id,subject_name,task_text,start_time,end_time,duration_seconds', userId),
     fetchRows<InsightSubject>('subjects', 'id,name,color,archived', userId),
     fetchRows<InsightTodo>('todos', 'id,text,subject_id,estimated_minutes', userId),
   ]).then(([sessions, subjects, todos]) => {
@@ -125,6 +127,7 @@ export function summarizeInsights(data: InsightsData | null, weekOffset: number,
     return dateKey(day);
   });
   const currentWeek = new Set(dayKeys(0));
+  const shownWeek = new Set(dayKeys(weekOffset));
   const month = new Date(now.getFullYear(), now.getMonth() + calendarOffset, 1);
   const monthPrefix = dateKey(month).slice(0, 7);
   const secondsByDay = new Map<string, number>();
@@ -155,10 +158,8 @@ export function summarizeInsights(data: InsightsData | null, weekOffset: number,
       const day = Number(session.date.slice(8));
       heatmapMinutesMap[day] = (heatmapMinutesMap[day] ?? 0) + Math.round(seconds / 60);
     }
-    if (session.start_time) {
-      const hour = new Date(session.start_time).getHours();
-      peakHoursData[hour] = (peakHoursData[hour] ?? 0) + Math.round(seconds / 60);
-    }
+    // Peak hours follow the week the Study time chart is showing.
+    if (shownWeek.has(session.date)) addSessionToHours(peakHoursData, session);
     if (session.subject_id) {
       const prev = pacing.get(subjectId);
       pacing.set(subjectId, { seconds: (prev?.seconds ?? 0) + seconds, count: (prev?.count ?? 0) + 1 });
@@ -211,6 +212,9 @@ export function summarizeInsights(data: InsightsData | null, weekOffset: number,
       cursor.setDate(cursor.getDate() - 1);
     }
     streakDisplay = runEndingYesterday;
+  }
+  for (const hour of Object.keys(peakHoursData)) {
+    peakHoursData[+hour] = Math.round(peakHoursData[+hour]);
   }
   return {
     weekly, breakdown, estimated, streak: streakDisplay,

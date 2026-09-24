@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { addSessionToHours } from '../src/lib/studyHours';
 
 const account = {
   id: '11111111-1111-4111-8111-111111111111', email: 'student@example.com',
@@ -395,4 +396,56 @@ test('every studied day shows its hours, with a dashed daily-average line', asyn
   });
   const expectedY = geometry.contentBottom - (193.3 / 360) * (geometry.contentBottom - geometry.trackTop);
   expect(Math.abs(geometry.lineY - expectedY)).toBeLessThan(1.5);
+});
+
+test('a session counts toward every hour it covered, not just the one it started in', () => {
+  const at = (h: number, m = 0) => new Date(2026, 8, 24, h, m).toISOString();
+  const hours: Record<number, number> = {};
+  addSessionToHours(hours, { start_time: at(13), end_time: at(15, 30), duration_seconds: 150 * 60 });
+  expect(hours).toEqual({ 13: 60, 14: 60, 15: 30 });
+
+  // 60 minutes studied inside a two-hour span: spread evenly, since pauses aren't timed.
+  const paused: Record<number, number> = {};
+  addSessionToHours(paused, { start_time: at(9), end_time: at(11), duration_seconds: 60 * 60 });
+  expect(paused).toEqual({ 9: 30, 10: 30 });
+
+  // No end time: assume it ran unbroken from the start.
+  const open: Record<number, number> = {};
+  addSessionToHours(open, { start_time: at(23, 30), end_time: null, duration_seconds: 60 * 60 });
+  expect(open).toEqual({ 23: 30, 0: 30 });
+});
+
+test('peak hours show this week only, spread across hours, and expand to all 24', async ({ page }) => {
+  const state = await setup(page);
+  const dayOffset = (daysAgo: number) => {
+    const d = new Date(); d.setDate(d.getDate() - daysAgo);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const iso = (day: string, h: number, m = 0) => new Date(`${day}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`).toISOString();
+  state.sessions = [
+    // Today 1:00–3:30pm: used to all land on 1p.
+    { ...session, id: 'afternoon', date: dayOffset(0), start_time: iso(dayOffset(0), 13), end_time: iso(dayOffset(0), 15, 30), duration_seconds: 150 * 60 },
+    // Early morning this week: has to be reachable now that the chart covers 24 hours.
+    { ...session, id: 'early', date: dayOffset(2), start_time: iso(dayOffset(2), 4), end_time: iso(dayOffset(2), 5), duration_seconds: 60 * 60 },
+    // Two weeks ago at 8pm: outside the week being shown.
+    { ...session, id: 'old', date: dayOffset(14), start_time: iso(dayOffset(14), 20), end_time: iso(dayOffset(14), 21), duration_seconds: 60 * 60 },
+  ];
+
+  await page.goto('/insights');
+  const section = page.locator('section', { has: page.getByRole('heading', { name: 'Peak study hours' }) });
+  const bar = (hour: string) => section.getByTitle(new RegExp(` at ${hour}$`));
+  await expect(bar('3p')).toHaveAttribute('title', '30m at 3p');
+  await expect(bar('2p')).toHaveAttribute('title', '1h at 2p');
+  await expect(bar('4a')).toHaveAttribute('title', '1h at 4a');
+  await expect(bar('8p')).toHaveAttribute('title', 'No study time at 8p');
+
+  // Scrolls sideways, starting at the earliest studied hour (4am here).
+  const scroller = section.locator('[class*="peakScroll"]');
+  const scroll = await scroller.evaluate(el => ({ left: el.scrollLeft, overflow: el.scrollWidth > el.clientWidth }));
+  expect(scroll.overflow).toBe(true);
+  expect(scroll.left).toBeGreaterThan(0);
+
+  await section.getByRole('button', { name: 'View all 24 hours' }).click();
+  expect(await scroller.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await expect(section.getByRole('button', { name: 'Show less' })).toBeVisible();
 });

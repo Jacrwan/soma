@@ -782,13 +782,69 @@
 
 /* Peak hours chart */
 
+.peakHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.peakHead .sectionTitle { margin: 0; }
+
+.peakToggle {
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.peakToggle:hover { text-decoration: underline; }
+
+/* By default the hours scroll sideways, --peak-visible at a time, which keeps
+   the bars as roomy as the old 6am–11pm chart. "View all 24 hours" fits the
+   whole day instead and labels every third hour. */
+.peakScroll {
+  --peak-visible: 18;
+  --peak-gap: 6px;
+  position: relative;
+  container-type: inline-size;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  padding-bottom: 6px;
+  --fade-after: 0px;
+  mask-image: linear-gradient(to right, #000 calc(100% - var(--fade-after)), transparent 100%);
+}
+
+/* Only the trailing edge fades: the chart opens aligned to a bar on the left,
+   and fading that would look like a rendering fault rather than a hint. */
+.peakScroll[data-more-after] { --fade-after: 24px; }
+
 .peakChart {
   display: grid;
-  grid-template-columns: repeat(18, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: calc((100cqw - (var(--peak-visible) - 1) * var(--peak-gap)) / var(--peak-visible));
   align-items: end;
-  gap: 6px;
+  gap: var(--peak-gap);
+  width: max-content;
   height: 132px;
 }
+
+.peakScrollAll { overflow-x: hidden; }
+
+.peakScrollAll .peakChart {
+  grid-auto-columns: minmax(0, 1fr);
+  width: 100%;
+}
+
+.peakScrollAll .peakLabelMinor { visibility: hidden; }
 
 .peakCol {
   display: flex;
@@ -946,13 +1002,15 @@
     text-align: right;
   }
 
-  .peakChart {
-    gap: 3px;
-    height: 112px;
+  .peakScroll {
+    --peak-visible: 9;
+    --peak-gap: 4px;
   }
 
-  .peakLabel {
-    font-size: 8px;
+  .peakScrollAll { --peak-gap: 2px; }
+
+  .peakChart {
+    height: 112px;
   }
 }
 
