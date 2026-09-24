@@ -288,6 +288,21 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   const subjectName = (subjectId?: string) =>
     (subjectId ? storage.getSubjects().find(s => s.id === subjectId)?.name : '') ?? '';
 
+  /** A course's own colour, so a deadline is marked by what it belongs to.
+   *  Canvas assignments carry a course name rather than a subject id, which
+   *  is the key the two already share. Falls back to the due-date red for
+   *  work whose course has no colour yet. */
+  const DEADLINE_COLOR = 'oklch(58% 0.21 30)';
+  const subjectColor = (opts: { subjectId?: string; courseName?: string }) => {
+    const subjects = storage.getSubjects();
+    const match = opts.subjectId
+      ? subjects.find(s => s.id === opts.subjectId)
+      : opts.courseName
+        ? subjects.find(s => s.name === opts.courseName)
+        : undefined;
+    return match?.color ?? DEADLINE_COLOR;
+  };
+
   const loadConnections = useCallback(async () => {
     try {
       const fresh = await listConnections();
@@ -901,17 +916,18 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
           {/* All-day row: everything due that day, whatever its source. */}
           {filters.canvas && (() => {
             const assignments = storage.getCachedAssignments();
-            type DueChip = { id: string; name: string; course: string; dueKey: string; url?: string };
+            type DueChip = { id: string; name: string; course: string; colour: string; dueKey: string; url?: string };
             const chipsFor = (day: Date): DueChip[] => [
               ...assignments
                 .filter(a => a.dueAt && isSameDay(new Date(a.dueAt), day))
-                .map(a => ({ id: `canvas-${a.id}`, name: a.name, course: a.courseName, dueKey: a.dueAt, url: a.htmlUrl })),
+                .map(a => ({ id: `canvas-${a.id}`, name: a.name, course: a.courseName, colour: subjectColor({ courseName: a.courseName }), dueKey: a.dueAt, url: a.htmlUrl })),
               ...dueTasks
                 .filter(t => isSameDay(new Date(`${t.dueDate}T12:00:00`), day))
                 .map(t => ({
                   id: `due-${t.id}`,
                   name: t.text,
                   course: subjectName(t.subjectId),
+                  colour: subjectColor({ subjectId: t.subjectId }),
                   dueKey: `${t.dueDate}T23:59:00`,
                 })),
             ];
@@ -925,7 +941,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                       const dueFmt = new Date(chip.dueKey).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
                       return (
                         <div key={chip.id} className={styles.weekViewAllDayChipWrap}>
-                          <span className={styles.weekViewAllDayChip}>{chip.name}</span>
+                          <span className={styles.weekViewAllDayChip} style={{ '--chip': chip.colour } as CSSProperties}>{chip.name}</span>
                           <div className={styles.weekViewAllDayChipPanel} onClick={e => e.stopPropagation()}>
                             <div className={styles.weekViewChipPanelName}>{chip.name}</div>
                             <div className={styles.weekViewChipPanelMeta}>Due {dueFmt}</div>

@@ -419,9 +419,9 @@
 }
 
 :global([data-theme="dark"]) .weekViewAllDayChip {
-  background: color-mix(in srgb, var(--chip) 24%, transparent);
-  color: color-mix(in srgb, var(--chip) 58%, #ffffff);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chip) 42%, transparent);
+  background: color-mix(in srgb, var(--chip, oklch(58% 0.21 30)) 24%, transparent);
+  color: color-mix(in srgb, var(--chip, oklch(58% 0.21 30)) 58%, #ffffff);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chip, oklch(58% 0.21 30)) 42%, transparent);
 }
 
 .overflowChip {
@@ -588,14 +588,14 @@
   max-width: 100%;
   cursor: default;
 
-  /* Tinted like the month chips, for the same reason: a row of solid red
-     bars reads as an alarm, and a deadline is not one. The colour still
-     marks them as due dates, it just stops being the loudest thing on the
-     week. srgb, so the mix cannot wander round the hue wheel. */
-  --chip: oklch(58% 0.21 30);
-  background: color-mix(in srgb, var(--chip) 16%, transparent);
-  color: color-mix(in srgb, var(--chip) 72%, #12151a);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chip) 32%, transparent);
+  /* Tinted like the month chips, for the same reason: a row of solid bars
+     reads as an alarm, and a deadline is not one. The colour is the
+     course's, set inline, so a due date is marked by what it belongs to
+     rather than by all of them looking the same. srgb, so the mix cannot
+     wander round the hue wheel. */
+  background: color-mix(in srgb, var(--chip, oklch(58% 0.21 30)) 16%, transparent);
+  color: color-mix(in srgb, var(--chip, oklch(58% 0.21 30)) 72%, #12151a);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chip, oklch(58% 0.21 30)) 32%, transparent);
 }
 
 .weekViewAllDayChipPanel {
