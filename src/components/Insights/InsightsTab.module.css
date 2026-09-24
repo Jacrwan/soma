@@ -1,4 +1,18 @@
 .page {
+  /* Everything on this page that draws data draws it in one colour, the same
+     orange the calendar climbs to, so the charts read as one instrument
+     rather than several. Deliberately not --accent: that is the app's colour
+     for things you can press, and a bar is not one of them.
+
+     Written out rather than mixed toward the background. color-mix in oklch
+     takes the short way round the hue wheel, and orange to a background
+     tinted 265 goes through magenta: the bars came out pink. The blue this
+     replaced only survived that because its hue already matched. */
+  --chart-bar:      oklch(88% 0.085 58);
+  --chart-bar-peak: oklch(70% 0.180 49);
+  --chart-hour:     oklch(90% 0.070 60);
+  --chart-hour-top: oklch(73% 0.170 51);
+
   width: 100%;
   max-width: 1240px;
   margin: 0 auto;
@@ -229,14 +243,14 @@
 
 .bar {
   width: 100%;
-  background: color-mix(in oklch, var(--accent) 34%, var(--bg));
+  background: var(--chart-bar);
   border-radius: 4px 4px 0 0;
   min-height: 0;
   transition: height 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .barPeak {
-  background: color-mix(in oklch, var(--accent) 72%, var(--bg));
+  background: var(--chart-bar-peak);
 }
 
 .barLabel {
@@ -542,6 +556,13 @@
   border-radius: 5px;
 }
 
+[data-theme="dark"] .page {
+  --chart-bar:      oklch(40% 0.100 55);
+  --chart-bar-peak: oklch(68% 0.180 50);
+  --chart-hour:     oklch(36% 0.085 57);
+  --chart-hour-top: oklch(66% 0.175 51);
+}
+
 /* Five steps of orange. Chroma climbs hard while lightness falls only a
    little, which is what keeps it bright: orange loses its colour and turns
    brown if it is darkened the way a blue can be, so the scale is carried by
@@ -736,14 +757,14 @@
 
 .peakBar {
   width: 100%;
-  background: color-mix(in oklch, var(--accent) 26%, var(--bg));
+  background: var(--chart-hour);
   border-radius: 3px 3px 0 0;
   min-height: 0;
   transition: height 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .peakBarTop {
-  background: color-mix(in oklch, var(--accent) 62%, var(--bg));
+  background: var(--chart-hour-top);
 }
 
 .peakLabel {

@@ -313,3 +313,26 @@ test('the tenths are left off when they say nothing new', async ({ page }) => {
   await expect(page.locator('[class*="heatmapTimeLabel"]')).toHaveText(['45m', '2h']);
   await expect(page.locator('[class*="heatmapDecimalLabel"]')).toHaveCount(0);
 });
+
+/**
+ * The bars were mixed toward the page background, which in oklch takes the
+ * short way round the hue wheel. From orange to a background tinted blue
+ * that route runs through magenta, and the charts came out pink. Orange
+ * sits near 50 degrees; the magenta it passed through sits near 340.
+ */
+test('the chart bars are orange, not something on the way to it', async ({ page }) => {
+  await setup(page);
+  await page.goto('/insights');
+  await expect(summary(page)).toBeVisible();
+
+  // The emphasised bars, whose class names cannot collide with a track.
+  for (const sel of ['[class*="barPeak"]', '[class*="peakBarTop"]']) {
+    const colour = await page.locator(sel).first().evaluate(el => getComputedStyle(el).backgroundColor);
+    const oklch = colour.match(/oklch\(([\d.]+)[\s/]+([\d.]+)[\s]+([\d.]+)/);
+    expect(oklch, `${sel} reported ${colour}`).not.toBeNull();
+    const [, , chroma, hue] = oklch!.map(Number);
+    expect(Number(chroma), `${sel} has colour at all: ${colour}`).toBeGreaterThan(0.05);
+    expect(Number(hue), `${sel} is orange, not magenta: ${colour}`).toBeGreaterThan(20);
+    expect(Number(hue), `${sel} is orange, not magenta: ${colour}`).toBeLessThan(90);
+  }
+});
