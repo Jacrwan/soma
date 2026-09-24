@@ -1,8 +1,12 @@
+import { DEMO } from './demo/demoMode';
+import { bootDemo } from './demo/boot';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import './index.css';
 import { lazy, Suspense } from 'react';
 import { features } from './lib/features';
+
+if (DEMO) bootDemo();
 
 // The mock route never imports App or its live data/timer providers.
 const App = lazy(() => import('./App.tsx'));
