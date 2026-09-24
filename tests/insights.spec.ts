@@ -336,3 +336,32 @@ test('the chart bars are orange, not something on the way to it', async ({ page 
     expect(Number(hue), `${sel} is orange, not magenta: ${colour}`).toBeLessThan(90);
   }
 });
+
+test('long lists scroll inside their card instead of stretching the page', async ({ page }) => {
+  const state = await setup(page);
+  const todos = Array.from({ length: 20 }, (_, i) => ({
+    id: `task-${i}`, text: `Problem set ${i + 1}`, subject_id: 'biology', estimated_minutes: 60,
+  }));
+  state.sessions = todos.map((todo, i) => ({
+    ...session, id: `session-${i}`, task_text: todo.text, duration_seconds: (40 + i) * 60,
+  }));
+  // Registered after setup, so it wins over setup's single todo.
+  await page.route('https://soma-regression.supabase.co/rest/v1/todos*', route => route.fulfill({ json: todos }));
+
+  await page.goto('/insights');
+  const section = page.locator('section', { has: page.getByRole('heading', { name: 'Estimated vs actual' }) });
+  await expect(section.getByText('Problem set 20')).toBeAttached();
+
+  // The list is the element that holds the column headings row.
+  const list = section.getByText('Delta', { exact: true }).locator('xpath=../..');
+  const box = await list.evaluate(el => ({ client: el.clientHeight, scroll: el.scrollHeight }));
+  expect(box.client).toBeLessThanOrEqual(320);
+  expect(box.scroll).toBeGreaterThan(box.client);
+
+  // The column headings stay in view while the rows scroll under them.
+  await list.scrollIntoViewIfNeeded();
+  await list.evaluate(el => { el.scrollTop = el.scrollHeight; });
+  const header = section.getByText('Delta', { exact: true }).locator('xpath=..');
+  const [listTop, headerTop] = await Promise.all([list.boundingBox(), header.boundingBox()]);
+  expect(Math.abs(headerTop!.y - listTop!.y)).toBeLessThan(2);
+});
