@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { getIcalAssignments } from '../../lib/canvas';
+import type { University } from '../../lib/universities';
+import UniversityPicker from '../shared/UniversityPicker';
 import styles from './OnboardingFlow.module.css';
 
 export const EDUCATION_OPTIONS = [
@@ -36,6 +38,8 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
 
   // Step 2 — education
   const [education, setEducation] = useState<EducationId | ''>('');
+  const [university, setUniversity] = useState<University | null>(null);
+  const asksUniversity = education === 'college' || education === 'grad';
 
   // Step 3 — integrations
   const [canvasUrl, setCanvasUrl] = useState('');
@@ -94,6 +98,7 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
         ...remoteSettings,
         onboardingCompleted: true,
         educationLevel: education || undefined,
+        university: asksUniversity && university ? university : undefined,
         birthYear,
       });
       const localSettings = storage.getSomaSettings();
@@ -101,6 +106,7 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
         ...localSettings,
         onboardingCompleted: true,
         educationLevel: education || undefined,
+        university: asksUniversity && university ? university : undefined,
         birthYear,
       });
     } catch { /* fail silently */ }
@@ -202,6 +208,15 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
                 </button>
               ))}
             </div>
+
+            {asksUniversity && (
+              <div className={styles.universityBlock}>
+                <label className={styles.universityLabel}>
+                  Which university? <span className={styles.optional}>Optional</span>
+                </label>
+                <UniversityPicker value={university} onChange={setUniversity} />
+              </div>
+            )}
 
             <div className={styles.actions}>
               <button className={styles.backBtn} onClick={() => setStep(1)}>Back</button>
