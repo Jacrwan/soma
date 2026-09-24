@@ -274,6 +274,8 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
     () => weekly.reduce((sum, d) => sum + d.minutes, 0),
     [weekly]
   );
+  // Like Screen Time: days with no study still count, so it's the week's total over 7.
+  const dailyAverageMinutes = weekly.length ? totalWeeklyMinutes / weekly.length : 0;
   const bestDay = useMemo(
     () => weekly.reduce((best, d) => d.minutes > best.minutes ? d : best, weekly[0] ?? { day: '', minutes: 0 }),
     [weekly]
@@ -389,6 +391,12 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
           <div className={styles.weekNavCenter}>
             <h2 className={styles.sectionTitle}>Study time</h2>
             <span className={styles.weekRange}>{fmtDateRange(weekOffset)}</span>
+            {dailyAverageMinutes > 0 && (
+              <span className={styles.weekAvg}>
+                <span className={styles.weekAvgKey} aria-hidden="true" />
+                Daily avg {formatHours(Math.round(dailyAverageMinutes))}
+              </span>
+            )}
           </div>
           <button
             className={styles.weekNavBtn}
@@ -398,9 +406,17 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
           ><ChevronIcon direction="right" /></button>
         </div>
         <div className={styles.chart}>
+          {dailyAverageMinutes > 0 && (
+            <div className={styles.avgLayer} aria-hidden="true">
+              <div
+                className={styles.avgLine}
+                style={{ bottom: `${(dailyAverageMinutes / maxWeeklyMinutes) * 100}%` }}
+              />
+            </div>
+          )}
           {weekly.map(({ day, minutes }) => {
             const isPeak = minutes === maxWeeklyMinutes && minutes > 0;
-            const showLabel = minutes > 0 && minutes >= maxWeeklyMinutes * 0.45;
+            const showLabel = minutes > 0;
             return (
               <div key={day} className={styles.barCol}>
                 <span className={styles.barValue}>

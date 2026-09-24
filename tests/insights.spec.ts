@@ -365,3 +365,34 @@ test('long lists scroll inside their card instead of stretching the page', async
   const [listTop, headerTop] = await Promise.all([list.boundingBox(), header.boundingBox()]);
   expect(Math.abs(headerTop!.y - listTop!.y)).toBeLessThan(2);
 });
+
+test('every studied day shows its hours, with a dashed daily-average line', async ({ page }) => {
+  const state = await setup(page);
+  // Oldest to newest, ending today: nothing, nothing, 6h, 4h36m, 4h24m, 5h48m, 1h45m.
+  const minutesByDaysAgo = [105, 348, 264, 276, 360, 0, 0];
+  state.sessions = minutesByDaysAgo.flatMap((minutes, daysAgo) => {
+    if (!minutes) return [];
+    const d = new Date();
+    d.setDate(d.getDate() - daysAgo);
+    const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return [{ ...session, id: `s-${daysAgo}`, date: day, start_time: `${day}T12:00:00`, duration_seconds: minutes * 60 }];
+  });
+
+  await page.goto('/insights');
+  const section = page.locator('section', { has: page.getByRole('heading', { name: 'Study time' }) });
+  // The shortest day used to lose its label for being under 45% of the tallest.
+  await expect(section.getByText('1h 45m', { exact: true })).toBeVisible();
+
+  // (105 + 348 + 264 + 276 + 360) / 7 = 193.3 minutes
+  await expect(section.getByText('Daily avg 3h 13m')).toBeVisible();
+
+  const geometry = await section.evaluate(el => {
+    const line = el.querySelector('[class*="avgLine"]')!.getBoundingClientRect();
+    const track = el.querySelector('[class*="barTrack"]')!;
+    const t = track.getBoundingClientRect();
+    const border = parseFloat(getComputedStyle(track).borderBottomWidth);
+    return { lineY: line.top + line.height / 2, trackTop: t.top, contentBottom: t.bottom - border };
+  });
+  const expectedY = geometry.contentBottom - (193.3 / 360) * (geometry.contentBottom - geometry.trackTop);
+  expect(Math.abs(geometry.lineY - expectedY)).toBeLessThan(1.5);
+});

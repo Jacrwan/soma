@@ -10,6 +10,7 @@
      replaced only survived that because its hue already matched. */
   --chart-bar:      oklch(88% 0.085 58);
   --chart-bar-peak: oklch(70% 0.180 49);
+  --chart-avg:      oklch(42% 0.020 265);
   --chart-hour:     oklch(90% 0.070 60);
   --chart-hour-top: oklch(73% 0.170 51);
 
@@ -201,11 +202,50 @@
 /* Weekly bar chart */
 
 .chart {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   align-items: end;
   gap: 10px;
   height: 210px;
+}
+
+/* Covers exactly the bar area, so a percentage here means the same thing as a
+   bar's height: 22px of value label above (15px + 7px margin), and below it
+   the 1px baseline plus the day label (15px + 9px margin). */
+.avgLayer {
+  position: absolute;
+  top: 22px;
+  bottom: 25px;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.avgLine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1.5px dashed var(--chart-avg);
+  transform: translateY(0.75px);
+}
+
+.weekAvg {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.weekAvgKey {
+  width: 14px;
+  border-top: 1.5px dashed var(--chart-avg);
 }
 
 .barCol {
@@ -255,6 +295,7 @@
 
 .barLabel {
   margin-top: 9px;
+  line-height: 15px;
   font-size: 11px;
   font-weight: 500;
   color: var(--text-secondary);
@@ -566,6 +607,7 @@
 [data-theme="dark"] .page {
   --chart-bar:      oklch(47% 0.110 55);
   --chart-bar-peak: oklch(72% 0.180 49);
+  --chart-avg:      oklch(82% 0.012 265);
   --chart-hour:     oklch(44% 0.098 57);
   --chart-hour-top: oklch(70% 0.176 50);
 }
@@ -850,6 +892,10 @@
     align-items: flex-start;
     flex-direction: column;
     gap: 4px;
+  }
+
+  .weekAvg {
+    margin-left: 0;
   }
 
   .chart {
