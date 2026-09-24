@@ -39,23 +39,30 @@ html[data-theme="dark"] {
   color-scheme: dark;
 }
 
+/* Dark mode is grey, not black.
+   The surfaces used to sit between 13% and 21% lightness, which is close
+   enough to black that the steps between a page, a card and a hover state
+   all collapsed into one, and every colour drawn on top had to shout to be
+   seen at all. These sit where a dark interface people read for hours sits
+   -- Discord's surfaces run about 23% to 35% -- so the steps are visible
+   without anything having to be loud. */
 [data-theme="dark"] {
-  --nav-bg: oklch(14% 0.010 265);
-  --nav-border: oklch(24% 0.010 265);
-  --nav-text: oklch(56% 0.025 265);
+  --nav-bg: oklch(23% 0.008 265);
+  --nav-border: oklch(31% 0.009 265);
+  --nav-text: oklch(70% 0.014 265);
   --nav-active: #F0EEE8;
-  --bg: oklch(13% 0.009 265);
-  --bg-secondary: oklch(17% 0.010 265);
-  --bg-tertiary: oklch(21% 0.010 265);
-  --border: oklch(27% 0.010 265);
-  --accent: oklch(55% 0.22 266);
-  --accent-hover: oklch(60% 0.22 266);
-  --accent-warm: oklch(72% 0.12 52);
+  --bg: oklch(26% 0.008 265);
+  --bg-secondary: oklch(30% 0.009 265);
+  --bg-tertiary: oklch(35% 0.010 265);
+  --border: oklch(40% 0.011 265);
+  --accent: oklch(62% 0.20 266);
+  --accent-hover: oklch(68% 0.20 266);
+  --accent-warm: oklch(75% 0.13 52);
   --text-primary: #F0EEE8;
-  --text-secondary: oklch(70% 0.010 265);
-  --text-muted: oklch(52% 0.010 265);
-  --danger: oklch(62% 0.2 25);
-  --success: oklch(62% 0.18 145);
+  --text-secondary: oklch(76% 0.010 265);
+  --text-muted: oklch(64% 0.010 265);
+  --danger: oklch(68% 0.19 25);
+  --success: oklch(70% 0.17 145);
 }
 
 body {

@@ -396,9 +396,26 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: oklch(99% 0.003 0);
   display: block;
   flex-shrink: 0;
+
+  /* The colour says which course a chip belongs to. It does not have to fill
+     the chip to say it, and three saturated blocks in every cell is what
+     made a month unreadable. A tint and coloured text carry the same
+     information quietly.
+
+     Mixed in srgb on purpose: oklch takes the short way round the hue
+     wheel, which sends warm colours through magenta on the way to a cool
+     surface. */
+  background: color-mix(in srgb, var(--chip, #9e9e9e) 16%, transparent);
+  color: color-mix(in srgb, var(--chip, #9e9e9e) 72%, #12151a);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chip, #9e9e9e) 30%, transparent);
+}
+
+:global([data-theme="dark"]) .chip {
+  background: color-mix(in srgb, var(--chip, #9e9e9e) 24%, transparent);
+  color: color-mix(in srgb, var(--chip, #9e9e9e) 55%, #ffffff);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chip, #9e9e9e) 40%, transparent);
 }
 
 .overflowChip {

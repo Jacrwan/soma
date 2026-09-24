@@ -748,7 +748,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     return (
       <>
         {visible.map(chip => (
-          <span key={chip.id} className={styles.chip} style={{ background: chip.bgColor }} title={chip.label}>
+          <span key={chip.id} className={styles.chip} style={{ '--chip': chip.bgColor } as CSSProperties} title={chip.label}>
             {chip.label}
           </span>
         ))}
