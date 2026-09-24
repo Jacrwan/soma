@@ -10,12 +10,12 @@ import { readPlan, dateAt, localDate } from '../DashboardV2/liveData';
 import { validateProposal } from '../../lib/aiPlanning';
 import { listDocuments } from '../../lib/documents';
 import { buildDocumentsSection } from '../../lib/aiContext';
-import { useSubscription, hasAIAccess, startCheckout } from '../../lib/subscription';
+import { useSubscription, hasAIAccess } from '../../lib/subscription';
 import { ChatMessage, ChatSession, AiTodo } from '../../types';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import TrialSetupModal from '../Trial/TrialSetupModal';
 import styles from './AITab.module.css';
-import { MONTHLY_PRICE, TRIAL_DAYS } from '../../lib/pricing';
+import { MONTHLY_PRICE, SEMESTER_PRICE, TRIAL_DAYS } from '../../lib/pricing';
 
 declare global {
   interface Window {
@@ -458,8 +458,6 @@ function ThinkingIndicator() {
 
 function AILockedScreen({ status }: { status: string }) {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
 
   const starIcon = (
     <svg className={styles.lockedIcon} width="28" height="28" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
@@ -467,46 +465,20 @@ function AILockedScreen({ status }: { status: string }) {
     </svg>
   );
 
-  // Trial ended — offer 7-day payment extension
-  if (status === 'trial_expired') {
-    async function handleExtend() {
-      setLoading(true);
-      setError('');
-      try { await startCheckout(); }
-      catch (e: any) { setError(e?.message ?? 'Something went wrong.'); setLoading(false); }
-    }
+  // Trial over (including the old extended trials) — pay to continue
+  if (status === 'trial_expired' || status === 'trial_extension_expired') {
     return (
       <div className={styles.lockedLayout}>
         <div className={styles.lockedCard}>
           {starIcon}
           <h2 className={styles.lockedTitle}>Your free trial has ended</h2>
           <p className={styles.lockedDesc}>
-            Add a payment method to get <strong>7 more days free</strong>, then {MONTHLY_PRICE}/mo after that. Cancel anytime.
-          </p>
-          {error && <p className={styles.lockedError}>{error}</p>}
-          <button className={styles.lockedBtn} onClick={handleExtend} disabled={loading}>
-            {loading ? 'Loading…' : 'Get 7 more days free'}
-          </button>
-          <p className={styles.lockedMeta}>{MONTHLY_PRICE}/mo after trial · Cancel anytime</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Extension expired — full subscription required
-  if (status === 'trial_extension_expired') {
-    return (
-      <div className={styles.lockedLayout}>
-        <div className={styles.lockedCard}>
-          {starIcon}
-          <h2 className={styles.lockedTitle}>Your extended trial has ended</h2>
-          <p className={styles.lockedDesc}>
-            Subscribe to Soma Premium to continue using AI features.
+            Subscribe to Soma Premium to keep using the AI features.
           </p>
           <button className={styles.lockedBtn} onClick={() => navigate('/pricing')}>
             Subscribe — {MONTHLY_PRICE}/mo
           </button>
-          <p className={styles.lockedMeta}>Cancel anytime</p>
+          <p className={styles.lockedMeta}>Or {SEMESTER_PRICE} every 4 months · Cancel anytime</p>
         </div>
       </div>
     );
