@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { summarizeInsights } from '../../lib/insights';
 import { useInsights } from '../../lib/useInsights';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './InsightsTab.module.css';
 
-const PEAK_HOURS = Array.from({ length: 18 }, (_, i) => i + 6); // 6am–11pm
+const PEAK_HOURS = Array.from({ length: 24 }, (_, i) => i); // midnight–11pm
 const DONUT_R = 55;
 const DONUT_C = 2 * Math.PI * DONUT_R; // ≈ 345.58
 const DONUT_STROKE = 14;
@@ -284,9 +284,37 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
   const maxPeakMinutes = Math.max(...PEAK_HOURS.map(h => peakHoursData[h] ?? 0), 1);
   const top3PeakHours = PEAK_HOURS
     .map(h => ({ h, m: peakHoursData[h] ?? 0 }))
+    .filter(x => x.m > 0)
     .sort((a, b) => b.m - a.m)
     .slice(0, 3)
     .map(x => x.h);
+
+  // The hour chart scrolls sideways by default and only squeezes all 24 hours
+  // in when asked. It opens at 6am, or earlier if the week has study before then.
+  const [peakExpanded, setPeakExpanded] = useState(false);
+  const peakScrollRef = useRef<HTMLDivElement>(null);
+  const firstStudiedHour = PEAK_HOURS.find(h => (peakHoursData[h] ?? 0) > 0) ?? 6;
+  const peakStartHour = Math.min(6, firstStudiedHour);
+  // Fade the right edge while there are more hours past it; overlay scrollbars hide that otherwise.
+  const [peakMoreAfter, setPeakMoreAfter] = useState(false);
+  const updatePeakMore = () => {
+    const el = peakScrollRef.current;
+    if (el) setPeakMoreAfter(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+  };
+  useLayoutEffect(() => {
+    const el = peakScrollRef.current;
+    if (!el || peakExpanded) { updatePeakMore(); return; }
+    // Columns are sized from the container's width, so re-align when it changes.
+    const align = () => {
+      const col = el.querySelector<HTMLElement>(`[data-hour="${peakStartHour}"]`);
+      el.scrollLeft = col?.offsetLeft ?? 0;
+      updatePeakMore();
+    };
+    align();
+    const observer = new ResizeObserver(align);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [peakExpanded, peakStartHour, loading]);
 
   const totalBreakdownMinutes = useMemo(
     () => breakdown.reduce((s, d) => s + d.minutes, 0),
@@ -439,28 +467,48 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
       </section>
 
       <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Peak study hours</h2>
-        {maxPeakMinutes === 1 && PEAK_HOURS.every(h => !peakHoursData[h]) ? (
-          <EmptyState message="No study sessions recorded yet." />
+        <div className={styles.peakHead}>
+          <h2 className={styles.sectionTitle}>Peak study hours</h2>
+          <span className={styles.weekRange}>{fmtDateRange(weekOffset)}</span>
+          {top3PeakHours.length > 0 && (
+            <button
+              type="button"
+              className={styles.peakToggle}
+              onClick={() => setPeakExpanded(v => !v)}
+              aria-expanded={peakExpanded}
+            >
+              {peakExpanded ? 'Show less' : 'View all 24 hours'}
+            </button>
+          )}
+        </div>
+        {top3PeakHours.length === 0 ? (
+          <EmptyState message="No study sessions this week." />
         ) : (
+          <div
+            ref={peakScrollRef}
+            className={`${styles.peakScroll}${peakExpanded ? ` ${styles.peakScrollAll}` : ''}`}
+            data-more-after={peakMoreAfter || undefined}
+            onScroll={updatePeakMore}
+          >
           <div className={styles.peakChart}>
             {PEAK_HOURS.map(h => {
               const minutes = peakHoursData[h] ?? 0;
               const isTop = top3PeakHours.includes(h);
               return (
-                <div key={h} className={styles.peakCol}>
+                <div key={h} data-hour={h} className={styles.peakCol}>
                   <div className={styles.peakTrack} title={minutes > 0 ? `${formatHours(minutes)} at ${hourLabel(h)}` : `No study time at ${hourLabel(h)}`}>
                     <div
                       className={`${styles.peakBar}${isTop ? ` ${styles.peakBarTop}` : ''}`}
                       style={{ height: `${(minutes / maxPeakMinutes) * 100}%` }}
                     />
                   </div>
-                  <span className={`${styles.peakLabel}${isTop ? ` ${styles.peakLabelTop}` : ''}`}>
+                  <span className={`${styles.peakLabel}${isTop ? ` ${styles.peakLabelTop}` : ''}${h % 3 ? ` ${styles.peakLabelMinor}` : ''}`}>
                     {hourLabel(h)}
                   </span>
                 </div>
               );
             })}
+          </div>
           </div>
         )}
       </section>
