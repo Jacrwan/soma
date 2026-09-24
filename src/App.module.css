@@ -317,55 +317,58 @@
   background: rgba(255, 255, 255, 0.06);
 }
 
-.sidebarCollapsed { width: 64px; }
-
-.sidebarCollapsed .brandRow {
-  flex-direction: column;
-  align-items: center;
-  padding-right: 0;
-  gap: 0;
+/* On phones the nav is a bar across the top, so there is nothing to collapse:
+   the rail rules only apply from tablet width up. */
+@media (max-width: 768px) {
+  .navToggle { display: none; }
 }
 
-.brandMark {
-  display: none;
-  font-family: 'Figtree', sans-serif;
-  font-weight: 700;
-  font-size: 22px;
-  letter-spacing: -0.03em;
-  color: var(--nav-active);
-  padding: 24px 0 10px;
-  user-select: none;
+@media (min-width: 769px) {
+  /* Collapsing should only take the labels away: every icon stays exactly where
+     it was. 72px (71px inside the 1px border) centres a 40px button at 35.5px,
+     which is where the expanded nav draws its icons: 8px rail padding + 20px
+     button padding + half the 15px icon. */
+  .sidebarCollapsed { width: 72px; }
+
+  .sidebarCollapsed .brandRow {
+    justify-content: center;
+    padding-right: 0;
+    gap: 0;
+  }
+
+  /* The wordmark keeps its height, just not its width or ink, so the toggle stays
+     at the same height and the nav starts on the same line as when expanded. */
+  .sidebarCollapsed .brand {
+    visibility: hidden;
+    flex: 0 0 0;
+    width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .sidebarCollapsed .navItems,
+  .sidebarCollapsed .sidebarBottom {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .sidebarCollapsed .navItem {
+    width: 40px;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+  }
+
+  .sidebarCollapsed .navLabel { display: none; }
+  .sidebarCollapsed .navLock { display: none; }
+
+  /* The active marker is a left rail on the expanded nav; centred icons need it
+     drawn as a ring instead so it does not sit under the icon. */
+  .sidebarCollapsed .navItemActive::before { display: none; }
 }
 
-.sidebarCollapsed .brand { display: none; }
-.sidebarCollapsed .brandMark { display: block; }
-
-.sidebarCollapsed .navToggle { margin-top: 0; margin-bottom: 10px; }
-
-.sidebarCollapsed .navItems,
-.sidebarCollapsed .sidebarBottom {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding-left: 0;
-  padding-right: 0;
-}
-
-.sidebarCollapsed .navItem {
-  width: 40px;
-  padding: 0;
-  justify-content: center;
-  gap: 0;
-}
-
-.sidebarCollapsed .navLabel { display: none; }
-.sidebarCollapsed .navLock { display: none; }
-
-/* The active marker is a left rail on the expanded nav; centred icons need it
-   drawn as a ring instead so it does not sit under the icon. */
-.sidebarCollapsed .navItemActive::before { display: none; }
-
-@media (max-width: 640px) {
-  .sidebarCollapsed { width: 56px; }
-  .sidebarCollapsed .navItem { width: 36px; }
-}

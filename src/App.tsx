@@ -254,7 +254,6 @@ function AppShell({ user, sessionResolved, onLogout }: {
       <nav className={`${styles.sidebar}${navCollapsed ? ` ${styles.sidebarCollapsed}` : ''}`}>
         <div className={styles.brandRow}>
           <div className={styles.brand}>soma<span>study with intention</span></div>
-          <div className={styles.brandMark} aria-hidden="true">s</div>
           <button
             className={styles.navToggle}
             onClick={toggleNav}
