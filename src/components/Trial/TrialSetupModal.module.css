@@ -11,8 +11,8 @@
 }
 
 .sheet {
-  background: var(--surface, #161820);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 18px;
   padding: 32px 28px 28px;
   max-width: 440px;
@@ -29,19 +29,19 @@
   margin-bottom: 6px;
 }
 
-.icon { color: var(--accent, #5b6af0); flex-shrink: 0; }
+.icon { color: var(--accent); flex-shrink: 0; }
 
 .title {
   font-size: 18px;
   font-weight: 700;
-  color: var(--text-primary, #e8e8e4);
+  color: var(--text-primary);
   margin: 0;
   letter-spacing: -0.02em;
 }
 
 .sub {
   font-size: 13px;
-  color: var(--text-muted, #6b6b6b);
+  color: var(--text-muted);
   margin: 0 0 24px;
   line-height: 1.5;
 }
@@ -61,43 +61,43 @@
   gap: 3px;
   padding: 14px 14px 12px;
   border-radius: 10px;
-  border: 1.5px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1.5px solid var(--border);
+  background: var(--bg-secondary);
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
   text-align: left;
 }
 
-.planCard:hover { border-color: rgba(255, 255, 255, 0.18); }
+.planCard:hover { border-color: var(--text-muted); }
 
 .planCardActive {
-  border-color: var(--accent, #5b6af0);
-  background: rgba(91, 106, 240, 0.08);
+  border-color: var(--accent);
+  background: color-mix(in oklch, var(--accent) 8%, transparent);
 }
 
 .planName {
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary, #e8e8e4);
+  color: var(--text-primary);
 }
 
 .planPrice {
   font-size: 18px;
   font-weight: 700;
-  color: var(--text-primary, #e8e8e4);
+  color: var(--text-primary);
   line-height: 1.2;
 }
 
 .planPriceSub {
   font-size: 11px;
-  color: var(--text-muted, #6b6b6b);
+  color: var(--text-muted);
 }
 
 .planBadge {
   position: absolute;
   top: -1px;
   right: -1px;
-  background: var(--accent, #5b6af0);
+  background: var(--accent);
   color: #fff;
   font-size: 10px;
   font-weight: 700;
@@ -109,16 +109,16 @@
 /* ── Trial notice ── */
 .trialNotice {
   font-size: 12px;
-  color: var(--text-muted, #6b6b6b);
+  color: var(--text-muted);
   margin: 0 0 20px;
   padding: 11px 14px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
   border-radius: 8px;
   line-height: 1.55;
 }
 
-.trialNotice strong { color: var(--text-primary, #e8e8e4); }
+.trialNotice strong { color: var(--text-primary); }
 
 /* ── Stripe card element wrapper ── */
 .cardSection { margin-bottom: 20px; }
@@ -126,7 +126,7 @@
 .cardLabel {
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-muted, #6b6b6b);
+  color: var(--text-muted);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   margin-bottom: 8px;
@@ -135,19 +135,19 @@
 
 .cardElementWrap {
   padding: 13px 14px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
   border-radius: 9px;
   transition: border-color 0.15s;
 }
 
 .cardElementWrap:focus-within {
-  border-color: var(--accent, #5b6af0);
+  border-color: var(--accent);
 }
 
 .error {
   font-size: 13px;
-  color: #e05b5b;
+  color: var(--danger);
   margin: 0 0 14px;
   line-height: 1.4;
 }
@@ -155,7 +155,7 @@
 .submitBtn {
   width: 100%;
   padding: 14px;
-  background: var(--accent, #5b6af0);
+  background: var(--accent);
   color: #fff;
   border: none;
   border-radius: 10px;
@@ -175,13 +175,13 @@
   display: block;
   text-align: center;
   font-size: 13px;
-  color: var(--text-muted, #6b6b6b);
+  color: var(--text-muted);
   cursor: pointer;
   padding: 4px;
   transition: color 0.15s;
 }
 
-.skipLink:hover { color: var(--text-secondary, #a0a0a0); }
+.skipLink:hover { color: var(--text-secondary); }
 
 .secure {
   display: flex;
@@ -189,7 +189,7 @@
   justify-content: center;
   gap: 5px;
   font-size: 11px;
-  color: var(--text-muted, #6b6b6b);
+  color: var(--text-muted);
   margin-top: 14px;
   opacity: 0.7;
 }
@@ -208,25 +208,25 @@
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: rgba(91, 106, 240, 0.15);
-  border: 1.5px solid var(--accent, #5b6af0);
+  background: color-mix(in oklch, var(--accent) 15%, transparent);
+  border: 1.5px solid var(--accent);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--accent, #5b6af0);
+  color: var(--accent);
 }
 
 .successTitle {
   font-size: 18px;
   font-weight: 700;
-  color: var(--text-primary, #e8e8e4);
+  color: var(--text-primary);
   letter-spacing: -0.02em;
   margin: 0;
 }
 
 .successSub {
   font-size: 13px;
-  color: var(--text-muted, #6b6b6b);
+  color: var(--text-muted);
   line-height: 1.55;
   margin: 0;
   max-width: 300px;
@@ -235,7 +235,7 @@
 .successBtn {
   width: 100%;
   padding: 13px;
-  background: var(--accent, #5b6af0);
+  background: var(--accent);
   color: #fff;
   border: none;
   border-radius: 10px;

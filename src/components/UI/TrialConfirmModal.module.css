@@ -11,8 +11,8 @@
 }
 
 .sheet {
-  background: var(--bg, #161616);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 28px 28px 24px;
   max-width: 400px;
@@ -31,14 +31,14 @@
 }
 
 .icon {
-  color: var(--accent, #5b6af0);
+  color: var(--accent);
   flex-shrink: 0;
 }
 
 .title {
   font-size: 17px;
   font-weight: 700;
-  color: var(--text-primary, #e8e8e4);
+  color: var(--text-primary);
   margin: 0;
   letter-spacing: -0.02em;
 }
@@ -57,41 +57,41 @@
   align-items: flex-start;
   gap: 9px;
   font-size: 13px;
-  color: var(--text-secondary, #a0a0a0);
+  color: var(--text-secondary);
   line-height: 1.45;
 }
 
 .check {
-  color: var(--accent, #5b6af0);
+  color: var(--accent);
   flex-shrink: 0;
   margin-top: 1px;
 }
 
 .terms {
   font-size: 12px;
-  color: var(--text-muted, #6b6b6b);
+  color: var(--text-muted);
   line-height: 1.55;
   margin: 0 0 20px;
   padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
   border-radius: 8px;
 }
 
 .terms strong {
-  color: var(--text-secondary, #a0a0a0);
+  color: var(--text-secondary);
 }
 
 .error {
   font-size: 13px;
-  color: var(--danger, #e05b5b);
+  color: var(--danger);
   margin: 0 0 12px;
 }
 
 .confirmBtn {
   width: 100%;
   padding: 13px;
-  background: var(--accent, #5b6af0);
+  background: var(--accent);
   color: #fff;
   border: none;
   border-radius: 10px;
@@ -111,11 +111,11 @@
   display: block;
   text-align: center;
   font-size: 13px;
-  color: var(--text-muted, #6b6b6b);
+  color: var(--text-muted);
   cursor: pointer;
   padding: 4px;
   transition: color 0.15s;
 }
 
-.cancelLink:hover:not(:disabled) { color: var(--text-secondary, #a0a0a0); }
+.cancelLink:hover:not(:disabled) { color: var(--text-secondary); }
 .cancelLink:disabled { opacity: 0.4; cursor: not-allowed; }
