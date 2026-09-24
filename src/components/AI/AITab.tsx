@@ -15,7 +15,7 @@ import { ChatMessage, ChatSession, AiTodo } from '../../types';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import TrialSetupModal from '../Trial/TrialSetupModal';
 import styles from './AITab.module.css';
-import { MONTHLY_PRICE } from '../../lib/pricing';
+import { MONTHLY_PRICE, TRIAL_DAYS } from '../../lib/pricing';
 
 declare global {
   interface Window {
@@ -529,7 +529,7 @@ function AILockedScreen({ status }: { status: string }) {
           <h2 className={styles.lockedTitle}>AI planning is included with Soma Premium</h2>
           <p className={styles.lockedDesc}>
             Get AI-powered scheduling, todo generation, and study planning.
-            Start your <strong>21-day free trial</strong> — no charge until the trial ends.
+            Start your <strong>{TRIAL_DAYS}-day free trial</strong> — no charge until the trial ends.
           </p>
           <button className={styles.lockedBtn} onClick={() => setShowModal(true)}>
             Start free trial

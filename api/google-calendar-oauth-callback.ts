@@ -1,8 +1,7 @@
 /// <reference types="node" />
 import { createClient } from '@supabase/supabase-js';
+import { EXTENSION_MS, trialLengthMs } from './_trial';
 
-const TRIAL_MS     = 21 * 86_400_000;
-const EXTENSION_MS =  7 * 86_400_000;
 const CALENDAR_LIMIT_FREE = 2;
 const CALENDAR_LIMIT_PREMIUM = 3;
 
@@ -13,7 +12,7 @@ function computeStatus(row: {
 }): string {
   const now = Date.now();
   if (row.status === 'trialing' && row.trial_start) {
-    return now > new Date(row.trial_start).getTime() + TRIAL_MS ? 'trial_expired' : 'trialing';
+    return now > new Date(row.trial_start).getTime() + trialLengthMs(row.trial_start) ? 'trial_expired' : 'trialing';
   }
   if (row.status === 'trial_extended' && row.extension_start) {
     return now > new Date(row.extension_start).getTime() + EXTENSION_MS ? 'trial_extension_expired' : 'trial_extended';

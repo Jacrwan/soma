@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useSubscription, startCheckout } from '../../lib/subscription';
 import TrialSetupModal from '../Trial/TrialSetupModal';
-import { MONTHLY_PRICE, SEMESTER_PRICE, SEMESTER_PER_MONTH, SEMESTER_SAVINGS, type Plan } from '../../lib/pricing';
+import { MONTHLY_PRICE, SEMESTER_PRICE, SEMESTER_PER_MONTH, SEMESTER_SAVINGS, TRIAL_DAYS, type Plan } from '../../lib/pricing';
 import styles from './PricingPage.module.css';
 
 function CheckIcon() {
@@ -91,7 +91,7 @@ export default function PricingPage() {
 
   const ctaLabel = isTrialExpired
     ? 'Get 7 more days free'
-    : loading ? 'Starting…' : 'Start free 3-week trial';
+    : loading ? 'Starting…' : `Start free ${TRIAL_DAYS}-day trial`;
 
   const ctaMeta = isTrialExpired
     ? `${MONTHLY_PRICE}/month after 7-day extension · Cancel anytime`
@@ -122,7 +122,7 @@ export default function PricingPage() {
           </>
         ) : (
           <>
-            <h1 className={styles.headline}>Start 3 weeks free</h1>
+            <h1 className={styles.headline}>Start {TRIAL_DAYS} days free</h1>
             <p className={styles.sub}>No charge today. Cancel anytime before your trial ends.</p>
           </>
         )}
@@ -184,7 +184,7 @@ export default function PricingPage() {
               </>
             )}
             <span className={styles.trial}>
-              {isTrialExpired ? '7-day extension' : '3-week free trial'}
+              {isTrialExpired ? '7-day extension' : `${TRIAL_DAYS}-day free trial`}
             </span>
           </div>
           <div className={styles.featureList}>

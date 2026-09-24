@@ -2,17 +2,17 @@
 import { createClient } from '@supabase/supabase-js';
 import { loadMemoryContext, learnFromMessage } from './_memory';
 import { waitUntil } from '@vercel/functions';
+import { EXTENSION_MS, trialLengthMs } from './_trial';
 
 export const config = { api: { bodyParser: { sizeLimit: '4.5mb' } } };
 export const maxDuration = 60;
 type Authorization = { ok:true; userId:string } | { ok:false; status:number; error:string };
-const TRIAL_MS=21*86_400_000, EXTENSION_MS=7*86_400_000;
 
 export function computeStatus(row:{status:string;trial_start:string|null;extension_start:string|null},now=Date.now()):string {
  const start=row.status==='trial_extended' ? row.extension_start : row.trial_start;
  if(row.status==='trialing' || row.status==='trial_extended'){
   const timestamp=start ? Date.parse(start) : NaN;
-  if(!Number.isFinite(timestamp) || now>=timestamp+(row.status==='trialing' ? TRIAL_MS : EXTENSION_MS))return 'trial_expired';
+  if(!Number.isFinite(timestamp) || now>=timestamp+(row.status==='trialing' ? trialLengthMs(row.trial_start) : EXTENSION_MS))return 'trial_expired';
  }
  return row.status;
 }

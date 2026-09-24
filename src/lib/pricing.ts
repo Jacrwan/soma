@@ -8,3 +8,6 @@ export const MONTHLY_PRICE = '$10.99';
 export const SEMESTER_PRICE = '$28.99';          // billed every 4 months
 export const SEMESTER_PER_MONTH = '$7.25';        // 28.99 / 4
 export const SEMESTER_SAVINGS = '34%';            // vs 4 × 10.99 = 43.96
+
+// Must match TRIAL_DAYS in api/_trial.ts, which decides when access ends.
+export const TRIAL_DAYS = 7;
