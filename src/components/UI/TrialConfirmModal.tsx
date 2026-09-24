@@ -1,4 +1,5 @@
 import styles from './TrialConfirmModal.module.css';
+import { MONTHLY_PRICE } from '../../lib/pricing';
 
 interface Props {
   onConfirm: () => void;
@@ -36,7 +37,7 @@ export default function TrialConfirmModal({ onConfirm, onCancel, loading, error 
         </ul>
 
         <p className={styles.terms}>
-          <strong>3 weeks free</strong>, no credit card required. After 21 days, add a payment method to unlock 7 more free days, then $4.99/mo. Cancel anytime.
+          <strong>3 weeks free</strong>, no credit card required. After 21 days, add a payment method to unlock 7 more free days, then {MONTHLY_PRICE}/mo. Cancel anytime.
         </p>
 
         {error && <p className={styles.error}>{error}</p>}

@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
+import type { Plan } from './pricing';
 
 export type SubscriptionStatus =
   | 'loading'
@@ -18,7 +19,7 @@ export type SubscriptionStatus =
 export interface SubscriptionInfo {
   error: string | null;
   status: SubscriptionStatus;
-  plan: 'monthly' | 'annual';
+  plan: Plan;
   trialStart: string | null;
   trialEndsAt: string | null;
   extensionStart: string | null;
@@ -110,7 +111,7 @@ async function loadSubscription(session: Session | null): Promise<void> {
       if (requestRevision !== revision) return;
       publish({
         status: data.status,
-        plan: data.plan === 'annual' ? 'annual' : 'monthly',
+        plan: data.plan === 'semester' ? 'semester' : 'monthly',
         trialStart: data.trialStart ?? null,
         trialEndsAt: data.trialEndsAt ?? null,
         extensionStart: data.extensionStart ?? null,
@@ -195,7 +196,7 @@ export async function createSetupIntent(): Promise<{ clientSecret: string; trial
 
 export async function createSubscription(
   paymentMethodId: string,
-  plan: 'monthly' | 'annual',
+  plan: Plan,
 ): Promise<{ trialEndsAt: string }> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
@@ -209,7 +210,7 @@ export async function createSubscription(
   return res.json() as Promise<{ trialEndsAt: string }>;
 }
 
-export async function startCheckout(plan: 'monthly' | 'annual' = 'monthly'): Promise<void> {
+export async function startCheckout(plan: Plan = 'monthly'): Promise<void> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   if (!token) throw new Error('Not authenticated');

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { MONTHLY_PRICE, SEMESTER_PRICE } from '../../lib/pricing';
 
 const BRIEF_SCRIPT = [
   { kind: 'lead', text: "Here's what I'd do with the four hours you have free today." },
@@ -1355,7 +1356,7 @@ export default function LandingPage() {
           <h2 className="ln-h2">Questions students ask</h2>
           <div className="ln-faq-grid">
             {[
-              ['Is Soma free?', "The core features (your dashboard, Canvas sync, calendar, the focus timer, documents, and insights) are free forever. The AI features have a 3-week free trial, then $4.99 a month or $49.99 a year. Signing up takes no card; starting the trial does."],
+              ['Is Soma free?', `The core features (your dashboard, Canvas sync, calendar, the focus timer, documents, and insights) are free forever. The AI features have a 3-week free trial, then ${MONTHLY_PRICE} a month or ${SEMESTER_PRICE} every 4 months. Signing up takes no card; starting the trial does.`],
               ["Does it work with my school's Canvas?", 'Yes. Soma works with any school that uses Canvas LMS. Paste your Canvas calendar feed URL and your assignments sync automatically.'],
               ['What about a class that is not on Canvas?', "Paste the course site's schedule page into Soma and it reads the dated homework, labs, projects and exams off it, then asks which ones to add and to which course."],
               ['Can I use it in high school?', 'Yes. Soma is built for both high school and college, including AP classes, honors courses, and anything else running on Canvas.'],

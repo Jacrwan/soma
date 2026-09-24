@@ -18,6 +18,7 @@ import {
 import { SUBJECT_COLORS, nextUnusedColor } from '../../lib/subjectColors';
 import type { GoogleCalendarConnection, GoogleCalendarInfo, Subject, SubjectColor } from '../../types';
 import styles from './SettingsTab.module.css';
+import { MONTHLY_PRICE } from '../../lib/pricing';
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 type Day = typeof DAYS[number];
@@ -825,7 +826,7 @@ export default function SettingsTab() {
 
               {(subscription.status === 'trial_expired' || subscription.status === 'trial_extension_expired') && (
                 <button className={styles.subBtnPrimary} onClick={() => navigate('/pricing')}>
-                  {subscription.status === 'trial_expired' ? 'Get 7 more days free' : 'Subscribe — $4.99/mo'}
+                  {subscription.status === 'trial_expired' ? 'Get 7 more days free' : `Subscribe — ${MONTHLY_PRICE}/mo`}
                 </button>
               )}
 

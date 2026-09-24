@@ -3,12 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useSubscription, startCheckout } from '../../lib/subscription';
 import TrialSetupModal from '../Trial/TrialSetupModal';
+import { MONTHLY_PRICE, SEMESTER_PRICE, SEMESTER_PER_MONTH, SEMESTER_SAVINGS, type Plan } from '../../lib/pricing';
 import styles from './PricingPage.module.css';
-
-const MONTHLY_PRICE    = '$4.99';
-const ANNUAL_PRICE     = '$49.99';
-const ANNUAL_PER_MONTH = '$4.17';
-const ANNUAL_SAVINGS   = '17%';
 
 function CheckIcon() {
   return (
@@ -34,8 +30,6 @@ const PREMIUM_FEATURES = [
   'AI todo generation',
   'Import deadlines from a course site',
 ];
-
-type Plan = 'monthly' | 'yearly';
 
 export default function PricingPage() {
   const navigate   = useNavigate();
@@ -103,7 +97,7 @@ export default function PricingPage() {
     ? `${MONTHLY_PRICE}/month after 7-day extension · Cancel anytime`
     : plan === 'monthly'
       ? `${MONTHLY_PRICE}/month after trial · Cancel anytime`
-      : `${ANNUAL_PRICE}/year after trial · Cancel anytime`;
+      : `${SEMESTER_PRICE} every 4 months after trial · Cancel anytime`;
 
   return (
     <div className={styles.wrap}>
@@ -143,11 +137,11 @@ export default function PricingPage() {
               Monthly
             </button>
             <button
-              className={`${styles.toggleBtn}${plan === 'yearly' ? ` ${styles.toggleBtnActive}` : ''}`}
-              onClick={() => setPlan('yearly')}
+              className={`${styles.toggleBtn}${plan === 'semester' ? ` ${styles.toggleBtnActive}` : ''}`}
+              onClick={() => setPlan('semester')}
             >
-              Annual
-              <span className={styles.saveBadge}>Save {ANNUAL_SAVINGS}</span>
+              4 months
+              <span className={styles.saveBadge}>Save {SEMESTER_SAVINGS}</span>
             </button>
           </div>
         )}
@@ -184,9 +178,9 @@ export default function PricingPage() {
               </>
             ) : (
               <>
-                <span className={styles.price}>{ANNUAL_PRICE}</span>
-                <span className={styles.priceSub}>/yr</span>
-                <span className={styles.priceEquiv}>{ANNUAL_PER_MONTH}/mo</span>
+                <span className={styles.price}>{SEMESTER_PRICE}</span>
+                <span className={styles.priceSub}>/4 mo</span>
+                <span className={styles.priceEquiv}>{SEMESTER_PER_MONTH}/mo</span>
               </>
             )}
             <span className={styles.trial}>

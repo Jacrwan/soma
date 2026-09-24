@@ -15,6 +15,7 @@ import { ChatMessage, ChatSession, AiTodo } from '../../types';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import TrialSetupModal from '../Trial/TrialSetupModal';
 import styles from './AITab.module.css';
+import { MONTHLY_PRICE } from '../../lib/pricing';
 
 declare global {
   interface Window {
@@ -480,13 +481,13 @@ function AILockedScreen({ status }: { status: string }) {
           {starIcon}
           <h2 className={styles.lockedTitle}>Your free trial has ended</h2>
           <p className={styles.lockedDesc}>
-            Add a payment method to get <strong>7 more days free</strong>, then $4.99/mo after that. Cancel anytime.
+            Add a payment method to get <strong>7 more days free</strong>, then {MONTHLY_PRICE}/mo after that. Cancel anytime.
           </p>
           {error && <p className={styles.lockedError}>{error}</p>}
           <button className={styles.lockedBtn} onClick={handleExtend} disabled={loading}>
             {loading ? 'Loading…' : 'Get 7 more days free'}
           </button>
-          <p className={styles.lockedMeta}>$4.99/mo after trial · Cancel anytime</p>
+          <p className={styles.lockedMeta}>{MONTHLY_PRICE}/mo after trial · Cancel anytime</p>
         </div>
       </div>
     );
@@ -503,7 +504,7 @@ function AILockedScreen({ status }: { status: string }) {
             Subscribe to Soma Premium to continue using AI features.
           </p>
           <button className={styles.lockedBtn} onClick={() => navigate('/pricing')}>
-            Subscribe — $4.99/mo
+            Subscribe — {MONTHLY_PRICE}/mo
           </button>
           <p className={styles.lockedMeta}>Cancel anytime</p>
         </div>
@@ -533,7 +534,7 @@ function AILockedScreen({ status }: { status: string }) {
           <button className={styles.lockedBtn} onClick={() => setShowModal(true)}>
             Start free trial
           </button>
-          <p className={styles.lockedMeta}>$4.99/mo after trial · Cancel anytime</p>
+          <p className={styles.lockedMeta}>{MONTHLY_PRICE}/mo after trial · Cancel anytime</p>
         </div>
       </div>
     </>
