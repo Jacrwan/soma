@@ -13,7 +13,10 @@ export type LegalType =
   | 'contact'
   | 'ai';
 
-const UPDATED = 'September 25, 2026';
+// Per page, so an edit to one policy doesn't restamp the others. The static
+// /privacy.html and /terms.html carry the same dates.
+const UPDATED: Partial<Record<LegalType, string>> = { privacy: 'September 25, 2026' };
+const UPDATED_DEFAULT = 'September 24, 2026';
 
 function Privacy() {
   return (
@@ -1007,7 +1010,7 @@ export default function LegalPage({ type }: { type: LegalType }) {
       <div className={styles.page}>
         <div className={styles.header}>
           <h1 className={styles.title}>{config.title}</h1>
-          <p className={styles.updated}>Last updated: {UPDATED}</p>
+          <p className={styles.updated}>Last updated: {UPDATED[type] ?? UPDATED_DEFAULT}</p>
         </div>
         <Content />
       </div>
