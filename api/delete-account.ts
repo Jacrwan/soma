@@ -2,6 +2,7 @@
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { isRateLimited } from './_rateLimit';
+import { deleteUserData } from './_deleteUserData';
 
 const ALLOWED_ORIGINS = [
   'https://somastudy.app',
@@ -65,10 +66,10 @@ export default async function handler(req: any, res: any) {
     }
   }
 
-  // Delete user rows from all tables
-  for (const table of ['todos', 'schedule_blocks', 'elapsed_time', 'settings', 'ai_memory', 'subscriptions', 'timer_sessions', 'active_timer', 'time_blocks']) {
-    await admin.from(table).delete().eq('user_id', uid);
-  }
+  // Delete the user's files and rows. Failures are logged by name only (no
+  // user data) and don't block deleting the account itself.
+  const failed = await deleteUserData(admin, uid);
+  if (failed.length) console.error('[delete-account] cleanup steps failed:', failed.join(', '));
 
   const { error: delErr } = await admin.auth.admin.deleteUser(uid);
   if (delErr) {
