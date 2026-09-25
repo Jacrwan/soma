@@ -145,18 +145,16 @@
 <body>
   <nav class="topbar">
     <a href="/" class="wordmark">Soma</a>
-    <a href="/" class="back">
-      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <a href="/" class="back"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
         <path d="M9 2L4 7l5 5" />
       </svg>
-      Back
-    </a>
+      Back</a>
   </nav>
 
   <main class="page">
     <div class="header">
       <h1>Privacy Policy</h1>
-      <p class="updated">Last updated: September 15, 2026</p>
+      <p class="updated">Last updated: September 24, 2026</p>
     </div>
 
     <div class="body">
@@ -167,12 +165,12 @@
         </p>
       </div>
 
-      <div class="divider"></div>
+      <div class="divider" />
 
       <div class="section">
         <h2>1. Who we are</h2>
         <p>
-          Soma is an independent study-productivity application. For privacy inquiries, visit our
+          Soma is an independent study-productivity application. For privacy inquiries, visit our 
           <a href="/contact">Contact</a> page.
         </p>
       </div>
@@ -181,50 +179,64 @@
         <h2>2. Information we collect</h2>
         <ul>
           <li>
-            <strong>Account data</strong> — your email address and encrypted password (or Google
-            account identifier) when you register via Supabase Auth.
+            <strong>Account data</strong> — your email address and password (salted and hashed by
+            Supabase Auth, never visible to us), or your Google account identifier if you sign in
+            with Google.
           </li>
           <li>
-            <strong>App data stored on our servers</strong> — to-dos, schedule blocks, elapsed
-            study time, app settings, and AI memory entries. These are linked to your account and
-            stored in Supabase.
+            <strong>Profile details</strong> — your birth year, used to confirm you are at least
+            13; your education level; and, only if you choose to add it, the university you attend,
+            picked from a list.
           </li>
           <li>
-            <strong>Canvas data</strong> — your assignments and due dates, fetched from your
-            school's Canvas calendar feed (iCal URL). The feed URL is stored locally in your
-            browser. Assignment data is sent through a Vercel serverless proxy for parsing but
-            is not stored on our servers.
+            <strong>App data stored on our servers</strong> — your courses, tasks, planned study
+            sessions, timed study sessions, app settings, saved AI chats, and AI memory. These are
+            linked to your account and stored in Supabase.
           </li>
           <li>
-            <strong>Google account data</strong> — when you connect Google, Soma requests OAuth
-            access to the following scopes:
-            <ul>
-              <li><strong>Google Calendar</strong> (calendar.readonly) — to display your calendar events alongside your study schedule. Soma never creates, edits, or deletes events.</li>
-              <li><strong>Google Drive</strong> (drive.file) — to read the files you explicitly select via the Google Picker, and the files Soma creates for you.</li>
-              <li><strong>Google Drive</strong> (drive.readonly) — to read course material you choose to import as context for AI-generated study material.</li>
-              <li><strong>Google Docs</strong> (documents) — to create Google Docs containing AI-generated study materials (notes, guides, quizzes).</li>
-              <li><strong>Google Slides</strong> (presentations) — to create Google Slides presentations from AI-generated content.</li>
-            </ul>
-            Google access and refresh tokens are stored server-side so Soma can keep your
-            connection working without asking you to sign in repeatedly. They are never exposed to
-            the browser and are reachable only by our serverless functions. Section 5 explains how
-            Google user data is used and Section 6 explains how it is protected.
+            <strong>Documents you upload</strong> — files you add to Documents are stored in
+            Supabase, together with the text extracted from them so Soma's AI can use them when you
+            ask it to.
           </li>
           <li>
-            <strong>AI chat messages</strong> — when you use AI features, your messages and
-            relevant context (tasks, schedule blocks, Canvas assignments, and any Google Drive
-            files you attach) are sent to Anthropic to generate a response. Soma does not store
-            the full conversation on its servers beyond what you save as AI memory.
+            <strong>Canvas data</strong> — when you connect Canvas, Soma saves your Canvas calendar
+            feed URL to your account and reads your assignments and due dates from it through a
+            Vercel serverless proxy. Your courses are saved to your account; the assignment list
+            itself is cached in your browser rather than stored on our servers.
           </li>
           <li>
-            <strong>Voice input</strong> — when you use the voice input feature, your speech
-            is processed by your browser's built-in Web Speech API to convert it to text. Audio
-            is not sent to Soma's servers. The resulting text is treated the same as a typed
-            message.
+            <strong>Course websites you import</strong> — when you paste a course site's schedule
+            page, its text is sent to Anthropic to pick out the dated work. Only the items you choose
+            to add are saved, as tasks.
           </li>
           <li>
-            <strong>Payment data</strong> — billing and subscription data is processed by Stripe.
-            Soma does not store full card numbers or payment credentials.
+            <strong>Google account data</strong> — Soma uses Google in two ways: signing in with
+            Google, and connecting Google Calendar. Connecting a calendar requests read-only access
+            to your calendar (<code>calendar.readonly</code>) and your Google email address
+            (<code>userinfo.email</code>), so Soma can show your events around your study plan and
+            tell connected accounts apart. Soma never creates, edits, or deletes calendar events.
+            Google Calendar access and refresh tokens are stored server-side and are reachable only
+            by our serverless functions. Section 5 explains how Google user data is used and
+            Section 6 explains how it is protected.
+          </li>
+          <li>
+            <strong>AI chats and memory</strong> — when you use AI features, your messages and the
+            relevant context (courses, tasks, schedule, calendar events, Canvas assignments, and the
+            text of documents you have uploaded) are sent to Anthropic to generate a response. Chats
+            in the AI tab are saved to your account so you can come back to them, and you can delete
+            them. Soma also keeps a short memory of lasting facts it learns from your messages, such
+            as when you prefer to study; you can review and delete it in Settings.
+          </li>
+          <li>
+            <strong>Voice input</strong> — dictation uses your browser's built-in speech
+            recognition, and Soma receives only the resulting text. Depending on your browser, the
+            audio may be processed by the browser's maker (for example, Google for Chrome) under that
+            company's terms.
+          </li>
+          <li>
+            <strong>Payment data</strong> — handled by Stripe. Starting a free trial requires a
+            card, entered on Stripe's checkout page. Soma stores your subscription status and plan,
+            never your card number.
           </li>
         </ul>
       </div>
@@ -244,7 +256,7 @@
       <div class="section">
         <h2>4. Third-party services</h2>
         <div class="table-wrap">
-          <table>
+          <table class="table">
             <thead>
               <tr>
                 <th>Service</th>
@@ -255,18 +267,18 @@
             <tbody>
               <tr>
                 <td>Supabase</td>
-                <td>Authentication and database</td>
-                <td>Account credentials, app data</td>
+                <td>Authentication, database, and file storage</td>
+                <td>Account credentials, profile details, app data, uploaded documents</td>
               </tr>
               <tr>
                 <td>Anthropic</td>
-                <td>AI responses</td>
-                <td>Chat messages, tasks, schedule context</td>
+                <td>AI responses and course-site import</td>
+                <td>Chat messages, tasks, schedule and calendar context, uploaded document text, imported course pages</td>
               </tr>
               <tr>
                 <td>Google</td>
-                <td>OAuth sign-in, Calendar, Drive, Docs, Slides</td>
-                <td>Google account identifier, calendar events, selected Drive files, created Docs and Slides</td>
+                <td>Sign in with Google, Google Calendar (read-only)</td>
+                <td>Google account identifier and email address, calendar events</td>
               </tr>
               <tr>
                 <td>Vercel</td>
@@ -291,31 +303,36 @@
         <p>
           Soma connects to Google only after you explicitly grant permission, and only for the
           features described below. You can disconnect Google at any time in Settings, or revoke
-          Soma's access from your
-          <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer">Google Account permissions page</a>.
+          Soma's access from your 
+          <a
+            href="https://myaccount.google.com/permissions"
+            target="_blank"
+            rel="noopener noreferrer"
+          >Google Account permissions page</a>.
         </p>
 
         <div class="table-wrap">
           <table class="table">
             <thead>
-              <tr><th>Scope requested</th><th>Why Soma needs it</th></tr>
+              <tr>
+                <th>Scope requested</th>
+                <th>Why Soma needs it</th>
+              </tr>
             </thead>
             <tbody>
               <tr>
                 <td>calendar.readonly</td>
-                <td>Read your existing calendar events so study blocks are placed around commitments you already have. Soma never creates, edits, or deletes calendar events.</td>
+                <td>
+                  Read your existing calendar events so study blocks are placed around commitments
+                  you already have. Soma never creates, edits, or deletes calendar events.
+                </td>
               </tr>
               <tr>
-                <td>drive.file</td>
-                <td>Access only the individual files you select in the Google Picker, plus files Soma itself creates. Under this scope Soma cannot see any other file in your Drive.</td>
-              </tr>
-              <tr>
-                <td>drive.readonly</td>
-                <td>Read course material you choose to import so that notes, outlines, and practice questions can be generated from it.</td>
-              </tr>
-              <tr>
-                <td>documents, presentations</td>
-                <td>Create Google Docs and Google Slides in your account when you ask Soma to save generated study material.</td>
+                <td>userinfo.email</td>
+                <td>
+                  Know which Google account a calendar belongs to, so you can connect more than one
+                  and disconnect each separately.
+                </td>
               </tr>
             </tbody>
           </table>
@@ -324,11 +341,14 @@
         <h3>Limited Use commitment</h3>
         <p>
           Soma's use and transfer of information received from Google APIs to any other app will
-          adhere to the
-          <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer">Google API Services User Data Policy</a>,
-          including the Limited Use requirements. The use of raw or derived user data received from
-          Google Workspace APIs will adhere to the Google User Data Policy, including the Limited
-          Use requirements.
+          adhere to the 
+          <a
+            href="https://developers.google.com/terms/api-services-user-data-policy"
+            target="_blank"
+            rel="noopener noreferrer"
+          >Google API Services User Data Policy</a>, including the Limited Use requirements. The use of raw or derived user data received
+          from Google Workspace APIs will adhere to the Google User Data Policy, including the
+          Limited Use requirements.
         </p>
 
         <h3>Artificial intelligence and machine learning</h3>
@@ -339,11 +359,11 @@
           service provider we work with.
         </p>
         <p>
-          When you explicitly ask Soma to generate study material from a file you selected, the
-          contents of that file are sent to Anthropic's API for the sole purpose of producing the
-          output you requested and returning it to you. Under Anthropic's commercial terms, inputs
-          and outputs submitted through its API are not used to train Anthropic's models. Soma does
-          not send Google user data to any AI provider except in response to an action you take.
+          When you ask Soma's AI to plan your time, your calendar events may be included as context
+          so the plan works around them. They are sent to Anthropic's API for the sole purpose of
+          producing the response you asked for. Under Anthropic's commercial terms, inputs and
+          outputs submitted through its API are not used to train Anthropic's models. Soma does not
+          send Google user data to any AI provider except in response to an action you take.
         </p>
 
         <h3>Human access</h3>
@@ -370,20 +390,59 @@
           including sensitive data obtained through Google APIs:
         </p>
         <ul>
-          <li><strong>Encryption in transit.</strong> All traffic between your browser, Soma, and every third-party API is encrypted using HTTPS with TLS 1.2 or higher. Soma is served strictly over HTTPS.</li>
-          <li><strong>Encryption at rest.</strong> Account and application data is stored with our infrastructure providers (Supabase and Vercel), which encrypt stored data and backups at rest using AES-256.</li>
-          <li><strong>OAuth token handling.</strong> Google refresh tokens are held server-side only. They are never exposed to the browser, never written to local storage, and are accessible only to our serverless functions using a privileged key that is not present in client code.</li>
-          <li><strong>Access control.</strong> User data tables enforce row-level security, so a signed-in user can read and write only their own rows. Administrative credentials are restricted to server-side functions and are not shared.</li>
-          <li><strong>Least privilege on scopes.</strong> We request the narrowest Google scopes that support the features you enable. File access defaults to the picker-based <code>drive.file</code> scope so that Soma sees only the files you deliberately choose.</li>
-          <li><strong>Authentication.</strong> Accounts are authenticated through Supabase Auth. Passwords are salted and hashed by the provider and are never stored or visible to us in plain text.</li>
-          <li><strong>Segregation and minimization.</strong> We collect only the data needed to deliver the feature you requested, and we do not combine Google user data with data from other sources to build profiles.</li>
-          <li><strong>Deletion on request.</strong> Disconnecting Google removes the stored tokens. Deleting your account removes associated server-side data on the timeline described in Section 7.</li>
-          <li><strong>Incident response.</strong> If we become aware of a breach affecting your personal data, we will investigate promptly and notify affected users and any applicable regulator as required by law.</li>
+          <li>
+            <strong>Encryption in transit.</strong> All traffic between your browser, Soma, and
+            every third-party API is encrypted using HTTPS with TLS 1.2 or higher. Soma is served
+            strictly over HTTPS.
+          </li>
+          <li>
+            <strong>Encryption at rest.</strong> Account and application data is stored with our
+            infrastructure providers (Supabase and Vercel), which encrypt stored data and backups at
+            rest using AES-256.
+          </li>
+          <li>
+            <strong>OAuth token handling.</strong> Google Calendar refresh tokens are held
+            server-side only. They are never sent to the browser, never written to local storage,
+            and are accessible only to our serverless functions using a privileged key that is not
+            present in client code.
+          </li>
+          <li>
+            <strong>Access control.</strong> User data tables enforce row-level security, so a
+            signed-in user can read and write only their own rows. Administrative credentials are
+            restricted to server-side functions and are not shared.
+          </li>
+          <li>
+            <strong>Least privilege on scopes.</strong> We request the narrowest Google scopes that
+            support the features you use: read-only calendar access and your email address, nothing
+            else.
+          </li>
+          <li>
+            <strong>Authentication.</strong> Accounts are authenticated through Supabase Auth.
+            Passwords are salted and hashed by the provider and are never stored or visible to us in
+            plain text.
+          </li>
+          <li>
+            <strong>Segregation and minimization.</strong> We collect only the data needed to
+            deliver the feature you requested, and we do not combine Google user data with data from
+            other sources to build profiles.
+          </li>
+          <li>
+            <strong>Deletion on request.</strong> Disconnecting a Google Calendar removes its stored
+            tokens.
+            Deleting your account removes associated server-side data on the timeline described in
+            Section 7.
+          </li>
+          <li>
+            <strong>Incident response.</strong> If we become aware of a breach affecting your
+            personal data, we will investigate promptly and notify affected users and any applicable
+            regulator as required by law.
+          </li>
         </ul>
         <p>
           No method of transmission or storage is completely secure, and we cannot guarantee
           absolute security. If you believe your account has been compromised, contact us
-          immediately using the details on our <a href="/contact">Contact page</a>.
+          immediately using the details on our 
+          <a href="/contact">Contact page</a>.
         </p>
       </div>
 
@@ -392,8 +451,8 @@
         <ul>
           <li>Account and server-side app data is retained until you delete your account.</li>
           <li>
-            Local browser data (Canvas tokens, cached assignments, local preferences) is retained
-            until you clear your browser storage or use the Data Deletion tool in the app.
+            Data cached in your browser (Canvas assignments, calendar events, local preferences) is
+            kept until you clear your browser storage or use Settings → Clear local Soma data.
           </li>
           <li>
             After account deletion, server-side data is removed within 30 days. Backups may
@@ -433,7 +492,7 @@
           privacy rights. We do not sell personal information.
         </p>
         <p>
-          To exercise any of these rights, contact us via the
+          To exercise any of these rights, contact us via the 
           <a href="/contact">Contact</a> page.
         </p>
       </div>
@@ -450,9 +509,9 @@
       <div class="section">
         <h2>10. Cookies and local storage</h2>
         <p>
-          Soma uses browser local storage to cache your settings, Canvas calendar feed data,
-          Google OAuth tokens, chat sessions, creation history, and Supabase session tokens. No
-          third-party advertising cookies are used.
+          Soma uses your browser's local storage to keep you signed in (your Supabase session) and
+          to cache your settings, courses, and imported Canvas and Google Calendar data so pages
+          load quickly. Soma uses no advertising or tracking cookies.
         </p>
       </div>
 
