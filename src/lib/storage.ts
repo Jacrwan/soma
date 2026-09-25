@@ -51,6 +51,8 @@ export interface SomaSettings {
   googleToken?: string;
   googleRefreshToken?: string;
   onboardingCompleted?: boolean;
+  /** The dashboard tour shown once after onboarding. */
+  walkthroughCompleted?: boolean;
   educationLevel?: string;
   /** Picked from src/data/universities.json; only asked of college and grad students. */
   university?: { name: string; country: string };

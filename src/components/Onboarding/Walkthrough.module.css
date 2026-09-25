@@ -1,0 +1,129 @@
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: 950;
+}
+
+/* Swallows clicks; the dimming itself comes from the spotlight's shadow so the
+   target stays lit. With no target, the scrim does the dimming instead. */
+.scrim {
+  position: absolute;
+  inset: 0;
+}
+
+.scrimFull {
+  background: oklch(15% 0.01 265 / 0.45);
+}
+
+.spotlight {
+  position: fixed;
+  border-radius: 12px;
+  box-shadow: 0 0 0 9999px oklch(15% 0.01 265 / 0.45);
+  outline: 1.5px solid var(--accent);
+  outline-offset: 0;
+  pointer-events: none;
+  transition: top 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+              left 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+              width 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+              height 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.card {
+  position: fixed;
+  box-sizing: border-box;
+  padding: 18px 20px 16px;
+  background: var(--bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px oklch(15% 0.01 265 / 0.18);
+  outline: none;
+  animation: enter 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes enter {
+  from { opacity: 0; translate: 0 4px; }
+  to   { opacity: 1; translate: 0 0; }
+}
+
+.count {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.title {
+  margin: 0 0 6px;
+  font-family: 'Figtree', sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.body {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.skip,
+.back {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.skip { padding-left: 0; }
+
+.skip:hover,
+.back:hover { color: var(--text-primary); }
+
+.next {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: 9px;
+  padding: 8px 18px;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+
+.next:hover { opacity: 0.88; }
+
+.skip:focus-visible,
+.back:focus-visible,
+.next:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spotlight { transition: none; }
+  .card { animation: none; }
+}

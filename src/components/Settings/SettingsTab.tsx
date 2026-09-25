@@ -993,6 +993,13 @@ export default function SettingsTab() {
                   >24-hour <span className={styles.prefHint}>13:30</span></button>
                 </div>
               </div>
+
+              <div className={styles.prefRow}>
+                <label className={styles.prefLabel}>Dashboard tour</label>
+                <button className={styles.neutralBtn} onClick={() => navigate('/dashboard?walkthrough')}>
+                  Replay tour
+                </button>
+              </div>
             </div>
           </section>
         )}

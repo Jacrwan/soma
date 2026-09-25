@@ -13,7 +13,7 @@ export type LegalType =
   | 'contact'
   | 'ai';
 
-const UPDATED = 'September 24, 2026';
+const UPDATED = 'September 25, 2026';
 
 function Privacy() {
   return (
@@ -94,6 +94,12 @@ function Privacy() {
             company's terms.
           </li>
           <li>
+            <strong>Usage analytics</strong> — Soma uses Vercel Web Analytics to count page views.
+            It records the page's path (never the rest of the address), the referring site, and your
+            browser, operating system, device type, and country. It sets no cookies and does not
+            identify you or link visits to your account.
+          </li>
+          <li>
             <strong>Payment data</strong> — handled by Stripe. Starting a free trial requires a
             card, entered on Stripe's checkout page. Soma stores your subscription status and plan,
             never your card number.
@@ -142,8 +148,8 @@ function Privacy() {
               </tr>
               <tr>
                 <td>Vercel</td>
-                <td>Hosting and API proxy</td>
-                <td>Request data routed through serverless functions</td>
+                <td>Hosting, API proxy, and page-view analytics</td>
+                <td>Request data routed through serverless functions; page paths, referrer, browser, device type, and country</td>
               </tr>
               <tr>
                 <td>Stripe</td>
