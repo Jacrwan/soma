@@ -21,6 +21,7 @@ import LegalPage from './components/Legal/LegalPage';
 import PricingPage from './components/Pricing/PricingPage';
 import { SkeletonBlock } from './components/UI/Skeleton';
 import OnboardingFlow from './components/Onboarding/OnboardingFlow';
+import Walkthrough from './components/Onboarding/Walkthrough';
 import TrialSetupModal from './components/Trial/TrialSetupModal';
 import PaywallScreen from './components/Paywall/PaywallScreen';
 import SemesterEndModal from './components/shared/SemesterEndModal';
@@ -282,7 +283,7 @@ function AppShell({ user, sessionResolved, onLogout }: {
               surface. The /day-view route below still works if you open it
               directly, so this nav entry can be restored by uncommenting it. */}
 
-          <button className={nav('/deadlines', '/canvas')} onClick={() => navigate('/deadlines')}>
+          <button className={nav('/deadlines', '/canvas')} onClick={() => navigate('/deadlines')} data-tour="nav-deadlines">
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
               <rect x="2" y="1" width="10" height="12" rx="1.5"/>
               <path d="M4.5 5h5M4.5 7.5h5M4.5 10h3"/>
@@ -321,7 +322,7 @@ function AppShell({ user, sessionResolved, onLogout }: {
             )}
           </button>
 
-          <button className={nav('/insights')} onClick={() => navigate('/insights')}>
+          <button className={nav('/insights')} onClick={() => navigate('/insights')} data-tour="nav-insights">
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
               <path d="M2 10.5l3-3.5 2.5 2 3-4 1.5 2"/>
               <path d="M1 13h12"/>
@@ -404,9 +405,14 @@ export default function App() {
   const [sessionResolved, setSessionResolved] = useState(false);
   const [showOnboarding, setShowOnboarding]   = useState(false);
   const [showTrialModal, setShowTrialModal]   = useState(false);
+  // `?walkthrough` replays the dashboard tour on demand (Settings links to it).
+  const [showWalkthrough, setShowWalkthrough] = useState(false);
   const subscription = useSubscription();
   const userId = user?.id;
   const location = useLocation();
+  useEffect(() => {
+    if (new URLSearchParams(location.search).has('walkthrough')) setShowWalkthrough(true);
+  }, [location.search]);
   const dismissedTrialUsers = useRef(new Set<string>());
   function dismissTrial() {
     if (userId) {
@@ -429,7 +435,7 @@ export default function App() {
 
   // Show trial modal for logged-in users with no subscription once status resolves
   useEffect(() => {
-    if (!userId || showOnboarding || subscription.error || subscription.status !== 'free') {
+    if (!userId || showOnboarding || showWalkthrough || subscription.error || subscription.status !== 'free') {
       setShowTrialModal(false);
       return;
     }
@@ -448,7 +454,7 @@ export default function App() {
         window.location.pathname.startsWith('/ai-disclaimer');
       setShowTrialModal(!isPublic);
     }
-  }, [userId, subscription.status, subscription.error, showOnboarding, location.pathname]);
+  }, [userId, subscription.status, subscription.error, showOnboarding, showWalkthrough, location.pathname]);
 
   async function checkOnboarding(u: User) {
     try {
@@ -513,6 +519,13 @@ export default function App() {
       subscription.unsubscribe();
     };
   }, []);
+
+  function finishWalkthrough() {
+    setShowWalkthrough(false);
+    storage.getSettings()
+      .then(s => storage.saveSettings({ ...s, walkthroughCompleted: true }))
+      .catch(() => { /* the tour only runs after onboarding, so a lost flag is harmless */ });
+  }
 
   async function handleLogout() {
     // The mirrored timer is device-local, so it must not outlive the session.
@@ -596,9 +609,13 @@ export default function App() {
         }
         onComplete={() => {
           setShowOnboarding(false);
+          setShowWalkthrough(true);
           // The subscription effect decides whether a trial prompt is appropriate.
         }}
       />
+    )}
+    {showWalkthrough && user && !showOnboarding && (
+      <Walkthrough onDone={finishWalkthrough} />
     )}
     {showTrialModal && user && !showOnboarding &&
       !['/','/login','/signup','/pricing'].includes(window.location.pathname) &&

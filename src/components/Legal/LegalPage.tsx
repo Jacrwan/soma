@@ -13,7 +13,7 @@ export type LegalType =
   | 'contact'
   | 'ai';
 
-const UPDATED = 'September 15, 2026';
+const UPDATED = 'September 25, 2026';
 
 function Privacy() {
   return (
@@ -39,50 +39,70 @@ function Privacy() {
         <h2>2. Information we collect</h2>
         <ul>
           <li>
-            <strong>Account data</strong> — your email address and encrypted password (or Google
-            account identifier) when you register via Supabase Auth.
+            <strong>Account data</strong> — your email address and password (salted and hashed by
+            Supabase Auth, never visible to us), or your Google account identifier if you sign in
+            with Google.
           </li>
           <li>
-            <strong>App data stored on our servers</strong> — to-dos, schedule blocks, elapsed
-            study time, app settings, and AI memory entries. These are linked to your account and
-            stored in Supabase.
+            <strong>Profile details</strong> — your birth year, used to confirm you are at least
+            13; your education level; and, only if you choose to add it, the university you attend,
+            picked from a list.
           </li>
           <li>
-            <strong>Canvas data</strong> — your assignments and due dates, fetched from your
-            school's Canvas calendar feed (iCal URL). The feed URL is stored locally in your
-            browser. Assignment data is sent through a Vercel serverless proxy for parsing but
-            is not stored on our servers.
+            <strong>App data stored on our servers</strong> — your courses, tasks, planned study
+            sessions, timed study sessions, app settings, saved AI chats, and AI memory. These are
+            linked to your account and stored in Supabase.
           </li>
           <li>
-            <strong>Google account data</strong> — when you connect Google, Soma requests OAuth
-            access to the following scopes:
-            <ul>
-              <li><strong>Google Calendar</strong> (calendar.readonly) — to display your calendar events alongside your study schedule. Soma never creates, edits, or deletes events.</li>
-              <li><strong>Google Drive</strong> (drive.file) — to read the files you explicitly select via the Google Picker, and the files Soma creates for you.</li>
-              <li><strong>Google Drive</strong> (drive.readonly) — to read course material you choose to import as context for AI-generated study material.</li>
-              <li><strong>Google Docs</strong> (documents) — to create Google Docs containing AI-generated study materials (notes, guides, quizzes).</li>
-              <li><strong>Google Slides</strong> (presentations) — to create Google Slides presentations from AI-generated content.</li>
-            </ul>
-            Google access and refresh tokens are stored server-side so Soma can keep your
-            connection working without asking you to sign in repeatedly. They are never exposed to
-            the browser and are reachable only by our serverless functions. Section 5 explains how
-            Google user data is used and Section 6 explains how it is protected.
+            <strong>Documents you upload</strong> — files you add to Documents are stored in
+            Supabase, together with the text extracted from them so Soma's AI can use them when you
+            ask it to.
           </li>
           <li>
-            <strong>AI chat messages</strong> — when you use AI features, your messages and
-            relevant context (tasks, schedule blocks, Canvas assignments, and any Google Drive
-            files you attach) are sent to Anthropic to generate a response. Soma does not store
-            the full conversation on its servers beyond what you save as AI memory.
+            <strong>Canvas data</strong> — when you connect Canvas, Soma saves your Canvas calendar
+            feed URL to your account and reads your assignments and due dates from it through a
+            Vercel serverless proxy. Your courses are saved to your account; the assignment list
+            itself is cached in your browser rather than stored on our servers.
           </li>
           <li>
-            <strong>Voice input</strong> — when you use the voice input feature, your speech
-            is processed by your browser's built-in Web Speech API to convert it to text. Audio
-            is not sent to Soma's servers. The resulting text is treated the same as a typed
-            message.
+            <strong>Course websites you import</strong> — when you paste a course site's schedule
+            page, its text is sent to Anthropic to pick out the dated work. Only the items you choose
+            to add are saved, as tasks.
           </li>
           <li>
-            <strong>Payment data</strong> — billing and subscription data is processed by Stripe.
-            Soma does not store full card numbers or payment credentials.
+            <strong>Google account data</strong> — Soma uses Google in two ways: signing in with
+            Google, and connecting Google Calendar. Connecting a calendar requests read-only access
+            to your calendar (<code>calendar.readonly</code>) and your Google email address
+            (<code>userinfo.email</code>), so Soma can show your events around your study plan and
+            tell connected accounts apart. Soma never creates, edits, or deletes calendar events.
+            Google Calendar access and refresh tokens are stored server-side and are reachable only
+            by our serverless functions. Section 5 explains how Google user data is used and
+            Section 6 explains how it is protected.
+          </li>
+          <li>
+            <strong>AI chats and memory</strong> — when you use AI features, your messages and the
+            relevant context (courses, tasks, schedule, calendar events, Canvas assignments, and the
+            text of documents you have uploaded) are sent to Anthropic to generate a response. Chats
+            in the AI tab are saved to your account so you can come back to them, and you can delete
+            them. Soma also keeps a short memory of lasting facts it learns from your messages, such
+            as when you prefer to study; you can review and delete it in Settings.
+          </li>
+          <li>
+            <strong>Voice input</strong> — dictation uses your browser's built-in speech
+            recognition, and Soma receives only the resulting text. Depending on your browser, the
+            audio may be processed by the browser's maker (for example, Google for Chrome) under that
+            company's terms.
+          </li>
+          <li>
+            <strong>Usage analytics</strong> — Soma uses Vercel Web Analytics to count page views.
+            It records the page's path (never the rest of the address), the referring site, and your
+            browser, operating system, device type, and country. It sets no cookies and does not
+            identify you or link visits to your account.
+          </li>
+          <li>
+            <strong>Payment data</strong> — handled by Stripe. Starting a free trial requires a
+            card, entered on Stripe's checkout page. Soma stores your subscription status and plan,
+            never your card number.
           </li>
         </ul>
       </div>
@@ -113,23 +133,23 @@ function Privacy() {
             <tbody>
               <tr>
                 <td>Supabase</td>
-                <td>Authentication and database</td>
-                <td>Account credentials, app data</td>
+                <td>Authentication, database, and file storage</td>
+                <td>Account credentials, profile details, app data, uploaded documents</td>
               </tr>
               <tr>
                 <td>Anthropic</td>
-                <td>AI responses</td>
-                <td>Chat messages, tasks, schedule context</td>
+                <td>AI responses and course-site import</td>
+                <td>Chat messages, tasks, schedule and calendar context, uploaded document text, imported course pages</td>
               </tr>
               <tr>
                 <td>Google</td>
-                <td>OAuth sign-in, Calendar, Drive, Docs, Slides</td>
-                <td>Google account identifier, calendar events, selected Drive files, created Docs and Slides</td>
+                <td>Sign in with Google, Google Calendar (read-only)</td>
+                <td>Google account identifier and email address, calendar events</td>
               </tr>
               <tr>
                 <td>Vercel</td>
-                <td>Hosting and API proxy</td>
-                <td>Request data routed through serverless functions</td>
+                <td>Hosting, API proxy, and page-view analytics</td>
+                <td>Request data routed through serverless functions; page paths, referrer, browser, device type, and country</td>
               </tr>
               <tr>
                 <td>Stripe</td>
@@ -177,24 +197,10 @@ function Privacy() {
                 </td>
               </tr>
               <tr>
-                <td>drive.file</td>
+                <td>userinfo.email</td>
                 <td>
-                  Access only the individual files you select in the Google Picker, plus files Soma
-                  itself creates. Under this scope Soma cannot see any other file in your Drive.
-                </td>
-              </tr>
-              <tr>
-                <td>drive.readonly</td>
-                <td>
-                  Read course material you choose to import so that notes, outlines, and practice
-                  questions can be generated from it.
-                </td>
-              </tr>
-              <tr>
-                <td>documents, presentations</td>
-                <td>
-                  Create Google Docs and Google Slides in your account when you ask Soma to save
-                  generated study material.
+                  Know which Google account a calendar belongs to, so you can connect more than one
+                  and disconnect each separately.
                 </td>
               </tr>
             </tbody>
@@ -225,11 +231,11 @@ function Privacy() {
           service provider we work with.
         </p>
         <p>
-          When you explicitly ask Soma to generate study material from a file you selected, the
-          contents of that file are sent to Anthropic's API for the sole purpose of producing the
-          output you requested and returning it to you. Under Anthropic's commercial terms, inputs
-          and outputs submitted through its API are not used to train Anthropic's models. Soma does
-          not send Google user data to any AI provider except in response to an action you take.
+          When you ask Soma's AI to plan your time, your calendar events may be included as context
+          so the plan works around them. They are sent to Anthropic's API for the sole purpose of
+          producing the response you asked for. Under Anthropic's commercial terms, inputs and
+          outputs submitted through its API are not used to train Anthropic's models. Soma does not
+          send Google user data to any AI provider except in response to an action you take.
         </p>
 
         <h3>Human access</h3>
@@ -267,10 +273,10 @@ function Privacy() {
             rest using AES-256.
           </li>
           <li>
-            <strong>OAuth token handling.</strong> Google refresh tokens are held server-side only.
-            They are never exposed to the browser, never written to local storage, and are
-            accessible only to our serverless functions using a privileged key that is not present
-            in client code.
+            <strong>OAuth token handling.</strong> Google Calendar refresh tokens are held
+            server-side only. They are never sent to the browser, never written to local storage,
+            and are accessible only to our serverless functions using a privileged key that is not
+            present in client code.
           </li>
           <li>
             <strong>Access control.</strong> User data tables enforce row-level security, so a
@@ -279,8 +285,8 @@ function Privacy() {
           </li>
           <li>
             <strong>Least privilege on scopes.</strong> We request the narrowest Google scopes that
-            support the features you enable. File access defaults to the picker-based{' '}
-            <code>drive.file</code> scope so that Soma sees only the files you deliberately choose.
+            support the features you use: read-only calendar access and your email address, nothing
+            else.
           </li>
           <li>
             <strong>Authentication.</strong> Accounts are authenticated through Supabase Auth.
@@ -293,7 +299,8 @@ function Privacy() {
             other sources to build profiles.
           </li>
           <li>
-            <strong>Deletion on request.</strong> Disconnecting Google removes the stored tokens.
+            <strong>Deletion on request.</strong> Disconnecting a Google Calendar removes its stored
+            tokens.
             Deleting your account removes associated server-side data on the timeline described in
             Section 7.
           </li>
@@ -316,8 +323,8 @@ function Privacy() {
         <ul>
           <li>Account and server-side app data is retained until you delete your account.</li>
           <li>
-            Local browser data (Canvas tokens, cached assignments, local preferences) is retained
-            until you clear your browser storage or use the Data Deletion tool in the app.
+            Data cached in your browser (Canvas assignments, calendar events, local preferences) is
+            kept until you clear your browser storage or use Settings → Clear local Soma data.
           </li>
           <li>
             After account deletion, server-side data is removed within 30 days. Backups may
@@ -374,9 +381,9 @@ function Privacy() {
       <div className={styles.section}>
         <h2>10. Cookies and local storage</h2>
         <p>
-          Soma uses browser local storage to cache your settings, Canvas calendar feed data,
-          Google OAuth tokens, chat sessions, creation history, and Supabase session tokens. No
-          third-party advertising cookies are used.
+          Soma uses your browser's local storage to keep you signed in (your Supabase session) and
+          to cache your settings, courses, and imported Canvas and Google Calendar data so pages
+          load quickly. Soma uses no advertising or tracking cookies.
         </p>
       </div>
 
@@ -419,7 +426,8 @@ function Terms() {
           <li>You are responsible for keeping your credentials secure.</li>
           <li>You are responsible for all activity that occurs under your account.</li>
           <li>
-            Notify us immediately via GitHub if you believe your account has been compromised.
+            Contact us right away through the <Link to="/contact">Contact</Link> page if you
+            believe your account has been compromised.
           </li>
           <li>
             You may not share your account with others or create accounts on behalf of third
@@ -431,13 +439,15 @@ function Terms() {
       <div className={styles.section}>
         <h2>3. Free tier and Soma Premium</h2>
         <p>
-          Soma has a free tier that provides access to day view, canvas sync, calendar, and
-          insights. AI features require <strong>Soma Premium</strong>, available at{' '}
-          <strong>{MONTHLY_PRICE} USD per month</strong> or <strong>{SEMESTER_PRICE} USD every 4 months</strong> ({SEMESTER_PER_MONTH}/mo).
-          Soma Premium begins with a <strong>{TRIAL_DAYS}-day free trial</strong> — no charge during the trial
-          period. After the trial, your subscription renews automatically on your chosen billing
-          cycle until you cancel. See our{' '}
-          <Link to="/billing">Billing & Subscription</Link> page for full details.
+          Soma has a free tier that includes the dashboard, Canvas sync, the calendar, documents,
+          insights, and the focus timer. AI features require <strong>Soma Premium</strong>,
+          available at <strong>{MONTHLY_PRICE} USD per month</strong> or{' '}
+          <strong>{SEMESTER_PRICE} USD every 4 months</strong> ({SEMESTER_PER_MONTH}/mo).
+          Soma Premium begins with a <strong>{TRIAL_DAYS}-day free trial</strong>. Starting the trial
+          requires a payment method, and each account can have one free trial. If you cancel before
+          the trial ends you are not charged; otherwise your first payment is taken when the trial
+          ends, and your subscription renews automatically on your chosen billing cycle until you
+          cancel. See our <Link to="/billing">Billing & Subscription</Link> page for full details.
         </p>
       </div>
 
@@ -494,7 +504,7 @@ function Terms() {
       <div className={styles.section}>
         <h2>8. Third-party services</h2>
         <p>
-          Soma integrates with Canvas (via iCal feeds), Google (Calendar, Drive, Docs, Slides),
+          Soma integrates with Canvas (via iCal feeds), Google (sign-in and Google Calendar),
           Anthropic (AI), Supabase, Vercel, and Stripe. Use of those services is subject to their
           own terms. Soma is not responsible for the availability, accuracy, or actions of
           third-party services.
@@ -605,9 +615,10 @@ function Billing() {
       <div className={styles.section}>
         <h2>Free tier and Soma Premium</h2>
         <p>
-          Soma has a <strong>free tier</strong> that includes day view, canvas sync, calendar
-          integration, insights, and manual todos and scheduling. <strong>AI features</strong>{' '}
-          (AI chat, schedule generation, and todo generation) require <strong>Soma Premium</strong>.
+          Soma has a <strong>free tier</strong> that includes the dashboard, Canvas sync, the
+          calendar, documents, insights, manual tasks and scheduling, and the focus timer.{' '}
+          <strong>AI features</strong> (Ask Soma, AI planning, AI task generation, and importing
+          deadlines from a course site) require <strong>Soma Premium</strong>.
         </p>
         <div className={styles.tableWrap}>
           <table className={styles.table}>
@@ -657,9 +668,10 @@ function Billing() {
       <div className={styles.section}>
         <h2>How to cancel</h2>
         <p>
-          You can cancel your subscription at any time from <strong>Settings → Subscription</strong>{' '}
-          in the app. Cancellation takes effect at the end of your current billing period — you
-          keep AI access until then. No partial refunds are issued for unused time in a billing
+          You can cancel at any time from <strong>Settings → Subscription → Manage
+          subscription</strong>, including during your free trial. Cancelling during the trial
+          means you are never charged. Otherwise cancellation takes effect at the end of your
+          current billing period, and you keep AI access until then. No partial refunds are issued for unused time in a billing
           period unless you qualify under our <Link to="/refund">Refund Policy</Link>.
         </p>
       </div>
@@ -679,13 +691,13 @@ function Billing() {
       <div className={styles.section}>
         <h2>Failed payments</h2>
         <ul>
-          <li>If a payment fails, Stripe will automatically retry up to 3 times over 7 days.</li>
+          <li>If a payment fails, Stripe retries it automatically over the following days.</li>
           <li>
-            You will receive an email notification asking you to update your payment method.
+            You will receive an email asking you to update your payment method.
           </li>
           <li>
-            If payment is not resolved within 7 days, your subscription is paused and access is
-            suspended until payment is resolved.
+            While a payment is overdue, access is suspended until you update your payment method
+            from <strong>Settings → Subscription</strong>.
           </li>
         </ul>
       </div>
@@ -702,9 +714,8 @@ function Billing() {
       <div className={styles.section}>
         <h2>Taxes</h2>
         <p>
-          Prices are shown exclusive of applicable taxes. Depending on your location, sales tax
-          or VAT may be added at checkout. Stripe calculates and collects applicable tax
-          automatically.
+          Prices are shown in US dollars. Soma does not currently add sales tax or VAT at checkout.
+          If your bank converts the charge to another currency, it may add its own fees.
         </p>
       </div>
 
@@ -797,12 +808,15 @@ function DataDeletion() {
           Go to <strong>Settings → Clear local Soma data</strong>. This removes:
         </p>
         <ul>
-          <li>Cached Canvas assignments, grades, and announcements</li>
+          <li>Cached Canvas assignments and your Canvas feed link</li>
           <li>Cached Google Calendar events</li>
-          <li>Canvas and Google access tokens stored in this browser</li>
           <li>Local app preferences and theme settings</li>
+          <li>
+            Courses that came from Canvas. These are removed from your account too, not just this
+            browser; courses you added yourself are kept.
+          </li>
         </ul>
-        <p>This action only affects the current browser and cannot be undone.</p>
+        <p>This cannot be undone.</p>
       </div>
 
       <div className={styles.section}>
@@ -811,11 +825,17 @@ function DataDeletion() {
           Go to <strong>Settings → Delete Account</strong>. This permanently deletes:
         </p>
         <ul>
-          <li>Your Soma account (email, authentication credentials)</li>
-          <li>All to-dos, schedule blocks, and elapsed time records</li>
+          <li>Your Soma account (email, authentication credentials) and profile details</li>
+          <li>Your courses, tasks, planned sessions, and study time records</li>
+          <li>Saved AI chats and AI memory</li>
+          <li>Documents you uploaded, including the files themselves</li>
+          <li>Google Calendar connections and their stored tokens</li>
           <li>App settings and preferences stored on our servers</li>
-          <li>AI memory entries</li>
         </ul>
+        <p>
+          If you have an active subscription or free trial, it is cancelled first, so you are not
+          charged again.
+        </p>
         <p>
           Deletion is processed immediately. Server-side records are removed within 30 days.
           Database backups may retain data for up to 90 days before they are overwritten.
@@ -825,9 +845,9 @@ function DataDeletion() {
       <div className={styles.section}>
         <h2>What is not deleted</h2>
         <p>
-          Deleting your Soma account does not remove your data from Canvas, Google, your school,
-          or Stripe. To revoke Soma's access to Google Calendar, Drive, Docs, and Slides, visit
-          your{' '}
+          Deleting your Soma account does not remove your data from Canvas, Google, or your school,
+          and Stripe keeps its own records of past payments as the law requires. To revoke Soma's
+          access to Google Calendar, visit your{' '}
           <a
             href="https://myaccount.google.com/permissions"
             target="_blank"
@@ -877,14 +897,20 @@ function AiDisclaimer() {
 
       <div className={styles.section}>
         <h2>What data is sent to Anthropic</h2>
-        <p>When you use the AI tab, Soma may include the following as context:</p>
+        <p>When you use Ask Soma or the AI tab, Soma may include the following as context:</p>
         <ul>
-          <li>Your chat messages (typed or transcribed from voice input)</li>
-          <li>Your schedule blocks and tasks</li>
-          <li>Canvas assignments, due dates, and announcements</li>
-          <li>Google Drive file contents that you explicitly attach to a chat</li>
+          <li>Your chat messages (typed or dictated)</li>
+          <li>Your courses, tasks, and planned study sessions</li>
+          <li>Your Google Calendar events, if you have connected a calendar</li>
+          <li>Canvas assignments and due dates</li>
+          <li>The text of documents you have uploaded to Documents</li>
           <li>Your availability settings (school, work, and personal hours)</li>
+          <li>What Soma remembers about how you work (AI memory)</li>
         </ul>
+        <p>
+          When you import deadlines from a course site, the text of the page you paste is sent too,
+          so the AI can pick out the dated work.
+        </p>
         <p>
           This context is sent to Anthropic's API to generate a response. Anthropic's use of this
           data is governed by{' '}
@@ -908,8 +934,9 @@ function AiDisclaimer() {
       <div className={styles.section}>
         <h2>Opting out</h2>
         <p>
-          AI features are optional. If you prefer not to send data to Anthropic, simply do not
-          use the AI tab. All other Soma features function without it.
+          AI features are optional. If you prefer not to send data to Anthropic, don't use Ask Soma,
+          the AI tab, or course-site import. Every other Soma feature works without them. You can
+          review or delete what Soma remembers about you in Settings.
         </p>
       </div>
 
@@ -917,21 +944,10 @@ function AiDisclaimer() {
         <h2>Voice input</h2>
         <p>
           When you use voice input, your speech is converted to text by your browser's built-in
-          Web Speech API. The audio is processed locally by your browser and is not sent to Soma
-          or Anthropic. Only the resulting text transcription is sent to Anthropic as part of your
-          chat message. AI responses may be read aloud using your browser's built-in
-          text-to-speech — this also runs locally with no data sent externally.
-        </p>
-      </div>
-
-      <div className={styles.section}>
-        <h2>Google Drive files</h2>
-        <p>
-          When you attach a Google Drive file to a chat, its contents are read via the Google
-          Docs or Drive API and included in the message sent to Anthropic. Only files you
-          explicitly select via the Google Picker are accessed — Soma cannot browse your Drive.
-          Soma may also create Google Docs and Slides on your behalf when generating study
-          materials.
+          speech recognition. Soma and Anthropic never receive the audio, only the resulting text,
+          which is sent like a typed message. Depending on your browser, the audio may be processed
+          by the browser's maker (for example, Google for Chrome). AI responses may be read aloud
+          by your browser's built-in text-to-speech.
         </p>
       </div>
 
