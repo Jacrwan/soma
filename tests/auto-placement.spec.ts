@@ -185,3 +185,21 @@ test('stated "11:45 until 01:00" in the morning ends at 1 PM', async ({ page }) 
   await expect.poll(() => state.db.todo_sessions.length).toBe(2);
   expect(saved(state.db, 'Physics reading 4.7–4.9')).toEqual([at(0, '11:45'), at(0, '13:00')]);
 });
+
+test('"I skipped the discussion" still counts on the next message', async ({ page }) => {
+  await setup(page, { reply: 'Over discussion.', blocks: [{ title: 'Physics reading', subject: 'Physics 5A', date: TOMORROW, start: '16:30', end: '17:30' }] });
+  await ask(page, "i'm skipping physics discussion tomorrow");
+  await expect(page.getByRole('log')).toContainText('Over discussion.');
+  await ask(page, 'ok put the reading then');
+  await expect(page.getByRole('log')).not.toContainText('on your calendar');
+});
+
+test('a range that already reads forwards is left alone ("after 11:40, before 12:52")', async ({ page }) => {
+  const eleven = new Date(); eleven.setHours(11, 0, 0, 0);
+  const TODAY = key(offset(0));
+  const state = await setup(page, { reply: 'Late morning.', blocks: [{ title: 'Physics reading 4.6–4.9', subject: 'Physics 5A', date: TODAY, minutes: 30, after: '11:40', before: '12:52' }] }, [], eleven);
+  await ask(page, 'reading between 11:40 and 12:52');
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => state.db.todo_sessions.length).toBe(2);
+  expect(saved(state.db, 'Physics reading 4.6–4.9')).toEqual([at(0, '11:40'), at(0, '12:10')]);
+});
