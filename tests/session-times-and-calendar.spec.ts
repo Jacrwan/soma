@@ -325,3 +325,26 @@ test('a block drawn only from recorded sessions can be opened and deleted',async
  await page.getByRole('button',{name:'Delete',exact:true}).click();
  await expect.poll(()=>state.tables.timer_sessions.length).toBe(0);
 });
+
+// Reported: studying 10:36 PM to 1:41 AM showed as a 30-minute stub, nothing
+// after midnight, and the details showed another block's times.
+test('a session past midnight is drawn on both days, and its details show when it ran',async({page})=>{
+ const state=await setup(page);
+ const next=new Date(day);next.setDate(next.getDate()+1);
+ const nextDate=`${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}-${String(next.getDate()).padStart(2,'0')}`;
+ state.tables.timer_sessions=[{id:'late',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Cell review',date,start_time:iso('22:36'),end_time:new Date(`${nextDate}T01:41:00`).toISOString(),duration_seconds:177*60}];
+ // Show a week that has both days in it.
+ await page.clock.install({time:new Date(`${date}T12:00:00`)});
+ await openWeek(page);
+ const blocks=page.getByRole('button',{name:/Biology/});
+ // Sunday 10:36 PM–midnight is about 84 minutes; Monday midnight–1:41 AM about 101.
+ const heights=await blocks.evaluateAll(els=>els.map(e=>Math.round(e.getBoundingClientRect().height)));
+ if(day.getDay()!==6){
+  expect(heights).toHaveLength(2);
+  for(const h of heights)expect(h).toBeGreaterThan(60);
+ }
+ await blocks.first().click();
+ await expect(page.getByRole('dialog')).toContainText('10:36 PM');
+ await expect(page.getByRole('dialog')).toContainText('1:41 AM');
+ await expect(page.getByRole('dialog')).toContainText('2h 57m');
+});
