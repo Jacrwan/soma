@@ -132,7 +132,10 @@ export default function LiveDashboard({userId}:{userId:string}) {
  // Warm the documents cache so Ask Soma can answer from uploaded files even if
  // the user never opens the Documents page this session.
  useEffect(()=>{void listDocuments().catch(()=>{});},[]);
- useEffect(()=>{mounted.current=true;void reload().catch(e=>setError(e.message));const refresh=()=>{if(!writing.current)void reload().catch(e=>setError(e.message));};window.addEventListener('focus',refresh);window.addEventListener('soma_timer_stopped',refresh);return()=>{mounted.current=false;window.removeEventListener('focus',refresh);window.removeEventListener('soma_timer_stopped',refresh);};},[reload]);
+ useEffect(()=>{mounted.current=true;void reload().catch(e=>setError(e.message));const refresh=()=>{if(!writing.current)void reload().catch(e=>setError(e.message));};window.addEventListener('focus',refresh);window.addEventListener('soma_timer_stopped',refresh);
+ // Recorded time added, corrected or deleted anywhere (e.g. the Calendar) shows here too.
+ window.addEventListener('soma_insights_changed',refresh);
+ return()=>{mounted.current=false;window.removeEventListener('focus',refresh);window.removeEventListener('soma_timer_stopped',refresh);window.removeEventListener('soma_insights_changed',refresh);};},[reload]);
  async function save(block:PlanBlock,proposal=false){
   if(writing.current)throw new Error('Please wait for the current save to finish.');
   writing.current=true;setBusy(true);setError('');

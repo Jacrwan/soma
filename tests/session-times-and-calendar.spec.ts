@@ -296,3 +296,32 @@ test('a deadline imported from a course site shows in the all-day row',async({pa
  await expect(page.getByText('Lab 3').first()).toBeVisible();
  await expect(page.getByText('Lab 3')).toHaveCount(2);
 });
+
+// Reported: deleting a study block on the calendar left it drawn (now
+// unclickable) and still listed under Past sessions. Delete only removed the
+// calendar's local copy, not the recorded session behind it.
+test('deleting study time on the calendar removes the session everywhere',async({page})=>{
+ const state=await setup(page);
+ // The timer's own local copy of the session, as the real app keeps.
+ await page.addInitScript(({start,end})=>{localStorage.setItem('soma_blocks',JSON.stringify([{id:'copy',subjectId:'biology',task:'Cell review',startTime:start,endTime:end,source:'manual',timerSessionId:'real'}]));},{start:iso('08:00'),end:iso('08:25')});
+ await openWeek(page);
+ await page.getByRole('button',{name:/Biology/}).first().click();
+ await expect(page.getByRole('dialog')).toContainText('Studied');
+ await expect(page.getByRole('dialog')).toContainText('25m');
+ page.once('dialog',d=>void d.accept());
+ await page.getByRole('button',{name:'Delete',exact:true}).click();
+ await expect.poll(()=>state.tables.timer_sessions.length).toBe(0);
+ await expect(page.getByText('Biology')).toHaveCount(0);
+
+ await openEditor(page);
+ await expect(logs(page)).toContainText('No study time recorded on this task yet.');
+});
+
+test('a block drawn only from recorded sessions can be opened and deleted',async({page})=>{
+ const state=await setup(page);
+ await openWeek(page);
+ await page.getByRole('button',{name:/Biology/}).first().click();
+ page.once('dialog',d=>void d.accept());
+ await page.getByRole('button',{name:'Delete',exact:true}).click();
+ await expect.poll(()=>state.tables.timer_sessions.length).toBe(0);
+});
