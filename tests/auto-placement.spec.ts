@@ -129,7 +129,7 @@ const math = [{ id: 'math', summary: 'MATH 53 Discussion', start: { dateTime: at
 
 test('a task too long for one gap says which gaps are open', async ({ page }) => {
   await setup(page, { reply: 'Trying.', changes: [{ action: 'move', id: 's-hw', date: TOMORROW, minutes: 76, after: '13:00', before: '16:00' }] }, math);
-  await ask(page, 'homework in the gaps before discussion');
+  await ask(page, 'homework tomorrow afternoon before discussion');
   const log = page.getByRole('log');
   await expect(log).toContainText('no open 76-minute slot');
   await expect(log).toContainText('Open then: 1:00 PM–2:00 PM (60 min), 3:00 PM–4:00 PM (60 min)');
@@ -147,4 +147,15 @@ test('"in the gaps" splits one task across them, and Accept saves both sessions'
   const sessions = state.db.todo_sessions.filter(s => s.todo_id === 't-hw').map(s => [s.start_time, s.end_time]).sort();
   expect(sessions).toEqual([[at(1, '13:00'), at(1, '14:00')], [at(1, '15:00'), at(1, '15:16')]]);
   expect(state.db.todos.filter(t => t.text === 'Physics HW 4')).toHaveLength(1);   // one task, two sessions
+});
+
+test('"in the gaps" splits even when Soma forgets to ask for it', async ({ page }) => {
+  // What the model actually sent: one 120-minute block, no split.
+  const state = await setup(page, { reply: 'Monday afternoon.', changes: [{ action: 'move', id: 's-hw', date: TOMORROW, minutes: 120, after: '12:59', before: '16:00' }] }, math);
+  await ask(page, 'do the physics homework in the gaps between classes before the discussion on Monday');
+  await expect(page.getByRole('log')).not.toContainText("Couldn't place");
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => state.db.todo_sessions.filter(s => s.todo_id === 't-hw').length).toBe(2);
+  const sessions = state.db.todo_sessions.filter(s => s.todo_id === 't-hw').map(s => [s.start_time, s.end_time]).sort();
+  expect(sessions).toEqual([[at(1, '13:00'), at(1, '14:00')], [at(1, '15:00'), at(1, '16:00')]]);
 });
