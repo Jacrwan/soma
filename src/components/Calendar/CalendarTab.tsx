@@ -5,7 +5,7 @@ import { getWeekRange, isCacheStale } from '../../lib/googleCalendar';
 import {
   listConnections, startConnectFlow, fetchAggregatedEvents, GoogleCalendarError,
 } from '../../lib/googleCalendarConnections';
-import { TimeBlock, Subject, GoogleCalendarEvent, GoogleCalendarConnection, TimerSession, Todo } from '../../types';
+import { TimeBlock, Subject, GoogleCalendarEvent, GoogleCalendarConnection, TimerSession, Todo, TodoSession } from '../../types';
 import { formatDateTime, formatHourLabel, useTimeFormat, type TimeFormat } from '../../lib/timeFormat';
 import {
   addDays, getSundayOfWeek, getFirstOfMonth, startOfDay,
@@ -126,6 +126,38 @@ function studySpans(sessions: TimerSession[], blocks: TimeBlock[], sessionsLoade
   return merged;
 }
 
+/** A block of the plan: the same todo_sessions rows the dashboard shows. */
+interface PlanSpan {
+  id: string;
+  todoId: string;
+  subjectId?: string;
+  task: string;
+  start: Date;
+  end: Date;
+  done: boolean;
+  commitment: boolean;
+}
+
+const COMMITMENT_SUBJECT = 'Personal commitments';
+
+function planSpans(planned: TodoSession[], todos: Todo[], subjects: Subject[]): PlanSpan[] {
+  const out: PlanSpan[] = [];
+  for (const s of planned) {
+    const todo = todos.find(t => t.id === s.todoId);
+    if (!todo || !s.startTime || !s.endTime) continue;
+    out.push({
+      id: `plan-${s.id}`, todoId: todo.id, subjectId: todo.subjectId, task: todo.text,
+      start: new Date(s.startTime), end: new Date(s.endTime), done: todo.status === 'done',
+      commitment: subjects.find(sn => sn.id === todo.subjectId)?.name === COMMITMENT_SUBJECT,
+    });
+  }
+  return out;
+}
+
+/** Recorded time inside a planned block of the same course is that block, not another one. */
+const coveredByPlan = (span: { subjectId: string; start: Date; end: Date }, plans: PlanSpan[]) =>
+  plans.some(p => p.subjectId === span.subjectId && +p.start < +span.end && +p.end > +span.start);
+
 interface Filters {
   gcal: boolean;
   canvas: boolean;
@@ -170,6 +202,7 @@ interface PositionedEvent {
   width: number;
   block?: TimeBlock;
   span?: StudySpan;
+  plan?: PlanSpan;
   gcalEvent?: GoogleCalendarEvent;
 }
 
@@ -276,12 +309,15 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   // Deadlines from a course website are tasks with a due date, and belong in
   // the all-day row beside the Canvas ones.
   const [dueTasks, setDueTasks] = useState<Todo[]>(() => storage.getTodos().filter(t => !!t.dueDate));
+  // The plan's scheduled blocks, read from the same table the dashboard uses,
+  // so a block added in Edit plan or by Soma shows here too.
+  const [planned, setPlanned] = useState<TodoSession[]>([]);
 
   const [currentMinutes, setCurrentMinutes] = useState(() => {
     const now = new Date();
     return now.getHours() * 60 + now.getMinutes();
   });
-  const [weekBlockModal, setWeekBlockModal] = useState<{ block: TimeBlock; subject: Subject | undefined; span?: StudySpan } | null>(null);
+  const [weekBlockModal, setWeekBlockModal] = useState<{ block: TimeBlock; subject: Subject | undefined; span?: StudySpan; plan?: PlanSpan } | null>(null);
   const [deleteError, setDeleteError] = useState('');
   const [weekBlockEditMode, setWeekBlockEditMode] = useState(false);
   const [weekBlockEditForm, setWeekBlockEditForm] = useState<WeekBlockEditForm>({
@@ -358,6 +394,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     let cancelled = false;
     const refresh = () => {
       if (!cancelled) { setDueTasks(storage.getTodos().filter(t => !!t.dueDate)); setDataVersion(v => v + 1); }
+      void storage.fetchPlannedSessions().then(rows => { if (!cancelled) setPlanned(rows); }).catch(() => { /* the rest still draws */ });
     };
     void storage.fetchAllTodos().then(refresh).catch(() => { /* non-fatal */ });
     void storage.whenTokensLoaded().then(refresh);
@@ -534,6 +571,14 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     setWeekBlockEditMode(false);
   }
 
+  function openPlan(plan: PlanSpan) {
+    const subject = storage.getSubjects().find(s => s.id === plan.subjectId);
+    const shown: TimeBlock = { id: plan.id, subjectId: plan.subjectId ?? '', task: plan.task, startTime: plan.start.toISOString(), endTime: plan.end.toISOString(), source: 'manual' };
+    setDeleteError('');
+    setWeekBlockModal({ block: shown, subject, plan });
+    setWeekBlockEditMode(false);
+  }
+
   // Month view chip data
   const chipsByDate = useMemo(() => {
     const map = new Map<string, Chip[]>();
@@ -566,7 +611,13 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
       }
     }
     if (filters.soma) {
+      const plans = planSpans(planned, storage.getTodos(), subjects);
+      for (const p of plans) {
+        const subj = subjects.find(s => s.id === p.subjectId);
+        add(p.start, { id: p.id, label: p.task, bgColor: p.commitment ? GCAL_COLOR : subj?.color ?? '#9e9e9e', type: 'soma', sortKey: p.start.getTime() });
+      }
       for (const span of studySpans(sessions, blocks, sessionsLoaded)) {
+        if (coveredByPlan(span, plans)) continue;
         const subj = subjects.find(s => s.id === span.subjectId);
         add(span.start, { id: span.id, label: span.task || subj?.name || 'Study', bgColor: subj?.color ?? '#9e9e9e', type: 'soma', sortKey: span.start.getTime() });
       }
@@ -574,7 +625,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     for (const chips of map.values()) chips.sort((a, b) => a.sortKey - b.sortKey);
     return map;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, dataVersion, sessions, sessionsLoaded, dueTasks]);
+  }, [filters, dataVersion, sessions, sessionsLoaded, dueTasks, planned]);
 
   const getPositionedEventsForDay = useCallback((day: Date): {
     events: PositionedEvent[];
@@ -595,6 +646,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
       endMin: number;
       block?: TimeBlock;
       span?: StudySpan;
+      plan?: PlanSpan;
       gcalEvent?: GoogleCalendarEvent;
     }
 
@@ -605,8 +657,27 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
       // shows until midnight on one day and from midnight on the next. Reading
       // clock times alone turned it into a 30-minute stub and lost the morning.
       const dayStart = startOfDay(day), dayEnd = addDays(dayStart, 1);
+      const clip = (start: Date, end: Date) => [Math.round((Math.max(+start, +dayStart) - +dayStart) / 60000), Math.round((Math.min(+end, +dayEnd) - +dayStart) / 60000)];
+      // The plan first: the dashboard's own blocks.
+      const plans = planSpans(planned, storage.getTodos(), subjects);
+      for (const p of plans) {
+        if (+p.end <= +dayStart || +p.start >= +dayEnd) continue;
+        const [startMin, endMin] = clip(p.start, p.end);
+        if (endMin - startMin < 5) continue;
+        const subject = subjects.find(s => s.id === p.subjectId);
+        const baseColor = p.commitment ? GCAL_COLOR : subject?.color ?? '#9e9e9e';
+        events.push({
+          id: p.id, type: 'soma',
+          label: p.commitment ? 'Personal commitment' : subject?.name ?? 'Study',
+          sublabel: `${p.task}${p.done ? ' · Done' : ''}`,
+          color: tint(baseColor, p.done ? 0.18 : 0.3), borderColor: baseColor, textColor: 'var(--text-primary)',
+          startMin, endMin, plan: p,
+        });
+      }
+      // Recorded study time, where it isn't already a planned block.
       for (const span of studySpans(sessions, blocks, sessionsLoaded)) {
         if (+span.end <= +dayStart || +span.start >= +dayEnd) continue;
+        if (coveredByPlan(span, plans)) continue;
         const startMin = Math.round((Math.max(+span.start, +dayStart) - +dayStart) / 60000);
         const endMin = Math.round((Math.min(+span.end, +dayEnd) - +dayStart) / 60000);
         // Under five minutes is almost always a focus session stopped by
@@ -719,10 +790,11 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         width: 1 / numColsArr[i],
         block: ev.block,
         span: ev.span,
+        plan: ev.plan,
         gcalEvent: ev.gcalEvent,
       })),
     };
-  }, [filters, sessions, sessionsLoaded]);
+  }, [filters, sessions, sessionsLoaded, planned]);
 
   function goToPrev() {
     if (viewMode === 'month') setViewMonth(d => new Date(d.getFullYear(), d.getMonth() - 1, 1));
@@ -1078,6 +1150,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                         <div
                           key={ev.id}
                           className={`${styles.weekViewBlock}${ev.type === 'soma' ? ` ${styles.weekViewBlockSoma}` : ` ${styles.weekViewBlockGcal}`}`}
+                          data-source={ev.plan ? 'plan' : ev.type === 'soma' ? 'recorded' : 'calendar'}
                           style={{
                             top: ev.top,
                             height: ev.height,
@@ -1086,17 +1159,19 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                             background: ev.color,
                             borderColor: ev.borderColor,
                           }}
-                          tabIndex={ev.type === 'soma' && (ev.block || ev.span) ? 0 : undefined}
-                          role={ev.type === 'soma' && (ev.block || ev.span) ? 'button' : undefined}
+                          tabIndex={ev.type === 'soma' && (ev.block || ev.span || ev.plan) ? 0 : undefined}
+                          role={ev.type === 'soma' && (ev.block || ev.span || ev.plan) ? 'button' : undefined}
                           onClick={e => {
                             e.stopPropagation();
-                            if (ev.type === 'soma' && (ev.block || ev.span)) openStudy(ev.block, ev.span);
+                            if (ev.plan) openPlan(ev.plan);
+                            else if (ev.type === 'soma' && (ev.block || ev.span)) openStudy(ev.block, ev.span);
                           }}
                           onKeyDown={e => {
-                            if ((e.key === 'Enter' || e.key === ' ') && ev.type === 'soma' && (ev.block || ev.span)) {
+                            if ((e.key === 'Enter' || e.key === ' ') && ev.type === 'soma' && (ev.block || ev.span || ev.plan)) {
                               e.preventDefault();
                               e.stopPropagation();
-                              openStudy(ev.block, ev.span);
+                              if (ev.plan) openPlan(ev.plan);
+                              else openStudy(ev.block, ev.span);
                             }
                           }}
                           title={[ev.label, ev.sublabel].filter(Boolean).join(': ')}
@@ -1212,14 +1287,21 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                 {weekBlockModal.span?.sessionIds.length ? (
                   <p className={styles.weekModalNote}>Recorded study time. To correct the minutes, open the task on the dashboard.</p>
                 ) : null}
+                {weekBlockModal.plan && (
+                  <p className={styles.weekModalNote}>{weekBlockModal.plan.done ? 'Done. ' : ''}A block in your plan. Change or remove it with Edit plan on the dashboard, or ask Soma.</p>
+                )}
                 {deleteError && <p role="alert" className={styles.weekModalNote}>{deleteError}</p>}
-                <div className={styles.weekModalActions}>
+                {weekBlockModal.plan ? (
+                  <div className={styles.weekModalActions}>
+                    <button className={styles.weekModalEditBtn} onClick={() => navigate('/dashboard')}>Open dashboard</button>
+                  </div>
+                ) : <div className={styles.weekModalActions}>
                   {/* Editing the calendar's copy of a session never changed the session, so only plain blocks can be edited here. */}
                   {!weekBlockModal.span?.sessionIds.length && weekBlockModal.span?.blockId && (
                     <button className={styles.weekModalEditBtn} onClick={() => openWeekBlockEdit(weekBlockModal.block)}>Edit</button>
                   )}
                   <button className={styles.weekModalDeleteBtn} onClick={() => weekBlockModal.span?.sessionIds.length ? void deleteStudy(weekBlockModal.span) : deleteWeekBlock(weekBlockModal.block.id)}>Delete</button>
-                </div>
+                </div>}
                 <button className={styles.weekModalCancel} onClick={() => setWeekBlockModal(null)}>Close</button>
               </>
             )}

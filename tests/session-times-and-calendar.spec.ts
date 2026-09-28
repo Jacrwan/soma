@@ -64,6 +64,9 @@ const openEditor=async(page:Page)=>{
  await expect(page.getByLabel('Past focus sessions')).toBeVisible();
 };
 const logs=(page:Page)=>page.getByLabel('Past focus sessions');
+/** Recorded study time on the week view; the plan's own blocks are drawn beside it. */
+const recorded=(page:Page)=>page.locator('[data-source=recorded]');
+
 
 /** The week view is where study blocks and the all-day row are drawn. */
 const openWeek=async(page:Page)=>{
@@ -176,7 +179,7 @@ test('a correction reaches the calendar',async({page})=>{
  await expect(logs(page)).toContainText('75 minutes recorded on this task.');
 
  await openWeek(page);
- const block=page.getByText('Biology').first();
+ const block=recorded(page).first();
  await expect(block).toBeVisible();
  // Moved to 10:00, so it no longer sits where the 8:00 session was drawn.
  const top=await block.evaluate(el=>el.getBoundingClientRect().top);
@@ -196,13 +199,13 @@ test('a session added by hand appears on the calendar',async({page})=>{
 
  // The bug: this never reached the calendar, which only drew timer blocks.
  await openWeek(page);
- await expect(page.getByText('Biology').first()).toBeVisible();
+ await expect(recorded(page).first()).toBeVisible();
 });
 
 test('deleting a past session takes it off the calendar too',async({page})=>{
  const state=await setup(page);
  await openWeek(page);
- await expect(page.getByText('Biology').first()).toBeVisible();
+ await expect(recorded(page).first()).toBeVisible();
 
  await openEditor(page);
  page.once('dialog',d=>void d.accept());
@@ -211,7 +214,7 @@ test('deleting a past session takes it off the calendar too',async({page})=>{
 
  // The ghost: the block stayed drawn after its session was gone.
  await openWeek(page);
- await expect(page.getByText('Biology')).toHaveCount(0);
+ await expect(recorded(page)).toHaveCount(0);
 });
 
 /**
@@ -234,8 +237,8 @@ test('a task resumed through the day draws once, not once per session',async({pa
  },{start:iso('13:00'),end:iso('15:00')});
 
  await openWeek(page);
- await expect(page.getByText('Biology').first()).toBeVisible();
- await expect(page.getByText('Biology')).toHaveCount(1);
+ await expect(recorded(page).first()).toBeVisible();
+ await expect(recorded(page)).toHaveCount(1);
 });
 
 /**
@@ -257,8 +260,8 @@ test('a block and the sessions worked inside it draw as one',async({page})=>{
  },{start:iso('14:12'),end:iso('16:00')});
 
  await openWeek(page);
- await expect(page.getByText('Biology').first()).toBeVisible();
- await expect(page.getByText('Biology')).toHaveCount(1);
+ await expect(recorded(page).first()).toBeVisible();
+ await expect(recorded(page)).toHaveCount(1);
 });
 
 test('two sittings on the same subject at different times stay separate',async({page})=>{
@@ -268,7 +271,7 @@ test('two sittings on the same subject at different times stay separate',async({
   {id:'evening',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Homework',date,start_time:iso('19:47'),end_time:iso('22:00'),duration_seconds:133*60},
  ];
  await openWeek(page);
- await expect(page.getByText('Biology')).toHaveCount(2);
+ await expect(recorded(page)).toHaveCount(2);
 });
 
 test('a failed session load leaves the calendar drawn, not emptied',async({page})=>{
@@ -284,7 +287,7 @@ test('a failed session load leaves the calendar drawn, not emptied',async({page}
  await page.route('https://soma-regression.supabase.co/rest/v1/timer_sessions**',r=>r.fulfill({status:500,json:{message:'unavailable'}}));
 
  await openWeek(page);
- await expect(page.getByText('Biology').first()).toBeVisible();
+ await expect(recorded(page).first()).toBeVisible();
 });
 
 test('a deadline imported from a course site shows in the all-day row',async({page})=>{
@@ -305,13 +308,13 @@ test('deleting study time on the calendar removes the session everywhere',async(
  // The timer's own local copy of the session, as the real app keeps.
  await page.addInitScript(({start,end})=>{localStorage.setItem('soma_blocks',JSON.stringify([{id:'copy',subjectId:'biology',task:'Cell review',startTime:start,endTime:end,source:'manual',timerSessionId:'real'}]));},{start:iso('08:00'),end:iso('08:25')});
  await openWeek(page);
- await page.getByRole('button',{name:/Biology/}).first().click();
+ await recorded(page).first().click();
  await expect(page.getByRole('dialog')).toContainText('Studied');
  await expect(page.getByRole('dialog')).toContainText('25m');
  page.once('dialog',d=>void d.accept());
  await page.getByRole('button',{name:'Delete',exact:true}).click();
  await expect.poll(()=>state.tables.timer_sessions.length).toBe(0);
- await expect(page.getByText('Biology')).toHaveCount(0);
+ await expect(recorded(page)).toHaveCount(0);
 
  await openEditor(page);
  await expect(logs(page)).toContainText('No study time recorded on this task yet.');
@@ -320,7 +323,7 @@ test('deleting study time on the calendar removes the session everywhere',async(
 test('a block drawn only from recorded sessions can be opened and deleted',async({page})=>{
  const state=await setup(page);
  await openWeek(page);
- await page.getByRole('button',{name:/Biology/}).first().click();
+ await recorded(page).first().click();
  page.once('dialog',d=>void d.accept());
  await page.getByRole('button',{name:'Delete',exact:true}).click();
  await expect.poll(()=>state.tables.timer_sessions.length).toBe(0);
@@ -336,7 +339,7 @@ test('a session past midnight is drawn on both days, and its details show when i
  // Show a week that has both days in it.
  await page.clock.install({time:new Date(`${date}T12:00:00`)});
  await openWeek(page);
- const blocks=page.getByRole('button',{name:/Biology/});
+ const blocks=recorded(page);
  // Sunday 10:36 PM–midnight is about 84 minutes; Monday midnight–1:41 AM about 101.
  const heights=await blocks.evaluateAll(els=>els.map(e=>Math.round(e.getBoundingClientRect().height)));
  if(day.getDay()!==6){
@@ -347,4 +350,33 @@ test('a session past midnight is drawn on both days, and its details show when i
  await expect(page.getByRole('dialog')).toContainText('10:36 PM');
  await expect(page.getByRole('dialog')).toContainText('1:41 AM');
  await expect(page.getByRole('dialog')).toContainText('2h 57m');
+});
+
+// Reported: a block added with Edit plan was on the dashboard but not on the
+// calendar, which only drew recorded time. Both now read the same plan.
+test('a block added in Edit plan shows on the calendar',async({page})=>{
+ await setup(page);
+ await page.goto('/dashboard');
+ await page.getByRole('button',{name:'Edit plan',exact:true}).click();
+ await page.getByRole('button',{name:'+ Add block',exact:true}).click();
+ await page.getByLabel('Title',{exact:true}).fill('Physics Reading: 4.6 - 4.9');
+ await page.getByLabel('Start time',{exact:true}).fill('11:40');
+ await page.getByLabel('End time',{exact:true}).fill('12:45');
+ await page.getByRole('button',{name:'Save block',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Physics Reading: 4.6 - 4.9'})).toBeVisible();
+
+ await openWeek(page);
+ const planned=page.locator('[data-source=plan]',{hasText:'Physics Reading: 4.6 - 4.9'});
+ await expect(planned).toBeVisible();
+ await planned.click();
+ await expect(page.getByRole('dialog')).toContainText('A block in your plan');
+});
+
+test('time recorded inside a planned block is that block, not a second one',async({page})=>{
+ const state=await setup(page);
+ // Studied 9:05–9:40 inside the 9:00–9:45 Cell review block.
+ state.tables.timer_sessions=[{id:'inside',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Cell review',date,start_time:iso('09:05'),end_time:iso('09:40'),duration_seconds:35*60}];
+ await openWeek(page);
+ await expect(page.locator('[data-source=plan]',{hasText:'Cell review'})).toBeVisible();
+ await expect(recorded(page)).toHaveCount(0);
 });

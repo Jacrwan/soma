@@ -747,6 +747,21 @@ export const storage = {
     }));
   },
 
+  /** Every scheduled block of the plan (the dashboard's blocks), for the calendar. */
+  async fetchPlannedSessions(): Promise<TodoSession[]> {
+    const userId = await uid();
+    const out: TodoSession[] = [];
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await supabase.from('todo_sessions').select('id, todo_id, date, start_time, end_time').eq('user_id', userId).order('id').range(offset, offset + 999);
+      if (error) throw new Error(error.message);
+      for (const r of (data ?? []) as Record<string, unknown>[]) {
+        if (typeof r.start_time !== 'string' || typeof r.end_time !== 'string') continue;
+        out.push({ id: String(r.id), todoId: String(r.todo_id), date: String(r.date), startTime: ensureUtcSuffix(r.start_time), endTime: ensureUtcSuffix(r.end_time) });
+      }
+      if (!data || data.length < 1000) return out;
+    }
+  },
+
   async fetchTodoSessionsByTodoId(todoId: string): Promise<TodoSession[]> {
     const userId = await uid();
     const { data, error } = await supabase
