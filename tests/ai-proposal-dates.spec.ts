@@ -90,9 +90,10 @@ test('a date outside the next seven days is rejected with a clear reason', async
 });
 
 test('today still refuses blocks that already started', async ({ page }) => {
-  // Midday, so 9 AM has plainly passed (late at night, an early-morning time means tonight).
-  const noon = new Date(); noon.setHours(12, 0, 0, 0);
-  await page.clock.install({ time: noon });
+  // 10 PM: 9:00 has passed as AM and as PM (in the morning "9" would mean 9 PM,
+  // and just before midnight an early hour would mean tonight).
+  const evening = new Date(); evening.setHours(22, 0, 0, 0);
+  await page.clock.install({ time: evening });
   await setup(page, [{ title: 'Too early', subject: 'CS 61A', date: TODAY, start: '09:00', end: '09:30' }]);
   await page.goto('/dashboard');
   await ask(page, 'plan now');

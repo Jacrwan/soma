@@ -17,7 +17,7 @@ const events = [
   { id: 'disc', summary: 'Physics 5A Discussion', start: { dateTime: at(1, '16:00') }, end: { dateTime: at(1, '17:59') }, source: { connectionId: 'c', calendarId: 'k' } },
 ];
 
-async function setup(page: Page, reply: unknown, more: typeof events = []) {
+async function setup(page: Page, reply: unknown, more: typeof events = [], clock?: Date) {
   const db: Record<string, Row[]> = {
     subjects: [{ id: 'phys', user_id: account.id, name: 'Physics 5A', color: '#ab47bc', archived: false }],
     todos: [{ id: 't-hw', user_id: account.id, text: 'Physics HW 4', subject_id: 'phys', status: 'nothing', date: TOMORROW }],
@@ -27,7 +27,7 @@ async function setup(page: Page, reply: unknown, more: typeof events = []) {
   const state = { db, prompt: '' };
   // Nine in the morning today, so all of tomorrow is ahead whatever the real clock says.
   const morning = new Date(); morning.setHours(9, 0, 0, 0);
-  await page.clock.install({ time: morning });
+  await page.clock.install({ time: clock ?? morning });
   await page.addInitScript(a => {
     localStorage.setItem('sb-soma-regression-auth-token', JSON.stringify({ access_token: 't', refresh_token: 'r', token_type: 'bearer', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, user: a }));
     localStorage.setItem('soma_settings', JSON.stringify({ onboardingCompleted: true, theme: 'light', studyWindow: { start: '08:00', end: '23:00' } }));
@@ -158,4 +158,30 @@ test('"in the gaps" splits even when Soma forgets to ask for it', async ({ page 
   await expect.poll(() => state.db.todo_sessions.filter(s => s.todo_id === 't-hw').length).toBe(2);
   const sessions = state.db.todo_sessions.filter(s => s.todo_id === 't-hw').map(s => [s.start_time, s.end_time]).sort();
   expect(sessions).toEqual([[at(1, '13:00'), at(1, '14:00')], [at(1, '15:00'), at(1, '16:00')]]);
+});
+
+// Reported at 11:41 AM: "from now until 1" was read as until 1 AM.
+test('"until 1" in the morning means 1 PM, as a bound and as a stated time', async ({ page }) => {
+  const late = new Date(); late.setHours(11, 41, 0, 0);
+  const TODAY = key(offset(0));
+  // A bound the model gives as 01:00.
+  const state = await setup(page, { reply: 'Until 1.', blocks: [{ title: 'Physics reading 4.7–4.9', subject: 'Physics 5A', date: TODAY, minutes: 60, before: '01:00' }] }, [], late);
+  await ask(page, 'the physics reading from now until 1');
+  await expect(page.getByRole('log')).not.toContainText('1:00 AM');
+  await expect(page.getByRole('log')).not.toContainText("Couldn't place");
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => state.db.todo_sessions.length).toBe(2);
+  const [start, end] = saved(state.db, 'Physics reading 4.7–4.9');
+  expect(new Date(String(end)) <= new Date(at(0, '13:00'))).toBe(true);
+  expect(new Date(String(start)) >= new Date(at(0, '11:41'))).toBe(true);
+});
+
+test('stated "11:45 until 01:00" in the morning ends at 1 PM', async ({ page }) => {
+  const late = new Date(); late.setHours(11, 41, 0, 0);
+  const TODAY = key(offset(0));
+  const state = await setup(page, { reply: 'Now until 1.', blocks: [{ title: 'Physics reading 4.7–4.9', subject: 'Physics 5A', date: TODAY, start: '11:45', end: '01:00' }] }, [], late);
+  await ask(page, 'from now until 1');
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => state.db.todo_sessions.length).toBe(2);
+  expect(saved(state.db, 'Physics reading 4.7–4.9')).toEqual([at(0, '11:45'), at(0, '13:00')]);
 });
