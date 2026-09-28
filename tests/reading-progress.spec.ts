@@ -188,3 +188,31 @@ test('checking a block off marks every section it covers', async ({ page }) => {
   await expect.poll(() => items(state.db)['4.6'].done_at).toBeTruthy();
   expect(items(state.db)['4.7'].done_at).toBeNull();
 });
+
+// Reported: "I studied physics reading 4.6–4.9 from 11:40 to 12:52, add it"
+// couldn't be saved: past times were refused and 11:40 was read as 11:40 PM.
+test('work already done is logged at the stated past times, recorded, and its sections read', async ({ page }) => {
+  const TODAY = key(offset(0));
+  const state = await setup(page, ctx => ({ reply: 'Logged it.', blocks: [{ title: 'Physics reading: 4.6–4.9 Mass flow', subject: 'Physics 5A', date: TODAY, start: '00:40', end: '00:52', done: true, covers: [idOf(ctx, '4.6'), idOf(ctx, '4.9')] }] }));
+  await ask(page, 'i studied 4.6 to 4.9 just now, add it');
+  await expect(page.getByText(/Already done · records 12 min of study/).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => state.db.todos.find(t => t.text === 'Physics reading: 4.6–4.9 Mass flow')?.status).toBe('done');
+  const todo = state.db.todos.find(t => t.text === 'Physics reading: 4.6–4.9 Mass flow')!;
+  expect(state.db.todo_sessions.find(s => s.todo_id === todo.id)!.start_time).toBe(at(0, '00:40'));
+  await expect.poll(() => state.db.timer_sessions.some(r => r.task_text === todo.text && r.duration_seconds === 12 * 60)).toBe(true);
+  const it = items(state.db);
+  for (const l of ['4.6', '4.7', '4.8', '4.9']) expect(it[l].done_at).toBeTruthy();
+  expect(it['4.5'].done_at).toBeNull();
+});
+
+test('Soma asks about unchecked work once, not every message', async ({ page }) => {
+  let n = 0;
+  const state = await setup(page, () => (++n === 1 ? { reply: 'Did you finish Physics reading: 4.1–4.6 Momentum? You logged 30 min.' } : { reply: 'ok' }));
+  await ask(page, 'hi');
+  await expect(page.getByRole('log')).toContainText('Did you finish');
+  await ask(page, 'plan physics');
+  await expect(page.getByRole('log')).toContainText('ok');
+  const ctx = JSON.parse(state.prompt.match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]) as Ctx;
+  expect(ctx.unchecked).toBeUndefined();
+});

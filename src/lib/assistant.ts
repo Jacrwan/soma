@@ -35,7 +35,7 @@ DATES: resolve "today", "tomorrow" and weekday names against days, never by gues
 
 STUDY HOURS: free only covers the student's study hours (studyHours). When the student says they can go later this time ("I can study till 3"), set "studyUntil" to that time: this reply may then use time up to it, beyond free, still avoiding their blocks. Say it's for tonight only and that Settings → Study hours changes it for good. Never set it on your own.
 
-PROPOSING BLOCKS: up to 5. You decide what, which day and how long; the app picks the clock time. For each block give date and minutes, and leave out start and end: the app puts it in the first open slot that day inside study hours, never on a class or calendar event, in the order you list the blocks. So list work in the order it should be done (reading before the homework it's for), and add "after"/"before" (HH:mm) when the student bounds it. "The discussion", "the lecture" or "lab" means that class for the same course as the work (Physics homework before "the discussion" is before the Physics discussion), not another course's ("before the discussion" means before its start; "after the checkpoint" means after its end). Give start and end only for times the student stated themselves, and then never give just one. For a to-do with no day ("sometime", "whenever"), set "anytime":true with minutes; it stays unscheduled. Don't state clock times for blocks the app places: it lists them under your reply; say what you planned and why. If a block can't be placed, the App result lists the open gaps then: offer something that fits them (a shorter block, split:true, or another day) instead of repeating the same request. Never say anything was moved, added or done: it's a proposal until Accept, and the app may not be able to place it. One task is one block. When the student asks to use the gaps, or agrees to split, set "split":true on that block or move: the app spreads it over the open gaps in order, as one task with several sessions. Never make several blocks for one task. Each block is at most 4 hours. When you describe a schedule, return its blocks in the same reply; when the user agrees to times you already described, return those blocks again. Never overlap the student's own blocks. Blocks appear with an Accept button, which is how they are saved. Never tell the user to add blocks themselves, never say you cannot make changes, and never claim anything was saved. Never propose times if calendarOk is false. When asked for their plan, include pending as "proposed, not yet accepted".
+PROPOSING BLOCKS: up to 5. You decide what, which day and how long; the app picks the clock time. For each block give date and minutes, and leave out start and end: the app puts it in the first open slot that day inside study hours, never on a class or calendar event, in the order you list the blocks. So list work in the order it should be done (reading before the homework it's for), and add "after"/"before" (HH:mm) when the student bounds it. "The discussion", "the lecture" or "lab" means that class for the same course as the work (Physics homework before "the discussion" is before the Physics discussion), not another course's ("before the discussion" means before its start; "after the checkpoint" means after its end). Give start and end only for times the student stated themselves, and then never give just one. When the student tells you what they already did ("I studied 4.6–4.9 from 11:40 to 12:52, add it"), return that block with "done":true and the start and end they gave (and covers for reading-list sections): the app saves it as finished, records the time and marks the sections read. Read-only calendar events (ro) can't be removed or changed: if the student skipped or will skip one, just use its time for their work. For a to-do with no day ("sometime", "whenever"), set "anytime":true with minutes; it stays unscheduled. Don't state clock times for blocks the app places: it lists them under your reply; say what you planned and why. If a block can't be placed, the App result lists the open gaps then: offer something that fits them (a shorter block, split:true, or another day) instead of repeating the same request. Never say anything was moved, added or done: it's a proposal until Accept, and the app may not be able to place it. One task is one block. When the student asks to use the gaps, or agrees to split, set "split":true on that block or move: the app spreads it over the open gaps in order, as one task with several sessions. Never make several blocks for one task. Each block is at most 4 hours. When you describe a schedule, return its blocks in the same reply; when the user agrees to times you already described, return those blocks again. Never overlap the student's own blocks. Blocks appear with an Accept button, which is how they are saved. Never tell the user to add blocks themselves, never say you cannot make changes, and never claim anything was saved. Never propose times if calendarOk is false. When asked for their plan, include pending as "proposed, not yet accepted".
 
 ESTIMATING: size new work from history. Prefer the real minutes of similar past tasks (same subject, same kind of work); otherwise the subject's avg session; then adjust by the subject's bias (positive means they usually run over their estimates). Say the basis in a few words, e.g. "~50 min, your last two problem sets took 45–55". With no history, make a normal estimate and say it's a guess.
 
@@ -146,7 +146,9 @@ export async function askSoma(opts: {
     if (prev) { prev.did += did; continue; }
     worked.set(b.todoId, { id: String(b.id), title: b.title, d: localDate(dateAt(origin, b.day)), did, ...(b.covers?.length ? { cov: rangeLabel(b.covers) } : {}) });
   }
-  const unchecked = [...worked.values()].filter(w => w.did >= 5).sort((a, b) => b.d.localeCompare(a.d)).slice(0, 8);
+  // Once asked in this conversation, a block isn't brought up again.
+  const askedAbout = opts.history.filter(t => t.role === 'assistant').map(t => t.content.toLowerCase()).join('\n');
+  const unchecked = [...worked.values()].filter(w => w.did >= 5 && !askedAbout.includes(w.title.toLowerCase().slice(0, 40))).sort((a, b) => b.d.localeCompare(a.d)).slice(0, 8);
   const endedUnchecked = new Set([...worked].filter(([, w]) => w.did >= 5).map(([todoId]) => todoId));
   const progress = courseProgress(fresh.items, fresh.subjects.filter(s => !s.archived), localDate(new Date()), endedUnchecked, upcoming);
   const context = {
@@ -211,7 +213,9 @@ export async function askSoma(opts: {
   };
   const tonight = (offset: number, start: string) => offset === 0 && /^\d\d:\d\d$/.test(start) && clockMinutes(start) < nowMinute - 15 && clockMinutes(start) + 1440 - nowMinute <= 360 ? 1 : offset;
   // Only a student who says they'll skip a class gets a block on top of it.
-  const skipping = /\b(skip|skipping|skipped|miss|missing|not going|won'?t go|ditch|ditching)\b/i.test(text);
+  // "I skipped CS lecture" still counts a message or two later.
+  const recentStudent = [...opts.history.filter(t => t.role === 'user').slice(-2).map(t => t.content), text].join('\n');
+  const skipping = /\b(skip|skipping|skipped|miss|missed|missing|not going|won'?t go|didn'?t go|ditch|ditching|ditched)\b/i.test(recentStudent);
   const lateNote = (b: PlanBlock) => { if (!stretched) return undefined; try { validateProposal(b, { ...fresh, blocks: [], sessions: [] }, origin, settings, true, true); return undefined; } catch { return 'Past your usual study hours'; } };
 
   const rejected: string[] = [];
@@ -253,11 +257,12 @@ export async function askSoma(opts: {
   // Reading-list sections a block will cover. A bad range costs the link, not the block.
   const unlinked: string[] = [];
   const liftedTodos = new Set(fresh.blocks.filter(b => lifted.has(b.id)).map(b => b.todoId));
-  const coverFor = (value: unknown, title: string, ownTodo?: string): Pick<PlanBlock, 'coverIds' | 'note'> => {
+  const coverFor = (value: unknown, title: string, ownTodo?: string, finished = false): Pick<PlanBlock, 'coverIds' | 'note'> => {
     if (!Array.isArray(value) || !value.length) return {};
     const run = resolveRange(fresh.items, progress.ids, value[0], value[value.length - 1]);
     if (typeof run === 'string') { unlinked.push(`${title}: ${run}`); return {}; }
-    const busy = run.find(i => i.todoId && i.todoId !== ownTodo && upcoming.has(i.todoId) && !liftedTodos.has(i.todoId));
+    // Work already done can cover sections another block had planned.
+    const busy = !finished && run.find(i => i.todoId && i.todoId !== ownTodo && upcoming.has(i.todoId) && !liftedTodos.has(i.todoId));
     if (busy) { unlinked.push(`${title}: ${busy.label} is already planned in another block`); return {}; }
     return { coverIds: run.map(i => i.id), note: `Covers ${rangeLabel(run)}` };
   };
@@ -273,8 +278,13 @@ export async function askSoma(opts: {
   const autoPlace = (offset: number, length: number, after?: unknown, before?: unknown, ignore?: string | number, split = false): Spot | string => {
     const board = { ...working, blocks: [...working.blocks.filter(b => b.id !== ignore), ...placed()] };
     const slots = freeTime(board, origin, hours, nowDate, 7, 15).find(f => f.date === calendar[offset]?.date)?.free ?? [];
-    const lo = typeof after === 'string' && clockRe.test(after) ? clockMinutes(pmIfPassed(offset, after)) : 0;
-    let hi = typeof before === 'string' && clockRe.test(before) ? clockMinutes(pmIfPassed(offset, before)) : Infinity;
+    // A range that already reads forwards ("after 11:40, before 12:52") is
+    // taken as given; the AM-means-PM correction is for a lone or inverted bound.
+    const rawLo = typeof after === 'string' && clockRe.test(after) ? clockMinutes(after) : undefined;
+    const rawHi = typeof before === 'string' && clockRe.test(before) ? clockMinutes(before) : undefined;
+    const ordered = rawLo !== undefined && rawHi !== undefined && rawLo < rawHi;
+    const lo = rawLo === undefined ? 0 : ordered ? rawLo : clockMinutes(pmIfPassed(offset, after as string));
+    let hi = rawHi === undefined ? Infinity : ordered ? rawHi : clockMinutes(pmIfPassed(offset, before as string));
     if (hi < openAt) hi += 1440;   // "before 1 AM" is tonight
     const at = (m: number) => ({ day: offset + Math.floor(m / 1440), time: '' });
     const gaps: string[] = [], parts: { day: number; time: string }[] = [];
@@ -398,6 +408,20 @@ export async function askSoma(opts: {
     if (!p || typeof p.title !== 'string' || !p.title.trim() || p.title.length > 150 || typeof p.subject !== 'string' || !p.subject.trim() || p.subject.length > 100 || (p.start !== undefined && typeof p.start !== 'string') || (p.end !== undefined && typeof p.end !== 'string')) { rejected.push('One suggestion came back incomplete.'); continue; }
     let timed = !!(typeof p.start === 'string' && p.start.trim() && typeof p.end === 'string' && p.end.trim());
     if (!timed && (p.start || p.end)) { rejected.push(`${p.title.trim()}: give both a start and an end, or neither for an unscheduled block.`); continue; }
+    // "I studied X from 11:40 to 12:52": finished work, saved at the times given
+    // even though they've passed, with the time recorded. Nothing to place.
+    if (p.done === true) {
+      const title = p.title.trim();
+      if (!timed || !clockRe.test(p.start as string) || !clockRe.test(p.end as string)) { rejected.push(`${title}: say when you studied it (a start and an end) to log it.`); continue; }
+      const found = typeof p.date === 'string' ? calendar.find(c => c.date === p.date) : calendar[0];
+      const span = spanMinutes(p.start as string, p.end as string);
+      if (!found || span < 1 || span > 720) { rejected.push(`${title}: that time can't be logged.`); continue; }
+      const logged: PlanBlock = { id: `proposal:${crypto.randomUUID()}`, title, subject: p.subject.trim(), time: `${p.start}–${p.end}`, minutes: span, color: 'blue', state: 'Proposal', day: found.offset, done: true, note: `Already done · records ${span} min of study` };
+      const cover = coverFor(p.covers, title, undefined, true);
+      if (cover.coverIds) { logged.coverIds = cover.coverIds; logged.note = withNote(logged.note, `marks ${cover.note?.replace('Covers ', '')} read`); }
+      proposed.push(logged);
+      continue;
+    }
     // Work for a day with a length but no times is placed by the app; "anytime" stays a to-do.
     const length = lengthOf(p.minutes);
     const auto = !timed && p.anytime !== true && !!length && typeof p.date === 'string';
@@ -555,6 +579,15 @@ export async function applyProposal(userId: string, origin: Date, block: PlanBlo
         await linkItems(userId, next.map(i => i.id), todoId);
       }
     }
+  } else if (block.done) {
+    const todoId = await savePlanBlock(userId, origin, { ...block, state: 'Completed' }, fresh);
+    const [start, end] = block.time.split('–');
+    const from = new Date(`${localDate(dateAt(origin, block.day))}T${start}:00`);
+    const subject = storage.getSubjects().find(sn => sn.name.toLowerCase() === block.subject.toLowerCase());
+    if (subject) await storage.saveTimerSession({ id: crypto.randomUUID(), subjectId: subject.id, task: block.title, startTime: from.toISOString(), endTime: new Date(from.getTime() + spanMinutes(start, end) * 60000).toISOString(), durationSeconds: spanMinutes(start, end) * 60 }, subject.name);
+    const read = stillOpen(block.coverIds);
+    await linkItems(userId, read.map(i => i.id), todoId);
+    await markDone(userId, read.map(i => i.id));
   } else {
     if (block.time) validateProposal(block, fresh, origin, storage.getSomaSettings(), true, true, false);
     checkExtra(block, fresh, origin);
