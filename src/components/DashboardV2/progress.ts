@@ -1,3 +1,4 @@
+import { rangeOf } from '../../lib/clockRange';
 export type ProgressItem = { minutes: number; actualSeconds?: number; state: string };
 export function progressSegments<T extends ProgressItem & {subject: string; color: string}>(items: T[]) {
   const hasSchedule = items.some(item => item.minutes > 0);
@@ -18,11 +19,10 @@ export function progressSegments<T extends ProgressItem & {subject: string; colo
   return [...groups.values()].map(group=>({...group,total,fill:group.weight ? Math.min(1,group.credited/group.weight) : 0,hasSchedule}));
 }
 export function overlapGroups<T extends {time: string}>(items: T[]) {
-  const minutes = (s: string) => s.split(':').reduce((h,m) => h*60+Number(m),0);
   const sorted = items.filter(b=>b.time).slice().sort((a,b)=>a.time.localeCompare(b.time));
   const groups: {items:T[];start:number;end:number}[] = [];
   for (const item of sorted) {
-    const [start,end] = item.time.split('–').map(minutes);
+    const [start,end] = rangeOf(item.time);
     const last = groups[groups.length-1];
     if (last && start < last.end) { last.items.push(item); last.end=Math.max(last.end,end); }
     else groups.push({items:[item],start,end});

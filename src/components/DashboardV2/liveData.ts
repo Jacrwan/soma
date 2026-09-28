@@ -5,6 +5,7 @@ import type { Subject, Todo, TodoSession, GoogleCalendarEvent } from '../../type
 import { asTodoKind } from '../../types';
 import type { PlanBlock } from './PlanEditor';
 import { loadCourseItems, coveredBy, type CourseItem } from '../../lib/courseItems';
+import { rangeOf, spanMinutes } from '../../lib/clockRange';
 
 export type LiveBlock = PlanBlock & { todoId?: string; sessionId?: string; subjectId?: string; legacyId?: string };
 export type History = { id:string; subject_id:string; task_text:string; duration_seconds:number; date:string; start_time?:string; end_time?:string };
@@ -42,7 +43,7 @@ export async function readPlan(userId:string,origin:Date,startDay=0,days=7):Prom
    const end=session?.endTime ? new Date(session.endTime) : null;
    const minutes=start && end ? Math.max(0,Math.round((end.getTime()-start.getTime())/60000)) : 0;
    const external=subject?.name===commitmentSubject;
-   blocks.push({id:session?.id??todo.id,todoId:todo.id,sessionId:session?.id,subjectId:todo.subjectId,title:todo.text,subject:external ? 'Personal commitment' : subject?.name??'Personal',time:start && end ? `${timeLabel(start)}–${localDate(end)!==date ? '23:59' : timeLabel(end)}` : '',minutes,color:external ? 'neutral' : color(todo.subjectId),state:todo.status==='done' ? 'Completed' : todo.status==='in_progress' ? 'Partially completed' : 'Planned',day,external,manual:external});
+   blocks.push({id:session?.id??todo.id,todoId:todo.id,sessionId:session?.id,subjectId:todo.subjectId,title:todo.text,subject:external ? 'Personal commitment' : subject?.name??'Personal',time:start && end ? `${timeLabel(start)}–${localDate(end)!==date && end.getTime()-start.getTime()>=86400000 ? '23:59' : timeLabel(end)}` : '',minutes,color:external ? 'neutral' : color(todo.subjectId),state:todo.status==='done' ? 'Completed' : todo.status==='in_progress' ? 'Partially completed' : 'Planned',day,external,manual:external});
   };
   for(const session of scheduled){const todo=todos.find(t=>t.id===session.todoId);if(todo)add(todo,session);}
   for(const todo of todos.filter(t=>t.date===date && !sessions.some(s=>s.todoId===t.id)))add(todo);
@@ -84,8 +85,7 @@ export async function readPlan(userId:string,origin:Date,startDay=0,days=7):Prom
   if(block.external || !block.todoId)continue;
   const covered=coveredBy(items,block.todoId);
   if(covered.length)block.covers=covered.map(i=>({id:i.id,label:i.label,...(i.doneAt ? {done:true} : {})}));
-  const end=block.time.split('–')[1];
-  const endsAt=end ? new Date(`${localDate(dateAt(origin,block.day))}T${end}:00`).getTime() : dateAt(origin,block.day+1).getTime();
+  const endsAt=block.time ? dateAt(origin,block.day).getTime()+rangeOf(block.time)[1]*60000 : dateAt(origin,block.day+1).getTime();
   if(endsAt<=now)block.ended=true;
  }
  return {blocks,subjects,todos,sessions,history,calendarError:google.error,items};
@@ -101,7 +101,7 @@ export async function savePlanBlock(userId:string,origin:Date,block:PlanBlock,sn
  await storage.saveTodo(todo);
  try {
   if(!block.time && original?.sessionId){const {error}=await supabase.from('todo_sessions').delete().eq('id',original.sessionId).eq('user_id',userId);if(error)throw new Error(error.message);}
-  if(block.time){const [start,end]=block.time.split('–');const date=localDate(dateAt(origin,block.day));const existing=snapshot.sessions.find(s=>s.id===original?.sessionId);const unchanged=existing && original?.time===block.time;await checkedWrite('todo_sessions',{id:original?.sessionId??crypto.randomUUID(),user_id:userId,todo_id:todo.id,date:unchanged ? existing.date : date,start_time:unchanged ? existing.startTime : new Date(`${date}T${start}:00`).toISOString(),end_time:unchanged ? existing.endTime : new Date(`${date}T${end}:00`).toISOString()});}
+  if(block.time){const [start,end]=block.time.split('–');const date=localDate(dateAt(origin,block.day));const existing=snapshot.sessions.find(s=>s.id===original?.sessionId);const unchanged=existing && original?.time===block.time;await checkedWrite('todo_sessions',{id:original?.sessionId??crypto.randomUUID(),user_id:userId,todo_id:todo.id,date:unchanged ? existing.date : date,start_time:unchanged ? existing.startTime : new Date(`${date}T${start}:00`).toISOString(),end_time:unchanged ? existing.endTime : new Date(new Date(`${date}T${start}:00`).getTime()+spanMinutes(start,end)*60000).toISOString()});}
  }catch(error){
   if(!previous){const {error:cleanup}=await supabase.from('todos').delete().eq('id',todo.id).eq('user_id',userId);if(cleanup)throw new Error('The task saved, but its time did not. Open Day View to schedule it before trying again.');}
   else throw new Error('Task details saved, but the time change failed. Your previous schedule remains. Please retry.');

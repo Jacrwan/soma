@@ -2,7 +2,7 @@ import type { Snapshot } from '../components/DashboardV2/liveData';
 import type { PlanBlock } from '../components/DashboardV2/PlanEditor';
 import type { SomaSettings } from './storage';
 import { formatClock } from './timeFormat';
-const minuteValue=(s:string)=>{const [h,m]=s.split(':').map(Number);return h*60+m;};
+import { clockMinutes as minuteValue, clockOf, rangeOf, spanMinutes, windowOf } from './clockRange';
 const dateAt=(origin:Date,day:number)=>{const d=new Date(origin);d.setDate(d.getDate()+day);return d;};
 const localDate=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 /**
@@ -26,18 +26,21 @@ export function validateProposal(block:PlanBlock,snapshot:Snapshot,origin:Date,s
  if(snapshot.calendarError)throw new Error(snapshot.calendarError);
  const [start,end]=block.time.split('–');
  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(start??'') || !/^([01]\d|2[0-3]):[0-5]\d$/.test(end??''))throw new Error('Soma returned an invalid time. Ask for another proposal.');
- const from=minuteValue(start),to=minuteValue(end),date=dateAt(origin,block.day);
- if(to<=from || to-from>240)throw new Error('Study proposals must be between 1 minute and 4 hours.');
+ // An end before the start runs past midnight: 23:30–01:00 is 90 minutes.
+ const span=spanMinutes(start,end),from=minuteValue(start),to=from+span,date=dateAt(origin,block.day);
+ if(span<1 || span>240)throw new Error('Study proposals must be between 1 minute and 4 hours.');
  if(!allowPastStart && new Date(`${localDate(date)}T${start}:00`).getTime()<Date.now()-START_GRACE_MS)throw new Error('That start time has passed. Ask Soma for a new time.');
- const starts=new Date(`${localDate(date)}T${start}:00`),ends=new Date(`${localDate(date)}T${end}:00`);
+ const starts=new Date(`${localDate(date)}T${start}:00`),ends=new Date(starts.getTime()+span*60000);
  if(snapshot.sessions.some(s=>s.startTime && s.endTime && new Date(s.startTime)<ends && new Date(s.endTime)>starts))throw new Error('That time overlaps a scheduled session. Ask Soma for another time.');
- const overlapping=snapshot.blocks.filter(b=>b.day===block.day && b.time && b.id!==block.id && minuteValue(b.time.split('–')[0])<to && minuteValue(b.time.split('–')[1])>from);
+ // Compared across days, so a block running past midnight meets the next morning's.
+ const at=block.day*1440,overlapping=snapshot.blocks.filter(b=>{if(!b.time || b.id===block.id)return false;const [f,t]=rangeOf(b.time);return b.day*1440+f<at+to && b.day*1440+t>at+from;});
  const commitments=overlapping.filter(b=>b.external && !b.manual);
  const own=overlapping.filter(b=>!(b.external && !b.manual));
  if(own.length)throw new Error(`That time overlaps ${own[0].title}. Ask Soma for another time.`);
  if(commitments.length && !allowCommitmentOverlap)throw new Error('That time overlaps your current plan. Ask Soma for another time.');
- const {start:open,end:close}=settings.studyWindow;
- if(from<minuteValue(open) || to>minuteValue(close))throw new Error(`That time is outside your study hours (${formatClock(open)}–${formatClock(close)}). Change them in Settings.`);
+ // Inside today's study hours, or in the after-midnight tail of yesterday's.
+ const [open,close]=windowOf(settings.studyWindow);
+ if(!(from>=open && to<=close) && !(from+1440>=open && to+1440<=close))throw new Error(`That time is outside your study hours (${formatClock(settings.studyWindow.start)}–${formatClock(settings.studyWindow.end)}). Change them in Settings.`);
  return commitments.map(b=>b.title);
 }
 
@@ -48,20 +51,20 @@ export function validateProposal(block:PlanBlock,snapshot:Snapshot,origin:Date,s
  * already passed.
  */
 export function freeTime(snapshot:Snapshot,origin:Date,settings:SomaSettings,now=new Date(),days=7,minMinutes=15):{date:string;free:string[]}[] {
- const hhmm=(m:number)=>`${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
- const out:{date:string;free:string[]}[]=[];
- for(let day=0;day<days;day++){
-  const date=dateAt(origin,day);
-  let open=minuteValue(settings.studyWindow.start);
-  const close=minuteValue(settings.studyWindow.end);
-  if(localDate(date)===localDate(now)){const n=now.getHours()*60+now.getMinutes();open=Math.max(open,Math.ceil(n/15)*15);}
-  const busy:[number,number][]=[];
-  for(const b of snapshot.blocks)if(b.day===day && b.time){const [a,z]=b.time.split('–');busy.push([minuteValue(a),minuteValue(z)]);}
-  busy.sort((a,b)=>a[0]-b[0]);
-  const free:string[]=[];let cursor=open;
-  for(const [a,z] of busy){if(z<=cursor)continue;if(a>=close)break;if(a-cursor>=minMinutes)free.push(`${hhmm(cursor)}–${hhmm(Math.min(a,close))}`);cursor=Math.max(cursor,z);}
-  if(close-cursor>=minMinutes)free.push(`${hhmm(cursor)}–${hhmm(close)}`);
-  out.push({date:localDate(date),free});
+ // Minutes counted from the first day's midnight, so study hours and blocks
+ // that run past midnight carry on into the next day instead of being cut off.
+ const base=new Date(origin);base.setHours(0,0,0,0);
+ const nowAt=Math.ceil((now.getTime()-base.getTime())/60000/15)*15;
+ const busy=snapshot.blocks.filter(b=>b.time).map(b=>{const [f,t]=rangeOf(b.time);return [b.day*1440+f,b.day*1440+t] as [number,number];}).sort((a,b)=>a[0]-b[0]);
+ const [open,close]=windowOf(settings.studyWindow);
+ const out=Array.from({length:days},(_,day)=>({date:localDate(dateAt(base,day)),free:[] as string[]}));
+ // Yesterday's hours may still be running after midnight.
+ for(let day=close>1440 ? -1 : 0;day<days;day++){
+  let cursor=Math.max(day*1440+open,nowAt);
+  const end=day*1440+close;
+  const add=(a:number,z:number)=>{if(z-a<minMinutes)return;const slot=out[Math.floor(a/1440)];if(slot)slot.free.push(`${clockOf(a)}–${clockOf(z)}`);};
+  for(const [a,z] of busy){if(z<=cursor)continue;if(a>=end)break;add(cursor,Math.min(a,end));cursor=Math.max(cursor,z);}
+  if(cursor<end)add(cursor,end);
  }
  return out;
 }
