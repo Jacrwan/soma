@@ -90,7 +90,10 @@ test('a date outside the next seven days is rejected with a clear reason', async
 });
 
 test('today still refuses blocks that already started', async ({ page }) => {
-  await setup(page, [{ title: 'Too early', subject: 'CS 61A', date: TODAY, start: '00:00', end: '00:01' }]);
+  // Midday, so 9 AM has plainly passed (late at night, an early-morning time means tonight).
+  const noon = new Date(); noon.setHours(12, 0, 0, 0);
+  await page.clock.install({ time: noon });
+  await setup(page, [{ title: 'Too early', subject: 'CS 61A', date: TODAY, start: '09:00', end: '09:30' }]);
   await page.goto('/dashboard');
   await ask(page, 'plan now');
   await expect(page.getByRole('log')).toContainText('start time has passed');

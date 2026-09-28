@@ -99,6 +99,7 @@ test('free time excludes calendar events, starts from now, and stays inside stud
   const settings = { studyWindow: { start: '08:00', end: '22:00' } } as never;
   const [today, tomorrow] = freeTime(snapshot, origin, settings, now);
   // 12:35 rounds up to 12:45 — nothing before now, nothing inside a class.
-  expect(today.free).toEqual(['12:59–14:00', '14:59–22:00']);
+  // A class ending at :59 frees the next round five minutes, not 12:59.
+  expect(today.free).toEqual(['13:00–14:00', '15:00–22:00']);
   expect(tomorrow.free).toEqual(['08:00–22:00']);
 });

@@ -1,0 +1,125 @@
+import { test, expect, type Page } from '@playwright/test';
+
+// Reported: "the whole AI scheduler loses purpose if I have to tell it exactly
+// when to schedule stuff". Soma chose clock times itself and put blocks on top
+// of classes, at 10:59, or in the past. Now it names the day, length and any
+// bounds, and the app puts the work in the first open slot.
+const account = { id: '11111111-1111-4111-8111-111111111111', email: 'student@example.com', aud: 'authenticated', role: 'authenticated', created_at: '2025-01-01T00:00:00Z', app_metadata: {}, user_metadata: {} };
+const key = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const offset = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n); return d; };
+const at = (n: number, t: string) => { const d = offset(n); const [h, m] = t.split(':').map(Number); d.setHours(h, m, 0, 0); return d.toISOString(); };
+const TOMORROW = key(offset(1));
+type Row = Record<string, unknown>;
+
+// Tomorrow: a lecture 10:00–10:59 and a discussion 16:00–17:59, like the report.
+const events = [
+  { id: 'lec', summary: 'Comparative Literature Lecture', start: { dateTime: at(1, '10:00') }, end: { dateTime: at(1, '10:59') }, source: { connectionId: 'c', calendarId: 'k' } },
+  { id: 'disc', summary: 'Physics 5A Discussion', start: { dateTime: at(1, '16:00') }, end: { dateTime: at(1, '17:59') }, source: { connectionId: 'c', calendarId: 'k' } },
+];
+
+async function setup(page: Page, reply: unknown) {
+  const db: Record<string, Row[]> = {
+    subjects: [{ id: 'phys', user_id: account.id, name: 'Physics 5A', color: '#ab47bc', archived: false }],
+    todos: [{ id: 't-hw', user_id: account.id, text: 'Physics HW 4', subject_id: 'phys', status: 'nothing', date: TOMORROW }],
+    todo_sessions: [{ id: 's-hw', user_id: account.id, todo_id: 't-hw', date: TOMORROW, start_time: at(1, '20:00'), end_time: at(1, '21:00') }],
+    timer_sessions: [],
+  };
+  const state = { db, prompt: '' };
+  // Nine in the morning today, so all of tomorrow is ahead whatever the real clock says.
+  const morning = new Date(); morning.setHours(9, 0, 0, 0);
+  await page.clock.install({ time: morning });
+  await page.addInitScript(a => {
+    localStorage.setItem('sb-soma-regression-auth-token', JSON.stringify({ access_token: 't', refresh_token: 'r', token_type: 'bearer', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, user: a }));
+    localStorage.setItem('soma_settings', JSON.stringify({ onboardingCompleted: true, theme: 'light', studyWindow: { start: '08:00', end: '23:00' } }));
+  }, account);
+  await page.route('https://soma-regression.supabase.co/**', route => {
+    const req = route.request(), url = new URL(req.url()), table = url.pathname.split('/').pop()!;
+    if (url.pathname.includes('/auth/v1/')) return route.fulfill({ json: account });
+    if (table === 'settings') return route.fulfill({ json: { data: { onboardingCompleted: true, theme: 'light' } } });
+    const rows = db[table];
+    if (req.method() === 'POST' && rows) {
+      const b = req.postDataJSON();
+      for (const r of (Array.isArray(b) ? b : [b]) as Row[]) { const i = rows.findIndex(x => x.id === r.id); if (i < 0) rows.push(r); else rows[i] = { ...rows[i], ...r }; }
+      return route.fulfill({ json: null });
+    }
+    if (req.method() !== 'GET') return route.fulfill({ json: null });
+    let out = rows ?? [];
+    for (const k of ['id', 'todo_id']) { const f = url.searchParams.get(k); if (f?.startsWith('eq.')) out = out.filter(r => String(r[k]) === f.slice(3)); }
+    return route.fulfill({ json: req.headers().accept?.includes('vnd.pgrst.object') ? out[0] ?? null : out });
+  });
+  await page.route('**/api/stripe', r => r.fulfill({ json: { status: 'active' } }));
+  await page.route('**/api/memory', r => r.fulfill({ json: { revision: 0, enabled: true, entries: [] } }));
+  await page.route('**/api/google-calendar-events', r => r.fulfill({ json: { events, incomplete: false } }));
+  await page.route('**/api/chat', route => {
+    const body = route.request().postDataJSON();
+    state.prompt = `${body.systemPrompt}\n${body.context ?? ''}`;
+    return route.fulfill({ json: { content: [{ text: JSON.stringify(reply) }] } });
+  });
+  await page.goto('/dashboard');
+  await page.getByLabel('Next seven days').getByRole('button').nth(1).click();
+  await expect(page.getByText('Physics HW 4')).toBeVisible();
+  return state;
+}
+async function ask(page: Page, text: string) {
+  await page.getByLabel('What do you need to work on?').fill(text);
+  await page.getByRole('button', { name: 'Send to Soma' }).click();
+}
+const saved = (db: Record<string, Row[]>, title: string) => {
+  const todo = db.todos.find(t => t.text === title)!;
+  const s = db.todo_sessions.find(x => x.todo_id === todo.id)!;
+  return [s.start_time, s.end_time];
+};
+
+test('work given a day and a length is placed in order, around classes, on round times', async ({ page }) => {
+  const state = await setup(page, { reply: 'Reading first, then the problem set.', blocks: [
+    { title: 'Physics reading 5.1–5.4', subject: 'Physics 5A', date: TOMORROW, minutes: 60, after: '09:00' },
+    { title: 'Physics problem set', subject: 'Physics 5A', date: TOMORROW, minutes: 90, after: '09:00' },
+  ] });
+  await ask(page, 'plan the reading and then the problem set tomorrow');
+  const log = page.getByRole('log');
+  await expect(log).toContainText('Times from your open slots');
+  await expect(log).not.toContainText("Couldn't place");
+  expect(state.prompt).toContain('the app picks the clock time');
+  await page.getByRole('button', { name: /^Accept all/ }).click();
+  await expect.poll(() => state.db.todo_sessions.length).toBe(3);
+  // 9:00–10:00 fits before the lecture; 90 minutes doesn't, so it goes after it
+  // at 11:00, not 10:59.
+  expect(saved(state.db, 'Physics reading 5.1–5.4')).toEqual([at(1, '09:00'), at(1, '10:00')]);
+  expect(saved(state.db, 'Physics problem set')).toEqual([at(1, '11:00'), at(1, '12:30')]);
+});
+
+test('"before the discussion" keeps it before the discussion', async ({ page }) => {
+  const state = await setup(page, { reply: 'Before discussion.', blocks: [
+    { title: 'Physics reading 5.1–5.4', subject: 'Physics 5A', date: TOMORROW, minutes: 60, after: '14:30', before: '16:00' },
+  ] });
+  await ask(page, 'reading tomorrow afternoon before discussion');
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => state.db.todo_sessions.length).toBe(2);
+  expect(saved(state.db, 'Physics reading 5.1–5.4')).toEqual([at(1, '14:30'), at(1, '15:30')]);
+});
+
+test('a move without times is placed by the app too', async ({ page }) => {
+  const state = await setup(page, { reply: 'Moved it earlier.', changes: [{ action: 'move', id: 's-hw', date: TOMORROW, after: '12:00' }] });
+  await ask(page, 'do the homework earlier tomorrow');
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => state.db.todo_sessions.find(s => s.id === 's-hw')!.start_time).toBe(at(1, '12:00'));
+  expect(state.db.todo_sessions.find(s => s.id === 's-hw')!.end_time).toBe(at(1, '13:00'));
+});
+
+test('a stated time on top of a class is refused unless the student is skipping it', async ({ page }) => {
+  await setup(page, { reply: 'There.', blocks: [{ title: 'Physics reading', subject: 'Physics 5A', date: TOMORROW, start: '16:30', end: '17:30' }] });
+  await ask(page, 'reading tomorrow at 4:30');
+  await expect(page.getByRole('log')).toContainText('during Physics 5A Discussion on your calendar');
+});
+
+test('skipping the class allows it', async ({ page }) => {
+  await setup(page, { reply: 'Over discussion.', blocks: [{ title: 'Physics reading', subject: 'Physics 5A', date: TOMORROW, start: '16:30', end: '17:30' }] });
+  await ask(page, "i'm skipping discussion tomorrow, read then");
+  await expect(page.getByRole('log')).not.toContainText("Couldn't place");
+});
+
+test('when nothing fits, it says so instead of guessing', async ({ page }) => {
+  await setup(page, { reply: 'Trying.', blocks: [{ title: 'Long essay', subject: 'Physics 5A', date: TOMORROW, minutes: 240, after: '13:00', before: '16:00' }] });
+  await ask(page, 'essay tomorrow afternoon before discussion');
+  await expect(page.getByRole('log')).toContainText("no open 240-minute slot");
+});

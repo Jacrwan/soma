@@ -39,7 +39,7 @@ export function validateProposal(block:PlanBlock,snapshot:Snapshot,origin:Date,s
  const commitments=overlapping.filter(b=>b.external && !b.manual);
  const own=overlapping.filter(b=>!(b.external && !b.manual));
  if(own.length)throw new Error(`That time overlaps ${own[0].title}. Ask Soma for another time.`);
- if(commitments.length && !allowCommitmentOverlap)throw new Error('That time overlaps your current plan. Ask Soma for another time.');
+ if(commitments.length && !allowCommitmentOverlap)throw new Error(`That time is during ${commitments[0].title} on your calendar. Ask Soma for another time, or say you're skipping it.`);
  // Inside today's study hours, or in the after-midnight tail of yesterday's.
  const [open,close]=windowOf(settings.studyWindow);
  if(checkStudyHours && !(from>=open && to<=close) && !(from+1440>=open && to+1440<=close))throw new Error(`That time is outside your study hours (${formatClock(settings.studyWindow.start)}–${formatClock(settings.studyWindow.end)}). Change them in Settings.`);
@@ -65,7 +65,8 @@ export function freeTime(snapshot:Snapshot,origin:Date,settings:SomaSettings,now
   let cursor=Math.max(day*1440+open,nowAt);
   const end=day*1440+close;
   const add=(a:number,z:number)=>{if(z-a<minMinutes)return;const slot=out[Math.floor(a/1440)];if(slot)slot.free.push(`${clockOf(a)}–${clockOf(z)}`);};
-  for(const [a,z] of busy){if(z<=cursor)continue;if(a>=end)break;add(cursor,Math.min(a,end));cursor=Math.max(cursor,z);}
+  // Classes end at :59; free time starts at the next round five minutes.
+  for(const [a,z] of busy){if(z<=cursor)continue;if(a>=end)break;add(cursor,Math.min(a,end));cursor=Math.max(cursor,Math.ceil(z/5)*5);}
   if(cursor<end)add(cursor,end);
  }
  return out;
