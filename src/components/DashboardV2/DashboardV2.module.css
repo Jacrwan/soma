@@ -286,3 +286,10 @@
 .howFar{flex-basis:100%;order:1;display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:11px;color:var(--text-secondary);padding-top:8px;margin-top:2px;border-top:1px solid color-mix(in oklch,var(--tone),transparent 80%)}
 .howFar>span{margin-right:4px;color:var(--text-primary)}
 .page .howFar button{box-sizing:border-box;height:34px;min-height:34px;padding:0 10px;font-size:10px;line-height:1;background:transparent;border-color:color-mix(in oklch,var(--tone),transparent 70%)}
+/* Focus, "Stopped at…" and the check sit in one row instead of stacking. */
+.actions.actionsWide{max-width:none;flex-wrap:nowrap;align-items:center}
+@media(max-width:780px){.actions.actionsWide{flex-wrap:wrap;justify-content:flex-end}}
+/* When the card is narrow the controls drop below the title, not squeeze it. */
+.block:has(> .actions.actionsWide){flex-wrap:wrap}
+.block:has(> .actions.actionsWide) > .blockBody{min-width:180px}
+.block:has(> .actions.actionsWide) > .actions{margin-left:auto}
