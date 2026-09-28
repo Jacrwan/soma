@@ -17,7 +17,7 @@ const events = [
   { id: 'disc', summary: 'Physics 5A Discussion', start: { dateTime: at(1, '16:00') }, end: { dateTime: at(1, '17:59') }, source: { connectionId: 'c', calendarId: 'k' } },
 ];
 
-async function setup(page: Page, reply: unknown) {
+async function setup(page: Page, reply: unknown, more: typeof events = []) {
   const db: Record<string, Row[]> = {
     subjects: [{ id: 'phys', user_id: account.id, name: 'Physics 5A', color: '#ab47bc', archived: false }],
     todos: [{ id: 't-hw', user_id: account.id, text: 'Physics HW 4', subject_id: 'phys', status: 'nothing', date: TOMORROW }],
@@ -49,7 +49,7 @@ async function setup(page: Page, reply: unknown) {
   });
   await page.route('**/api/stripe', r => r.fulfill({ json: { status: 'active' } }));
   await page.route('**/api/memory', r => r.fulfill({ json: { revision: 0, enabled: true, entries: [] } }));
-  await page.route('**/api/google-calendar-events', r => r.fulfill({ json: { events, incomplete: false } }));
+  await page.route('**/api/google-calendar-events', r => r.fulfill({ json: { events: [...events, ...more], incomplete: false } }));
   await page.route('**/api/chat', route => {
     const body = route.request().postDataJSON();
     state.prompt = `${body.systemPrompt}\n${body.context ?? ''}`;
@@ -122,4 +122,29 @@ test('when nothing fits, it says so instead of guessing', async ({ page }) => {
   await setup(page, { reply: 'Trying.', blocks: [{ title: 'Long essay', subject: 'Physics 5A', date: TOMORROW, minutes: 240, after: '13:00', before: '16:00' }] });
   await ask(page, 'essay tomorrow afternoon before discussion');
   await expect(page.getByRole('log')).toContainText("no open 240-minute slot");
+});
+
+// The reported Monday: CS lecture ends 1 PM, Math discussion 2–3 PM, Physics discussion at 4 PM.
+const math = [{ id: 'math', summary: 'MATH 53 Discussion', start: { dateTime: at(1, '14:00') }, end: { dateTime: at(1, '14:59') }, source: { connectionId: 'c', calendarId: 'k' } }];
+
+test('a task too long for one gap says which gaps are open', async ({ page }) => {
+  await setup(page, { reply: 'Trying.', changes: [{ action: 'move', id: 's-hw', date: TOMORROW, minutes: 76, after: '13:00', before: '16:00' }] }, math);
+  await ask(page, 'homework in the gaps before discussion');
+  const log = page.getByRole('log');
+  await expect(log).toContainText('no open 76-minute slot');
+  await expect(log).toContainText('Open then: 1:00 PM–2:00 PM (60 min), 3:00 PM–4:00 PM (60 min)');
+});
+
+test('"in the gaps" splits one task across them, and Accept saves both sessions', async ({ page }) => {
+  const state = await setup(page, { reply: 'Split across your gaps.', changes: [{ action: 'move', id: 's-hw', date: TOMORROW, minutes: 76, after: '13:00', before: '16:00', split: true }] }, math);
+  await ask(page, 'do the homework in the gaps between classes before discussion');
+  const log = page.getByRole('log');
+  await expect(log).not.toContainText("Couldn't place");
+  await expect(log).toContainText('Physics HW 4: Mon 1:00 PM–2:00 PM, Mon 3:00 PM–3:16 PM'.replace(/Mon/g, new Date(`${TOMORROW}T12:00`).toLocaleDateString('en-US', { weekday: 'short' })));
+  expect(state.prompt).toContain('"split":true');
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => state.db.todo_sessions.filter(s => s.todo_id === 't-hw').length).toBe(2);
+  const sessions = state.db.todo_sessions.filter(s => s.todo_id === 't-hw').map(s => [s.start_time, s.end_time]).sort();
+  expect(sessions).toEqual([[at(1, '13:00'), at(1, '14:00')], [at(1, '15:00'), at(1, '15:16')]]);
+  expect(state.db.todos.filter(t => t.text === 'Physics HW 4')).toHaveLength(1);   // one task, two sessions
 });
