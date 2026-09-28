@@ -21,8 +21,10 @@ const START_GRACE_MS=15*60*1000;
  * study sessions are always refused. With allowPastStart, the start may be in
  * the past: used when the student accepts a proposal, where the time they spent
  * reading it must not invalidate the block they are deliberately confirming.
+ * checkStudyHours is off on Accept too: the hours were checked when Soma
+ * proposed it, possibly stretched because the student said they'd stay up.
  */
-export function validateProposal(block:PlanBlock,snapshot:Snapshot,origin:Date,settings:SomaSettings,allowCommitmentOverlap=false,allowPastStart=false):string[] {
+export function validateProposal(block:PlanBlock,snapshot:Snapshot,origin:Date,settings:SomaSettings,allowCommitmentOverlap=false,allowPastStart=false,checkStudyHours=true):string[] {
  if(snapshot.calendarError)throw new Error(snapshot.calendarError);
  const [start,end]=block.time.split('–');
  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(start??'') || !/^([01]\d|2[0-3]):[0-5]\d$/.test(end??''))throw new Error('Soma returned an invalid time. Ask for another proposal.');
@@ -40,7 +42,7 @@ export function validateProposal(block:PlanBlock,snapshot:Snapshot,origin:Date,s
  if(commitments.length && !allowCommitmentOverlap)throw new Error('That time overlaps your current plan. Ask Soma for another time.');
  // Inside today's study hours, or in the after-midnight tail of yesterday's.
  const [open,close]=windowOf(settings.studyWindow);
- if(!(from>=open && to<=close) && !(from+1440>=open && to+1440<=close))throw new Error(`That time is outside your study hours (${formatClock(settings.studyWindow.start)}–${formatClock(settings.studyWindow.end)}). Change them in Settings.`);
+ if(checkStudyHours && !(from>=open && to<=close) && !(from+1440>=open && to+1440<=close))throw new Error(`That time is outside your study hours (${formatClock(settings.studyWindow.start)}–${formatClock(settings.studyWindow.end)}). Change them in Settings.`);
  return commitments.map(b=>b.title);
 }
 

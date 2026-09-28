@@ -48,7 +48,7 @@ const at = (n: number, t: string) => { const d = offset(n); const [h, m] = t.spl
 const TOMORROW = key(offset(1));
 type Row = Record<string, unknown>;
 
-async function setup(page: Page, reply: unknown) {
+async function setup(page: Page, reply: unknown, studyWindow = { start: '08:00', end: '02:00' }) {
   const db: Record<string, Row[]> = {
     subjects: [{ id: 'phys', user_id: account.id, name: 'Physics 5A', color: '#ab47bc', archived: false }],
     todos: [{ id: 't-hw', user_id: account.id, text: 'Physics HW 4', subject_id: 'phys', status: 'nothing', date: TOMORROW }],
@@ -56,11 +56,10 @@ async function setup(page: Page, reply: unknown) {
     timer_sessions: [],
   };
   const state = { db, prompt: '' };
-  await page.addInitScript(a => {
+  await page.addInitScript(([a, w]) => {
     localStorage.setItem('sb-soma-regression-auth-token', JSON.stringify({ access_token: 't', refresh_token: 'r', token_type: 'bearer', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, user: a }));
-    // Study hours that run until 2 AM.
-    localStorage.setItem('soma_settings', JSON.stringify({ onboardingCompleted: true, theme: 'light', studyWindow: { start: '08:00', end: '02:00' } }));
-  }, account);
+    localStorage.setItem('soma_settings', JSON.stringify({ onboardingCompleted: true, theme: 'light', studyWindow: w }));
+  }, [account, studyWindow] as const);
   await page.route('https://soma-regression.supabase.co/**', route => {
     const req = route.request(), url = new URL(req.url()), table = url.pathname.split('/').pop()!;
     if (url.pathname.includes('/auth/v1/')) return route.fulfill({ json: account });
@@ -116,4 +115,25 @@ test('the block editor saves an overnight block instead of refusing it', async (
   const saved = state.db.todo_sessions.find(s => s.id === 's-hw')!;
   expect(saved.start_time).toBe(at(1, '23:00'));
   expect(saved.end_time).toBe(at(2, '01:30'));
+});
+
+test('"I can study till 3" lets that reply go past study hours, and Accept keeps it', async ({ page }) => {
+  const late = { reply: 'Tonight only.', studyUntil: '03:00', blocks: [{ title: 'Physics reading 4.2–4.9', subject: 'Physics 5A', date: TOMORROW, start: '23:30', end: '01:00' }] };
+  const state = await setup(page, late, { start: '08:00', end: '23:00' });
+  await page.getByLabel('What do you need to work on?').fill('i can study till 3');
+  await page.getByRole('button', { name: 'Send to Soma' }).click();
+  await expect(page.getByRole('log')).toContainText('Tonight only.');
+  await expect(page.getByRole('log')).not.toContainText("Couldn't place");
+  await expect(page.getByText(/Past your usual study hours/).first()).toBeVisible();
+  expect(state.prompt).toContain('"studyHours":"08:00–23:00"');
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => state.db.todo_sessions.length).toBe(2);
+  expect(state.db.todo_sessions.find(s => s.id !== 's-hw')!.end_time).toBe(at(2, '01:00'));
+});
+
+test('without the student saying so, study hours still hold', async ({ page }) => {
+  await setup(page, { reply: 'Here.', blocks: [{ title: 'Physics reading 4.2–4.9', subject: 'Physics 5A', date: TOMORROW, start: '23:30', end: '01:00' }] }, { start: '08:00', end: '23:00' });
+  await page.getByLabel('What do you need to work on?').fill('plan the reading tomorrow night');
+  await page.getByRole('button', { name: 'Send to Soma' }).click();
+  await expect(page.getByRole('log')).toContainText('outside your study hours');
 });
