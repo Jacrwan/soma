@@ -23,6 +23,11 @@ interface StudySpan {
   start: Date;
   end: Date;
   blockId?: string;
+  /** The recorded sessions drawn here, and every local block merged in, so a
+   *  delete removes the time itself, not just the calendar's copy of it. */
+  sessionIds: string[];
+  blockIds: string[];
+  studiedSeconds: number;
 }
 
 /**
@@ -73,6 +78,7 @@ function studySpans(sessions: TimerSession[], blocks: TimeBlock[], sessionsLoade
         task: block.task,
         start: new Date(Math.min(...mine.map(s => ms(s.startTime)))),
         end: new Date(Math.max(...mine.map(sessionEnd))),
+        sessionIds: [], blockIds: [block.id], studiedSeconds: 0,
       });
       continue;
     }
@@ -84,6 +90,7 @@ function studySpans(sessions: TimerSession[], blocks: TimeBlock[], sessionsLoade
       task: block.task,
       start: new Date(block.startTime),
       end: new Date(block.endTime),
+      sessionIds: [], blockIds: [block.id], studiedSeconds: 0,
     });
   }
 
@@ -95,6 +102,7 @@ function studySpans(sessions: TimerSession[], blocks: TimeBlock[], sessionsLoade
         task: s.task,
         start: new Date(s.startTime),
         end: new Date(sessionEnd(s)),
+        sessionIds: [s.id], blockIds: [], studiedSeconds: Math.max(0, s.durationSeconds || 0),
       });
     }
   }
@@ -105,9 +113,12 @@ function studySpans(sessions: TimerSession[], blocks: TimeBlock[], sessionsLoade
   for (const span of [...candidates].sort((a, b) => +a.start - +b.start)) {
     const hit = merged.find(m =>
       m.subjectId === span.subjectId && +span.start < +m.end && +span.end > +m.start);
-    if (!hit) { merged.push({ ...span }); continue; }
+    if (!hit) { merged.push({ ...span, sessionIds: [...span.sessionIds], blockIds: [...span.blockIds] }); continue; }
     if (+span.start < +hit.start) hit.start = span.start;
     if (+span.end > +hit.end) hit.end = span.end;
+    hit.sessionIds.push(...span.sessionIds.filter(id => !hit.sessionIds.includes(id)));
+    hit.blockIds.push(...span.blockIds.filter(id => !hit.blockIds.includes(id)));
+    hit.studiedSeconds += span.studiedSeconds;
     // Keep whichever record can be opened, and a name over none.
     if (!hit.blockId && span.blockId) { hit.blockId = span.blockId; hit.id = span.id; }
     if (!hit.task && span.task) hit.task = span.task;
@@ -158,6 +169,7 @@ interface PositionedEvent {
   left: number;
   width: number;
   block?: TimeBlock;
+  span?: StudySpan;
   gcalEvent?: GoogleCalendarEvent;
 }
 
@@ -269,7 +281,8 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     const now = new Date();
     return now.getHours() * 60 + now.getMinutes();
   });
-  const [weekBlockModal, setWeekBlockModal] = useState<{ block: TimeBlock; subject: Subject | undefined } | null>(null);
+  const [weekBlockModal, setWeekBlockModal] = useState<{ block: TimeBlock; subject: Subject | undefined; span?: StudySpan } | null>(null);
+  const [deleteError, setDeleteError] = useState('');
   const [weekBlockEditMode, setWeekBlockEditMode] = useState(false);
   const [weekBlockEditForm, setWeekBlockEditForm] = useState<WeekBlockEditForm>({
     task: '', startHour: 9, startMinute: 0, startAmPm: 'AM',
@@ -489,6 +502,36 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     setDataVersion(v => v + 1);
   }
 
+  /**
+   * Deleting recorded study time removes the sessions themselves. It used to
+   * remove only the calendar's local copy, so the span was redrawn from the
+   * sessions (now unclickable) and the dashboard still listed them.
+   */
+  async function deleteStudy(span: StudySpan) {
+    const minutes = Math.round(span.studiedSeconds / 60);
+    if (!window.confirm(`Delete ${minutes ? `${minutes} min of` : 'this'} recorded study time? This removes it everywhere, including Insights, for good.`)) return;
+    setDeleteError('');
+    try {
+      for (const id of span.sessionIds) await storage.deleteTimerSession(id);
+      storage.setTimeBlocks(storage.getTimeBlocks().filter(b => !span.blockIds.includes(b.id)));
+      setSessions(prev => prev.filter(s => !span.sessionIds.includes(s.id)));
+      setWeekBlockModal(null);
+      setWeekBlockEditMode(false);
+      setDataVersion(v => v + 1);
+    } catch {
+      setDeleteError('Could not delete all of it. Refresh and try again.');
+    }
+  }
+
+  function openStudy(block: TimeBlock | undefined, span: StudySpan | undefined) {
+    const subject = storage.getSubjects().find(s => s.id === (block?.subjectId ?? span?.subjectId));
+    // A span drawn only from sessions has no local block; show it all the same.
+    const shown: TimeBlock = block ?? { id: span!.id, subjectId: span!.subjectId, task: span!.task, startTime: span!.start.toISOString(), endTime: span!.end.toISOString(), source: 'manual' };
+    setDeleteError('');
+    setWeekBlockModal({ block: shown, subject, span });
+    setWeekBlockEditMode(false);
+  }
+
   // Month view chip data
   const chipsByDate = useMemo(() => {
     const map = new Map<string, Chip[]>();
@@ -549,6 +592,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
       startMin: number;
       endMin: number;
       block?: TimeBlock;
+      span?: StudySpan;
       gcalEvent?: GoogleCalendarEvent;
     }
 
@@ -577,6 +621,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
           startMin,
           endMin: endMin > startMin ? endMin : startMin + 30,
           block,
+          span,
         });
       }
     }
@@ -667,6 +712,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         left: colAssign[i] / numColsArr[i],
         width: 1 / numColsArr[i],
         block: ev.block,
+        span: ev.span,
         gcalEvent: ev.gcalEvent,
       })),
     };
@@ -1034,25 +1080,17 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                             background: ev.color,
                             borderColor: ev.borderColor,
                           }}
-                          tabIndex={ev.type === 'soma' && ev.block ? 0 : undefined}
-                          role={ev.type === 'soma' && ev.block ? 'button' : undefined}
+                          tabIndex={ev.type === 'soma' && (ev.block || ev.span) ? 0 : undefined}
+                          role={ev.type === 'soma' && (ev.block || ev.span) ? 'button' : undefined}
                           onClick={e => {
                             e.stopPropagation();
-                            if (ev.type === 'soma' && ev.block) {
-                              const subjects = storage.getSubjects();
-                              const subject = subjects.find(s => s.id === ev.block!.subjectId);
-                              setWeekBlockModal({ block: ev.block, subject });
-                              setWeekBlockEditMode(false);
-                            }
+                            if (ev.type === 'soma' && (ev.block || ev.span)) openStudy(ev.block, ev.span);
                           }}
                           onKeyDown={e => {
-                            if ((e.key === 'Enter' || e.key === ' ') && ev.type === 'soma' && ev.block) {
+                            if ((e.key === 'Enter' || e.key === ' ') && ev.type === 'soma' && (ev.block || ev.span)) {
                               e.preventDefault();
                               e.stopPropagation();
-                              const subjects = storage.getSubjects();
-                              const subject = subjects.find(s => s.id === ev.block!.subjectId);
-                              setWeekBlockModal({ block: ev.block, subject });
-                              setWeekBlockEditMode(false);
+                              openStudy(ev.block, ev.span);
                             }
                           }}
                           title={[ev.label, ev.sublabel].filter(Boolean).join(': ')}
@@ -1157,15 +1195,24 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                     </span>
                   </div>
                   <div className={styles.weekModalInfoRow}>
-                    <span className={styles.weekModalInfoLabel}>Duration</span>
+                    <span className={styles.weekModalInfoLabel}>{weekBlockModal.span?.sessionIds.length ? 'Studied' : 'Duration'}</span>
                     <span className={styles.weekModalInfoValue}>
-                      {fmtDuration(weekBlockModal.block.startTime, weekBlockModal.block.endTime)}
+                      {weekBlockModal.span?.sessionIds.length
+                        ? fmtDuration(new Date(0).toISOString(), new Date(weekBlockModal.span.studiedSeconds * 1000).toISOString())
+                        : fmtDuration(weekBlockModal.block.startTime, weekBlockModal.block.endTime)}
                     </span>
                   </div>
                 </div>
+                {weekBlockModal.span?.sessionIds.length ? (
+                  <p className={styles.weekModalNote}>Recorded study time. To correct the minutes, open the task on the dashboard.</p>
+                ) : null}
+                {deleteError && <p role="alert" className={styles.weekModalNote}>{deleteError}</p>}
                 <div className={styles.weekModalActions}>
-                  <button className={styles.weekModalEditBtn} onClick={() => openWeekBlockEdit(weekBlockModal.block)}>Edit</button>
-                  <button className={styles.weekModalDeleteBtn} onClick={() => deleteWeekBlock(weekBlockModal.block.id)}>Delete</button>
+                  {/* Editing the calendar's copy of a session never changed the session, so only plain blocks can be edited here. */}
+                  {!weekBlockModal.span?.sessionIds.length && weekBlockModal.span?.blockId && (
+                    <button className={styles.weekModalEditBtn} onClick={() => openWeekBlockEdit(weekBlockModal.block)}>Edit</button>
+                  )}
+                  <button className={styles.weekModalDeleteBtn} onClick={() => weekBlockModal.span?.sessionIds.length ? void deleteStudy(weekBlockModal.span) : deleteWeekBlock(weekBlockModal.block.id)}>Delete</button>
                 </div>
                 <button className={styles.weekModalCancel} onClick={() => setWeekBlockModal(null)}>Close</button>
               </>
