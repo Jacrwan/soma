@@ -592,7 +592,7 @@ export default function App() {
             onSwitchToToday={() => navigate('/dashboard')}
           />
         } />
-        <Route path="/ai"       element={<AITab onSwitchToToday={() => navigate('/dashboard')} />} />
+        <Route path="/ai"       element={<AITab />} />
         <Route path="/insights" element={<InsightsTab userId={user?.id ?? null} />} />
         <Route path="/settings" element={<SettingsTab />} />
         {/* Unknown app routes → dashboard */}

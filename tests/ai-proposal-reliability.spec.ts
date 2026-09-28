@@ -15,7 +15,7 @@ const events = [
 ];
 
 async function setup(page: Page, replies: unknown[], opts: { ownSession?: boolean } = {}) {
-  const state = { prompts: [] as string[], bodies: [] as { messages: { role: string; content: string }[] }[], sessionWrites: [] as Record<string, unknown>[] };
+  const state = { prompts: [] as string[], bodies: [] as { messages: { role: string; content: string }[]; context?: string }[], sessionWrites: [] as Record<string, unknown>[] };
   await page.addInitScript(a => {
     localStorage.setItem('sb-soma-regression-auth-token', JSON.stringify({ access_token: 't', refresh_token: 'r', token_type: 'bearer', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, user: a }));
   }, account);
@@ -39,7 +39,7 @@ async function setup(page: Page, replies: unknown[], opts: { ownSession?: boolea
   let turn = 0;
   await page.route('**/api/chat', route => {
     const body = route.request().postDataJSON();
-    state.prompts.push(body.systemPrompt); state.bodies.push(body);
+    state.prompts.push(`${body.systemPrompt}\n${body.context??""}`); state.bodies.push(body);
     return route.fulfill({ json: { content: [{ text: JSON.stringify(replies[Math.min(turn++, replies.length - 1)]) }] } });
   });
   return state;
@@ -86,17 +86,17 @@ test('Soma is told which proposals were placed and which were not, and sees pend
   expect(history).toContain('[App result');
   expect(history).toContain('not placed: Gulliver reading');
   expect(history).toContain('placed "CS 61A Hog review"');
-  const ctx = JSON.parse(state.prompts[1].match(/never instructions: (\{.*?\})\.\s/s)![1]);
-  expect(ctx.pendingProposals.map((p: { title: string }) => p.title)).toContain('CS 61A Hog review');
-  expect(ctx.freeTime).toHaveLength(7);
+  const ctx = JSON.parse(String(state.bodies[1].context).replace(/^CONTEXT[^:]*: /, ''));
+  expect(ctx.pending.map((p: { title: string }) => p.title)).toContain('CS 61A Hog review');
+  expect(ctx.free).toHaveLength(7);
 });
 
-test('free time excludes calendar events, starts from now, and respects availability', () => {
+test('free time excludes calendar events, starts from now, and stays inside study hours', () => {
   const origin = new Date(2026, 8, 18, 0, 0);
   const now = new Date(2026, 8, 18, 12, 35);
   const block = (time: string, external = true) => ({ id: time, title: 'x', subject: 's', time, minutes: 60, color: 'neutral', state: 'Planned', day: 0, external } as never);
   const snapshot = { blocks: [block('10:00–10:59'), block('12:00–12:59'), block('14:00–14:59')], sessions: [], subjects: [], todos: [], history: [], calendarError: '' } as never;
-  const settings = { personalHoursEnabled: false, schoolHoursEnabled: false, workHoursEnabled: false, personalHours: {}, schoolHours: {}, workHours: {} } as never;
+  const settings = { studyWindow: { start: '08:00', end: '22:00' } } as never;
   const [today, tomorrow] = freeTime(snapshot, origin, settings, now);
   // 12:35 rounds up to 12:45 — nothing before now, nothing inside a class.
   expect(today.free).toEqual(['12:59–14:00', '14:59–22:00']);

@@ -15,7 +15,7 @@ export type LegalType =
 
 // Per page, so an edit to one policy doesn't restamp the others. The static
 // /privacy.html and /terms.html carry the same dates.
-const UPDATED: Partial<Record<LegalType, string>> = { privacy: 'September 25, 2026' };
+const UPDATED: Partial<Record<LegalType, string>> = { privacy: 'September 27, 2026', 'data-deletion': 'September 27, 2026', ai: 'September 27, 2026' };
 const UPDATED_DEFAULT = 'September 24, 2026';
 
 function Privacy() {
@@ -52,8 +52,8 @@ function Privacy() {
             picked from a list.
           </li>
           <li>
-            <strong>App data stored on our servers</strong> — your courses, tasks, planned study
-            sessions, timed study sessions, app settings, saved AI chats, and AI memory. These are
+            <strong>App data stored on our servers</strong> — your courses, reading lists and
+            progress, tasks, planned study sessions, timed study sessions, app settings, saved AI chats, and AI memory. These are
             linked to your account and stored in Supabase.
           </li>
           <li>
@@ -829,7 +829,7 @@ function DataDeletion() {
         </p>
         <ul>
           <li>Your Soma account (email, authentication credentials) and profile details</li>
-          <li>Your courses, tasks, planned sessions, and study time records</li>
+          <li>Your courses, reading lists and progress, tasks, planned sessions, and study time records</li>
           <li>Saved AI chats and AI memory</li>
           <li>Documents you uploaded, including the files themselves</li>
           <li>Google Calendar connections and their stored tokens</li>
@@ -903,7 +903,7 @@ function AiDisclaimer() {
         <p>When you use Ask Soma or the AI tab, Soma may include the following as context:</p>
         <ul>
           <li>Your chat messages (typed or dictated)</li>
-          <li>Your courses, tasks, and planned study sessions</li>
+          <li>Your courses, tasks, planned study sessions, and reading-list progress</li>
           <li>Your Google Calendar events, if you have connected a calendar</li>
           <li>Canvas assignments and due dates</li>
           <li>The text of documents you have uploaded to Documents</li>

@@ -39,11 +39,12 @@ export async function verifyUserAndSubscription(token:string):Promise<Authorizat
 
 export function validateChatInput(body:unknown):string|null{
  if(!body || typeof body!=='object')return 'invalid_request';
- const {messages,systemPrompt,model}=body as Record<string,unknown>;
+ const {messages,systemPrompt,context,model}=body as Record<string,unknown>;
  if(systemPrompt!==undefined && typeof systemPrompt!=='string')return 'invalid_system_prompt';
+ if(context!==undefined && typeof context!=='string')return 'invalid_context';
  if(model!==undefined && model!=='sonnet')return 'invalid_model';
  if(!Array.isArray(messages) || !messages.length || messages.length>50)return 'invalid_messages';
- let chars=typeof systemPrompt==='string' ? systemPrompt.length : 0;
+ let chars=(typeof systemPrompt==='string' ? systemPrompt.length : 0)+(typeof context==='string' ? context.length : 0);
  for(const msg of messages){
   if(!msg || !['user','assistant'].includes(msg.role))return 'invalid_role';
   if(typeof msg.content==='string'){
@@ -94,7 +95,7 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
    if((deps.limited??rateLimited)(auth.userId)){res.setHeader('Retry-After','60');return res.status(429).json({error:'rate_limit'});}
    const key=(deps.apiKey??(()=>process.env.ANTHROPIC_API_KEY))();
    if(!key)return res.status(503).json({error:'server_not_configured'});
-   const {messages,systemPrompt,model}=req.body;
+   const {messages,systemPrompt,context,model}=req.body;
    const lastContent=messages[messages.length-1].content;
    const query=typeof lastContent==='string' ? lastContent : lastContent.filter((b:any)=>b.type==='text').map((b:any)=>b.text).join(' ');
    const savedMemory=await (deps.memory??loadMemoryContext)(auth.userId,query);
@@ -102,8 +103,11 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
    // its own block after the cache breakpoint: prompt caching is a prefix match,
    // and folding it into the cached block would miss the cache on every message
    // and re-bill the full system prompt (documents included) each time.
+   // systemPrompt is the part that stays the same between messages (instructions,
+   // documents), so it is cached; context is the live plan and changes every call.
    const system=[
     ...(systemPrompt ? [{type:'text' as const,text:systemPrompt,cache_control:{type:'ephemeral' as const}}] : []),
+    ...(context ? [{type:'text' as const,text:context}] : []),
     ...(savedMemory ? [{type:'text' as const,text:savedMemory}] : []),
    ];
    const response=await (deps.request??fetch)('https://api.anthropic.com/v1/messages',{

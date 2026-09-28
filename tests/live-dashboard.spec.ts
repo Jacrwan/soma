@@ -34,7 +34,7 @@ async function setup(page:Page){
  });
  await page.route('**/api/stripe',route=>route.fulfill({json:{status:'active'}}));
  await page.route('**/api/google-calendar-events',route=>route.fulfill({json:{events:[],incomplete:state.calendarFail}}));
- await page.route('**/api/chat',route=>{state.prompt=route.request().postDataJSON().systemPrompt;return route.fulfill({json:{content:[{text:JSON.stringify({reply:'Here is a proposed study session.',blocks:[{title:'New revision',subject:'Biology',start:'12:00',end:'12:30'}]})}]}});});
+ await page.route('**/api/chat',route=>{state.prompt=(b=>`${b.systemPrompt}\n${b.context??""}`)(route.request().postDataJSON());return route.fulfill({json:{content:[{text:JSON.stringify({reply:'Here is a proposed study session.',blocks:[{title:'New revision',subject:'Biology',start:'12:00',end:'12:30'}]})}]}});});
  return state;
 }
 

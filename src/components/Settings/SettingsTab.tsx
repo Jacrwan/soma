@@ -22,14 +22,7 @@ import type { GoogleCalendarConnection, GoogleCalendarInfo, Subject, SubjectColo
 import styles from './SettingsTab.module.css';
 import { MONTHLY_PRICE, TRIAL_DAYS } from '../../lib/pricing';
 
-const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
-type Day = typeof DAYS[number];
-type HoursCategory = 'schoolHours' | 'workHours' | 'personalHours';
-type Section = 'profile' | 'subscription' | 'appearance' | 'availability' | 'study' | 'ai' | 'memory' | 'integrations' | 'courses';
-
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
+type Section = 'profile' | 'subscription' | 'appearance' | 'hours' | 'memory' | 'integrations' | 'courses';
 
 export default function SettingsTab() {
   const navigate = useNavigate();
@@ -347,121 +340,6 @@ export default function SettingsTab() {
     storage.setSomaSettings(next);
   }
 
-  function setDayField(cat: HoursCategory, day: Day, field: 'start' | 'end', value: string) {
-    save({
-      ...settings,
-      [cat]: {
-        ...settings[cat],
-        [day]: { ...settings[cat][day], [field]: value },
-      },
-    });
-  }
-
-  function addBlocked(cat: HoursCategory, day: Day) {
-    const prev = settings[cat][day];
-    save({
-      ...settings,
-      [cat]: {
-        ...settings[cat],
-        [day]: { ...prev, blocked: [...prev.blocked, { start: '15:00', end: '16:00' }] },
-      },
-    });
-  }
-
-  function setBlocked(cat: HoursCategory, day: Day, index: number, field: 'start' | 'end', value: string) {
-    const prev = settings[cat][day];
-    const blocked = prev.blocked.map((b, i) => i === index ? { ...b, [field]: value } : b);
-    save({
-      ...settings,
-      [cat]: { ...settings[cat], [day]: { ...prev, blocked } },
-    });
-  }
-
-  function removeBlocked(cat: HoursCategory, day: Day, index: number) {
-    const prev = settings[cat][day];
-    save({
-      ...settings,
-      [cat]: {
-        ...settings[cat],
-        [day]: { ...prev, blocked: prev.blocked.filter((_, i) => i !== index) },
-      },
-    });
-  }
-
-  // Filling in 3 categories × 7 days × 2 time fields one at a time is the
-  // exact kind of manual planning tedium Soma's own pitch says it removes.
-  // These let one edited day fan out across the rest of the week instead of
-  // requiring 14 separate field edits per category.
-  function copyMondayTo(cat: HoursCategory, days: Day[]) {
-    const monday = settings[cat].monday;
-    const nextCat = { ...settings[cat] };
-    for (const day of days) {
-      nextCat[day] = { start: monday.start, end: monday.end, blocked: monday.blocked.map(b => ({ ...b })) };
-    }
-    save({ ...settings, [cat]: nextCat });
-  }
-
-  const WEEKDAYS: Day[] = ['tuesday', 'wednesday', 'thursday', 'friday'];
-  const ALL_OTHER_DAYS: Day[] = ['tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-
-  function renderDayRows(cat: HoursCategory) {
-    return DAYS.map(day => {
-      const avail = settings[cat][day];
-      return (
-        <div key={day} className={styles.dayRow}>
-          <div className={styles.dayHeader}>
-            <span className={styles.dayLabel}>{capitalize(day)}</span>
-            <div className={styles.timeRange}>
-              <input
-                type="time"
-                className={styles.timeInput}
-                value={avail.start}
-                onChange={e => setDayField(cat, day, 'start', e.target.value)}
-              />
-              <span className={styles.timeSep}>to</span>
-              <input
-                type="time"
-                className={styles.timeInput}
-                value={avail.end}
-                onChange={e => setDayField(cat, day, 'end', e.target.value)}
-              />
-              <button
-                className={styles.addBlockedBtn}
-                onClick={() => addBlocked(cat, day)}
-              >+ blocked</button>
-            </div>
-          </div>
-          {avail.blocked.length > 0 && (
-            <div className={styles.blockedTags}>
-              {avail.blocked.map((block, i) => (
-                <div key={i} className={styles.blockedTag}>
-                  <input
-                    type="time"
-                    className={styles.tagTime}
-                    value={block.start}
-                    onChange={e => setBlocked(cat, day, i, 'start', e.target.value)}
-                  />
-                  <span className={styles.tagDash}>–</span>
-                  <input
-                    type="time"
-                    className={styles.tagTime}
-                    value={block.end}
-                    onChange={e => setBlocked(cat, day, i, 'end', e.target.value)}
-                  />
-                  <button
-                    className={styles.tagRemove}
-                    onClick={() => removeBlocked(cat, day, i)}
-                    title="Remove"
-                  >×</button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      );
-    });
-  }
-
   async function handleSaveEducation() {
     if (!pendingEducation) return;
     setEduSaving(true);
@@ -588,9 +466,7 @@ export default function SettingsTab() {
     ['profile',       'Profile'],
     ['subscription',  'Subscription'],
     ['appearance',    'Appearance'],
-    ['availability',  'Availability'],
-    ['study',         'Study Preferences'],
-    ['ai',            'AI Behavior'],
+    ['hours',         'Study hours'],
     ['memory',        'Memory'],
     ['integrations',  'Integrations'],
     ['courses',       'Courses'],
@@ -1004,162 +880,46 @@ export default function SettingsTab() {
           </section>
         )}
 
-        {activeSection === 'availability' && (
+        {activeSection === 'hours' && (
           <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>Availability</h2>
-
-            <div className={styles.subsection}>
-              <div className={styles.subsectionHeader}>
-                <h3 className={styles.subsectionTitle}>School hours</h3>
-                <button
-                  className={`${styles.categoryToggle}${settings.schoolHoursEnabled !== false ? ` ${styles.categoryToggleOn}` : ''}`}
-                  onClick={() => save({ ...settings, schoolHoursEnabled: settings.schoolHoursEnabled === false })}
-                >{settings.schoolHoursEnabled !== false ? 'Enabled' : 'Disabled'}</button>
-              </div>
-              <div className={styles.subsectionHintRow}>
-                <p className={styles.subsectionHint}>When you're in class — unavailable for studying</p>
-                <button type="button" className={styles.copyToAllBtn} onClick={() => copyMondayTo('schoolHours', WEEKDAYS)}>
-                  Copy Monday to weekdays
-                </button>
-              </div>
-              <div className={`${styles.availabilityList}${settings.schoolHoursEnabled === false ? ` ${styles.availabilityListDisabled}` : ''}`}>{renderDayRows('schoolHours')}</div>
-            </div>
-
-            <div className={styles.subsection}>
-              <div className={styles.subsectionHeader}>
-                <h3 className={styles.subsectionTitle}>Work hours</h3>
-                <button
-                  className={`${styles.categoryToggle}${settings.workHoursEnabled !== false ? ` ${styles.categoryToggleOn}` : ''}`}
-                  onClick={() => save({ ...settings, workHoursEnabled: settings.workHoursEnabled === false })}
-                >{settings.workHoursEnabled !== false ? 'Enabled' : 'Disabled'}</button>
-              </div>
-              <div className={styles.subsectionHintRow}>
-                <p className={styles.subsectionHint}>When you're at work — unavailable for studying</p>
-                <button type="button" className={styles.copyToAllBtn} onClick={() => copyMondayTo('workHours', WEEKDAYS)}>
-                  Copy Monday to weekdays
-                </button>
-              </div>
-              <div className={`${styles.availabilityList}${settings.workHoursEnabled === false ? ` ${styles.availabilityListDisabled}` : ''}`}>{renderDayRows('workHours')}</div>
-            </div>
-
-            <div className={styles.subsection}>
-              <div className={styles.subsectionHeader}>
-                <h3 className={styles.subsectionTitle}>Personal hours</h3>
-                <button
-                  className={`${styles.categoryToggle}${settings.personalHoursEnabled !== false ? ` ${styles.categoryToggleOn}` : ''}`}
-                  onClick={() => save({ ...settings, personalHoursEnabled: settings.personalHoursEnabled === false })}
-                >{settings.personalHoursEnabled !== false ? 'Enabled' : 'Disabled'}</button>
-              </div>
-              <div className={styles.subsectionHintRow}>
-                <p className={styles.subsectionHint}>Your free window — available for studying</p>
-                <button type="button" className={styles.copyToAllBtn} onClick={() => copyMondayTo('personalHours', ALL_OTHER_DAYS)}>
-                  Copy Monday to all days
-                </button>
-              </div>
-              <div className={`${styles.availabilityList}${settings.personalHoursEnabled === false ? ` ${styles.availabilityListDisabled}` : ''}`}>{renderDayRows('personalHours')}</div>
-            </div>
-
-            <div className={styles.saveRow}>
-              <button
-                className={styles.saveBtn}
-                disabled={supabaseSaving}
-                onClick={() => void saveToSupabase('availability')}
-              >
-                {savedSection === 'availability' ? 'Saved ✓' : 'Save'}
-              </button>
-            </div>
-          </section>
-        )}
-
-        {activeSection === 'study' && (
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>Study Preferences</h2>
+            <h2 className={styles.sectionTitle}>Study hours</h2>
+            <p className={styles.subsectionHint}>
+              Soma only schedules study inside these hours, around your calendar and existing plan.
+            </p>
             <div className={styles.prefGrid}>
               <div className={styles.prefRow}>
-                <label className={styles.prefLabel}>Default session length</label>
-                <select
-                  className={styles.prefSelect}
-                  value={settings.studyPrefs.defaultSessionMinutes}
-                  onChange={e => save({ ...settings, studyPrefs: { ...settings.studyPrefs, defaultSessionMinutes: Number(e.target.value) } })}
-                >
-                  {[30, 45, 60, 90].map(m => (
-                    <option key={m} value={m}>{m} min</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className={styles.prefRow}>
-                <label className={styles.prefLabel}>Default break duration</label>
-                <select
-                  className={styles.prefSelect}
-                  value={settings.studyPrefs.defaultBreakMinutes}
-                  onChange={e => save({ ...settings, studyPrefs: { ...settings.studyPrefs, defaultBreakMinutes: Number(e.target.value) } })}
-                >
-                  {[5, 10, 15, 20].map(m => (
-                    <option key={m} value={m}>{m} min</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className={styles.prefRow}>
-                <label className={styles.prefLabel}>Preferred study start time</label>
+                <label className={styles.prefLabel} htmlFor="study-window-start">Earliest start</label>
                 <input
+                  id="study-window-start"
                   type="time"
                   className={styles.timeInput}
-                  value={settings.studyPrefs.preferredStartTime}
-                  onChange={e => save({ ...settings, studyPrefs: { ...settings.studyPrefs, preferredStartTime: e.target.value } })}
+                  value={settings.studyWindow.start}
+                  onChange={e => e.target.value && save({ ...settings, studyWindow: { ...settings.studyWindow, start: e.target.value } })}
+                />
+              </div>
+              <div className={styles.prefRow}>
+                <label className={styles.prefLabel} htmlFor="study-window-end">Latest end</label>
+                <input
+                  id="study-window-end"
+                  type="time"
+                  className={styles.timeInput}
+                  value={settings.studyWindow.end}
+                  onChange={e => e.target.value && save({ ...settings, studyWindow: { ...settings.studyWindow, end: e.target.value } })}
                 />
               </div>
             </div>
-
+            {settings.studyWindow.end <= settings.studyWindow.start && (
+              <p role="alert" className={styles.subsectionHint}>Latest end must be after earliest start.</p>
+            )}
             <div className={styles.saveRow}>
               <button
                 className={styles.saveBtn}
-                disabled={supabaseSaving}
-                onClick={() => void saveToSupabase('study')}
+                disabled={supabaseSaving || settings.studyWindow.end <= settings.studyWindow.start}
+                onClick={() => void saveToSupabase('hours')}
               >
-                {savedSection === 'study' ? 'Saved ✓' : 'Save'}
+                {savedSection === 'hours' ? 'Saved ✓' : 'Save'}
               </button>
             </div>
-          </section>
-        )}
-
-        {activeSection === 'ai' && (
-          <section className={styles.section}>
-            <h2 className={styles.sectionTitle}>AI Behavior</h2>
-            <div className={styles.prefGrid}>
-              <div className={styles.prefRow}>
-                <label className={styles.prefLabel}>Response verbosity</label>
-                <div className={styles.segment}>
-                  <button
-                    className={`${styles.segBtn}${settings.aiPrefs.verbosity === 'concise' ? ` ${styles.segBtnActive}` : ''}`}
-                    onClick={() => { const n = { ...settings, aiPrefs: { ...settings.aiPrefs, verbosity: 'concise' as const } }; save(n); void saveToSupabase('ai', n); }}
-                  >Concise</button>
-                  <button
-                    className={`${styles.segBtn}${settings.aiPrefs.verbosity === 'detailed' ? ` ${styles.segBtnActive}` : ''}`}
-                    onClick={() => { const n = { ...settings, aiPrefs: { ...settings.aiPrefs, verbosity: 'detailed' as const } }; save(n); void saveToSupabase('ai', n); }}
-                  >Detailed</button>
-                </div>
-              </div>
-
-              <div className={styles.prefRow}>
-                <label className={styles.prefLabel}>When I ask to plan my day</label>
-                <div className={styles.segment}>
-                  <button
-                    className={`${styles.segBtn}${settings.aiPrefs.defaultOutput === 'schedule' ? ` ${styles.segBtnActive}` : ''}`}
-                    onClick={() => { const n = { ...settings, aiPrefs: { ...settings.aiPrefs, defaultOutput: 'schedule' as const } }; save(n); void saveToSupabase('ai', n); }}
-                  >Schedule</button>
-                  <button
-                    className={`${styles.segBtn}${settings.aiPrefs.defaultOutput === 'todos' ? ` ${styles.segBtnActive}` : ''}`}
-                    onClick={() => { const n = { ...settings, aiPrefs: { ...settings.aiPrefs, defaultOutput: 'todos' as const } }; save(n); void saveToSupabase('ai', n); }}
-                  >Todos</button>
-                </div>
-              </div>
-            </div>
-
-            {savedSection === 'ai' && (
-              <p className={styles.savedFlash}>Saved ✓</p>
-            )}
           </section>
         )}
 

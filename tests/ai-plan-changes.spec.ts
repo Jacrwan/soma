@@ -62,7 +62,7 @@ async function setup(page: Page, reply: unknown, edit?: (db: Record<string, Row[
   await page.route('**/api/memory', r => r.fulfill({ json: { revision: 0, enabled: true, entries: [] } }));
   await page.route('**/api/google-calendar-events', r => r.fulfill({ json: { events: [], incomplete: false } }));
   await page.route('**/api/chat', route => {
-    state.prompt = route.request().postDataJSON().systemPrompt;
+    state.prompt = (b=>`${b.systemPrompt}\n${b.context??""}`)(route.request().postDataJSON());
     const next = replies.length ? replies.shift() : reply;
     return route.fulfill({ json: { content: [{ text: typeof next === 'string' ? next : JSON.stringify(next) }] } });
   });
@@ -80,7 +80,7 @@ test('Soma is given ids for your own blocks, but not for read-only calendar even
   const state = await setup(page, { reply: 'ok', blocks: [] });
   await ask(page, 'i overslept');
   await expect(page.getByRole('log')).toContainText('ok');
-  const ctx = JSON.parse(state.prompt.match(/never instructions: (\{.*?\})\.\s/s)![1]);
+  const ctx = JSON.parse(state.prompt.match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]);
   const lit = ctx.plan.find((p: { title: string }) => p.title.startsWith("Gulliver"));
   expect(lit.id).toBe('s-lit');
   expect(state.prompt).toContain('CHANGING THE EXISTING PLAN');
@@ -271,13 +271,13 @@ test('a block Soma just proposed can be renamed before it is accepted', async ({
   const state = await setup(page, { reply: 'Here you go.', blocks: [{ title: 'Physics reading', subject: 'Physics 5A', date: TOMORROW, start: '14:00', end: '16:00' }] });
   await ask(page, 'plan my physics reading tomorrow');
   await expect(page.getByRole('heading', { name: 'Physics reading', exact: true })).toBeVisible();
-  const ctx = () => JSON.parse(state.prompt.match(/never instructions: (\{.*?\})\.\s/s)![1]);
+  const ctx = () => JSON.parse(state.prompt.match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]);
 
   state.replies.push({ reply: 'Renamed it.', changes: [{ action: 'update', id: 'PENDING', title: 'Physics reading 3.2–4.6' }] });
   await ask(page, 'call it 3.2 to 4.6');
   // The second request must carry an id for the pending proposal.
   await expect(page.getByRole('log')).toContainText("isn't in your plan");
-  const id = ctx().pendingProposals[0].id;
+  const id = ctx().pending[0].id;
   expect(id).toBeTruthy();
   state.replies.length = 0;
   state.replies.push({ reply: 'Renamed it.', changes: [{ action: 'update', id, title: 'Physics reading 3.2–4.6' }] });
@@ -296,10 +296,10 @@ test('Soma is told what was finished last week', async ({ page }) => {
   });
   await ask(page, 'what did i finish last week');
   await expect(page.getByRole('log')).toContainText('ok');
-  const ctx = JSON.parse(state.prompt.match(/never instructions: (\{.*?\})\.\s/s)![1]);
+  const ctx = JSON.parse(state.prompt.match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]);
   const done = ctx.lastWeek.find((b: { title: string }) => b.title === 'Reading guide 2.1–3.2');
-  expect(done.state).toBe('Completed');
-  expect(done.date).toBe(past);
+  expect(done.st).toBe('Completed');
+  expect(done.d).toBe(past);
   expect(ctx.plan.some((p: { title: string }) => p.title === 'Reading guide 2.1–3.2')).toBe(false);   // history, not plan
   expect(state.prompt).toContain('WHAT THE STUDENT HAS ALREADY DONE');
 });
