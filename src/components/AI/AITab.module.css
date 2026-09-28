@@ -542,7 +542,7 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
-  width: 360px;
+  width: 460px;
   max-width: 100%;
   background: var(--bg);
 }
@@ -1019,3 +1019,77 @@
 /* The active row is already marked by its surface; a blue title on top of that
    competes with the subject colours used elsewhere in the app. */
 .sessionRowActive .sessionTitle { color: var(--text-primary); font-weight: 600; }
+
+/* ── Proposal card: Soma's suggestions awaiting Accept ── */
+.proposalRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.proposalRow + .proposalRow {
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.proposalText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.proposalTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.proposalMeta {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.proposalActions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.proposalAccept,
+.proposalDismiss {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 7px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.proposalAccept {
+  background: var(--accent);
+  color: oklch(99% 0.003 265);
+  border: none;
+}
+
+.proposalAccept:hover:not(:disabled) { background: var(--accent-hover); }
+
+.proposalDismiss {
+  background: none;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.proposalDismiss:hover:not(:disabled) { color: var(--text-primary); }
+
+.proposalAccept:disabled,
+.proposalDismiss:disabled { opacity: 0.5; cursor: default; }
+
+.proposalState {
+  font-size: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}

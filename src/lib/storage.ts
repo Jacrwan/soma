@@ -12,38 +12,10 @@ function ensureUtcSuffix(ts: string): string {
   return ts.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(ts) ? ts : ts + 'Z';
 }
 
-interface DayAvailability {
-  start: string;
-  end: string;
-  blocked: { start: string; end: string }[];
-}
-
-interface WeekSchedule {
-  monday: DayAvailability;
-  tuesday: DayAvailability;
-  wednesday: DayAvailability;
-  thursday: DayAvailability;
-  friday: DayAvailability;
-  saturday: DayAvailability;
-  sunday: DayAvailability;
-}
-
 export interface SomaSettings {
-  schoolHours: WeekSchedule;
-  workHours: WeekSchedule;
-  personalHours: WeekSchedule;
-  schoolHoursEnabled: boolean;
-  workHoursEnabled: boolean;
-  personalHoursEnabled: boolean;
-  studyPrefs: {
-    defaultSessionMinutes: number;
-    defaultBreakMinutes: number;
-    preferredStartTime: string;
-  };
-  aiPrefs: {
-    verbosity: 'concise' | 'detailed';
-    defaultOutput: 'schedule' | 'todos';
-  };
+  /** The hours Soma may schedule study in, 24-hour HH:MM. Calendar events and
+   *  existing blocks inside the window still count as busy. */
+  studyWindow: { start: string; end: string };
   theme: 'dark' | 'light';
   /** Clock display preference. Stored times stay canonical 24-hour `HH:MM`. */
   timeFormat?: '12h' | '24h';
@@ -61,52 +33,29 @@ export interface SomaSettings {
 }
 
 
-const DEFAULT_DAY: DayAvailability = { start: '08:00', end: '22:00', blocked: [] };
-const DEFAULT_EMPTY_DAY: DayAvailability = { start: '', end: '', blocked: [] };
-
-function emptyWeek(): WeekSchedule {
-  return {
-    monday: { ...DEFAULT_EMPTY_DAY },
-    tuesday: { ...DEFAULT_EMPTY_DAY },
-    wednesday: { ...DEFAULT_EMPTY_DAY },
-    thursday: { ...DEFAULT_EMPTY_DAY },
-    friday: { ...DEFAULT_EMPTY_DAY },
-    saturday: { ...DEFAULT_EMPTY_DAY },
-    sunday: { ...DEFAULT_EMPTY_DAY },
-  };
-}
-
-function defaultPersonalWeek(): WeekSchedule {
-  return {
-    monday: { ...DEFAULT_DAY },
-    tuesday: { ...DEFAULT_DAY },
-    wednesday: { ...DEFAULT_DAY },
-    thursday: { ...DEFAULT_DAY },
-    friday: { ...DEFAULT_DAY },
-    saturday: { ...DEFAULT_DAY },
-    sunday: { ...DEFAULT_DAY },
-  };
-}
-
 const DEFAULT_SETTINGS: SomaSettings = {
-  schoolHours: emptyWeek(),
-  workHours: emptyWeek(),
-  personalHours: defaultPersonalWeek(),
-  schoolHoursEnabled: true,
-  workHoursEnabled: true,
-  personalHoursEnabled: true,
-  studyPrefs: {
-    defaultSessionMinutes: 50,
-    defaultBreakMinutes: 10,
-    preferredStartTime: '09:00',
-  },
-  aiPrefs: {
-    verbosity: 'concise',
-    defaultOutput: 'schedule',
-  },
+  studyWindow: { start: '08:00', end: '23:00' },
   theme: 'light',
   timeFormat: '12h',
 };
+
+// Replaced by studyWindow, and settings that never did anything (session
+// length, break length, AI verbosity). Dropped on read so a save doesn't
+// carry them forward.
+const RETIRED_SETTINGS = ['availability', 'schoolHours', 'workHours', 'personalHours', 'schoolHoursEnabled', 'workHoursEnabled', 'personalHoursEnabled', 'studyPrefs', 'aiPrefs'];
+function withDefaults(raw: Record<string, unknown>): SomaSettings {
+  const kept = Object.fromEntries(Object.entries(raw).filter(([k]) => !RETIRED_SETTINGS.includes(k)));
+  return { ...DEFAULT_SETTINGS, studyWindow: legacyWindow(raw) ?? DEFAULT_SETTINGS.studyWindow, ...kept } as SomaSettings;
+}
+/** The widest span of the old per-day personal hours, so nobody's window
+ *  silently resets to the default when the old grid goes away. */
+function legacyWindow(raw: Record<string, unknown>): SomaSettings['studyWindow'] | undefined {
+  if (raw.studyWindow || raw.personalHoursEnabled === false) return undefined;
+  const week = (raw.personalHours ?? raw.availability) as Record<string, { start?: string; end?: string }> | undefined;
+  const days = Object.values(week ?? {}).filter(d => d?.start && d?.end);
+  if (!days.length) return undefined;
+  return { start: days.map(d => d.start!).sort()[0], end: days.map(d => d.end!).sort().reverse()[0] };
+}
 
 // ── localStorage helpers (Canvas cache, tokens, session state) ────────────
 
@@ -683,19 +632,7 @@ export const storage = {
     if (!rawStr) return DEFAULT_SETTINGS;
     try {
       const raw = JSON.parse(rawStr) as Record<string, unknown>;
-      if (raw.availability && !raw.personalHours) {
-        const migrated: SomaSettings = {
-          ...DEFAULT_SETTINGS,
-          studyPrefs: (raw.studyPrefs as SomaSettings['studyPrefs']) ?? DEFAULT_SETTINGS.studyPrefs,
-          aiPrefs: (raw.aiPrefs as SomaSettings['aiPrefs']) ?? DEFAULT_SETTINGS.aiPrefs,
-          personalHours: raw.availability as WeekSchedule,
-          schoolHours: emptyWeek(),
-          workHours: emptyWeek(),
-        };
-        localStorage.setItem(SOMA_SETTINGS_KEY, JSON.stringify(migrated));
-        return migrated;
-      }
-      return { ...DEFAULT_SETTINGS, ...raw } as SomaSettings;
+      return withDefaults(raw);
     } catch {
       return DEFAULT_SETTINGS;
     }
@@ -1034,7 +971,7 @@ export const storage = {
       .eq('user_id', id)
       .single();
     if (!data?.data) return DEFAULT_SETTINGS;
-    return { ...DEFAULT_SETTINGS, ...(data.data as Partial<SomaSettings>) };
+    return withDefaults(data.data as Record<string, unknown>);
   },
 
   async saveSettings(settings: SomaSettings): Promise<void> {

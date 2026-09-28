@@ -28,7 +28,7 @@ async function setup(page: Page, blocks: Record<string, unknown>[]) {
   await page.route('**/api/stripe', r => r.fulfill({ json: { status: 'active' } }));
   await page.route('**/api/google-calendar-events', r => r.fulfill({ json: { events: [], incomplete: false } }));
   await page.route('**/api/chat', route => {
-    state.prompt = route.request().postDataJSON().systemPrompt;
+    state.prompt = (b=>`${b.systemPrompt}\n${b.context??""}`)(route.request().postDataJSON());
     return route.fulfill({ json: { content: [{ text: JSON.stringify({ reply: 'Here is Friday.', blocks }) }] } });
   });
   return state;

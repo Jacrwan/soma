@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {applyMemoryAction,changeMemory,emptyMemory,memoryContext,parseMemoryAction,extractMemories,MemoryError,type MemoryStore,type MemoryState} from '../api/_memory';
 import {createMemoryHandler} from '../api/memory';
-import {createChatHandler} from '../api/chat';
+import {createChatHandler,validateChatInput} from '../api/chat';
 import {parseMemoryCommand,runMemoryCommand} from '../src/lib/aiMemory';
 function store():MemoryStore & {rows:Map<string,MemoryState>} {
  const rows=new Map<string,MemoryState>();
@@ -94,4 +94,12 @@ test('a learning failure never breaks the chat reply',async()=>{
   request:async()=>Response.json({content:[{type:'text',text:'Hello'}]})})
  ({method:'POST',headers:{authorization:'Bearer t'},body:{messages:[{role:'user',content:'I like studying in the morning'}]}},r.res);
  expect(r.result()).toMatchObject({status:200,body:{content:[{text:'Hello'}]}});
+});
+
+test('the live plan context is sent after the cached prompt and never cached',async()=>{
+ const r=response();let system:any[]=[];
+ await createChatHandler({authorize:async()=>({ok:true,userId:'alice'}),apiKey:()=> 'test',limited:()=>false,memory:async()=>'',request:async(_url,init)=>{system=JSON.parse(init?.body as string).system;return Response.json({content:[{type:'text',text:'Hello'}]});}})({method:'POST',headers:{authorization:'Bearer t'},body:{messages:[{role:'user',content:'Plan my day'}],systemPrompt:'Instructions',context:'CONTEXT {}'}},r.res);
+ expect(r.result().status).toBe(200);
+ expect(system).toEqual([{type:'text',text:'Instructions',cache_control:{type:'ephemeral'}},{type:'text',text:'CONTEXT {}'}]);
+ expect(validateChatInput({messages:[{role:'user',content:'hi'}],context:{}})).toBe('invalid_context');
 });

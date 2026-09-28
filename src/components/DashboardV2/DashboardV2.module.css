@@ -275,3 +275,14 @@
 .page .weekStep{background:transparent;border-color:transparent;padding:6px;min-height:34px;color:var(--text-secondary);flex-shrink:0}
 .rangeLabel{display:flex;justify-content:center;align-items:center;gap:8px;margin:-18px 0 18px;font-size:11px;color:var(--text-secondary)}
 .page .backToToday{background:transparent;border-color:transparent;font-size:11px;color:var(--text-secondary);text-decoration:underline;min-height:24px;padding:2px 6px}
+
+/* Reading-list sections: finish part of a block, or say how far an ended one got.
+   Every control on the card shares one height, type size and border. Safari
+   ignores height and padding on a native select, so it is drawn by hand. */
+.stoppedAt{-webkit-appearance:none;appearance:none;box-sizing:border-box;height:34px;min-height:34px;padding:0 26px 0 10px;font:inherit;font-size:10px;line-height:1;border-radius:6px;background:transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 3.5l3 3 3-3' fill='none' stroke='%23888' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 9px center;color:var(--text-primary);border:1px solid color-mix(in oklch,var(--tone),transparent 70%);cursor:pointer;max-width:100%}
+.stoppedAt:hover:not(:disabled){background-color:var(--bg-tertiary)}
+.stoppedAt:disabled{opacity:.45;cursor:not-allowed}
+.stoppedAt:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.howFar{flex-basis:100%;order:1;display:flex;align-items:center;flex-wrap:wrap;gap:6px;font-size:11px;color:var(--text-secondary);padding-top:8px;margin-top:2px;border-top:1px solid color-mix(in oklch,var(--tone),transparent 80%)}
+.howFar>span{margin-right:4px;color:var(--text-primary)}
+.page .howFar button{box-sizing:border-box;height:34px;min-height:34px;padding:0 10px;font-size:10px;line-height:1;background:transparent;border-color:color-mix(in oklch,var(--tone),transparent 70%)}

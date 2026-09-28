@@ -11,6 +11,7 @@
 // sessions reference subjects/todos, and each is deleted by user_id anyway.
 export const USER_TABLES = [
   'documents',
+  'course_items',
   'todo_sessions',
   'timer_sessions',
   'active_timer',

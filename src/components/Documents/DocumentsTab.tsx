@@ -7,6 +7,7 @@ import {
 } from '../../lib/documents';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './DocumentsTab.module.css';
+import ReadingLists from './ReadingLists';
 
 type LoadState = 'loading' | 'ready' | 'not_set_up' | 'error';
 
@@ -300,6 +301,8 @@ export default function DocumentsTab() {
         <h1 className={styles.title}>Documents</h1>
         <p className={styles.subtitle}>Syllabi, readings, and guides — Soma's AI reads these when you ask about a subject.</p>
       </div>
+
+      <ReadingLists subjects={subjects} docs={docs} />
 
       <div className={styles.toolbar}>
         <input

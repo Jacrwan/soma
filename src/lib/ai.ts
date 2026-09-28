@@ -13,9 +13,13 @@ function attachmentBlock(a: Attachment): Block {
   return a.kind === 'pdf' ? { type: 'document', source } : { type: 'image', source };
 }
 
+/** A split prompt: `stable` (instructions, documents) is cached between
+ *  messages; `context` (the live plan) is sent fresh and never cached. */
+export type SplitPrompt = { stable: string; context: string };
+
 export async function sendMessage(
   messages: { role: 'user' | 'assistant'; content: string }[],
-  systemPrompt: string,
+  systemPrompt: string | SplitPrompt,
   model?: 'sonnet',
   attachments?: Attachment[],
   responseFormat?: 'dashboard',
@@ -51,7 +55,11 @@ export async function sendMessage(
       'content-type': 'application/json',
       ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ messages: outMessages, systemPrompt, ...(model ? { model } : {}) }),
+    body: JSON.stringify({
+      messages: outMessages,
+      ...(typeof systemPrompt === 'string' ? { systemPrompt } : { systemPrompt: systemPrompt.stable, context: systemPrompt.context }),
+      ...(model ? { model } : {}),
+    }),
   }).catch(error => { if (error instanceof Error && ['TimeoutError','AbortError'].includes(error.name)) throw new Error('request_timeout'); throw error; });
 
   const text=await readAIResponse(res);

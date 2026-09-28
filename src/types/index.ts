@@ -1,3 +1,4 @@
+import type { PlanBlock } from '../components/DashboardV2/PlanEditor';
 export type SubjectColor =
   | '#ef5350' | '#42a5f5' | '#66bb6a' | '#ab47bc'
   | '#ffa726' | '#26c6da' | '#ec407a' | '#8d6e63';
@@ -175,20 +176,17 @@ export interface GoogleCalendarConnection {
   createdAt: string;
 }
 
-export interface AiTodo {
-  text: string;
-  subjectId?: string;
-  assignmentId?: number;
-}
-
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  todos?: AiTodo[];
-  todosDismissed?: boolean;
-  todosAccepted?: boolean;
-  confirmText?: string;
+  /** What the model actually returned (its JSON answer), sent back as history
+   *  so it sees its own earlier proposals; `content` is what the student sees. */
+  modelContent?: string;
+  /** Soma's proposals from this reply, as they were made. */
+  proposals?: PlanBlock[];
+  /** What the student did with each proposal, by id. */
+  proposalStatus?: Record<string, 'accepted' | 'dismissed'>;
 }
 
 export interface ChatSession {

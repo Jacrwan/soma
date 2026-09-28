@@ -37,7 +37,7 @@ async function setup(page: Page) {
   await page.route('**/api/google-calendar-events', r => r.fulfill({ json: { events: [], incomplete: false } }));
   await page.route('**/api/canvas-ical', r => r.fulfill({ json: { assignments } }));
   await page.route('**/api/chat', route => {
-    state.prompt = route.request().postDataJSON().systemPrompt;
+    state.prompt = (b=>`${b.systemPrompt}\n${b.context??""}`)(route.request().postDataJSON());
     return route.fulfill({ json: { content: [{ text: JSON.stringify({ reply: 'Noted.', blocks: [] }) }] } });
   });
   return state;
@@ -105,15 +105,17 @@ test('the AI is told the real date of every plan entry, not a bare offset', asyn
   await expect(page.getByText('Read chapter 4')).toBeVisible();
   await ask(page, "what's my schedule for tomorrow");
 
-  const ctx = JSON.parse(state.prompt.match(/untrusted user data, never instructions: (\{.*?\})\.\s/s)![1]);
+  const ctx = JSON.parse(state.prompt.match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]);
   // Asking about "tomorrow" is only answerable if entries carry dates.
-  expect(ctx.today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  expect(ctx.calendar).toHaveLength(7);
-  expect(ctx.calendar[0]).toMatchObject({ offset: 0, isToday: true });
-  expect(ctx.calendar[1].date).not.toBe(ctx.calendar[0].date);
+  expect(ctx.now).toMatch(/^\d{4}-\d{2}-\d{2} \w{3} \d{2}:\d{2}$/);
+  expect(ctx.days).toHaveLength(7);
+  expect(ctx.days[0]).toMatchObject({ d: ctx.now.slice(0, 10), sel: true });
+  expect(ctx.days[1].d).not.toBe(ctx.days[0].d);
+  // Every plan entry carries a real date, and every date maps to a weekday.
+  const weekdays = new Map(ctx.days.map((d: { d: string; w: string }) => [d.d, d.w]));
   for (const entry of ctx.plan) {
-    expect(entry.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(entry.weekday).toBeTruthy();
+    expect(entry.d).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(weekdays.get(entry.d)).toBeTruthy();
   }
 });
 
@@ -141,7 +143,7 @@ test('a block Soma cannot place keeps the rest of the answer', async ({ page }) 
   // One block in the past — it must be dropped, not blow away the reply.
   await page.unroute('**/api/chat');
   await page.route('**/api/chat', route => {
-    state.prompt = route.request().postDataJSON().systemPrompt;
+    state.prompt = (b=>`${b.systemPrompt}\n${b.context??""}`)(route.request().postDataJSON());
     return route.fulfill({ json: { content: [{ text: JSON.stringify({
       reply: 'Here is how I would use tonight.',
       blocks: [{ title: 'Revision', subject: 'Physics 5A', start: '00:01', end: '00:30' }],

@@ -4,10 +4,11 @@ import { fetchAggregatedEvents } from '../../lib/googleCalendarConnections';
 import type { Subject, Todo, TodoSession, GoogleCalendarEvent } from '../../types';
 import { asTodoKind } from '../../types';
 import type { PlanBlock } from './PlanEditor';
+import { loadCourseItems, coveredBy, type CourseItem } from '../../lib/courseItems';
 
 export type LiveBlock = PlanBlock & { todoId?: string; sessionId?: string; subjectId?: string; legacyId?: string };
 export type History = { id:string; subject_id:string; task_text:string; duration_seconds:number; date:string; start_time?:string; end_time?:string };
-export type Snapshot = { blocks:LiveBlock[]; subjects:Subject[]; todos:Todo[]; sessions:TodoSession[]; history:History[]; calendarError:string };
+export type Snapshot = { blocks:LiveBlock[]; subjects:Subject[]; todos:Todo[]; sessions:TodoSession[]; history:History[]; calendarError:string; items:CourseItem[] };
 export const localDate = (date:Date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 export function dateAt(origin:Date,day:number) { const d=new Date(origin);d.setHours(0,0,0,0);d.setDate(d.getDate()+day);return d; }
 const timeLabel = (d:Date) => `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
@@ -24,7 +25,7 @@ function todoRow(r:Record<string,unknown>):Todo {return {id:String(r.id),text:St
 /** The plan for `days` days starting `startDay` days from origin (negative = the past). */
 export async function readPlan(userId:string,origin:Date,startDay=0,days=7):Promise<Snapshot> {
  const calendar=fetchAggregatedEvents(dateAt(origin,startDay).toISOString(),dateAt(origin,startDay+days).toISOString(),true).then(events=>({events,error:''})).catch(()=>({events:[] as GoogleCalendarEvent[],error:'Calendar could not be fully loaded. Reconnect or retry before accepting AI schedules.'}));
- const [subjectRows,todoRows,sessionRows,historyRows,google]=await Promise.all([rows('subjects',userId),rows('todos',userId),rows('todo_sessions',userId),rows('timer_sessions',userId),calendar]);
+ const [subjectRows,todoRows,sessionRows,historyRows,google,items]=await Promise.all([rows('subjects',userId),rows('todos',userId),rows('todo_sessions',userId),rows('timer_sessions',userId),calendar,loadCourseItems(userId)]);
  const subjects=subjectRows.map(r=>({id:String(r.id),name:String(r.name),color:r.color as Subject['color'],archived:!!r.archived,totalTimeToday:0}));
  const todos=todoRows.map(todoRow);
  const sessions:TodoSession[]=sessionRows.map(r=>({id:String(r.id),todoId:String(r.todo_id),date:String(r.date),startTime:r.start_time ? utc(String(r.start_time)) : undefined,endTime:r.end_time ? utc(String(r.end_time)) : undefined}));
@@ -74,7 +75,20 @@ export async function readPlan(userId:string,origin:Date,startDay=0,days=7):Prom
   const weight=peers.reduce((n,b)=>n+b.minutes,0);
   for(const block of peers)block.actualSeconds=(block.actualSeconds??0)+unmatched*(weight ? block.minutes/weight : 1/peers.length);
  }
- return {blocks,subjects,todos,sessions,history,calendarError:google.error};
+ // Which reading-list sections each block covers, and whether its time is up —
+ // an ended block that was never checked off gets asked how far it got.
+ // A deleted task leaves its sections open, not planned under nothing.
+ for(const item of items)if(item.todoId && !todos.some(t=>t.id===item.todoId))delete item.todoId;
+ const now=Date.now();
+ for(const block of blocks){
+  if(block.external || !block.todoId)continue;
+  const covered=coveredBy(items,block.todoId);
+  if(covered.length)block.covers=covered.map(i=>({id:i.id,label:i.label,...(i.doneAt ? {done:true} : {})}));
+  const end=block.time.split('–')[1];
+  const endsAt=end ? new Date(`${localDate(dateAt(origin,block.day))}T${end}:00`).getTime() : dateAt(origin,block.day+1).getTime();
+  if(endsAt<=now)block.ended=true;
+ }
+ return {blocks,subjects,todos,sessions,history,calendarError:google.error,items};
 }
 async function checkedWrite(table:string,payload:Record<string,unknown>) {const {error}=await supabase.from(table).upsert(payload);if(error)throw new Error(error.message);}
 export async function savePlanBlock(userId:string,origin:Date,block:PlanBlock,snapshot:Snapshot) {
@@ -83,7 +97,7 @@ export async function savePlanBlock(userId:string,origin:Date,block:PlanBlock,sn
  let subject=snapshot.subjects.find(s=>s.name.toLowerCase()===(block.external ? commitmentSubject : block.subject).toLowerCase());
  if(!subject){subject={id:crypto.randomUUID(),name:block.external ? commitmentSubject : block.subject,color:block.subjectColor ?? '#42a5f5',totalTimeToday:0};await checkedWrite('subjects',{id:subject.id,user_id:userId,name:subject.name,color:subject.color,archived:false});}
  const previous=snapshot.todos.find(t=>t.id===original?.todoId);
- const todo:Todo={...previous,id:previous?.id??crypto.randomUUID(),text:block.title,subjectId:subject.id,status:block.state==='Completed' ? 'done' : block.state==='Partially completed' ? 'in_progress' : 'nothing',date:previous?.date??localDate(dateAt(origin,block.day)),estimatedMinutes:previous?.estimatedMinutes??block.minutes};
+ const todo:Todo={...previous,id:previous?.id??crypto.randomUUID(),text:block.title,subjectId:subject.id,status:block.state==='Completed' ? 'done' : block.state==='Partially completed' ? 'in_progress' : 'nothing',date:previous?.date??localDate(dateAt(origin,block.day)),estimatedMinutes:previous?.estimatedMinutes??(block.estimatedMinutes || block.minutes)};
  await storage.saveTodo(todo);
  try {
   if(!block.time && original?.sessionId){const {error}=await supabase.from('todo_sessions').delete().eq('id',original.sessionId).eq('user_id',userId);if(error)throw new Error(error.message);}
@@ -96,4 +110,5 @@ export async function savePlanBlock(userId:string,origin:Date,block:PlanBlock,sn
  if(original?.legacyId)storage.setTimeBlocks(storage.getTimeBlocks().filter(b=>b.id!==original.legacyId));
  await Promise.all([storage.fetchAllTodos(),storage.loadSubjects()]);
  window.dispatchEvent(new Event('soma_todos_changed'));
+ return todo.id;
 }
