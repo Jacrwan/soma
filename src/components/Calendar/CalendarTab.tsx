@@ -526,7 +526,9 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
   function openStudy(block: TimeBlock | undefined, span: StudySpan | undefined) {
     const subject = storage.getSubjects().find(s => s.id === (block?.subjectId ?? span?.subjectId));
     // A span drawn only from sessions has no local block; show it all the same.
-    const shown: TimeBlock = block ?? { id: span!.id, subjectId: span!.subjectId, task: span!.task, startTime: span!.start.toISOString(), endTime: span!.end.toISOString(), source: 'manual' };
+    // Show the span that was drawn: a local copy's own times can be stale.
+    const base: TimeBlock = block ?? { id: span!.id, subjectId: span!.subjectId, task: span!.task, startTime: '', endTime: '', source: 'manual' };
+    const shown: TimeBlock = span ? { ...base, startTime: span.start.toISOString(), endTime: span.end.toISOString() } : base;
     setDeleteError('');
     setWeekBlockModal({ block: shown, subject, span });
     setWeekBlockEditMode(false);
@@ -599,10 +601,14 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     const events: RawEvent[] = [];
 
     if (filters.soma) {
+      // Each day draws its own part of a span, so studying 10:36 PM to 1:41 AM
+      // shows until midnight on one day and from midnight on the next. Reading
+      // clock times alone turned it into a 30-minute stub and lost the morning.
+      const dayStart = startOfDay(day), dayEnd = addDays(dayStart, 1);
       for (const span of studySpans(sessions, blocks, sessionsLoaded)) {
-        if (!isOnDate(span.start.toISOString(), day)) continue;
-        const startMin = span.start.getHours() * 60 + span.start.getMinutes();
-        const endMin = span.end.getHours() * 60 + span.end.getMinutes();
+        if (+span.end <= +dayStart || +span.start >= +dayEnd) continue;
+        const startMin = Math.round((Math.max(+span.start, +dayStart) - +dayStart) / 60000);
+        const endMin = Math.round((Math.min(+span.end, +dayEnd) - +dayStart) / 60000);
         // Under five minutes is almost always a focus session stopped by
         // accident; it used to render as a dot, which added noise, not signal.
         if (endMin - startMin < 5) continue;
