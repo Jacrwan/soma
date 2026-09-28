@@ -6,7 +6,7 @@ import UniversityPicker from '../shared/UniversityPicker';
 import { countryName, type University } from '../../lib/universities';
 import { EDUCATION_OPTIONS, EDUCATION_LABELS, type EducationId } from '../Onboarding/OnboardingFlow';
 import { applyTheme } from '../../App';
-import { applyTimeFormat } from '../../lib/timeFormat';
+import { applyTimeFormat, formatClock } from '../../lib/timeFormat';
 import { requestMemory, type MemoryState, type MemoryMutation } from '../../lib/aiMemory';
 import { SkeletonBlock } from '../UI/Skeleton';
 import CourseSiteImport from './CourseSiteImport';
@@ -908,13 +908,15 @@ export default function SettingsTab() {
                 />
               </div>
             </div>
-            {settings.studyWindow.end <= settings.studyWindow.start && (
-              <p role="alert" className={styles.subsectionHint}>Latest end must be after earliest start.</p>
+            {settings.studyWindow.end === settings.studyWindow.start ? (
+              <p role="alert" className={styles.subsectionHint}>Earliest start and latest end can’t be the same time.</p>
+            ) : settings.studyWindow.end < settings.studyWindow.start && (
+              <p className={styles.subsectionHint}>Runs past midnight: you study until {formatClock(settings.studyWindow.end)} the next morning.</p>
             )}
             <div className={styles.saveRow}>
               <button
                 className={styles.saveBtn}
-                disabled={supabaseSaving || settings.studyWindow.end <= settings.studyWindow.start}
+                disabled={supabaseSaving || settings.studyWindow.end === settings.studyWindow.start}
                 onClick={() => void saveToSupabase('hours')}
               >
                 {savedSection === 'hours' ? 'Saved ✓' : 'Save'}
