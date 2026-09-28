@@ -8,7 +8,7 @@ import { formatClockRange } from '../../lib/timeFormat';
 import { listDocuments } from '../../lib/documents';
 import { askSoma, applyProposal, applyAll, dismissProposal } from '../../lib/assistant';
 import { useProposals } from '../../lib/proposalStore';
-import { coveredBy, finishThrough, linkItems, markDone, rangeLabel, renameLoggedTime, retitle } from '../../lib/courseItems';
+import { coveredBy, finishThrough, markDone, rangeLabel, renameLoggedTime, retitle } from '../../lib/courseItems';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './DashboardV2.module.css';
 
@@ -185,15 +185,6 @@ export default function LiveDashboard({userId}:{userId:string}) {
   }catch(e){setError(e instanceof Error ? e.message : 'Could not save your progress.');throw e;}
   finally{writing.current=false;setBusy(false);}
  }
- /** An ended block that wasn't read: its sections go back to open. */
- async function notStarted(id:string|number){
-  const block=snapshot?.blocks.find(b=>b.id===id);
-  if(!block?.todoId)throw new Error('Refresh to load this block.');
-  writing.current=true;setBusy(true);setError('');
-  try{const fresh=await readPlan(userId,origin,rangeRef.current,7);await linkItems(userId,coveredBy(fresh.items,block.todoId).filter(i=>!i.doneAt).map(i=>i.id),null);await reload();}
-  catch(e){setError(e instanceof Error ? e.message : 'Could not save.');throw e;}
-  finally{writing.current=false;setBusy(false);}
- }
  async function propose(text:string,day:number){
   if(writing.current)throw new Error('Please wait for your plan to finish saving.');
   const result=await askSoma({userId,origin,text,history:conversation.current,selectedDay:day,activeBlockId:active?.id});
@@ -223,7 +214,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   else setError('');
  }
  const pulseDays=Array.from({length:7},(_,i)=>snapshot.history.filter(h=>h.date===localDate(dateAt(origin,i-6))).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0));
- return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onNotStarted:notStarted,onAcceptAll:acceptAll,rangeStart,onRange:setRangeStart,onPropose:propose,onFocus:b=>{const live=snapshot.blocks.find(x=>x.id===b.id);const subject=snapshot.subjects.find(s=>s.id===live?.subjectId);if(subject)timer.startSession(subject,b.title,0);else setError('Choose a subject with Edit plan before starting focus.');},pulseSeconds:pulseDays.reduce((a,b)=>a+b,0),pulseDays,subjectNames:snapshot.subjects.filter(s=>!s.archived).map(s=>s.name),usedColors:snapshot.subjects.map(s=>s.color),onEditSession:async(sessionId,minutes,startTime)=>{
+ return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onAcceptAll:acceptAll,rangeStart,onRange:setRangeStart,onPropose:propose,onFocus:b=>{const live=snapshot.blocks.find(x=>x.id===b.id);const subject=snapshot.subjects.find(s=>s.id===live?.subjectId);if(subject)timer.startSession(subject,b.title,0);else setError('Choose a subject with Edit plan before starting focus.');},pulseSeconds:pulseDays.reduce((a,b)=>a+b,0),pulseDays,subjectNames:snapshot.subjects.filter(s=>!s.archived).map(s=>s.name),usedColors:snapshot.subjects.map(s=>s.color),onEditSession:async(sessionId,minutes,startTime)=>{
  const row=snapshot.history.find(h=>h.id===sessionId);
  if(!row)throw new Error('That session is no longer there. Refresh and try again.');
  // Keep where it started unless the correction moved it, then let the length

@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react';
-import { Check, Play, Pause, ArrowUpRight, CalendarDays, Mic, Square, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Check, Play, Pause, ArrowUpRight, CalendarDays, Mic, Square, ChevronLeft, ChevronRight, Bookmark } from 'lucide-react';
 import { useSpeechInput } from '../../lib/useSpeechInput';
 import { progressSegments, overlapGroups, clockLabel } from './progress';
 import PlanEditor, { type PlanState, type PlanBlock, type EditorDraft } from './PlanEditor';
@@ -52,8 +52,6 @@ export interface DashboardRuntime {
  onAddSession: (block: Block, date: string, minutes: number, startTime?: string) => Promise<void>;
  /** Read part of a block's sections: everything through `itemId` is done, the rest goes back to open. */
  onStoppedAt?: (id: string | number, itemId: string) => Promise<void>;
- /** A block that ended unread: its sections go back to open for rescheduling. */
- onNotStarted?: (id: string | number) => Promise<void>;
 }
 export default function DashboardV2({runtime}:{runtime?:DashboardRuntime}) {
   const timeFormat = useTimeFormat();
@@ -96,24 +94,38 @@ export default function DashboardV2({runtime}:{runtime?:DashboardRuntime}) {
   const [dropLogged,setDropLogged]=useState<Set<string|number>>(new Set());
   async function update(id: string | number, state: State, opts?: { deleteLoggedTime?: boolean }) { if(runtime){try{await runtime.onState(id,state,opts);setMessage('Plan saved.');}catch(err){setMessage(err instanceof Error ? err.message : 'Could not save.');}return;} setBlocks(bs => bs.map(b => b.id === id ? { ...b, state } : b)); }
   async function progressStep(fn: () => Promise<void>, done: string) { try { await fn(); setMessage(done); } catch (err) { setMessage(err instanceof Error ? err.message : 'Could not save.'); } }
-  // A block that covers reading-list sections can be finished part way, and one
-  // whose time has passed unchecked asks how far it got rather than assuming.
-  function howFar(b: Block) {
+  // A block covering several reading-list sections can be finished part way.
+  // The bookmark only appears once the block has Focus time on it; before
+  // that there is nothing to have stopped part way through.
+  const [stopMenu,setStopMenu]=useState<string|number|null>(null);
+  useEffect(()=>{
+    if(stopMenu===null)return;
+    const close=(e:Event)=>{if(e instanceof KeyboardEvent ? e.key==='Escape' : !(e.target as Element).closest?.('[data-stop-menu]'))setStopMenu(null);};
+    document.addEventListener('mousedown',close);document.addEventListener('keydown',close);
+    return()=>{document.removeEventListener('mousedown',close);document.removeEventListener('keydown',close);};
+  },[stopMenu]);
+  function stoppedAt(b: Block) {
     if (!runtime?.onStoppedAt || b.external || b.state === 'Proposal' || b.state === 'Completed' || !b.covers?.length) return null;
-    const open = b.covers.filter(c => !c.done);
-    if (!open.length) return null;
-    const stops = open.slice(0, -1);
-    const picker = stops.length > 0 && <select className={styles.stoppedAt} aria-label={`Stopped at — ${b.title}`} value="" disabled={active === b.id} onChange={e => { const item = open.find(c => c.id === e.target.value); if (item) void progressStep(() => runtime.onStoppedAt!(b.id, item.id), `Marked through ${item.label} as read. The rest is back on your list.`); }}><option value="" disabled>Stopped at…</option>{stops.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}</select>;
-    if (!b.ended) return { inline: picker, row: null };
-    return { inline: null, row: <div className={styles.howFar} role="group" aria-label={`How far did you get on ${b.title}?`}><span>Ended unchecked. How far did you get?</span><button onClick={() => update(b.id, 'Completed')}>All of it</button>{picker}{runtime.onNotStarted && <button onClick={() => void progressStep(() => runtime.onNotStarted!(b.id), 'Back on your list. Ask Soma to fit it in again.')}>Didn’t start</button>}</div> };
+    const worked = (b.actualSeconds ?? 0) + (active === b.id ? seconds : 0);
+    if (worked < 60 || active === b.id) return null;
+    const stops = b.covers.filter(c => !c.done).slice(0, -1);
+    if (!stops.length) return null;
+    const open = stopMenu === b.id;
+    return <span className={styles.stopWrap} data-stop-menu>
+      <button type="button" className={styles.stopButton} aria-label={`Stopped part way: ${b.title}`} title="Stopped part way? Mark how far you got" aria-haspopup="menu" aria-expanded={open} onClick={() => setStopMenu(open ? null : b.id)}><Bookmark size={14}/></button>
+      {open && <div role="menu" className={styles.stopMenu} aria-label={`How far you got on ${b.title}`}>
+        <p>Read through…</p>
+        {stops.map(c => <button key={c.id} type="button" role="menuitem" onClick={() => { setStopMenu(null); void progressStep(() => runtime.onStoppedAt!(b.id, c.id), `Marked through ${c.label} as read. The rest is back on your list.`); }}>{c.label}</button>)}
+      </div>}
+    </span>;
   }
   function start(id: string | number) { if(runtime){const block=blocks.find(b=>b.id===id);if(block)runtime.onFocus(block);return;} if (active !== null && active !== id) return; setActive(id); setStarted(Date.now()); setNow(new Date()); setStopping(false); }
   function pause() { setElapsed(seconds); setStarted(null); }
   function finish(state: State) { if (active !== null) setBlocks(bs=>bs.map(b=>b.id===active ? {...b,state,actualSeconds:(b.actualSeconds ?? 0)+seconds} : b)); setActive(null); setStarted(null); setElapsed(0); setStopping(false); setMessage(state === 'Completed' ? 'Study block completed in this demo.' : 'Progress kept in this demo. Planned times stayed the same.'); }
   // One card for both the timed agenda and the unscheduled list.
   function blockCard(b: Block) {
-    const far = howFar(b);
-    return <article key={b.id} data-kind={b.external ? 'event' : 'study'} className={`${styles.block} ${styles[b.color]} ${b.state==='Proposal' ? styles.proposal : ''}${(b.changeKind==='remove' && b.loggedMinutes) || far?.row ? ` ${styles.blockWithChoice}` : ''}`}><div className={styles.blockTime}>{b.changeKind==='remove' ? 'Delete' : b.changeKind==='complete' ? 'Done' : b.changeKind==='progress' ? 'Read' : formatClockRange(b.time,timeFormat) || 'Any time'}<span>{b.changeKind==='remove' ? 'from plan' : b.changeKind==='complete' ? 'mark complete' : b.changeKind==='progress' ? 'mark progress' : b.minutes ? `${b.minutes} min` : 'Unscheduled'}</span></div>{canEdit(b) ? <button type="button" className={styles.blockBody} aria-label={`Edit: ${b.title}`} onClick={()=>openEditor(b)}><span className={styles.subject}>{b.subject}</span><h3>{b.title}</h3><span className={styles.state}>{b.external ? 'Personal commitment' : active===b.id ? (started ? 'In progress' : 'Paused') : b.state}{b.note && ` · ${b.note}`}{b.state==='Completed' && <Check size={13}/>}</span></button> : <div className={styles.blockBody}><span className={styles.subject}>{b.subject}</span><h3>{b.title}</h3><span className={styles.state}>{b.external ? (b.manual ? 'Personal commitment' : 'Read-only commitment') : active===b.id ? (started ? 'In progress' : 'Paused') : b.state}{b.note && ` · ${b.note}`}{b.state==='Completed' && <Check size={13}/>}</span></div>}{b.changeKind==='remove' && !!b.loggedMinutes && <label className={styles.dropLogged}><input type="checkbox" checked={dropLogged.has(b.id)} aria-label={`Also delete the ${b.loggedMinutes} minutes recorded on ${b.title}`} onChange={e=>setDropLogged(prev=>{const next=new Set(prev);if(e.target.checked)next.add(b.id);else next.delete(b.id);return next;})}/> Also delete {b.loggedMinutes} min of recorded study time</label>}{far?.row}{!b.external && <div className={`${styles.actions}${far?.inline ? ` ${styles.actionsWide}` : ''}`}>{b.state==='Proposal' ? <><button onClick={()=>update(b.id,'Planned',{deleteLoggedTime:dropLogged.has(b.id)})}>Accept</button><button onClick={()=>runtime ? runtime.onDismiss(b.id) : setBlocks(bs=>bs.filter(x=>x.id!==b.id))}>Dismiss</button></> : b.state==='Completed' ? <Check size={18}/> : <>{tracking && day>=0 && <button disabled={runtime ? runtime.timerActive : active!==null} aria-label={`Start focus: ${b.title}`} onClick={()=>start(b.id)}><Play size={13}/> Focus</button>}{far?.inline}<button disabled={active===b.id} aria-label={`Complete: ${b.title}`} onClick={()=>update(b.id,'Completed')}><Check size={14}/></button></>}</div>}</article>;
+    const stop = stoppedAt(b);
+    return <article key={b.id} data-kind={b.external ? 'event' : 'study'} className={`${styles.block} ${styles[b.color]} ${b.state==='Proposal' ? styles.proposal : ''}${b.changeKind==='remove' && b.loggedMinutes ? ` ${styles.blockWithChoice}` : ''}`}><div className={styles.blockTime}>{b.changeKind==='remove' ? 'Delete' : b.changeKind==='complete' ? 'Done' : b.changeKind==='progress' ? 'Read' : formatClockRange(b.time,timeFormat) || 'Any time'}<span>{b.changeKind==='remove' ? 'from plan' : b.changeKind==='complete' ? 'mark complete' : b.changeKind==='progress' ? 'mark progress' : b.minutes ? `${b.minutes} min` : 'Unscheduled'}</span></div>{canEdit(b) ? <button type="button" className={styles.blockBody} aria-label={`Edit: ${b.title}`} onClick={()=>openEditor(b)}><span className={styles.subject}>{b.subject}</span><h3>{b.title}</h3><span className={styles.state}>{b.external ? 'Personal commitment' : active===b.id ? (started ? 'In progress' : 'Paused') : b.state}{b.note && ` · ${b.note}`}{b.state==='Completed' && <Check size={13}/>}</span></button> : <div className={styles.blockBody}><span className={styles.subject}>{b.subject}</span><h3>{b.title}</h3><span className={styles.state}>{b.external ? (b.manual ? 'Personal commitment' : 'Read-only commitment') : active===b.id ? (started ? 'In progress' : 'Paused') : b.state}{b.note && ` · ${b.note}`}{b.state==='Completed' && <Check size={13}/>}</span></div>}{b.changeKind==='remove' && !!b.loggedMinutes && <label className={styles.dropLogged}><input type="checkbox" checked={dropLogged.has(b.id)} aria-label={`Also delete the ${b.loggedMinutes} minutes recorded on ${b.title}`} onChange={e=>setDropLogged(prev=>{const next=new Set(prev);if(e.target.checked)next.add(b.id);else next.delete(b.id);return next;})}/> Also delete {b.loggedMinutes} min of recorded study time</label>}{!b.external && <div className={`${styles.actions}${stop ? ` ${styles.actionsWide}` : ''}`}>{b.state==='Proposal' ? <><button onClick={()=>update(b.id,'Planned',{deleteLoggedTime:dropLogged.has(b.id)})}>Accept</button><button onClick={()=>runtime ? runtime.onDismiss(b.id) : setBlocks(bs=>bs.filter(x=>x.id!==b.id))}>Dismiss</button></> : b.state==='Completed' ? <Check size={18}/> : <>{tracking && day>=0 && <button disabled={runtime ? runtime.timerActive : active!==null} aria-label={`Start focus: ${b.title}`} onClick={()=>start(b.id)}><Play size={13}/> Focus</button>}{stop}<button disabled={active===b.id} aria-label={`Complete: ${b.title}`} onClick={()=>update(b.id,'Completed')}><Check size={14}/></button></>}</div>}</article>;
   }
 
   function canEdit(block: Block) {

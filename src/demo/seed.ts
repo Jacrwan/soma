@@ -487,6 +487,9 @@ function readingProgress(u: string, nowMinute: number, todos: Row[], todoSession
     for (const label of sectionsOf(range)) { const item = items.find(x => x.label === label); if (item) item.todo_id = id; }
   };
   plan('22.1–22.5', 'Gauss’s law', ended);
+  // Worked on for a while, never checked off: the bookmark shows, and Soma asks.
+  const from = atMinute(dayAt(ended.day), ended.start + 5);
+  timerSessions.push({ id: uuid('d4000000'), user_id: u, subject_id: phys, subject_name: SUBJECTS.phys.name, task_text: 'Physics reading: 22.1–22.5 Gauss’s law', start_time: from.toISOString(), end_time: new Date(+from + 40 * 60000).toISOString(), duration_seconds: 40 * 60, date: dateKey(dayAt(ended.day)) });
   plan('21.5–21.7', 'Electric field and field lines', ahead);
   return items;
 }

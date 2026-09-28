@@ -9,7 +9,7 @@ const offset = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n)
 const at = (n: number, t: string) => { const d = offset(n); const [h, m] = t.split(':').map(Number); d.setHours(h, m, 0, 0); return d.toISOString(); };
 const TODAY = key(offset(0)), TOMORROW = key(offset(1));
 type Row = Record<string, unknown>;
-type Ctx = { courses: { s: string; done: string; behind: number; unconfirmed?: string; open: { id: string; l: string; planned?: unknown }[] }[]; plan: { id?: string; title: string; cov?: string }[] };
+type Ctx = { unchecked?: { id: string; title: string; did: number; cov?: string }[]; courses: { s: string; done: string; behind: number; unconfirmed?: string; open: { id: string; l: string; planned?: unknown }[] }[]; plan: { id?: string; title: string; cov?: string }[] };
 
 const SECTIONS: [string, number][] = [['3.7', -9], ['4.1', -4], ['4.2', -4], ['4.3', -4], ['4.4', -4], ['4.5', -4], ['4.6', -4], ['4.7', -2], ['4.8', -2], ['4.9', -2], ['5.1', 3], ['5.2', 3], ['5.3', 3], ['5.4', 3]];
 const item = (label: string) => `item-${label}`;
@@ -34,7 +34,8 @@ function data() {
       done_at: label === '3.7' ? at(-9, '21:00') : null,
       todo_id: ['4.1', '4.2', '4.3', '4.4', '4.5', '4.6'].includes(label) ? 't-read' : null,
     })) as Row[],
-    timer_sessions: [] as Row[],
+    // Half an hour of Focus on the 4.1–4.6 block, which was never checked off.
+    timer_sessions: [{ id: 'f-read', user_id: account.id, subject_id: 'phys', task_text: 'Physics reading: 4.1–4.6 Momentum', date: TODAY, start_time: at(0, '00:00'), end_time: at(0, '00:30'), duration_seconds: 1800 }] as Row[],
   };
 }
 
@@ -48,8 +49,9 @@ function matching(rows: Row[], params: URLSearchParams) {
   }));
 }
 
-async function setup(page: Page, reply: (ctx: Ctx) => unknown) {
+async function setup(page: Page, reply: (ctx: Ctx) => unknown, edit?: (db: Record<string, Row[]>) => void) {
   const db: Record<string, Row[]> = data();
+  edit?.(db);
   const state = { db, prompt: '' };
   await page.addInitScript(a => {
     localStorage.setItem('sb-soma-regression-auth-token', JSON.stringify({ access_token: 't', refresh_token: 'r', token_type: 'bearer', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, user: a }));
@@ -110,6 +112,27 @@ test('Soma sees what is actually read, not what the syllabus says should be', as
   expect(phys.open[0].planned).toBe('ended unchecked');
   expect(ctx.plan.find(p => p.title.startsWith('Physics reading'))!.cov).toBe('4.1–4.6');
   expect(state.prompt).toContain('never infer it from a due date');
+  // Worked on but never checked off: Soma is told to ask.
+  expect(ctx.unchecked).toEqual([expect.objectContaining({ id: 's-read', did: 30, cov: '4.1–4.6' })]);
+});
+
+test('a block that ended with no Focus time counts as not started: no question, no bookmark', async ({ page }) => {
+  const state = await setup(page, () => ({ reply: 'ok' }), db => { db.timer_sessions = []; });
+  await expect(page.getByRole('button', { name: /Stopped part way/ })).toHaveCount(0);
+  await ask(page, 'plan physics');
+  await expect(page.getByRole('log')).toContainText('ok');
+  const ctx = JSON.parse(state.prompt.match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]) as Ctx;
+  expect(ctx.unchecked).toBeUndefined();
+  expect(ctx.courses[0].unconfirmed).toBeUndefined();
+  expect(ctx.courses[0].open[0].planned).toBeUndefined();
+});
+
+test('saying it was finished marks a past block done from today’s plan', async ({ page }) => {
+  const state = await setup(page, () => ({ reply: 'Nice.', changes: [{ action: 'complete', id: 's-read' }] }));
+  await ask(page, 'yes i finished it');
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => state.db.todos.find(t => t.id === 't-read')!.status).toBe('done');
+  expect(items(state.db)['4.6'].done_at).toBeTruthy();
 });
 
 test('"I got through 4.3" marks only 4.1–4.3 and hands 4.4–4.6 back', async ({ page }) => {
@@ -148,11 +171,10 @@ test('a block cannot re-plan sections already in an upcoming block', async ({ pa
   expect(ctx.courses[0].open.find(i => i.l === '4.7')!.planned).toBe(true);
 });
 
-test('an ended block asks how far you got, and "Stopped at" records it', async ({ page }) => {
+test('a block worked on shows a bookmark that records how far you got', async ({ page }) => {
   const state = await setup(page, () => ({ reply: 'ok' }));
-  const card = page.locator('article', { hasText: 'Physics reading: 4.1–4.6 Momentum' });
-  await expect(card.getByText('Ended unchecked. How far did you get?')).toBeVisible();
-  await card.getByLabel(/Stopped at/).selectOption({ label: '4.2' });
+  await page.getByRole('button', { name: 'Stopped part way: Physics reading: 4.1–4.6 Momentum' }).click();
+  await page.getByRole('menuitem', { name: '4.2', exact: true }).click();
   await expect(page.getByText('Physics reading: 4.1–4.2 Momentum')).toBeVisible();
   const it = items(state.db);
   expect(it['4.2'].done_at).toBeTruthy();
