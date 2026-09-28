@@ -137,3 +137,18 @@ test('without the student saying so, study hours still hold', async ({ page }) =
   await page.getByRole('button', { name: 'Send to Soma' }).click();
   await expect(page.getByRole('log')).toContainText('outside your study hours');
 });
+
+test('late at night, a block Soma dates "today at 1 AM" lands on tonight, not this morning', async ({ page }) => {
+  // 11:40 PM today. The model gives the date it's on, and 00:30 today has passed.
+  const night = new Date(); night.setHours(23, 40, 0, 0);
+  await page.clock.install({ time: night });
+  const TODAY = key(offset(0));
+  const state = await setup(page, { reply: 'Here.', blocks: [{ title: 'Physics reading 5.1–5.4', subject: 'Physics 5A', date: TODAY, start: '00:30', end: '01:30' }] });
+  await page.getByLabel('What do you need to work on?').fill('i can go until 2');
+  await page.getByRole('button', { name: 'Send to Soma' }).click();
+  await expect(page.getByRole('log')).toContainText('Here.');
+  await expect(page.getByRole('log')).not.toContainText('start time has passed');
+  await page.getByRole('button', { name: /^Accept all/ }).click();
+  await expect.poll(() => state.db.todo_sessions.length).toBe(2);
+  expect(state.db.todo_sessions.find(s => s.id !== 's-hw')!.start_time).toBe(at(1, '00:30'));
+});
