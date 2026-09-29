@@ -11,6 +11,7 @@ import { storage } from './storage';
 import { buildCanvasSection, buildDocumentsSection } from './aiContext';
 import { getTimeFormat, formatClock, formatClockRange } from './timeFormat';
 import { clockMinutes, clockOf, rangeOf, spanMinutes, windowOf } from './clockRange';
+import { statedRange } from './statedTime';
 import { listDocuments } from './documents';
 import { sendMessage } from './ai';
 import { loadInsights, getInsightsSnapshot, summarizeInsights, type InsightsData } from './insights';
@@ -212,7 +213,19 @@ export async function askSoma(opts: {
     return [s2, e >= 60 && e < 720 && e + 720 > clockMinutes(s2) ? clockOf(e + 720) : end];
   };
   const tonight = (offset: number, start: string) => offset === 0 && /^\d\d:\d\d$/.test(start) && clockMinutes(start) < nowMinute - 15 && clockMinutes(start) + 1440 - nowMinute <= 360 ? 1 : offset;
-  const lateNote = (b: PlanBlock) => { if (!stretched) return undefined; try { validateProposal(b, { ...fresh, blocks: [], sessions: [] }, origin, settings, true, true); return undefined; } catch { return 'Past your usual study hours'; } };
+  // A time range the student typed ("from now until 12:30 am") is read here,
+  // not trusted to the model, which kept turning it into a wrong length. It
+  // applies when the reply has exactly one block or move to place.
+  const stated = statedRange(text, nowMinute);
+  const statedTime = (offset: number): { day: number; time: string } | undefined => {
+    if (!stated) return undefined;
+    if (stated.fromNow && offset !== 0) return undefined;
+    // Another day: read "2 to 4" as daytime rather than relative to now.
+    const r = offset === 0 ? stated : statedRange(text, 8 * 60);
+    return r ? { day: offset, time: `${clockOf(r.start)}–${clockOf(r.end)}` } : undefined;
+  };
+  // Anything outside the student's usual hours says so on its card.
+  const lateNote = (b: PlanBlock) => { try { validateProposal(b, { ...fresh, blocks: [], sessions: [] }, origin, settings, true, true); return undefined; } catch { return 'Past your usual study hours'; } };
 
   const rejected: string[] = [];
   // A reply that only renames or moves often leaves out "blocks" entirely.
@@ -251,6 +264,15 @@ export async function askSoma(opts: {
   // Blocks the model re-emitted instead of moving. Reported to the model so its
   // next turn knows the work is already in the plan, not to the user as a failure.
   const targetOf = (c: Record<string, unknown>) => fresh.blocks.find(b => String(b.id) === c.id && (!b.external || b.manual));
+  const timeAsks = newBlocks.filter(v => { const p = v as Record<string, unknown>; return !!p && p.done !== true && p.anytime !== true; }).length
+    + changes.filter(c => ['move', 'update'].includes(String(c.action)) && (c.action === 'move' || c.start !== undefined || c.date !== undefined || c.after !== undefined || c.before !== undefined || c.minutes !== undefined)).length;
+  // "Fill the rest of my time from now until 10" names a window to fill around
+  // events; "from now until 11" names the block itself.
+  const fillAsked = /\b(fill|rest of my (time|day|night)|every (single )?(gap|open)|all (of )?my (free|open) time)\b/i.test(text);
+  const useStated = !!stated && timeAsks === 1 && !fillAsked;
+  const fillWindow = stated && timeAsks === 1 && fillAsked ? { after: clockOf(stated.start), before: clockOf(stated.end) } : undefined;
+  // Study hours give way only to times the student actually typed.
+  const studentGaveTime = !!stated || /\b\d{1,2}(:\d{2})?\s*(am|pm)\b|\b\d{1,2}:\d{2}\b|\bnoon\b|\bmidnight\b/i.test(text);
   // Changes to existing blocks come first, so new blocks are checked against
   // where things will be after the moves. Every targeted block is lifted out of
   // the working plan; one whose change fails is put back.
@@ -354,7 +376,9 @@ export async function askSoma(opts: {
       later.length ? `use later ${wd} time: ${later.join(', ')}` : '',
       whole ? `the first open ${length}-minute slot, ${whole}` : '',
     ].filter(Boolean);
-    return `there isn't ${length} min open on ${wd}${bounds}${gaps.length ? '' : ' (nothing is free then)'}. ${options.length ? `Options: ${options.join('; or ')}. Which do you want?` : 'Nothing is free this week either; want to stay up later or pick another day?'}`;
+    const pastHours = lo >= windowOf(hours.studyWindow)[1] || (hi !== Infinity && hi > windowOf(hours.studyWindow)[1]);
+    const why = pastHours ? ` (that's past your study hours, which end at ${formatClock(hours.studyWindow.end)}; give exact times like "until 12:30 am" to go past them)` : gaps.length ? '' : ' (nothing is free then)';
+    return `there isn't ${length} min open on ${wd}${bounds}${why}. ${options.length ? `Options: ${options.join('; or ')}. Which do you want?` : 'Nothing is free this week either; want to stay up later or pick another day?'}`;
   };
   const extraNote = (spot: Spot) => spot.extra?.length ? `Split across gaps: also ${spot.extra.map(x => formatClockRange(x.time)).join(', ')}` : undefined;
   const lengthOf = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? Math.min(240, Math.max(5, Math.round(v))) : undefined;
@@ -424,10 +448,15 @@ export async function askSoma(opts: {
     let time = target.time, minutes = target.minutes, newDay = target.day;
     let extra: Spot['extra'];
     const auto = retime && typeof c.start !== 'string' && typeof c.end !== 'string';
+    // Times the student gave (or Soma gave on their behalf) aren't held to
+    // study hours or calendar events; the app's own picks are.
+    let explicitTime = retime && !auto && studentGaveTime;
     if (auto) {
       const to = typeof c.date === 'string' ? calendar.find(x => x.date === c.date) : calendar[Math.max(0, target.day)];
       if (!to) { rejected.push(`${target.title}: ${String(c.date)} is outside the next seven days.`); putBack(target); continue; }
-      const exact = c.fill === true ? undefined : exactWindow(to.offset, c.after, c.before, lengthOf(c.minutes));
+      if (fillWindow) Object.assign(c, fillWindow, { fill: true });
+      const exact = (useStated ? statedTime(to.offset) : undefined) ?? (c.fill === true ? undefined : exactWindow(to.offset, c.after, c.before, lengthOf(c.minutes)));
+      if (exact) explicitTime = true;
       const spot: Spot | string = exact ?? autoPlace(to.offset, lengthOf(c.minutes) ?? (target.minutes || 60), c.after, c.before, target.id, { split: c.split === true, fill: c.fill === true, overlapOk: c.overlapOk });
       if (typeof spot === 'string') { questions.push(`${target.title}: ${spot}`); putBack(target); continue; }
       if (spot.splitToFit) splitOffers.push(target.title);
@@ -440,17 +469,19 @@ export async function askSoma(opts: {
       if (!start || !end || !date) { rejected.push(`${target.title}: the new time was incomplete.`); putBack(target); continue; }
       const to = calendar.find(x => x.date === date);
       if (!to) { rejected.push(`${target.title}: ${date} is outside the next seven days.`); putBack(target); continue; }
-      const [s1, e1] = pmPair(to.offset, start, end);
-      time = `${s1}–${e1}`; minutes = spanMinutes(s1, e1); newDay = tonight(to.offset, s1);
+      const said = useStated ? statedTime(to.offset) : undefined;
+      if (said) explicitTime = true;
+      const [s1, e1] = said ? said.time.split('–') : pmPair(to.offset, start, end);
+      time = `${s1}–${e1}`; minutes = spanMinutes(s1, e1); newDay = said ? to.offset : tonight(to.offset, s1);
     }
     const renamed = title !== target.title;
     const cover = coverFor(c.covers, title, target.todoId);
     const moved: PlanBlock = { ...target, id: `change:${crypto.randomUUID()}`, state: 'Proposal', title, time, minutes, day: newDay, replaces: target.id, changeKind: renamed || cover.coverIds ? 'update' : 'move', ...(cover.coverIds ? { coverIds: cover.coverIds } : {}) };
-    if (auto) autoPlaced.add(moved.id);
+    if (auto && !explicitTime) autoPlaced.add(moved.id);
     if (extra) moved.extra = extra;
     const label = [renamed ? `Renamed from "${target.title}"` : '', cover.note, time !== target.time || newDay !== target.day ? `Moves from ${from}` : '', extra ? extraNote({ day: newDay, time, extra }) : ''].filter(Boolean).join(' · ');
     if (time === target.time && newDay === target.day) { moved.note = label; proposed.push(moved); continue; }
-    try { const overlaps = validateProposal(moved, { ...working, blocks: [...working.blocks, ...placed()] }, origin, hours, true); moved.note = [label, overlaps.length ? `overlaps ${overlaps.join(', ')}` : '', lateNote(moved)].filter(Boolean).join(' · '); proposed.push(moved); }
+    try { const overlaps = validateProposal(moved, { ...working, blocks: [...working.blocks, ...placed()] }, origin, hours, true, false, !explicitTime); moved.note = [label, overlaps.length ? `overlaps ${overlaps.join(', ')}` : '', lateNote(moved)].filter(Boolean).join(' · '); proposed.push(moved); }
     catch (err) { rejected.push(`${renamed ? 'Change' : 'Move'} ${target.title}: ${err instanceof Error ? err.message : 'could not be moved.'}`); putBack(target); }
   }
   // A block Soma cannot place used to throw away the whole answer. Keep the
@@ -482,7 +513,11 @@ export async function askSoma(opts: {
     // landed on today, read as already past, and was rejected wholesale.
     let blockDay = day;
     if (typeof p.date === 'string') { const found = calendar.find(c => c.date === p.date); if (!found) { rejected.push(`${p.title.trim()}: ${p.date} is outside the next seven days.`); continue; } blockDay = found.offset; }
-    if (timed) { [p.start, p.end] = pmPair(blockDay, p.start as string, p.end as string); blockDay = tonight(blockDay, p.start as string); }
+    let explicitTime = timed && studentGaveTime;
+    if (fillWindow && !timed && p.anytime !== true) { Object.assign(p, fillWindow, { fill: true }); auto = typeof p.date === 'string'; }
+    const said = useStated ? statedTime(blockDay) : undefined;
+    if (said) { [p.start, p.end] = said.time.split('–'); timed = true; auto = false; explicitTime = true; }
+    else if (timed) { [p.start, p.end] = pmPair(blockDay, p.start as string, p.end as string); blockDay = tonight(blockDay, p.start as string); }
     // The model is told never to recreate a block that already exists, and still
     // does. Treat a same-day, same-title entry as that block: retime it, or drop
     // the suggestion when it already sits where the user asked. Titles repeated
@@ -492,7 +527,7 @@ export async function askSoma(opts: {
     const existing = working.blocks.find(sameTask);
     if (!existing && fresh.blocks.some(sameTask)) { folded.push(`"${title}" is already being changed in this reply; the duplicate was dropped`); continue; }
     const exact = auto && p.fill !== true ? exactWindow(blockDay, p.after, p.before, length) : undefined;
-    if (exact) { [p.start, p.end] = exact.time.split('–'); blockDay = exact.day; timed = true; auto = false; }
+    if (exact) { [p.start, p.end] = exact.time.split('–'); blockDay = exact.day; timed = true; auto = false; explicitTime = true; }
     if (auto) {
       const spot = autoPlace(blockDay, length ?? 60, p.after, p.before, existing?.id, { split: p.split === true, fill: p.fill === true, overlapOk: p.overlapOk });
       if (typeof spot === 'string') { questions.push(`${title}: ${spot}`); continue; }
@@ -508,7 +543,7 @@ export async function askSoma(opts: {
       if (extra) { moved.extra = extra; moved.note = withNote(moved.note, extraNote({ day: blockDay, time, extra })); }
       // A block that ends up occupying no time has nothing to be validated against.
       if (!time) { proposed.push(moved); continue; }
-      try { const overlaps = validateProposal(moved, { ...working, blocks: [...working.blocks.filter(b => b.id !== existing.id), ...placed()] }, origin, hours, true); if (overlaps.length) moved.note = `${moved.note} · overlaps ${overlaps.join(', ')}`; proposed.push(moved); }
+      try { const overlaps = validateProposal(moved, { ...working, blocks: [...working.blocks.filter(b => b.id !== existing.id), ...placed()] }, origin, hours, true, false, !explicitTime); if (overlaps.length) moved.note = `${moved.note} · overlaps ${overlaps.join(', ')}`; proposed.push(moved); }
       catch (err) { rejected.push(`Move ${title}: ${err instanceof Error ? err.message : 'could not be moved.'}`); }
       continue;
     }
@@ -521,7 +556,7 @@ export async function askSoma(opts: {
     if (extra) { block.extra = extra; block.note = withNote(block.note, extraNote({ day: blockDay, time: block.time, extra })); }
     // An unscheduled block occupies no time, so there is nothing to validate it against.
     if (!timed) { proposed.push(block); continue; }
-    try { const overlaps = validateProposal(block, { ...working, blocks: [...working.blocks, ...placed()] }, origin, hours, true); if (overlaps.length) block.note = withNote(block.note, `Overlaps ${overlaps.join(', ')}`); block.note = withNote(block.note, lateNote(block)); proposed.push(block); }
+    try { const overlaps = validateProposal(block, { ...working, blocks: [...working.blocks, ...placed()] }, origin, hours, true, false, !explicitTime); if (overlaps.length) block.note = withNote(block.note, `Overlaps ${overlaps.join(', ')}`); block.note = withNote(block.note, lateNote(block)); proposed.push(block); }
     catch (err) { rejected.push(`${block.title}: ${err instanceof Error ? err.message : 'could not be scheduled.'}`); }
   }
   const outcome = [

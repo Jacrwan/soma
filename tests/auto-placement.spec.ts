@@ -194,7 +194,8 @@ test('stated "11:45 until 01:00" in the morning ends at 1 PM', async ({ page }) 
   await ask(page, 'from now until 1');
   await page.getByRole('button', { name: 'Accept', exact: true }).click();
   await expect.poll(() => state.db.todo_sessions.length).toBe(2);
-  expect(saved(state.db, 'Physics reading 4.7–4.9')).toEqual([at(0, '11:45'), at(0, '13:00')]);
+  // "From now" is 11:41, the time the student sent it.
+  expect(saved(state.db, 'Physics reading 4.7–4.9')).toEqual([at(0, '11:41'), at(0, '13:00')]);
 });
 
 test('"I skipped the discussion" still counts on the next message', async ({ page }) => {
@@ -295,4 +296,26 @@ test('a suggestion made before its block changed is refused with the reason', as
   await page.getByRole('button', { name: /^Accept all/ }).click();
   await expect(page.getByRole('alert').first()).toContainText('"Physics HW 4" has changed since Soma suggested this');
   expect(state.db.todos.some(t => t.id === 't-hw')).toBe(true);
+});
+
+// Reported at 11:23 PM: "schedule physics hw 4: KK -4 from now until 12:30 am".
+// Soma sent "60 minutes after 11:23, before 00:30", and study hours end at 11.
+test('the times typed in the message win over Soma\'s arithmetic and study hours', async ({ page }) => {
+  const late = new Date(); late.setHours(23, 23, 0, 0);
+  const TODAY = key(offset(0));
+  const state = await setup(page, { reply: 'Until 12:30.', blocks: [{ title: 'Physics HW 4 tonight', subject: 'Physics 5A', date: TODAY, minutes: 60, after: '23:23', before: '00:30' }] }, [], late);
+  await ask(page, 'schedule physics hw 4: KK -4 from now until 12:30 am');
+  await expect(page.getByRole('log')).not.toContainText('Needs your call');
+  await expect(page.getByText(/Past your usual study hours/).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => state.db.todo_sessions.length).toBe(2);
+  expect(saved(state.db, 'Physics HW 4 tonight')).toEqual([at(0, '23:23'), at(1, '00:30')]);
+});
+
+test('a time Soma picks on its own still keeps to study hours', async ({ page }) => {
+  const TODAY = key(offset(0));
+  await setup(page, { reply: 'Early.', blocks: [{ title: 'Dawn review', subject: 'Physics 5A', date: key(offset(1)), start: '06:00', end: '07:00' }] });
+  void TODAY;
+  await ask(page, 'plan an early review tomorrow');
+  await expect(page.getByRole('log')).toContainText('outside your study hours');
 });
