@@ -108,7 +108,8 @@ test('an end time before the start is refused rather than saved',async({page})=>
  await page.getByRole('button',{name:'Start and end',exact:true}).click();
  await page.getByLabel('Start',{exact:true}).fill('15:00');
  await page.getByLabel('End',{exact:true}).fill('14:00');
- await expect(page.getByText('End time must be later than start time.')).toBeVisible();
+ // 3 PM to 2 PM would be 23 hours: a typo, not an overnight session.
+ await expect(page.getByText(/End time must be later than start time/)).toBeVisible();
  await expect(page.getByRole('button',{name:'Add session',exact:true})).toBeDisabled();
  expect(state.tables.timer_sessions).toHaveLength(1);
 });
@@ -332,12 +333,12 @@ test('a block drawn only from recorded sessions can be opened and deleted',async
 // Reported: studying 10:36 PM to 1:41 AM showed as a 30-minute stub, nothing
 // after midnight, and the details showed another block's times.
 test('a session past midnight is drawn on both days, and its details show when it ran',async({page})=>{
+ // Set before signing in, so the test session's expiry follows the same clock.
+ await page.clock.install({time:new Date(`${date}T12:00:00`)});
  const state=await setup(page);
  const next=new Date(day);next.setDate(next.getDate()+1);
  const nextDate=`${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}-${String(next.getDate()).padStart(2,'0')}`;
  state.tables.timer_sessions=[{id:'late',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Cell review',date,start_time:iso('22:36'),end_time:new Date(`${nextDate}T01:41:00`).toISOString(),duration_seconds:177*60}];
- // Show a week that has both days in it.
- await page.clock.install({time:new Date(`${date}T12:00:00`)});
  await openWeek(page);
  const blocks=recorded(page);
  // Sunday 10:36 PM–midnight is about 84 minutes; Monday midnight–1:41 AM about 101.
@@ -355,8 +356,9 @@ test('a session past midnight is drawn on both days, and its details show when i
 // The calendar shows past sessions only: a finished block from the plan
 // appears; upcoming or unfinished planned blocks don't.
 test('a finished past block from the plan shows on the calendar; upcoming ones do not',async({page})=>{
- const state=await setup(page);
+ // Set before signing in, so the test session's expiry follows the same clock.
  await page.clock.install({time:new Date(`${date}T12:00:00`)});
+ const state=await setup(page);
  state.tables.todos.push(
   {id:'done-read',user_id:account.id,text:'Physics Reading: 4.6 - 4.9',subject_id:'biology',status:'done',date},
   {id:'later',user_id:account.id,text:'Later reading',subject_id:'biology',status:'nothing',date},
@@ -376,8 +378,9 @@ test('a finished past block from the plan shows on the calendar; upcoming ones d
 });
 
 test('time recorded inside a finished block is that block, not a second one',async({page})=>{
- const state=await setup(page);
+ // Set before signing in, so the test session's expiry follows the same clock.
  await page.clock.install({time:new Date(`${date}T12:00:00`)});
+ const state=await setup(page);
  state.tables.todos[0].status='done';
  // Studied 9:05–9:40 inside the finished 9:00–9:45 Cell review block.
  state.tables.timer_sessions=[{id:'inside',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Cell review',date,start_time:iso('09:05'),end_time:iso('09:40'),duration_seconds:35*60}];
@@ -414,4 +417,22 @@ test('a finished block and the sessions around it draw as one stretch, past midn
  await parts.first().dispatchEvent('click');
  await expect(page.getByRole('dialog')).toContainText('9:51 PM');
  await expect(page.getByRole('dialog')).toContainText('1:41 AM');
+});
+
+// Reported: adding a session from 11:25 PM to 12:35 AM said "End time must be
+// later than start time". An end before the start is the next day.
+test('a session can be added past midnight, ending the next day',async({page})=>{
+ const state=await setup(page);
+ await openEditor(page);
+ await page.getByRole('button',{name:/Forgot to start the timer/}).click();
+ await page.getByRole('button',{name:'Start and end',exact:true}).click();
+ await page.getByLabel('Start',{exact:true}).fill('23:25');
+ await page.getByLabel('End',{exact:true}).fill('00:35');
+ await expect(page.getByText(/Ends 12:35 AM on .* · 70 minutes\./)).toBeVisible();
+ await page.getByRole('button',{name:'Add session',exact:true}).click();
+ await expect.poll(()=>state.tables.timer_sessions.length).toBe(2);
+ const row=state.tables.timer_sessions.find(r=>r.id!=='real')!;
+ expect(row.duration_seconds).toBe(70*60);
+ expect(new Date(String(row.end_time)).getTime()-new Date(String(row.start_time)).getTime()).toBe(70*60000);
+ expect(new Date(String(row.start_time)).getHours()).toBe(23);
 });

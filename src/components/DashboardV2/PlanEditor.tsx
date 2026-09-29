@@ -10,6 +10,8 @@ export type EditorDraft = { block?:PlanBlock; start:string; end:string; day:numb
 const colors:Record<string,string>={Biology:'green',Mathematics:'blue',Literature:'purple',Personal:'blue'};
 const NEW_COURSE='__new_course__';
 export const minuteValue = (s:string) => {const [h,m]=s.split(':').map(Number);return h*60+m;};
+/** "Sep 30" for the day after a YYYY-MM-DD date. */
+const nextDayLabel=(date:string)=>{const d=new Date(`${date}T12:00:00`);d.setDate(d.getDate()+1);return d.toLocaleDateString(undefined,{month:'short',day:'numeric'});};
 /** Evaluated per render: a module-level constant would go stale past midnight. */
 const todayLocal=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 const clockOf=(iso:string)=>{const d=new Date(iso);return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;};
@@ -46,7 +48,10 @@ export default function PlanEditor({draft,blocks,onSave,onCancel,live=false,know
  const [logMode,setLogMode]=useState<'minutes'|'range'>('minutes');
  const [logStart,setLogStart]=useState('');
  const [logEnd,setLogEnd]=useState('');
- const logRangeMinutes=logStart && logEnd ? minuteValue(logEnd)-minuteValue(logStart) : 0;
+ // An end before the start is the next day (11:25 PM to 12:35 AM is 70 minutes),
+ // up to 12 hours: 3 PM to 2 PM is a typo, not a 23-hour session.
+ const overnightOk=(a:string,b:string)=>!!a && !!b && spanMinutes(a,b)>0 && (minuteValue(b)>minuteValue(a) || spanMinutes(a,b)<=720);
+ const logRangeMinutes=overnightOk(logStart,logEnd) ? spanMinutes(logStart,logEnd) : 0;
  const logLength=logMode==='range' ? logRangeMinutes : Math.round(Number(logMinutes));
  const logValid=logLength>=1 && logLength<=1440 &&
   (logMode==='range' ? !!logStart && !!logEnd : logMinutes.trim()!=='');
@@ -61,7 +66,7 @@ export default function PlanEditor({draft,blocks,onSave,onCancel,live=false,know
  const [addMode,setAddMode]=useState<'minutes'|'range'>('minutes');
  const [addStart,setAddStart]=useState('');
  const [addEnd,setAddEnd]=useState('');
- const rangeMinutes=addStart && addEnd ? minuteValue(addEnd)-minuteValue(addStart) : 0;
+ const rangeMinutes=overnightOk(addStart,addEnd) ? spanMinutes(addStart,addEnd) : 0;
  const addLength=addMode==='range' ? rangeMinutes : Math.round(Number(addMinutes));
  const addValid=!!addDate && addLength>=1 && addLength<=1440 &&
   (addMode==='range' ? !!addStart && !!addEnd : addMinutes.trim()!=='');
@@ -119,8 +124,8 @@ export default function PlanEditor({draft,blocks,onSave,onCancel,live=false,know
       <label>Start<input type="time" autoFocus aria-label={`Start time on ${day}`} value={logStart} disabled={busy} onChange={e=>setLogStart(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setEditingLog(null);}}}/></label>
       <label>End<input type="time" aria-label={`End time on ${day}`} value={logEnd} disabled={busy} onChange={e=>setLogEnd(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setEditingLog(null);}}}/></label>
      </div>}
-   {logMode==='range' && logStart && logEnd && logRangeMinutes<=0 && <p className={styles.editorNote}>End time must be later than start time.</p>}
-   {logMode==='range' && logRangeMinutes>0 && <p className={styles.editorNote}>{logRangeMinutes} minutes.</p>}
+   {logMode==='range' && logStart && logEnd && logRangeMinutes<=0 && <p className={styles.editorNote}>End time must be later than start time. A session past midnight can run up to 12 hours.</p>}
+   {logMode==='range' && logRangeMinutes>0 && <p className={styles.editorNote}>{minuteValue(logEnd)<=minuteValue(logStart) ? `Ends ${formatClock(logEnd,timeFormat)} the next day · ` : ''}{logRangeMinutes} minutes.</p>}
    <div className={styles.logAddButtons}>
     <button type="button" disabled={busy || !logValid} onClick={()=>{
      if(logMode==='minutes' && logLength===l.minutes){setEditingLog(null);return;}
@@ -157,8 +162,8 @@ export default function PlanEditor({draft,blocks,onSave,onCancel,live=false,know
    : <>
      <label>Start<input type="time" autoFocus value={addStart} onChange={e=>setAddStart(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setAdding(false);}}}/></label>
      <label>End<input type="time" value={addEnd} onChange={e=>setAddEnd(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setAdding(false);}}}/></label>
-     {addStart && addEnd && rangeMinutes<=0 && <p className={styles.editorNote}>End time must be later than start time.</p>}
-     {rangeMinutes>0 && <p className={styles.editorNote}>{rangeMinutes} minutes.</p>}
+     {addStart && addEnd && rangeMinutes<=0 && <p className={styles.editorNote}>End time must be later than start time. A session past midnight can run up to 12 hours.</p>}
+     {rangeMinutes>0 && <p className={styles.editorNote}>{minuteValue(addEnd)<=minuteValue(addStart) ? `Ends ${formatClock(addEnd,timeFormat)} on ${nextDayLabel(addDate)} · ` : ''}{rangeMinutes} minutes.</p>}
     </>}
   <div className={styles.logAddButtons}>
    <button type="button" disabled={logBusy==='add' || !addValid} onClick={()=>void runLog('add',async()=>{
