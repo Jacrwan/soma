@@ -662,47 +662,47 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
       // clock times alone turned it into a 30-minute stub and lost the morning.
       const dayStart = startOfDay(day), dayEnd = addDays(dayStart, 1);
       const clip = (start: Date, end: Date) => [Math.round((Math.max(+start, +dayStart) - +dayStart) / 60000), Math.round((Math.min(+end, +dayEnd) - +dayStart) / 60000)];
-      // The plan first: the dashboard's own blocks.
-      const plans = planSpans(planned, storage.getTodos(), subjects);
-      for (const p of plans) {
-        if (+p.end <= +dayStart || +p.start >= +dayEnd) continue;
-        const [startMin, endMin] = clip(p.start, p.end);
-        if (endMin - startMin < 5) continue;
-        const subject = subjects.find(s => s.id === p.subjectId);
-        const baseColor = p.commitment ? GCAL_COLOR : subject?.color ?? '#9e9e9e';
-        events.push({
-          id: p.id, type: 'soma',
-          label: p.commitment ? 'Personal commitment' : subject?.name ?? 'Study',
-          sublabel: p.task,
-          color: tint(baseColor, 0.3), borderColor: baseColor, textColor: 'var(--text-primary)',
-          startMin, endMin, plan: p,
-        });
+      // Finished blocks from the plan and recorded study time. Where they
+      // overlap for the same course they're one stretch of studying, drawn as
+      // their union: hiding the recorded time lost everything outside the block
+      // (a session running past midnight vanished after the block ended).
+      type Drawn = { id: string; subjectId?: string; task: string; start: Date; end: Date; plan?: PlanSpan; span?: StudySpan; commitment: boolean };
+      const drawn: Drawn[] = [
+        ...planSpans(planned, storage.getTodos(), subjects).map(p => ({ id: p.id, subjectId: p.subjectId, task: p.task, start: p.start, end: p.end, plan: p, commitment: p.commitment })),
+        ...studySpans(sessions, blocks, sessionsLoaded).map(sp => ({ id: sp.id, subjectId: sp.subjectId, task: sp.task, start: sp.start, end: sp.end, span: sp, commitment: false })),
+      ].sort((a, b) => +a.start - +b.start);
+      const merged: Drawn[] = [];
+      for (const d of drawn) {
+        const hit = merged.find(m => !m.commitment && !d.commitment && m.subjectId === d.subjectId && +d.start < +m.end && +d.end > +m.start);
+        if (!hit) { merged.push({ ...d }); continue; }
+        if (+d.start < +hit.start) hit.start = d.start;
+        if (+d.end > +hit.end) hit.end = d.end;
+        if (d.plan && !hit.plan) { hit.plan = d.plan; hit.task = d.plan.task; hit.id = d.id; }
+        if (d.span && !hit.span) hit.span = d.span;
       }
-      // Recorded study time, where it isn't already a planned block.
-      for (const span of studySpans(sessions, blocks, sessionsLoaded)) {
-        if (+span.end <= +dayStart || +span.start >= +dayEnd) continue;
-        if (coveredByPlan(span, plans)) continue;
-        const startMin = Math.round((Math.max(+span.start, +dayStart) - +dayStart) / 60000);
-        const endMin = Math.round((Math.min(+span.end, +dayEnd) - +dayStart) / 60000);
+      for (const d of merged) {
+        if (+d.end <= +dayStart || +d.start >= +dayEnd) continue;
+        const [startMin, endMin] = clip(d.start, d.end);
         // Under five minutes is almost always a focus session stopped by
         // accident; it used to render as a dot, which added noise, not signal.
         if (endMin - startMin < 5) continue;
-        const subject = subjects.find(s => s.id === span.subjectId);
-        const baseColor = subject?.color ?? '#9e9e9e';
-        const label = (subject?.name ?? span.task) || 'Study';
-        const block = span.blockId ? blocks.find(b => b.id === span.blockId) : undefined;
+        const subject = subjects.find(sn => sn.id === d.subjectId);
+        const baseColor = d.commitment ? GCAL_COLOR : subject?.color ?? '#9e9e9e';
+        const label = d.commitment ? 'Personal commitment' : (subject?.name ?? d.task) || 'Study';
         events.push({
-          id: span.id,
+          id: d.id,
           type: 'soma',
           label,
-          sublabel: span.task && span.task !== subject?.name ? span.task : undefined,
+          sublabel: d.task && d.task !== subject?.name ? d.task : undefined,
           color: tint(baseColor, 0.3),
           borderColor: baseColor,
           textColor: 'var(--text-primary)',
           startMin,
           endMin: endMin > startMin ? endMin : startMin + 30,
-          block,
-          span,
+          block: !d.plan && d.span?.blockId ? blocks.find(b => b.id === d.span!.blockId) : undefined,
+          span: d.span,
+          // The details show the whole stretch that was drawn.
+          plan: d.plan ? { ...d.plan, start: d.start, end: d.end } : undefined,
         });
       }
     }
