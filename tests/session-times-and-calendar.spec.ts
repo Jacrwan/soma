@@ -352,29 +352,34 @@ test('a session past midnight is drawn on both days, and its details show when i
  await expect(page.getByRole('dialog')).toContainText('2h 57m');
 });
 
-// Reported: a block added with Edit plan was on the dashboard but not on the
-// calendar, which only drew recorded time. Both now read the same plan.
-test('a block added in Edit plan shows on the calendar',async({page})=>{
- await setup(page);
- await page.goto('/dashboard');
- await page.getByRole('button',{name:'Edit plan',exact:true}).click();
- await page.getByRole('button',{name:'+ Add block',exact:true}).click();
- await page.getByLabel('Title',{exact:true}).fill('Physics Reading: 4.6 - 4.9');
- await page.getByLabel('Start time',{exact:true}).fill('11:40');
- await page.getByLabel('End time',{exact:true}).fill('12:45');
- await page.getByRole('button',{name:'Save block',exact:true}).click();
- await expect(page.getByRole('heading',{name:'Physics Reading: 4.6 - 4.9'})).toBeVisible();
-
+// The calendar shows past sessions only: a finished block from the plan
+// appears; upcoming or unfinished planned blocks don't.
+test('a finished past block from the plan shows on the calendar; upcoming ones do not',async({page})=>{
+ const state=await setup(page);
+ await page.clock.install({time:new Date(`${date}T12:00:00`)});
+ state.tables.todos.push(
+  {id:'done-read',user_id:account.id,text:'Physics Reading: 4.6 - 4.9',subject_id:'biology',status:'done',date},
+  {id:'later',user_id:account.id,text:'Later reading',subject_id:'biology',status:'nothing',date},
+ );
+ state.tables.todo_sessions.push(
+  {id:'s-done',user_id:account.id,todo_id:'done-read',date,start_time:iso('10:40'),end_time:iso('11:45')},
+  {id:'s-later',user_id:account.id,todo_id:'later',date,start_time:iso('15:00'),end_time:iso('16:00')},
+ );
  await openWeek(page);
- const planned=page.locator('[data-source=plan]',{hasText:'Physics Reading: 4.6 - 4.9'});
- await expect(planned).toBeVisible();
- await planned.click();
- await expect(page.getByRole('dialog')).toContainText('A block in your plan');
+ const past=page.locator('[data-source=plan]',{hasText:'Physics Reading: 4.6 - 4.9'});
+ await expect(past).toBeVisible();
+ await expect(page.locator('[data-source=plan]',{hasText:'Later reading'})).toHaveCount(0);
+ // Planned 9:00–9:45 but not done: not a past session.
+ await expect(page.locator('[data-source=plan]',{hasText:'Cell review'})).toHaveCount(0);
+ await past.click();
+ await expect(page.getByRole('dialog')).toContainText('A finished session from your plan');
 });
 
-test('time recorded inside a planned block is that block, not a second one',async({page})=>{
+test('time recorded inside a finished block is that block, not a second one',async({page})=>{
  const state=await setup(page);
- // Studied 9:05–9:40 inside the 9:00–9:45 Cell review block.
+ await page.clock.install({time:new Date(`${date}T12:00:00`)});
+ state.tables.todos[0].status='done';
+ // Studied 9:05–9:40 inside the finished 9:00–9:45 Cell review block.
  state.tables.timer_sessions=[{id:'inside',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Cell review',date,start_time:iso('09:05'),end_time:iso('09:40'),duration_seconds:35*60}];
  await openWeek(page);
  await expect(page.locator('[data-source=plan]',{hasText:'Cell review'})).toBeVisible();

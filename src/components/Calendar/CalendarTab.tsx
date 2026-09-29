@@ -140,11 +140,15 @@ interface PlanSpan {
 
 const COMMITMENT_SUBJECT = 'Personal commitments';
 
+/** Only past sessions: blocks that have ended and are marked done. The
+ *  calendar is a record of studying, not a second copy of the plan. */
 function planSpans(planned: TodoSession[], todos: Todo[], subjects: Subject[]): PlanSpan[] {
   const out: PlanSpan[] = [];
+  const now = Date.now();
   for (const s of planned) {
     const todo = todos.find(t => t.id === s.todoId);
     if (!todo || !s.startTime || !s.endTime) continue;
+    if (todo.status !== 'done' || new Date(s.endTime).getTime() > now) continue;
     out.push({
       id: `plan-${s.id}`, todoId: todo.id, subjectId: todo.subjectId, task: todo.text,
       start: new Date(s.startTime), end: new Date(s.endTime), done: todo.status === 'done',
@@ -669,8 +673,8 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         events.push({
           id: p.id, type: 'soma',
           label: p.commitment ? 'Personal commitment' : subject?.name ?? 'Study',
-          sublabel: `${p.task}${p.done ? ' · Done' : ''}`,
-          color: tint(baseColor, p.done ? 0.18 : 0.3), borderColor: baseColor, textColor: 'var(--text-primary)',
+          sublabel: p.task,
+          color: tint(baseColor, 0.3), borderColor: baseColor, textColor: 'var(--text-primary)',
           startMin, endMin, plan: p,
         });
       }
@@ -1288,7 +1292,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                   <p className={styles.weekModalNote}>Recorded study time. To correct the minutes, open the task on the dashboard.</p>
                 ) : null}
                 {weekBlockModal.plan && (
-                  <p className={styles.weekModalNote}>{weekBlockModal.plan.done ? 'Done. ' : ''}A block in your plan. Change or remove it with Edit plan on the dashboard, or ask Soma.</p>
+                  <p className={styles.weekModalNote}>A finished session from your plan. Change or remove it with Edit plan on the dashboard.</p>
                 )}
                 {deleteError && <p role="alert" className={styles.weekModalNote}>{deleteError}</p>}
                 {weekBlockModal.plan ? (
