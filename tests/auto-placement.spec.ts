@@ -106,10 +106,11 @@ test('a move without times is placed by the app too', async ({ page }) => {
   expect(state.db.todo_sessions.find(s => s.id === 's-hw')!.end_time).toBe(at(1, '13:00'));
 });
 
-test('a stated time on top of a class is refused unless the student is skipping it', async ({ page }) => {
+test('a time the student states goes there, even over a class, and says so', async ({ page }) => {
   await setup(page, { reply: 'There.', blocks: [{ title: 'Physics reading', subject: 'Physics 5A', date: TOMORROW, start: '16:30', end: '17:30' }] });
   await ask(page, 'reading tomorrow at 4:30');
-  await expect(page.getByRole('log')).toContainText('during Physics 5A Discussion on your calendar');
+  await expect(page.getByRole('log')).not.toContainText("Couldn't place");
+  await expect(page.getByText(/Overlaps Physics 5A Discussion/).first()).toBeVisible();
 });
 
 test('skipping the class allows it', async ({ page }) => {
@@ -227,4 +228,71 @@ test('tonight with no room, it asks: the hour after gym, or the first full slot'
   await expect(log).toContainText('10:00 PM–11:00 PM (60 min)');
   await expect(log).toContainText('the first open 105-minute slot');
   await expect(log).toContainText('Which do you want?');
+});
+
+// ── The reported evening and Tuesday ─────────────────────────────────────
+// "Start a block from now until 11 pm" at 9:57 PM, with "Study with Dojin"
+// 10–11 PM on the calendar: Soma sent a 63-minute length instead of times.
+test('"from now until 11" goes exactly there, even over a calendar event', async ({ page }) => {
+  const late = new Date(); late.setHours(21, 57, 0, 0);
+  const TODAY = key(offset(0));
+  const dojin = [{ id: 'dojin', summary: 'Study with Dojin', start: { dateTime: at(0, '22:00') }, end: { dateTime: at(0, '23:00') }, source: { connectionId: 'c', calendarId: 'k' } }];
+  const state = await setup(page, { reply: 'Until 11.', blocks: [{ title: 'Physics HW 4 tonight', subject: 'Physics 5A', date: TODAY, minutes: 63, after: '21:57', before: '23:00' }] }, dojin, late);
+  await ask(page, 'just start a block from now until 11 pm today');
+  await expect(page.getByRole('log')).not.toContainText('Needs your call');
+  await expect(page.getByText(/Overlaps Study with Dojin/).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => state.db.todo_sessions.length).toBe(2);
+  expect(saved(state.db, 'Physics HW 4 tonight')).toEqual([at(0, '21:57'), at(0, '23:00')]);
+});
+
+// "Every single gap after the lecture and office hour until the quiz; it can
+// overlap the flower arrangement thing."
+test('fill uses every gap in the window, and overlapOk lets named events be overlapped', async ({ page }) => {
+  const tue = [
+    { id: 'oh', summary: 'Physics 5A OH', start: { dateTime: at(1, '13:30') }, end: { dateTime: at(1, '14:30') }, source: { connectionId: 'c', calendarId: 'k' } },
+    { id: 'flower', summary: 'Japanese Flower Arrangement Demonstration & Workshop', start: { dateTime: at(1, '14:30') }, end: { dateTime: at(1, '16:00') }, source: { connectionId: 'c', calendarId: 'k' } },
+    { id: 'quiz', summary: 'CS 61A Quiz 3 - Recursion', start: { dateTime: at(1, '15:05') }, end: { dateTime: at(1, '15:15') }, source: { connectionId: 'c', calendarId: 'k' } },
+  ];
+  const state = await setup(page, { reply: 'Every gap.', changes: [{ action: 'move', id: 's-hw', date: TOMORROW, after: '11:00', before: '15:05', fill: true, overlapOk: ['Japanese Flower Arrangement'] }] }, tue);
+  await ask(page, 'every single gap after the lecture and office hour until the quiz, it can overlap the flower thing');
+  await expect(page.getByRole('log')).not.toContainText('Needs your call');
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => state.db.todo_sessions.filter(s => s.todo_id === 't-hw').length).toBe(2);
+  const sessions = state.db.todo_sessions.filter(s => s.todo_id === 't-hw').map(s => [s.start_time, s.end_time]).sort();
+  // 11:00 after the lecture until OH, then after OH until the quiz, over the workshop.
+  expect(sessions).toEqual([[at(1, '11:00'), at(1, '13:30')], [at(1, '14:30'), at(1, '15:05')]]);
+});
+
+// The stuck "Delete Quiz 3 (was 8–9 PM)" card: a delete suggested before the
+// block was moved must not delete the moved block.
+test('accepting a move retires the other suggestions for that block', async ({ page }) => {
+  let n = 0;
+  const state = await setup(page, {} as never);
+  await page.unroute('**/api/chat');
+  await page.route('**/api/chat', route => route.fulfill({ json: { content: [{ text: JSON.stringify(++n === 1
+    ? { reply: 'Delete it?', changes: [{ action: 'remove', id: 's-hw' }] }
+    : { reply: 'Moved.', changes: [{ action: 'move', id: 's-hw', date: TOMORROW, start: '12:00', end: '13:00' }] }) }] } }));
+  await ask(page, 'delete the homework');
+  await expect(page.getByRole('log')).toContainText('Delete it?');
+  await ask(page, 'actually move it to noon');
+  await expect(page.getByRole('log')).toContainText('Moved.');
+  await expect(page.getByRole('button', { name: /^Accept all/ })).toBeVisible();
+  await page.getByRole('button', { name: /^Accept all/ }).click();
+  await expect(page.getByRole('button', { name: /^Accept/ })).toHaveCount(0);
+  // Moved, not deleted.
+  expect(state.db.todo_sessions.find(s => s.id === 's-hw')!.start_time).toBe(at(1, '12:00'));
+  expect(state.db.todos.some(t => t.id === 't-hw')).toBe(true);
+});
+
+test('a suggestion made before its block changed is refused with the reason', async ({ page }) => {
+  const state = await setup(page, { reply: 'Delete it?', changes: [{ action: 'remove', id: 's-hw' }] });
+  await ask(page, 'delete the homework');
+  await expect(page.getByRole('log')).toContainText('Delete it?');
+  // The block moves elsewhere (another tab, the editor) before Accept.
+  state.db.todo_sessions.find(s => s.id === 's-hw')!.start_time = at(1, '18:00');
+  state.db.todo_sessions.find(s => s.id === 's-hw')!.end_time = at(1, '19:00');
+  await page.getByRole('button', { name: /^Accept all/ }).click();
+  await expect(page.getByRole('alert').first()).toContainText('"Physics HW 4" has changed since Soma suggested this');
+  expect(state.db.todos.some(t => t.id === 't-hw')).toBe(true);
 });

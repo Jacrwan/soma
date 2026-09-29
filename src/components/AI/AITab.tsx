@@ -652,8 +652,8 @@ export default function AITab() {
     if (accepting) return;
     setAccepting(true); setProposalError('');
     try {
-      const left = await applyAll(userId, dateAt(new Date(), 0), ids);
-      if (left) setProposalError(`${left} ${left === 1 ? 'change' : 'changes'} couldn't be applied — the rest were saved. Ask Soma to adjust ${left === 1 ? 'it' : 'them'}.`);
+      const failed = await applyAll(userId, dateAt(new Date(), 0), ids);
+      if (failed.length) setProposalError(`The rest were saved, but not ${failed.map(f => `"${f.title}" (${f.reason.replace(/\.$/, '')})`).join(', ')}.`);
     } finally { markProposals(msgId, ids); setAccepting(false); }
   }
 

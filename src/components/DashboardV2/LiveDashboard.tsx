@@ -212,8 +212,9 @@ export default function LiveDashboard({userId}:{userId:string}) {
   return c ? {...withTime,note:c.changeKind==='remove' ? 'Soma suggests deleting this' : c.changeKind==='complete' ? 'Soma suggests marking this done' : c.changeKind==='progress' ? `Soma suggests: ${c.note}` : [c.title!==b.title ? `Soma suggests renaming this to "${c.title}"` : '',retimed ? `${c.title!==b.title ? 'and' : 'Soma suggests'} moving this to ${formatClockRange(c.time)}${c.day!==b.day ? ` ${weekdayName(c.day)}` : ''}` : ''].filter(Boolean).join(' ')} : withTime;
  });
  async function acceptAll(){
-  const left=await applyAll(userId,origin,undefined,b=>save(b,true));
-  if(left)setError(`${left} ${left===1 ? 'change' : 'changes'} couldn't be applied — the rest were saved. Ask Soma to adjust ${left===1 ? 'it' : 'them'}.`);
+  const failed=await applyAll(userId,origin,undefined,b=>save(b,true));
+  // Say which change and why, not just a count.
+  if(failed.length)setError(`The rest were saved, but not ${failed.map(f=>`"${f.title}" (${f.reason.replace(/\.$/,'')})`).join(', ')}.`);
   else setError('');
  }
  const pulseDays=Array.from({length:7},(_,i)=>snapshot.history.filter(h=>h.date===localDate(dateAt(origin,i-6))).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0));
