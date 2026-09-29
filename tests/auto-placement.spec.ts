@@ -118,21 +118,31 @@ test('skipping the class allows it', async ({ page }) => {
   await expect(page.getByRole('log')).not.toContainText("Couldn't place");
 });
 
-test('when nothing fits, it says so instead of guessing', async ({ page }) => {
+test('when nothing fits, it asks with real options instead of just refusing', async ({ page }) => {
   await setup(page, { reply: 'Trying.', blocks: [{ title: 'Long essay', subject: 'Physics 5A', date: TOMORROW, minutes: 240, after: '13:00', before: '16:00' }] });
   await ask(page, 'essay tomorrow afternoon before discussion');
-  await expect(page.getByRole('log')).toContainText("no open 240-minute slot");
+  const log = page.getByRole('log');
+  await expect(log).toContainText('Needs your call');
+  await expect(log).toContainText("there isn't 240 min open");
+  // What's open in the window, what's open later that day, and the first slot that fits whole.
+  await expect(log).toContainText('a shorter block in what\'s open after 1:00 PM before 4:00 PM: 1:00 PM–4:00 PM (180 min)');
+  await expect(log).toContainText('use later');
+  await expect(log).toContainText('the first open 240-minute slot');
+  await expect(log).toContainText('Which do you want?');
+  await expect(log).not.toContainText("Couldn't place");
 });
 
 // The reported Monday: CS lecture ends 1 PM, Math discussion 2–3 PM, Physics discussion at 4 PM.
 const math = [{ id: 'math', summary: 'MATH 53 Discussion', start: { dateTime: at(1, '14:00') }, end: { dateTime: at(1, '14:59') }, source: { connectionId: 'c', calendarId: 'k' } }];
 
-test('a task too long for one gap says which gaps are open', async ({ page }) => {
-  await setup(page, { reply: 'Trying.', changes: [{ action: 'move', id: 's-hw', date: TOMORROW, minutes: 76, after: '13:00', before: '16:00' }] }, math);
+test('a task too long for one gap is offered split, for Accept, instead of refused', async ({ page }) => {
+  const state = await setup(page, { reply: 'Trying.', changes: [{ action: 'move', id: 's-hw', date: TOMORROW, minutes: 76, after: '13:00', before: '16:00' }] }, math);
   await ask(page, 'homework tomorrow afternoon before discussion');
   const log = page.getByRole('log');
-  await expect(log).toContainText('no open 76-minute slot');
-  await expect(log).toContainText('Open then: 1:00 PM–2:00 PM (60 min), 3:00 PM–4:00 PM (60 min)');
+  await expect(log).toContainText("doesn't fit in one open slot, so it is split across your gaps");
+  await expect(log).not.toContainText("Couldn't place");
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => state.db.todo_sessions.filter(s => s.todo_id === 't-hw').length).toBe(2);
 });
 
 test('"in the gaps" splits one task across them, and Accept saves both sessions', async ({ page }) => {
@@ -202,4 +212,19 @@ test('a range that already reads forwards is left alone ("after 11:40, before 12
   await page.getByRole('button', { name: 'Accept', exact: true }).click();
   await expect.poll(() => state.db.todo_sessions.length).toBe(2);
   expect(saved(state.db, 'Physics reading 4.6–4.9')).toEqual([at(0, '11:40'), at(0, '12:10')]);
+});
+
+// Reported: "fill the rest of my time from now until 10 with physics homework"
+// at 9 PM, with gym 9–10 PM, just said it didn't fit.
+test('tonight with no room, it asks: the hour after gym, or the first full slot', async ({ page }) => {
+  const nine = new Date(); nine.setHours(21, 0, 0, 0);
+  const TODAY = key(offset(0));
+  const gym = [{ id: 'gym', summary: 'gym', start: { dateTime: at(0, '21:00') }, end: { dateTime: at(0, '21:59') }, source: { connectionId: 'c', calendarId: 'k' } }];
+  await setup(page, { reply: 'Filling tonight.', blocks: [{ title: 'Physics HW 4', subject: 'Physics 5A', date: TODAY, minutes: 105, after: '21:00', before: '23:00' }] }, gym, nine);
+  await ask(page, 'fill the rest of my time from now until 10 for physics homework');
+  const log = page.getByRole('log');
+  await expect(log).toContainText("there isn't 105 min open");
+  await expect(log).toContainText('10:00 PM–11:00 PM (60 min)');
+  await expect(log).toContainText('the first open 105-minute slot');
+  await expect(log).toContainText('Which do you want?');
 });
