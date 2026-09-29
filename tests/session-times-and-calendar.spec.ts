@@ -385,3 +385,33 @@ test('time recorded inside a finished block is that block, not a second one',asy
  await expect(page.locator('[data-source=plan]',{hasText:'Cell review'})).toBeVisible();
  await expect(recorded(page)).toHaveCount(0);
 });
+
+// Reported: with a finished 10:30–11:45 PM block, the sessions around it
+// (9:51 PM, and 10:36 PM running to 1:41 AM) vanished: recorded time that
+// touched the block was hidden entirely. They're now one stretch.
+test('a finished block and the sessions around it draw as one stretch, past midnight too',async({page})=>{
+ // After the block ends, so it counts as a finished past session. Set before
+ // signing in, so the test session's expiry follows the same clock.
+ await page.clock.install({time:new Date(`${date}T23:50:00`)});
+ const state=await setup(page);
+ const next=new Date(day);next.setDate(next.getDate()+1);
+ const nextDate=`${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}-${String(next.getDate()).padStart(2,'0')}`;
+ state.tables.todos.push({id:'read',user_id:account.id,text:'Physics reading: 4.2–4.6',subject_id:'biology',status:'done',date});
+ state.tables.todo_sessions.push({id:'s-read',user_id:account.id,todo_id:'read',date,start_time:iso('22:30'),end_time:iso('23:45')});
+ state.tables.timer_sessions=[
+  {id:'early',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Physics reading: 4.2–4.6',date,start_time:iso('21:51'),end_time:iso('22:36'),duration_seconds:45*60},
+  {id:'late',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Physics reading: 4.2–4.6',date,start_time:iso('22:36'),end_time:new Date(`${nextDate}T01:41:00`).toISOString(),duration_seconds:177*60},
+ ];
+ await openWeek(page);
+ if(day.getDay()===6)return;   // the next day is in another week
+ const parts=page.locator('[data-source=plan]',{hasText:'Physics reading: 4.2–4.6'});
+ await expect(parts).toHaveCount(2);   // this evening, and after midnight
+ await expect(recorded(page)).toHaveCount(0);
+ const heights=await parts.evaluateAll(els=>els.map(e=>Math.round(e.getBoundingClientRect().height)));
+ // 9:51 PM to midnight is 129 minutes; midnight to 1:41 AM is 101.
+ expect(Math.max(...heights)).toBeGreaterThan(110);
+ expect(Math.min(...heights)).toBeGreaterThan(85);
+ await parts.first().dispatchEvent('click');
+ await expect(page.getByRole('dialog')).toContainText('9:51 PM');
+ await expect(page.getByRole('dialog')).toContainText('1:41 AM');
+});
