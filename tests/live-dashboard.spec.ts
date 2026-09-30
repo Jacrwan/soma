@@ -1,3 +1,4 @@
+import { setEnd } from './end-time';
 import { test, expect, type Page } from '@playwright/test';
 const account={id:'11111111-1111-4111-8111-111111111111',email:'student@example.com',aud:'authenticated',role:'authenticated',created_at:'2025-01-01T00:00:00Z',app_metadata:{},user_metadata:{}};
 const day=new Date();
@@ -54,7 +55,7 @@ test('live progress, completion and undo persist across reload',async({page})=>{
 
 test('manual overlapping block persists with subject and revised allocation',async({page})=>{
  const state=await setup(page);await page.goto('/dashboard');await page.getByRole('button',{name:'Edit plan',exact:true}).click();await page.getByRole('button',{name:'+ Add block',exact:true}).click();
- await page.getByLabel('Title',{exact:true}).fill('Extra revision');await page.getByLabel('Subject',{exact:true}).selectOption('Biology');await page.getByLabel('Start time',{exact:true}).fill('09:15');await page.getByLabel('End time',{exact:true}).fill('09:45');
+ await page.getByLabel('Title',{exact:true}).fill('Extra revision');await page.getByLabel('Subject',{exact:true}).selectOption('Biology');await page.getByLabel('Start time',{exact:true}).fill('09:15');await setEnd(page.getByLabel('End time',{exact:true}),'09:45');
  await expect(page.getByText('Overlaps Cell review.')).toBeVisible();await page.getByRole('button',{name:'Save block',exact:true}).click();
  await expect(page.getByLabel('Day progress')).toContainText('105 min planned');expect(state.tables.todo_sessions).toHaveLength(3);
  await page.reload();await expect(page.getByRole('heading',{name:'Extra revision',exact:true})).toBeVisible();

@@ -158,9 +158,18 @@ function planSpans(planned: TodoSession[], todos: Todo[], subjects: Subject[]): 
   return out;
 }
 
-/** Recorded time inside a planned block of the same course is that block, not another one. */
-const coveredByPlan = (span: { subjectId: string; start: Date; end: Date }, plans: PlanSpan[]) =>
-  plans.some(p => p.subjectId === span.subjectId && +p.start < +span.end && +p.end > +span.start);
+/**
+ * The calendar shows what actually happened: recorded sessions at their real
+ * times, the same list as a task's Past sessions. A finished planned block is
+ * only drawn when nothing was recorded for that task that day (marked done
+ * without the timer); otherwise its planned times would sit beside, or be
+ * blended into, the real ones and match neither.
+ */
+const onlyUnrecorded = (plans: PlanSpan[], sessions: TimerSession[]) => {
+  const key = (subjectId: string | undefined, task: string, when: Date) => `${subjectId}|${task.trim().toLowerCase()}|${when.toDateString()}`;
+  const recorded = new Set(sessions.map(sn => key(sn.subjectId, sn.task ?? '', new Date(sn.startTime))));
+  return plans.filter(p => !recorded.has(key(p.subjectId, p.task, p.start)));
+};
 
 interface Filters {
   gcal: boolean;
@@ -615,13 +624,12 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
       }
     }
     if (filters.soma) {
-      const plans = planSpans(planned, storage.getTodos(), subjects);
+      const plans = onlyUnrecorded(planSpans(planned, storage.getTodos(), subjects), sessions);
       for (const p of plans) {
         const subj = subjects.find(s => s.id === p.subjectId);
         add(p.start, { id: p.id, label: p.task, bgColor: p.commitment ? GCAL_COLOR : subj?.color ?? '#9e9e9e', type: 'soma', sortKey: p.start.getTime() });
       }
       for (const span of studySpans(sessions, blocks, sessionsLoaded)) {
-        if (coveredByPlan(span, plans)) continue;
         const subj = subjects.find(s => s.id === span.subjectId);
         add(span.start, { id: span.id, label: span.task || subj?.name || 'Study', bgColor: subj?.color ?? '#9e9e9e', type: 'soma', sortKey: span.start.getTime() });
       }
@@ -662,24 +670,14 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
       // clock times alone turned it into a 30-minute stub and lost the morning.
       const dayStart = startOfDay(day), dayEnd = addDays(dayStart, 1);
       const clip = (start: Date, end: Date) => [Math.round((Math.max(+start, +dayStart) - +dayStart) / 60000), Math.round((Math.min(+end, +dayEnd) - +dayStart) / 60000)];
-      // Finished blocks from the plan and recorded study time. Where they
-      // overlap for the same course they're one stretch of studying, drawn as
-      // their union: hiding the recorded time lost everything outside the block
-      // (a session running past midnight vanished after the block ended).
+      // Recorded sessions at their real times, plus finished planned blocks
+      // with nothing recorded. Never blended: a union of plan and session
+      // matched neither the plan nor the Past sessions list.
       type Drawn = { id: string; subjectId?: string; task: string; start: Date; end: Date; plan?: PlanSpan; span?: StudySpan; commitment: boolean };
-      const drawn: Drawn[] = [
-        ...planSpans(planned, storage.getTodos(), subjects).map(p => ({ id: p.id, subjectId: p.subjectId, task: p.task, start: p.start, end: p.end, plan: p, commitment: p.commitment })),
+      const merged: Drawn[] = [
+        ...onlyUnrecorded(planSpans(planned, storage.getTodos(), subjects), sessions).map(p => ({ id: p.id, subjectId: p.subjectId, task: p.task, start: p.start, end: p.end, plan: p, commitment: p.commitment })),
         ...studySpans(sessions, blocks, sessionsLoaded).map(sp => ({ id: sp.id, subjectId: sp.subjectId, task: sp.task, start: sp.start, end: sp.end, span: sp, commitment: false })),
-      ].sort((a, b) => +a.start - +b.start);
-      const merged: Drawn[] = [];
-      for (const d of drawn) {
-        const hit = merged.find(m => !m.commitment && !d.commitment && m.subjectId === d.subjectId && +d.start < +m.end && +d.end > +m.start);
-        if (!hit) { merged.push({ ...d }); continue; }
-        if (+d.start < +hit.start) hit.start = d.start;
-        if (+d.end > +hit.end) hit.end = d.end;
-        if (d.plan && !hit.plan) { hit.plan = d.plan; hit.task = d.plan.task; hit.id = d.id; }
-        if (d.span && !hit.span) hit.span = d.span;
-      }
+      ];
       for (const d of merged) {
         if (+d.end <= +dayStart || +d.start >= +dayEnd) continue;
         const [startMin, endMin] = clip(d.start, d.end);

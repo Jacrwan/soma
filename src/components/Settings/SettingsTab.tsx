@@ -908,6 +908,24 @@ export default function SettingsTab() {
                 />
               </div>
             </div>
+            <p className={styles.subsectionHint}>
+              Soma keeps each task in one block when it fits. Only when nothing fits does it offer to split the task across your gaps, and never into pieces shorter than this.
+            </p>
+            <div className={styles.prefGrid}>
+              <div className={styles.prefRow}>
+                <label className={styles.prefLabel} htmlFor="chunk-min">Smallest piece (min)</label>
+                <input
+                  id="chunk-min"
+                  type="number"
+                  min={15}
+                  max={240}
+                  step={5}
+                  className={styles.timeInput}
+                  value={settings.chunks?.min ?? 30}
+                  onChange={e => e.target.value && save({ ...settings, chunks: { min: Number(e.target.value) } })}
+                />
+              </div>
+            </div>
             {settings.studyWindow.end === settings.studyWindow.start ? (
               <p role="alert" className={styles.subsectionHint}>Earliest start and latest end can’t be the same time.</p>
             ) : settings.studyWindow.end < settings.studyWindow.start && (

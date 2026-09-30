@@ -1,3 +1,4 @@
+import { setEnd } from './end-time';
 import { test, expect, type Page } from '@playwright/test';
 
 /**
@@ -90,7 +91,7 @@ test('a session can be added as a start and end time',async({page})=>{
  await page.getByRole('button',{name:/Forgot to start the timer/}).click();
  await page.getByRole('button',{name:'Start and end',exact:true}).click();
  await page.getByLabel('Start',{exact:true}).fill('14:00');
- await page.getByLabel('End',{exact:true}).fill('15:30');
+ await setEnd(page.getByLabel('End',{exact:true}),'15:30');
  await expect(page.getByText('90 minutes.')).toBeVisible();
  await page.getByRole('button',{name:'Add session',exact:true}).click();
 
@@ -107,7 +108,7 @@ test('an end time before the start is refused rather than saved',async({page})=>
  await page.getByRole('button',{name:/Forgot to start the timer/}).click();
  await page.getByRole('button',{name:'Start and end',exact:true}).click();
  await page.getByLabel('Start',{exact:true}).fill('15:00');
- await page.getByLabel('End',{exact:true}).fill('14:00');
+ await setEnd(page.getByLabel('End',{exact:true}),'14:00');
  // 3 PM to 2 PM would be 23 hours: a typo, not an overnight session.
  await expect(page.getByText(/End time must be later than start time/)).toBeVisible();
  await expect(page.getByRole('button',{name:'Add session',exact:true})).toBeDisabled();
@@ -159,7 +160,7 @@ test('a session can be corrected by when it ran',async({page})=>{
  await page.getByRole('button',{name:/Edit the 25 minute session/}).click();
  await page.getByRole('button',{name:'Start and end',exact:true}).click();
  await page.getByLabel(/Start time on/).fill('10:00');
- await page.getByLabel(/End time on/).fill('11:15');
+ await setEnd(page.getByLabel(/End time on/),'11:15');
  await expect(page.getByText('75 minutes.')).toBeVisible();
  await page.getByRole('button',{name:'Save',exact:true}).click();
 
@@ -175,7 +176,7 @@ test('a correction reaches the calendar',async({page})=>{
  await page.getByRole('button',{name:/Edit the 25 minute session/}).click();
  await page.getByRole('button',{name:'Start and end',exact:true}).click();
  await page.getByLabel(/Start time on/).fill('10:00');
- await page.getByLabel(/End time on/).fill('11:15');
+ await setEnd(page.getByLabel(/End time on/),'11:15');
  await page.getByRole('button',{name:'Save',exact:true}).click();
  await expect(logs(page)).toContainText('75 minutes recorded on this task.');
 
@@ -194,7 +195,7 @@ test('a session added by hand appears on the calendar',async({page})=>{
  await page.getByRole('button',{name:/Forgot to start the timer/}).click();
  await page.getByRole('button',{name:'Start and end',exact:true}).click();
  await page.getByLabel('Start',{exact:true}).fill('14:00');
- await page.getByLabel('End',{exact:true}).fill('15:30');
+ await setEnd(page.getByLabel('End',{exact:true}),'15:30');
  await page.getByRole('button',{name:'Add session',exact:true}).click();
  await expect(logs(page)).toContainText('115 minutes recorded on this task.');
 
@@ -377,7 +378,7 @@ test('a finished past block from the plan shows on the calendar; upcoming ones d
  await expect(page.getByRole('dialog')).toContainText('A finished session from your plan');
 });
 
-test('time recorded inside a finished block is that block, not a second one',async({page})=>{
+test('a finished block with time recorded shows the recorded time, not the plan',async({page})=>{
  // Set before signing in, so the test session's expiry follows the same clock.
  await page.clock.install({time:new Date(`${date}T12:00:00`)});
  const state=await setup(page);
@@ -385,14 +386,36 @@ test('time recorded inside a finished block is that block, not a second one',asy
  // Studied 9:05–9:40 inside the finished 9:00–9:45 Cell review block.
  state.tables.timer_sessions=[{id:'inside',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Cell review',date,start_time:iso('09:05'),end_time:iso('09:40'),duration_seconds:35*60}];
  await openWeek(page);
- await expect(page.locator('[data-source=plan]',{hasText:'Cell review'})).toBeVisible();
- await expect(recorded(page)).toHaveCount(0);
+ // What happened (9:05–9:40), the same as Past sessions, not the planned 9:00–9:45.
+ await expect(page.locator('[data-source=plan]',{hasText:'Cell review'})).toHaveCount(0);
+ await expect(recorded(page)).toHaveCount(1);
+ await recorded(page).first().dispatchEvent('click');
+ await expect(page.getByRole('dialog')).toContainText('9:05 AM');
+ await expect(page.getByRole('dialog')).toContainText('9:40 AM');
+});
+
+// Reported: the CS 61A checkpoint was planned 6–8 PM (done) but studied
+// 8:37–9:11 PM, and the calendar showed both; Physics HW 4 showed 9:00–10:03
+// PM (plan and session blended) while Past sessions said 9:18–10:03.
+test('the calendar shows when you actually studied, matching Past sessions',async({page})=>{
+ await page.clock.install({time:new Date(`${date}T23:30:00`)});
+ const state=await setup(page);
+ state.tables.todos.push({id:'cp',user_id:account.id,text:'Project checkpoint',subject_id:'biology',status:'done',date});
+ state.tables.todo_sessions.push({id:'s-cp',user_id:account.id,todo_id:'cp',date,start_time:iso('18:00'),end_time:iso('20:00')});
+ state.tables.timer_sessions=[{id:'cp-real',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Project checkpoint',date,start_time:iso('20:37'),end_time:iso('21:11'),duration_seconds:34*60}];
+ await openWeek(page);
+ await expect(page.locator('[data-source=plan]',{hasText:'Project checkpoint'})).toHaveCount(0);
+ await expect(recorded(page)).toHaveCount(1);
+ await recorded(page).first().dispatchEvent('click');
+ await expect(page.getByRole('dialog')).toContainText('8:37 PM');
+ await expect(page.getByRole('dialog')).toContainText('9:11 PM');
+ await expect(page.getByRole('dialog')).toContainText('34m');
 });
 
 // Reported: with a finished 10:30–11:45 PM block, the sessions around it
 // (9:51 PM, and 10:36 PM running to 1:41 AM) vanished: recorded time that
 // touched the block was hidden entirely. They're now one stretch.
-test('a finished block and the sessions around it draw as one stretch, past midnight too',async({page})=>{
+test('sessions around a finished block show at their own times, past midnight too',async({page})=>{
  // After the block ends, so it counts as a finished past session. Set before
  // signing in, so the test session's expiry follows the same clock.
  await page.clock.install({time:new Date(`${date}T23:50:00`)});
@@ -407,15 +430,12 @@ test('a finished block and the sessions around it draw as one stretch, past midn
  ];
  await openWeek(page);
  if(day.getDay()===6)return;   // the next day is in another week
- const parts=page.locator('[data-source=plan]',{hasText:'Physics reading: 4.2–4.6'});
- await expect(parts).toHaveCount(2);   // this evening, and after midnight
- await expect(recorded(page)).toHaveCount(0);
- const heights=await parts.evaluateAll(els=>els.map(e=>Math.round(e.getBoundingClientRect().height)));
- // 9:51 PM to midnight is 129 minutes; midnight to 1:41 AM is 101.
- expect(Math.max(...heights)).toBeGreaterThan(110);
- expect(Math.min(...heights)).toBeGreaterThan(85);
- await parts.first().dispatchEvent('click');
- await expect(page.getByRole('dialog')).toContainText('9:51 PM');
+ // Not the planned 10:30–11:45 block: the two sessions, the late one on both days.
+ await expect(page.locator('[data-source=plan]',{hasText:'Physics reading: 4.2–4.6'})).toHaveCount(0);
+ await expect(recorded(page)).toHaveCount(3);
+ const late=recorded(page).filter({hasText:'Physics reading: 4.2–4.6'}).nth(1);
+ await late.dispatchEvent('click');
+ await expect(page.getByRole('dialog')).toContainText('10:36 PM');
  await expect(page.getByRole('dialog')).toContainText('1:41 AM');
 });
 
@@ -427,7 +447,7 @@ test('a session can be added past midnight, ending the next day',async({page})=>
  await page.getByRole('button',{name:/Forgot to start the timer/}).click();
  await page.getByRole('button',{name:'Start and end',exact:true}).click();
  await page.getByLabel('Start',{exact:true}).fill('23:25');
- await page.getByLabel('End',{exact:true}).fill('00:35');
+ await setEnd(page.getByLabel('End',{exact:true}),'00:35');
  await expect(page.getByText(/Ends 12:35 AM on .* · 70 minutes\./)).toBeVisible();
  await page.getByRole('button',{name:'Add session',exact:true}).click();
  await expect.poll(()=>state.tables.timer_sessions.length).toBe(2);
@@ -435,4 +455,22 @@ test('a session can be added past midnight, ending the next day',async({page})=>
  expect(row.duration_seconds).toBe(70*60);
  expect(new Date(String(row.end_time)).getTime()-new Date(String(row.start_time)).getTime()).toBe(70*60000);
  expect(new Date(String(row.start_time)).getHours()).toBe(23);
+});
+
+// Reported: Past sessions were in no particular order within a day.
+test('past sessions are listed newest first by time, and a session past midnight names its end day',async({page})=>{
+ const state=await setup(page);
+ const next=new Date(day);next.setDate(next.getDate()+1);
+ state.tables.timer_sessions=[
+  {id:'a',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Cell review',date,start_time:iso('14:42'),end_time:iso('15:17'),duration_seconds:35*60},
+  {id:'b',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Cell review',date,start_time:iso('13:03'),end_time:iso('13:52'),duration_seconds:49*60},
+  {id:'c',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Cell review',date,start_time:iso('23:25'),end_time:new Date(next.getFullYear(),next.getMonth(),next.getDate(),0,35).toISOString(),duration_seconds:70*60},
+  {id:'d',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Cell review',date,start_time:iso('15:17'),end_time:iso('15:53'),duration_seconds:36*60},
+ ];
+ await openEditor(page);
+ const rows=await logs(page).locator('li').allInnerTexts();
+ const order=rows.map(r=>r.match(/\d+ min/)?.[0]);
+ expect(order.slice(0,4)).toEqual(['70 min','36 min','35 min','49 min']);
+ const endDay=next.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+ expect(rows[0]).toContain(`– ${endDay} 12:35 AM`);
 });

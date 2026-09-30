@@ -1,3 +1,4 @@
+import { setEnd } from './end-time';
 import {test,expect} from '@playwright/test';
 
 test('undoing completion keeps actual time and updates subject progress',async({page})=>{
@@ -37,10 +38,10 @@ test('add overlapping personal commitment, edit it, validate ordering and cancel
  await page.getByLabel('Title',{exact:true}).fill('Lunch with Alex');
  await page.getByLabel('Type',{exact:true}).selectOption('commitment');
  await page.getByLabel('Start time',{exact:true}).fill('10:15');
- await page.getByLabel('End time',{exact:true}).fill('10:00');
+ await setEnd(page.getByLabel('End time',{exact:true}),'10:00');
  await page.getByRole('button',{name:'Save block',exact:true}).click();
  await expect(page.getByRole('alert')).toContainText('End time must be later');
- await page.getByLabel('End time',{exact:true}).fill('10:45');
+ await setEnd(page.getByLabel('End time',{exact:true}),'10:45');
  await expect(page.getByText(/Overlaps Calculus lecture/)).toBeVisible();
  await page.getByRole('button',{name:'Save block',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Lunch with Alex',exact:true})).toBeVisible();

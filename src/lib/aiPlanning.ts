@@ -13,6 +13,10 @@ const localDate=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(
  * satisfied at all.
  */
 const START_GRACE_MS=15*60*1000;
+/** The smallest piece Soma may split work into when it has to, in minutes (default 30). */
+export function chunkSizes(settings:SomaSettings):{min:number}{
+ return {min:Math.min(240,Math.max(15,Math.round(settings.chunks?.min ?? 30)))};
+}
 /**
  * Throws when a proposed block cannot be placed. With allowCommitmentOverlap, a
  * read-only calendar event (e.g. a lecture the student says they'll skip) no
