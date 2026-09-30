@@ -16,8 +16,13 @@ const nextDayLabel=(date:string)=>{const d=new Date(`${date}T12:00:00`);d.setDat
 const todayLocal=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 const clockOf=(iso:string)=>{const d=new Date(iso);return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;};
 /** "9:05 AM – 9:50 AM", or nothing when the row never recorded its clock times. */
-const sessionRange=(log:{start?:string;end?:string},format:'12h'|'24h')=>
- log.start && log.end ? `${formatClock(clockOf(log.start),format)} – ${formatClock(clockOf(log.end),format)}` : '';
+/** A session that ran past midnight names the day it ended: "11:25 PM – Sep 30 12:35 AM". */
+const sessionRange=(log:{start?:string;end?:string},format:'12h'|'24h')=>{
+ if(!log.start || !log.end)return '';
+ const nextDay=new Date(log.end).toDateString()!==new Date(log.start).toDateString();
+ const endDay=nextDay ? `${new Date(log.end).toLocaleDateString(undefined,{month:'short',day:'numeric'})} ` : '';
+ return `${formatClock(clockOf(log.start),format)} – ${endDay}${formatClock(clockOf(log.end),format)}`;
+};
 /** Where a session of `minutes` starting at `start` ends. Editing the length
  *  keeps the start and moves the end, so this is what will be saved. */
 const endAfter=(start:string,minutes:number,format:'12h'|'24h')=>{

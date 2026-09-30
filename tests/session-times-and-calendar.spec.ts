@@ -455,3 +455,21 @@ test('a session can be added past midnight, ending the next day',async({page})=>
  expect(new Date(String(row.end_time)).getTime()-new Date(String(row.start_time)).getTime()).toBe(70*60000);
  expect(new Date(String(row.start_time)).getHours()).toBe(23);
 });
+
+// Reported: Past sessions were in no particular order within a day.
+test('past sessions are listed newest first by time, and a session past midnight names its end day',async({page})=>{
+ const state=await setup(page);
+ const next=new Date(day);next.setDate(next.getDate()+1);
+ state.tables.timer_sessions=[
+  {id:'a',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Cell review',date,start_time:iso('14:42'),end_time:iso('15:17'),duration_seconds:35*60},
+  {id:'b',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Cell review',date,start_time:iso('13:03'),end_time:iso('13:52'),duration_seconds:49*60},
+  {id:'c',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Cell review',date,start_time:iso('23:25'),end_time:new Date(next.getFullYear(),next.getMonth(),next.getDate(),0,35).toISOString(),duration_seconds:70*60},
+  {id:'d',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Cell review',date,start_time:iso('15:17'),end_time:iso('15:53'),duration_seconds:36*60},
+ ];
+ await openEditor(page);
+ const rows=await logs(page).locator('li').allInnerTexts();
+ const order=rows.map(r=>r.match(/\d+ min/)?.[0]);
+ expect(order.slice(0,4)).toEqual(['70 min','36 min','35 min','49 min']);
+ const endDay=next.toLocaleDateString(undefined,{month:'short',day:'numeric'});
+ expect(rows[0]).toContain(`– ${endDay} 12:35 AM`);
+});
