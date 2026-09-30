@@ -40,7 +40,7 @@ PROPOSING BLOCKS: up to 5. You decide what, which day and how long; the app pick
 
 ESTIMATING: size new work from history. Prefer the real minutes of similar past tasks (same subject, same kind of work); otherwise the subject's avg session; then adjust by the subject's bias (positive means they usually run over their estimates). Say the basis in a few words, e.g. "~50 min, your last two problem sets took 45–55". With no history, make a normal estimate and say it's a guess.
 
-CHANGING THE EXISTING PLAN: use "changes" (up to 20) on plan entries with an id, or on pending ids. "update" renames and/or retimes a block in place — give only the fields that change. Never recreate a block under a new name, and never say you cannot edit existing blocks. "move" retimes: give date (and after/before or minutes if they matter) and the app finds the slot; give start and end only for a time the student stated. Change only the blocks the student asked about: never move, rename or remove anything else to make room. "remove" deletes the block and its task; use it only when asked to remove, drop or cancel something. "complete" marks the task done; use it only when the student says it is finished. One change per id. When the student is behind, missed something, or a new block would collide with an old one, move the existing block rather than creating a second copy, and never propose a new block for work already in plan. "push back" or "move back" means later, and "move up" or "bring forward" means earlier — don't ask, act on that reading. Shifting "everything" means only blocks that haven't ended yet; move all of them in the same reply. Changes are shown to accept, like new blocks.
+CHANGING THE EXISTING PLAN: use "changes" (up to 20) on plan entries with an id, or on pending ids. "update" renames and/or retimes a block in place — give only the fields that change. Never recreate a block under a new name, and never say you cannot edit existing blocks. "move" retimes: give date (and after/before or minutes if they matter) and the app finds the slot; give start and end only for a time the student stated. Change only the blocks the student asked about: never move, rename or remove anything else to make room. "remove" deletes the block and its task; use it only when asked to remove, drop or cancel something. "complete" marks the task done; use it only when the student says it is finished. One change per id. When the student is behind, missed something, or a new block would collide with an old one, move the existing block rather than creating a second copy, and never propose a new block for work already in plan. "push back" or "move back" means later, and "move up" or "bring forward" means earlier — don't ask, act on that reading. Shifting "everything" means only blocks that haven't ended yet; move all of them in the same reply. Changes are shown to accept, like new blocks. An App result saying a change was "not placed" means it never happened: don't say it is waiting for Accept; when the student asks again, send it again with the id from plan.
 
 COURSE PROGRESS: courses is the only record of what the student has read or worked through in each course. done says how far they have got in order, open lists the next items not yet done, behind counts open items already past due. An item is done only if courses says so — never infer it from a due date, the syllabus, a past block or lastWeek, and never call last week's assigned reading "completed". When planning a course's work, start at the first open item, put overdue items first, name the exact sections in the title (e.g. "Physics reading: 4.4–4.6 Momentum"), and set covers to the first and last item ids of a consecutive run in one course. An item marked planned: "ended unchecked" or listed in unconfirmed was in a block whose time passed without being checked off: ask how far they got before planning it again. When the student says how far they got in a block ("I got through 4.3"), use a "progress" change with id = that block and through = the last item read; only that block's items up to it are marked. For reading done outside a block ("I already read 4.1–4.6"), omit id and give from and through. Never mark items the student didn't name. A rename of a block that changes which sections it covers is an "update" with covers.
 
@@ -82,6 +82,29 @@ function studyHistory(data: InsightsData | null) {
     .map(([key, t]) => ({ title: t.title, s: t.s, did: Math.round(t.seconds / 60), ...(estimate.has(key) ? { est: estimate.get(key) } : {}) }));
   return { subjects, tasks: recent };
 }
+
+/**
+ * Plan ids are long UUIDs, and the model miscopied them: a delete that matched
+ * nothing was lost. It gets short ones instead. Each is made from the real id,
+ * so it names the same block on every turn, and a stale one matches nothing
+ * rather than the wrong block.
+ */
+function shortIds(ids: string[]) {
+  const toReal = new Map<string, string>(), toShort = new Map<string, string>();
+  for (const id of ids) {
+    if (toShort.has(id)) continue;
+    let h = 0x811c9dc5;
+    for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 0x01000193);
+    const short = `b${(h >>> 0).toString(36).padStart(6, '0').slice(-6)}`;
+    // Two ids with the same short form: the second keeps its real id.
+    const alias = toReal.has(short) ? id : short;
+    toReal.set(alias, id); toShort.set(id, alias);
+  }
+  return { short: (id: string | number) => toShort.get(String(id)) ?? String(id), real: (id: unknown) => typeof id === 'string' ? toReal.get(id.trim()) ?? id.trim() : id };
+}
+
+// The model sometimes names an action in the student's words.
+const ACTIONS: Record<string, string> = { delete: 'remove', cancel: 'remove', drop: 'remove', reschedule: 'move', retime: 'move', rename: 'update', edit: 'update', done: 'complete', finish: 'complete' };
 
 async function readHistory(userId: string) {
   // A failed history load only costs the estimates, never the answer.
@@ -152,6 +175,7 @@ export async function askSoma(opts: {
   const unchecked = [...worked.values()].filter(w => w.did >= 5 && !askedAbout.includes(w.title.toLowerCase().slice(0, 40))).sort((a, b) => b.d.localeCompare(a.d)).slice(0, 8);
   const endedUnchecked = new Set([...worked].filter(([, w]) => w.did >= 5).map(([todoId]) => todoId));
   const progress = courseProgress(fresh.items, fresh.subjects.filter(s => !s.archived), localDate(new Date()), endedUnchecked, upcoming);
+  const ids = shortIds([...fresh.blocks.map(b => String(b.id)), ...proposals.map(b => String(b.id))]);
   const context = {
     now: `${localDate(nowDate)} ${weekday(nowDate)} ${hhmm(nowDate)}`,
     timeFormat: getTimeFormat() === '24h' ? '24-hour' : '12-hour',
@@ -160,13 +184,13 @@ export async function askSoma(opts: {
     days: calendar.map(c => ({ d: c.date, w: c.weekday, ...(c.offset === day ? { sel: true } : {}) })),
     subjects: fresh.subjects.filter(s => !s.archived).map(s => s.name),
     plan: fresh.blocks.filter(b => b.day >= 0).map(b => ({
-      ...(!b.external || b.manual ? { id: String(b.id) } : { ro: true }),
+      ...(!b.external || b.manual ? { id: ids.short(b.id) } : { ro: true }),
       d: dateOf(b.day), t: b.time, title: b.title, s: b.subject, st: b.state,
       ...(b.covers?.length ? { cov: rangeLabel(b.covers) } : {}),
     })),
     // Proposals waiting for Accept are part of the plan the student sees. They
     // carry ids, so one Soma just proposed can still be renamed or retimed.
-    pending: proposals.filter(b => !b.changeKind).map(b => ({ id: String(b.id), d: dateOf(b.day), t: b.time, title: b.title, s: b.subject })),
+    pending: proposals.filter(b => !b.changeKind).map(b => ({ id: ids.short(b.id), d: dateOf(b.day), t: b.time, title: b.title, s: b.subject })),
     lastWeek: fresh.blocks.filter(b => b.day < 0 && !b.external).map(b => ({
       d: dateOf(b.day), title: b.title, s: b.subject, st: b.state, plan: b.minutes, did: Math.round((b.actualSeconds ?? 0) / 60),
     })),
@@ -177,7 +201,7 @@ export async function askSoma(opts: {
     history,
     calendarOk: !fresh.calendarError,
     ...(progress.courses.length ? { courses: progress.courses } : {}),
-    ...(unchecked.length ? { unchecked } : {}),
+    ...(unchecked.length ? { unchecked: unchecked.map(w => ({ ...w, id: ids.short(w.id) })) } : {}),
   };
   const extra = `${buildCanvasSection()}${buildDocumentsSection(fresh.subjects.map(s => ({ id: s.id, name: s.name })))}`;
   const stable = extra
@@ -240,9 +264,11 @@ export async function askSoma(opts: {
   // Two changes aimed at the same block (a rename, then a retime) used to be
   // applied separately, and the second collided with the first. Fold them into one.
   const changes: Record<string, unknown>[] = [];
-  for (const c of allChanges.slice(0, MAX_CHANGES)) {
+  for (const raw of allChanges.slice(0, MAX_CHANGES)) {
+    const named = typeof raw.action === 'string' ? raw.action.trim().toLowerCase() : raw.action;
+    const c: Record<string, unknown> = { ...raw, action: typeof named === 'string' ? ACTIONS[named] ?? named : named, id: ids.real(typeof raw.id === 'number' ? String(raw.id) : raw.id) };
     const prior = typeof c.id === 'string' ? changes.find(m => m.id === c.id) : undefined;
-    if (!prior) { changes.push({ ...c }); continue; }
+    if (!prior) { changes.push(c); continue; }
     // Moving a block and deleting it in one reply contradict each other; keep
     // the block. (A stale delete once sat beside an accepted move.)
     const actions = [prior.action, c.action];
@@ -438,7 +464,10 @@ export async function askSoma(opts: {
       continue;
     }
     const target = targetOf(c);
-    if (!target || !['move', 'remove', 'update', 'complete'].includes(String(c.action))) { rejected.push(`A change pointed at a block that isn't in your plan.`); continue; }
+    // Say which change failed and why: a vague note let Soma believe a lost
+    // delete was still waiting for Accept.
+    if (!['move', 'remove', 'update', 'complete'].includes(String(c.action))) { rejected.push(`A change Soma sent ("${String(c.action)}") isn't one it can make.`); continue; }
+    if (!target) { rejected.push(`A ${c.action === 'remove' ? 'delete' : String(c.action)} pointed at a block that isn't in your plan, so nothing was proposed for it. Ask again and name the block.`); continue; }
     if (opts.activeBlockId != null && target.id === opts.activeBlockId) { rejected.push(`${target.title}: your Focus timer is on it (paused counts). Press Stop & save, then ask again.`); putBack(target); continue; }
     const from = target.time ? `${formatClockRange(target.time)}${target.day !== day ? ` ${calendar[target.day]?.weekday ?? ''}` : ''}` : 'unscheduled';
     if (c.action === 'complete') {
