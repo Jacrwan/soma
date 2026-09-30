@@ -1,3 +1,4 @@
+import { setEnd } from './end-time';
 import { test, expect, type Page } from '@playwright/test';
 import { freeTime, validateProposal } from '../src/lib/aiPlanning';
 import { rangeOf, spanMinutes, windowOf } from '../src/lib/clockRange';
@@ -108,7 +109,7 @@ test('the block editor saves an overnight block instead of refusing it', async (
   const state = await setup(page, { reply: 'ok' });
   await page.getByRole('button', { name: 'Edit: Physics HW 4' }).click();
   await page.getByLabel('Start time').fill('23:00');
-  await page.getByLabel('End time').fill('01:30');
+  await setEnd(page.getByLabel('End time'),'01:30');
   await expect(page.getByText(/Runs past midnight/)).toBeVisible();
   await page.getByRole('button', { name: 'Save block' }).click();
   await expect(page.getByLabel('Block editor')).toHaveCount(0);
@@ -151,4 +152,19 @@ test('late at night, a block Soma dates "today at 1 AM" lands on tonight, not th
   await page.getByRole('button', { name: /^Accept all/ }).click();
   await expect.poll(() => state.db.todo_sessions.length).toBe(2);
   expect(state.db.todo_sessions.find(s => s.id !== 's-hw')!.start_time).toBe(at(1, '00:30'));
+});
+
+// The end is picked like Google Calendar: ends counted from the start, each
+// with its length, "next day" past midnight; moving the start keeps the length.
+test('the end-time list counts from the start and shows lengths past midnight', async ({ page }) => {
+  await setup(page, { reply: 'ok' });
+  await page.getByRole('button', { name: 'Edit: Physics HW 4' }).click();
+  await page.getByLabel('Start time').fill('23:30');
+  const end = page.getByLabel('End time', { exact: true });
+  // Was 20:00–21:00 (an hour); the start moved, so the end moved with it.
+  await expect(end).toHaveValue('00:30');
+  await expect(end.locator('option[value="00:30"]')).toHaveText('12:30 AM (1 hr) · next day');
+  await expect(end.locator('option[value="23:45"]')).toHaveText('11:45 PM (15 min)');
+  await end.selectOption('01:15');
+  await expect(page.getByText(/Runs past midnight/)).toBeVisible();
 });

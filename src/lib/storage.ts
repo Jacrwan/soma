@@ -16,6 +16,8 @@ export interface SomaSettings {
   /** The hours Soma may schedule study in, 24-hour HH:MM. Calendar events and
    *  existing blocks inside the window still count as busy. */
   studyWindow: { start: string; end: string };
+  /** How Soma splits work: pieces of at least `min` and at most `max` minutes. */
+  chunks?: { min: number; max: number };
   theme: 'dark' | 'light';
   /** Clock display preference. Stored times stay canonical 24-hour `HH:MM`. */
   timeFormat?: '12h' | '24h';
@@ -35,6 +37,7 @@ export interface SomaSettings {
 
 const DEFAULT_SETTINGS: SomaSettings = {
   studyWindow: { start: '08:00', end: '23:00' },
+  chunks: { min: 30, max: 120 },
   theme: 'light',
   timeFormat: '12h',
 };

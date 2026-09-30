@@ -179,13 +179,14 @@ test('update can rename and retime together; omitted fields keep their values', 
   expect(state.db.todos.find(t => t.id === 't-cs')?.text).toBe('Hog final');
 });
 
-test('the prompt offers update and states the 4-hour limit', async ({ page }) => {
+test('the prompt offers update and explains how long work is split', async ({ page }) => {
   const state = await setup(page, { reply: 'ok', blocks: [] });
   await ask(page, 'hi');
   await expect(page.getByRole('log')).toContainText('ok');
   expect(state.prompt).toContain('"action":"update"');
   expect(state.prompt).toContain('never say you cannot edit existing blocks');
-  expect(state.prompt).toContain('Each block is at most 4 hours');
+  // Long work is split into the student's piece sizes rather than capped at 4 hours.
+  expect(state.prompt).toContain("splits work longer than the student's largest piece");
   expect(state.prompt).not.toContain('Changes to existing tasks must be made with Edit plan');
 });
 

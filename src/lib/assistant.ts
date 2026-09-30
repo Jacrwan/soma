@@ -6,7 +6,7 @@
  */
 import { readPlan, savePlanBlock, dateAt, localDate, type Snapshot } from '../components/DashboardV2/liveData';
 import type { PlanBlock } from '../components/DashboardV2/PlanEditor';
-import { validateProposal, freeTime } from './aiPlanning';
+import { validateProposal, freeTime, chunkSizes } from './aiPlanning';
 import { storage } from './storage';
 import { buildCanvasSection, buildDocumentsSection } from './aiContext';
 import { getTimeFormat, formatClock, formatClockRange } from './timeFormat';
@@ -36,7 +36,7 @@ DATES: resolve "today", "tomorrow" and weekday names against days, never by gues
 
 STUDY HOURS: free only covers the student's study hours (studyHours). When the student says they can go later this time ("I can study till 3"), set "studyUntil" to that time: this reply may then use time up to it, beyond free, still avoiding their blocks. Say it's for tonight only and that Settings → Study hours changes it for good. Never set it on your own.
 
-PROPOSING BLOCKS: up to 5. You decide what, which day and how long; the app picks the clock time. For each block give date and minutes, and leave out start and end: the app puts it in the first open slot that day inside study hours, never on a class or calendar event, in the order you list the blocks. So list work in the order it should be done (reading before the homework it's for), and add "after"/"before" (HH:mm) when the student bounds it. "The discussion", "the lecture" or "lab" means that class for the same course as the work (Physics homework before "the discussion" is before the Physics discussion), not another course's ("before the discussion" means before its start; "after the checkpoint" means after its end). A time range the student states ("from now until 11", "2 to 4", "until 1") is a start and an end: give both, and it goes exactly there even over calendar events. Give start and end only for times the student stated themselves, and then never give just one. "Fill", "every gap", "the rest of my time" between two times is "fill":true with after/before: the app uses every open gap in that window, however much there is, with no minutes needed. When the student says a block may overlap a calendar event, or that they're skipping it, put that event's title in overlapOk. When the student tells you what they already did ("I studied 4.6–4.9 from 11:40 to 12:52, add it"), return that block with "done":true and the start and end they gave (and covers for reading-list sections): the app saves it as finished, records the time and marks the sections read. Read-only calendar events (ro) can't be removed or changed: if the student skipped or will skip one, just use its time for their work. For a to-do with no day ("sometime", "whenever"), set "anytime":true with minutes; it stays unscheduled. Don't state clock times for blocks the app places: it lists them under your reply; say what you planned and why. If a block can't be placed, the app asks the student with concrete options (shown to them already); when they answer ("yes", "the 10 PM one", "Tuesday", "shorter"), place it that way instead of repeating the same request. A block that only fits across gaps is proposed split for them to accept. Never say anything was moved, added or done: it's a proposal until Accept, and the app may not be able to place it. One task is one block. When the student asks to use the gaps, or agrees to split, set "split":true on that block or move: the app spreads it over the open gaps in order, as one task with several sessions. Never make several blocks for one task. Each block is at most 4 hours. When you describe a schedule, return its blocks in the same reply; when the user agrees to times you already described, return those blocks again. Never overlap the student's own blocks. Blocks appear with an Accept button, which is how they are saved. Never tell the user to add blocks themselves, never say you cannot make changes, and never claim anything was saved. Never propose times if calendarOk is false. When asked for their plan, include pending as "proposed, not yet accepted".
+PROPOSING BLOCKS: up to 5. You decide what, which day and how long; the app picks the clock time. For each block give date and minutes, and leave out start and end: the app puts it in the first open slot that day inside study hours, never on a class or calendar event, in the order you list the blocks. So list work in the order it should be done (reading before the homework it's for), and add "after"/"before" (HH:mm) when the student bounds it. "The discussion", "the lecture" or "lab" means that class for the same course as the work (Physics homework before "the discussion" is before the Physics discussion), not another course's ("before the discussion" means before its start; "after the checkpoint" means after its end). A time range the student states ("from now until 11", "2 to 4", "until 1") is a start and an end: give both, and it goes exactly there even over calendar events. Give start and end only for times the student stated themselves, and then never give just one. "Fill", "every gap", "the rest of my time" between two times is "fill":true with after/before: the app uses every open gap in that window, however much there is, with no minutes needed. When the student says a block may overlap a calendar event, or that they're skipping it, put that event's title in overlapOk. When the student tells you what they already did ("I studied 4.6–4.9 from 11:40 to 12:52, add it"), return that block with "done":true and the start and end they gave (and covers for reading-list sections): the app saves it as finished, records the time and marks the sections read. Read-only calendar events (ro) can't be removed or changed: if the student skipped or will skip one, just use its time for their work. For a to-do with no day ("sometime", "whenever"), set "anytime":true with minutes; it stays unscheduled. Don't state clock times for blocks the app places: it lists them under your reply; say what you planned and why. If a block can't be placed, the app asks the student with concrete options (shown to them already); when they answer ("yes", "the 10 PM one", "Tuesday", "shorter"), place it that way instead of repeating the same request. A block that only fits across gaps is proposed split for them to accept. Never say anything was moved, added or done: it's a proposal until Accept, and the app may not be able to place it. One task is one block. Give its whole length in minutes: the app splits work longer than the student's largest piece (pieces in CONTEXT) into pieces across the day, and splits work that doesn't fit one gap, as one task with several sessions. "split":true spreads it over the gaps even when it would fit; "split":false keeps it in one piece (the student said not to split it). Never make several blocks for one task.  When you describe a schedule, return its blocks in the same reply; when the user agrees to times you already described, return those blocks again. Never overlap the student's own blocks. Blocks appear with an Accept button, which is how they are saved. Never tell the user to add blocks themselves, never say you cannot make changes, and never claim anything was saved. Never propose times if calendarOk is false. When asked for their plan, include pending as "proposed, not yet accepted".
 
 ESTIMATING: size new work from history. Prefer the real minutes of similar past tasks (same subject, same kind of work); otherwise the subject's avg session; then adjust by the subject's bias (positive means they usually run over their estimates). Say the basis in a few words, e.g. "~50 min, your last two problem sets took 45–55". With no history, make a normal estimate and say it's a guess.
 
@@ -156,6 +156,7 @@ export async function askSoma(opts: {
     now: `${localDate(nowDate)} ${weekday(nowDate)} ${hhmm(nowDate)}`,
     timeFormat: getTimeFormat() === '24h' ? '24-hour' : '12-hour',
     studyHours: `${settings.studyWindow.start}–${settings.studyWindow.end}`,
+    pieces: `${chunkSizes(settings).min}–${chunkSizes(settings).max} min`,
     days: calendar.map(c => ({ d: c.date, w: c.weekday, ...(c.offset === day ? { sel: true } : {}) })),
     subjects: fresh.subjects.filter(s => !s.archived).map(s => s.name),
     plan: fresh.blocks.filter(b => b.day >= 0).map(b => ({
@@ -301,6 +302,7 @@ export async function askSoma(opts: {
   // inside any after/before bounds, in the order the work was listed. The model
   // kept choosing times on top of classes, at 10:59, or already past.
   const clockRe = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const chunks = chunkSizes(settings);
   const openAt = clockMinutes(hours.studyWindow.start);
   const autoPlaced = new Set<string | number>();
   type Spot = { day: number; time: string; extra?: { day: number; time: string }[]; splitToFit?: boolean };
@@ -338,8 +340,13 @@ export async function askSoma(opts: {
     const board = { ...working, blocks: [...working.blocks.filter(b => b.id !== ignore && !overlapOk(b)), ...placed()] };
     const slots = freeTime(board, origin, hours, nowDate, 7, 15).find(f => f.date === calendar[offset]?.date)?.free ?? [];
     const { lo, hi } = boundsOf(offset, after, before);
-    const split = !!o.split;
+    // The student's piece sizes (Settings → Study hours): work longer than the
+    // most is split into pieces; no piece is shorter than the least.
+    const minPiece = chunks.min, maxPiece = chunks.max;
+    const split = o.split === true, keepWhole = o.split === false;
+    const bySetting = !keepWhole && length > maxPiece;
     const at = (m: number) => ({ day: offset + Math.floor(m / 1440), time: '' });
+    const piece = (from: number, to: number) => ({ ...at(from), time: `${clockOf(from)}–${clockOf(to)}` });
     const gaps: string[] = [], parts: { day: number; time: string }[] = [];
     let left = length;
     for (const slot of slots) {
@@ -347,17 +354,27 @@ export async function askSoma(opts: {
       const start = Math.ceil(Math.max(a, lo) / 5) * 5, stop = Math.min(z, hi);
       if (stop - start < 15) continue;
       gaps.push(`${formatClockRange(`${clockOf(start)}–${clockOf(stop)}`)} (${stop - start} min)`);
-      // Fill: every open gap in the window, however much there is.
-      if (o.fill) { parts.push({ ...at(start), time: `${clockOf(start)}–${clockOf(Math.min(stop, start + 240))}` }); continue; }
-      if (!split && start + length <= stop) return { ...at(start), time: `${clockOf(start)}–${clockOf(start + length)}` };
-      // Pieces for a split, in order; one shorter than 20 minutes isn't worth a session.
-      const take = Math.min(left, stop - start);
-      if (left > 0 && take >= Math.min(20, left)) { parts.push({ ...at(start), time: `${clockOf(start)}–${clockOf(start + take)}` }); left -= take; }
+      // Fill: the student asked for every open gap in the window, so each is used whole.
+      if (o.fill) { parts.push(piece(start, Math.min(stop, start + 240))); continue; }
+      if (!split && !bySetting && start + length <= stop) return { ...at(start), time: `${clockOf(start)}–${clockOf(start + length)}` };
+      if (keepWhole) continue;
+      // Pieces, in order, none longer than the most or shorter than the least,
+      // and never leaving a remainder too small to be a piece of its own.
+      for (let cur = start; left > 0; ) {
+        const room = stop - cur;
+        let take = Math.min(left, room, maxPiece);
+        const rest = left - take;
+        if (rest > 0 && rest < minPiece && left - minPiece >= minPiece) take = Math.min(take, left - minPiece);
+        if (take < Math.min(minPiece, left)) break;
+        parts.push(piece(cur, cur + take));
+        // A break before the next piece: back-to-back pieces are one long block.
+        left -= take; cur += take + 15;
+      }
     }
     if (o.fill && parts.length) return { ...parts[0], ...(parts.length > 1 ? { extra: parts.slice(1) } : {}) };
-    // Doesn't fit in one slot but does across the gaps: offer the split for
-    // Accept rather than refusing ("in the gaps" asked for it outright).
-    if (!o.fill && left <= 0 && parts.length) return { ...parts[0], ...(parts.length > 1 ? { extra: parts.slice(1) } : {}), ...(!split && !wantsGaps && parts.length > 1 ? { splitToFit: true } : {}) };
+    // Split by the student's piece sizes, or because it doesn't fit in one gap:
+    // either way it's offered for Accept rather than refused.
+    if (!o.fill && !keepWhole && left <= 0 && parts.length) return { ...parts[0], ...(parts.length > 1 ? { extra: parts.slice(1) } : {}), ...(!split && !bySetting && !wantsGaps && parts.length > 1 ? { splitToFit: true } : {}) };
     // Not enough time even split: say what is open, as a question to answer.
     const wd = calendar[offset]?.weekday ?? 'that day';
     const bounds = `${lo ? ` after ${formatClock(clockOf(lo))}` : ''}${hi !== Infinity ? ` before ${formatClock(clockOf(hi))}` : ''}`;
@@ -378,10 +395,10 @@ export async function askSoma(opts: {
     ].filter(Boolean);
     const pastHours = lo >= windowOf(hours.studyWindow)[1] || (hi !== Infinity && hi > windowOf(hours.studyWindow)[1]);
     const why = pastHours ? ` (that's past your study hours, which end at ${formatClock(hours.studyWindow.end)}; give exact times like "until 12:30 am" to go past them)` : gaps.length ? '' : ' (nothing is free then)';
-    return `there isn't ${length} min open on ${wd}${bounds}${why}. ${options.length ? `Options: ${options.join('; or ')}. Which do you want?` : 'Nothing is free this week either; want to stay up later or pick another day?'}`;
+    return `there isn't ${length} min open${keepWhole ? ' in one piece' : ''} on ${wd}${bounds}${why}. ${options.length ? `Options: ${options.join('; or ')}. Which do you want?` : 'Nothing is free this week either; want to stay up later or pick another day?'}`;
   };
-  const extraNote = (spot: Spot) => spot.extra?.length ? `Split across gaps: also ${spot.extra.map(x => formatClockRange(x.time)).join(', ')}` : undefined;
-  const lengthOf = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? Math.min(240, Math.max(5, Math.round(v))) : undefined;
+  const extraNote = (spot: Spot) => spot.extra?.length ? `In ${spot.extra.length + 1} pieces: also ${spot.extra.map(x => formatClockRange(x.time)).join(', ')}` : undefined;
+  const lengthOf = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? Math.min(600, Math.max(5, Math.round(v))) : undefined;
   for (const c of changes) {
     const pendingTarget = typeof c.id === 'string' ? pending.get(c.id) : undefined;
     if (pendingTarget) {
@@ -457,7 +474,7 @@ export async function askSoma(opts: {
       if (fillWindow) Object.assign(c, fillWindow, { fill: true });
       const exact = (useStated ? statedTime(to.offset) : undefined) ?? (c.fill === true ? undefined : exactWindow(to.offset, c.after, c.before, lengthOf(c.minutes)));
       if (exact) explicitTime = true;
-      const spot: Spot | string = exact ?? autoPlace(to.offset, lengthOf(c.minutes) ?? (target.minutes || 60), c.after, c.before, target.id, { split: c.split === true, fill: c.fill === true, overlapOk: c.overlapOk });
+      const spot: Spot | string = exact ?? autoPlace(to.offset, lengthOf(c.minutes) ?? (target.minutes || 60), c.after, c.before, target.id, { split: c.split === true ? true : c.split === false ? false : undefined, fill: c.fill === true, overlapOk: c.overlapOk });
       if (typeof spot === 'string') { questions.push(`${target.title}: ${spot}`); putBack(target); continue; }
       if (spot.splitToFit) splitOffers.push(target.title);
       time = spot.time; minutes = spanMinutes(...time.split('–') as [string, string]); newDay = spot.day; extra = spot.extra;
@@ -529,7 +546,7 @@ export async function askSoma(opts: {
     const exact = auto && p.fill !== true ? exactWindow(blockDay, p.after, p.before, length) : undefined;
     if (exact) { [p.start, p.end] = exact.time.split('–'); blockDay = exact.day; timed = true; auto = false; explicitTime = true; }
     if (auto) {
-      const spot = autoPlace(blockDay, length ?? 60, p.after, p.before, existing?.id, { split: p.split === true, fill: p.fill === true, overlapOk: p.overlapOk });
+      const spot = autoPlace(blockDay, length ?? 60, p.after, p.before, existing?.id, { split: p.split === true ? true : p.split === false ? false : undefined, fill: p.fill === true, overlapOk: p.overlapOk });
       if (typeof spot === 'string') { questions.push(`${title}: ${spot}`); continue; }
       if (spot.splitToFit) splitOffers.push(title);
       [p.start, p.end] = spot.time.split('–'); blockDay = spot.day; timed = true; extra = spot.extra;

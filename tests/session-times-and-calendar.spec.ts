@@ -1,3 +1,4 @@
+import { setEnd } from './end-time';
 import { test, expect, type Page } from '@playwright/test';
 
 /**
@@ -90,7 +91,7 @@ test('a session can be added as a start and end time',async({page})=>{
  await page.getByRole('button',{name:/Forgot to start the timer/}).click();
  await page.getByRole('button',{name:'Start and end',exact:true}).click();
  await page.getByLabel('Start',{exact:true}).fill('14:00');
- await page.getByLabel('End',{exact:true}).fill('15:30');
+ await setEnd(page.getByLabel('End',{exact:true}),'15:30');
  await expect(page.getByText('90 minutes.')).toBeVisible();
  await page.getByRole('button',{name:'Add session',exact:true}).click();
 
@@ -107,7 +108,7 @@ test('an end time before the start is refused rather than saved',async({page})=>
  await page.getByRole('button',{name:/Forgot to start the timer/}).click();
  await page.getByRole('button',{name:'Start and end',exact:true}).click();
  await page.getByLabel('Start',{exact:true}).fill('15:00');
- await page.getByLabel('End',{exact:true}).fill('14:00');
+ await setEnd(page.getByLabel('End',{exact:true}),'14:00');
  // 3 PM to 2 PM would be 23 hours: a typo, not an overnight session.
  await expect(page.getByText(/End time must be later than start time/)).toBeVisible();
  await expect(page.getByRole('button',{name:'Add session',exact:true})).toBeDisabled();
@@ -159,7 +160,7 @@ test('a session can be corrected by when it ran',async({page})=>{
  await page.getByRole('button',{name:/Edit the 25 minute session/}).click();
  await page.getByRole('button',{name:'Start and end',exact:true}).click();
  await page.getByLabel(/Start time on/).fill('10:00');
- await page.getByLabel(/End time on/).fill('11:15');
+ await setEnd(page.getByLabel(/End time on/),'11:15');
  await expect(page.getByText('75 minutes.')).toBeVisible();
  await page.getByRole('button',{name:'Save',exact:true}).click();
 
@@ -175,7 +176,7 @@ test('a correction reaches the calendar',async({page})=>{
  await page.getByRole('button',{name:/Edit the 25 minute session/}).click();
  await page.getByRole('button',{name:'Start and end',exact:true}).click();
  await page.getByLabel(/Start time on/).fill('10:00');
- await page.getByLabel(/End time on/).fill('11:15');
+ await setEnd(page.getByLabel(/End time on/),'11:15');
  await page.getByRole('button',{name:'Save',exact:true}).click();
  await expect(logs(page)).toContainText('75 minutes recorded on this task.');
 
@@ -194,7 +195,7 @@ test('a session added by hand appears on the calendar',async({page})=>{
  await page.getByRole('button',{name:/Forgot to start the timer/}).click();
  await page.getByRole('button',{name:'Start and end',exact:true}).click();
  await page.getByLabel('Start',{exact:true}).fill('14:00');
- await page.getByLabel('End',{exact:true}).fill('15:30');
+ await setEnd(page.getByLabel('End',{exact:true}),'15:30');
  await page.getByRole('button',{name:'Add session',exact:true}).click();
  await expect(logs(page)).toContainText('115 minutes recorded on this task.');
 
@@ -446,7 +447,7 @@ test('a session can be added past midnight, ending the next day',async({page})=>
  await page.getByRole('button',{name:/Forgot to start the timer/}).click();
  await page.getByRole('button',{name:'Start and end',exact:true}).click();
  await page.getByLabel('Start',{exact:true}).fill('23:25');
- await page.getByLabel('End',{exact:true}).fill('00:35');
+ await setEnd(page.getByLabel('End',{exact:true}),'00:35');
  await expect(page.getByText(/Ends 12:35 AM on .* · 70 minutes\./)).toBeVisible();
  await page.getByRole('button',{name:'Add session',exact:true}).click();
  await expect.poll(()=>state.tables.timer_sessions.length).toBe(2);

@@ -4,6 +4,7 @@ import { formatClock, useTimeFormat } from '../../lib/timeFormat';
 import type { SubjectColor } from '../../types';
 import styles from './DashboardV2.module.css';
 import { rangeOf, spanMinutes } from '../../lib/clockRange';
+import EndTimePicker, { endAfterMove } from './EndTimePicker';
 export type PlanState = 'Planned' | 'Completed' | 'Partially completed' | 'Missed' | 'Proposal';
 export type PlanBlock = { id:string | number; title:string; subject:string; time:string; minutes:number; color:string; state:PlanState; day:number; actualSeconds?:number; external?:boolean; manual?:boolean; subjectColor?:SubjectColor; /** Shown on a proposal card, e.g. which calendar event it overlaps. */ note?:string; /** A suggested change to an existing block rather than a new one. */ replaces?:string|number; changeKind?:'move'|'remove'|'update'|'complete'|'progress'; /** Total study time recorded against this task, shown before a delete is accepted. */ loggedMinutes?:number; /** Set on a delete proposal when the student also wants the recorded time gone. */ deleteLoggedTime?:boolean; /** How long Soma expects an unscheduled task to take, from the student's own history. Saved as the task's estimate. */ estimatedMinutes?:number; /** The course sections this block covers, in order, from the reading list. */ covers?:{id:string;label:string;done?:boolean}[]; /** Its time has passed. */ ended?:boolean; /** On a proposal: the reading-list items it will cover once accepted; on a 'progress' one, the items it marks read. */ coverIds?:string[]; /** On a 'progress' proposal: the last section read. */ through?:string; /** On a proposal: more sessions of the same task, when it was split across gaps. */ extra?:{day:number;time:string}[]; /** On a proposal: work already done, saved as finished with its time recorded. */ done?:boolean; /** On a change: the block's day and time when Soma suggested it. */ base?:{day:number;time:string} };
 export type EditorDraft = { block?:PlanBlock; start:string; end:string; day:number };
@@ -100,7 +101,7 @@ export default function PlanEditor({draft,blocks,onSave,onCancel,live=false,know
  <div className={styles.editorFields}><label>Type<select aria-label="Type" value={type} onChange={e=>setType(e.target.value)}><option value="study">Study session</option><option value="commitment">Personal commitment</option></select></label><label>Subject<select aria-label="Subject" disabled={type==='commitment'} value={creatingCourse ? NEW_COURSE : subject} onChange={e=>{if(e.target.value===NEW_COURSE){setCreatingCourse(true);}else{setCreatingCourse(false);setSubject(e.target.value);}}}>{courseOptions.map(s=><option key={s} value={s}>{s}</option>)}<option value={NEW_COURSE}>+ New course…</option></select></label></div>
  {creatingCourse && <><label>New course name<input aria-label="New course name" autoFocus maxLength={80} value={newCourse} onChange={e=>setNewCourse(e.target.value)} placeholder="e.g. World History"/></label><p className={styles.editorNote}>Pick its colour in Settings → Courses.</p></>}
  {live && type==='study' && <label><span><input type="checkbox" checked={scheduled} onChange={e=>setScheduled(e.target.checked)}/> Schedule a time</span></label>}
- {hasTime && <div className={styles.editorFields}><label>Start time<input type="time" required value={start} onChange={e=>setStart(e.target.value)}/></label><label>End time<input type="time" required value={end} onChange={e=>setEnd(e.target.value)}/></label></div>}
+ {hasTime && <div className={styles.editorFields}><label>Start time<input type="time" required value={start} onChange={e=>{setEnd(endAfterMove(start,end,e.target.value));setStart(e.target.value);}}/></label><label>End time<EndTimePicker label="End time" start={start} end={end} onChange={setEnd}/></label></div>}
  {hasTime && endsNextDay && span<=720 && <p className={styles.editorNote}>Runs past midnight: ends {formatClock(end,timeFormat)} the next day ({Math.floor(span/60) ? `${Math.floor(span/60)} h ` : ''}{span%60 ? `${span%60} min` : ''}).</p>}
  {type==='study' && <label>Status<select aria-label="Status" value={state} onChange={e=>setState(e.target.value as PlanState)}><option value="Planned">Incomplete</option><option value="Completed">Completed</option><option value="Partially completed">Partially completed</option>{!live && <option value="Missed">Missed</option>}{state==='Proposal' && <option value="Proposal">Proposal</option>}</select></label>}
  {/* The same minutes as Past sessions below, not the subject's other time shared into this block. */}
@@ -126,8 +127,8 @@ export default function PlanEditor({draft,blocks,onSave,onCancel,live=false,know
        <span className={styles.logRange} aria-live="polite">{endAfter(l.start,logLength,timeFormat)}</span>}
      </div>
     : <div className={styles.logEditing}>
-      <label>Start<input type="time" autoFocus aria-label={`Start time on ${day}`} value={logStart} disabled={busy} onChange={e=>setLogStart(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setEditingLog(null);}}}/></label>
-      <label>End<input type="time" aria-label={`End time on ${day}`} value={logEnd} disabled={busy} onChange={e=>setLogEnd(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setEditingLog(null);}}}/></label>
+      <label>Start<input type="time" autoFocus aria-label={`Start time on ${day}`} value={logStart} disabled={busy} onChange={e=>{setLogEnd(endAfterMove(logStart,logEnd,e.target.value));setLogStart(e.target.value);}} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setEditingLog(null);}}}/></label>
+      <label>End<EndTimePicker label={`End time on ${day}`} start={logStart} end={logEnd} disabled={busy} onChange={setLogEnd}/></label>
      </div>}
    {logMode==='range' && logStart && logEnd && logRangeMinutes<=0 && <p className={styles.editorNote}>End time must be later than start time. A session past midnight can run up to 12 hours.</p>}
    {logMode==='range' && logRangeMinutes>0 && <p className={styles.editorNote}>{minuteValue(logEnd)<=minuteValue(logStart) ? `Ends ${formatClock(logEnd,timeFormat)} the next day · ` : ''}{logRangeMinutes} minutes.</p>}
@@ -165,8 +166,8 @@ export default function PlanEditor({draft,blocks,onSave,onCancel,live=false,know
   {addMode==='minutes'
    ? <label>Minutes<input type="number" min={1} max={1440} step={1} autoFocus value={addMinutes} placeholder="45" onChange={e=>setAddMinutes(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setAdding(false);}}}/></label>
    : <>
-     <label>Start<input type="time" autoFocus value={addStart} onChange={e=>setAddStart(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setAdding(false);}}}/></label>
-     <label>End<input type="time" value={addEnd} onChange={e=>setAddEnd(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setAdding(false);}}}/></label>
+     <label>Start<input type="time" autoFocus value={addStart} onChange={e=>{setAddEnd(endAfterMove(addStart,addEnd,e.target.value));setAddStart(e.target.value);}} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setAdding(false);}}}/></label>
+     <label>End<EndTimePicker label="End" start={addStart} end={addEnd} onChange={setAddEnd}/></label>
      {addStart && addEnd && rangeMinutes<=0 && <p className={styles.editorNote}>End time must be later than start time. A session past midnight can run up to 12 hours.</p>}
      {rangeMinutes>0 && <p className={styles.editorNote}>{minuteValue(addEnd)<=minuteValue(addStart) ? `Ends ${formatClock(addEnd,timeFormat)} on ${nextDayLabel(addDate)} · ` : ''}{rangeMinutes} minutes.</p>}
     </>}

@@ -17,7 +17,7 @@ const events = [
   { id: 'disc', summary: 'Physics 5A Discussion', start: { dateTime: at(1, '16:00') }, end: { dateTime: at(1, '17:59') }, source: { connectionId: 'c', calendarId: 'k' } },
 ];
 
-async function setup(page: Page, reply: unknown, more: typeof events = [], clock?: Date) {
+async function setup(page: Page, reply: unknown, more: typeof events = [], clock?: Date, prefs: Record<string, unknown> = {}) {
   const db: Record<string, Row[]> = {
     subjects: [{ id: 'phys', user_id: account.id, name: 'Physics 5A', color: '#ab47bc', archived: false }],
     todos: [{ id: 't-hw', user_id: account.id, text: 'Physics HW 4', subject_id: 'phys', status: 'nothing', date: TOMORROW }],
@@ -28,10 +28,10 @@ async function setup(page: Page, reply: unknown, more: typeof events = [], clock
   // Nine in the morning today, so all of tomorrow is ahead whatever the real clock says.
   const morning = new Date(); morning.setHours(9, 0, 0, 0);
   await page.clock.install({ time: clock ?? morning });
-  await page.addInitScript(a => {
+  await page.addInitScript(([a, extra]) => {
     localStorage.setItem('sb-soma-regression-auth-token', JSON.stringify({ access_token: 't', refresh_token: 'r', token_type: 'bearer', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, user: a }));
-    localStorage.setItem('soma_settings', JSON.stringify({ onboardingCompleted: true, theme: 'light', studyWindow: { start: '08:00', end: '23:00' } }));
-  }, account);
+    localStorage.setItem('soma_settings', JSON.stringify({ onboardingCompleted: true, theme: 'light', studyWindow: { start: '08:00', end: '23:00' }, ...extra }));
+  }, [account, prefs] as const);
   await page.route('https://soma-regression.supabase.co/**', route => {
     const req = route.request(), url = new URL(req.url()), table = url.pathname.split('/').pop()!;
     if (url.pathname.includes('/auth/v1/')) return route.fulfill({ json: account });
@@ -151,12 +151,13 @@ test('"in the gaps" splits one task across them, and Accept saves both sessions'
   await ask(page, 'do the homework in the gaps between classes before discussion');
   const log = page.getByRole('log');
   await expect(log).not.toContainText("Couldn't place");
-  await expect(log).toContainText('Physics HW 4: Mon 1:00 PM–2:00 PM, Mon 3:00 PM–3:16 PM'.replace(/Mon/g, new Date(`${TOMORROW}T12:00`).toLocaleDateString('en-US', { weekday: 'short' })));
+  await expect(log).toContainText('Physics HW 4: Mon 1:00 PM–1:46 PM, Mon 3:00 PM–3:30 PM'.replace(/Mon/g, new Date(`${TOMORROW}T12:00`).toLocaleDateString('en-US', { weekday: 'short' })));
   expect(state.prompt).toContain('"split":true');
   await page.getByRole('button', { name: 'Accept', exact: true }).click();
   await expect.poll(() => state.db.todo_sessions.filter(s => s.todo_id === 't-hw').length).toBe(2);
   const sessions = state.db.todo_sessions.filter(s => s.todo_id === 't-hw').map(s => [s.start_time, s.end_time]).sort();
-  expect(sessions).toEqual([[at(1, '13:00'), at(1, '14:00')], [at(1, '15:00'), at(1, '15:16')]]);
+  // No piece under the 30-minute minimum: 46 + 30, not 60 + a 16-minute scrap.
+  expect(sessions).toEqual([[at(1, '13:00'), at(1, '13:46')], [at(1, '15:00'), at(1, '15:30')]]);
   expect(state.db.todos.filter(t => t.text === 'Physics HW 4')).toHaveLength(1);   // one task, two sessions
 });
 
@@ -318,4 +319,40 @@ test('a time Soma picks on its own still keeps to study hours', async ({ page })
   void TODAY;
   await ask(page, 'plan an early review tomorrow');
   await expect(page.getByRole('log')).toContainText('outside your study hours');
+});
+
+// ── Piece sizes (Settings → Study hours, default 30–120 min) ──────────────
+const problemSet = (extra: Record<string, unknown> = {}) => ({ reply: 'Problem set tomorrow.', blocks: [{ title: 'Problem set 5', subject: 'Physics 5A', date: TOMORROW, minutes: 180, after: '11:00', ...extra }] });
+const sessionsOf = (db: Record<string, Row[]>, title: string) => {
+  const todo = db.todos.find(t => t.text === title);
+  if (!todo) return [];   // not saved yet
+  return db.todo_sessions.filter(x => x.todo_id === todo.id).map(x => [x.start_time, x.end_time]).sort();
+};
+
+test('work longer than the largest piece is split, with a break between pieces', async ({ page }) => {
+  const state = await setup(page, problemSet());
+  await ask(page, 'plan problem set 5 tomorrow, 3 hours');
+  await expect(page.getByText(/In 2 pieces/).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => sessionsOf(state.db, 'Problem set 5').length).toBe(2);
+  // 2 hours, a 15-minute break, then the last hour: one task, two sessions.
+  expect(sessionsOf(state.db, 'Problem set 5')).toEqual([[at(1, '11:00'), at(1, '13:00')], [at(1, '13:15'), at(1, '14:15')]]);
+  expect(state.db.todos.filter(t => t.text === 'Problem set 5')).toHaveLength(1);
+  expect(state.prompt).toContain('"pieces":"30–120 min"');
+});
+
+test('"don\'t split it" keeps it in one piece', async ({ page }) => {
+  const state = await setup(page, problemSet({ split: false }));
+  await ask(page, "plan problem set 5 tomorrow, 3 hours, don't split it");
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => sessionsOf(state.db, 'Problem set 5').length).toBe(1);
+  expect(sessionsOf(state.db, 'Problem set 5')).toEqual([[at(1, '11:00'), at(1, '14:00')]]);
+});
+
+test('the piece sizes come from Settings', async ({ page }) => {
+  const state = await setup(page, problemSet(), [], undefined, { chunks: { min: 45, max: 90 } });
+  await ask(page, 'plan problem set 5 tomorrow, 3 hours');
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => sessionsOf(state.db, 'Problem set 5').length).toBe(2);
+  expect(sessionsOf(state.db, 'Problem set 5')).toEqual([[at(1, '11:00'), at(1, '12:30')], [at(1, '12:45'), at(1, '14:15')]]);
 });
