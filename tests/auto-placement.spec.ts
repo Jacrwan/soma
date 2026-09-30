@@ -321,7 +321,7 @@ test('a time Soma picks on its own still keeps to study hours', async ({ page })
   await expect(page.getByRole('log')).toContainText('outside your study hours');
 });
 
-// ── Piece sizes (Settings → Study hours, default 30–120 min) ──────────────
+// ── Splitting only when nothing fits (smallest piece in Settings, default 30) ──
 const problemSet = (extra: Record<string, unknown> = {}) => ({ reply: 'Problem set tomorrow.', blocks: [{ title: 'Problem set 5', subject: 'Physics 5A', date: TOMORROW, minutes: 180, after: '11:00', ...extra }] });
 const sessionsOf = (db: Record<string, Row[]>, title: string) => {
   const todo = db.todos.find(t => t.text === title);
@@ -329,30 +329,19 @@ const sessionsOf = (db: Record<string, Row[]>, title: string) => {
   return db.todo_sessions.filter(x => x.todo_id === todo.id).map(x => [x.start_time, x.end_time]).sort();
 };
 
-test('work longer than the largest piece is split, with a break between pieces', async ({ page }) => {
+test('long work that fits in one slot stays in one piece', async ({ page }) => {
   const state = await setup(page, problemSet());
   await ask(page, 'plan problem set 5 tomorrow, 3 hours');
-  await expect(page.getByText(/In 2 pieces/).first()).toBeVisible();
-  await page.getByRole('button', { name: 'Accept', exact: true }).click();
-  await expect.poll(() => sessionsOf(state.db, 'Problem set 5').length).toBe(2);
-  // 2 hours, a 15-minute break, then the last hour: one task, two sessions.
-  expect(sessionsOf(state.db, 'Problem set 5')).toEqual([[at(1, '11:00'), at(1, '13:00')], [at(1, '13:15'), at(1, '14:15')]]);
-  expect(state.db.todos.filter(t => t.text === 'Problem set 5')).toHaveLength(1);
-  expect(state.prompt).toContain('"pieces":"30–120 min"');
-});
-
-test('"don\'t split it" keeps it in one piece', async ({ page }) => {
-  const state = await setup(page, problemSet({ split: false }));
-  await ask(page, "plan problem set 5 tomorrow, 3 hours, don't split it");
+  await expect(page.getByRole('log')).not.toContainText('pieces');
   await page.getByRole('button', { name: 'Accept', exact: true }).click();
   await expect.poll(() => sessionsOf(state.db, 'Problem set 5').length).toBe(1);
   expect(sessionsOf(state.db, 'Problem set 5')).toEqual([[at(1, '11:00'), at(1, '14:00')]]);
+  expect(state.prompt).toContain('"smallestPiece":"30 min"');
 });
 
-test('the piece sizes come from Settings', async ({ page }) => {
-  const state = await setup(page, problemSet(), [], undefined, { chunks: { min: 45, max: 90 } });
-  await ask(page, 'plan problem set 5 tomorrow, 3 hours');
-  await page.getByRole('button', { name: 'Accept', exact: true }).click();
-  await expect.poll(() => sessionsOf(state.db, 'Problem set 5').length).toBe(2);
-  expect(sessionsOf(state.db, 'Problem set 5')).toEqual([[at(1, '11:00'), at(1, '12:30')], [at(1, '12:45'), at(1, '14:15')]]);
+test('with a larger smallest piece, a split that would leave a scrap is asked about instead', async ({ page }) => {
+  // 76 minutes across two 60-minute gaps can't be two pieces of at least 45.
+  await setup(page, { reply: 'Trying.', changes: [{ action: 'move', id: 's-hw', date: TOMORROW, minutes: 76, after: '13:00', before: '16:00' }] }, math, undefined, { chunks: { min: 45 } });
+  await ask(page, 'homework tomorrow afternoon before discussion');
+  await expect(page.getByRole('log')).toContainText('Needs your call');
 });

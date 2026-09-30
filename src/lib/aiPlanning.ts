@@ -13,11 +13,9 @@ const localDate=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(
  * satisfied at all.
  */
 const START_GRACE_MS=15*60*1000;
-/** The student's piece sizes for splitting work, in minutes (default 30–120). */
-export function chunkSizes(settings:SomaSettings):{min:number;max:number}{
- const c=settings.chunks;
- const min=Math.min(240,Math.max(15,Math.round(c?.min ?? 30)));
- return {min,max:Math.min(240,Math.max(min,Math.round(c?.max ?? 120)))};
+/** The smallest piece Soma may split work into when it has to, in minutes (default 30). */
+export function chunkSizes(settings:SomaSettings):{min:number}{
+ return {min:Math.min(240,Math.max(15,Math.round(settings.chunks?.min ?? 30)))};
 }
 /**
  * Throws when a proposed block cannot be placed. With allowCommitmentOverlap, a
