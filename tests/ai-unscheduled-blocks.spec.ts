@@ -37,7 +37,7 @@ test('a block with no start or end is proposed as unscheduled', async ({ page })
  const st=await setup(page,{reply:'Added it.',blocks:[{title:'RUF Fall Retreat signup',subject:'Personal',date:TODAY}]});
  await page.goto('/dashboard');
  await ask(page,'remind me to sign up for RUF Fall Retreat, no particular time');
- await expect(page.getByRole('log')).toContainText('Added it.');
+ await expect(page.getByRole('log')).toContainText('Suggested: add it.');
  await expect(page.getByRole('log')).not.toContainText('came back incomplete');
  await expect(page.getByRole('log')).toContainText('Review the proposed blocks');
 

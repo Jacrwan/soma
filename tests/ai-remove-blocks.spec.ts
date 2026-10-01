@@ -47,7 +47,7 @@ async function propose(page:Page){
  await page.goto('/dashboard');
  await page.getByLabel('What do you need to work on?').fill('remove the quiz 2 study block');
  await page.getByRole('button',{name:'Send to Soma'}).click();
- await expect(page.getByRole('log')).toContainText('Removed it.');
+ await expect(page.getByRole('log')).toContainText('Suggested: remove it.');
 }
 const planText=(page:Page)=>page.locator('[class*=agenda],[class*=single],[class*=concurrent]').first();
 

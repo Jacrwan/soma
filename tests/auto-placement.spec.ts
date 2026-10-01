@@ -278,7 +278,7 @@ test('accepting a move retires the other suggestions for that block', async ({ p
   await ask(page, 'delete the homework');
   await expect(page.getByRole('log')).toContainText('Delete it?');
   await ask(page, 'actually move it to noon');
-  await expect(page.getByRole('log')).toContainText('Moved.');
+  await expect(page.getByRole('log')).toContainText('Suggested: move.');
   await expect(page.getByRole('button', { name: /^Accept all/ })).toBeVisible();
   await page.getByRole('button', { name: /^Accept all/ }).click();
   await expect(page.getByRole('button', { name: /^Accept/ })).toHaveCount(0);

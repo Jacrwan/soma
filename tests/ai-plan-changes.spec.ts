@@ -100,7 +100,7 @@ test('overslept: missed blocks are moved, not duplicated, and Accept all applies
   ] });
   await ask(page, 'you have to move them');
   const log = page.getByRole('log');
-  await expect(log).toContainText('Moved English and Physics');
+  await expect(log).toContainText('Suggested: move English and Physics');
   await expect(log).not.toContainText("Couldn't place");
   // The originals say where they're going; the proposals say where they came from.
   await expect(page.getByText(/Soma suggests moving this to 7:30 PM/)).toBeVisible();
@@ -179,7 +179,7 @@ test('rename: an existing block is renamed in place, not recreated', async ({ pa
     db.timer_sessions.push({ id: 'focus-1', user_id: account.id, subject_id: 'cs', subject_name: 'CS 61A', task_text: 'Hog project review', date: TOMORROW, start_time: at(1, '17:30'), end_time: at(1, '18:10'), duration_seconds: 2400 });
   });
   await ask(page, 'rename the cs block to hog project final review');
-  await expect(page.getByRole('log')).toContainText('Renamed it.');
+  await expect(page.getByRole('log')).toContainText('Suggested: rename it.');
   await expect(page.getByRole('log')).not.toContainText("Couldn't place");
   await expect(page.getByText(/Soma suggests renaming this to "Hog project — final review"/)).toBeVisible();
   await expect(page.getByText(/Renamed from "Hog project review"/)).toBeVisible();
@@ -235,7 +235,7 @@ test('past weeks: the arrows show earlier days and their blocks, without Focus',
 test('a reply with changes but no "blocks" list is still applied', async ({ page }) => {
   const state = await setup(page, { reply: 'Renamed.', changes: [{ action: 'update', id: 's-cs', title: 'Hog final' }] });
   await ask(page, 'rename hog');
-  await expect(page.getByRole('log')).toContainText('Renamed.');
+  await expect(page.getByRole('log')).toContainText('Suggested: rename.');
   await page.getByRole('button', { name: /Accept all \(1\)/ }).click();
   await expect.poll(() => state.db.todos.find(t => t.id === 't-cs')?.text).toBe('Hog final');
 });
@@ -243,7 +243,7 @@ test('a reply with changes but no "blocks" list is still applied', async ({ page
 test('a reply wrapped in prose is still read', async ({ page }) => {
   await setup(page, 'Sure! Here you go:\n{"reply":"Moved it.","blocks":[],"changes":[{"action":"move","id":"s-cs","date":"' + TOMORROW + '","start":"20:00","end":"21:00"}]}');
   await ask(page, 'move hog to 8');
-  await expect(page.getByRole('log')).toContainText('Moved it.');
+  await expect(page.getByRole('log')).toContainText('Suggested: move it.');
   await expect(page.getByRole('button', { name: /Accept all \(1\)/ })).toBeVisible();
 });
 
@@ -325,7 +325,7 @@ test('Soma is told what was finished last week', async ({ page }) => {
   const ctx = JSON.parse(state.prompt.match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]);
   const done = ctx.lastWeek.find((b: { title: string }) => b.title === 'Reading guide 2.1–3.2');
   expect(done.st).toBe('Completed');
-  expect(done.d).toBe(past);
+  expect(done.d).toBe(`${offset(-4).toLocaleDateString('en-US', { weekday: 'short' })} ${past}`);   // with its weekday
   expect(ctx.plan.some((p: { title: string }) => p.title === 'Reading guide 2.1–3.2')).toBe(false);   // history, not plan
   expect(state.prompt).toContain('WHAT THE STUDENT HAS ALREADY DONE');
 });

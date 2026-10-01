@@ -128,6 +128,17 @@ export async function finishThrough(userId: string, items: CourseItem[], todoId:
 }
 
 /**
+ * "2026-10-01" → "Thu 2026-10-01". Given a bare date, the model worked out the
+ * weekday itself and got it wrong ("due Wednesday Oct 1", a Thursday).
+ */
+export function withWeekday(date: string) {
+  const day = /^\d{4}-\d{2}-\d{2}/.exec(date)?.[0];
+  if (!day) return date;
+  const d = new Date(`${day}T12:00:00`);
+  return Number.isNaN(+d) ? date : `${d.toLocaleDateString('en-US', { weekday: 'short' })} ${day}`;
+}
+
+/**
  * What the AI sees for each course: one short entry, not the whole guide.
  * `ids` maps the short ids handed to the model back to real item ids.
  */
@@ -151,7 +162,7 @@ export function courseProgress(items: CourseItem[], subjects: { id: string; name
       open: open.slice(0, 14).map(i => {
         const short = `i${ids.size + 1}`;
         ids.set(short, i.id);
-        return { id: short, l: i.label, ...(i.title ? { t: i.title } : {}), ...(i.due ? { due: i.due } : {}), ...(i.todoId && ended.has(i.todoId) ? { planned: 'ended unchecked' } : i.todoId && upcoming.has(i.todoId) ? { planned: true } : {}) };
+        return { id: short, l: i.label, ...(i.title ? { t: i.title } : {}), ...(i.due ? { due: withWeekday(i.due) } : {}), ...(i.todoId && ended.has(i.todoId) ? { planned: 'ended unchecked' } : i.todoId && upcoming.has(i.todoId) ? { planned: true } : {}) };
       }),
       ...(open.length > 14 ? { more: open.length - 14 } : {}),
       ...(unconfirmed.length ? { unconfirmed: rangeLabel(unconfirmed) } : {}),

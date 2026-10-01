@@ -9,7 +9,7 @@ const offset = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n)
 const at = (n: number, t: string) => { const d = offset(n); const [h, m] = t.split(':').map(Number); d.setHours(h, m, 0, 0); return d.toISOString(); };
 const TODAY = key(offset(0)), TOMORROW = key(offset(1));
 type Row = Record<string, unknown>;
-type Ctx = { unchecked?: { id: string; title: string; did: number; cov?: string }[]; courses: { s: string; done: string; behind: number; unconfirmed?: string; open: { id: string; l: string; planned?: unknown }[] }[]; plan: { id?: string; title: string; cov?: string }[] };
+type Ctx = { unchecked?: { id: string; title: string; did: number; cov?: string }[]; courses: { s: string; done: string; behind: number; unconfirmed?: string; open: { id: string; l: string; due?: string; planned?: unknown }[] }[]; plan: { id?: string; title: string; cov?: string }[] };
 
 const SECTIONS: [string, number][] = [['3.7', -9], ['4.1', -4], ['4.2', -4], ['4.3', -4], ['4.4', -4], ['4.5', -4], ['4.6', -4], ['4.7', -2], ['4.8', -2], ['4.9', -2], ['5.1', 3], ['5.2', 3], ['5.3', 3], ['5.4', 3]];
 const item = (label: string) => `item-${label}`;
@@ -108,6 +108,10 @@ test('Soma sees what is actually read, not what the syllabus says should be', as
   expect(phys.done).toBe('through 3.7');
   expect(phys.open[0].l).toBe('4.1');
   expect(phys.behind).toBe(9);                          // 4.1–4.9 are past due and unread
+  // Due dates carry their weekday: Soma once called Thursday Oct 1 "Wednesday".
+  const due = phys.open[0].due!.slice(4);
+  expect(phys.open[0].due).toBe(`${new Date(`${due}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short' })} ${due}`);
+  expect(phys.open[0].due).toMatch(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{4}-\d{2}-\d{2}$/);
   expect(phys.unconfirmed).toBe('4.1–4.6');             // its block ended unchecked
   expect(phys.open[0].planned).toBe('ended unchecked');
   expect(ctx.plan.find(p => p.title.startsWith('Physics reading'))!.cov).toBe('4.1–4.6');
