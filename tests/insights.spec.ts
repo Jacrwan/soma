@@ -288,8 +288,10 @@ test('a round hour stays round, and under an hour stays in minutes', async ({ pa
 
 /** Days of a given length, one per cell, for reading the labels back. */
 async function withDays(page: Page, state: Awaited<ReturnType<typeof setup>>, minutes: number[]) {
+  // Days counted back from the 2nd of this month, not from today: the heatmap
+  // shows this month, and on the 1st "yesterday" was last month's cell.
   state.sessions = minutes.map((m, i) => {
-    const d = new Date(); d.setDate(d.getDate() - i);
+    const d = new Date(); d.setDate(2 - i);
     const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     return { id: `s${i}`, date: day, subject_id: 'biology', subject_name: 'Biology',
              task_text: 'Homework', start_time: `${day}T09:00:00`, duration_seconds: m * 60 };
@@ -303,7 +305,7 @@ test('a day also shows its length in tenths of an hour', async ({ page }) => {
   // Two evenings a quarter of an hour apart. In hours and minutes that is
   // arithmetic; in tenths it is not.
   await withDays(page, state, [355, 340]);
-  // Cells render in calendar order, so yesterday comes before today.
+  // Cells render in calendar order, so the 1st comes before the 2nd.
   await expect(page.locator('[class*="heatmapDecimalLabel"]')).toHaveText(['5.7h', '5.9h']);
 });
 
