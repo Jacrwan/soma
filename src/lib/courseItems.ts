@@ -237,5 +237,7 @@ export function splitRanges(items: DraftItem[]): DraftItem[] {
 /** Keep recorded study time attached to a task whose title changed. */
 export async function renameLoggedTime(userId: string, subjectId: string, from: string, to: string) {
   if (from === to) return;
-  await supabase.from('timer_sessions').update({ task_text: to }).eq('user_id', userId).eq('subject_id', subjectId).eq('task_text', from);
+  const { error } = await supabase.from('timer_sessions').update({ task_text: to }).eq('user_id', userId).eq('subject_id', subjectId).eq('task_text', from);
+  if (error) throw new Error('The new name saved, but its recorded study time did not move with it. Please retry.');
+  window.dispatchEvent(new Event('soma_insights_changed'));
 }
