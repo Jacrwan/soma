@@ -53,6 +53,11 @@ async function setup(page: Page, reply: unknown, edit?: (db: Record<string, Row[
       db[table] = rows.filter(r => r.id !== id);
       return route.fulfill({ json: [{ id }] });
     }
+    if (req.method() === 'PATCH' && rows) {
+      const b = req.postDataJSON() as Row;
+      for (const r of rows) if ([...url.searchParams].every(([k, v]) => !v.startsWith('eq.') || String(r[k]) === v.slice(3))) Object.assign(r, b);
+      return route.fulfill({ json: null });
+    }
     if (req.method() !== 'GET') return route.fulfill({ json: null });
     let out = rows ?? [];
     for (const k of ['id', 'todo_id']) { const f = url.searchParams.get(k); if (f?.startsWith('eq.')) out = out.filter(r => String(r[k]) === f.slice(3)); }
@@ -82,7 +87,8 @@ test('Soma is given ids for your own blocks, but not for read-only calendar even
   await expect(page.getByRole('log')).toContainText('ok');
   const ctx = JSON.parse(state.prompt.match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]);
   const lit = ctx.plan.find((p: { title: string }) => p.title.startsWith("Gulliver"));
-  expect(lit.id).toBe('s-lit');
+  // A short id, not the 36-character one the model used to miscopy.
+  expect(lit.id).toMatch(/^b[0-9a-z]{6}$/);
   expect(state.prompt).toContain('CHANGING THE EXISTING PLAN');
   expect(state.prompt).toContain('move the existing block rather than creating a second copy');
 });
@@ -147,6 +153,21 @@ test('remove deletes the block and the task behind it', async ({ page }) => {
   expect(state.db.todos.some(t => t.id === 't-phys')).toBe(false);
 });
 
+test('a delete sent with the short id, in the student\'s word, still deletes the block', async ({ page }) => {
+  // A delete Soma sent once matched nothing (a miscopied id, or "delete" for
+  // "remove"); it was dropped and Soma then said it was waiting for Accept.
+  const state = await setup(page, { reply: 'ok', blocks: [] });
+  await ask(page, 'what is on tomorrow');
+  await expect(page.getByRole('log')).toContainText('ok');
+  const ctx = JSON.parse(state.prompt.match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]);
+  const id = ctx.plan.find((p: { title: string }) => p.title === 'Physics reading guides').id;
+  state.replies.push({ reply: 'Dropped physics.', blocks: [], changes: [{ action: 'delete', id }] });
+  await ask(page, 'delete the physics block');
+  await expect(page.getByText('Soma suggests deleting this')).toBeVisible();
+  await page.getByRole('button', { name: /Accept all \(1\)/ }).click();
+  await expect.poll(() => state.deletes).toContain('todos:t-phys');
+});
+
 test('changes aimed at unknown blocks are rejected with a reason', async ({ page }) => {
   await setup(page, { reply: 'Tried.', blocks: [], changes: [{ action: 'move', id: 'google:c:k:lecture:1', date: TOMORROW, start: '15:00', end: '16:00' }] });
   await ask(page, 'move my lecture');
@@ -154,7 +175,9 @@ test('changes aimed at unknown blocks are rejected with a reason', async ({ page
 });
 
 test('rename: an existing block is renamed in place, not recreated', async ({ page }) => {
-  const state = await setup(page, { reply: 'Renamed it.', blocks: [], changes: [{ action: 'update', id: 's-cs', title: 'Hog project — final review' }] });
+  const state = await setup(page, { reply: 'Renamed it.', blocks: [], changes: [{ action: 'update', id: 's-cs', title: 'Hog project — final review' }] }, db => {
+    db.timer_sessions.push({ id: 'focus-1', user_id: account.id, subject_id: 'cs', subject_name: 'CS 61A', task_text: 'Hog project review', date: TOMORROW, start_time: at(1, '17:30'), end_time: at(1, '18:10'), duration_seconds: 2400 });
+  });
   await ask(page, 'rename the cs block to hog project final review');
   await expect(page.getByRole('log')).toContainText('Renamed it.');
   await expect(page.getByRole('log')).not.toContainText("Couldn't place");
@@ -165,6 +188,8 @@ test('rename: an existing block is renamed in place, not recreated', async ({ pa
   await expect.poll(() => state.db.todos.find(t => t.id === 't-cs')?.text).toBe('Hog project — final review');
   expect(state.db.todos).toHaveLength(3);
   expect(state.db.todo_sessions.find(x => x.id === 's-cs')!.start_time).toBe(at(1, '17:30'));   // time untouched
+  // The time already logged on it moves with the name, so Insights still finds it.
+  expect(state.db.timer_sessions.find(x => x.id === 'focus-1')!.task_text).toBe('Hog project — final review');
 });
 
 test('update can rename and retime together; omitted fields keep their values', async ({ page }) => {

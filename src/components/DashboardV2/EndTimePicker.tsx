@@ -1,8 +1,7 @@
-import { useState } from 'react';
+import { useId } from 'react';
 import { clockMinutes, clockOf, spanMinutes } from '../../lib/clockRange';
-import { formatClock, useTimeFormat } from '../../lib/timeFormat';
 
-const STEP = 15, LONGEST = 720;
+const LONGEST = 720;
 const clock = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** "45 min", "1 hr", "1 hr 15 min". */
@@ -12,35 +11,21 @@ export function lengthLabel(minutes: number) {
 }
 
 /**
- * The end of a block or session, picked the way Google Calendar does it:
- * ends are listed from the start with how long each makes it, and ends past
- * midnight say "next day". Nobody has to work out that 12:35 AM is after
- * 11:25 PM, and a typo like 3 PM → 2 PM can't happen by accident. "Other
- * time…" types any time.
+ * The end of a block or session: a time the student types, with how long that
+ * makes it and "next day" past midnight shown beside it, so nobody has to work
+ * out that 12:35 AM is after 11:25 PM. It used to be a list of ends counted
+ * from the start; the exact time was buried under "Other time…" at the bottom.
  */
 export default function EndTimePicker({ label, start, end, onChange, disabled }: {
   label: string; start: string; end: string; onChange: (end: string) => void; disabled?: boolean;
 }) {
-  const format = useTimeFormat();
+  const hintId = useId();
   const span = clock.test(start) && clock.test(end) ? spanMinutes(start, end) : 0;
-  const [other, setOther] = useState(() => !!end && clock.test(start) && (span === 0 || span > LONGEST));
-  // Without a start there is nothing to count from yet.
-  if (!clock.test(start)) return <input type="time" aria-label={label} value={end} disabled={disabled} onChange={e => onChange(e.target.value)} />;
-  const from = clockMinutes(start);
-  const lengths = Array.from({ length: LONGEST / STEP }, (_, i) => (i + 1) * STEP);
-  if (span > 0 && span <= LONGEST && span % STEP) lengths.push(span);
-  lengths.sort((a, b) => a - b);
+  const nextDay = span > 0 && clockMinutes(end) <= clockMinutes(start);
+  const hint = !span ? '' : `${lengthLabel(span)}${nextDay ? ' · next day' : ''}`;
   return <>
-    <select aria-label={label} value={other ? 'other' : clock.test(end) && span > 0 && span <= LONGEST ? end : ''} disabled={disabled}
-      onChange={e => { if (e.target.value === 'other') { setOther(true); return; } setOther(false); onChange(e.target.value); }}>
-      <option value="" disabled>Choose an end</option>
-      {lengths.map(m => {
-        const value = clockOf(from + m);
-        return <option key={m} value={value}>{formatClock(value, format)} ({lengthLabel(m)}){from + m >= 1440 ? ' · next day' : ''}</option>;
-      })}
-      <option value="other">Other time…</option>
-    </select>
-    {other && <input type="time" aria-label={`${label}, other time`} value={end} disabled={disabled} onChange={e => onChange(e.target.value)} />}
+    <input type="time" aria-label={label} value={end} disabled={disabled} onChange={e => onChange(e.target.value)} {...(hint ? { 'aria-describedby': hintId } : {})}/>
+    {hint && <small id={hintId}>{hint}</small>}
   </>;
 }
 

@@ -4,7 +4,7 @@ import { fetchAggregatedEvents } from '../../lib/googleCalendarConnections';
 import type { Subject, Todo, TodoSession, GoogleCalendarEvent } from '../../types';
 import { asTodoKind } from '../../types';
 import type { PlanBlock } from './PlanEditor';
-import { loadCourseItems, coveredBy, type CourseItem } from '../../lib/courseItems';
+import { loadCourseItems, coveredBy, renameLoggedTime, type CourseItem } from '../../lib/courseItems';
 import { rangeOf, spanMinutes } from '../../lib/clockRange';
 
 export type LiveBlock = PlanBlock & { todoId?: string; sessionId?: string; subjectId?: string; legacyId?: string };
@@ -99,6 +99,10 @@ export async function savePlanBlock(userId:string,origin:Date,block:PlanBlock,sn
  const previous=snapshot.todos.find(t=>t.id===original?.todoId);
  const todo:Todo={...previous,id:previous?.id??crypto.randomUUID(),text:block.title,subjectId:subject.id,status:block.state==='Completed' ? 'done' : block.state==='Partially completed' ? 'in_progress' : 'nothing',date:previous?.date??localDate(dateAt(origin,block.day)),estimatedMinutes:previous?.estimatedMinutes??(block.estimatedMinutes || block.minutes)};
  await storage.saveTodo(todo);
+ // Logged time is found by title. A rename used to leave it under the old one:
+ // the dashboard still spread it over the day's blocks, but Insights lost it
+ // from the task. Not when another task shares the old title; that time is theirs too.
+ if(previous && previous.text!==todo.text && previous.subjectId && previous.subjectId===todo.subjectId && !snapshot.todos.some(t=>t.id!==previous.id && t.text===previous.text && t.subjectId===previous.subjectId))await renameLoggedTime(userId,previous.subjectId,previous.text,todo.text);
  try {
   if(!block.time && original?.sessionId){const {error}=await supabase.from('todo_sessions').delete().eq('id',original.sessionId).eq('user_id',userId);if(error)throw new Error(error.message);}
   if(block.time){const [start,end]=block.time.split('–');const date=localDate(dateAt(origin,block.day));const existing=snapshot.sessions.find(s=>s.id===original?.sessionId);const unchanged=existing && original?.time===block.time;await checkedWrite('todo_sessions',{id:original?.sessionId??crypto.randomUUID(),user_id:userId,todo_id:todo.id,date:unchanged ? existing.date : date,start_time:unchanged ? existing.startTime : new Date(`${date}T${start}:00`).toISOString(),end_time:unchanged ? existing.endTime : new Date(new Date(`${date}T${start}:00`).getTime()+spanMinutes(start,end)*60000).toISOString()});}

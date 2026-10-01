@@ -113,7 +113,7 @@ test('Soma sees what is actually read, not what the syllabus says should be', as
   expect(ctx.plan.find(p => p.title.startsWith('Physics reading'))!.cov).toBe('4.1–4.6');
   expect(state.prompt).toContain('never infer it from a due date');
   // Worked on but never checked off: Soma is told to ask.
-  expect(ctx.unchecked).toEqual([expect.objectContaining({ id: 's-read', did: 30, cov: '4.1–4.6' })]);
+  expect(ctx.unchecked).toEqual([expect.objectContaining({ id: expect.stringMatching(/^b[0-9a-z]{6}$/), did: 30, cov: '4.1–4.6' })]);
 });
 
 test('a block that ended with no Focus time counts as not started: no question, no bookmark', async ({ page }) => {
