@@ -134,6 +134,54 @@ test("a block can be moved into another block's old slot when that one moves too
   expect(byId['s-phys'].start_time).toBe(at(1, '13:00'));
 });
 
+test('blocks that trade places are moved together, though neither can go first', async ({ page }) => {
+  // Reported: CS (6 of 6) moved up onto Physics (1 of 4), each Physics block onto
+  // the next one's slot, the last onto CS's old one. Every move landed on a block
+  // that hadn't moved yet, so Accept all refused all of them. Here: English
+  // takes Physics' morning slot, and Physics takes the time English is leaving.
+  const state = await setup(page, { reply: 'Swapped.', blocks: [], changes: [
+    { action: 'move', id: 's-lit', date: TOMORROW, start: '09:00', end: '10:30' },
+    { action: 'move', id: 's-phys', date: TOMORROW, start: '10:30', end: '12:30' },
+  ] });
+  await ask(page, 'do english first, then physics');
+  await expect(page.getByRole('log')).not.toContainText("Couldn't place");
+  await page.getByRole('button', { name: /Accept all \(2\)/ }).click();
+  await expect(page.getByRole('button', { name: /Accept all/ })).toHaveCount(0);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  const byId = Object.fromEntries(state.db.todo_sessions.map(x => [x.id, x]));
+  expect(byId['s-lit'].start_time).toBe(at(1, '09:00'));
+  expect(byId['s-phys'].start_time).toBe(at(1, '10:30'));
+});
+
+test('accepting one half of a trade says to accept both', async ({ page }) => {
+  await setup(page, { reply: 'Swapped.', blocks: [], changes: [
+    { action: 'move', id: 's-lit', date: TOMORROW, start: '09:00', end: '10:30' },
+    { action: 'move', id: 's-phys', date: TOMORROW, start: '10:30', end: '12:30' },
+  ] });
+  await ask(page, 'do english first, then physics');
+  await page.getByRole('button', { name: 'Accept', exact: true }).first().click();
+  await expect(page.getByRole('alert')).toContainText('Accept all moves them together');
+});
+
+test('a trade that would still collide is refused, and nothing moves', async ({ page }) => {
+  const state = await setup(page, { reply: 'Swapped.', blocks: [], changes: [
+    { action: 'move', id: 's-lit', date: TOMORROW, start: '09:00', end: '10:30' },
+    { action: 'move', id: 's-phys', date: TOMORROW, start: '10:30', end: '12:30' },
+  ] });
+  await ask(page, 'do english first, then physics');
+  await expect(page.getByRole('button', { name: /Accept all \(2\)/ })).toBeVisible();
+  // Meanwhile a block was added where English is going.
+  state.db.todos.push({ id: 't-new', user_id: account.id, text: 'Office hours', subject_id: 'cs', status: 'nothing', date: TOMORROW });
+  state.db.todo_sessions.push({ id: 's-new', user_id: account.id, todo_id: 't-new', date: TOMORROW, start_time: at(1, '09:30'), end_time: at(1, '10:00') });
+  await page.getByRole('button', { name: /Accept all \(2\)/ }).click();
+  await expect(page.getByRole('alert')).toContainText('overlaps');
+  await expect(page.getByRole('alert')).toContainText('Nothing was saved');
+  // Half a trade would leave two blocks on one slot, so neither moved.
+  const byId = Object.fromEntries(state.db.todo_sessions.map(x => [x.id, x]));
+  expect(byId['s-lit'].start_time).toBe(at(1, '11:00'));
+  expect(byId['s-phys'].start_time).toBe(at(1, '09:00'));
+});
+
 test('moving onto a block that stays put is still refused', async ({ page }) => {
   await setup(page, { reply: 'Here.', blocks: [], changes: [{ action: 'move', id: 's-lit', date: TOMORROW, start: '18:00', end: '19:00' }] });
   await ask(page, 'move english to 6');

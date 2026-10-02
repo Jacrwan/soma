@@ -653,7 +653,7 @@ export default function AITab() {
     setAccepting(true); setProposalError('');
     try {
       const failed = await applyAll(userId, dateAt(new Date(), 0), ids);
-      if (failed.length) setProposalError(`The rest were saved, but not ${failed.map(f => `"${f.title}" (${f.reason.replace(/\.$/, '')})`).join(', ')}.`);
+      if (failed.length) setProposalError(`${failed.length === ids.length ? 'Nothing was saved:' : 'The rest were saved, but not'} ${failed.map(f => `"${f.title}" (${f.reason.replace(/\.$/, '')})`).join(', ')}.`);
     } finally { markProposals(msgId, ids); setAccepting(false); }
   }
 
