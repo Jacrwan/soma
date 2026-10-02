@@ -665,11 +665,14 @@ function readEnvelope(raw: string): { reply: string; blocks?: unknown; changes?:
   throw new Error('Soma returned an unreadable answer. Nothing was saved; please try again.');
 }
 
+/** Moves accepted as one batch, and whether to only check them. */
+export type ApplyOptions = { together?: PlanBlock[]; check?: boolean };
+
 /**
  * Save an accepted proposal. Everything is re-read and re-checked first: the
  * plan may have changed since Soma suggested it.
  */
-export async function applyProposal(userId: string, origin: Date, block: PlanBlock): Promise<void> {
+export async function applyProposal(userId: string, origin: Date, block: PlanBlock, opts: ApplyOptions = {}): Promise<void> {
   const fresh = await readPlan(userId, origin, -7, 14);
   // Only sections still open can be planned; ones read in the meantime are skipped.
   const stillOpen = (ids?: string[]) => (ids ?? []).map(id => fresh.items.find(i => i.id === id)).filter((i): i is CourseItem => !!i && !i.doneAt);
@@ -717,9 +720,24 @@ export async function applyProposal(userId: string, origin: Date, block: PlanBlo
       await storage.fetchAllTodos();
     } else {
       const edited = { ...target, title: block.title, time: block.time, day: block.day, minutes: block.minutes };
+      // Blocks moving in the same batch are checked where they're going, not
+      // where they are: in a rotation every move lands on a block that hasn't
+      // moved yet, so one at a time none of them could go.
+      const moving = (opts.together ?? []).filter(p => p.replaces !== undefined && p.replaces !== target.id && p.time && (p.changeKind === 'move' || p.changeKind === 'update'));
+      const away = new Set<string | number>([target.id, ...moving.map(p => p.replaces!)]);
+      const arriving = moving.flatMap(p => { const b = fresh.blocks.find(x => x.id === p.replaces); return b ? [{ ...b, time: p.time, day: p.day }] : []; });
+      const board = { ...fresh, blocks: [...fresh.blocks.filter(b => !away.has(b.id)), ...arriving], sessions: fresh.sessions.filter(sn => !fresh.blocks.some(b => away.has(b.id) && b.sessionId === sn.id)) };
       // A rename leaves the time alone, so it works on blocks already underway or past.
-      if (edited.time && (edited.time !== target.time || edited.day !== target.day)) validateProposal(edited, { ...fresh, blocks: fresh.blocks.filter(b => b.id !== target.id), sessions: fresh.sessions.filter(sn => sn.id !== target.sessionId) }, origin, storage.getSomaSettings(), true, true, false);
-      checkExtra(block, fresh, origin, target.id);
+      try { if (edited.time && (edited.time !== target.time || edited.day !== target.day)) validateProposal(edited, board, origin, storage.getSomaSettings(), true, true, false); }
+      catch (err) {
+        // Accepted alone, a move onto a block that is itself about to move is refused; say how to do both.
+        const [from, to] = rangeOf(edited.time);
+        const inTheWay = (b?: typeof target) => !!b?.time && (([f, t]) => b.day * 1440 + f < edited.day * 1440 + to && b.day * 1440 + t > edited.day * 1440 + from)(rangeOf(b.time));
+        const waiting = !opts.together && err instanceof Error && getProposals(userId).find(p => p.id !== block.id && p.replaces !== undefined && p.replaces !== target.id && (p.changeKind === 'move' || p.changeKind === 'update') && inTheWay(fresh.blocks.find(b => b.id === p.replaces)));
+        throw waiting ? new Error(`That time is where "${waiting.title}" is now, and it is waiting to move. Accept all moves them together.`) : err;
+      }
+      checkExtra(block, board, origin, target.id);
+      if (opts.check) return;
       const todoId = await savePlanBlock(userId, origin, edited, fresh);
       await addExtra(todoId, block, origin);
       if (block.coverIds) {
@@ -774,18 +792,41 @@ export function dismissProposal(userId: string, id: string | number) {
  * passes, retrying what failed, until a pass makes no progress. Returns what
  * couldn't be applied, and why.
  */
-export async function applyAll(userId: string, origin: Date, ids?: (string | number)[], save = (b: PlanBlock) => applyProposal(userId, origin, b)): Promise<{ title: string; reason: string }[]> {
+export async function applyAll(userId: string, origin: Date, ids?: (string | number)[], save = (b: PlanBlock, o?: ApplyOptions) => applyProposal(userId, origin, b, o)): Promise<{ title: string; reason: string }[]> {
   let pending = getProposals(userId).filter(p => !ids || ids.includes(p.id));
   const reasons = new Map<string | number, string>();
-  for (let pass = 0; pending.length && pass < pending.length + 1; pass++) {
-    const failed: PlanBlock[] = [];
-    for (const p of pending) {
-      // Accepting one change can retire another aimed at the same block.
-      if (!getProposals(userId).some(x => x.id === p.id)) continue;
-      try { await save({ ...p, state: 'Planned' }); } catch (err) { failed.push(p); reasons.set(p.id, err instanceof Error ? err.message : 'Could not be applied.'); }
+  const live = (p: PlanBlock) => getProposals(userId).some(x => x.id === p.id);
+  const passes = async () => {
+    for (let pass = 0; pending.length && pass < pending.length + 1; pass++) {
+      const failed: PlanBlock[] = [];
+      for (const p of pending) {
+        // Accepting one change can retire another aimed at the same block.
+        if (!live(p)) continue;
+        try { await save({ ...p, state: 'Planned' }); } catch (err) { failed.push(p); reasons.set(p.id, err instanceof Error ? err.message : 'Could not be applied.'); }
+      }
+      if (failed.length === pending.length) break;
+      pending = failed;
     }
-    if (failed.length === pending.length) break;
-    pending = failed;
+  };
+  await passes();
+  // Moves left over may be waiting on each other: blocks trading places, or a
+  // rotation. Checked together they can all go; any that still collide leaves
+  // the whole batch where it was, since half a trade puts two blocks on one slot.
+  const group = pending.filter(p => live(p) && p.replaces !== undefined && p.time && (p.changeKind === 'move' || p.changeKind === 'update'));
+  if (group.length > 1) {
+    let fits = true;
+    for (const p of group) {
+      try { await applyProposal(userId, origin, { ...p, state: 'Planned' }, { together: group, check: true }); }
+      catch (err) { fits = false; reasons.set(p.id, err instanceof Error ? err.message : 'Could not be applied.'); }
+    }
+    if (fits) {
+      for (const p of group) {
+        try { await save({ ...p, state: 'Planned' }, { together: group }); } catch (err) { reasons.set(p.id, err instanceof Error ? err.message : 'Could not be applied.'); }
+      }
+      // Anything else that was waiting for these slots can go now.
+      pending = pending.filter(live);
+      await passes();
+    }
   }
-  return pending.filter(p => getProposals(userId).some(x => x.id === p.id)).map(p => ({ title: p.title, reason: reasons.get(p.id) ?? 'Could not be applied.' }));
+  return pending.filter(live).map(p => ({ title: p.title, reason: reasons.get(p.id) ?? 'Could not be applied.' }));
 }
