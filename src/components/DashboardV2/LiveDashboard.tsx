@@ -17,7 +17,7 @@ import { dashboardChatFor, type DashboardChatMemory } from '../../lib/dashboardC
 async function mirrorToChatSession(memory:DashboardChatMemory) {
  if(!memory.display.length)return;
  const firstUser=memory.display.find(m=>m.role==='user')?.content??'Dashboard chat';
- await storage.upsertChatSession({id:memory.id,date:localDate(new Date(memory.createdAt)),title:firstUser.slice(0,60),messages:memory.display.map((m,i)=>({id:`${memory.id}-${i}`,role:m.role,content:m.content})),createdAt:memory.createdAt},memory.userId);
+ await storage.upsertChatSession({id:memory.id,date:localDate(new Date(memory.createdAt)),title:firstUser.slice(0,60),messages:memory.display.map((m,i)=>({id:`${memory.id}-${i}`,role:m.role,content:m.content,...(m.at ? {at:m.at} : {})})),createdAt:memory.createdAt},memory.userId);
 }
 
 /**
@@ -114,7 +114,11 @@ function DashboardSkeleton() {
 }
 
 export default function LiveDashboard({userId}:{userId:string}) {
- const [origin]=useState(()=>dateAt(new Date(),0));
+ // The page can stay open past midnight. "Today" has to move with the clock:
+ // left on yesterday, Soma read last night's plan as tonight's.
+ const [origin,setOrigin]=useState(()=>dateAt(new Date(),0));
+ const today=useCallback(()=>{const now=dateAt(new Date(),0);setOrigin(o=>+o===+now ? o : now);return now;},[]);
+ useEffect(()=>{const id=window.setInterval(today,60_000);window.addEventListener('focus',today);document.addEventListener('visibilitychange',today);return()=>{window.clearInterval(id);window.removeEventListener('focus',today);document.removeEventListener('visibilitychange',today);};},[today]);
  const [snapshot,setSnapshot]=useState<Snapshot|null>(null);
  const [error,setError]=useState('');
  const [busy,setBusy]=useState(false);
@@ -160,7 +164,9 @@ export default function LiveDashboard({userId}:{userId:string}) {
   if(!block.todoId){await save({...block,state});return;}
   if(writing.current)throw new Error('Please wait for the current save to finish.');
   writing.current=true;setBusy(true);setError('');
-  try{const fresh=await readPlan(userId,origin,rangeRef.current,7);const todo=fresh.todos.find(t=>t.id===block.todoId);if(!todo)throw new Error('This task no longer exists. Refresh your plan.');await storage.saveTodo({...todo,status:state==='Completed' ? 'done' : state==='Partially completed' ? 'in_progress' : 'nothing'});
+  try{const fresh=await readPlan(userId,origin,rangeRef.current,7);const todo=fresh.todos.find(t=>t.id===block.todoId);if(!todo)throw new Error('This task no longer exists. Refresh your plan.');const status:typeof todo.status=state==='Completed' ? 'done' : state==='Partially completed' ? 'in_progress' : 'nothing';await storage.saveTodo({...todo,status});
+  // A task made from a Canvas assignment carries its status there too, as Day View does, so Deadlines agrees.
+  if(todo.assignmentId!==undefined){const linked=fresh.todos.filter(t=>t.assignmentId===todo.assignmentId).map(t=>t.id===todo.id ? status : t.status);storage.setAssignmentStatus({...storage.getAssignmentStatus(),[String(todo.assignmentId)]:linked.every(x=>x==='done') ? 'done' : linked.some(x=>x==='done' || x==='in_progress') ? 'in_progress' : 'not_started'});}
   // Checking a block off is what marks its sections read; unchecking takes that back.
   const covered=coveredBy(fresh.items,todo.id);
   if(state==='Completed')await markDone(userId,covered.filter(i=>!i.doneAt).map(i=>i.id));
@@ -190,14 +196,18 @@ export default function LiveDashboard({userId}:{userId:string}) {
  }
  async function propose(text:string,day:number){
   if(writing.current)throw new Error('Please wait for your plan to finish saving.');
-  const result=await askSoma({userId,origin,text,history:conversation.current,selectedDay:day,activeBlockId:active?.id});
+  // Asked just after midnight, before the page has rolled over: Soma still
+  // answers for today, and the day on screen keeps its date.
+  const now=dateAt(new Date(),0),shift=Math.round((+now-+origin)/86_400_000);
+  const result=await askSoma({userId,origin:now,text,history:conversation.current,selectedDay:Math.max(0,day-shift),activeBlockId:active?.id});
   conversation.current=result.history;
   memory.history=result.history;
-  memory.display.push({role:'user',content:text},{role:'assistant',content:result.display});
+  const [asked,answered]=result.history.slice(-2);
+  memory.display.push({role:'user',content:text,at:asked?.at},{role:'assistant',content:result.display,at:answered?.at});
   await mirrorToChatSession(memory).catch(()=>setError('Your reply is available here, but chat history could not be saved. Keep this page open.'));
   // Proposals live in this week; bring it back on screen if another is showing.
   if(result.proposedCount && rangeRef.current!==0)setRangeStart(0);
-  return {reply:result.display,day:result.showDay};
+  return {reply:result.display,day:result.showDay===undefined ? undefined : result.showDay+shift};
  }
  if(!snapshot)return error
   ? <div className={styles.loading}><p role="alert">{error}</p><button onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Retry dashboard</button></div>
@@ -219,7 +229,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   else setError('');
  }
  const pulseDays=Array.from({length:7},(_,i)=>snapshot.history.filter(h=>h.date===localDate(dateAt(origin,i-6))).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0));
- return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onAcceptAll:acceptAll,rangeStart,onRange:setRangeStart,onPropose:propose,onFocus:b=>{const live=snapshot.blocks.find(x=>x.id===b.id);const subject=snapshot.subjects.find(s=>s.id===live?.subjectId);if(subject)timer.startSession(subject,b.title,0);else setError('Choose a subject with Edit plan before starting focus.');},pulseSeconds:pulseDays.reduce((a,b)=>a+b,0),pulseDays,subjectNames:snapshot.subjects.filter(s=>!s.archived).map(s=>s.name),usedColors:snapshot.subjects.map(s=>s.color),onEditSession:async(sessionId,minutes,startTime)=>{
+ return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onAcceptAll:acceptAll,rangeStart,onRange:setRangeStart,onPropose:propose,onFocus:b=>{const live=snapshot.blocks.find(x=>x.id===b.id);const subject=snapshot.subjects.find(s=>s.id===live?.subjectId);if(subject)timer.startSession(subject,b.title,0);else setError('Choose a subject with Edit plan before starting focus.');},pulseSeconds:pulseDays.reduce((a,b)=>a+b,0),pulseDays,subjectNames:snapshot.subjects.filter(s=>!s.archived).map(s=>s.name),usedColors:snapshot.subjects.map(s=>s.color),onEditSession:async(sessionId,minutes,startTime)=>{
  const row=snapshot.history.find(h=>h.id===sessionId);
  if(!row)throw new Error('That session is no longer there. Refresh and try again.');
  // Keep where it started unless the correction moved it, then let the length

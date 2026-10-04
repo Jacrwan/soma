@@ -187,6 +187,8 @@ export interface ChatMessage {
   proposals?: PlanBlock[];
   /** What the student did with each proposal, by id. */
   proposalStatus?: Record<string, 'accepted' | 'dismissed'>;
+  /** When it was sent (ISO), so a chat picked up the next day reads in time. */
+  at?: string;
 }
 
 export interface ChatSession {

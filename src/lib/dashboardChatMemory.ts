@@ -1,4 +1,4 @@
-type Turn={role:'user'|'assistant';content:string};
+type Turn={role:'user'|'assistant';content:string;at?:string};
 export type DashboardChatMemory={userId:string;id:string;createdAt:string;history:Turn[];display:Turn[];ui:{role:string;text:string}[]};
 let current:DashboardChatMemory|undefined;
 export function dashboardChatFor(userId:string):DashboardChatMemory{
