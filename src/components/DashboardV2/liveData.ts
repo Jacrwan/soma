@@ -4,7 +4,7 @@ import { fetchAggregatedEvents } from '../../lib/googleCalendarConnections';
 import type { Subject, Todo, TodoSession, GoogleCalendarEvent } from '../../types';
 import { asTodoKind } from '../../types';
 import type { PlanBlock } from './PlanEditor';
-import { loadCourseItems, coveredBy, renameLoggedTime, type CourseItem } from '../../lib/courseItems';
+import { loadCourseItems, coveredBy, markDone, renameLoggedTime, type CourseItem } from '../../lib/courseItems';
 import { rangeOf, spanMinutes } from '../../lib/clockRange';
 
 export type LiveBlock = PlanBlock & { todoId?: string; sessionId?: string; subjectId?: string; legacyId?: string };
@@ -90,6 +90,37 @@ export async function readPlan(userId:string,origin:Date,startDay=0,days=7):Prom
  }
  return {blocks,subjects,todos,sessions,history,calendarError:google.error,items};
 }
+/**
+ * Blocks with the same title in the same course are one piece of work, the way
+ * their logged time already is: checking off "CS 61A Lecture Review" on one day
+ * checks off its other blocks, past or future, and unchecking undoes them all.
+ * Personal blocks and commitments ("Gym") repeat without being the same task,
+ * so they stay one block each.
+ */
+const taskKey=(t:Todo)=>JSON.stringify([t.subjectId,t.text.trim().replace(/\s+/g,' ').toLowerCase()]);
+export function sameTask(snapshot:Pick<Snapshot,'todos'|'subjects'>,todo:Todo):Todo[] {
+ const subject=snapshot.subjects.find(s=>s.id===todo.subjectId);
+ if(!subject || ['personal',commitmentSubject.toLowerCase()].includes(subject.name.toLowerCase()))return [todo];
+ const key=taskKey(todo);
+ return [todo,...snapshot.todos.filter(t=>t.id!==todo.id && taskKey(t)===key)];
+}
+/** Set a task's status, and its same-named blocks' (see sameTask): their
+ *  reading-list sections and any Canvas assignment they belong to follow. */
+export async function setTaskStatus(userId:string,snapshot:Pick<Snapshot,'todos'|'subjects'|'items'>,todo:Todo,status:Todo['status'],save=true) {
+ const group=sameTask(snapshot,todo).filter(t=>t.id===todo.id || t.status!==status);
+ for(const t of group)if(save || t.id!==todo.id)await storage.saveTodo({...t,status});
+ // Checking a block off is what marks its sections read; unchecking takes that back.
+ const covered=group.flatMap(t=>coveredBy(snapshot.items,t.id));
+ if(status==='done')await markDone(userId,covered.filter(i=>!i.doneAt).map(i=>i.id));
+ else{const was=new Set(group.filter(t=>t.status==='done').map(t=>t.id));await markDone(userId,covered.filter(i=>i.doneAt && i.todoId && was.has(i.todoId)).map(i=>i.id),false);}
+ // A task made from a Canvas assignment carries its status there too, as Day View does, so Deadlines agrees.
+ const changed=new Set(group.map(t=>t.id));
+ for(const assignmentId of new Set(group.map(t=>t.assignmentId).filter((a):a is number=>a!==undefined))){
+  const linked=snapshot.todos.filter(t=>t.assignmentId===assignmentId).map(t=>changed.has(t.id) ? status : t.status);
+  storage.setAssignmentStatus({...storage.getAssignmentStatus(),[String(assignmentId)]:linked.every(x=>x==='done') ? 'done' : linked.some(x=>x==='done' || x==='in_progress') ? 'in_progress' : 'not_started'});
+ }
+ return group.length-1;
+}
 async function checkedWrite(table:string,payload:Record<string,unknown>) {const {error}=await supabase.from(table).upsert(payload);if(error)throw new Error(error.message);}
 export async function savePlanBlock(userId:string,origin:Date,block:PlanBlock,snapshot:Snapshot) {
  const original=snapshot.blocks.find(b=>b.id===block.id);
@@ -99,6 +130,8 @@ export async function savePlanBlock(userId:string,origin:Date,block:PlanBlock,sn
  const previous=snapshot.todos.find(t=>t.id===original?.todoId);
  const todo:Todo={...previous,id:previous?.id??crypto.randomUUID(),text:block.title,subjectId:subject.id,status:block.state==='Completed' ? 'done' : block.state==='Partially completed' ? 'in_progress' : 'nothing',date:previous?.date??localDate(dateAt(origin,block.day)),estimatedMinutes:previous?.estimatedMinutes??(block.estimatedMinutes || block.minutes)};
  await storage.saveTodo(todo);
+ // Checked off (or unchecked) in the editor: its same-named blocks follow.
+ if(previous && previous.status!==todo.status)await setTaskStatus(userId,snapshot,previous,todo.status,false);
  // Logged time is found by title. A rename used to leave it under the old one:
  // the dashboard still spread it over the day's blocks, but Insights lost it
  // from the task. Not when another task shares the old title; that time is theirs too.

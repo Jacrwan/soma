@@ -116,3 +116,32 @@ test('malformed AI output never writes a task',async({page})=>{
 test('live dashboard requires authentication',async({page})=>{
  await page.route('https://soma-regression.supabase.co/**',route=>route.fulfill({json:null}));await page.goto('/dashboard');await expect(page).toHaveURL(/\/login$/);await expect(page.getByLabel('Day progress')).toHaveCount(0);
 });
+
+test('checking off a block checks off its same-named blocks in that course, and unchecking undoes them',async({page})=>{
+ const state=await setup(page);
+ const shift=(n:number)=>{const d=new Date(`${date}T12:00:00`);d.setDate(d.getDate()+n);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+ state.tables.subjects.push({id:'chem',user_id:account.id,name:'Chemistry',color:'#42a5f5',archived:false},{id:'personal',user_id:account.id,name:'Personal',color:'#ffa726',archived:false});
+ state.tables.todos.push(
+  {id:'review-next',user_id:account.id,text:'Cell review',subject_id:'biology',status:'nothing',date:shift(1),estimated_minutes:45},
+  {id:'review-before',user_id:account.id,text:'cell  Review ',subject_id:'biology',status:'nothing',date:shift(-1),estimated_minutes:45},
+  {id:'review-chem',user_id:account.id,text:'Cell review',subject_id:'chem',status:'nothing',date:shift(2),estimated_minutes:45},
+  {id:'gym1',user_id:account.id,text:'Gym',subject_id:'personal',status:'nothing',date,estimated_minutes:60},
+  {id:'gym2',user_id:account.id,text:'Gym',subject_id:'personal',status:'nothing',date:shift(1),estimated_minutes:60},
+ );
+ state.tables.todo_sessions.push({id:'review-next-slot',user_id:account.id,todo_id:'review-next',date:shift(1),start_time:new Date(`${shift(1)}T09:00:00`).toISOString(),end_time:new Date(`${shift(1)}T09:45:00`).toISOString()},{id:'gym1-slot',user_id:account.id,todo_id:'gym1',date,start_time:iso('18:00'),end_time:iso('19:00')});
+ const status=(id:string)=>state.tables.todos.find(t=>t.id===id)?.status;
+ await page.goto('/dashboard');
+ await page.getByRole('button',{name:'Complete: Cell review',exact:true}).first().click();
+ await expect.poll(()=>status('review-next')).toBe('done');
+ expect(['review','review-before','review-chem'].map(status)).toEqual(['done','done','nothing']);
+ // Unchecked in the block editor: the rest follow.
+ await page.getByRole('button',{name:'Edit plan',exact:true}).click();await page.getByRole('button',{name:'Edit: Cell review',exact:true}).first().click();
+ await page.getByLabel('Status',{exact:true}).selectOption('Planned');await page.getByRole('button',{name:'Save block',exact:true}).click();
+ await expect.poll(()=>status('review-next')).toBe('nothing');
+ expect(['review','review-before'].map(status)).toEqual(['nothing','nothing']);
+ // Personal blocks repeat without being one task.
+ await page.reload();
+ await page.getByRole('button',{name:'Complete: Gym',exact:true}).click();
+ await expect.poll(()=>status('gym1')).toBe('done');
+ expect(status('gym2')).toBe('nothing');
+});

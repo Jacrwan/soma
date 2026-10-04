@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import DashboardV2 from './DashboardV2';
-import { dateAt, localDate, readPlan, savePlanBlock, utcIso, type Snapshot } from './liveData';
+import { dateAt, localDate, readPlan, savePlanBlock, setTaskStatus, utcIso, type Snapshot } from './liveData';
 import type { PlanBlock, PlanState } from './PlanEditor';
 import { useTimerContext } from '../../contexts/TimerContext';
 import { storage } from '../../lib/storage';
@@ -8,7 +8,7 @@ import { formatClockRange } from '../../lib/timeFormat';
 import { listDocuments } from '../../lib/documents';
 import { askSoma, applyProposal, applyAll, dismissProposal, type ApplyOptions } from '../../lib/assistant';
 import { useProposals } from '../../lib/proposalStore';
-import { coveredBy, finishThrough, markDone, rangeLabel, renameLoggedTime, retitle } from '../../lib/courseItems';
+import { coveredBy, finishThrough, rangeLabel, renameLoggedTime, retitle } from '../../lib/courseItems';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './DashboardV2.module.css';
 
@@ -164,13 +164,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   if(!block.todoId){await save({...block,state});return;}
   if(writing.current)throw new Error('Please wait for the current save to finish.');
   writing.current=true;setBusy(true);setError('');
-  try{const fresh=await readPlan(userId,origin,rangeRef.current,7);const todo=fresh.todos.find(t=>t.id===block.todoId);if(!todo)throw new Error('This task no longer exists. Refresh your plan.');const status:typeof todo.status=state==='Completed' ? 'done' : state==='Partially completed' ? 'in_progress' : 'nothing';await storage.saveTodo({...todo,status});
-  // A task made from a Canvas assignment carries its status there too, as Day View does, so Deadlines agrees.
-  if(todo.assignmentId!==undefined){const linked=fresh.todos.filter(t=>t.assignmentId===todo.assignmentId).map(t=>t.id===todo.id ? status : t.status);storage.setAssignmentStatus({...storage.getAssignmentStatus(),[String(todo.assignmentId)]:linked.every(x=>x==='done') ? 'done' : linked.some(x=>x==='done' || x==='in_progress') ? 'in_progress' : 'not_started'});}
-  // Checking a block off is what marks its sections read; unchecking takes that back.
-  const covered=coveredBy(fresh.items,todo.id);
-  if(state==='Completed')await markDone(userId,covered.filter(i=>!i.doneAt).map(i=>i.id));
-  else if(todo.status==='done')await markDone(userId,covered.filter(i=>i.doneAt).map(i=>i.id),false);
+  try{const fresh=await readPlan(userId,origin,rangeRef.current,7);const todo=fresh.todos.find(t=>t.id===block.todoId);if(!todo)throw new Error('This task no longer exists. Refresh your plan.');await setTaskStatus(userId,fresh,todo,state==='Completed' ? 'done' : state==='Partially completed' ? 'in_progress' : 'nothing');
   await storage.fetchAllTodos();await reload();}
   catch(e){setError(e instanceof Error ? e.message : 'Could not save completion.');throw e;}finally{writing.current=false;setBusy(false);}
  }
