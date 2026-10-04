@@ -589,7 +589,7 @@ export default function AITab() {
     const session = sessions.find(s => s.id === activeSessionId);
     if (!session) return;
 
-    const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: text };
+    const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: text, at: new Date().toISOString() };
     const messagesWithUser = [...session.messages, userMsg];
 
     setInput('');
@@ -601,14 +601,14 @@ export default function AITab() {
       // What the model said before (its JSON answers) rather than what was shown,
       // so it sees its own earlier proposals. Older chats only have the shown text.
       const history=session.messages
-        .map(m=>({role:m.role,content:m.modelContent ?? stripTags(m.content)}))
+        .map(m=>({role:m.role,content:m.modelContent ?? stripTags(m.content),...(m.at ? {at:m.at} : {})}))
         .filter(m=>m.content.trim());
       const result=await askSoma({userId:requestUserId,origin:dateAt(new Date(),0),text,history,voice:isVoice});
       await storage.assertUser(requestUserId);
       const made=getProposals(requestUserId).filter(p=>result.proposedIds.includes(p.id));
       const assistantMsg: ChatMessage = {
         id: crypto.randomUUID(), role: 'assistant', content: result.display,
-        modelContent: result.history[result.history.length-1].content,
+        modelContent: result.history[result.history.length-1].content, at: result.history[result.history.length-1].at,
         ...(made.length ? { proposals: made } : {}),
       };
       updateSession(activeSessionId, s => ({ ...s, messages: [...s.messages, assistantMsg] }));
