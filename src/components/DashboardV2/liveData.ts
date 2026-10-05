@@ -91,6 +91,16 @@ export async function readPlan(userId:string,origin:Date,startDay=0,days=7):Prom
  return {blocks,subjects,todos,sessions,history,calendarError:google.error,items};
 }
 /**
+ * Open tasks with no block in the plan (what Soma sees as "tasks"), as blocks
+ * with no time. Soma schedules, renames, finishes or deletes one by its id,
+ * and accepting gives that task its time: it used to make a second task with
+ * the same name and leave the first one waiting forever.
+ */
+export function taskBlocks(snapshot:Pick<Snapshot,'blocks'|'todos'|'subjects'>):LiveBlock[] {
+ const planned=new Set(snapshot.blocks.map(b=>b.todoId).filter(Boolean));
+ return snapshot.todos.filter(t=>t.status!=='done' && !planned.has(t.id)).map(t=>({id:t.id,todoId:t.id,subjectId:t.subjectId,title:t.text,subject:snapshot.subjects.find(s=>s.id===t.subjectId)?.name??'Personal',time:'',minutes:0,color:'blue',state:t.status==='in_progress' ? 'Partially completed' : 'Planned',day:0}));
+}
+/**
  * Blocks with the same title in the same course are one piece of work, the way
  * their logged time already is: checking off "CS 61A Lecture Review" on one day
  * checks off its other blocks, past or future, and unchecking undoes them all.
