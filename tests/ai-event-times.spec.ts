@@ -58,3 +58,34 @@ test('a change aimed at a calendar event says it is one', async ({ page }) => {
   await ask(page, 'remove gym');
   await expect(page.getByRole('log')).toContainText("gym is a calendar event; it can't be changed here.");
 });
+
+// A task with no day (on Soma's task list, not the plan) used to get a second
+// task with the same name when Soma scheduled it, and the first stayed waiting.
+const withTask = (db: Record<string, Record<string, unknown>[]>) => { db.todos.push({ id: 't-hw6', user_id: 'u', text: 'Physics HW 6', subject_id: 'phys', status: 'nothing', date: '' }); };
+const taskId = (ctx: Ctx) => ctx.tasks.find(t => t.title === 'Physics HW 6')!.id;
+const TODAY = new Date(at('12:00')).toLocaleDateString('en-CA');
+
+test('a task with no day has an id, and scheduling it gives that task its time', async ({ page }) => {
+  const db = await setup(page, ctx => ({ reply: 'HW 6 now.', changes: [{ action: 'move', id: taskId(ctx), date: TODAY, start: 'now', end: idOf(ctx, 'Physics 5A Discussion') }] }), withTask);
+  await ask(page, 'do physics hw 6 from now until discussion');
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => db.todo_sessions.length).toBe(1);
+  expect(db.todo_sessions[0]).toMatchObject({ todo_id: 't-hw6', start_time: at('12:28'), end_time: at('16:00') });
+  expect(db.todos.map(t => t.text).sort()).toEqual(['Physics HW 5: KK-5', 'Physics HW 6']);
+});
+
+test('a new block for a task already on the list schedules that task instead of a copy', async ({ page }) => {
+  const db = await setup(page, ctx => ({ reply: 'HW 6 after math.', blocks: [{ title: 'Physics HW 6', subject: 'Physics 5A', date: TODAY, start: idOf(ctx, 'MATH 53 Discussion'), end: idOf(ctx, 'Physics 5A Discussion') }] }), withTask);
+  await ask(page, 'physics hw 6 after the math discussion until my discussion');
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => db.todo_sessions.length).toBe(1);
+  expect(db.todo_sessions[0]).toMatchObject({ todo_id: 't-hw6', start_time: at('14:59'), end_time: at('16:00') });
+  expect(db.todos.filter(t => t.text === 'Physics HW 6')).toHaveLength(1);
+});
+
+test('a task with no day can be marked done by its id', async ({ page }) => {
+  const db = await setup(page, ctx => ({ reply: 'Marking it done.', changes: [{ action: 'complete', id: taskId(ctx) }] }), withTask);
+  await ask(page, 'i already finished hw 6');
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => db.todos.find(t => t.id === 't-hw6')?.status).toBe('done');
+});
