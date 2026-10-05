@@ -53,10 +53,59 @@ test('"between lecture and the math discussion" is from the end of one to the st
   expect(await acceptedTimes(page, db)).toEqual([[at('12:59'), at('14:00')]]);
 });
 
-test('a change aimed at a calendar event says it is one', async ({ page }) => {
-  await setup(page, ctx => ({ reply: 'Removing it.', changes: [{ action: 'remove', id: idOf(ctx, 'gym') }] }));
-  await ask(page, 'remove gym');
-  await expect(page.getByRole('log')).toContainText("gym is a calendar event; it can't be changed here.");
+// Reported 2026-10-05 after the fix above: to say the student was skipping the
+// two classes, Soma sent changes to them, and the homework move came back
+// without a date. All three were shown as errors.
+test('changes aimed at calendar events are read as skipping them, and a move without a date stays on its day', async ({ page }) => {
+  let calls = 0;
+  const db = await setup(page, ctx => { calls++; return { reply: 'Physics until discussion.', changes: [
+    { action: 'remove', id: idOf(ctx, 'CS 61A Lecture') },
+    { action: 'remove', id: idOf(ctx, 'MATH 53 Discussion') },
+    { action: 'move', id: idOf(ctx, 'Physics HW 5: KK-5'), start: 'now', end: idOf(ctx, 'Physics 5A Discussion') },
+  ] }; });
+  await ask(page, SAID);
+  await expect(page.getByRole('log')).toContainText('Physics until discussion.');
+  await expect(page.getByRole('log')).not.toContainText('calendar event');
+  expect(await acceptedTimes(page, db)).toEqual([[at('12:28'), at('16:00')]]);
+  expect(calls).toBe(1);
+});
+
+test('"skip" frees skipped classes for the app to place work over', async ({ page }) => {
+  const db = await setup(page, ctx => ({ reply: 'One block.', skip: [idOf(ctx, 'CS 61A Lecture'), 'the math discussion'], changes: [{ action: 'move', id: idOf(ctx, 'Physics HW 5: KK-5'), minutes: 210, after: 'now' }] }));
+  await ask(page, SAID);
+  expect(await acceptedTimes(page, db)).toEqual([[at('12:30'), at('16:00')]]);
+});
+
+test('a reply the app cannot use goes back to the model once, and the student sees the corrected one', async ({ page }) => {
+  const asked: string[] = [];
+  const db = await setup(page, (ctx, body) => {
+    const messages = body.messages as { content: string }[];
+    asked.push(messages[messages.length - 1].content);
+    return asked.length === 1
+      ? { reply: 'First try.', changes: [{ action: 'move', id: idOf(ctx, 'Physics HW 5: KK-5'), start: 'now' }] }
+      : { reply: 'Corrected.', changes: [{ action: 'move', id: idOf(ctx, 'Physics HW 5: KK-5'), start: 'now', end: idOf(ctx, 'Physics 5A Discussion') }] };
+  });
+  await ask(page, SAID);
+  await expect(page.getByRole('log')).toContainText('Corrected.');
+  await expect(page.getByRole('log')).not.toContainText('First try.');
+  expect(asked[1]).toContain("your reply couldn't be used as sent: Physics HW 5: KK-5: the new time was incomplete (no end)");
+  expect(await acceptedTimes(page, db)).toEqual([[at('12:28'), at('16:00')]]);
+});
+
+test('an unreadable reply is retried too', async ({ page }) => {
+  let calls = 0;
+  const db = await setup(page, ctx => ++calls === 1 ? '{"reply": "broken' : { reply: 'Readable now.', changes: [{ action: 'move', id: idOf(ctx, 'Physics HW 5: KK-5'), start: 'now', end: idOf(ctx, 'Physics 5A Discussion') }] });
+  await ask(page, SAID);
+  await expect(page.getByRole('log')).toContainText('Readable now.');
+  expect(await acceptedTimes(page, db)).toEqual([[at('12:28'), at('16:00')]]);
+});
+
+test('when the retry is no better, the first answer and its problems are shown', async ({ page }) => {
+  let calls = 0;
+  await setup(page, ctx => { calls++; return { reply: 'Still wrong.', changes: [{ action: 'move', id: idOf(ctx, 'Physics HW 5: KK-5'), start: 'now' }] }; });
+  await ask(page, SAID);
+  await expect(page.getByRole('log')).toContainText('the new time was incomplete');
+  expect(calls).toBe(2);
 });
 
 // A task with no day (on Soma's task list, not the plan) used to get a second

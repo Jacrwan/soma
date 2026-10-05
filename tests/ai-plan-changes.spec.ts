@@ -347,7 +347,9 @@ test('a block Soma just proposed can be renamed before it is accepted', async ({
   await expect(page.getByRole('heading', { name: 'Physics reading', exact: true })).toBeVisible();
   const ctx = () => JSON.parse(state.prompt.match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]);
 
-  state.replies.push({ reply: 'Renamed it.', changes: [{ action: 'update', id: 'PENDING', title: 'Physics reading 3.2–4.6' }] });
+  // A made-up id, sent again when the app asks for a correction.
+  const madeUp = { reply: 'Renamed it.', changes: [{ action: 'update', id: 'PENDING', title: 'Physics reading 3.2–4.6' }] };
+  state.replies.push(madeUp, madeUp);
   await ask(page, 'call it 3.2 to 4.6');
   // The second request must carry an id for the pending proposal.
   await expect(page.getByRole('log')).toContainText("isn't in your plan");
