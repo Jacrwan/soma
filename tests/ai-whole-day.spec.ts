@@ -76,3 +76,48 @@ test('after midnight, "when I wake up" is today', async ({ page }) => {
   await expect(page.getByRole('log')).toContainText('ok');
   expect(r.seen[0].lateNight).toContain(new Date(at('12:00')).toLocaleDateString('en-US', { weekday: 'short' }) + ' ' + TODAY);
 });
+
+// Reported 2026-10-06 at midday: with no day in the message, Soma kept the
+// "tomorrow" from the message before and put half the day on Wednesday.
+const TOMORROW = (() => { const d = new Date(at('12:00')); d.setDate(d.getDate() + 1); return d.toLocaleDateString('en-CA'); })();
+const block = (date?: string) => ({ title: 'Math 53 past midterm', subject: 'Physics 5A', minutes: 60, ...(date ? { date } : {}) });
+
+test('with no day in the message, work Soma dates tomorrow goes on today', async ({ page }) => {
+  const db = await setup(page, () => ({ reply: 'Midterm practice.', blocks: [block(TOMORROW)] }));
+  await ask(page, 'i also want to do a past math 53 midterm');
+  await expect(page.getByRole('log')).toContainText('Midterm practice.');
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => db.todo_sessions.length).toBe(1);
+  // Today's first open hour after the CS lecture, before the math discussion.
+  expect([db.todo_sessions[0].start_time, db.todo_sessions[0].end_time]).toEqual([at('13:00'), at('14:00')]);
+});
+
+test('the day on screen is not a default: undated work goes on today', async ({ page }) => {
+  const db = await setup(page, () => ({ reply: 'Midterm practice.', blocks: [block()] }));
+  await page.getByLabel('Next seven days').getByRole('button').nth(1).click();
+  await ask(page, 'i also want to do a past math 53 midterm');
+  await expect(page.getByRole('log')).toContainText('Midterm practice.');
+  await page.getByLabel('Next seven days').getByRole('button').nth(0).click();
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => db.todo_sessions.length).toBe(1);
+  expect(db.todo_sessions[0].date).toBe(TODAY);
+});
+
+test('a day the student names is kept', async ({ page }) => {
+  const db = await setup(page, () => ({ reply: 'Tomorrow then.', blocks: [{ ...block(TOMORROW), after: '09:00' }] }));
+  await ask(page, 'do a past math 53 midterm tomorrow morning');
+  await expect(page.getByRole('log')).toContainText('Tomorrow then.');
+  await page.getByLabel('Next seven days').getByRole('button').nth(1).click();
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => db.todo_sessions.length).toBe(1);
+  expect(db.todo_sessions[0].date).toBe(TOMORROW);
+});
+
+test('work moved past its due date says so on the card', async ({ page }) => {
+  await setup(page, ctx => ({ reply: 'Lab tomorrow.', changes: [{ action: 'move', id: ctx.tasks.find(t => t.title === 'CS 61A Lab 5')!.id, date: TOMORROW, minutes: 30, after: '09:00' }] }), d => {
+    d.todos.push({ id: 't-lab', user_id: 'u', text: 'CS 61A Lab 5', subject_id: 'phys', status: 'nothing', date: '', due_date: TODAY });
+  });
+  await ask(page, 'do the lab tomorrow');
+  await page.getByLabel('Next seven days').getByRole('button').nth(1).click();
+  await expect(page.getByText(/After its due date/)).toBeVisible();
+});
