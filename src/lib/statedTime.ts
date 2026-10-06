@@ -65,3 +65,17 @@ export function statedRange(text: string, nowMinute: number): { start: number; e
   if (end - start < 5 || end - start > 720) return undefined;
   return { start, end, fromNow: startTok.toLowerCase() === 'now' };
 }
+
+/**
+ * Whether the student's message names a day other than today: "tomorrow",
+ * "Wednesday", "this weekend", "10/8", "Oct 8", "the 8th". Without one, new
+ * work belongs on today. Soma kept a "tomorrow" from an earlier message, and
+ * the day on screen, and planned a whole day on Wednesday when it was Tuesday.
+ * A false positive only means Soma's own choice of day stands.
+ */
+export function namesOtherDay(text: string): boolean {
+  return /\b(tomorrow|tmrw|tmr|yesterday|mon(day)?|tues?(day)?|wed(nes)?(day)?|thu(rs?)?(day)?|fri(day)?|sat(urday)?|sun(day)?|weekend|week|weekdays?|day after)\b/i.test(text)
+    || /\b\d{1,2}\/\d{1,2}\b/.test(text)
+    || /\b(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b/i.test(text)
+    || /\bthe\s+\d{1,2}(st|nd|rd|th)\b/i.test(text);
+}

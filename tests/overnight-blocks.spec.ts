@@ -92,7 +92,7 @@ async function setup(page: Page, reply: unknown, studyWindow = { start: '08:00',
 
 test('Soma can plan 11:30 PM to 1:00 AM, and it saves as one block ending the next day', async ({ page }) => {
   const state = await setup(page, { reply: 'Planned.', blocks: [{ title: 'Physics reading 5.1–5.4', subject: 'Physics 5A', date: TOMORROW, start: '23:30', end: '01:00' }] });
-  await page.getByLabel('What do you need to work on?').fill('plan 5.1 to 5.4 from 11:30 pm to 1 am');
+  await page.getByLabel('What do you need to work on?').fill('plan 5.1 to 5.4 tomorrow from 11:30 pm to 1 am');
   await page.getByRole('button', { name: 'Send to Soma' }).click();
   await expect(page.getByRole('log')).toContainText('Planned.');
   await expect(page.getByRole('log')).not.toContainText("Couldn't place");
@@ -121,7 +121,7 @@ test('the block editor saves an overnight block instead of refusing it', async (
 test('"I can study till 3" lets that reply go past study hours, and Accept keeps it', async ({ page }) => {
   const late = { reply: 'Tonight only.', studyUntil: '03:00', blocks: [{ title: 'Physics reading 4.2–4.9', subject: 'Physics 5A', date: TOMORROW, start: '23:30', end: '01:00' }] };
   const state = await setup(page, late, { start: '08:00', end: '23:00' });
-  await page.getByLabel('What do you need to work on?').fill('i can study till 3');
+  await page.getByLabel('What do you need to work on?').fill('i can study till 3 tomorrow night');
   await page.getByRole('button', { name: 'Send to Soma' }).click();
   await expect(page.getByRole('log')).toContainText('Tonight only.');
   await expect(page.getByRole('log')).not.toContainText("Couldn't place");
