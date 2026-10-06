@@ -884,9 +884,27 @@ export default function SettingsTab() {
           <section className={styles.section}>
             <h2 className={styles.sectionTitle}>Study hours</h2>
             <p className={styles.subsectionHint}>
-              Soma only schedules study inside these hours, around your calendar and existing plan.
+              {settings.studyWindow.off
+                ? 'Off: Soma can schedule study at any hour, day or night, around your calendar and existing plan.'
+                : 'Soma only schedules study inside these hours, around your calendar and existing plan.'}
             </p>
             <div className={styles.prefGrid}>
+              <div className={styles.prefRow}>
+                <span className={styles.prefLabel} id="study-hours-limit">Limit to study hours</span>
+                <div className={styles.themeToggle} role="group" aria-labelledby="study-hours-limit">
+                  <button
+                    className={`${styles.themeBtn}${!settings.studyWindow.off ? ` ${styles.themeBtnActive}` : ''}`}
+                    aria-pressed={!settings.studyWindow.off}
+                    onClick={() => save({ ...settings, studyWindow: { ...settings.studyWindow, off: false } })}
+                  >On</button>
+                  <button
+                    className={`${styles.themeBtn}${settings.studyWindow.off ? ` ${styles.themeBtnActive}` : ''}`}
+                    aria-pressed={!!settings.studyWindow.off}
+                    onClick={() => save({ ...settings, studyWindow: { ...settings.studyWindow, off: true } })}
+                  >Off</button>
+                </div>
+              </div>
+              {!settings.studyWindow.off && <>
               <div className={styles.prefRow}>
                 <label className={styles.prefLabel} htmlFor="study-window-start">Earliest start</label>
                 <input
@@ -907,6 +925,7 @@ export default function SettingsTab() {
                   onChange={e => e.target.value && save({ ...settings, studyWindow: { ...settings.studyWindow, end: e.target.value } })}
                 />
               </div>
+              </>}
             </div>
             <p className={styles.subsectionHint}>
               Soma keeps each task in one block when it fits. Only when nothing fits does it offer to split the task across your gaps, and never into pieces shorter than this.
@@ -926,7 +945,7 @@ export default function SettingsTab() {
                 />
               </div>
             </div>
-            {settings.studyWindow.end === settings.studyWindow.start ? (
+            {settings.studyWindow.off ? null : settings.studyWindow.end === settings.studyWindow.start ? (
               <p role="alert" className={styles.subsectionHint}>Earliest start and latest end can’t be the same time.</p>
             ) : settings.studyWindow.end < settings.studyWindow.start && (
               <p className={styles.subsectionHint}>Runs past midnight: you study until {formatClock(settings.studyWindow.end)} the next morning.</p>
@@ -934,7 +953,7 @@ export default function SettingsTab() {
             <div className={styles.saveRow}>
               <button
                 className={styles.saveBtn}
-                disabled={supabaseSaving || settings.studyWindow.end === settings.studyWindow.start}
+                disabled={supabaseSaving || (!settings.studyWindow.off && settings.studyWindow.end === settings.studyWindow.start)}
                 onClick={() => void saveToSupabase('hours')}
               >
                 {savedSection === 'hours' ? 'Saved ✓' : 'Save'}

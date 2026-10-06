@@ -28,6 +28,9 @@ export function rangeOf(time: string): [number, number] {
 export const overnight = (time: string) => rangeOf(time)[1] > 1440;
 
 /** Study hours as [open, close]; a latest end at or before the earliest start runs past midnight. */
+/** The window Soma schedules in: the study hours, or the whole day when they're off. */
+export const activeWindow = (w: { start: string; end: string; off?: boolean }) => w.off ? { start: '00:00', end: '00:00' } : w;
+
 export function windowOf(w: { start: string; end: string }): [number, number] {
   const open = clockMinutes(w.start);
   return [open, open + (spanMinutes(w.start, w.end) || 1440)];
