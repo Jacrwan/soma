@@ -131,6 +131,26 @@ export async function setTaskStatus(userId:string,snapshot:Pick<Snapshot,'todos'
  }
  return group.length-1;
 }
+/**
+ * Take one block off the plan: what accepting Soma's "remove" does, and the
+ * Delete button in Edit plan. A task scheduled several times loses only this
+ * block; its last block takes the task with it. Recorded study time stays
+ * unless `deleteLoggedTime` says otherwise.
+ */
+export async function deletePlanBlock(target:LiveBlock,sessions:TodoSession[],deleteLoggedTime=false) {
+ if(target.legacyId){storage.setTimeBlocks(storage.getTimeBlocks().filter(b=>b.id!==target.legacyId));window.dispatchEvent(new Event('soma_todos_changed'));return;}
+ if(!target.todoId || (target.external && !target.manual))throw new Error('This block can’t be deleted here.');
+ const siblings=sessions.filter(sn=>sn.todoId===target.todoId);
+ if(target.sessionId && siblings.some(sn=>sn.id!==target.sessionId))await storage.deleteTodoSession(target.sessionId);
+ else{
+  if(deleteLoggedTime && target.subjectId)await storage.deleteTimerSessionsByTask(target.title,target.subjectId);
+  // Sessions first: if one fails the task survives and the delete can be retried.
+  for(const sn of siblings)await storage.deleteTodoSession(sn.id);
+  await storage.deleteTodo(target.todoId);
+ }
+ await storage.fetchAllTodos();
+ window.dispatchEvent(new Event('soma_todos_changed'));
+}
 async function checkedWrite(table:string,payload:Record<string,unknown>) {const {error}=await supabase.from(table).upsert(payload);if(error)throw new Error(error.message);}
 export async function savePlanBlock(userId:string,origin:Date,block:PlanBlock,snapshot:Snapshot) {
  const original=snapshot.blocks.find(b=>b.id===block.id);

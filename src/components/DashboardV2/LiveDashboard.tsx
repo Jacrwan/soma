@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import DashboardV2 from './DashboardV2';
-import { dateAt, localDate, readPlan, savePlanBlock, setTaskStatus, utcIso, type Snapshot } from './liveData';
+import { dateAt, deletePlanBlock, localDate, readPlan, savePlanBlock, setTaskStatus, utcIso, type Snapshot } from './liveData';
 import type { PlanBlock, PlanState } from './PlanEditor';
 import { useTimerContext } from '../../contexts/TimerContext';
 import { storage } from '../../lib/storage';
 import { formatClockRange } from '../../lib/timeFormat';
 import { listDocuments } from '../../lib/documents';
 import { askSoma, applyProposal, applyAll, dismissProposal, type ApplyOptions } from '../../lib/assistant';
-import { useProposals } from '../../lib/proposalStore';
+import { useProposals, updateProposals } from '../../lib/proposalStore';
 import { coveredBy, finishThrough, rangeLabel, renameLoggedTime, retitle } from '../../lib/courseItems';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './DashboardV2.module.css';
@@ -174,6 +174,20 @@ export default function LiveDashboard({userId}:{userId:string}) {
  }
  /** Read part of a block: its sections through `itemId` are done and the block
   *  is renamed to what was actually read; the rest goes back to open. */
+ /** Delete in Edit plan: the block goes, and any suggestion Soma made about it. */
+ async function remove(id:string|number){
+  if(writing.current)throw new Error('Please wait for the current save to finish.');
+  writing.current=true;setBusy(true);setError('');
+  try{
+   const fresh=await readPlan(userId,origin,rangeRef.current,7);
+   const target=fresh.blocks.find(b=>b.id===id);
+   if(!target)throw new Error('This block changed elsewhere. Refresh and try again.');
+   await deletePlanBlock(target,fresh.sessions);
+   updateProposals(userId,items=>items.filter(p=>p.replaces!==id));
+   await reload();
+  }catch(e){setError(e instanceof Error ? e.message : 'Could not delete the block.');throw e;}
+  finally{writing.current=false;setBusy(false);}
+ }
  async function stoppedAt(id:string|number,itemId:string){
   const block=snapshot?.blocks.find(b=>b.id===id);
   if(!block?.todoId)throw new Error('Refresh to load this block.');
@@ -229,7 +243,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   else setError('');
  }
  const pulseDays=Array.from({length:7},(_,i)=>snapshot.history.filter(h=>h.date===localDate(dateAt(origin,i-6))).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0));
- return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onAcceptAll:acceptAll,rangeStart,onRange:setRangeStart,onPropose:propose,onFocus:b=>{const live=snapshot.blocks.find(x=>x.id===b.id);const subject=snapshot.subjects.find(s=>s.id===live?.subjectId);if(subject)timer.startSession(subject,b.title,0);else setError('Choose a subject with Edit plan before starting focus.');},pulseSeconds:pulseDays.reduce((a,b)=>a+b,0),pulseDays,subjectNames:snapshot.subjects.filter(s=>!s.archived).map(s=>s.name),usedColors:snapshot.subjects.map(s=>s.color),onEditSession:async(sessionId,minutes,startTime)=>{
+ return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,rangeStart,onRange:setRangeStart,onPropose:propose,onFocus:b=>{const live=snapshot.blocks.find(x=>x.id===b.id);const subject=snapshot.subjects.find(s=>s.id===live?.subjectId);if(subject)timer.startSession(subject,b.title,0);else setError('Choose a subject with Edit plan before starting focus.');},pulseSeconds:pulseDays.reduce((a,b)=>a+b,0),pulseDays,subjectNames:snapshot.subjects.filter(s=>!s.archived).map(s=>s.name),usedColors:snapshot.subjects.map(s=>s.color),onEditSession:async(sessionId,minutes,startTime)=>{
  const row=snapshot.history.find(h=>h.id===sessionId);
  if(!row)throw new Error('That session is no longer there. Refresh and try again.');
  // Keep where it started unless the correction moved it, then let the length

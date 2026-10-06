@@ -4,7 +4,7 @@
  * same kind of answer back — proposals the student accepts — so nothing can be
  * done in one that can't be done in the other. Only the chat UI around it differs.
  */
-import { readPlan, savePlanBlock, setTaskStatus, taskBlocks, dateAt, localDate, utcIso, type Snapshot } from '../components/DashboardV2/liveData';
+import { readPlan, savePlanBlock, setTaskStatus, taskBlocks, deletePlanBlock, dateAt, localDate, utcIso, type Snapshot } from '../components/DashboardV2/liveData';
 import type { PlanBlock } from '../components/DashboardV2/PlanEditor';
 import { validateProposal, freeTime, chunkSizes } from './aiPlanning';
 import { storage } from './storage';
@@ -871,18 +871,7 @@ export async function applyProposal(userId: string, origin: Date, block: PlanBlo
     } else if (block.changeKind === 'remove') {
       // "remove" used to clear the block's time and keep the task, so it
       // reappeared under Any time and nothing was removed at all.
-      if (!target.todoId) throw new Error('This block cannot be deleted. Remove it in Day View.');
-      const siblings = fresh.sessions.filter(sn => sn.todoId === target.todoId);
-      // A task can be scheduled several times, and the student asked to delete
-      // one block; taking the task would silently drop its other blocks too.
-      if (target.sessionId && siblings.some(sn => sn.id !== target.sessionId)) await storage.deleteTodoSession(target.sessionId);
-      else {
-        if (block.deleteLoggedTime && target.subjectId) await storage.deleteTimerSessionsByTask(target.title, target.subjectId);
-        // Sessions first: if one fails the task survives and the delete can be retried.
-        for (const sn of siblings) await storage.deleteTodoSession(sn.id);
-        await storage.deleteTodo(target.todoId);
-      }
-      await storage.fetchAllTodos();
+      await deletePlanBlock(target, fresh.sessions, block.deleteLoggedTime);
     } else {
       const edited = { ...target, title: block.title, time: block.time, day: block.day, minutes: block.minutes };
       // Blocks moving in the same batch are checked where they're going, not

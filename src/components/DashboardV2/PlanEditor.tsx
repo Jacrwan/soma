@@ -33,7 +33,7 @@ const endAfter=(start:string,minutes:number,format:'12h'|'24h')=>{
 /** `start`/`end` are ISO instants when the session recorded them; older rows
  *  and some imports have only a duration, so both are optional. */
 export type FocusLog = { id:string; date:string; minutes:number; start?:string; end?:string };
-export default function PlanEditor({draft,blocks,onSave,onCancel,live=false,knownSubjects=[],usedColors=[],logs=[],onEditSession,onDeleteSession,onAddSession}:{live?:boolean;draft:EditorDraft;blocks:PlanBlock[];knownSubjects?:string[];usedColors?:SubjectColor[];logs?:FocusLog[];onSave:(block:PlanBlock)=>void | Promise<void>;onCancel:()=>void;onEditSession?:(sessionId:string,minutes:number,startTime?:string)=>Promise<void>;onDeleteSession?:(sessionId:string)=>Promise<void>;onAddSession?:(date:string,minutes:number,startTime?:string)=>Promise<void>}) {
+export default function PlanEditor({draft,blocks,onSave,onDelete,onCancel,live=false,knownSubjects=[],usedColors=[],logs=[],onEditSession,onDeleteSession,onAddSession}:{live?:boolean;draft:EditorDraft;blocks:PlanBlock[];knownSubjects?:string[];usedColors?:SubjectColor[];logs?:FocusLog[];onSave:(block:PlanBlock)=>void | Promise<void>;onDelete?:()=>Promise<void>;onCancel:()=>void;onEditSession?:(sessionId:string,minutes:number,startTime?:string)=>Promise<void>;onDeleteSession?:(sessionId:string)=>Promise<void>;onAddSession?:(date:string,minutes:number,startTime?:string)=>Promise<void>}) {
  const timeFormat=useTimeFormat();
  const [title,setTitle]=useState(draft.block?.title ?? '');
  const [subject,setSubject]=useState(draft.block?.external ? 'Personal' : draft.block?.subject ?? 'Personal');
@@ -180,6 +180,6 @@ export default function PlanEditor({draft,blocks,onSave,onCancel,live=false,know
   </div>
  </div> : <button type="button" className={styles.logAddOpen} onClick={()=>{setLogError('');setAdding(true);setAddDate(todayLocal());setAddMinutes('');setAddStart('');setAddEnd('');}}>Forgot to start the timer? Add a session</button>)}</section>}
  {error && <p role="alert">{error}</p>}
- <div className={styles.editorButtons}><button type="button" onClick={onCancel}>Cancel</button><button disabled={saving} type="submit">{saving ? "Saving…" : "Save block"}</button></div>
+ <div className={styles.editorButtons}>{onDelete && <button type="button" className={styles.editorDelete} disabled={saving} onClick={()=>void onDelete()}>Delete block</button>}<button type="button" onClick={onCancel}>Cancel</button><button disabled={saving} type="submit">{saving ? "Saving…" : "Save block"}</button></div>
  </form></section>;
 }
