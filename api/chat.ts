@@ -112,7 +112,7 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
    ];
    const response=await (deps.request??fetch)('https://api.anthropic.com/v1/messages',{
     method:'POST',signal:AbortSignal.timeout(45_000),headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json'},
-    body:JSON.stringify({model:model==='sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001',max_tokens:4096,...(system.length ? {system} : {}),messages}),
+    body:JSON.stringify({model:model==='sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001',max_tokens:8192,...(system.length ? {system} : {}),messages}),
    });
    if(response.status===429)return res.status(429).json({error:'rate_limit'});
    if(response.status===529)return res.status(529).json({error:'overloaded'});
