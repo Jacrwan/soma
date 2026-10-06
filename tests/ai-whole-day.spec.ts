@@ -1,0 +1,78 @@
+import { test, expect } from '@playwright/test';
+import { setup, idOf, ask, at, type Ctx } from './event-day';
+
+// Reported 2026-10-06, planning a whole day at 3 AM: only five blocks per
+// reply; "I'm not attending OH and RUF" forgotten two replies later; "when I
+// wake up" read as the next date; "delete everything and reschedule" made a
+// delete and a copy of each block; ids like "(b0aza7a)" shown in the reply.
+
+const TODAY = new Date(at('12:00')).toLocaleDateString('en-CA');
+const reply = (out: (ctx: Ctx, n: number) => unknown) => { let n = 0; const seen: Ctx[] = []; return { seen, fn: (ctx: Ctx) => { seen.push(ctx); return out(ctx, ++n); } }; };
+
+test('a skipped class stays skipped on later replies, and the plan says so', async ({ page }) => {
+  const r = reply((ctx, n) => n === 1
+    ? { reply: 'Noted, skipping lecture.', skip: [idOf(ctx, 'CS 61A Lecture')] }
+    : { reply: 'Physics now.', changes: [{ action: 'move', id: idOf(ctx, 'Physics HW 5: KK-5'), minutes: 90, after: 'now' }] });
+  const db = await setup(page, r.fn);
+  await ask(page, "i'm not going to cs lecture today");
+  await expect(page.getByRole('log')).toContainText('Noted, skipping lecture.');
+  await expect(page.getByText(/Read-only commitment · Skipping/)).toHaveCount(1);
+  await ask(page, 'do physics for an hour and a half');
+  await expect(page.getByRole('log')).toContainText('Physics now.');
+  expect(r.seen[1].plan.find(e => e.title === 'CS 61A Lecture')!.skip).toBe(true);
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => db.todo_sessions.length).toBe(1);
+  // Over the skipped lecture, in one piece, not 1–2 PM and a remainder.
+  expect([db.todo_sessions[0].start_time, db.todo_sessions[0].end_time]).toEqual([at('12:30'), at('14:00')]);
+});
+
+test('"I\'ll go after all" takes a skip back', async ({ page }) => {
+  const r = reply((ctx, n) => n === 1 ? { reply: 'Skipping.', skip: [idOf(ctx, 'gym')] } : n === 2 ? { reply: 'Going.', attend: ['gym'] } : { reply: 'ok' });
+  await setup(page, r.fn);
+  await ask(page, 'skipping gym');
+  await expect(page.getByRole('log')).toContainText('Skipping.');
+  await ask(page, 'actually im going to the gym');
+  await expect(page.getByRole('log')).toContainText('Going.');
+  await expect(page.getByText(/Read-only commitment · Skipping/)).toHaveCount(0);
+  await ask(page, 'what now');
+  await expect(page.getByRole('log')).toContainText('ok');
+  expect(r.seen[2].plan.find(e => e.title === 'gym')!.skip).toBeUndefined();
+});
+
+test('a whole day of blocks comes back in one reply, not five at a time', async ({ page }) => {
+  const blocks = Array.from({ length: 9 }, (_, i) => ({ title: `Practice set ${i + 1}`, subject: 'Physics 5A', date: TODAY, minutes: 15, after: 'now' }));
+  await setup(page, () => ({ reply: 'The whole day.', blocks }));
+  await ask(page, 'schedule everything');
+  await expect(page.getByRole('log')).toContainText('The whole day.');
+  await expect(page.getByRole('log')).not.toContainText('over the limit');
+  await expect(page.getByRole('button', { name: 'Accept all (9)' })).toBeVisible();
+});
+
+test('deleting a block and making the same work anew is one move, keeping the task', async ({ page }) => {
+  const tomorrow = new Date(at('12:00')); tomorrow.setDate(tomorrow.getDate() + 1);
+  const T = tomorrow.toLocaleDateString('en-CA');
+  const db = await setup(page, ctx => ({ reply: 'Rescheduling today.', changes: [{ action: 'remove', id: idOf(ctx, 'Math 53 Homework - Chapters 14.3–14.5') }], blocks: [{ title: 'Math 53 Homework - Chapters 14.3–14.5', subject: 'Physics 5A', date: TODAY, start: '19:00', end: '20:00' }] }), d => {
+    d.todos.push({ id: 't-math', user_id: 'u', text: 'Math 53 Homework - Chapters 14.3–14.5', subject_id: 'phys', status: 'nothing', date: T });
+    d.todo_sessions.push({ id: 's-math', user_id: 'u', todo_id: 't-math', date: T, start_time: new Date(`${T}T15:00:00`).toISOString(), end_time: new Date(`${T}T17:30:00`).toISOString() });
+  });
+  await ask(page, 'delete everything and reschedule it all today');
+  await expect(page.getByRole('log')).toContainText('Rescheduling today.');
+  await expect(page.getByText(/Delete from plan/)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => db.todo_sessions.find(s => s.id === 's-math')?.start_time).toBe(at('19:00'));
+  expect(db.todos.filter(t => String(t.text).startsWith('Math 53'))).toHaveLength(1);
+});
+
+test('ids in Soma\'s reply are shown as names', async ({ page }) => {
+  await setup(page, ctx => ({ reply: `Skipping CS 61A Lecture (${idOf(ctx, 'CS 61A Lecture')}) and ${idOf(ctx, 'gym')}.` }));
+  await ask(page, 'skip stuff');
+  await expect(page.getByRole('log')).toContainText('Skipping CS 61A Lecture and gym.');
+});
+
+test('after midnight, "when I wake up" is today', async ({ page }) => {
+  const r = reply(() => ({ reply: 'ok' }));
+  await setup(page, r.fn, undefined, '02:50');
+  await ask(page, 'i wake up at 9:30, schedule my day');
+  await expect(page.getByRole('log')).toContainText('ok');
+  expect(r.seen[0].lateNight).toContain(new Date(at('12:00')).toLocaleDateString('en-US', { weekday: 'short' }) + ' ' + TODAY);
+});

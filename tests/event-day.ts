@@ -8,7 +8,7 @@ const key = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart
 const TODAY = key(new Date());
 export const at = (t: string) => new Date(`${TODAY}T${t}:00`).toISOString();
 export type Row = Record<string, unknown>;
-export type Ctx = { plan: { id: string; title: string; ro?: boolean }[]; tasks: { id: string; title: string }[] };
+export type Ctx = { plan: { id: string; title: string; ro?: boolean; skip?: boolean }[]; tasks: { id: string; title: string }[]; lateNight?: string };
 
 const event = (id: string, summary: string, from: string, to: string) => ({ id, summary, start: { dateTime: at(from) }, end: { dateTime: at(to) }, source: { connectionId: 'c', calendarId: 'k' } });
 const events = [
@@ -19,7 +19,7 @@ const events = [
   event('gym', 'gym', '18:00', '19:00'),
 ];
 
-export async function setup(page: Page, reply: (ctx: Ctx, body: Record<string, unknown>) => unknown | Promise<unknown>, seed?: (db: Record<string, Row[]>) => void) {
+export async function setup(page: Page, reply: (ctx: Ctx, body: Record<string, unknown>) => unknown | Promise<unknown>, seed?: (db: Record<string, Row[]>) => void, clock = '12:28') {
   const db: Record<string, Row[]> = {
     subjects: [{ id: 'phys', user_id: account.id, name: 'Physics 5A', color: '#ab47bc', archived: false }],
     // The homework is on today's plan with no time yet.
@@ -28,7 +28,7 @@ export async function setup(page: Page, reply: (ctx: Ctx, body: Record<string, u
     timer_sessions: [],
   };
   seed?.(db);
-  await page.clock.install({ time: new Date(`${TODAY}T12:28:00`) });
+  await page.clock.install({ time: new Date(`${TODAY}T${clock}:00`) });
   await page.addInitScript(a => {
     localStorage.setItem('sb-soma-regression-auth-token', JSON.stringify({ access_token: 't', refresh_token: 'r', token_type: 'bearer', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, user: a }));
     localStorage.setItem('soma_settings', JSON.stringify({ onboardingCompleted: true, theme: 'light', studyWindow: { start: '08:00', end: '23:00' } }));

@@ -13,6 +13,7 @@ import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './DashboardV2.module.css';
 
 import { dashboardChatFor, type DashboardChatMemory } from '../../lib/dashboardChatMemory';
+import { eventKey, skippedKeys, SKIPS_CHANGED } from '../../lib/skippedEvents';
 
 async function mirrorToChatSession(memory:DashboardChatMemory) {
  if(!memory.display.length)return;
@@ -130,6 +131,9 @@ export default function LiveDashboard({userId}:{userId:string}) {
  const timer=useTimerContext();
  const generation=useRef(0),mounted=useRef(true),writing=useRef(false);
  const memory=dashboardChatFor(userId);
+ // Classes the student told Soma they're skipping say so on the plan.
+ const [,skipsChanged]=useState(0);
+ useEffect(()=>{const bump=()=>skipsChanged(n=>n+1);window.addEventListener(SKIPS_CHANGED,bump);return()=>window.removeEventListener(SKIPS_CHANGED,bump);},[]);
  const conversation=useRef(memory.history);
  const reload=useCallback(async()=>{const gen=++generation.current;const data=await readPlan(userId,origin,rangeRef.current,7);if(mounted.current && gen===generation.current)setSnapshot(data);return data;},[userId,origin]);
  useEffect(()=>{void reload().catch(e=>setError(e.message));},[rangeStart,reload]);
@@ -209,7 +213,9 @@ export default function LiveDashboard({userId}:{userId:string}) {
  const active=snapshot.blocks.find(b=>!b.external && b.subjectId===timer.activeSession?.subject.id && b.title===timer.activeSession?.task && localDate(dateAt(origin,b.day))===localDate(new Date(timer.activeSession.sessionStartTimeISO)));
  const weekdayName=(d:number)=>dateAt(origin,d).toLocaleDateString('en-US',{weekday:'long'});
  const pendingChange=new Map(proposals.filter(p=>p.replaces!==undefined).map(p=>[p.replaces,p]));
+ const skipped=skippedKeys(userId);
  const blocks=snapshot.blocks.map(b=>{
+  if(b.external && !b.manual && skipped.has(eventKey(b.id,localDate(dateAt(origin,b.day)))))return {...b,note:'Skipping'};
   const withTime=b.id===active?.id ? {...b,actualSeconds:(b.actualSeconds??0)+timer.elapsed} : b;
   const c=pendingChange.get(b.id);
   const retimed=c && (c.time!==b.time || c.day!==b.day);
