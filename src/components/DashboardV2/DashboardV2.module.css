@@ -291,3 +291,6 @@
 .block:has(> .actions.actionsWide){flex-wrap:wrap}
 .block:has(> .actions.actionsWide) > .blockBody{min-width:180px}
 .block:has(> .actions.actionsWide) > .actions{margin-left:auto}
+/* Deleting a block: set apart from Save and Cancel, and marked as destructive. */
+.editorButtons .editorDelete{margin-right:auto;color:var(--danger);border-color:color-mix(in oklch,var(--danger),transparent 65%)}
+.actions .deleteBlock{color:var(--danger);border-color:color-mix(in oklch,var(--danger),transparent 65%)}

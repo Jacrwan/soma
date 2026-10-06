@@ -30,7 +30,12 @@ async function setup(page:Page){
   if(req.method()==='POST'){
    const row=req.postDataJSON();const items=Array.isArray(row)?row:[row];
    for(const item of items){const current=state.tables[table]??[];state.tables[table]=[...current.filter(r=>table==='active_timer' ? r.user_id!==item.user_id : r.id!==item.id),item];}
-  }else if(req.method()==='DELETE'){const id=url.searchParams.get('id')?.slice(3);state.tables[table]=id ? (state.tables[table]??[]).filter(r=>r.id!==id) : [];}
+  }else if(req.method()==='DELETE'){
+   // Like Supabase with .select(): the rows that were deleted come back.
+   const id=url.searchParams.get('id')?.slice(3);const before=state.tables[table]??[];
+   state.tables[table]=id ? before.filter(r=>r.id!==id) : [];
+   return route.fulfill({json:id ? before.filter(r=>r.id===id) : before});
+  }
   return route.fulfill({json:null});
  });
  await page.route('**/api/stripe',route=>route.fulfill({json:{status:'active'}}));
@@ -144,4 +149,43 @@ test('checking off a block checks off its same-named blocks in that course, and 
  await page.getByRole('button',{name:'Complete: Gym',exact:true}).click();
  await expect.poll(()=>status('gym1')).toBe('done');
  expect(status('gym2')).toBe('nothing');
+});
+
+// "Allow the user to manually delete blocks using the edit plan feature" (2026-10-06).
+test('Edit plan deletes a block after asking, and cancelling keeps it',async({page})=>{
+ const state=await setup(page);await page.goto('/dashboard');
+ await page.getByRole('button',{name:'Edit plan',exact:true}).click();
+ page.once('dialog',d=>{expect(d.message()).toContain('Delete "Cell review" from your plan?');void d.dismiss();});
+ await page.getByRole('button',{name:'Delete: Cell review',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Cell review',exact:true})).toBeVisible();
+ expect(state.tables.todos.some(t=>t.id==='review')).toBe(true);
+ page.once('dialog',d=>void d.accept());
+ await page.getByRole('button',{name:'Delete: Cell review',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Cell review',exact:true})).toHaveCount(0);
+ expect(state.tables.todos.map(t=>t.id)).toEqual(['lab']);
+ expect(state.tables.todo_sessions.map(s=>s.id)).toEqual(['lab-slot']);
+ await page.reload();await expect(page.getByRole('heading',{name:'Lab report',exact:true})).toBeVisible();await expect(page.getByRole('heading',{name:'Cell review',exact:true})).toHaveCount(0);
+});
+
+test('the block editor can delete the block it is editing',async({page})=>{
+ const state=await setup(page);await page.goto('/dashboard');
+ await page.getByRole('button',{name:'Edit plan',exact:true}).click();
+ await page.getByRole('button',{name:'Edit: Lab report',exact:true}).click();
+ page.once('dialog',d=>void d.accept());
+ await page.getByRole('button',{name:'Delete block',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Save block',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('heading',{name:'Lab report',exact:true})).toHaveCount(0);
+ expect(state.tables.todos.map(t=>t.id)).toEqual(['review']);
+});
+
+test('deleting one block of a task scheduled twice keeps the task and its other block',async({page})=>{
+ const state=await setup(page);
+ state.tables.todo_sessions.push({id:'review-later',user_id:account.id,todo_id:'review',date,start_time:iso('19:00'),end_time:iso('19:45')});
+ await page.goto('/dashboard');
+ await page.getByRole('button',{name:'Edit plan',exact:true}).click();
+ page.once('dialog',d=>void d.accept());
+ await page.getByRole('button',{name:'Delete: Cell review',exact:true}).first().click();
+ await expect(page.getByRole('heading',{name:'Cell review',exact:true})).toHaveCount(1);
+ expect(state.tables.todos.some(t=>t.id==='review')).toBe(true);
+ expect(state.tables.todo_sessions.filter(s=>s.todo_id==='review')).toHaveLength(1);
 });
