@@ -345,3 +345,47 @@ test('with a larger smallest piece, a split that would leave a scrap is asked ab
   await ask(page, 'homework tomorrow afternoon before discussion');
   await expect(page.getByRole('log')).toContainText('Needs your call');
 });
+
+// Reported 2026-10-06 at 12:45 AM: "start the plan now, I'm not sleeping until
+// I'm done with everything." Study hours (10 AM–11 PM) pushed the work to the
+// next morning, then refused "from NOW". Study hours can now be turned off.
+test('with study hours off, "from now" work runs through the night back to back', async ({ page }) => {
+  const TODAY = key(offset(0));
+  const night = new Date(); night.setHours(0, 45, 0, 0);
+  const state = await setup(page, { reply: 'Physics, then math.', blocks: [
+    { title: 'Physics HW 5 tonight', subject: 'Physics 5A', date: TODAY, minutes: 160, after: 'now' },
+    { title: 'Math homework tonight', subject: 'Physics 5A', date: TODAY, minutes: 180, after: 'now' },
+  ] }, [], night, { studyWindow: { start: '10:00', end: '23:00', off: true } });
+  await ask(page, "start the plan now, im not sleeping until im done with everything");
+  await expect(page.getByRole('log')).not.toContainText("Couldn't place");
+  await expect(page.getByRole('log')).not.toContainText('Needs your call');
+  await page.getByRole('button', { name: /^Accept all/ }).click();
+  await expect.poll(() => state.db.todo_sessions.length).toBe(3);
+  expect(state.prompt).toContain('"studyHours":"off"');
+  // From the next quarter hour, then straight on: no waiting for 10 AM.
+  expect(saved(state.db, 'Physics HW 5 tonight')).toEqual([at(0, '01:00'), at(0, '03:40')]);
+  expect(saved(state.db, 'Math homework tonight')).toEqual([at(0, '03:40'), at(0, '06:40')]);
+});
+
+test('with study hours on, a start at this minute is "now" and goes there anyway', async ({ page }) => {
+  const TODAY = key(offset(0));
+  const night = new Date(); night.setHours(0, 45, 0, 0);
+  const state = await setup(page, { reply: 'Starting now.', blocks: [{ title: 'Physics HW 5 tonight', subject: 'Physics 5A', date: TODAY, start: '00:45', end: '03:25' }] }, [], night, { studyWindow: { start: '10:00', end: '23:00' } });
+  await ask(page, 'no FROm NOW. until im done with everything.');
+  await expect(page.getByRole('log')).not.toContainText('outside your study hours');
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => state.db.todo_sessions.length).toBe(2);
+  expect(saved(state.db, 'Physics HW 5 tonight')).toEqual([at(0, '00:45'), at(0, '03:25')]);
+});
+
+test('with study hours off, open time runs across midnight in one piece', async ({ page }) => {
+  const TODAY = key(offset(0));
+  const evening = new Date(); evening.setHours(22, 0, 0, 0);
+  const state = await setup(page, { reply: 'Late one.', blocks: [{ title: 'Late physics', subject: 'Physics 5A', date: TODAY, minutes: 240, after: 'now' }] }, [], evening, { studyWindow: { start: '10:00', end: '23:00', off: true } });
+  await ask(page, 'four hours of physics from now');
+  await expect(page.getByRole('log')).not.toContainText('split');
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => state.db.todo_sessions.length).toBe(2);
+  // Open time starts at the next quarter hour after now.
+  expect(saved(state.db, 'Late physics')).toEqual([at(0, '22:15'), at(1, '02:15')]);
+});

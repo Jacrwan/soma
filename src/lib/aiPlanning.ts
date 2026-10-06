@@ -2,7 +2,7 @@ import type { Snapshot } from '../components/DashboardV2/liveData';
 import type { PlanBlock } from '../components/DashboardV2/PlanEditor';
 import type { SomaSettings } from './storage';
 import { formatClock } from './timeFormat';
-import { clockMinutes as minuteValue, clockOf, rangeOf, spanMinutes, windowOf } from './clockRange';
+import { activeWindow, clockMinutes as minuteValue, clockOf, rangeOf, spanMinutes, windowOf } from './clockRange';
 const dateAt=(origin:Date,day:number)=>{const d=new Date(origin);d.setDate(d.getDate()+day);return d;};
 const localDate=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 /**
@@ -45,8 +45,8 @@ export function validateProposal(block:PlanBlock,snapshot:Snapshot,origin:Date,s
  if(own.length)throw new Error(`That time overlaps ${own[0].title}. Ask Soma for another time.`);
  if(commitments.length && !allowCommitmentOverlap)throw new Error(`That time is during ${commitments[0].title} on your calendar. Ask Soma for another time, or say you're skipping it.`);
  // Inside today's study hours, or in the after-midnight tail of yesterday's.
- const [open,close]=windowOf(settings.studyWindow);
- if(checkStudyHours && !(from>=open && to<=close) && !(from+1440>=open && to+1440<=close))throw new Error(`That time is outside your study hours (${formatClock(settings.studyWindow.start)}–${formatClock(settings.studyWindow.end)}). Change them in Settings.`);
+ const [open,close]=windowOf(activeWindow(settings.studyWindow));
+ if(checkStudyHours && !settings.studyWindow.off && !(from>=open && to<=close) && !(from+1440>=open && to+1440<=close))throw new Error(`That time is outside your study hours (${formatClock(settings.studyWindow.start)}–${formatClock(settings.studyWindow.end)}). Change them in Settings.`);
  return commitments.map(b=>b.title);
 }
 
@@ -62,13 +62,17 @@ export function freeTime(snapshot:Snapshot,origin:Date,settings:SomaSettings,now
  const base=new Date(origin);base.setHours(0,0,0,0);
  const nowAt=Math.ceil((now.getTime()-base.getTime())/60000/15)*15;
  const busy=snapshot.blocks.filter(b=>b.time).map(b=>{const [f,t]=rangeOf(b.time);return [b.day*1440+f,b.day*1440+t] as [number,number];}).sort((a,b)=>a[0]-b[0]);
- const [open,close]=windowOf(settings.studyWindow);
+ const [open,close]=windowOf(activeWindow(settings.studyWindow));
  const out=Array.from({length:days},(_,day)=>({date:localDate(dateAt(base,day)),free:[] as string[]}));
- // Yesterday's hours may still be running after midnight.
- for(let day=close>1440 ? -1 : 0;day<days;day++){
-  let cursor=Math.max(day*1440+open,nowAt);
-  const end=day*1440+close;
-  const add=(a:number,z:number)=>{if(z-a<minMinutes)return;const slot=out[Math.floor(a/1440)];if(slot)slot.free.push(`${clockOf(a)}–${clockOf(z)}`);};
+ // With study hours off, time runs on through midnight: one window for the
+ // whole stretch, so open time across 12 AM stays one slot.
+ const windows:[number,number][]=settings.studyWindow.off ? [[0,days*1440]]
+  // Yesterday's hours may still be running after midnight.
+  : Array.from({length:days+(close>1440 ? 1 : 0)},(_,i)=>{const day=i-(close>1440 ? 1 : 0);return [day*1440+open,day*1440+close];});
+ // A slot stays under a day long: "00:45–00:45" would read as no time at all.
+ const add=(a:number,z:number)=>{for(let from=a;z-from>=minMinutes;){const to=Math.min(z,from+1435);const slot=out[Math.floor(from/1440)];if(slot)slot.free.push(`${clockOf(from)}–${clockOf(to)}`);from=to;}};
+ for(const [start,end] of windows){
+  let cursor=Math.max(start,nowAt);
   // Classes end at :59; free time starts at the next round five minutes.
   for(const [a,z] of busy){if(z<=cursor)continue;if(a>=end)break;add(cursor,Math.min(a,end));cursor=Math.max(cursor,Math.ceil(z/5)*5);}
   if(cursor<end)add(cursor,end);

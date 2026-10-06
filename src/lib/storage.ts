@@ -14,8 +14,9 @@ function ensureUtcSuffix(ts: string): string {
 
 export interface SomaSettings {
   /** The hours Soma may schedule study in, 24-hour HH:MM. Calendar events and
-   *  existing blocks inside the window still count as busy. */
-  studyWindow: { start: string; end: string };
+   *  existing blocks inside the window still count as busy. `off` lifts the
+   *  limit (any hour) and keeps start/end for when it's turned back on. */
+  studyWindow: { start: string; end: string; off?: boolean };
   /** When Soma has to split work to fit it in, no piece is shorter than `min` minutes. */
   chunks?: { min: number };
   theme: 'dark' | 'light';
