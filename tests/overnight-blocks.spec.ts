@@ -1,4 +1,5 @@
 import { setEnd } from './end-time';
+import { triaged } from './triage';
 import { test, expect, type Page } from '@playwright/test';
 import { freeTime, validateProposal } from '../src/lib/aiPlanning';
 import { rangeOf, spanMinutes, windowOf } from '../src/lib/clockRange';
@@ -79,7 +80,7 @@ async function setup(page: Page, reply: unknown, studyWindow = { start: '08:00',
   await page.route('**/api/stripe', r => r.fulfill({ json: { status: 'active' } }));
   await page.route('**/api/memory', r => r.fulfill({ json: { revision: 0, enabled: true, entries: [] } }));
   await page.route('**/api/google-calendar-events', r => r.fulfill({ json: { events: [], incomplete: false } }));
-  await page.route('**/api/chat', route => {
+  await page.route('**/api/chat', route => { if (triaged(route)) return;
     const body = route.request().postDataJSON();
     state.prompt = `${body.systemPrompt}\n${body.context ?? ''}`;
     return route.fulfill({ json: { content: [{ text: JSON.stringify(reply) }] } });

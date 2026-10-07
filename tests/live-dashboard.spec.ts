@@ -1,4 +1,5 @@
 import { setEnd } from './end-time';
+import { triaged } from './triage';
 import { test, expect, type Page } from '@playwright/test';
 const account={id:'11111111-1111-4111-8111-111111111111',email:'student@example.com',aud:'authenticated',role:'authenticated',created_at:'2025-01-01T00:00:00Z',app_metadata:{},user_metadata:{}};
 const day=new Date();
@@ -40,7 +41,7 @@ async function setup(page:Page){
  });
  await page.route('**/api/stripe',route=>route.fulfill({json:{status:'active'}}));
  await page.route('**/api/google-calendar-events',route=>route.fulfill({json:{events:[],incomplete:state.calendarFail}}));
- await page.route('**/api/chat',route=>{state.prompt=(b=>`${b.systemPrompt}\n${b.context??""}`)(route.request().postDataJSON());return route.fulfill({json:{content:[{text:JSON.stringify({reply:'Here is a proposed study session.',blocks:[{title:'New revision',subject:'Biology',start:'12:00',end:'12:30'}]})}]}});});
+ await page.route('**/api/chat',route=>{ if (triaged(route)) return;state.prompt=(b=>`${b.systemPrompt}\n${b.context??""}`)(route.request().postDataJSON());return route.fulfill({json:{content:[{text:JSON.stringify({reply:'Here is a proposed study session.',blocks:[{title:'New revision',subject:'Biology',start:'12:00',end:'12:30'}]})}]}});});
  return state;
 }
 
@@ -115,7 +116,7 @@ test('recovered timer retries after history saved but active-record deletion fai
 // means a broken envelope: the case where the model meant to propose
 // something and the answer cannot be trusted.
 test('malformed AI output never writes a task',async({page})=>{
- const state=await setup(page);await page.route('**/api/chat',route=>route.fulfill({json:{content:[{text:'{"reply":"Here you go","blocks":[{"title":'}]}}));await page.goto('/dashboard');await expect(page.getByLabel('Day progress')).toBeVisible();const before=state.writes;await page.getByLabel('What do you need to work on?').fill('Plan revision');await page.getByRole('button',{name:'Send to Soma',exact:true}).click();await expect(page.getByRole('log')).toContainText('Nothing was saved');expect(state.writes).toBe(before);
+ const state=await setup(page);await page.route('**/api/chat',route=>triaged(route) ? undefined : route.fulfill({json:{content:[{text:'{"reply":"Here you go","blocks":[{"title":'}]}}));await page.goto('/dashboard');await expect(page.getByLabel('Day progress')).toBeVisible();const before=state.writes;await page.getByLabel('What do you need to work on?').fill('Plan revision');await page.getByRole('button',{name:'Send to Soma',exact:true}).click();await expect(page.getByRole('log')).toContainText('Nothing was saved');expect(state.writes).toBe(before);
 });
 
 test('live dashboard requires authentication',async({page})=>{

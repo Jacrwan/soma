@@ -30,7 +30,7 @@ export function usageCost(model: string, usage: Usage): number | null {
 }
 
 export type UsageRow = {
-  user_id: string; kind: 'reply' | 'memory'; model: string;
+  user_id: string; kind: 'reply' | 'memory' | 'triage'; model: string;
   input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_write_tokens: number;
   cost_usd: number | null;
 };

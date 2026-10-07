@@ -1,4 +1,5 @@
 import {test,expect,type Page} from '@playwright/test';
+import { triaged } from './triage';
 const user={id:'11111111-1111-4111-8111-111111111111',email:'student@example.com',aud:'authenticated',role:'authenticated',created_at:'2025-01-01T00:00:00Z',app_metadata:{},user_metadata:{}};
 const now=new Date();const date=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 async function setup(page:Page){
@@ -18,7 +19,7 @@ async function setup(page:Page){
  });
  await page.route('**/api/stripe',route=>route.fulfill({json:{status:'active'}}));
  await page.route('**/api/google-calendar-events',route=>route.fulfill({json:{events:[],incomplete:false}}));
- await page.route('**/api/chat',route=>{state.prompt=(b=>`${b.systemPrompt}\n${b.context??""}`)(route.request().postDataJSON());return route.fulfill({json:{content:[{type:'text',text:state.reply}],stop_reason:'end_turn'}});});
+ await page.route('**/api/chat',route=>{ if (triaged(route)) return;state.prompt=(b=>`${b.systemPrompt}\n${b.context??""}`)(route.request().postDataJSON());return route.fulfill({json:{content:[{type:'text',text:state.reply}],stop_reason:'end_turn'}});});
  return state;
 }
 async function ask(page:Page,text='Make a task list'){await page.getByPlaceholder('Message Soma…').fill(text);await page.getByRole('button',{name:'Send',exact:true}).click();}

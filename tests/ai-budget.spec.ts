@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { triaged } from './triage';
 import { budgetPeriod, budgetStatus, MONTHLY_AI_BUDGET_USD, TRIAL_AI_BUDGET_USD } from '../api/_budget';
 import { createChatHandler } from '../api/chat';
 
@@ -124,7 +125,7 @@ test('the server pausing mid-chat is explained in the chat', async ({ page }) =>
   await setup(page, () => ({ reply: 'unused' }));
   await withBudget(page, { unknown: true });
   await page.reload();
-  await page.route('**/api/chat', route => route.fulfill({ status: 402, json: { error: 'ai_budget_used', resetsAt: '2026-10-24T10:00:00Z', trial: false } }));
+  await page.route('**/api/chat', route => triaged(route) ? undefined : route.fulfill({ status: 402, json: { error: 'ai_budget_used', resetsAt: '2026-10-24T10:00:00Z', trial: false } }));
   await page.getByLabel('What do you need to work on?').fill('plan my day');
   await page.getByRole('button', { name: 'Send to Soma' }).click();
   await expect(page.getByRole('log')).toContainText('You’ve used your Soma for now.');

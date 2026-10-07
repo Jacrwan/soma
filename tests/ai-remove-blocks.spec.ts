@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { triaged } from './triage';
 
 // "remove" used to clear a block's time and keep the task, so it reappeared
 // under Any time and nothing was actually removed — and on a task that was
@@ -40,7 +41,7 @@ async function setup(page:Page,opts:Opts){
  await page.route('**/api/stripe',r=>r.fulfill({json:{status:'active'}}));
  await page.route('**/api/google-calendar-events',r=>r.fulfill({json:{events:[],incomplete:false}}));
  const id=opts.scheduled?'quiz-slot':'quiz';
- await page.route('**/api/chat',r=>r.fulfill({json:{content:[{text:JSON.stringify({reply:'Removed it.',blocks:[],changes:[{action:'remove',id}]})}]}}));
+ await page.route('**/api/chat',r=>triaged(r) ? undefined : r.fulfill({json:{content:[{text:JSON.stringify({reply:'Removed it.',blocks:[],changes:[{action:'remove',id}]})}]}}));
  return st;
 }
 async function propose(page:Page){

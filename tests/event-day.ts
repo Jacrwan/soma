@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import { triaged } from './triage';
 
 // A Monday at 12:28 like the one reported on 2026-10-05: classes all day, and
 // "Physics HW 5: KK-5" on the plan with no time yet. Shared by the mocked
@@ -51,7 +52,7 @@ export async function setup(page: Page, reply: (ctx: Ctx, body: Record<string, u
   await page.route('**/api/stripe', r => r.fulfill({ json: { status: 'active' } }));
   await page.route('**/api/memory', r => r.fulfill({ json: { revision: 0, enabled: true, entries: [] } }));
   await page.route('**/api/google-calendar-events', r => r.fulfill({ json: { events, incomplete: false } }));
-  await page.route('**/api/chat', async route => {
+  await page.route('**/api/chat', async route => { if (triaged(route)) return;
     const body = route.request().postDataJSON();
     const ctx = JSON.parse(String(body.context).match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]) as Ctx;
     const out = await reply(ctx, body);

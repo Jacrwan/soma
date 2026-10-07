@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { triaged } from './triage';
 
 // "Start this now" was impossible to express: the prompt hands the model
 // currentTime to the minute, and validateProposal rejected any start already in
@@ -30,7 +31,7 @@ async function setup(page: Page, replies: unknown[]) {
   await page.route('**/api/stripe', r => r.fulfill({ json: { status: 'active' } }));
   await page.route('**/api/google-calendar-events', r => r.fulfill({ json: { events: [], incomplete: false } }));
   let turn = 0;
-  await page.route('**/api/chat', route => route.fulfill({ json: { content: [{ text: JSON.stringify(replies[Math.min(turn++, replies.length - 1)]) }] } }));
+  await page.route('**/api/chat', route => triaged(route) ? undefined : route.fulfill({ json: { content: [{ text: JSON.stringify(replies[Math.min(turn++, replies.length - 1)]) }] } }));
   return state;
 }
 

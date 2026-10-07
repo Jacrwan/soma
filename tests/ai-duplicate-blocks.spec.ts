@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { triaged } from './triage';
 
 // The model is instructed never to recreate a block that already exists, and
 // does it anyway — the copy then collides with the block it duplicates, which
@@ -34,7 +35,7 @@ async function setup(page: Page, replies: unknown[], opts: Opts = {}) {
   await page.route('**/api/stripe', r => r.fulfill({ json: { status: 'active' } }));
   await page.route('**/api/google-calendar-events', r => r.fulfill({ json: { events: [], incomplete: false } }));
   let turn = 0;
-  await page.route('**/api/chat', route => route.fulfill({ json: { content: [{ text: JSON.stringify(replies[Math.min(turn++, replies.length - 1)]) }] } }));
+  await page.route('**/api/chat', route => triaged(route) ? undefined : route.fulfill({ json: { content: [{ text: JSON.stringify(replies[Math.min(turn++, replies.length - 1)]) }] } }));
   return state;
 }
 const reemit = (date: string, start: string, end: string) => [{ reply: 'CalSol then.', blocks: [{ title: 'CalSol Electrical Onboarding', subject: 'CalSol', date, start, end }] }];

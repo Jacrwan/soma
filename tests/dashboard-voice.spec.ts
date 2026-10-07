@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { triaged } from './triage';
 
 const account = { id: '11111111-1111-4111-8111-111111111111', email: 'student@example.com', aud: 'authenticated', role: 'authenticated', created_at: '2025-01-01T00:00:00Z', app_metadata: {}, user_metadata: {} };
 
@@ -41,7 +42,7 @@ async function setup(page: Page, opts: { speech?: boolean } = { speech: true }) 
   await page.route('**/api/stripe', r => r.fulfill({ json: { status: 'active' } }));
   await page.route('**/api/memory', r => r.fulfill({ json: { revision: 0, enabled: true, entries: [] } }));
   await page.route('**/api/google-calendar-events', r => r.fulfill({ json: { events: [], incomplete: false } }));
-  await page.route('**/api/chat', r => { state.chatCalls++; return r.fulfill({ json: { content: [{ text: JSON.stringify({ reply: 'ok', blocks: [] }) }] } }); });
+  await page.route('**/api/chat', r => { if (triaged(r)) return; state.chatCalls++; return r.fulfill({ json: { content: [{ text: JSON.stringify({ reply: 'ok', blocks: [] }) }] } }); });
   await page.goto('/dashboard');
   await expect(page.getByLabel('What do you need to work on?')).toBeVisible();
   return state;

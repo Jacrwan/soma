@@ -23,6 +23,8 @@ export async function sendMessage(
   model?: 'sonnet',
   attachments?: Attachment[],
   responseFormat?: 'dashboard',
+  /** Sonnet's thinking effort, and whether this is the cheap first pass that sorts a message. */
+  options: { effort?: 'low' | 'medium'; purpose?: 'triage' } = {},
 ): Promise<string> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
@@ -59,6 +61,8 @@ export async function sendMessage(
       messages: outMessages,
       ...(typeof systemPrompt === 'string' ? { systemPrompt } : { systemPrompt: systemPrompt.stable, context: systemPrompt.context }),
       ...(model ? { model } : {}),
+      ...(options.effort ? { effort: options.effort } : {}),
+      ...(options.purpose ? { purpose: options.purpose } : {}),
     }),
   }).catch(error => { if (error instanceof Error && ['TimeoutError','AbortError'].includes(error.name)) throw new Error('request_timeout'); throw error; });
 
