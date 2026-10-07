@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { setup, idOf, ask, acceptedTimes, at, type Ctx } from './event-day';
+import { setup, idOf, ask, acceptedTimes, at, lineOf, type Ctx } from './event-day';
 
 // Reported 2026-10-05, at 12:28 on a Monday: "physics homework from now until
 // the physics 5a discussion; I'm skipping cs61a lecture and the math
@@ -15,9 +15,7 @@ test('every calendar event has an id Soma can refer to', async ({ page }) => {
   await setup(page, ctx => { seen = ctx; return { reply: 'Noted.' }; });
   await ask(page, 'hi');
   await expect(page.getByRole('log')).toContainText('Noted.');
-  const disc = seen!.plan.find(e => e.title === 'Physics 5A Discussion')!;
-  expect(disc).toMatchObject({ ro: true });
-  expect(disc.id).toMatch(/^b[0-9a-z]{6}$/);
+  expect(lineOf(seen!, 'Physics 5A Discussion')).toMatch(/^b[0-9a-z]{6} 16:00–17:59 Physics 5A Discussion · calendar event$/);
 });
 
 test('"from now until the discussion" by event id goes exactly there, over the skipped classes', async ({ page }) => {
@@ -111,7 +109,7 @@ test('when the retry is no better, the first answer and its problems are shown',
 // A task with no day (on Soma's task list, not the plan) used to get a second
 // task with the same name when Soma scheduled it, and the first stayed waiting.
 const withTask = (db: Record<string, Record<string, unknown>[]>) => { db.todos.push({ id: 't-hw6', user_id: 'u', text: 'Physics HW 6', subject_id: 'phys', status: 'nothing', date: '' }); };
-const taskId = (ctx: Ctx) => ctx.tasks.find(t => t.title === 'Physics HW 6')!.id;
+const taskId = (ctx: Ctx) => idOf(ctx, 'Physics HW 6');
 const TODAY = new Date(at('12:00')).toLocaleDateString('en-CA');
 
 test('a task with no day has an id, and scheduling it gives that task its time', async ({ page }) => {

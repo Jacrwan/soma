@@ -89,16 +89,15 @@ test('a chat carried past midnight reads yesterday as yesterday', async ({ page 
   const ctx = contextOf(latest);
   expect(ctx.now.startsWith('2026-10-04 Sun')).toBe(true);
   expect(ctx.days[0]).toMatchObject({ d: '2026-10-04', sel: true });
-  expect(ctx.plan.some((b: { title: string }) => b.title === 'Math 53 Practice Midterm')).toBe(false);
-  const midterm = ctx.lastWeek.find((b: { title: string }) => b.title === 'Math 53 Practice Midterm');
-  expect(midterm).toMatchObject({ d: 'Sat 2026-10-03', t: '20:50–22:00', st: 'Planned', did: 0 });
-  expect(midterm.log).toBeUndefined();
-  const catchUp = ctx.lastWeek.find((b: { title: string }) => b.title.includes('(5 of 6)'));
-  expect(catchUp).toMatchObject({ st: 'Completed', log: ['Sat 2026-10-03 14:02–14:58 56m'] });
+  const all = (g: Record<string, string[]>) => Object.values(g).flat();
+  expect(all(ctx.plan).some(l => l.includes('Math 53 Practice Midterm'))).toBe(false);
+  // Planned, nothing logged: no state, no did, no log on its line.
+  expect(ctx.lastWeek['Sat 2026-10-03']).toContain('20:50–22:00 Math 53 Practice Midterm · MATH 53-LEC-002');
+  expect(ctx.lastWeek['Sat 2026-10-03']).toContain('14:00–15:00 CS 61A Missed Lectures Catch-up (5 of 6) · CS 61A · Completed · did 56m · log Sat 10-03 14:02–14:58 56m');
 
   // Late work says so; the dashboard shows Sunday.
-  expect(ctx.tasks).toContainEqual(expect.objectContaining({ title: 'Essay outline', due: 'Thu 2026-10-01', late: true }));
-  expect(ctx.tasks.find((t: { title: string }) => t.title === 'Physics HW 5').late).toBeUndefined();
+  expect(all(ctx.tasks).some(l => / Essay outline · due Thu 2026-10-01 · late$/.test(l))).toBe(true);
+  expect(all(ctx.tasks).some(l => / Physics HW 5 · due Tue 2026-10-06$/.test(l))).toBe(true);
   await expect(page.getByRole('heading', { name: /Sunday/ }).first()).toBeVisible();
 });
 

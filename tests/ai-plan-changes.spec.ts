@@ -87,9 +87,9 @@ test('Soma is given ids for your own blocks, but not for read-only calendar even
   await ask(page, 'i overslept');
   await expect(page.getByRole('log')).toContainText('ok');
   const ctx = JSON.parse(state.prompt.match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]);
-  const lit = ctx.plan.find((p: { title: string }) => p.title.startsWith("Gulliver"));
+  const lit = (Object.values(ctx.plan).flat() as string[]).find(l => l.includes(' Gulliver'))!;
   // A short id, not the 36-character one the model used to miscopy.
-  expect(lit.id).toMatch(/^b[0-9a-z]{6}$/);
+  expect(lit.split(' ')[0]).toMatch(/^b[0-9a-z]{6}$/);
   expect(state.prompt).toContain('CHANGING THE EXISTING PLAN');
   expect(state.prompt).toContain('move the existing block rather than creating a second copy');
 });
@@ -209,7 +209,7 @@ test('a delete sent with the short id, in the student\'s word, still deletes the
   await ask(page, 'what is on tomorrow');
   await expect(page.getByRole('log')).toContainText('ok');
   const ctx = JSON.parse(state.prompt.match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]);
-  const id = ctx.plan.find((p: { title: string }) => p.title === 'Physics reading guides').id;
+  const id = (Object.values(ctx.plan).flat() as string[]).find(l => l.split(' · ')[0].endsWith(' Physics reading guides'))!.split(' ')[0];
   state.replies.push({ reply: 'Dropped physics.', blocks: [], changes: [{ action: 'delete', id }] });
   await ask(page, 'delete the physics block');
   await expect(page.getByText('Soma suggests deleting this')).toBeVisible();
@@ -354,7 +354,7 @@ test('a block Soma just proposed can be renamed before it is accepted', async ({
   await ask(page, 'call it 3.2 to 4.6');
   // The second request must carry an id for the pending proposal.
   await expect(page.getByRole('log')).toContainText("isn't in your plan");
-  const id = ctx().pending[0].id;
+  const id = ctx().pending[0].split(' ')[0];
   expect(id).toBeTruthy();
   state.replies.length = 0;
   state.replies.push({ reply: 'Renamed it.', changes: [{ action: 'update', id, title: 'Physics reading 3.2–4.6' }] });
@@ -374,10 +374,10 @@ test('Soma is told what was finished last week', async ({ page }) => {
   await ask(page, 'what did i finish last week');
   await expect(page.getByRole('log')).toContainText('ok');
   const ctx = JSON.parse(state.prompt.match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]);
-  const done = ctx.lastWeek.find((b: { title: string }) => b.title === 'Reading guide 2.1–3.2');
-  expect(done.st).toBe('Completed');
-  expect(done.d).toBe(`${offset(-4).toLocaleDateString('en-US', { weekday: 'short' })} ${past}`);   // with its weekday
-  expect(ctx.plan.some((p: { title: string }) => p.title === 'Reading guide 2.1–3.2')).toBe(false);   // history, not plan
+  // Keyed by its date, with its weekday.
+  const day = ctx.lastWeek[`${offset(-4).toLocaleDateString('en-US', { weekday: 'short' })} ${past}`] as string[];
+  expect(day.find(l => l.includes('Reading guide 2.1–3.2'))).toMatch(/ · Completed/);
+  expect((Object.values(ctx.plan).flat() as string[]).some(l => l.includes('Reading guide 2.1–3.2'))).toBe(false);   // history, not plan
   expect(state.prompt).toContain('WHAT THE STUDENT HAS ALREADY DONE');
 });
 

@@ -114,9 +114,11 @@ test('the AI is told the real date of every plan entry, not a bare offset', asyn
   expect(ctx.days[1].d).not.toBe(ctx.days[0].d);
   // Every plan entry carries a real date, and every date maps to a weekday.
   const weekdays = new Map(ctx.days.map((d: { d: string; w: string }) => [d.d, d.w]));
-  for (const entry of ctx.plan) {
-    expect(entry.d).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(weekdays.get(entry.d)).toBeTruthy();
+  // Entries are grouped under their date.
+  expect(Object.keys(ctx.plan).length).toBeGreaterThan(0);
+  for (const date of Object.keys(ctx.plan)) {
+    expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(weekdays.get(date)).toBeTruthy();
   }
 });
 

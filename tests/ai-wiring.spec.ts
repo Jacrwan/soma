@@ -53,8 +53,8 @@ test('Soma is told how long this student really takes, to size new work',async({
  );
  await page.goto('/ai');await ask(page,'I need to write a lab report');await expect(page.getByText('ok',{exact:true})).toBeVisible();
  const ctx=JSON.parse(state.prompt.match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]);
- expect(ctx.history.tasks).toContainEqual({title:'Lab report 2',s:'Biology',did:90,est:60});
- expect(ctx.history.subjects[0]).toMatchObject({s:'Biology',avgSession:45});
+ expect(ctx.history.tasks).toContain('Lab report 2 · Biology · took 90m · estimated 60m');
+ expect(ctx.history.subjects[0]).toBe('Biology: sessions avg 45m');
  expect(state.prompt).toContain('ESTIMATING');
 });
 
@@ -67,5 +67,5 @@ test('Soma only schedules inside the study hours set in Settings',async({page})=
  await expect(page.getByText(/outside your study hours \(8:00 AM–11:00 PM\)/)).toBeVisible();
  await expect(page.getByRole('button',{name:'Accept: Dawn review'})).toHaveCount(0);
  const ctx=JSON.parse(state.prompt.match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]);
- expect(ctx.free[1].slots).toEqual(['08:00–23:00']);
+ expect(ctx.free[d]).toEqual(['08:00–23:00']);
 });

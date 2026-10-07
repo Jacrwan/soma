@@ -9,7 +9,11 @@ const key = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart
 const TODAY = key(new Date());
 export const at = (t: string) => new Date(`${TODAY}T${t}:00`).toISOString();
 export type Row = Record<string, unknown>;
-export type Ctx = { plan: { id: string; title: string; ro?: boolean; skip?: boolean }[]; tasks: { id: string; title: string }[]; lateNight?: string };
+// Soma's context lists entries as lines: "<id> <time> <title> · <course> · <flags>", grouped by day or course.
+export type Ctx = { plan: Record<string, string[]>; tasks: Record<string, string[]>; lastWeek?: Record<string, string[]>; lateNight?: string };
+export const lines = (group?: Record<string, string[]>) => Object.values(group ?? {}).flat();
+/** The line for an entry titled exactly `title`, in plan or tasks. */
+export const lineOf = (ctx: Ctx, title: string) => [...lines(ctx.plan), ...lines(ctx.tasks)].find(l => l.split(' · ')[0].endsWith(` ${title}`));
 
 const event = (id: string, summary: string, from: string, to: string) => ({ id, summary, start: { dateTime: at(from) }, end: { dateTime: at(to) }, source: { connectionId: 'c', calendarId: 'k' } });
 const events = [
@@ -62,7 +66,7 @@ export async function setup(page: Page, reply: (ctx: Ctx, body: Record<string, u
   await expect(page.getByText('Physics HW 5: KK-5')).toBeVisible();
   return db;
 }
-export const idOf = (ctx: Ctx, title: string) => ctx.plan.find(e => e.title === title)!.id;
+export const idOf = (ctx: Ctx, title: string) => lineOf(ctx, title)!.split(' ')[0];
 export async function ask(page: Page, text: string) {
   await page.getByLabel('What do you need to work on?').fill(text);
   await page.getByRole('button', { name: 'Send to Soma' }).click();

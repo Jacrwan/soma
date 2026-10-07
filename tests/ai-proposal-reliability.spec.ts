@@ -88,8 +88,8 @@ test('Soma is told which proposals were placed and which were not, and sees pend
   expect(history).toContain('not placed: Gulliver reading');
   expect(history).toContain('placed "CS 61A Hog review"');
   const ctx = JSON.parse(String(state.bodies[1].context).replace(/^CONTEXT[^:]*: /, ''));
-  expect(ctx.pending.map((p: { title: string }) => p.title)).toContain('CS 61A Hog review');
-  expect(ctx.free).toHaveLength(7);
+  expect((ctx.pending as string[]).some(l => l.split(' · ')[0].endsWith(' CS 61A Hog review'))).toBe(true);
+  expect(Object.keys(ctx.free)).toHaveLength(7);   // open slots keyed by date, for the week
 });
 
 test('free time excludes calendar events, starts from now, and stays inside study hours', () => {
