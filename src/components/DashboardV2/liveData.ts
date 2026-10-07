@@ -98,7 +98,10 @@ export async function readPlan(userId:string,origin:Date,startDay=0,days=7):Prom
  */
 export function taskBlocks(snapshot:Pick<Snapshot,'blocks'|'todos'|'subjects'>):LiveBlock[] {
  const planned=new Set(snapshot.blocks.map(b=>b.todoId).filter(Boolean));
- return snapshot.todos.filter(t=>t.status!=='done' && !planned.has(t.id)).map(t=>({id:t.id,todoId:t.id,subjectId:t.subjectId,title:t.text,subject:snapshot.subjects.find(s=>s.id===t.subjectId)?.name??'Personal',time:'',minutes:0,color:'blue',state:t.status==='in_progress' ? 'Partially completed' : 'Planned',day:0}));
+ // A copy left open after its same-named twin was checked off (before those
+ // checked off together) is done work: Soma put finished homework back on the plan.
+ const doneTwin=(t:Todo)=>sameTask(snapshot,t).some(x=>x.id!==t.id && x.status==='done');
+ return snapshot.todos.filter(t=>t.status!=='done' && !planned.has(t.id) && !doneTwin(t)).map(t=>({id:t.id,todoId:t.id,subjectId:t.subjectId,title:t.text,subject:snapshot.subjects.find(s=>s.id===t.subjectId)?.name??'Personal',time:'',minutes:0,color:'blue',state:t.status==='in_progress' ? 'Partially completed' : 'Planned',day:0}));
 }
 /**
  * Blocks with the same title in the same course are one piece of work, the way
@@ -107,7 +110,8 @@ export function taskBlocks(snapshot:Pick<Snapshot,'blocks'|'todos'|'subjects'>):
  * Personal blocks and commitments ("Gym") repeat without being the same task,
  * so they stay one block each.
  */
-const taskKey=(t:Todo)=>JSON.stringify([t.subjectId,t.text.trim().replace(/\s+/g,' ').toLowerCase()]);
+// Case, spacing and punctuation don't make it different work: "Homework - Ch 13" is "Homework — Ch 13".
+const taskKey=(t:Todo)=>JSON.stringify([t.subjectId,t.text.toLowerCase().replace(/[^a-z0-9]+/g,' ').trim()]);
 export function sameTask(snapshot:Pick<Snapshot,'todos'|'subjects'>,todo:Todo):Todo[] {
  const subject=snapshot.subjects.find(s=>s.id===todo.subjectId);
  if(!subject || ['personal',commitmentSubject.toLowerCase()].includes(subject.name.toLowerCase()))return [todo];
