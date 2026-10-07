@@ -19,6 +19,7 @@ export const USER_TABLES = [
   'subjects',
   'chat_sessions',
   'soma_ai_memory',
+  'ai_usage',
   'google_calendar_connections',
   'settings',
   'subscriptions',

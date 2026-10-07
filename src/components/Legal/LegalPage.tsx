@@ -88,7 +88,9 @@ function Privacy() {
             text of documents you have uploaded) are sent to Anthropic to generate a response. Chats
             in the AI tab are saved to your account so you can come back to them, and you can delete
             them. Soma also keeps a short memory of lasting facts it learns from your messages, such
-            as when you prefer to study; you can review and delete it in Settings.
+            as when you prefer to study; you can review and delete it in Settings. For each AI
+            response, Soma records how many tokens it used and what it cost, but not what was said,
+            so we can keep the service affordable.
           </li>
           <li>
             <strong>Voice input</strong> — dictation uses your browser's built-in speech
@@ -830,7 +832,7 @@ function DataDeletion() {
         <ul>
           <li>Your Soma account (email, authentication credentials) and profile details</li>
           <li>Your courses, reading lists and progress, tasks, planned sessions, and study time records</li>
-          <li>Saved AI chats and AI memory</li>
+          <li>Saved AI chats, AI memory, and AI usage records</li>
           <li>Documents you uploaded, including the files themselves</li>
           <li>Google Calendar connections and their stored tokens</li>
           <li>App settings and preferences stored on our servers</li>

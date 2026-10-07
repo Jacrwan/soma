@@ -1,3 +1,4 @@
+import { recordUsage, type Usage } from './_usage';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 export type Memory = { key: string; content: string; category: 'preference' | 'goal' | 'fact'; updatedAt: string; expiresAt: string | null; source?: 'manual' | 'auto' };
@@ -154,7 +155,8 @@ export async function learnFromMessage(userId: string, studentMessage: string, a
         body: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 600, system, messages: [{ role: 'user', content: user }] }),
       });
       if (!response.ok) throw new Error('memory_model_unavailable');
-      const data = await response.json() as { content?: { type: string; text?: string }[] };
+      const data = await response.json() as { content?: { type: string; text?: string }[]; usage?: Usage };
+      if (data.usage) await recordUsage(userId, 'memory', 'claude-haiku-4-5', data.usage).catch(() => {});
       return data.content?.filter(b => b.type === 'text').map(b => b.text ?? '').join('') ?? '';
     },
   });

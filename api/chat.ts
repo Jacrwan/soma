@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { loadMemoryContext, learnFromMessage } from './_memory';
 import { waitUntil } from '@vercel/functions';
 import { EXTENSION_MS, trialLengthMs } from './_trial';
+import { recordUsage, type Usage } from './_usage';
 
 export const config = { api: { bodyParser: { sizeLimit: '4.5mb' } } };
 // Sonnet thinks before it answers; a whole day's plan can take over a minute.
@@ -78,7 +79,7 @@ function rateLimited(userId:string){
  hits.set(userId,[...times,now]);return false;
 }
 
-export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Authorization>;request?:typeof fetch;apiKey?:()=>string|undefined;limited?:(id:string)=>boolean;memory?:(userId:string,query:string)=>Promise<string>;learn?:(userId:string,message:string,assistantContext:string,apiKey:string)=>Promise<void>;defer?:(task:Promise<unknown>)=>void}={}){
+export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Authorization>;request?:typeof fetch;apiKey?:()=>string|undefined;limited?:(id:string)=>boolean;memory?:(userId:string,query:string)=>Promise<string>;learn?:(userId:string,message:string,assistantContext:string,apiKey:string)=>Promise<void>;defer?:(task:Promise<unknown>)=>void;record?:(userId:string,kind:'reply',model:string,usage:Usage)=>Promise<void>}={}){
  return async function handler(req:any,res:any){
   const origin=req.headers.origin;
   if(origin==='https://somastudy.app' || (process.env.NODE_ENV!=='production' && origin==='http://localhost:5173'))res.setHeader('Access-Control-Allow-Origin',origin);
@@ -121,12 +122,14 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
    });
    if(response.status===429)return res.status(429).json({error:'rate_limit'});
    if(response.status===529)return res.status(529).json({error:'overloaded'});
-   const data=await response.json().catch(()=>null) as {error?:{message?:string};content?:{type:string;text?:string}[];stop_reason?:string}|null;
+   const data=await response.json().catch(()=>null) as {error?:{message?:string};content?:{type:string;text?:string}[];stop_reason?:string;model?:string;usage?:Usage}|null;
    if(!response.ok){
     if(response.status===400 && /too long|token|context/i.test(data?.error?.message??''))return res.status(400).json({error:'context_too_long'});
     console.error(JSON.stringify({endpoint:'/api/chat',event:'upstream_error',status:response.status}));
     return res.status(502).json({error:'upstream_unavailable'});
    }
+   // Every billed reply is counted, including ones that fail below.
+   if(data?.usage)(deps.defer??waitUntil)((deps.record??recordUsage)(auth.userId,'reply',data.model ?? (sonnet ? 'claude-sonnet-5-5' : 'claude-haiku-4-5'),data.usage).catch(()=>{}));
    if(data?.stop_reason==='max_tokens')return res.status(502).json({error:'response_incomplete'});
    const text=data?.content?.filter(b=>b.type==='text' && typeof b.text==='string').map(b=>b.text).join('\n');
    if(!text?.trim())return res.status(502).json({error:'invalid_ai_response'});

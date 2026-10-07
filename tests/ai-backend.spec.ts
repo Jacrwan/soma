@@ -34,3 +34,21 @@ test('Soma\'s requests go to Sonnet 5.5 at medium effort with a refusal fallback
  expect(sent!.body).toMatchObject({model:'claude-sonnet-5-5',max_tokens:16000,output_config:{effort:'medium'},fallbacks:'default'});
  expect(sent!.headers['anthropic-beta']).toBe('server-side-fallback-2026-07-01');
 });
+
+// Real cost per student (2026-10-06): every billed reply is counted, numbers only.
+import {usageCost,usageRow} from '../api/_usage';
+test('the cost of a call is worked out from its tokens and model',()=>{
+ expect(usageCost('claude-sonnet-5-5',{input_tokens:1_000_000,output_tokens:1_000_000,cache_read_input_tokens:1_000_000,cache_creation_input_tokens:1_000_000})).toBe(2+10+0.2+2.5);
+ expect(usageCost('claude-haiku-4-5-20251001',{input_tokens:1000,output_tokens:200})).toBe(0.002);
+ expect(usageCost('some-other-model',{input_tokens:1})).toBeNull();
+ expect(usageRow('u','reply','claude-sonnet-5-5',{input_tokens:5000,output_tokens:1500,cache_read_input_tokens:12000})).toEqual({user_id:'u',kind:'reply',model:'claude-sonnet-5-5',input_tokens:5000,output_tokens:1500,cache_read_tokens:12000,cache_write_tokens:0,cost_usd:0.0274});
+});
+test('every billed reply is recorded for its user, and a failed record never touches the reply',async()=>{
+ const recorded:unknown[]=[];let deferred:Promise<unknown>|undefined;
+ const {result,res}=response();
+ const usage={input_tokens:8000,output_tokens:1200,cache_read_input_tokens:15000};
+ await createChatHandler({...deps,memory:async()=>'',learn:async()=>{},defer:(t:Promise<unknown>)=>{deferred=t;},record:async(...args:unknown[])=>{recorded.push(args);throw new Error('database down');},request:async()=>Response.json({model:'claude-sonnet-5-5',usage,content:[{type:'text',text:'{"reply":"ok"}'}],stop_reason:'end_turn'})} as never)({method:'POST',headers:{authorization:'Bearer test'},body:{...body,model:'sonnet'}},res);
+ await deferred;
+ expect(result.status).toBe(200);
+ expect(recorded[0]).toEqual(['student','reply','claude-sonnet-5-5',usage]);
+});
