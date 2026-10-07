@@ -82,6 +82,11 @@ happens if the value is missing, enormous or malformed.
 
 ## Working rules
 
+- **Read `docs/CHANGES.md` before changing an area, and add an entry with every
+  change**: what changed and why, where, the test that guards it, and any setup
+  still needed. Each entry's guard test protects a fix the owner asked for; a
+  change that breaks one is a regression. Don't edit an area the request doesn't
+  name; if a change must reach one, say so first.
 - **Verify before you push.** Run `npm test` (Playwright) and `npm run build`
   before and after a change. Both must pass.
 - **Branch → Vercel preview → merge.** Do not commit straight to `master`
