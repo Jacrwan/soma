@@ -40,7 +40,7 @@ test('deleting an account clears every user table and the uploaded files', async
 
   expect(failed).toEqual([]);
   expect(removed.sort()).toEqual(['user-1/a.pdf', 'user-1/b.docx']);
-  for (const table of ['subjects', 'todos', 'todo_sessions', 'documents', 'chat_sessions', 'soma_ai_memory', 'google_calendar_connections', 'timer_sessions', 'settings', 'subscriptions']) {
+  for (const table of ['subjects', 'todos', 'todo_sessions', 'documents', 'chat_sessions', 'soma_ai_memory', 'ai_usage', 'google_calendar_connections', 'timer_sessions', 'settings', 'subscriptions']) {
     expect(deleted).toContainEqual({ table, column: 'user_id', value: 'user-1' });
   }
   expect(deleted).toHaveLength(USER_TABLES.length);
