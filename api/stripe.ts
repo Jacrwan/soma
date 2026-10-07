@@ -3,6 +3,7 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { isRateLimited } from './_rateLimit';
 import { TRIAL_DAYS, EXTENSION_MS, trialLengthMs } from './_trial';
+import { budgetStatus, TOPUP_PRICE_CENTS, TOPUP_ADDS_USD } from './_budget';
 
 const ALLOWED_ORIGINS = [
   'https://somastudy.app',
@@ -230,6 +231,38 @@ async function createCheckoutSession(user: any, admin: any, stripe: Stripe, body
   return res.json({ url: session.url });
 }
 
+/** How much of this month's Soma is used, for the meter. */
+async function getAiBudget(user: any, admin: any, res: any) {
+  const dev = process.env.DEVELOPER_EMAIL?.trim().toLowerCase();
+  if (dev && user.email?.toLowerCase() === dev) return res.json({ unlimited: true });
+  const status = await budgetStatus(admin, user.id);
+  return res.json(status ?? { unknown: true });
+}
+
+/**
+ * A one-time top-up: more Soma until the next reset. Subscribers only; a
+ * trial can't buy one. The price is inline, so no Stripe product to set up;
+ * the webhook records it when the payment completes.
+ */
+async function createTopupSession(user: any, admin: any, stripe: Stripe, body: Record<string, unknown>, req: any, res: any) {
+  const { data: sub } = await admin.from('subscriptions').select('status, stripe_customer_id').eq('user_id', user.id).maybeSingle();
+  if (sub?.status !== 'active') return res.status(403).json({ error: 'Top-ups are for subscribers. Your trial includes its own Soma budget.' });
+  if (!sub.stripe_customer_id) return res.status(409).json({ error: 'No billing account found. Open Settings → Subscription.' });
+  const back = ['/dashboard', '/ai', '/settings'].includes(String(body.returnPath)) ? String(body.returnPath) : '/dashboard';
+  const org = origin(req);
+  const metadata = { supabase_user_id: user.id, kind: 'ai_topup', adds_usd: String(TOPUP_ADDS_USD) };
+  const session = await stripe.checkout.sessions.create({
+    customer: sub.stripe_customer_id,
+    mode: 'payment',
+    line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: TOPUP_PRICE_CENTS, product_data: { name: 'More Soma', description: 'Extra AI use until your next monthly reset' } } }],
+    metadata,
+    payment_intent_data: { metadata },
+    success_url: `${org}${back}?topup=done`,
+    cancel_url: `${org}${back}`,
+  });
+  return res.json({ url: session.url });
+}
+
 async function createBillingPortal(user: any, admin: any, stripe: Stripe, req: any, res: any) {
   const { data: sub } = await admin
     .from('subscriptions')
@@ -259,6 +292,8 @@ const RATE_LIMITS: Record<string, { max: number; windowMs: number }> = {
   'create-subscription':      { max: 10, windowMs: 60_000 },
   'create-checkout-session':  { max: 5,  windowMs: 60_000 },
   'create-billing-portal':    { max: 5,  windowMs: 60_000 },
+  'get-ai-budget':            { max: 60, windowMs: 60_000 },
+  'create-topup-session':     { max: 5,  windowMs: 60_000 },
 };
 
 export default async function handler(req: any, res: any) {
@@ -296,6 +331,7 @@ export default async function handler(req: any, res: any) {
   if (authErr || !user) return res.status(401).json({ error: 'Invalid token' });
 
   if (action === 'get-subscription') return getSubscription(user, admin, res);
+  if (action === 'get-ai-budget') return getAiBudget(user, admin, res);
 
   const stripeKey = process.env.STRIPE_SECRET_KEY ?? '';
   if (!stripeKey) return res.status(500).json({ error: 'Stripe not configured' });
@@ -305,6 +341,7 @@ export default async function handler(req: any, res: any) {
   if (action === 'create-subscription')     return createSubscription(user, admin, stripe, body, res);
   if (action === 'create-checkout-session') return createCheckoutSession(user, admin, stripe, body, req, res);
   if (action === 'create-billing-portal')   return createBillingPortal(user, admin, stripe, req, res);
+  if (action === 'create-topup-session')    return createTopupSession(user, admin, stripe, body, req, res);
 
   return res.status(400).json({ error: `Unknown action: ${action}` });
 }
