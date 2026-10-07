@@ -121,3 +121,41 @@ test('work moved past its due date says so on the card', async ({ page }) => {
   await page.getByLabel('Next seven days').getByRole('button').nth(1).click();
   await expect(page.getByText(/After its due date/)).toBeVisible();
 });
+
+// "Then what homework was last week's?" (2026-10-06): Soma kept giving the
+// homework done last week. Weeks are worked out by the app.
+test('Soma is given this week and last week as dates', async ({ page }) => {
+  const r = reply(() => ({ reply: 'ok' }));
+  await setup(page, r.fn);
+  await ask(page, "what was last week's homework");
+  await expect(page.getByRole('log')).toContainText('ok');
+  const day = (d: Date) => `${d.toLocaleDateString('en-US', { weekday: 'short' })} ${d.toLocaleDateString('en-CA')}`;
+  const monday = new Date(at('12:00')); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  const lastMonday = new Date(monday); lastMonday.setDate(lastMonday.getDate() - 7);
+  const lastSunday = new Date(monday); lastSunday.setDate(lastSunday.getDate() - 1);
+  const ctx = r.seen[0] as Ctx & { weeks: { this: string; last: string } };
+  expect(ctx.weeks.this.startsWith(day(monday))).toBe(true);
+  expect(ctx.weeks.last).toBe(`${day(lastMonday)} – ${day(lastSunday)}`);
+});
+
+test('every Soma reply uses the larger model, not only planning ones', async ({ page }) => {
+  let model: unknown;
+  await setup(page, () => ({ reply: 'ok' }));
+  await page.route('**/api/chat', async route => { model = route.request().postDataJSON().model; await route.fallback(); });
+  await ask(page, 'are you sure the math homework is correct?');
+  await expect(page.getByRole('log')).toContainText('ok');
+  expect(model).toBe('sonnet');
+});
+
+test('a leftover copy of finished work is not offered as an open task', async ({ page }) => {
+  const r = reply(() => ({ reply: 'ok' }));
+  await setup(page, r.fn, d => {
+    d.todos.push(
+      { id: 'hw-done', user_id: 'u', text: 'Math 53 Homework - Chapters 13.1, 13.2, 14.1, 14.2', subject_id: 'phys', status: 'done', date: '2026-09-29' },
+      { id: 'hw-copy', user_id: 'u', text: 'Math 53 Homework — Chapters 13.1, 13.2, 14.1, 14.2', subject_id: 'phys', status: 'nothing', date: '' },
+    );
+  });
+  await ask(page, 'what do i have left');
+  await expect(page.getByRole('log')).toContainText('ok');
+  expect(r.seen[0].tasks.map(t => t.title)).not.toContain('Math 53 Homework — Chapters 13.1, 13.2, 14.1, 14.2');
+});

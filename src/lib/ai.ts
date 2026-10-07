@@ -49,7 +49,7 @@ export async function sendMessage(
   }
 
   const res = await fetch('/api/chat', {
-    signal: AbortSignal.timeout(55_000),
+    signal: AbortSignal.timeout(150_000),
     method: 'POST',
     headers: {
       'content-type': 'application/json',

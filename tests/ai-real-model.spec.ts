@@ -18,8 +18,8 @@ async function realModel(body: Record<string, unknown>) {
   ];
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    headers: { 'x-api-key': key!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: body.model === 'sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001', max_tokens: 8192, system, messages: body.messages }),
+    headers: { 'x-api-key': key!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-beta': 'server-side-fallback-2026-07-01' },
+    body: JSON.stringify({ model: 'claude-sonnet-5-5', max_tokens: 16000, output_config: { effort: 'medium' }, fallbacks: 'default', system, messages: body.messages }),
   });
   const data = await res.json() as { content?: { type: string; text?: string }[] };
   const text = data.content?.filter(b => b.type === 'text').map(b => b.text).join('\n') ?? '';

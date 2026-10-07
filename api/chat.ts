@@ -5,7 +5,8 @@ import { waitUntil } from '@vercel/functions';
 import { EXTENSION_MS, trialLengthMs } from './_trial';
 
 export const config = { api: { bodyParser: { sizeLimit: '4.5mb' } } };
-export const maxDuration = 60;
+// Sonnet thinks before it answers; a whole day's plan can take over a minute.
+export const maxDuration = 150;
 type Authorization = { ok:true; userId:string } | { ok:false; status:number; error:string };
 
 export function computeStatus(row:{status:string;trial_start:string|null;extension_start:string|null},now=Date.now()):string {
@@ -110,9 +111,13 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
     ...(context ? [{type:'text' as const,text:context}] : []),
     ...(savedMemory ? [{type:'text' as const,text:savedMemory}] : []),
    ];
+   // Soma's replies use Sonnet 5.5, thinking at medium effort: Haiku answered
+   // "last week's homework" with the homework done last week. A declined
+   // request falls back to another model rather than failing (beta).
+   const sonnet=model==='sonnet';
    const response=await (deps.request??fetch)('https://api.anthropic.com/v1/messages',{
-    method:'POST',signal:AbortSignal.timeout(45_000),headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json'},
-    body:JSON.stringify({model:model==='sonnet' ? 'claude-sonnet-4-6' : 'claude-haiku-4-5-20251001',max_tokens:8192,...(system.length ? {system} : {}),messages}),
+    method:'POST',signal:AbortSignal.timeout(140_000),headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json',...(sonnet ? {'anthropic-beta':'server-side-fallback-2026-07-01'} : {})},
+    body:JSON.stringify({model:sonnet ? 'claude-sonnet-5-5' : 'claude-haiku-4-5-20251001',max_tokens:sonnet ? 16000 : 8192,...(sonnet ? {output_config:{effort:'medium'},fallbacks:'default'} : {}),...(system.length ? {system} : {}),messages}),
    });
    if(response.status===429)return res.status(429).json({error:'rate_limit'});
    if(response.status===529)return res.status(529).json({error:'overloaded'});
