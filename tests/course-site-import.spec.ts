@@ -15,7 +15,7 @@ const found = {
   ],
 };
 
-async function setup(page: Page, subjects: Row[] = [], todos: Row[] = []) {
+async function setup(page: Page, subjects: Row[] = [], todos: Row[] = [], result: typeof found = found) {
   const state = { subjects: [...subjects], todos: [...todos], requests: [] as Row[] };
   await page.addInitScript(a => {
     localStorage.setItem('sb-soma-regression-auth-token', JSON.stringify({ access_token: 't', refresh_token: 'r', token_type: 'bearer', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, user: a }));
@@ -33,7 +33,7 @@ async function setup(page: Page, subjects: Row[] = [], todos: Row[] = []) {
     return route.fulfill({ json: req.headers().accept?.includes('vnd.pgrst.object') ? null : [] });
   });
   await page.route('**/api/stripe', r => r.fulfill({ json: { status: 'active' } }));
-  await page.route('**/api/import-schedule', route => { state.requests.push(route.request().postDataJSON()); return route.fulfill({ json: found }); });
+  await page.route('**/api/import-schedule', route => { state.requests.push(route.request().postDataJSON()); return route.fulfill({ json: result }); });
   await page.goto('/settings');
   await page.getByRole('button', { name: 'Courses', exact: true }).click();
   await page.getByRole('button', { name: 'Import deadlines from a course website' }).click();
@@ -170,4 +170,30 @@ test("an import whose saves didn't stick is reported as an error, not a success"
 
   await expect(page.getByRole('alert')).toContainText('could be confirmed after saving');
   await expect(page.getByRole('status', { name: /Imported into/ })).toHaveCount(0);
+});
+
+// Reported 2026-10-06 from cs61a.org: "Project 3: Ants Vs. SomeBees - Checkpoint 1"
+// and "...SomeBees checkpoint 1" were both on Deadlines, the same task twice.
+const checkpoint = (title: string) => ({ title, type: 'project', due: offset(10), time: null, evidence: 'Due Fri' });
+
+test('a page that lists a deadline twice, spelled differently, offers it once', async ({ page }) => {
+  const state = await setup(page, [], [], { ...found, items: [checkpoint('Project 3: Ants Vs. SomeBees - Checkpoint 1'), checkpoint('Project 3: Ants Vs. SomeBees checkpoint 1')] });
+  await page.getByLabel('Course website address').fill('https://cs61a.org');
+  await page.getByRole('button', { name: 'Find deadlines' }).click();
+  await expect(page.getByLabel('Deadlines found').getByRole('checkbox')).toHaveCount(1);
+  await page.getByRole('button', { name: /^Import 1 deadline/ }).click();
+  await expect(page.getByRole('status')).toContainText('Imported');
+  expect(state.todos).toHaveLength(1);
+});
+
+test('re-importing matches a task whose title differs only in punctuation and case', async ({ page }) => {
+  const cs = { id: 'cs', user_id: account.id, name: 'CS 61A', color: '#26c6da', archived: false };
+  const state = await setup(page, [cs], [
+    { id: 'cp1', user_id: account.id, text: 'Project 3: Ants Vs. SomeBees - Checkpoint 1', status: 'nothing', subject_id: 'cs', due_date: offset(10), date: offset(10), kind: 'project' },
+  ], { ...found, items: [checkpoint('Project 3: Ants Vs. SomeBees checkpoint 1')] });
+  await page.getByLabel('Course website address').fill('https://cs61a.org');
+  await page.getByRole('button', { name: 'Find deadlines' }).click();
+  await page.getByRole('button', { name: /^Import 1 deadline/ }).click();
+  await expect(page.getByRole('status')).toContainText('Imported');
+  expect(state.todos.map(t => t.id)).toEqual(['cp1']);
 });

@@ -993,9 +993,19 @@ export const storage = {
     return withDefaults(data.data as Record<string, unknown>);
   },
 
-  async saveSettings(settings: SomaSettings): Promise<void> {
+  /**
+   * Merged into what's stored, never a replacement. Settings → Save sent only
+   * this browser's copy, and that wiped the Canvas feed link and everything
+   * else kept only on the server. A failed read refuses to write, since
+   * guessing would overwrite real settings with defaults.
+   */
+  async saveSettings(settings: Partial<SomaSettings>): Promise<void> {
     const id = await uid();
-    await supabase.from('settings').upsert({ user_id: id, data: settings });
+    const { data: row, error: readError } = await supabase.from('settings').select('data').eq('user_id', id).maybeSingle();
+    if (readError) throw new Error(readError.message);
+    const stored = (row?.data ?? {}) as Record<string, unknown>;
+    const { error } = await supabase.from('settings').upsert({ user_id: id, data: { ...stored, ...settings } });
+    if (error) throw new Error(error.message);
   },
 
   // ── Clear all local browser data ────────────────────────────────────

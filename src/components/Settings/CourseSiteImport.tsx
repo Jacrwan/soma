@@ -15,6 +15,14 @@ import styles from './SettingsTab.module.css';
 type Item = { title: string; type: string; due: string; time: string | null; evidence: string; unverified?: boolean };
 type Result = { course: string | null; items: Item[]; source: string | null; truncated: boolean };
 /** What an import actually did, shown back so the student can see it landed. */
+/** Titles that differ only in case, spacing or punctuation are one task:
+ *  "Project 3: Ants Vs. SomeBees - Checkpoint 1" and "…SomeBees checkpoint 1"
+ *  were imported as two. */
+const sameTitle = (a: string, b: string) => {
+  const words = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  return words(a) === words(b);
+};
+
 type Receipt = { course: { id: string; name: string; color: string }; rows: { title: string; due: string; time: string | null; change: 'added' | 'updated' | 'unchanged' }[] };
 
 const ERRORS: Record<string, string> = {
@@ -76,7 +84,9 @@ export default function CourseSiteImport({ courses, createCourse, onImported }: 
       });
       const body = await response.json().catch(() => null);
       if (!response.ok) { setError(explain(body?.error ?? '')); return; }
-      const data = body as Result;
+      const read = body as Result;
+      // A page that lists an item twice (a calendar and a table) offers it once.
+      const data = { ...read, items: read.items.filter((item, i) => !read.items.slice(0, i).some(o => o.due === item.due && sameTitle(o.title, item.title))) };
       setResult(data);
       // Upcoming work is picked by default; anything already past is not.
       setChosen(new Set(data.items.map((item, i) => (item.due >= today ? i : -1)).filter(i => i >= 0)));
@@ -106,7 +116,7 @@ export default function CourseSiteImport({ courses, createCourse, onImported }: 
       for (const [i, item] of result.items.entries()) {
         if (!chosen.has(i)) continue;
         // Re-importing updates a date rather than adding the same task twice.
-        const existing = storage.getTodos().find(t => t.subjectId === subject.id && t.text.trim().toLowerCase() === item.title.trim().toLowerCase());
+        const existing = storage.getTodos().find(t => t.subjectId === subject.id && sameTitle(t.text, item.title));
         if (existing) {
           if (existing.dueDate === item.due) {
             // Same date, but the row may predate the kind column: fill it in
@@ -129,7 +139,7 @@ export default function CourseSiteImport({ courses, createCourse, onImported }: 
       window.dispatchEvent(new Event('soma_todos_changed'));
       // Confirm against what is actually stored now, not just what was sent.
       const stored = storage.getTodos().filter(t => t.subjectId === subject.id);
-      const confirmed = rows.filter(r => stored.some(t => t.text.trim().toLowerCase() === r.title.trim().toLowerCase() && t.dueDate === r.due));
+      const confirmed = rows.filter(r => stored.some(t => sameTitle(t.text, r.title) && t.dueDate === r.due));
       if (confirmed.length !== rows.length) throw new Error(`only ${confirmed.length} of ${rows.length} could be confirmed after saving`);
       setDone({ course: { id: subject.id, name: subject.name, color: subject.color }, rows });
       setResult(null);

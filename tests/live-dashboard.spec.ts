@@ -82,7 +82,7 @@ test('AI receives fresh data, proposes without writing and saves only on accepta
 });
 
 test('stale AI acceptance rechecks calendar and blocks conflicting saves',async({page})=>{
- const state=await setup(page);await page.goto('/dashboard');await page.getByLabel('Next seven days').getByRole('button').nth(1).click();await page.getByLabel('What do you need to work on?').fill('Plan revision');await page.getByRole('button',{name:'Send to Soma',exact:true}).click();await expect(page.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
+ const state=await setup(page);await page.goto('/dashboard');await page.getByLabel('Next seven days').getByRole('button').nth(1).click();await page.getByLabel('What do you need to work on?').fill('Plan revision tomorrow');await page.getByRole('button',{name:'Send to Soma',exact:true}).click();await expect(page.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
  state.calendarFail=true;const before=state.writes;await page.getByRole('button',{name:'Accept',exact:true}).click();await expect(page.getByRole('alert').first()).toContainText('Calendar could not be fully loaded');expect(state.writes).toBe(before);
 });
 

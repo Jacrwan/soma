@@ -91,7 +91,10 @@ export default function SettingsTab() {
   async function saveToSupabase(section: string, nextSettings?: SomaSettings) {
     setSupabaseSaving(true);
     try {
-      await storage.saveSettings(nextSettings ?? settings);
+      // Only what this page edits: the browser's copy lacks server-only
+      // settings (the Canvas feed link), and once overwrote them.
+      const { theme, timeFormat, studyWindow, chunks } = nextSettings ?? settings;
+      await storage.saveSettings({ theme, timeFormat, studyWindow, chunks });
       setSavedSection(section);
       setTimeout(() => setSavedSection(s => s === section ? null : s), 2000);
     } catch { /* silent */ } finally {
