@@ -204,3 +204,23 @@ test('events under five minutes are hidden; short real events still show', async
   await expect(page.getByTitle(/Accidental start/)).toHaveCount(0);
   await expect(page.locator('[class*="weekViewDot"]:not([class*="NowDot"])')).toHaveCount(0);
 });
+
+// Reported 2026-10-06: an eight-minute session just before a block was drawn
+// across the whole day, over the top of that block, names on top of each other.
+for (const [gap, sliverEnd, blockStart] of [['no gap', '10:08', '10:08'], ['a one-minute gap', '10:11', '10:12']] as const)
+test(`a short session just before a block gets its own lane instead of covering it (${gap})`, async ({ page }) => {
+  const at = (t: string) => { const d = new Date(); const [h, m] = t.split(':').map(Number); d.setHours(h, m, 0, 0); return d.toISOString(); };
+  await page.addInitScript(({ a, blocks }) => {
+    localStorage.setItem('sb-soma-regression-auth-token', JSON.stringify({ access_token: 't', refresh_token: 'r', token_type: 'bearer', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, user: a }));
+    localStorage.setItem('soma_blocks', JSON.stringify(blocks));
+  }, { a: account, blocks: [
+    { id: 'sliver', subjectId: 'bio', task: 'Warm-up', startTime: at('10:00'), endTime: at(sliverEnd), source: 'manual' },
+    { id: 'long', subjectId: 'bio', task: 'Lab report', startTime: at(blockStart), endTime: at('11:30'), source: 'manual' },
+  ] });
+  await openCalendar(page);
+  await page.getByRole('button', { name: 'Week', exact: true }).click();
+  const sliver = await page.getByTitle(/Warm-up/).boundingBox(), long = await page.getByTitle(/Lab report/).boundingBox();
+  expect(sliver && long).toBeTruthy();
+  const apart = sliver!.x + sliver!.width <= long!.x + 1 || long!.x + long!.width <= sliver!.x + 1 || sliver!.y + sliver!.height <= long!.y + 1;
+  expect(apart).toBe(true);
+});

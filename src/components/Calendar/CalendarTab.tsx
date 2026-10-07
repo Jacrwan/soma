@@ -230,6 +230,8 @@ const MAX_CHIPS = 3;
 const FILTER_KEY = 'soma_calendar_filters';
 
 const WEEK_SLOT_HEIGHT = 60;
+/** The shortest an item is drawn, in px, so its name fits. */
+const MIN_EVENT_HEIGHT = 18;
 const WEEK_TOTAL_HOURS = 24;
 const WEEK_GRID_HEIGHT = WEEK_TOTAL_HOURS * WEEK_SLOT_HEIGHT;
 const weekHourSlotsFor = (format: TimeFormat) =>
@@ -734,13 +736,20 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
 
     events.sort((a, b) => a.startMin - b.startMin);
 
+    // Overlap is judged by what's drawn, not only by the minutes: a short
+    // session is drawn at least MIN_EVENT_HEIGHT tall, so an eight-minute
+    // sitting followed by a block took the full width and was drawn across
+    // the top of that block, labels on top of each other.
+    const shownEnd = (ev: RawEvent) => Math.max(ev.endMin, ev.startMin + (MIN_EVENT_HEIGHT / WEEK_SLOT_HEIGHT) * 60);
+    const overlaps = (a: RawEvent, b: RawEvent) => a.startMin < shownEnd(b) && b.startMin < shownEnd(a);
+
     // Interval-graph coloring: assign each event the lowest column index
     // not used by any overlapping event already processed.
     const colAssign: number[] = new Array(events.length).fill(0);
     for (let i = 0; i < events.length; i++) {
       const used = new Set<number>();
       for (let j = 0; j < i; j++) {
-        if (events[j].startMin < events[i].endMin && events[i].startMin < events[j].endMin) {
+        if (overlaps(events[j], events[i])) {
           used.add(colAssign[j]);
         }
       }
@@ -753,7 +762,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     const numColsArr = events.map((ev, i) => {
       let max = colAssign[i];
       for (let j = 0; j < events.length; j++) {
-        if (i !== j && events[j].startMin < ev.endMin && ev.startMin < events[j].endMin) {
+        if (i !== j && overlaps(events[j], ev)) {
           max = Math.max(max, colAssign[j]);
         }
       }
@@ -768,7 +777,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
       changed = false;
       for (let i = 0; i < events.length; i++) {
         for (let j = i + 1; j < events.length; j++) {
-          if (events[j].startMin < events[i].endMin && events[i].startMin < events[j].endMin) {
+          if (overlaps(events[i], events[j])) {
             const maxN = Math.max(numColsArr[i], numColsArr[j]);
             if (numColsArr[i] !== maxN) { numColsArr[i] = maxN; changed = true; }
             if (numColsArr[j] !== maxN) { numColsArr[j] = maxN; changed = true; }
@@ -787,7 +796,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
         borderColor: ev.borderColor,
         textColor: ev.textColor ?? ev.borderColor ?? 'var(--text-primary)',
         top: weekMinToTop(ev.startMin),
-        height: Math.max(((ev.endMin - ev.startMin) / 60) * WEEK_SLOT_HEIGHT, 18),
+        height: Math.max(((ev.endMin - ev.startMin) / 60) * WEEK_SLOT_HEIGHT, MIN_EVENT_HEIGHT),
         left: colAssign[i] / numColsArr[i],
         width: 1 / numColsArr[i],
         block: ev.block,
