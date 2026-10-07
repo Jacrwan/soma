@@ -77,7 +77,7 @@ test('Soma is told which proposals were placed and which were not, and sees pend
     { reply: 'Your plan.', blocks: [] },
   ]);
   await page.goto('/dashboard');
-  await ask(page, 'plan it');
+  await ask(page, 'plan it for tomorrow');
   await expect(page.getByRole('log')).toContainText('Two blocks.');
   await ask(page, 'what is my current plan');
   await expect(page.getByRole('log')).toContainText('Your plan.');

@@ -14,7 +14,7 @@ test('study hours can be turned off and back on, keeping the times', async ({ pa
     if (url.pathname.includes('/auth/v1/')) return route.fulfill({ json: account });
     if (table === 'settings') {
       if (req.method() === 'POST') saved.push(req.postDataJSON());
-      return route.fulfill({ json: { data: { onboardingCompleted: true, theme: 'light' } } });
+      return route.fulfill({ json: { data: { onboardingCompleted: true, theme: 'light', canvasIcalUrl: 'https://bcourses.example/feed.ics', educationLevel: 'college' } } });
     }
     return route.fulfill({ json: req.headers().accept?.includes('vnd.pgrst.object') ? null : [] });
   });
@@ -33,6 +33,9 @@ test('study hours can be turned off and back on, keeping the times', async ({ pa
   expect(await local()).toEqual({ start: '10:00', end: '23:00', off: true });
   await page.getByRole('button', { name: 'Save' }).click();
   await expect.poll(() => JSON.stringify(saved.at(-1) ?? {})).toContain('"off":true');
+  // Saving study hours used to replace every setting with this page's copy,
+  // which wiped the Canvas feed link and made all Canvas deadlines vanish.
+  expect(saved.at(-1)!.data).toMatchObject({ canvasIcalUrl: 'https://bcourses.example/feed.ics', educationLevel: 'college', onboardingCompleted: true });
 
   // Still off after a reload; turning it on brings the old times back.
   await page.reload();

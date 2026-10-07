@@ -72,11 +72,17 @@ test('the prompt asks for a date on every block and forbids "add it yourself"', 
   expect(state.prompt).toContain('when the user agrees to times you already described, return those blocks again');
 });
 
-test('a block without a date still falls back to the selected day', async ({ page }) => {
+// The day on screen used to be the default, and a whole day was planned on
+// Wednesday while the student was looking at it on a Tuesday (2026-10-06).
+test('a block without a date goes on today, not the day on screen', async ({ page }) => {
+  const morning = new Date(); morning.setHours(9, 0, 0, 0);
+  await page.clock.install({ time: morning });
   await setup(page, [{ title: 'Late revision', subject: 'CS 61A', start: '13:00', end: '14:00' }]);
   await page.goto('/dashboard');
   await page.getByLabel('Next seven days').getByRole('button').nth(2).click();
   await ask(page, 'plan it');
+  await expect(page.getByRole('log')).not.toContainText("Couldn't place");
+  await page.getByLabel('Next seven days').getByRole('button').nth(0).click();
   await expect(page.getByRole('button', { name: 'Accept', exact: true })).toHaveCount(1);
 });
 
