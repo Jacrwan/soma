@@ -159,12 +159,13 @@ export function courseProgress(items: CourseItem[], subjects: { id: string; name
       done: doneBefore.length ? `through ${doneBefore[doneBefore.length - 1].label}` : 'nothing yet',
       ...(lastDone && firstOpen && lastDone.position > firstOpen.position ? { alsoDone: list.filter(i => i.doneAt && i.position > firstOpen.position).map(i => i.label).join(', ') } : {}),
       behind: open.filter(i => i.due && i.due < today).length,
-      open: open.slice(0, 14).map(i => {
+      // The next ten, titles kept short: enough to plan from, without paying for the whole list.
+      open: open.slice(0, 10).map(i => {
         const short = `i${ids.size + 1}`;
         ids.set(short, i.id);
-        return { id: short, l: i.label, ...(i.title ? { t: i.title } : {}), ...(i.due ? { due: withWeekday(i.due) } : {}), ...(i.todoId && ended.has(i.todoId) ? { planned: 'ended unchecked' } : i.todoId && upcoming.has(i.todoId) ? { planned: true } : {}) };
+        return { id: short, l: i.label, ...(i.title ? { t: i.title.length > 40 ? `${i.title.slice(0, 39)}…` : i.title } : {}), ...(i.due ? { due: withWeekday(i.due) } : {}), ...(i.todoId && ended.has(i.todoId) ? { planned: 'ended unchecked' } : i.todoId && upcoming.has(i.todoId) ? { planned: true } : {}) };
       }),
-      ...(open.length > 14 ? { more: open.length - 14 } : {}),
+      ...(open.length > 10 ? { more: open.length - 10 } : {}),
       ...(unconfirmed.length ? { unconfirmed: rangeLabel(unconfirmed) } : {}),
     });
   }

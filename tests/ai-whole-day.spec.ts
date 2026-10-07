@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { triaged } from './triage';
-import { setup, idOf, ask, at, type Ctx } from './event-day';
+import { setup, idOf, ask, at, lineOf, lines, type Ctx } from './event-day';
 
 // Reported 2026-10-06, planning a whole day at 3 AM: only five blocks per
 // reply; "I'm not attending OH and RUF" forgotten two replies later; "when I
@@ -20,7 +20,7 @@ test('a skipped class stays skipped on later replies, and the plan says so', asy
   await expect(page.getByText(/Read-only commitment · Skipping/)).toHaveCount(1);
   await ask(page, 'do physics for an hour and a half');
   await expect(page.getByRole('log')).toContainText('Physics now.');
-  expect(r.seen[1].plan.find(e => e.title === 'CS 61A Lecture')!.skip).toBe(true);
+  expect(lineOf(r.seen[1], 'CS 61A Lecture')).toMatch(/ · calendar event · skip$/);
   await page.getByRole('button', { name: 'Accept', exact: true }).click();
   await expect.poll(() => db.todo_sessions.length).toBe(1);
   // Over the skipped lecture, in one piece, not 1–2 PM and a remainder.
@@ -37,7 +37,7 @@ test('"I\'ll go after all" takes a skip back', async ({ page }) => {
   await expect(page.getByText(/Read-only commitment · Skipping/)).toHaveCount(0);
   await ask(page, 'what now');
   await expect(page.getByRole('log')).toContainText('ok');
-  expect(r.seen[2].plan.find(e => e.title === 'gym')!.skip).toBeUndefined();
+  expect(lineOf(r.seen[2], 'gym')).toMatch(/ · calendar event$/);
 });
 
 test('a whole day of blocks comes back in one reply, not five at a time', async ({ page }) => {
@@ -115,7 +115,7 @@ test('a day the student names is kept', async ({ page }) => {
 });
 
 test('work moved past its due date says so on the card', async ({ page }) => {
-  await setup(page, ctx => ({ reply: 'Lab tomorrow.', changes: [{ action: 'move', id: ctx.tasks.find(t => t.title === 'CS 61A Lab 5')!.id, date: TOMORROW, minutes: 30, after: '09:00' }] }), d => {
+  await setup(page, ctx => ({ reply: 'Lab tomorrow.', changes: [{ action: 'move', id: idOf(ctx, 'CS 61A Lab 5'), date: TOMORROW, minutes: 30, after: '09:00' }] }), d => {
     d.todos.push({ id: 't-lab', user_id: 'u', text: 'CS 61A Lab 5', subject_id: 'phys', status: 'nothing', date: '', due_date: TODAY });
   });
   await ask(page, 'do the lab tomorrow');
@@ -158,5 +158,5 @@ test('a leftover copy of finished work is not offered as an open task', async ({
   });
   await ask(page, 'what do i have left');
   await expect(page.getByRole('log')).toContainText('ok');
-  expect(r.seen[0].tasks.map(t => t.title)).not.toContain('Math 53 Homework — Chapters 13.1, 13.2, 14.1, 14.2');
+  expect(lines(r.seen[0].tasks).join('\n')).not.toContain('Math 53 Homework — Chapters 13.1, 13.2, 14.1, 14.2');
 });

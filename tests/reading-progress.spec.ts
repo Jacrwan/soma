@@ -10,7 +10,9 @@ const offset = (n: number) => { const d = new Date(); d.setDate(d.getDate() + n)
 const at = (n: number, t: string) => { const d = offset(n); const [h, m] = t.split(':').map(Number); d.setHours(h, m, 0, 0); return d.toISOString(); };
 const TODAY = key(offset(0)), TOMORROW = key(offset(1));
 type Row = Record<string, unknown>;
-type Ctx = { unchecked?: { id: string; title: string; did: number; cov?: string }[]; courses: { s: string; done: string; behind: number; unconfirmed?: string; open: { id: string; l: string; due?: string; planned?: unknown }[] }[]; plan: { id?: string; title: string; cov?: string }[] };
+// Entries are lines: "<id> <label> <title> · due … · planned", "<id> <time> <title> · <course> · covers …".
+type Ctx = { unchecked?: string[]; courses: { s: string; done: string; behind: number; unconfirmed?: string; open: string[] }[]; plan: Record<string, string[]> };
+const openLine = (course: Ctx['courses'][number], label: string) => course.open.find(l => l.split(' ')[1] === label);
 
 const SECTIONS: [string, number][] = [['3.7', -9], ['4.1', -4], ['4.2', -4], ['4.3', -4], ['4.4', -4], ['4.5', -4], ['4.6', -4], ['4.7', -2], ['4.8', -2], ['4.9', -2], ['5.1', 3], ['5.2', 3], ['5.3', 3], ['5.4', 3]];
 const item = (label: string) => `item-${label}`;
@@ -97,7 +99,7 @@ async function ask(page: Page, text: string) {
   await page.getByLabel('What do you need to work on?').fill(text);
   await page.getByRole('button', { name: 'Send to Soma' }).click();
 }
-const idOf = (ctx: Ctx, label: string) => ctx.courses[0].open.find(i => i.l === label)!.id;
+const idOf = (ctx: Ctx, label: string) => openLine(ctx.courses[0], label)!.split(' ')[0];
 const items = (db: Record<string, Row[]>) => Object.fromEntries(db.course_items.map(r => [String(r.label), r]));
 
 test('Soma sees what is actually read, not what the syllabus says should be', async ({ page }) => {
@@ -107,18 +109,20 @@ test('Soma sees what is actually read, not what the syllabus says should be', as
   const ctx = JSON.parse(state.prompt.match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]) as Ctx;
   const phys = ctx.courses.find(c => c.s === 'Physics 5A')!;
   expect(phys.done).toBe('through 3.7');
-  expect(phys.open[0].l).toBe('4.1');
+  expect(phys.open[0].split(' ')[1]).toBe('4.1');
   expect(phys.behind).toBe(9);                          // 4.1–4.9 are past due and unread
   // Due dates carry their weekday: Soma once called Thursday Oct 1 "Wednesday".
-  const due = phys.open[0].due!.slice(4);
-  expect(phys.open[0].due).toBe(`${new Date(`${due}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short' })} ${due}`);
-  expect(phys.open[0].due).toMatch(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{4}-\d{2}-\d{2}$/);
+  const [, wd, md] = phys.open[0].match(/ · due (\w{3}) (\d\d-\d\d)/)!;
+  const year = new Date().getFullYear();
+  const dueDay = [year - 1, year, year + 1].map(y => new Date(`${y}-${md}T12:00:00`)).sort((a, b) => Math.abs(+a - Date.now()) - Math.abs(+b - Date.now()))[0];
+  expect(wd).toBe(dueDay.toLocaleDateString('en-US', { weekday: 'short' }));
   expect(phys.unconfirmed).toBe('4.1–4.6');             // its block ended unchecked
-  expect(phys.open[0].planned).toBe('ended unchecked');
-  expect(ctx.plan.find(p => p.title.startsWith('Physics reading'))!.cov).toBe('4.1–4.6');
+  expect(phys.open[0]).toMatch(/ · ended unchecked$/);
+  expect(Object.values(ctx.plan).flat().find(l => l.includes(' Physics reading'))).toMatch(/ · covers 4\.1–4\.6/);
   expect(state.prompt).toContain('never infer it from a due date');
   // Worked on but never checked off: Soma is told to ask.
-  expect(ctx.unchecked).toEqual([expect.objectContaining({ id: expect.stringMatching(/^b[0-9a-z]{6}$/), did: 30, cov: '4.1–4.6' })]);
+  expect(ctx.unchecked).toHaveLength(1);
+  expect(ctx.unchecked![0]).toMatch(/^b[0-9a-z]{6} .* · did 30m · covers 4\.1–4\.6$/);
 });
 
 test('a block that ended with no Focus time counts as not started: no question, no bookmark', async ({ page }) => {
@@ -129,7 +133,7 @@ test('a block that ended with no Focus time counts as not started: no question, 
   const ctx = JSON.parse(state.prompt.match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]) as Ctx;
   expect(ctx.unchecked).toBeUndefined();
   expect(ctx.courses[0].unconfirmed).toBeUndefined();
-  expect(ctx.courses[0].open[0].planned).toBeUndefined();
+  expect(ctx.courses[0].open[0]).not.toMatch(/planned|ended unchecked/);
 });
 
 test('saying it was finished marks a past block done from today’s plan', async ({ page }) => {
@@ -173,7 +177,7 @@ test('a block cannot re-plan sections already in an upcoming block', async ({ pa
   await ask(page, 'plan 4.7 to 4.9');
   await expect(page.getByRole('log')).toContainText('4.7 is already planned in another block');
   const ctx = JSON.parse(state.prompt.match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]) as Ctx;
-  expect(ctx.courses[0].open.find(i => i.l === '4.7')!.planned).toBe(true);
+  expect(openLine(ctx.courses[0], '4.7')).toMatch(/ · planned$/);
 });
 
 test('a block worked on shows a bookmark that records how far you got', async ({ page }) => {
