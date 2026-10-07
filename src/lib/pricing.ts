@@ -11,3 +11,7 @@ export const SEMESTER_SAVINGS = '34%';            // vs 4 × 10.99 = 43.96
 
 // Must match TRIAL_DAYS in api/_trial.ts, which decides when access ends.
 export const TRIAL_DAYS = 7;
+
+// A one-time top-up of the monthly Soma budget. Must match TOPUP_PRICE_CENTS
+// in api/_budget.ts, which is what Stripe charges.
+export const TOPUP_PRICE = '$2.99';

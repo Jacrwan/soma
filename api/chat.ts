@@ -4,11 +4,12 @@ import { loadMemoryContext, learnFromMessage } from './_memory';
 import { waitUntil } from '@vercel/functions';
 import { EXTENSION_MS, trialLengthMs } from './_trial';
 import { recordUsage, type Usage } from './_usage';
+import { budgetStatus, type BudgetStatus } from './_budget';
 
 export const config = { api: { bodyParser: { sizeLimit: '4.5mb' } } };
 // Sonnet thinks before it answers; a whole day's plan can take over a minute.
 export const maxDuration = 150;
-type Authorization = { ok:true; userId:string } | { ok:false; status:number; error:string };
+type Authorization = { ok:true; userId:string; unlimited?:true } | { ok:false; status:number; error:string };
 
 export function computeStatus(row:{status:string;trial_start:string|null;extension_start:string|null},now=Date.now()):string {
  const start=row.status==='trial_extended' ? row.extension_start : row.trial_start;
@@ -25,7 +26,7 @@ export async function authorizeChat(admin:ReturnType<typeof createClient>,token:
   const {data:{user},error}=await admin.auth.getUser(token);
   if(error && (!error.status || error.status>=500))return {ok:false,status:503,error:'auth_service_unavailable'};
   if(error || !user)return {ok:false,status:401,error:'auth_required'};
-  if(devEmail && user.email?.toLowerCase()===devEmail.trim().toLowerCase())return {ok:true,userId:user.id};
+  if(devEmail && user.email?.toLowerCase()===devEmail.trim().toLowerCase())return {ok:true,userId:user.id,unlimited:true};
   const {data:sub,error:lookupError}=await admin.from('subscriptions').select('status, trial_start, extension_start').eq('user_id',user.id).maybeSingle();
   if(lookupError)return {ok:false,status:503,error:'subscription_unavailable'};
   const status=sub ? computeStatus(sub) : 'free';
@@ -37,6 +38,12 @@ export async function verifyUserAndSubscription(token:string):Promise<Authorizat
  const url=process.env.VITE_SUPABASE_URL,key=process.env.SUPABASE_SERVICE_ROLE_KEY;
  if(!url || !key)return {ok:false,status:503,error:'server_not_configured'};
  return authorizeChat(createClient(url,key,{auth:{autoRefreshToken:false,persistSession:false}}),token,process.env.DEVELOPER_EMAIL);
+}
+
+async function defaultBudget(userId:string):Promise<BudgetStatus|null>{
+ const url=process.env.VITE_SUPABASE_URL,key=process.env.SUPABASE_SERVICE_ROLE_KEY;
+ if(!url || !key)return null;
+ return budgetStatus(createClient(url,key,{auth:{autoRefreshToken:false,persistSession:false}}) as never,userId);
 }
 
 export function validateChatInput(body:unknown):string|null{
@@ -79,7 +86,7 @@ function rateLimited(userId:string){
  hits.set(userId,[...times,now]);return false;
 }
 
-export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Authorization>;request?:typeof fetch;apiKey?:()=>string|undefined;limited?:(id:string)=>boolean;memory?:(userId:string,query:string)=>Promise<string>;learn?:(userId:string,message:string,assistantContext:string,apiKey:string)=>Promise<void>;defer?:(task:Promise<unknown>)=>void;record?:(userId:string,kind:'reply',model:string,usage:Usage)=>Promise<void>}={}){
+export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Authorization>;request?:typeof fetch;apiKey?:()=>string|undefined;limited?:(id:string)=>boolean;memory?:(userId:string,query:string)=>Promise<string>;learn?:(userId:string,message:string,assistantContext:string,apiKey:string)=>Promise<void>;defer?:(task:Promise<unknown>)=>void;record?:(userId:string,kind:'reply',model:string,usage:Usage)=>Promise<void>;budget?:(userId:string)=>Promise<BudgetStatus|null>}={}){
  return async function handler(req:any,res:any){
   const origin=req.headers.origin;
   if(origin==='https://somastudy.app' || (process.env.NODE_ENV!=='production' && origin==='http://localhost:5173'))res.setHeader('Access-Control-Allow-Origin',origin);
@@ -95,30 +102,40 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
    const auth=await (deps.authorize??verifyUserAndSubscription)(token);
    if(!auth.ok)return res.status(auth.status).json({error:auth.error});
    if((deps.limited??rateLimited)(auth.userId)){res.setHeader('Retry-After','60');return res.status(429).json({error:'rate_limit'});}
+   // Each plan includes a monthly AI budget; past it, Soma pauses until the
+   // reset or a top-up. The owner's account (DEVELOPER_EMAIL) has no limit.
+   if(!auth.unlimited){
+    const budget=await (deps.budget??defaultBudget)(auth.userId);
+    if(budget && budget.used>=budget.available)return res.status(402).json({error:'ai_budget_used',resetsAt:budget.resetsAt,trial:budget.trial});
+   }
    const key=(deps.apiKey??(()=>process.env.ANTHROPIC_API_KEY))();
    if(!key)return res.status(503).json({error:'server_not_configured'});
    const {messages,systemPrompt,context,model}=req.body;
    const lastContent=messages[messages.length-1].content;
    const query=typeof lastContent==='string' ? lastContent : lastContent.filter((b:any)=>b.type==='text').map((b:any)=>b.text).join(' ');
    const savedMemory=await (deps.memory??loadMemoryContext)(auth.userId,query);
-   // Memory is ranked per request, so it changes nearly every call. It goes in
-   // its own block after the cache breakpoint: prompt caching is a prefix match,
-   // and folding it into the cached block would miss the cache on every message
-   // and re-bill the full system prompt (documents included) each time.
-   // systemPrompt is the part that stays the same between messages (instructions,
-   // documents), so it is cached; context is the live plan and changes every call.
-   const system=[
-    ...(systemPrompt ? [{type:'text' as const,text:systemPrompt,cache_control:{type:'ephemeral' as const}}] : []),
-    ...(context ? [{type:'text' as const,text:context}] : []),
-    ...(savedMemory ? [{type:'text' as const,text:savedMemory}] : []),
-   ];
+   // Prompt caching is a prefix match. systemPrompt (instructions, documents)
+   // stays the same between messages, and so do the earlier turns of the chat;
+   // the live plan (context) and memory (ranked per request) change every call.
+   // They used to sit in the system prompt, ahead of the chat, so the chat was
+   // re-billed in full every message. Now they ride on the newest message, after
+   // a cache breakpoint on the turn before it, and the whole chat is read from
+   // cache at a tenth of the price.
+   const system=systemPrompt ? [{type:'text' as const,text:systemPrompt,cache_control:{type:'ephemeral' as const}}] : [];
+   const live=[context,savedMemory].filter((x):x is string=>typeof x==='string' && !!x.trim()).join('\n\n');
+   const blocks=(content:unknown)=>typeof content==='string' ? [{type:'text',text:content}] : content as Record<string,unknown>[];
+   const sent=messages.map((m:{role:string;content:unknown},i:number)=>{
+    if(i===messages.length-1)return live ? {role:m.role,content:[{type:'text',text:live},...blocks(m.content)]} : m;
+    if(i===messages.length-2){const b=blocks(m.content);return {role:m.role,content:b.map((x,j)=>j===b.length-1 ? {...x,cache_control:{type:'ephemeral'}} : x)};}
+    return m;
+   });
    // Soma's replies use Sonnet 5.5, thinking at medium effort: Haiku answered
    // "last week's homework" with the homework done last week. A declined
    // request falls back to another model rather than failing (beta).
    const sonnet=model==='sonnet';
    const response=await (deps.request??fetch)('https://api.anthropic.com/v1/messages',{
     method:'POST',signal:AbortSignal.timeout(140_000),headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json',...(sonnet ? {'anthropic-beta':'server-side-fallback-2026-07-01'} : {})},
-    body:JSON.stringify({model:sonnet ? 'claude-sonnet-5-5' : 'claude-haiku-4-5-20251001',max_tokens:sonnet ? 16000 : 8192,...(sonnet ? {output_config:{effort:'medium'},fallbacks:'default'} : {}),...(system.length ? {system} : {}),messages}),
+    body:JSON.stringify({model:sonnet ? 'claude-sonnet-5-5' : 'claude-haiku-4-5-20251001',max_tokens:sonnet ? 16000 : 8192,...(sonnet ? {output_config:{effort:'medium'},fallbacks:'default'} : {}),...(system.length ? {system} : {}),messages:sent}),
    });
    if(response.status===429)return res.status(429).json({error:'rate_limit'});
    if(response.status===529)return res.status(529).json({error:'overloaded'});

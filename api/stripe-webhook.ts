@@ -108,6 +108,15 @@ export default async function handler(req: any, res: any) {
         const sub = await stripe.subscriptions.retrieve(session.subscription as string);
         await upsertSubscription(sub);
       }
+      // A paid top-up adds to this month's Soma budget. Stripe can deliver an
+      // event twice; the session id is unique, so it's counted once.
+      if (session.mode === 'payment' && session.metadata?.kind === 'ai_topup' && session.payment_status === 'paid' && session.metadata.supabase_user_id) {
+        const { error } = await admin.from('ai_topups').upsert(
+          { user_id: session.metadata.supabase_user_id, stripe_session_id: session.id, amount_usd: Number(session.metadata.adds_usd) || 0 },
+          { onConflict: 'stripe_session_id', ignoreDuplicates: true },
+        );
+        if (error) throw new Error(`ai_topups: ${error.message}`);
+      }
       break;
     }
 

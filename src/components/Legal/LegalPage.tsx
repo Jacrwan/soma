@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import styles from './LegalPage.module.css';
-import { MONTHLY_PRICE, SEMESTER_PRICE, SEMESTER_PER_MONTH, SEMESTER_SAVINGS, TRIAL_DAYS } from '../../lib/pricing';
+import { MONTHLY_PRICE, SEMESTER_PRICE, SEMESTER_PER_MONTH, SEMESTER_SAVINGS, TRIAL_DAYS, TOPUP_PRICE } from '../../lib/pricing';
 
 export type LegalType =
   | 'privacy'
@@ -452,7 +452,10 @@ function Terms() {
           requires a payment method, and each account can have one free trial. If you cancel before
           the trial ends you are not charged; otherwise your first payment is taken when the trial
           ends, and your subscription renews automatically on your chosen billing cycle until you
-          cancel. See our <Link to="/billing">Billing & Subscription</Link> page for full details.
+          cancel. Soma Premium includes a monthly amount of AI use that resets on your billing
+          date, and the trial includes a smaller amount; when it is used up, AI features pause
+          until the reset, and subscribers can buy a one-time top-up ({TOPUP_PRICE} USD) that
+          adds more until then. See our <Link to="/billing">Billing & Subscription</Link> page for full details.
         </p>
       </div>
 
@@ -671,6 +674,22 @@ function Billing() {
       </div>
 
       <div className={styles.section}>
+        <h2>Monthly AI use and top-ups</h2>
+        <p>
+          Each Soma Premium month includes an amount of AI use, shown in the app as a percentage
+          under the chat box and in <strong>Settings → Subscription</strong>. It resets every
+          month on your billing date (on the 4-month plan, on the same day each month). The free
+          trial includes a smaller amount for its 7 days. When it is used up, asking Soma pauses
+          until the reset; your plan, timer, calendar and everything else keep working.
+        </p>
+        <p>
+          Subscribers can buy a one-time top-up for <strong>{TOPUP_PRICE} USD</strong>, which adds
+          more AI use until your next reset. Top-ups are charged once, do not renew, and do not
+          carry over past the reset.
+        </p>
+      </div>
+
+      <div className={styles.section}>
         <h2>How to cancel</h2>
         <p>
           You can cancel at any time from <strong>Settings → Subscription → Manage
@@ -754,6 +773,14 @@ function Refund() {
           If you subscribe and decide Soma isn't right for you, you can request a full refund
           within <strong>7 days of your first payment</strong>. This applies to your first
           subscription payment only.
+        </p>
+      </div>
+
+      <div className={styles.section}>
+        <h2>Top-ups</h2>
+        <p>
+          If you bought a top-up by mistake, contact us within 7 days of the purchase and we will
+          refund it as long as none of the added AI use has been used.
         </p>
       </div>
 

@@ -6,6 +6,8 @@ import UniversityPicker from '../shared/UniversityPicker';
 import { countryName, type University } from '../../lib/universities';
 import { EDUCATION_OPTIONS, EDUCATION_LABELS, type EducationId } from '../Onboarding/OnboardingFlow';
 import { applyTheme } from '../../App';
+import AiBudgetMeter from '../UI/AiBudgetMeter';
+import { useAiBudget } from '../../lib/aiBudget';
 import { applyTimeFormat, formatClock } from '../../lib/timeFormat';
 import { requestMemory, type MemoryState, type MemoryMutation } from '../../lib/aiMemory';
 import { SkeletonBlock } from '../UI/Skeleton';
@@ -27,6 +29,7 @@ type Section = 'profile' | 'subscription' | 'appearance' | 'hours' | 'memory' | 
 export default function SettingsTab() {
   const navigate = useNavigate();
   const [settings, setSettings] = useState<SomaSettings>(() => storage.getSomaSettings());
+  const aiBudget = useAiBudget();
   const [activeSection, setActiveSection] = useState<Section>('profile');
   const subscription = useSubscription();
   const [subLoading, setSubLoading] = useState(false);
@@ -744,6 +747,13 @@ export default function SettingsTab() {
                    'Free'}
                 </span>
               </div>
+
+              {(subscription.status === 'active' || subscription.status === 'trialing') && (
+                <div className={styles.subRow} style={{ display: 'block' }}>
+                  <span className={styles.subLabel}>Soma usage</span>
+                  <AiBudgetMeter budget={aiBudget} returnPath="/settings" offerAlways />
+                </div>
+              )}
 
               {subscription.status === 'trialing' && subscription.trialEndsAt && (
                 <div className={styles.subRow}>

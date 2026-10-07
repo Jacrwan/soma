@@ -16,6 +16,8 @@ import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import TrialSetupModal from '../Trial/TrialSetupModal';
 import styles from './AITab.module.css';
 import { MONTHLY_PRICE, SEMESTER_PRICE, TRIAL_DAYS } from '../../lib/pricing';
+import AiBudgetMeter from '../UI/AiBudgetMeter';
+import { useAiBudget, budgetUsedUp } from '../../lib/aiBudget';
 
 declare global {
   interface Window {
@@ -316,6 +318,9 @@ export default function AITab() {
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [loading, setLoading] = useState(false);
+  // This month's Soma: shown under the input; used up, asking pauses.
+  const budget = useAiBudget();
+  const paused = budgetUsedUp(budget);
   const [historyError,setHistoryError]=useState('');
   const [proposalError,setProposalError]=useState('');
   const [accepting,setAccepting]=useState(false);
@@ -579,6 +584,7 @@ export default function AITab() {
   }
 
   async function send() {
+    if (paused) return;
     const text = input.trim();
     if (!text || loading || !activeSessionId) return;
 
@@ -804,9 +810,10 @@ export default function AITab() {
             <button
               className={styles.sendBtn}
               onClick={send}
-              disabled={loading || !input.trim()}
+              disabled={loading || !input.trim() || paused}
             >Send</button>
           </div>
+          <AiBudgetMeter budget={budget} returnPath="/ai" />
         </div>
       </div>
     </div>

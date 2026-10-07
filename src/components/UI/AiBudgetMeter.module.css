@@ -1,0 +1,9 @@
+.meter { display: grid; gap: 6px; margin-top: 10px; }
+.bar { height: 3px; border-radius: 2px; background: var(--bg-tertiary, oklch(93% .005 265)); overflow: hidden; }
+.bar span { display: block; height: 100%; border-radius: inherit; background: var(--text-secondary, oklch(43% .008 265)); transition: width .3s ease-out; }
+.out .bar span { background: var(--danger, oklch(52% .2 25)); }
+.line { font-size: 10px; line-height: 1.5; color: var(--text-secondary, oklch(43% .008 265)); margin: 0; }
+.out .line { color: var(--text-primary, oklch(22% .008 265)); }
+.line a { color: inherit; text-decoration: underline; }
+.topup { justify-self: start; font-size: 11px !important; min-height: 28px !important; padding: 4px 10px !important; }
+@media (prefers-reduced-motion: reduce) { .bar span { transition: none; } }
