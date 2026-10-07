@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { triaged } from './triage';
 import { setup, idOf, ask, at, type Ctx } from './event-day';
 
 // Reported 2026-10-06, planning a whole day at 3 AM: only five blocks per
@@ -141,7 +142,7 @@ test('Soma is given this week and last week as dates', async ({ page }) => {
 test('every Soma reply uses the larger model, not only planning ones', async ({ page }) => {
   let model: unknown;
   await setup(page, () => ({ reply: 'ok' }));
-  await page.route('**/api/chat', async route => { model = route.request().postDataJSON().model; await route.fallback(); });
+  await page.route('**/api/chat', async route => { if (triaged(route)) return; model = route.request().postDataJSON().model; await route.fallback(); });
   await ask(page, 'are you sure the math homework is correct?');
   await expect(page.getByRole('log')).toContainText('ok');
   expect(model).toBe('sonnet');

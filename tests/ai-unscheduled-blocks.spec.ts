@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { triaged } from './triage';
 
 // "add it as unscheduled" always came back as "One suggestion came back
 // incomplete": start and end were both required, so a block with no time could
@@ -25,7 +26,7 @@ async function setup(page:Page,reply:unknown){
  });
  await page.route('**/api/stripe',r=>r.fulfill({json:{status:'active'}}));
  await page.route('**/api/google-calendar-events',r=>r.fulfill({json:{events:[],incomplete:false}}));
- await page.route('**/api/chat',r=>r.fulfill({json:{content:[{text:JSON.stringify(reply)}]}}));
+ await page.route('**/api/chat',r=>triaged(r) ? undefined : r.fulfill({json:{content:[{text:JSON.stringify(reply)}]}}));
  return st;
 }
 async function ask(page:Page,text:string){

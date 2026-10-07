@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { triaged } from './triage';
 import { freeTime } from '../src/lib/aiPlanning';
 
 const account = { id: '11111111-1111-4111-8111-111111111111', email: 'student@example.com', aud: 'authenticated', role: 'authenticated', created_at: '2025-01-01T00:00:00Z', app_metadata: {}, user_metadata: {} };
@@ -37,7 +38,7 @@ async function setup(page: Page, replies: unknown[], opts: { ownSession?: boolea
   await page.route('**/api/stripe', r => r.fulfill({ json: { status: 'active' } }));
   await page.route('**/api/google-calendar-events', r => r.fulfill({ json: { events, incomplete: false } }));
   let turn = 0;
-  await page.route('**/api/chat', route => {
+  await page.route('**/api/chat', route => { if (triaged(route)) return;
     const body = route.request().postDataJSON();
     state.prompts.push(`${body.systemPrompt}\n${body.context??""}`); state.bodies.push(body);
     return route.fulfill({ json: { content: [{ text: JSON.stringify(replies[Math.min(turn++, replies.length - 1)]) }] } });

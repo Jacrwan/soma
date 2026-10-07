@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { triaged } from './triage';
 
 // The reported case: memory said "read through 3.7", and Soma still called
 // last week's assigned reading (4.1–4.9) "completed". Progress now comes only
@@ -82,7 +83,7 @@ async function setup(page: Page, reply: (ctx: Ctx) => unknown, edit?: (db: Recor
   await page.route('**/api/stripe', r => r.fulfill({ json: { status: 'active' } }));
   await page.route('**/api/memory', r => r.fulfill({ json: { revision: 0, enabled: true, entries: [] } }));
   await page.route('**/api/google-calendar-events', r => r.fulfill({ json: { events: [], incomplete: false } }));
-  await page.route('**/api/chat', route => {
+  await page.route('**/api/chat', route => { if (triaged(route)) return;
     const body = route.request().postDataJSON();
     state.prompt = `${body.systemPrompt}\n${body.context ?? ''}`;
     const ctx = JSON.parse(String(body.context).match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]) as Ctx;

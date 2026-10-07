@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { triaged } from './triage';
 
 // Reported 2026-10-04: a chat started Saturday evening and picked up after
 // midnight. Soma said "you're doing the practice midterm 8:50–10 PM" about
@@ -52,7 +53,7 @@ async function setup(page: Page) {
   });
   await page.route('**/api/stripe', r => r.fulfill({ json: { status: 'active' } }));
   await page.route('**/api/google-calendar-events', r => r.fulfill({ json: { events: [], incomplete: false } }));
-  await page.route('**/api/chat', route => {
+  await page.route('**/api/chat', route => { if (triaged(route)) return;
     bodies.push(route.request().postDataJSON());
     return route.fulfill({ json: { content: [{ text: JSON.stringify({ reply: `Noted ${bodies.length}.`, blocks: [] }) }] } });
   });

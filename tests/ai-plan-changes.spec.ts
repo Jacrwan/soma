@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { triaged } from './triage';
 
 const account = { id: '11111111-1111-4111-8111-111111111111', email: 'student@example.com', aud: 'authenticated', role: 'authenticated', created_at: '2025-01-01T00:00:00Z', app_metadata: {}, user_metadata: {} };
 const key = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -66,7 +67,7 @@ async function setup(page: Page, reply: unknown, edit?: (db: Record<string, Row[
   await page.route('**/api/stripe', r => r.fulfill({ json: { status: 'active' } }));
   await page.route('**/api/memory', r => r.fulfill({ json: { revision: 0, enabled: true, entries: [] } }));
   await page.route('**/api/google-calendar-events', r => r.fulfill({ json: { events: [], incomplete: false } }));
-  await page.route('**/api/chat', route => {
+  await page.route('**/api/chat', route => { if (triaged(route)) return;
     state.prompt = (b=>`${b.systemPrompt}\n${b.context??""}`)(route.request().postDataJSON());
     const next = replies.length ? replies.shift() : reply;
     return route.fulfill({ json: { content: [{ text: typeof next === 'string' ? next : JSON.stringify(next) }] } });
@@ -299,7 +300,7 @@ test('a failed request is answered in the chat, not only in the status line', as
   await setup(page, { reply: 'ok', blocks: [] });
   // A body that is not JSON is now read as a prose answer, so this needs a
   // failure that is unambiguously one.
-  await page.route('**/api/chat', r => r.fulfill({ status: 500, json: { error: 'server_error' } }));
+  await page.route('**/api/chat', r => triaged(r) ? undefined : r.fulfill({ status: 500, json: { error: 'server_error' } }));
   await ask(page, 'move everything');
   await expect(page.getByRole('log').getByText(/unreadable|try again/i)).toBeVisible();
 });

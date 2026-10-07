@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { triaged } from './triage';
 
 // Reported: "the whole AI scheduler loses purpose if I have to tell it exactly
 // when to schedule stuff". Soma chose clock times itself and put blocks on top
@@ -50,7 +51,7 @@ async function setup(page: Page, reply: unknown, more: typeof events = [], clock
   await page.route('**/api/stripe', r => r.fulfill({ json: { status: 'active' } }));
   await page.route('**/api/memory', r => r.fulfill({ json: { revision: 0, enabled: true, entries: [] } }));
   await page.route('**/api/google-calendar-events', r => r.fulfill({ json: { events: [...events, ...more], incomplete: false } }));
-  await page.route('**/api/chat', route => {
+  await page.route('**/api/chat', route => { if (triaged(route)) return;
     const body = route.request().postDataJSON();
     state.prompt = `${body.systemPrompt}\n${body.context ?? ''}`;
     return route.fulfill({ json: { content: [{ text: JSON.stringify(reply) }] } });
@@ -272,7 +273,7 @@ test('accepting a move retires the other suggestions for that block', async ({ p
   let n = 0;
   const state = await setup(page, {} as never);
   await page.unroute('**/api/chat');
-  await page.route('**/api/chat', route => route.fulfill({ json: { content: [{ text: JSON.stringify(++n === 1
+  await page.route('**/api/chat', route => triaged(route) ? undefined : route.fulfill({ json: { content: [{ text: JSON.stringify(++n === 1
     ? { reply: 'Delete it?', changes: [{ action: 'remove', id: 's-hw' }] }
     : { reply: 'Moved.', changes: [{ action: 'move', id: 's-hw', date: TOMORROW, start: '12:00', end: '13:00' }] }) }] } }));
   await ask(page, 'delete the homework');
