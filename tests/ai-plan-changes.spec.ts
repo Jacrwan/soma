@@ -264,19 +264,26 @@ test('the prompt offers update and says work is split only when nothing fits', a
   expect(state.prompt).not.toContain('Changes to existing tasks must be made with Edit plan');
 });
 
-test('past weeks: the arrows show earlier days and their blocks, without Focus', async ({ page }) => {
+test('past days: the arrows step back a day at a time and show its blocks, without Focus', async ({ page }) => {
   const past = key(offset(-3));
   await setup(page, { reply: 'ok', blocks: [] }, db => {
     db.todos.push({ id: 't-old', user_id: account.id, text: 'Old lab writeup', subject_id: 'phys', status: 'nothing', date: past });
     db.todo_sessions.push({ id: 's-old', user_id: account.id, todo_id: 't-old', date: past, start_time: at(-3, '14:00'), end_time: at(-3, '15:00') });
   });
-  await page.getByRole('button', { name: 'Earlier week' }).click();
+  // Setup picked tomorrow; start from today.
+  await page.getByLabel('Next seven days').getByRole('button').first().click();
+  for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Previous day' }).click();
   const strip = page.getByLabel('Seven days shown');
   await expect(strip).toBeVisible();
-  await strip.getByRole('button').nth(4).click();                // -7 + 4 = three days ago
+  // One day per click: three days ago is first in the strip, and chosen.
+  await expect(strip.getByRole('button').first()).toHaveAttribute('aria-pressed', 'true');
+  await expect(strip.getByRole('button').first()).toContainText(String(offset(-3).getDate()));
   await expect(page.getByText('Old lab writeup')).toBeVisible();
   await expect(page.getByRole('button', { name: /Start focus/ })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Back to this week' }).click();
+  await page.getByRole('button', { name: 'Next day' }).click();
+  await expect(strip.getByRole('button').first()).toContainText(String(offset(-2).getDate()));
+  await expect(strip.getByRole('button').first()).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Back to today' }).click();
   await expect(page.getByLabel('Next seven days')).toBeVisible();
   await expect(page.getByLabel('Next seven days').getByRole('button').first()).toHaveAttribute('aria-pressed', 'true');
 });

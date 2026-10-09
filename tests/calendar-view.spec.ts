@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import {
-  nextAnchors, isTodayVisible, getFirstOfMonth, getSundayOfWeek, addDays, startOfDay,
+  nextAnchors, isTodayVisible, getFirstOfMonth, getSundayOfWeek, addDays, startOfDay, dashboardDayFor,
   type CalendarView, type ViewAnchors,
 } from '../src/lib/calendarView';
 
@@ -88,6 +88,16 @@ test('switching views repeatedly while on today keeps landing on today', () => {
   expect(key(anchors.month)).toBe('2026-09-01');
   anchors = nextAnchors('week', 'month', anchors, TODAY);
   expect(key(anchors.rangeStart)).toBe('2026-09-13');
+});
+
+test('a picked day opens the dashboard on that day and the strip that holds it', () => {
+  expect(dashboardDayFor(TODAY, TODAY)).toEqual({ day: 0, rangeStart: 0 });
+  expect(dashboardDayFor(d(2026, 9, 23), TODAY)).toEqual({ day: 6, rangeStart: 0 });
+  expect(dashboardDayFor(d(2026, 9, 24), TODAY)).toEqual({ day: 7, rangeStart: 7 });
+  expect(dashboardDayFor(d(2026, 9, 16), TODAY)).toEqual({ day: -1, rangeStart: -7 });
+  expect(dashboardDayFor(d(2026, 9, 10), TODAY)).toEqual({ day: -7, rangeStart: -7 });
+  // Across the clocks going back (1 Nov 2026) a day is still one day.
+  expect(dashboardDayFor(d(2026, 11, 2), d(2026, 10, 31)).day).toBe(2);
 });
 
 // ── In the browser ────────────────────────────────────────────────────────
@@ -223,4 +233,40 @@ test(`a short session just before a block gets its own lane instead of covering 
   expect(sliver && long).toBeTruthy();
   const apart = sliver!.x + sliver!.width <= long!.x + 1 || long!.x + long!.width <= sliver!.x + 1 || sliver!.y + sliver!.height <= long!.y + 1;
   expect(apart).toBe(true);
+});
+
+test('clicking a day in the month opens the week that holds it', async ({ page }) => {
+  await openCalendar(page);
+  // The 20th of next month: today is not in that week.
+  await page.getByRole('button', { name: 'Next month' }).click();
+  const now = new Date();
+  const picked = new Date(now.getFullYear(), now.getMonth() + 1, 20);
+  await page.locator('[class*="monthCell"]:not([class*="monthCellOther"])').filter({ hasText: /^20/ }).first().click();
+
+  await expect(dayHeaders(page)).toHaveCount(7);
+  const sunday = getSundayOfWeek(picked);
+  await expect(dayHeaders(page).first()).toContainText(String(sunday.getDate()));
+  await expect(dayHeaders(page).nth(picked.getDay())).toContainText('20');
+
+  // Month comes back to the month it was opened from.
+  await page.getByRole('button', { name: 'Month', exact: true }).click();
+  await expect(page.locator('[class*="navTitle"]')).toContainText(picked.toLocaleDateString('en-US', { month: 'long' }));
+});
+
+test('clicking a date in the week view opens the dashboard on that day', async ({ page }) => {
+  await openCalendar(page);
+  await page.getByRole('button', { name: 'Week', exact: true }).click();
+  await page.getByRole('button', { name: 'Next week' }).click();
+  // Monday of next week: one to eight days away, never today.
+  const picked = addDays(getSundayOfWeek(new Date()), 8);
+  await dayHeaders(page).nth(1).click();
+
+  await expect(page).toHaveURL(/\/dashboard$/);
+  const pressed = page.getByLabel(/seven days/i).locator('button[aria-pressed="true"]');
+  await expect(pressed).toContainText(String(picked.getDate()));
+  await expect(pressed).toContainText(picked.toLocaleDateString(undefined, { weekday: 'short' }));
+
+  // Spent once: a reload opens on today.
+  await page.reload();
+  await expect(page.getByLabel('Next seven days').locator('button[aria-pressed="true"]')).toContainText('Today');
 });

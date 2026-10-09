@@ -188,7 +188,8 @@ interface Chip {
 interface CalendarTabProps {
   selectedDate: Date;
   onSelectDate: (date: Date) => void;
-  onSwitchToToday: () => void;
+  /** Open the dashboard on this day. */
+  onOpenDay: (date: Date) => void;
 }
 
 interface WeekBlockEditForm {
@@ -301,7 +302,7 @@ function saveFilters(f: Filters) {
   localStorage.setItem(FILTER_KEY, JSON.stringify(f));
 }
 
-export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToday }: CalendarTabProps) {
+export default function CalendarTab({ selectedDate, onSelectDate, onOpenDay }: CalendarTabProps) {
   const navigate = useNavigate();
   const [connections, setConnections] = useState<GoogleCalendarConnection[]>([]);
   const [gcalLoading, setGcalLoading] = useState(false);
@@ -834,9 +835,19 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
     setViewMode(mode);
   }
 
+  // A day in the week or three-day view opens the dashboard on that day.
   function handleDayClick(date: Date) {
     onSelectDate(date);
-    onSwitchToToday();
+    onOpenDay(date);
+  }
+
+  // A day in the month grid opens the week that holds it; Month comes back to
+  // this month, as switching views does.
+  function handleMonthDayClick(date: Date) {
+    onSelectDate(date);
+    setOriginMonth(getFirstOfMonth(viewMonth));
+    setViewWeekStart(getSundayOfWeek(date));
+    setViewMode('week');
   }
 
   const headerTitle = viewMode === 'month'
@@ -1004,8 +1015,8 @@ export default function CalendarTab({ selectedDate, onSelectDate, onSwitchToToda
                   isSameDay(date, today) ? styles.monthCellToday : '',
                   isSameDay(date, selectedDate) ? styles.monthCellSelected : '',
                 ].filter(Boolean).join(' ')}
-                onClick={() => handleDayClick(date)}
-                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleDayClick(date); } }}
+                onClick={() => handleMonthDayClick(date)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleMonthDayClick(date); } }}
                 tabIndex={0}
                 role="button"
                 aria-current={isSameDay(date, today) ? 'date' : undefined}
