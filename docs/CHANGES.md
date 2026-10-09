@@ -11,6 +11,39 @@ still needed.
 
 ## 2026-10-09
 
+### Editing a session: move it to another day
+- **Why:** the Edit form on a past session (Length / Start and end) had no way
+  to change the day, so a session saved to the wrong day had to be deleted and
+  added again.
+- **What:** Edit now has the same Day choice as Add (Today, Yesterday, Earlier
+  with a date picker), set to the session's own day. Moving a session in Length
+  mode keeps its clock time and length; Start and end uses the typed times on
+  the chosen day. The summary says the day before saving ("Moves to Thu, Oct 8
+  · 25 minutes."). The saved row's `date` follows its start, as before, so the
+  dashboard, calendar and Insights all move it together.
+- **Where:** `src/components/DashboardV2/PlanEditor.tsx` (`logDate`,
+  `logEarlier`), `LiveDashboard.tsx` (`onEditSession` takes `date`),
+  `DashboardV2.tsx` (type).
+- **Guard:** `tests/session-times-and-calendar.spec.ts` › "editing a session can
+  move it to another day…".
+
+### Adding a session: pick the day (Today, Yesterday, Earlier)
+- **Why:** "i just added a past session but it added it to oct9, not oct 8 which
+  is when it happened. allow the user to select the day". The form had a date
+  box, but it defaulted to today, sat above the times unlabelled by purpose, and
+  the cursor jumped past it to Start; at 1 AM, last night's session landed on
+  the new day.
+- **What:** the add form opens with a Day choice: Today, Yesterday, Earlier
+  (Earlier shows a date picker, starting two days back). The summary line under
+  the times now names the day before saving ("Thu, Oct 8 · 137 minutes."),
+  in both Length and Start-and-end modes. The default is still today.
+- **Calendar:** unchanged. It reads sessions fresh each time it opens, so an
+  added session shows there on the day it was saved to.
+- **Where:** `src/components/DashboardV2/PlanEditor.tsx` (`dayLocal`, `dayName`,
+  `addEarlier`), `DashboardV2.module.css` (`.logAddDay`).
+- **Guard:** `tests/session-times-and-calendar.spec.ts` › "a session can be
+  added to yesterday or an earlier day…".
+
 ### Dashboard: the arrows step one day, not a week
 - **Why:** "when i go back or forward using the arrow button just go back a day
   and not the entire 7 days same with going forward".
