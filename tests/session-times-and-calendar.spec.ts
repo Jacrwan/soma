@@ -102,72 +102,99 @@ test('a session can be added as a start and end time',async({page})=>{
  expect(new Date(String(added.end_time)).getHours()).toBe(15);
 });
 
-test('a session can be added to yesterday or an earlier day, and the day is said before saving',async({page})=>{
+const ago=(n:number)=>{const d=new Date();d.setDate(d.getDate()-n);return d;};
+const dayName=(d:Date)=>d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
+const localDay=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
+// Reported: a session added at 1 AM for the night before landed on the new day.
+test('a session is added on the start date typed, and the end date follows it',async({page})=>{
  const state=await setup(page);
  await openEditor(page);
- const ago=(n:number)=>{const d=new Date();d.setDate(d.getDate()-n);return d;};
- const name=(d:Date)=>d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
- const local=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-
  await page.getByRole('button',{name:/Forgot to start the timer/}).click();
- const day=page.getByRole('group',{name:'Day of the session'});
- await expect(day.getByRole('button',{name:'Today',exact:true})).toHaveAttribute('aria-pressed','true');
- await day.getByRole('button',{name:'Yesterday',exact:true}).click();
  await page.getByRole('button',{name:'Start and end',exact:true}).click();
+ await expect(page.getByLabel('Start date',{exact:true})).toHaveValue(localDay(ago(0)));
+ await page.getByLabel('Start date',{exact:true}).fill(localDay(ago(1)));
  await page.getByLabel('Start',{exact:true}).fill('21:18');
  await setEnd(page.getByLabel('End',{exact:true}),'23:35');
- await expect(page.getByText(`${name(ago(1))} · 137 minutes.`)).toBeVisible();
+ // Same day as the start until the end passes midnight.
+ await expect(page.getByLabel('End date',{exact:true})).toHaveValue(localDay(ago(1)));
+ await expect(page.getByText(`${dayName(ago(1))} · 137 minutes.`)).toBeVisible();
+ await setEnd(page.getByLabel('End',{exact:true}),'00:35');
+ await expect(page.getByLabel('End date',{exact:true})).toHaveValue(localDay(ago(0)));
+ await expect(page.getByText(/Ends 12:35 AM on .* · 197 minutes\./)).toBeVisible();
  await page.getByRole('button',{name:'Add session',exact:true}).click();
  await expect.poll(()=>state.tables.timer_sessions.length).toBe(2);
  const added=state.tables.timer_sessions.find(r=>r.id!=='real')!;
- expect(added.date).toBe(local(ago(1)));
- expect(local(new Date(String(added.start_time)))).toBe(local(ago(1)));
-
- // Earlier opens a date picker, starting two days back.
- await page.getByRole('button',{name:/Forgot to start the timer/}).click();
- await day.getByRole('button',{name:'Earlier',exact:true}).click();
- await expect(page.getByLabel('Date',{exact:true})).toHaveValue(local(ago(2)));
- await page.getByLabel('Date',{exact:true}).fill(local(ago(5)));
- await page.getByRole('button',{name:'Length',exact:true}).click();
- await page.getByRole('spinbutton',{name:'Minutes',exact:true}).fill('30');
- await expect(page.getByText(`${name(ago(5))} · 30 minutes.`)).toBeVisible();
- await page.getByRole('button',{name:'Add session',exact:true}).click();
- await expect.poll(()=>state.tables.timer_sessions.length).toBe(3);
- expect(state.tables.timer_sessions.some(r=>r.date===local(ago(5)) && r.duration_seconds===30*60)).toBe(true);
+ expect(added.date).toBe(localDay(ago(1)));
+ expect(added.duration_seconds).toBe(197*60);
+ expect(new Date(String(added.start_time)).getHours()).toBe(21);
 });
 
-test('editing a session can move it to another day, keeping or changing its times',async({page})=>{
+test('an end date picked by hand allows a long overnight session and follows the start date',async({page})=>{
  const state=await setup(page);
  await openEditor(page);
- const ago=(n:number)=>{const d=new Date();d.setDate(d.getDate()-n);return d;};
- const name=(d:Date)=>d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
- const local=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+ await page.getByRole('button',{name:/Forgot to start the timer/}).click();
+ await page.getByRole('button',{name:'Start and end',exact:true}).click();
+ await page.getByLabel('Start date',{exact:true}).fill(localDay(ago(3)));
+ await page.getByLabel('Start',{exact:true}).fill('15:00');
+ await setEnd(page.getByLabel('End',{exact:true}),'14:00');
+ // On its own, 3 PM to 2 PM is a typo: the end date stays on the start's day...
+ await expect(page.getByLabel('End date',{exact:true})).toHaveValue(localDay(ago(3)));
+ await expect(page.getByText(/End time must be later than start time/)).toBeVisible();
+ await expect(page.getByRole('button',{name:'Add session',exact:true})).toBeDisabled();
+ // ...but with the end date set to the next day it is 23 hours.
+ await page.getByLabel('End date',{exact:true}).fill(localDay(ago(2)));
+ await expect(page.getByText(/· 1380 minutes\./)).toBeVisible();
+ // Moving the start date carries the end date with it.
+ await page.getByLabel('Start date',{exact:true}).fill(localDay(ago(5)));
+ await expect(page.getByLabel('End date',{exact:true})).toHaveValue(localDay(ago(4)));
+ // An end date before the start is refused.
+ await page.getByLabel('End date',{exact:true}).fill(localDay(ago(6)));
+ await expect(page.getByText(/The end must be after the start/)).toBeVisible();
+ await expect(page.getByRole('button',{name:'Add session',exact:true})).toBeDisabled();
+ expect(state.tables.timer_sessions).toHaveLength(1);
+});
+
+test('adding by length takes a date too',async({page})=>{
+ const state=await setup(page);
+ await openEditor(page);
+ await page.getByRole('button',{name:/Forgot to start the timer/}).click();
+ await page.getByLabel('Date',{exact:true}).fill(localDay(ago(5)));
+ await page.getByRole('spinbutton',{name:'Minutes',exact:true}).fill('30');
+ await expect(page.getByText(`${dayName(ago(5))} · 30 minutes.`)).toBeVisible();
+ await page.getByRole('button',{name:'Add session',exact:true}).click();
+ await expect.poll(()=>state.tables.timer_sessions.length).toBe(2);
+ expect(state.tables.timer_sessions.some(r=>r.date===localDay(ago(5)) && r.duration_seconds===30*60)).toBe(true);
+});
+
+test('editing a session can move it to another date, keeping or changing its times',async({page})=>{
+ const state=await setup(page);
+ await openEditor(page);
  const row=()=>state.tables.timer_sessions.find(r=>r.id==='real')!;
 
- // Length mode: same 8:00 start and 25 minutes, one day earlier.
+ // Length: same 8:00 start and 25 minutes, one day earlier.
  await page.getByRole('button',{name:/Edit the 25 minute session/}).click();
- const day=page.getByRole('group',{name:/Day of the session on/});
- await expect(day.getByRole('button',{name:'Today',exact:true})).toHaveAttribute('aria-pressed','true');
- await day.getByRole('button',{name:'Yesterday',exact:true}).click();
- await expect(page.getByText(`Moves to ${name(ago(1))} · 25 minutes.`)).toBeVisible();
+ await expect(page.getByLabel(/^Date of the session on/)).toHaveValue(localDay(ago(0)));
+ await page.getByLabel(/^Date of the session on/).fill(localDay(ago(1)));
+ await expect(page.getByText(`Moves to ${dayName(ago(1))} · 25 minutes.`)).toBeVisible();
  await page.getByRole('button',{name:'Save',exact:true}).click();
- await expect.poll(()=>row().date).toBe(local(ago(1)));
+ await expect.poll(()=>row().date).toBe(localDay(ago(1)));
  expect(new Date(String(row().start_time)).getHours()).toBe(8);
- expect(local(new Date(String(row().start_time)))).toBe(local(ago(1)));
+ expect(localDay(new Date(String(row().start_time)))).toBe(localDay(ago(1)));
  expect(row().duration_seconds).toBe(25*60);
 
- // Start and end on an earlier day.
+ // Start and end on another date, past midnight.
  await page.getByRole('button',{name:/Edit the 25 minute session/}).click();
- await expect(day.getByRole('button',{name:'Yesterday',exact:true})).toHaveAttribute('aria-pressed','true');
- await day.getByRole('button',{name:'Earlier',exact:true}).click();
- await page.getByLabel('Date',{exact:true}).fill(local(ago(4)));
  await page.getByRole('button',{name:'Start and end',exact:true}).click();
- await page.getByLabel(/^Start time on/).fill('21:00');
- await setEnd(page.getByLabel(/^End time on/),'22:30');
- await expect(page.getByText(`${name(ago(4))} · 90 minutes.`)).toBeVisible();
+ await expect(page.getByLabel(/^Start date on/)).toHaveValue(localDay(ago(1)));
+ await page.getByLabel(/^Start date on/).fill(localDay(ago(4)));
+ await page.getByLabel(/^Start time on/).fill('23:00');
+ await setEnd(page.getByLabel(/^End time on/),'00:30');
+ await expect(page.getByLabel(/^End date on/)).toHaveValue(localDay(ago(3)));
+ await expect(page.getByText(/Ends 12:30 AM on .* · 90 minutes\./)).toBeVisible();
  await page.getByRole('button',{name:'Save',exact:true}).click();
- await expect.poll(()=>row().date).toBe(local(ago(4)));
- expect(new Date(String(row().start_time)).getHours()).toBe(21);
+ await expect.poll(()=>row().date).toBe(localDay(ago(4)));
+ expect(new Date(String(row().start_time)).getHours()).toBe(23);
  expect(row().duration_seconds).toBe(90*60);
 });
 

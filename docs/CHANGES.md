@@ -11,6 +11,30 @@ still needed.
 
 ## 2026-10-09
 
+### Sessions: a start date and an end date, typed like Google Calendar
+- **Why:** "forget the today, yesterday and earlier stuff, just let me manually
+  put the freaking date like this except for the end time let me pick a date
+  too (default should be the same as the start day though unless it goes past
+  12 am". Replaces the Today / Yesterday / Earlier choice in the two entries
+  below, the same day.
+- **What:** Start and end, in both Add and Edit, is two rows: Start [date]
+  [time] and End [date] [time]. The end date follows the start date: the same
+  day, or the next day when the end time is before the start and within 12
+  hours (11:25 PM to 12:35 AM). Further back than that (3 PM to 2 PM) it stays
+  on the start's day and is refused as an end before the start, as before,
+  unless the student sets the end date, which then allows up to 24 hours. A
+  picked end date moves with the start date. Length mode has a Date beside the
+  minutes. The summary still names the day ("Fri, Oct 9 · Ends 1:35 AM on Oct
+  10 · 137 minutes."). The date boxes no longer clip in the narrow panel.
+- **Where:** `src/lib/sessionSpan.ts` (new: `autoEndDate`, `sessionSpan`),
+  `src/components/DashboardV2/PlanEditor.tsx` (`SessionWhen`, both forms),
+  `DashboardV2.module.css` (`.sessionWhen`, `.logDate`, `.logAddLength`;
+  `.logAddDay` removed).
+- **Guard:** `tests/session-span.spec.ts`; `tests/session-times-and-calendar.spec.ts`
+  › "a session is added on the start date typed…", "an end date picked by hand…",
+  "adding by length takes a date too", "editing a session can move it to another
+  date…".
+
 ### Editing a session: move it to another day
 - **Why:** the Edit form on a past session (Length / Start and end) had no way
   to change the day, so a session saved to the wrong day had to be deleted and
