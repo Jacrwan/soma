@@ -9,6 +9,27 @@ still needed.
 
 ---
 
+## 2026-10-09
+
+### Calendar: a clicked day opens that day, not today
+- **Why:** "when i click on the dates on top here in the calendar week view it
+  takes me to today's dashboard. can it take me to the dashboard of the day i
+  clicked on? in the month view - when i click on a day it should take me to the
+  week view of that day."
+- **What:** in the week and three-day views, a day's header (or the empty part
+  of its column) opens the dashboard with that day selected, on the seven-day
+  strip that holds it (the strip the dashboard's week arrows would reach). The
+  picked day is used once: a reload or a later visit opens on today. In the
+  month view, a day opens the week that holds it; Month then returns to the
+  month it came from.
+- **Where:** `src/lib/calendarView.ts` (`dashboardDayFor`),
+  `src/components/Calendar/CalendarTab.tsx` (`onOpenDay`, `handleMonthDayClick`),
+  `src/App.tsx` (passes the day as router state), `LiveDashboard.tsx` (reads it,
+  then clears it), `DashboardV2.tsx` (`initialDay`).
+- **Guard:** `tests/calendar-view.spec.ts` › "a picked day opens the dashboard
+  on that day…", "clicking a day in the month opens the week that holds it",
+  "clicking a date in the week view opens the dashboard on that day".
+
 ## 2026-10-08
 
 ### Soma remembers conversations (notes per chat)

@@ -39,6 +39,8 @@ export interface DashboardRuntime {
  subjectNames: string[]; usedColors: SubjectColor[];
  /** First day on screen, in days from today (negative = the past), and a way to move it. */
  rangeStart?: number; onRange?: (start: number) => void;
+ /** The day to open on, in days from today; today when left out. */
+ initialDay?: number;
  /** Recorded focus sessions for a block, newest first. */
  logsFor: (block: Block) => { id: string; date: string; minutes: number }[];
  /** Correct a recorded session's length, e.g. after leaving the timer running overnight. */
@@ -63,7 +65,7 @@ export default function DashboardV2({runtime}:{runtime?:DashboardRuntime}) {
   const logRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(() => new Date());
   const [origin] = useState(() => new Date());
-  const [day, setDay] = useState(0);
+  const [day, setDay] = useState(() => runtime?.initialDay ?? 0);
   const rangeStart = runtime?.rangeStart ?? 0;
   // Step a week at a time; land on today when coming back to this week.
   function showRange(start: number) { runtime?.onRange?.(start); setDay(start===0 ? 0 : start); setEditor(null); setEditing(false); }

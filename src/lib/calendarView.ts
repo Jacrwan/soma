@@ -104,3 +104,13 @@ export function nextAnchors(
   const rangeStart = target === 'week' ? getSundayOfWeek(base) : startOfDay(base);
   return { month: anchors.month, rangeStart, originMonth };
 }
+
+/**
+ * Where the dashboard opens for a day picked on the calendar: the day, in days
+ * from today, and the first day of the seven-day strip that holds it. The strip
+ * steps a week at a time from today, so this is the strip its arrows reach.
+ */
+export function dashboardDayFor(date: Date, today: Date): { day: number; rangeStart: number } {
+  const day = Math.round((startOfDay(date).getTime() - startOfDay(today).getTime()) / 86_400_000);
+  return { day, rangeStart: Math.floor(day / 7) * 7 };
+}

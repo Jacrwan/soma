@@ -12,6 +12,7 @@ import CalendarTab from './components/Calendar/CalendarTab';
 import InsightsTab from './components/Insights/InsightsTab';
 import SettingsTab from './components/Settings/SettingsTab';
 import { storage } from './lib/storage';
+import { localDate } from './components/DashboardV2/liveData';
 import { useSubscription, refreshSubscription, hasAIAccess } from './lib/subscription';
 import { TimerProvider } from './contexts/TimerContext';
 import { clearMirror } from './lib/activeTimerMirror';
@@ -589,7 +590,7 @@ export default function App() {
           <CalendarTab
             selectedDate={selectedDate}
             onSelectDate={setSelectedDate}
-            onSwitchToToday={() => navigate('/dashboard')}
+            onOpenDay={date => navigate('/dashboard', { state: { day: localDate(date) } })}
           />
         } />
         <Route path="/ai"       element={<AITab />} />
