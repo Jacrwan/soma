@@ -28,13 +28,16 @@ export function chunkSizes(settings:SomaSettings):{min:number}{
  * checkStudyHours is off on Accept too: the hours were checked when Soma
  * proposed it, possibly stretched because the student said they'd stay up.
  */
-export function validateProposal(block:PlanBlock,snapshot:Snapshot,origin:Date,settings:SomaSettings,allowCommitmentOverlap=false,allowPastStart=false,checkStudyHours=true):string[] {
+/** The longest block Soma may size on its own; a time the student states may run to the editor's 12 hours. */
+export const SOMA_MAX_MINUTES=240, STATED_MAX_MINUTES=720;
+export function validateProposal(block:PlanBlock,snapshot:Snapshot,origin:Date,settings:SomaSettings,allowCommitmentOverlap=false,allowPastStart=false,checkStudyHours=true,maxMinutes=SOMA_MAX_MINUTES):string[] {
  if(snapshot.calendarError)throw new Error(snapshot.calendarError);
  const [start,end]=block.time.split('–');
  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(start??'') || !/^([01]\d|2[0-3]):[0-5]\d$/.test(end??''))throw new Error('Soma returned an invalid time. Ask for another proposal.');
  // An end before the start runs past midnight: 23:30–01:00 is 90 minutes.
  const span=spanMinutes(start,end),from=minuteValue(start),to=from+span,date=dateAt(origin,block.day);
- if(span<1 || span>240)throw new Error('Study proposals must be between 1 minute and 4 hours.');
+ // "From now til 12" at 7 PM is five hours: the student said it, so it goes up to 12 hours.
+ if(span<1 || span>maxMinutes)throw new Error(maxMinutes>SOMA_MAX_MINUTES ? 'A study block can run up to 12 hours.' : 'Soma sizes a block at 4 hours at most; give the times yourself for a longer one.');
  if(!allowPastStart && new Date(`${localDate(date)}T${start}:00`).getTime()<Date.now()-START_GRACE_MS)throw new Error('That start time has passed. Ask Soma for a new time.');
  const starts=new Date(`${localDate(date)}T${start}:00`),ends=new Date(starts.getTime()+span*60000);
  if(snapshot.sessions.some(s=>s.startTime && s.endTime && new Date(s.startTime)<ends && new Date(s.endTime)>starts))throw new Error('That time overlaps a scheduled session. Ask Soma for another time.');

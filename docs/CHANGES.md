@@ -9,6 +9,23 @@ still needed.
 
 ---
 
+## 2026-10-08
+
+### A time the student states can run past four hours
+- **Why:** at 7 PM, "study for my CS midterm from now til 12" got "Suggested:
+  now until midnight" and then "Couldn't place: Study proposals must be between
+  1 minute and 4 hours". The 4-hour cap applied even to times the student gave.
+- **What:** a block whose time the student stated (typed clock times, "now",
+  an event) may run up to 12 hours, the editor's limit. A block Soma sizes on
+  its own still stops at 4 hours, and the error says to give the times for a
+  longer one. Accepting re-checks with the 12-hour limit (the cap was applied
+  when it was proposed).
+- **Where:** `src/lib/aiPlanning.ts` (`validateProposal` takes `maxMinutes`;
+  `SOMA_MAX_MINUTES`, `STATED_MAX_MINUTES`), `src/lib/assistant.ts` (passes it).
+- **Guard:** `tests/ai-whole-day.spec.ts` › "a five-hour block the student asked
+  for…" (fails without this) and "a block Soma sizes on its own still stops at
+  four hours".
+
 ## 2026-10-06
 
 ### Calendar: a short session no longer covers the block after it
