@@ -55,6 +55,11 @@ interface StudySpan {
  */
 function studySpans(sessions: TimerSession[], blocks: TimeBlock[], sessionsLoaded: boolean): StudySpan[] {
   const ms = (iso: string) => new Date(iso).getTime();
+  // Records join only when they are the same task. Two tasks in one course
+  // stay two blocks, each with its own time: merging them once drew a 21-minute
+  // session on another task as part of the block before it. A record with no
+  // task name is a copy of the same stretch and may join either.
+  const sameTask = (a?: string, b?: string) => !a?.trim() || !b?.trim() || a.trim().toLowerCase() === b.trim().toLowerCase();
   const sessionEnd = (s: TimerSession) =>
     s.endTime ? ms(s.endTime) : ms(s.startTime) + s.durationSeconds * 1000;
 
@@ -69,7 +74,7 @@ function studySpans(sessions: TimerSession[], blocks: TimeBlock[], sessionsLoade
       const from = ms(block.startTime), to = ms(block.endTime);
       const mine = sessions.filter(s =>
         s.id === block.timerSessionId ||
-        (s.subjectId === block.subjectId && ms(s.startTime) >= from && ms(s.startTime) <= to));
+        (s.subjectId === block.subjectId && sameTask(s.task, block.task) && ms(s.startTime) >= from && ms(s.startTime) <= to));
       if (mine.length === 0) continue;
       candidates.push({
         id: `soma-${block.id}`,
@@ -107,12 +112,12 @@ function studySpans(sessions: TimerSession[], blocks: TimeBlock[], sessionsLoade
     }
   }
 
-  // Merge overlapping candidates for the same subject. Touching is not
-  // overlapping: work that ends as the next begins stays two blocks.
+  // Merge overlapping candidates for the same subject and task. Touching is
+  // not overlapping: work that ends as the next begins stays two blocks.
   const merged: StudySpan[] = [];
   for (const span of [...candidates].sort((a, b) => +a.start - +b.start)) {
     const hit = merged.find(m =>
-      m.subjectId === span.subjectId && +span.start < +m.end && +span.end > +m.start);
+      m.subjectId === span.subjectId && sameTask(m.task, span.task) && +span.start < +m.end && +span.end > +m.start);
     if (!hit) { merged.push({ ...span, sessionIds: [...span.sessionIds], blockIds: [...span.blockIds] }); continue; }
     if (+span.start < +hit.start) hit.start = span.start;
     if (+span.end > +hit.end) hit.end = span.end;

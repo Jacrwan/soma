@@ -372,6 +372,31 @@ test('two sittings on the same subject at different times stay separate',async({
  await expect(recorded(page)).toHaveCount(2);
 });
 
+// Reported: an 11:36 PM–1:06 AM session on one task and a 1:06–1:27 AM session
+// on another task in the same course drew as one block named for the first,
+// "1h 51m studied", while that task had only 90 minutes recorded.
+test('two tasks in the same course never draw as one block',async({page})=>{
+ const state=await setup(page);
+ state.tables.timer_sessions=[
+  {id:'lists',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Linked lists',date,start_time:iso('13:00'),end_time:iso('14:30'),duration_seconds:90*60},
+  // Starts as the first ends: the timer's copy of the first block reached it.
+  {id:'midterm',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Practice midterm',date,start_time:iso('14:30'),end_time:iso('14:51'),duration_seconds:21*60},
+  // Overlapping by a few minutes, as when one timer is started before the last is saved.
+  {id:'dicts',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Dictionaries',date,start_time:iso('14:45'),end_time:iso('15:30'),duration_seconds:45*60},
+ ];
+ await page.addInitScript(({start,end})=>{
+  localStorage.setItem('soma_blocks',JSON.stringify([
+   {id:'timer-copy',subjectId:'biology',task:'Linked lists',startTime:start,endTime:end,source:'manual',timerSessionId:'lists'},
+  ]));
+ },{start:iso('13:00'),end:iso('14:30')});
+
+ await openWeek(page);
+ await expect(recorded(page)).toHaveCount(3);
+ await recorded(page).filter({hasText:'Linked lists'}).click();
+ await expect(page.getByText('1h 30m',{exact:true})).toBeVisible();
+ await expect(page.getByText('2:30 PM',{exact:false}).first()).toBeVisible();
+});
+
 test('a failed session load leaves the calendar drawn, not emptied',async({page})=>{
  const state=await setup(page);
  await page.addInitScript(({start,end})=>{
