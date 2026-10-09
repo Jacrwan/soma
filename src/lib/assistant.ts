@@ -6,7 +6,7 @@
  */
 import { readPlan, savePlanBlock, setTaskStatus, taskBlocks, deletePlanBlock, sameTask as twinsOf, dateAt, localDate, utcIso, type Snapshot } from '../components/DashboardV2/liveData';
 import type { PlanBlock } from '../components/DashboardV2/PlanEditor';
-import { validateProposal, freeTime, chunkSizes } from './aiPlanning';
+import { validateProposal, freeTime, chunkSizes, SOMA_MAX_MINUTES, STATED_MAX_MINUTES } from './aiPlanning';
 import { storage } from './storage';
 import { buildCanvasSection, buildDocumentsSection } from './aiContext';
 import { getTimeFormat, formatClock, formatClockRange } from './timeFormat';
@@ -398,7 +398,7 @@ export async function askSoma(opts: {
       const due = fresh.todos.find(t => t.id === todoId)?.dueDate?.slice(0, 10);
       return due && dateOf(offset) > due ? `After its due date (${withWeekday(due)})` : undefined;
     };
-    const lateNote = (b: PlanBlock) => { try { validateProposal(b, { ...fresh, blocks: [], sessions: [] }, origin, settings, true, true); return undefined; } catch { return 'Past your usual study hours'; } };
+    const lateNote = (b: PlanBlock) => { try { validateProposal(b, { ...fresh, blocks: [], sessions: [] }, origin, settings, true, true, true, STATED_MAX_MINUTES); return undefined; } catch { return 'Past your usual study hours'; } };
 
     const rejected: string[] = [];
     // The model's mistakes, not the plan's: retried once (see below).
@@ -643,7 +643,7 @@ export async function askSoma(opts: {
         const edited: PlanBlock = { ...current, title, time: start && end ? `${start}–${end}` : '', minutes: start && end ? spanMinutes(start, end) : 0, day: start ? tonight(to.offset, start) : to.offset };
         if (edited.time && (edited.time !== current.time || edited.day !== current.day)) {
           const others = [...working.blocks, ...placed(), ...proposals.filter(b => !b.changeKind && b.id !== current.id && !droppedProposals.has(String(b.id)))];
-          try { validateProposal(edited, { ...working, blocks: others }, origin, hours, true); }
+          try { validateProposal(edited, { ...working, blocks: others }, origin, hours, true, false, true, studentGaveTime || anchored.has(c) ? STATED_MAX_MINUTES : SOMA_MAX_MINUTES); }
           catch (err) { rejected.push(`${current.title}: ${err instanceof Error ? err.message : 'could not be changed.'}`); continue; }
         }
         proposalEdits.set(pendingTarget.id, edited);
@@ -735,7 +735,7 @@ export async function askSoma(opts: {
       if (extra) moved.extra = extra;
       const label = [renamed ? `Renamed from "${target.title}"` : '', cover.note, time !== target.time || newDay !== target.day ? `Moves from ${from}` : '', extra ? extraNote({ day: newDay, time, extra }) : ''].filter(Boolean).join(' · ');
       if (time === target.time && newDay === target.day) { moved.note = label; proposed.push(moved); continue; }
-      try { const overlaps = validateProposal(moved, { ...working, blocks: [...working.blocks, ...placed()] }, origin, hours, true, false, !explicitTime); moved.note = [label, overlaps.length ? `overlaps ${overlaps.join(', ')}` : '', lateNote(moved), pastDue(target.todoId, moved.day)].filter(Boolean).join(' · '); proposed.push(moved); }
+      try { const overlaps = validateProposal(moved, { ...working, blocks: [...working.blocks, ...placed()] }, origin, hours, true, false, !explicitTime, explicitTime ? STATED_MAX_MINUTES : SOMA_MAX_MINUTES); moved.note = [label, overlaps.length ? `overlaps ${overlaps.join(', ')}` : '', lateNote(moved), pastDue(target.todoId, moved.day)].filter(Boolean).join(' · '); proposed.push(moved); }
       catch (err) { rejected.push(`${renamed ? 'Change' : 'Move'} ${target.title}: ${err instanceof Error ? err.message : 'could not be moved.'}`); putBack(target); }
     }
     // A block Soma cannot place used to throw away the whole answer. Keep the
@@ -815,7 +815,7 @@ export async function askSoma(opts: {
         if (extra) { moved.extra = extra; moved.note = withNote(moved.note, extraNote({ day: blockDay, time, extra })); }
         // A block that ends up occupying no time has nothing to be validated against.
         if (!time) { proposed.push(moved); continue; }
-        try { const overlaps = validateProposal(moved, { ...working, blocks: [...working.blocks.filter(b => b.id !== existing.id), ...placed()] }, origin, hours, true, false, !explicitTime); if (overlaps.length) moved.note = `${moved.note} · overlaps ${overlaps.join(', ')}`; moved.note = withNote(moved.note, pastDue(existing.todoId, moved.day)); proposed.push(moved); }
+        try { const overlaps = validateProposal(moved, { ...working, blocks: [...working.blocks.filter(b => b.id !== existing.id), ...placed()] }, origin, hours, true, false, !explicitTime, explicitTime ? STATED_MAX_MINUTES : SOMA_MAX_MINUTES); if (overlaps.length) moved.note = `${moved.note} · overlaps ${overlaps.join(', ')}`; moved.note = withNote(moved.note, pastDue(existing.todoId, moved.day)); proposed.push(moved); }
         catch (err) { rejected.push(`Move ${title}: ${err instanceof Error ? err.message : 'could not be moved.'}`); }
         continue;
       }
@@ -828,7 +828,7 @@ export async function askSoma(opts: {
       if (extra) { block.extra = extra; block.note = withNote(block.note, extraNote({ day: blockDay, time: block.time, extra })); }
       // An unscheduled block occupies no time, so there is nothing to validate it against.
       if (!timed) { proposed.push(block); continue; }
-      try { const overlaps = validateProposal(block, { ...working, blocks: [...working.blocks, ...placed()] }, origin, hours, true, false, !explicitTime); if (overlaps.length) block.note = withNote(block.note, `Overlaps ${overlaps.join(', ')}`); block.note = withNote(block.note, lateNote(block)); proposed.push(block); }
+      try { const overlaps = validateProposal(block, { ...working, blocks: [...working.blocks, ...placed()] }, origin, hours, true, false, !explicitTime, explicitTime ? STATED_MAX_MINUTES : SOMA_MAX_MINUTES); if (overlaps.length) block.note = withNote(block.note, `Overlaps ${overlaps.join(', ')}`); block.note = withNote(block.note, lateNote(block)); proposed.push(block); }
       catch (err) { rejected.push(`${block.title}: ${err instanceof Error ? err.message : 'could not be scheduled.'}`); }
     }
     malformed.push(...rejected.filter(r => /invalid time/.test(r) && !malformed.includes(r)));
@@ -969,7 +969,7 @@ export async function applyProposal(userId: string, origin: Date, block: PlanBlo
       const arriving = moving.flatMap(p => { const b = fresh.blocks.find(x => x.id === p.replaces); return b ? [{ ...b, time: p.time, day: p.day }] : []; });
       const board = { ...fresh, blocks: [...fresh.blocks.filter(b => !away.has(b.id)), ...arriving], sessions: fresh.sessions.filter(sn => !fresh.blocks.some(b => away.has(b.id) && b.sessionId === sn.id)) };
       // A rename leaves the time alone, so it works on blocks already underway or past.
-      try { if (edited.time && (edited.time !== target.time || edited.day !== target.day)) validateProposal(edited, board, origin, storage.getSomaSettings(), true, true, false); }
+      try { if (edited.time && (edited.time !== target.time || edited.day !== target.day)) validateProposal(edited, board, origin, storage.getSomaSettings(), true, true, false, STATED_MAX_MINUTES); }
       catch (err) {
         // Accepted alone, a move onto a block that is itself about to move is refused; say how to do both.
         const [from, to] = rangeOf(edited.time);
@@ -997,7 +997,7 @@ export async function applyProposal(userId: string, origin: Date, block: PlanBlo
     await linkItems(userId, read.map(i => i.id), todoId);
     await markDone(userId, read.map(i => i.id));
   } else {
-    if (block.time) validateProposal(block, fresh, origin, storage.getSomaSettings(), true, true, false);
+    if (block.time) validateProposal(block, fresh, origin, storage.getSomaSettings(), true, true, false, STATED_MAX_MINUTES);
     checkExtra(block, fresh, origin);
     const todoId = await savePlanBlock(userId, origin, { ...block, state: 'Planned' }, fresh);
     await addExtra(todoId, block, origin);

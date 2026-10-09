@@ -160,3 +160,24 @@ test('a leftover copy of finished work is not offered as an open task', async ({
   await expect(page.getByRole('log')).toContainText('ok');
   expect(lines(r.seen[0].tasks).join('\n')).not.toContain('Math 53 Homework — Chapters 13.1, 13.2, 14.1, 14.2');
 });
+
+// Reported 2026-10-08 at 7 PM: "gotta study for my computer science midterm
+// from now til 12". Soma suggested now until midnight, then refused it:
+// "Study proposals must be between 1 minute and 4 hours." A time the student
+// states may run to 12 hours, as in the editor; Soma's own sizing stays at 4.
+test('a five-hour block the student asked for ("from now til 12") is offered, not refused', async ({ page }) => {
+  const db = await setup(page, () => ({ reply: 'CS until midnight.', blocks: [{ title: 'CS 61A Midterm 2 study', subject: 'Physics 5A', date: TODAY, start: 'now', end: '00:00' }] }), undefined, '19:00');
+  await ask(page, 'gotta study for my computer science midterm from now til 12');
+  await expect(page.getByRole('log')).toContainText('CS until midnight.');
+  await expect(page.getByRole('log')).not.toContainText("Couldn't place");
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => db.todo_sessions.length).toBe(1);
+  const midnight = new Date(at('00:00')); midnight.setDate(midnight.getDate() + 1);
+  expect([db.todo_sessions[0].start_time, db.todo_sessions[0].end_time]).toEqual([at('19:00'), midnight.toISOString()]);
+});
+
+test('a block Soma sizes on its own still stops at four hours', async ({ page }) => {
+  await setup(page, () => ({ reply: 'Long one.', blocks: [{ title: 'Marathon', subject: 'Physics 5A', date: TODAY, start: '19:00', end: '23:30' }] }), undefined, '12:28');
+  await ask(page, 'plan some physics tonight');
+  await expect(page.getByRole('log')).toContainText('give the times yourself for a longer one');
+});
