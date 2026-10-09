@@ -11,6 +11,23 @@ still needed.
 
 ## 2026-10-09
 
+### Calendar: two tasks in one course never draw as one block
+- **Why:** Fri Oct 9 showed one block, "Linked Lists, 11:36 PM – 1:27 AM, 1h 51m
+  studied", but that task had only 90 minutes (11:36 PM – 1:06 AM). The other
+  21 minutes (1:06 – 1:27 AM) were on "Practice Midterm instances", which is
+  also why Insights showed 21 minutes on Friday. "if tasks are different, then
+  even if the course is the same it shouldn't combine".
+- **What:** records of study time merge only when they are the same subject
+  and the same task (a record with no task name may still join, as a copy of
+  the same stretch). Two places mixed tasks: the merge of overlapping spans,
+  and the timer's own block copy, which took in every same-subject session
+  starting inside its window, including one starting the moment it ended.
+- **Untouched:** Insights still counts a session on the day it started (the
+  owner's choice); a sitting past midnight is not split.
+- **Where:** `src/components/Calendar/CalendarTab.tsx` (`studySpans`, `sameTask`).
+- **Guard:** `tests/session-times-and-calendar.spec.ts` › "two tasks in the
+  same course never draw as one block" (draws 1 block without the fix, 3 with).
+
 ### Sessions: a start date and an end date, typed like Google Calendar
 - **Why:** "forget the today, yesterday and earlier stuff, just let me manually
   put the freaking date like this except for the end time let me pick a date
