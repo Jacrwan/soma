@@ -5,19 +5,40 @@ import type { SubjectColor } from '../../types';
 import styles from './DashboardV2.module.css';
 import { rangeOf, spanMinutes } from '../../lib/clockRange';
 import EndTimePicker, { endAfterMove } from './EndTimePicker';
+import { daysBetween, sessionSpan } from '../../lib/sessionSpan';
 export type PlanState = 'Planned' | 'Completed' | 'Partially completed' | 'Missed' | 'Proposal';
 export type PlanBlock = { id:string | number; title:string; subject:string; time:string; minutes:number; color:string; state:PlanState; day:number; actualSeconds?:number; external?:boolean; manual?:boolean; subjectColor?:SubjectColor; /** Shown on a proposal card, e.g. which calendar event it overlaps. */ note?:string; /** A suggested change to an existing block rather than a new one. */ replaces?:string|number; changeKind?:'move'|'remove'|'update'|'complete'|'progress'; /** Total study time recorded against this task, shown before a delete is accepted. */ loggedMinutes?:number; /** Set on a delete proposal when the student also wants the recorded time gone. */ deleteLoggedTime?:boolean; /** How long Soma expects an unscheduled task to take, from the student's own history. Saved as the task's estimate. */ estimatedMinutes?:number; /** The course sections this block covers, in order, from the reading list. */ covers?:{id:string;label:string;done?:boolean}[]; /** Its time has passed. */ ended?:boolean; /** On a proposal: the reading-list items it will cover once accepted; on a 'progress' one, the items it marks read. */ coverIds?:string[]; /** On a 'progress' proposal: the last section read. */ through?:string; /** On a proposal: more sessions of the same task, when it was split across gaps. */ extra?:{day:number;time:string}[]; /** On a proposal: work already done, saved as finished with its time recorded. */ done?:boolean; /** On a change: the block's day and time when Soma suggested it. */ base?:{day:number;time:string} };
 export type EditorDraft = { block?:PlanBlock; start:string; end:string; day:number };
 const colors:Record<string,string>={Biology:'green',Mathematics:'blue',Literature:'purple',Personal:'blue'};
 const NEW_COURSE='__new_course__';
 export const minuteValue = (s:string) => {const [h,m]=s.split(':').map(Number);return h*60+m;};
-/** "Sep 30" for the day after a YYYY-MM-DD date. */
-const nextDayLabel=(date:string)=>{const d=new Date(`${date}T12:00:00`);d.setDate(d.getDate()+1);return d.toLocaleDateString(undefined,{month:'short',day:'numeric'});};
 /** Evaluated per render: a module-level constant would go stale past midnight. */
-const dayLocal=(back:number)=>{const d=new Date();d.setDate(d.getDate()-back);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
-const todayLocal=()=>dayLocal(0);
+const todayLocal=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
 /** "Thu, Oct 8": said back before saving, so a session never lands on the wrong day unseen. */
 const dayName=(date:string)=>new Date(`${date}T12:00:00`).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
+/** "Oct 9". */
+const shortDay=(date:string)=>new Date(`${date}T12:00:00`).toLocaleDateString(undefined,{month:'short',day:'numeric'});
+
+/**
+ * When a session ran, typed the way Google Calendar takes an event: a start
+ * date and time, and an end date and time. The end date follows the start (the
+ * next day when the end time is past midnight) until the student picks one.
+ */
+function SessionWhen({labels,startDate,startTime,endDate,endTime,disabled,onStartDate,onStartTime,onEndDate,onEndTime,onEscape}:{
+ labels:{startDate:string;start:string;endDate:string;end:string};
+ startDate:string;startTime:string;endDate:string;endTime:string;disabled?:boolean;
+ onStartDate:(v:string)=>void;onStartTime:(v:string)=>void;onEndDate:(v:string)=>void;onEndTime:(v:string)=>void;onEscape:()=>void;
+}) {
+ const esc=(e:{key:string;preventDefault:()=>void})=>{if(e.key==='Escape'){e.preventDefault();onEscape();}};
+ return <div className={styles.sessionWhen}>
+  <span>Start</span>
+  <input type="date" aria-label={labels.startDate} max={todayLocal()} value={startDate} disabled={disabled} onChange={e=>onStartDate(e.target.value)} onKeyDown={esc}/>
+  <input type="time" aria-label={labels.start} autoFocus value={startTime} disabled={disabled} onChange={e=>onStartTime(e.target.value)} onKeyDown={esc}/>
+  <span>End</span>
+  <input type="date" aria-label={labels.endDate} min={startDate} value={endDate} disabled={disabled} onChange={e=>onEndDate(e.target.value)} onKeyDown={esc}/>
+  <input type="time" aria-label={labels.end} value={endTime} disabled={disabled} onChange={e=>onEndTime(e.target.value)} onKeyDown={esc}/>
+ </div>;
+}
 const clockOf=(iso:string)=>{const d=new Date(iso);return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;};
 /** "9:05 AM – 9:50 AM", or nothing when the row never recorded its clock times. */
 /** A session that ran past midnight names the day it ended: "11:25 PM – Sep 30 12:35 AM". */
@@ -56,14 +77,15 @@ export default function PlanEditor({draft,blocks,onSave,onDelete,onCancel,live=f
  // when it ran.
  const [logMode,setLogMode]=useState<'minutes'|'range'>('minutes');
  const [logStart,setLogStart]=useState('');
- // The day a session is corrected to; Earlier opens a date picker.
+ // The day a session is corrected to, and the end's day when the student
+ // picked one (days after the start; null follows the start).
  const [logDate,setLogDate]=useState('');
- const [logEarlier,setLogEarlier]=useState(false);
+ const [logEndOffset,setLogEndOffset]=useState<number|null>(null);
  const [logEnd,setLogEnd]=useState('');
- // An end before the start is the next day (11:25 PM to 12:35 AM is 70 minutes),
- // up to 12 hours: 3 PM to 2 PM is a typo, not a 23-hour session.
- const overnightOk=(a:string,b:string)=>!!a && !!b && spanMinutes(a,b)>0 && (minuteValue(b)>minuteValue(a) || spanMinutes(a,b)<=720);
- const logRangeMinutes=overnightOk(logStart,logEnd) ? spanMinutes(logStart,logEnd) : 0;
+ // An end time before the start is the next day (11:25 PM to 12:35 AM is 70
+ // minutes), up to 12 hours: 3 PM to 2 PM is a typo, not a 23-hour session.
+ const logSpan=sessionSpan(logDate,logStart,logEnd,logEndOffset);
+ const logRangeMinutes=logSpan.minutes;
  const logLength=logMode==='range' ? logRangeMinutes : Math.round(Number(logMinutes));
  const logValid=logLength>=1 && logLength<=1440 &&
   (logMode==='range' ? !!logStart && !!logEnd : logMinutes.trim()!=='');
@@ -73,14 +95,14 @@ export default function PlanEditor({draft,blocks,onSave,onDelete,onCancel,live=f
  // Adding a session covers the case the timer was never started at all.
  const [adding,setAdding]=useState(false);
  const [addDate,setAddDate]=useState(todayLocal);
- // Today and Yesterday are one tap; Earlier opens a date picker.
- const [addEarlier,setAddEarlier]=useState(false);
+ const [addEndOffset,setAddEndOffset]=useState<number|null>(null);
  const [addMinutes,setAddMinutes]=useState('');
  // Some sessions are remembered as "about 45 minutes", others as "2 till 3".
  const [addMode,setAddMode]=useState<'minutes'|'range'>('minutes');
  const [addStart,setAddStart]=useState('');
  const [addEnd,setAddEnd]=useState('');
- const rangeMinutes=overnightOk(addStart,addEnd) ? spanMinutes(addStart,addEnd) : 0;
+ const addSpan=sessionSpan(addDate,addStart,addEnd,addEndOffset);
+ const rangeMinutes=addSpan.minutes;
  const addLength=addMode==='range' ? rangeMinutes : Math.round(Number(addMinutes));
  const addValid=!!addDate && addLength>=1 && addLength<=1440 &&
   (addMode==='range' ? !!addStart && !!addEnd : addMinutes.trim()!=='');
@@ -125,14 +147,9 @@ export default function PlanEditor({draft,blocks,onSave,onDelete,onCancel,live=f
      <button type="button" aria-pressed={logMode==='range'} onClick={()=>setLogMode('range')}>Start and end</button>
     </div>
    </div>
-   <div className={styles.logAddMode} role="group" aria-label={`Day of the session on ${day}`}>
-    <button type="button" disabled={busy} aria-pressed={!logEarlier && logDate===dayLocal(0)} onClick={()=>{setLogEarlier(false);setLogDate(dayLocal(0));}}>Today</button>
-    <button type="button" disabled={busy} aria-pressed={!logEarlier && logDate===dayLocal(1)} onClick={()=>{setLogEarlier(false);setLogDate(dayLocal(1));}}>Yesterday</button>
-    <button type="button" disabled={busy} aria-pressed={logEarlier} onClick={()=>{setLogEarlier(true);if(logDate>=dayLocal(1))setLogDate(dayLocal(2));}}>Earlier</button>
-   </div>
-   {logEarlier && <label className={styles.logAddDay}>Date<input className={styles.logInput} type="date" max={todayLocal()} value={logDate} disabled={busy} onChange={e=>setLogDate(e.target.value)}/></label>}
    {logMode==='minutes'
     ? <div className={styles.logEditing}>
+      <input className={styles.logDate} type="date" max={todayLocal()} aria-label={`Date of the session on ${day}`} value={logDate} disabled={busy} onChange={e=>setLogDate(e.target.value)}/>
       <input className={styles.logInput} type="number" min={0} max={1440} step={1} autoFocus aria-label={`Minutes studied on ${day}`} value={logMinutes} disabled={busy}
        onChange={e=>setLogMinutes(e.target.value)}
        onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setEditingLog(null);}}}/>
@@ -140,13 +157,16 @@ export default function PlanEditor({draft,blocks,onSave,onDelete,onCancel,live=f
       {l.start && logLength>=1 && logLength<=1440 &&
        <span className={styles.logRange} aria-live="polite">{endAfter(l.start,logLength,timeFormat)}</span>}
      </div>
-    : <div className={styles.logEditing}>
-      <label>Start<input type="time" autoFocus aria-label={`Start time on ${day}`} value={logStart} disabled={busy} onChange={e=>{setLogEnd(endAfterMove(logStart,logEnd,e.target.value));setLogStart(e.target.value);}} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setEditingLog(null);}}}/></label>
-      <label>End<EndTimePicker label={`End time on ${day}`} start={logStart} end={logEnd} disabled={busy} onChange={setLogEnd}/></label>
-     </div>}
-   {logMode==='range' && logStart && logEnd && logRangeMinutes<=0 && <p className={styles.editorNote}>End time must be later than start time. A session past midnight can run up to 12 hours.</p>}
+    : <SessionWhen labels={{startDate:`Start date on ${day}`,start:`Start time on ${day}`,endDate:`End date on ${day}`,end:`End time on ${day}`}}
+       startDate={logDate} startTime={logStart} endDate={logSpan.endDate} endTime={logEnd} disabled={busy}
+       onStartDate={setLogDate}
+       onStartTime={v=>{setLogEnd(endAfterMove(logStart,logEnd,v));setLogStart(v);}}
+       onEndDate={v=>setLogEndOffset(v ? daysBetween(logDate,v) : null)}
+       onEndTime={setLogEnd}
+       onEscape={()=>setEditingLog(null)}/>}
+   {logMode==='range' && logSpan.problem && <p className={styles.editorNote}>{logSpan.problem}</p>}
    {logMode==='minutes' && logDate && logDate!==l.date && logLength>=1 && <p className={styles.editorNote}>Moves to {dayName(logDate)} · {logLength} minutes.</p>}
-   {logMode==='range' && logRangeMinutes>0 && <p className={styles.editorNote}>{dayName(logDate||l.date)} · {minuteValue(logEnd)<=minuteValue(logStart) ? `Ends ${formatClock(logEnd,timeFormat)} the next day · ` : ''}{logRangeMinutes} minutes.</p>}
+   {logMode==='range' && logRangeMinutes>0 && <p className={styles.editorNote}>{dayName(logDate)} · {logSpan.endDate!==logDate ? `Ends ${formatClock(logEnd,timeFormat)} on ${shortDay(logSpan.endDate)} · ` : ''}{logRangeMinutes} minutes.</p>}
    <div className={styles.logAddButtons}>
     <button type="button" disabled={busy || !logValid} onClick={()=>{
      const moved=!!logDate && logDate!==l.date;
@@ -165,7 +185,7 @@ export default function PlanEditor({draft,blocks,onSave,onDelete,onCancel,live=f
     <button type="button" disabled={busy} aria-label={`Edit the ${l.minutes} minute session on ${day}`} onClick={()=>{
      setLogError('');setLogMinutes(String(l.minutes));
      setLogStart(l.start ? clockOf(l.start) : '');setLogEnd(l.end ? clockOf(l.end) : '');
-     setLogDate(l.date);setLogEarlier(l.date<dayLocal(1));setLogMode('minutes');setEditingLog(l.id);
+     setLogDate(l.date);setLogEndOffset(null);setLogMode('minutes');setEditingLog(l.id);
     }}>Edit</button>
     <button type="button" disabled={busy} aria-label={`Delete the ${l.minutes} minute session on ${day}`} onClick={()=>{
      if(!window.confirm(`Delete the ${l.minutes}-minute session from ${day}? This removes the study time for good.`))return;
@@ -174,24 +194,26 @@ export default function PlanEditor({draft,blocks,onSave,onDelete,onCancel,live=f
    </span>}
   </li>;
  })}</ul>{logError && <p role="alert" className={styles.editorNote}>{logError}</p>}{logs.length>6 && <small>{logs.length-6} earlier {logs.length-6===1 ? 'session' : 'sessions'} not shown.</small>}{logs.length>0 && <><small>{logs.reduce((n,l)=>n+l.minutes,0)} minutes recorded on this task.</small>{canEditLogs && <small>Slept with the timer running? Correct the minutes or delete the session.</small>}</>}{logs.length===0 && <small>No study time recorded on this task yet.</small>}{onAddSession && (adding ? <div className={styles.logAdd}>
-  <div className={styles.logAddDay}><span>Day</span><div className={styles.logAddMode} role="group" aria-label="Day of the session">
-   <button type="button" aria-pressed={!addEarlier && addDate===dayLocal(0)} onClick={()=>{setAddEarlier(false);setAddDate(dayLocal(0));}}>Today</button>
-   <button type="button" aria-pressed={!addEarlier && addDate===dayLocal(1)} onClick={()=>{setAddEarlier(false);setAddDate(dayLocal(1));}}>Yesterday</button>
-   <button type="button" aria-pressed={addEarlier} onClick={()=>{setAddEarlier(true);if(addDate>=dayLocal(1))setAddDate(dayLocal(2));}}>Earlier</button>
-  </div></div>
-  {addEarlier && <label>Date<input type="date" max={todayLocal()} value={addDate} onChange={e=>setAddDate(e.target.value)}/></label>}
   <div className={styles.logAddMode} role="group" aria-label="How to enter the session">
    <button type="button" aria-pressed={addMode==='minutes'} onClick={()=>setAddMode('minutes')}>Length</button>
    <button type="button" aria-pressed={addMode==='range'} onClick={()=>setAddMode('range')}>Start and end</button>
   </div>
   {addMode==='minutes'
-   ? <><label>Minutes<input type="number" min={1} max={1440} step={1} autoFocus value={addMinutes} placeholder="45" onChange={e=>setAddMinutes(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setAdding(false);}}}/></label>
+   ? <><div className={styles.logAddLength}>
+      <label>Date<input type="date" max={todayLocal()} value={addDate} onChange={e=>setAddDate(e.target.value)}/></label>
+      <label>Minutes<input type="number" min={1} max={1440} step={1} autoFocus value={addMinutes} placeholder="45" onChange={e=>setAddMinutes(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setAdding(false);}}}/></label>
+     </div>
      {addValid && <p className={styles.editorNote}>{dayName(addDate)} · {addLength} minutes.</p>}</>
    : <>
-     <label>Start<input type="time" autoFocus value={addStart} onChange={e=>{setAddEnd(endAfterMove(addStart,addEnd,e.target.value));setAddStart(e.target.value);}} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setAdding(false);}}}/></label>
-     <label>End<EndTimePicker label="End" start={addStart} end={addEnd} onChange={setAddEnd}/></label>
-     {addStart && addEnd && rangeMinutes<=0 && <p className={styles.editorNote}>End time must be later than start time. A session past midnight can run up to 12 hours.</p>}
-     {rangeMinutes>0 && <p className={styles.editorNote}>{dayName(addDate)} · {minuteValue(addEnd)<=minuteValue(addStart) ? `Ends ${formatClock(addEnd,timeFormat)} on ${nextDayLabel(addDate)} · ` : ''}{rangeMinutes} minutes.</p>}
+     <SessionWhen labels={{startDate:'Start date',start:'Start',endDate:'End date',end:'End'}}
+      startDate={addDate} startTime={addStart} endDate={addSpan.endDate} endTime={addEnd}
+      onStartDate={setAddDate}
+      onStartTime={v=>{setAddEnd(endAfterMove(addStart,addEnd,v));setAddStart(v);}}
+      onEndDate={v=>setAddEndOffset(v ? daysBetween(addDate,v) : null)}
+      onEndTime={setAddEnd}
+      onEscape={()=>setAdding(false)}/>
+     {addSpan.problem && <p className={styles.editorNote}>{addSpan.problem}</p>}
+     {rangeMinutes>0 && <p className={styles.editorNote}>{dayName(addDate)} · {addSpan.endDate!==addDate ? `Ends ${formatClock(addEnd,timeFormat)} on ${shortDay(addSpan.endDate)} · ` : ''}{rangeMinutes} minutes.</p>}
     </>}
   <div className={styles.logAddButtons}>
    <button type="button" disabled={logBusy==='add' || !addValid} onClick={()=>void runLog('add',async()=>{
@@ -200,7 +222,7 @@ export default function PlanEditor({draft,blocks,onSave,onDelete,onCancel,live=f
    })}>{logBusy==='add' ? 'Adding…' : 'Add session'}</button>
    <button type="button" disabled={logBusy==='add'} aria-label="Cancel adding a session" onClick={()=>setAdding(false)}>Cancel</button>
   </div>
- </div> : <button type="button" className={styles.logAddOpen} onClick={()=>{setLogError('');setAdding(true);setAddDate(todayLocal());setAddEarlier(false);setAddMinutes('');setAddStart('');setAddEnd('');}}>Forgot to start the timer? Add a session</button>)}</section>}
+ </div> : <button type="button" className={styles.logAddOpen} onClick={()=>{setLogError('');setAdding(true);setAddDate(todayLocal());setAddEndOffset(null);setAddMinutes('');setAddStart('');setAddEnd('');}}>Forgot to start the timer? Add a session</button>)}</section>}
  {error && <p role="alert">{error}</p>}
  <div className={styles.editorButtons}>{onDelete && <button type="button" className={styles.editorDelete} disabled={saving} onClick={()=>void onDelete()}>Delete block</button>}<button type="button" onClick={onCancel}>Cancel</button><button disabled={saving} type="submit">{saving ? "Saving…" : "Save block"}</button></div>
  </form></section>;
