@@ -1566,3 +1566,11 @@
 @media (prefers-reduced-motion: reduce) {
   .courseRowFlash { animation: none; background: color-mix(in srgb, var(--accent) 10%, transparent); }
 }
+
+/* ── Memory: conversation notes ── */
+.memoryHeading { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin: 18px 0 6px; }
+.noteRow { display: grid; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.noteHead { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.noteText { font-size: 12px; line-height: 1.6; color: var(--text-secondary); margin: 0; white-space: pre-line; }
+.noteTitleInput, .noteTextInput { font: inherit; font-size: 13px; color: var(--text-primary); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; width: 100%; }
+.noteTextInput { resize: vertical; line-height: 1.5; }

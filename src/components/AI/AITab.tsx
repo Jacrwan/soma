@@ -609,7 +609,7 @@ export default function AITab() {
       const history=session.messages
         .map(m=>({role:m.role,content:m.modelContent ?? stripTags(m.content),...(m.at ? {at:m.at} : {})}))
         .filter(m=>m.content.trim());
-      const result=await askSoma({userId:requestUserId,origin:dateAt(new Date(),0),text,history,voice:isVoice});
+      const result=await askSoma({userId:requestUserId,origin:dateAt(new Date(),0),text,history,voice:isVoice,conversationId:activeSessionId ?? undefined});
       await storage.assertUser(requestUserId);
       const made=getProposals(requestUserId).filter(p=>result.proposedIds.includes(p.id));
       const assistantMsg: ChatMessage = {

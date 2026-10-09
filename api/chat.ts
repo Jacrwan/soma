@@ -5,6 +5,7 @@ import { waitUntil } from '@vercel/functions';
 import { EXTENSION_MS, trialLengthMs } from './_trial';
 import { recordUsage, type Usage } from './_usage';
 import { budgetStatus, type BudgetStatus } from './_budget';
+import { loadConversationNotes, noteFromChat, isConversationId } from './_notes';
 
 export const config = { api: { bodyParser: { sizeLimit: '4.5mb' } } };
 // Sonnet thinks before it answers; a whole day's plan can take over a minute.
@@ -48,12 +49,13 @@ async function defaultBudget(userId:string):Promise<BudgetStatus|null>{
 
 export function validateChatInput(body:unknown):string|null{
  if(!body || typeof body!=='object')return 'invalid_request';
- const {messages,systemPrompt,context,model,effort,purpose}=body as Record<string,unknown>;
+ const {messages,systemPrompt,context,model,effort,purpose,conversationId}=body as Record<string,unknown>;
  if(systemPrompt!==undefined && typeof systemPrompt!=='string')return 'invalid_system_prompt';
  if(context!==undefined && typeof context!=='string')return 'invalid_context';
  if(model!==undefined && model!=='sonnet')return 'invalid_model';
  if(effort!==undefined && effort!=='low' && effort!=='medium')return 'invalid_effort';
  if(purpose!==undefined && purpose!=='triage')return 'invalid_purpose';
+ if(conversationId!==undefined && !isConversationId(conversationId))return 'invalid_conversation';
  if(!Array.isArray(messages) || !messages.length || messages.length>50)return 'invalid_messages';
  let chars=(typeof systemPrompt==='string' ? systemPrompt.length : 0)+(typeof context==='string' ? context.length : 0);
  for(const msg of messages){
@@ -88,7 +90,7 @@ function rateLimited(userId:string){
  hits.set(userId,[...times,now]);return false;
 }
 
-export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Authorization>;request?:typeof fetch;apiKey?:()=>string|undefined;limited?:(id:string)=>boolean;memory?:(userId:string,query:string)=>Promise<string>;learn?:(userId:string,message:string,assistantContext:string,apiKey:string)=>Promise<void>;defer?:(task:Promise<unknown>)=>void;record?:(userId:string,kind:'reply'|'triage',model:string,usage:Usage)=>Promise<void>;budget?:(userId:string)=>Promise<BudgetStatus|null>}={}){
+export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Authorization>;request?:typeof fetch;apiKey?:()=>string|undefined;limited?:(id:string)=>boolean;memory?:(userId:string,query:string)=>Promise<string>;learn?:(userId:string,message:string,assistantContext:string,apiKey:string)=>Promise<void>;defer?:(task:Promise<unknown>)=>void;record?:(userId:string,kind:'reply'|'triage',model:string,usage:Usage)=>Promise<void>;budget?:(userId:string)=>Promise<BudgetStatus|null>;notes?:(userId:string,query:string,conversationId?:string)=>Promise<string>;noteChat?:(userId:string,conversationId:string,message:string,reply:string,apiKey:string)=>Promise<void>}={}){
  return async function handler(req:any,res:any){
   const origin=req.headers.origin;
   if(origin==='https://somastudy.app' || (process.env.NODE_ENV!=='production' && origin==='http://localhost:5173'))res.setHeader('Access-Control-Allow-Origin',origin);
@@ -112,13 +114,15 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
    }
    const key=(deps.apiKey??(()=>process.env.ANTHROPIC_API_KEY))();
    if(!key)return res.status(503).json({error:'server_not_configured'});
-   const {messages,systemPrompt,context,model,effort,purpose}=req.body;
+   const {messages,systemPrompt,context,model,effort,purpose,conversationId}=req.body;
    // The first pass that sorts a message (and answers small talk) needs no
    // memory, and learning from the message is left to the reply proper.
    const triage=purpose==='triage';
    const lastContent=messages[messages.length-1].content;
    const query=typeof lastContent==='string' ? lastContent : lastContent.filter((b:any)=>b.type==='text').map((b:any)=>b.text).join(' ');
    const savedMemory=triage ? '' : await (deps.memory??loadMemoryContext)(auth.userId,query);
+   // Notes from earlier chats, only when they match what is being asked.
+   const notes=triage ? '' : await (deps.notes??loadConversationNotes)(auth.userId,query,conversationId);
    // Prompt caching is a prefix match. systemPrompt (instructions, documents)
    // stays the same between messages, and so do the earlier turns of the chat;
    // the live plan (context) and memory (ranked per request) change every call.
@@ -127,7 +131,7 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
    // a cache breakpoint on the turn before it, and the whole chat is read from
    // cache at a tenth of the price.
    const system=systemPrompt ? [{type:'text' as const,text:systemPrompt,cache_control:{type:'ephemeral' as const}}] : [];
-   const live=[context,savedMemory].filter((x):x is string=>typeof x==='string' && !!x.trim()).join('\n\n');
+   const live=[context,savedMemory,notes].filter((x):x is string=>typeof x==='string' && !!x.trim()).join('\n\n');
    const blocks=(content:unknown)=>typeof content==='string' ? [{type:'text',text:content}] : content as Record<string,unknown>[];
    const sent=messages.map((m:{role:string;content:unknown},i:number)=>{
     if(i===messages.length-1)return live ? {role:m.role,content:[{type:'text',text:live},...blocks(m.content)]} : m;
@@ -160,6 +164,8 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
    const previous=messages.length>1 ? messages[messages.length-2] : null;
    const assistantContext=previous?.role==='assistant' ? (typeof previous.content==='string' ? previous.content : previous.content.filter((b:any)=>b.type==='text').map((b:any)=>b.text).join(' ')) : '';
    if(!triage)(deps.defer??waitUntil)((deps.learn??learnFromMessage)(auth.userId,query,assistantContext,key).catch(()=>{}));
+   // This conversation's note, updated with what was just said.
+   if(!triage && isConversationId(conversationId))(deps.defer??waitUntil)((deps.noteChat??noteFromChat)(auth.userId,conversationId,query,text,key).catch(()=>{}));
    return res.status(200).json({content:[{type:'text',text}],stop_reason:data?.stop_reason});
   }catch(error){
    const timedOut=error instanceof Error && ['TimeoutError','AbortError'].includes(error.name);

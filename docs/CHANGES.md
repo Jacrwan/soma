@@ -11,6 +11,37 @@ still needed.
 
 ## 2026-10-08
 
+### Soma remembers conversations (notes per chat)
+- **Why:** "I recall talking to Soma about what I'm gonna do for my CS midterm
+  prep but it has no memory of it." Every chat was forgotten when it ended; the
+  fact memory only keeps lasting facts about the student.
+- **What:** each conversation keeps one short, dated note (title + up to ~6
+  lines) of what was discussed, decided and planned, updated after each real
+  reply by a small Haiku call (not after first-pass small talk, not for
+  commands). A later reply gets back at most 3 notes that clearly match the
+  student's message (two matching words, or one in the title), never the
+  current chat's own. They ride on the newest message as "EARLIER
+  CONVERSATIONS". The owner chose: notes per chat, recalled only when relevant,
+  managed in Settings → Memory.
+- **Control:** Settings → Memory has "Conversations" (edit, delete) and "About
+  you" (the existing facts). Pausing memory stops notes being written or
+  recalled; "Forget everything" and `/memory clear` delete notes too. Account
+  deletion clears them.
+- **Fails soft:** without the table, or if it errors, notes are skipped and the
+  rest of memory and every reply keep working.
+- **Untouched:** the fact memory (`api/_memory.ts`) is unchanged. An earlier
+  attempt that stretched it to hold plans was reverted at the owner's request.
+- **Where:** `api/_notes.ts` (store, matching, writer), `api/chat.ts` (recall,
+  then write after the reply; `conversationId`), `api/memory.ts` (list, edit,
+  delete, clear), `src/lib/assistant.ts` and `src/lib/ai.ts` (send the chat's
+  id), `LiveDashboard.tsx`, `AITab.tsx`, `SettingsTab.tsx`, `src/lib/aiMemory.ts`,
+  privacy pages, `api/_deleteUserData.ts`.
+- **Guard:** `tests/conversation-notes.spec.ts`.
+- **Setup:** run `soma_conversation_notes_migration.sql` once. Until then nothing
+  is saved or recalled.
+- **Cost:** about 0.2¢ more per real reply (the note writer), plus the matching
+  notes' few hundred tokens when one is recalled.
+
 ### A time the student states can run past four hours
 - **Why:** at 7 PM, "study for my CS midterm from now til 12" got "Suggested:
   now until midnight" and then "Couldn't place: Study proposals must be between
