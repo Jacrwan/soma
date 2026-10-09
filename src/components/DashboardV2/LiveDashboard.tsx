@@ -211,7 +211,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   // Asked just after midnight, before the page has rolled over: Soma still
   // answers for today, and the day on screen keeps its date.
   const now=dateAt(new Date(),0),shift=Math.round((+now-+origin)/86_400_000);
-  const result=await askSoma({userId,origin:now,text,history:conversation.current,selectedDay:Math.max(0,day-shift),activeBlockId:active?.id});
+  const result=await askSoma({userId,origin:now,text,history:conversation.current,selectedDay:Math.max(0,day-shift),activeBlockId:active?.id,conversationId:memory.id});
   conversation.current=result.history;
   memory.history=result.history;
   const [asked,answered]=result.history.slice(-2);

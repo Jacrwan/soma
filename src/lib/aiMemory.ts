@@ -1,7 +1,9 @@
 /** Explicit memory commands are handled by the API, never by model-generated actions. */
 export type MemoryEntry = { key: string; content: string; category: 'preference' | 'goal' | 'fact'; updatedAt: string; expiresAt: string | null; source?: 'manual' | 'auto' };
-export type MemoryState = { revision: number; enabled: boolean; entries: MemoryEntry[] };
-export type MemoryMutation = { action: 'remember'; key: string; content: string; category?: MemoryEntry['category']; expiresAt?: string | null } | { action:'forget'; key:string } | { action:'clear' } | { action:'set_enabled'; enabled:boolean };
+/** A note on one past conversation (api/_notes.ts). */
+export type ConversationNote = { id: string; conversationId: string; title: string; note: string; updatedAt: string };
+export type MemoryState = { revision: number; enabled: boolean; entries: MemoryEntry[]; notes?: ConversationNote[] };
+export type MemoryMutation = { action: 'remember'; key: string; content: string; category?: MemoryEntry['category']; expiresAt?: string | null } | { action:'forget'; key:string } | { action:'clear' } | { action:'set_enabled'; enabled:boolean } | { action:'edit_note'; id:string; title:string; note:string } | { action:'forget_note'; id:string };
 export function parseMemoryCommand(text: string): MemoryMutation | 'list' | 'help' | null {
   const value=text.trim();
   if (/^\/memories$/i.test(value)) return 'list';
@@ -17,7 +19,7 @@ export async function requestMemory(token: string, action?: MemoryMutation): Pro
   const response=await fetch('/api/memory',{method:action ? 'POST':'GET',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},...(action ? {body:JSON.stringify(action)}:{}),signal:AbortSignal.timeout(15000)}).catch(() => { throw new Error('The memory request was not confirmed. Check /memories before retrying.'); });
   const body=await response.json().catch(()=>null);
   if(!response.ok) {
-    const messages:Record<string,string>={auth_required:'Sign in again to manage your memories.',memory_disabled:'Memory is paused. Send /memory on before saving a new memory.',memory_full:'Your memory is full. Forget a saved item before adding another.',memory_conflict:'Memory changed in another request. Please retry.',memory_unavailable:'Memory is not available right now. Please try again later.',rate_limit:'Too many memory requests. Please wait a minute.',invalid_memory:'Use a memory of 1–600 characters.',invalid_memory_key:'Use a short key with letters, numbers, hyphens or underscores.'};
+    const messages:Record<string,string>={invalid_note:'A note needs a title (up to 80 characters) and some text (up to 1,500).',note_not_found:'That note is already gone. Reload to see the current list.',auth_required:'Sign in again to manage your memories.',memory_disabled:'Memory is paused. Send /memory on before saving a new memory.',memory_full:'Your memory is full. Forget a saved item before adding another.',memory_conflict:'Memory changed in another request. Please retry.',memory_unavailable:'Memory is not available right now. Please try again later.',rate_limit:'Too many memory requests. Please wait a minute.',invalid_memory:'Use a memory of 1–600 characters.',invalid_memory_key:'Use a short key with letters, numbers, hyphens or underscores.'};
     throw new Error(messages[body?.error]??'The memory request was not confirmed. Check /memories before retrying.');
   }
   return body as MemoryState;

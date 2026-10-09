@@ -119,6 +119,8 @@ export default function SettingsTab() {
   const [memoryBusy, setMemoryBusy] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
 
+  // The conversation note being edited in Settings → Memory.
+  const [editingNote, setEditingNote] = useState<{ id: string; title: string; note: string } | null>(null);
   async function memoryCall(action?: MemoryMutation) {
     setMemoryBusy(true);
     setMemoryError('');
@@ -1090,9 +1092,9 @@ export default function SettingsTab() {
           <section className={styles.section}>
             <h2 className={styles.sectionTitle}>Memory</h2>
             <p className={styles.sectionDescription}>
-              Soma remembers lasting things you tell it — how you like to study, your routines, your goals —
-              so you don't have to repeat yourself. It learns only from what you type, never from your
-              documents. Everything it remembers is listed here, and you can delete any of it.
+              Soma keeps a short note of each conversation (what you discussed, decided and planned) and
+              brings one back when you ask about the same thing later. It also remembers lasting things about
+              you, like how you like to study. Everything is listed here, and you can edit or delete any of it.
             </p>
 
             {memoryError && <p className={styles.courseError} role="alert">{memoryError}</p>}
@@ -1120,6 +1122,35 @@ export default function SettingsTab() {
                   <p className={styles.archivedEmpty}>Paused. Soma won't learn anything new or use what it has saved until you turn this back on.</p>
                 )}
 
+                <h3 className={styles.memoryHeading}>Conversations</h3>
+                <div className={styles.courseList} aria-label="Conversation notes">
+                  {(memory.notes ?? []).length === 0 ? (
+                    <p className={styles.archivedEmpty}>No notes yet. After you plan something with Soma, a short note of it shows up here.</p>
+                  ) : (memory.notes ?? []).map(n => editingNote?.id === n.id ? (
+                    <div key={n.id} className={styles.noteRow}>
+                      <input className={styles.noteTitleInput} aria-label="Note title" maxLength={80} value={editingNote.title} onChange={e => setEditingNote({ ...editingNote, title: e.target.value })} />
+                      <textarea className={styles.noteTextInput} aria-label="Note" maxLength={1500} rows={4} value={editingNote.note} onChange={e => setEditingNote({ ...editingNote, note: e.target.value })} />
+                      <div className={styles.courseActions}>
+                        <button className={styles.restoreBtn} onClick={() => setEditingNote(null)}>Cancel</button>
+                        <button className={styles.neutralBtn} disabled={memoryBusy || !editingNote.title.trim() || !editingNote.note.trim()} onClick={() => { const e = editingNote; setEditingNote(null); void memoryCall({ action: 'edit_note', id: e.id, title: e.title.trim(), note: e.note.trim() }); }}>Save</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div key={n.id} className={styles.noteRow}>
+                      <div className={styles.noteHead}>
+                        <span className={styles.courseName}>{n.title}</span>
+                        <span className={styles.courseSource}>{new Date(n.updatedAt).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+                      </div>
+                      <p className={styles.noteText}>{n.note}</p>
+                      <div className={styles.courseActions}>
+                        <button className={styles.restoreBtn} disabled={memoryBusy} aria-label={`Edit note: ${n.title}`} onClick={() => setEditingNote({ id: n.id, title: n.title, note: n.note })}>Edit</button>
+                        <button className={styles.deleteSubjectBtn} disabled={memoryBusy} aria-label={`Delete note: ${n.title}`} onClick={() => void memoryCall({ action: 'forget_note', id: n.id })}>Delete</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <h3 className={styles.memoryHeading}>About you</h3>
                 <div className={styles.courseList} aria-label="Saved memories">
                   {memory.entries.length === 0 ? (
                     <p className={styles.archivedEmpty}>Nothing remembered yet. Mention your routines or preferences in a chat and they'll show up here.</p>
@@ -1139,10 +1170,10 @@ export default function SettingsTab() {
                   ))}
                 </div>
 
-                {memory.entries.length > 0 && (
+                {(memory.entries.length > 0 || (memory.notes ?? []).length > 0) && (
                   confirmClear ? (
                     <div className={styles.courseActions}>
-                      <span className={styles.archivedEmpty}>Forget everything Soma has remembered?</span>
+                      <span className={styles.archivedEmpty}>Forget everything Soma has remembered, notes included?</span>
                       <button className={styles.deleteSubjectBtn} disabled={memoryBusy} onClick={() => { setConfirmClear(false); void memoryCall({ action: 'clear' }); }}>Forget all</button>
                       <button className={styles.restoreBtn} onClick={() => setConfirmClear(false)}>Cancel</button>
                     </div>
