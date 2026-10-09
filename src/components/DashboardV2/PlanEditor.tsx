@@ -14,7 +14,10 @@ export const minuteValue = (s:string) => {const [h,m]=s.split(':').map(Number);r
 /** "Sep 30" for the day after a YYYY-MM-DD date. */
 const nextDayLabel=(date:string)=>{const d=new Date(`${date}T12:00:00`);d.setDate(d.getDate()+1);return d.toLocaleDateString(undefined,{month:'short',day:'numeric'});};
 /** Evaluated per render: a module-level constant would go stale past midnight. */
-const todayLocal=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+const dayLocal=(back:number)=>{const d=new Date();d.setDate(d.getDate()-back);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+const todayLocal=()=>dayLocal(0);
+/** "Thu, Oct 8": said back before saving, so a session never lands on the wrong day unseen. */
+const dayName=(date:string)=>new Date(`${date}T12:00:00`).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
 const clockOf=(iso:string)=>{const d=new Date(iso);return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;};
 /** "9:05 AM – 9:50 AM", or nothing when the row never recorded its clock times. */
 /** A session that ran past midnight names the day it ended: "11:25 PM – Sep 30 12:35 AM". */
@@ -33,7 +36,7 @@ const endAfter=(start:string,minutes:number,format:'12h'|'24h')=>{
 /** `start`/`end` are ISO instants when the session recorded them; older rows
  *  and some imports have only a duration, so both are optional. */
 export type FocusLog = { id:string; date:string; minutes:number; start?:string; end?:string };
-export default function PlanEditor({draft,blocks,onSave,onDelete,onCancel,live=false,knownSubjects=[],usedColors=[],logs=[],onEditSession,onDeleteSession,onAddSession}:{live?:boolean;draft:EditorDraft;blocks:PlanBlock[];knownSubjects?:string[];usedColors?:SubjectColor[];logs?:FocusLog[];onSave:(block:PlanBlock)=>void | Promise<void>;onDelete?:()=>Promise<void>;onCancel:()=>void;onEditSession?:(sessionId:string,minutes:number,startTime?:string)=>Promise<void>;onDeleteSession?:(sessionId:string)=>Promise<void>;onAddSession?:(date:string,minutes:number,startTime?:string)=>Promise<void>}) {
+export default function PlanEditor({draft,blocks,onSave,onDelete,onCancel,live=false,knownSubjects=[],usedColors=[],logs=[],onEditSession,onDeleteSession,onAddSession}:{live?:boolean;draft:EditorDraft;blocks:PlanBlock[];knownSubjects?:string[];usedColors?:SubjectColor[];logs?:FocusLog[];onSave:(block:PlanBlock)=>void | Promise<void>;onDelete?:()=>Promise<void>;onCancel:()=>void;onEditSession?:(sessionId:string,minutes:number,startTime?:string,date?:string)=>Promise<void>;onDeleteSession?:(sessionId:string)=>Promise<void>;onAddSession?:(date:string,minutes:number,startTime?:string)=>Promise<void>}) {
  const timeFormat=useTimeFormat();
  const [title,setTitle]=useState(draft.block?.title ?? '');
  const [subject,setSubject]=useState(draft.block?.external ? 'Personal' : draft.block?.subject ?? 'Personal');
@@ -53,6 +56,9 @@ export default function PlanEditor({draft,blocks,onSave,onDelete,onCancel,live=f
  // when it ran.
  const [logMode,setLogMode]=useState<'minutes'|'range'>('minutes');
  const [logStart,setLogStart]=useState('');
+ // The day a session is corrected to; Earlier opens a date picker.
+ const [logDate,setLogDate]=useState('');
+ const [logEarlier,setLogEarlier]=useState(false);
  const [logEnd,setLogEnd]=useState('');
  // An end before the start is the next day (11:25 PM to 12:35 AM is 70 minutes),
  // up to 12 hours: 3 PM to 2 PM is a typo, not a 23-hour session.
@@ -67,6 +73,8 @@ export default function PlanEditor({draft,blocks,onSave,onDelete,onCancel,live=f
  // Adding a session covers the case the timer was never started at all.
  const [adding,setAdding]=useState(false);
  const [addDate,setAddDate]=useState(todayLocal);
+ // Today and Yesterday are one tap; Earlier opens a date picker.
+ const [addEarlier,setAddEarlier]=useState(false);
  const [addMinutes,setAddMinutes]=useState('');
  // Some sessions are remembered as "about 45 minutes", others as "2 till 3".
  const [addMode,setAddMode]=useState<'minutes'|'range'>('minutes');
@@ -117,6 +125,12 @@ export default function PlanEditor({draft,blocks,onSave,onDelete,onCancel,live=f
      <button type="button" aria-pressed={logMode==='range'} onClick={()=>setLogMode('range')}>Start and end</button>
     </div>
    </div>
+   <div className={styles.logAddMode} role="group" aria-label={`Day of the session on ${day}`}>
+    <button type="button" disabled={busy} aria-pressed={!logEarlier && logDate===dayLocal(0)} onClick={()=>{setLogEarlier(false);setLogDate(dayLocal(0));}}>Today</button>
+    <button type="button" disabled={busy} aria-pressed={!logEarlier && logDate===dayLocal(1)} onClick={()=>{setLogEarlier(false);setLogDate(dayLocal(1));}}>Yesterday</button>
+    <button type="button" disabled={busy} aria-pressed={logEarlier} onClick={()=>{setLogEarlier(true);if(logDate>=dayLocal(1))setLogDate(dayLocal(2));}}>Earlier</button>
+   </div>
+   {logEarlier && <label className={styles.logAddDay}>Date<input className={styles.logInput} type="date" max={todayLocal()} value={logDate} disabled={busy} onChange={e=>setLogDate(e.target.value)}/></label>}
    {logMode==='minutes'
     ? <div className={styles.logEditing}>
       <input className={styles.logInput} type="number" min={0} max={1440} step={1} autoFocus aria-label={`Minutes studied on ${day}`} value={logMinutes} disabled={busy}
@@ -131,11 +145,13 @@ export default function PlanEditor({draft,blocks,onSave,onDelete,onCancel,live=f
       <label>End<EndTimePicker label={`End time on ${day}`} start={logStart} end={logEnd} disabled={busy} onChange={setLogEnd}/></label>
      </div>}
    {logMode==='range' && logStart && logEnd && logRangeMinutes<=0 && <p className={styles.editorNote}>End time must be later than start time. A session past midnight can run up to 12 hours.</p>}
-   {logMode==='range' && logRangeMinutes>0 && <p className={styles.editorNote}>{minuteValue(logEnd)<=minuteValue(logStart) ? `Ends ${formatClock(logEnd,timeFormat)} the next day · ` : ''}{logRangeMinutes} minutes.</p>}
+   {logMode==='minutes' && logDate && logDate!==l.date && logLength>=1 && <p className={styles.editorNote}>Moves to {dayName(logDate)} · {logLength} minutes.</p>}
+   {logMode==='range' && logRangeMinutes>0 && <p className={styles.editorNote}>{dayName(logDate||l.date)} · {minuteValue(logEnd)<=minuteValue(logStart) ? `Ends ${formatClock(logEnd,timeFormat)} the next day · ` : ''}{logRangeMinutes} minutes.</p>}
    <div className={styles.logAddButtons}>
     <button type="button" disabled={busy || !logValid} onClick={()=>{
-     if(logMode==='minutes' && logLength===l.minutes){setEditingLog(null);return;}
-     void runLog(l.id,()=>onEditSession!(l.id,logLength,logMode==='range' ? logStart : undefined));
+     const moved=!!logDate && logDate!==l.date;
+     if(logMode==='minutes' && logLength===l.minutes && !moved){setEditingLog(null);return;}
+     void runLog(l.id,()=>onEditSession!(l.id,logLength,logMode==='range' ? logStart : undefined,moved ? logDate : undefined));
     }}>{busy ? 'Saving…' : 'Save'}</button>
     <button type="button" disabled={busy} aria-label={`Cancel editing the session on ${day}`} onClick={()=>setEditingLog(null)}>Cancel</button>
    </div>
@@ -149,7 +165,7 @@ export default function PlanEditor({draft,blocks,onSave,onDelete,onCancel,live=f
     <button type="button" disabled={busy} aria-label={`Edit the ${l.minutes} minute session on ${day}`} onClick={()=>{
      setLogError('');setLogMinutes(String(l.minutes));
      setLogStart(l.start ? clockOf(l.start) : '');setLogEnd(l.end ? clockOf(l.end) : '');
-     setLogMode('minutes');setEditingLog(l.id);
+     setLogDate(l.date);setLogEarlier(l.date<dayLocal(1));setLogMode('minutes');setEditingLog(l.id);
     }}>Edit</button>
     <button type="button" disabled={busy} aria-label={`Delete the ${l.minutes} minute session on ${day}`} onClick={()=>{
      if(!window.confirm(`Delete the ${l.minutes}-minute session from ${day}? This removes the study time for good.`))return;
@@ -158,18 +174,24 @@ export default function PlanEditor({draft,blocks,onSave,onDelete,onCancel,live=f
    </span>}
   </li>;
  })}</ul>{logError && <p role="alert" className={styles.editorNote}>{logError}</p>}{logs.length>6 && <small>{logs.length-6} earlier {logs.length-6===1 ? 'session' : 'sessions'} not shown.</small>}{logs.length>0 && <><small>{logs.reduce((n,l)=>n+l.minutes,0)} minutes recorded on this task.</small>{canEditLogs && <small>Slept with the timer running? Correct the minutes or delete the session.</small>}</>}{logs.length===0 && <small>No study time recorded on this task yet.</small>}{onAddSession && (adding ? <div className={styles.logAdd}>
-  <label>Date<input type="date" max={todayLocal()} value={addDate} onChange={e=>setAddDate(e.target.value)}/></label>
+  <div className={styles.logAddDay}><span>Day</span><div className={styles.logAddMode} role="group" aria-label="Day of the session">
+   <button type="button" aria-pressed={!addEarlier && addDate===dayLocal(0)} onClick={()=>{setAddEarlier(false);setAddDate(dayLocal(0));}}>Today</button>
+   <button type="button" aria-pressed={!addEarlier && addDate===dayLocal(1)} onClick={()=>{setAddEarlier(false);setAddDate(dayLocal(1));}}>Yesterday</button>
+   <button type="button" aria-pressed={addEarlier} onClick={()=>{setAddEarlier(true);if(addDate>=dayLocal(1))setAddDate(dayLocal(2));}}>Earlier</button>
+  </div></div>
+  {addEarlier && <label>Date<input type="date" max={todayLocal()} value={addDate} onChange={e=>setAddDate(e.target.value)}/></label>}
   <div className={styles.logAddMode} role="group" aria-label="How to enter the session">
    <button type="button" aria-pressed={addMode==='minutes'} onClick={()=>setAddMode('minutes')}>Length</button>
    <button type="button" aria-pressed={addMode==='range'} onClick={()=>setAddMode('range')}>Start and end</button>
   </div>
   {addMode==='minutes'
-   ? <label>Minutes<input type="number" min={1} max={1440} step={1} autoFocus value={addMinutes} placeholder="45" onChange={e=>setAddMinutes(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setAdding(false);}}}/></label>
+   ? <><label>Minutes<input type="number" min={1} max={1440} step={1} autoFocus value={addMinutes} placeholder="45" onChange={e=>setAddMinutes(e.target.value)} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setAdding(false);}}}/></label>
+     {addValid && <p className={styles.editorNote}>{dayName(addDate)} · {addLength} minutes.</p>}</>
    : <>
      <label>Start<input type="time" autoFocus value={addStart} onChange={e=>{setAddEnd(endAfterMove(addStart,addEnd,e.target.value));setAddStart(e.target.value);}} onKeyDown={e=>{if(e.key==='Escape'){e.preventDefault();setAdding(false);}}}/></label>
      <label>End<EndTimePicker label="End" start={addStart} end={addEnd} onChange={setAddEnd}/></label>
      {addStart && addEnd && rangeMinutes<=0 && <p className={styles.editorNote}>End time must be later than start time. A session past midnight can run up to 12 hours.</p>}
-     {rangeMinutes>0 && <p className={styles.editorNote}>{minuteValue(addEnd)<=minuteValue(addStart) ? `Ends ${formatClock(addEnd,timeFormat)} on ${nextDayLabel(addDate)} · ` : ''}{rangeMinutes} minutes.</p>}
+     {rangeMinutes>0 && <p className={styles.editorNote}>{dayName(addDate)} · {minuteValue(addEnd)<=minuteValue(addStart) ? `Ends ${formatClock(addEnd,timeFormat)} on ${nextDayLabel(addDate)} · ` : ''}{rangeMinutes} minutes.</p>}
     </>}
   <div className={styles.logAddButtons}>
    <button type="button" disabled={logBusy==='add' || !addValid} onClick={()=>void runLog('add',async()=>{
@@ -178,7 +200,7 @@ export default function PlanEditor({draft,blocks,onSave,onDelete,onCancel,live=f
    })}>{logBusy==='add' ? 'Adding…' : 'Add session'}</button>
    <button type="button" disabled={logBusy==='add'} aria-label="Cancel adding a session" onClick={()=>setAdding(false)}>Cancel</button>
   </div>
- </div> : <button type="button" className={styles.logAddOpen} onClick={()=>{setLogError('');setAdding(true);setAddDate(todayLocal());setAddMinutes('');setAddStart('');setAddEnd('');}}>Forgot to start the timer? Add a session</button>)}</section>}
+ </div> : <button type="button" className={styles.logAddOpen} onClick={()=>{setLogError('');setAdding(true);setAddDate(todayLocal());setAddEarlier(false);setAddMinutes('');setAddStart('');setAddEnd('');}}>Forgot to start the timer? Add a session</button>)}</section>}
  {error && <p role="alert">{error}</p>}
  <div className={styles.editorButtons}>{onDelete && <button type="button" className={styles.editorDelete} disabled={saving} onClick={()=>void onDelete()}>Delete block</button>}<button type="button" onClick={onCancel}>Cancel</button><button disabled={saving} type="submit">{saving ? "Saving…" : "Save block"}</button></div>
  </form></section>;
