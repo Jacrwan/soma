@@ -19,6 +19,7 @@ import { clearMirror } from './lib/activeTimerMirror';
 import TimerOverlay from './components/Timer/TimerOverlay';
 import LandingPage from './components/Landing/LandingPage';
 import LegalPage from './components/Legal/LegalPage';
+import ConnectApproval, { connectReturnPath } from './components/Connect/ConnectApproval';
 import PricingPage from './components/Pricing/PricingPage';
 import { SkeletonBlock } from './components/UI/Skeleton';
 import OnboardingFlow from './components/Onboarding/OnboardingFlow';
@@ -452,7 +453,8 @@ export default function App() {
         window.location.pathname.startsWith('/refund') ||
         window.location.pathname.startsWith('/data-deletion') ||
         window.location.pathname.startsWith('/contact') ||
-        window.location.pathname.startsWith('/ai-disclaimer');
+        window.location.pathname.startsWith('/ai-disclaimer') ||
+        window.location.pathname.startsWith('/oauth/');
       setShowTrialModal(!isPublic);
     }
   }, [userId, subscription.status, subscription.error, showOnboarding, showWalkthrough, location.pathname]);
@@ -521,6 +523,14 @@ export default function App() {
     };
   }, []);
 
+  // Signing in with Google from the Claude connector's approval page comes
+  // back to /dashboard; return to the approval that was waiting.
+  useEffect(() => {
+    if (!userId) return;
+    const back = connectReturnPath();
+    if (back && window.location.pathname !== '/oauth/consent') navigate(back, { replace: true });
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function finishWalkthrough() {
     setShowWalkthrough(false);
     storage.getSettings()
@@ -544,7 +554,8 @@ export default function App() {
       window.location.pathname.startsWith('/refund') ||
       window.location.pathname.startsWith('/data-deletion') ||
       window.location.pathname.startsWith('/contact') ||
-      window.location.pathname.startsWith('/ai-disclaimer');
+      window.location.pathname.startsWith('/ai-disclaimer') ||
+      window.location.pathname.startsWith('/oauth/');
     if (isPublic) return null;
     return <AppSkeleton />;
   }
@@ -575,6 +586,9 @@ export default function App() {
       <Route path="/data-deletion" element={<LegalPage type="data-deletion" />} />
       <Route path="/contact"       element={<LegalPage type="contact"       />} />
       <Route path="/ai-disclaimer"  element={<LegalPage type="ai"            />} />
+
+      {/* Claude connector: the student approves the connection here (api/_mcp.ts) */}
+      <Route path="/oauth/consent" element={<ConnectApproval user={user} />} />
 
       {/* Protected app routes inside shell */}
       <Route element={shell}>
