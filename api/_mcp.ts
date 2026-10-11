@@ -1,6 +1,6 @@
 /// <reference types="node" />
 import { createClient } from '@supabase/supabase-js';
-import { verifyUserAndSubscription } from './chat';
+import { authorizeChat } from './chat';
 import { isRateLimited } from './_rateLimit';
 import { INSTRUCTIONS, TOOLS, ToolError, supabaseDb, type ConnectorDb } from './_connector';
 
@@ -50,6 +50,54 @@ function defaultDb(): ConnectorDb {
   return supabaseDb(createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } }));
 }
 const defaultAuthServer = () => `${(process.env.VITE_SUPABASE_URL ?? '').replace(/\/+$/, '')}/auth/v1`;
+
+type ClaimsLike = { sub?: unknown; email?: unknown; iss?: unknown; role?: unknown; aud?: unknown; client_id?: unknown };
+type AuthLike = {
+  getUser(token: string): Promise<{ data: { user: { id: string; email?: string } | null }; error: { status?: number; code?: string } | null }>;
+  getClaims(token: string): Promise<{ data: { claims: ClaimsLike } | null; error: { status?: number; code?: string } | null }>;
+};
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Who a token belongs to, then whether they may use Soma's AI features.
+ *
+ * Other routes ask Supabase's user endpoint. That endpoint turned away the
+ * tokens Supabase's own OAuth server had just issued to Claude (2026-10-11:
+ * four 401s in a row, seconds after the student pressed Allow). So a token
+ * issued to an app is also accepted on its signature: it must be signed by
+ * this project's key, unexpired, from this project's sign-in server and for a
+ * signed-in user. An ordinary session token is still judged by the user
+ * endpoint alone.
+ */
+export async function authorizeConnector(admin: { auth: unknown; from(table: string): unknown }, token: string, issuer: string, devEmail?: string): Promise<Authorization> {
+  const auth = admin.auth as AuthLike;
+  let user: { id: string; email?: string } | null = null;
+  try {
+    const asked = await auth.getUser(token);
+    if (asked.data?.user) user = { id: asked.data.user.id, email: asked.data.user.email };
+    else {
+      const { data, error } = await auth.getClaims(token);
+      const claims = data?.claims;
+      const fromApp = typeof claims?.client_id === 'string' && !!claims.client_id;
+      if (!error && claims && fromApp && claims.iss === issuer && claims.role === 'authenticated' && typeof claims.sub === 'string' && UUID.test(claims.sub)) {
+        user = { id: claims.sub, ...(typeof claims.email === 'string' ? { email: claims.email } : {}) };
+      }
+      // Why the user endpoint said no, and what the signature check found. No token, no ids.
+      console.error(JSON.stringify({ event: 'connector_token', accepted: !!user, user_endpoint: { status: asked.error?.status ?? null, code: asked.error?.code ?? null }, signature: error ? { status: error.status ?? null, code: error.code ?? null } : { from_app: fromApp, issuer_ok: claims?.iss === issuer, role: typeof claims?.role === 'string' ? claims.role : null, aud: typeof claims?.aud === 'string' ? claims.aud.slice(0, 60) : Array.isArray(claims?.aud) ? 'list' : null } }));
+    }
+  } catch {
+    return { ok: false, status: 503, error: 'auth_service_unavailable' };
+  }
+  if (!user) return { ok: false, status: 401, error: 'auth_required' };
+  const verified = user;
+  return authorizeChat({ auth: { getUser: async () => ({ data: { user: verified }, error: null }) }, from: (table: string) => admin.from(table) } as never, token, devEmail);
+}
+
+async function defaultAuthorize(token: string): Promise<Authorization> {
+  const url = process.env.VITE_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return { ok: false, status: 503, error: 'server_not_configured' };
+  return authorizeConnector(createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } }), token, defaultAuthServer(), process.env.DEVELOPER_EMAIL);
+}
 
 /** Where this request reached Soma, so the addresses handed to Claude match it. */
 function origin(req: any): string {
@@ -152,7 +200,7 @@ export function createConnectorHandler(deps: Deps = {}) {
     if (isRateLimited(req, 'connector', { max: 600 })) { res.setHeader('Retry-After', '60'); return res.status(429).json({ error: 'rate_limit' }); }
 
     let auth: Authorization;
-    try { auth = await (deps.authorize ?? verifyUserAndSubscription)(token); }
+    try { auth = await (deps.authorize ?? defaultAuthorize)(token); }
     catch { auth = { ok: false, status: 503, error: 'auth_service_unavailable' }; }
     if (!auth.ok && auth.status === 401) { res.setHeader('WWW-Authenticate', challenge(', error="invalid_token"')); return res.status(401).json({ error: 'auth_required' }); }
 
