@@ -61,11 +61,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /**
  * Who a token belongs to, then whether they may use Soma's AI features.
  *
- * Other routes ask Supabase's user endpoint. That endpoint turned away the
- * tokens Supabase's own OAuth server had just issued to Claude (2026-10-11:
- * four 401s in a row, seconds after the student pressed Allow). So a token
- * issued to an app is also accepted on its signature: it must be signed by
- * this project's key, unexpired, from this project's sign-in server and for a
+ * Other routes ask Supabase's user endpoint. Whether that endpoint accepts a
+ * token issued by Supabase's OAuth server to an app is not confirmed, so such
+ * a token is also accepted on its signature: it must be signed by this
+ * project's key, unexpired, from this project's sign-in server and for a
  * signed-in user. An ordinary session token is still judged by the user
  * endpoint alone.
  */
