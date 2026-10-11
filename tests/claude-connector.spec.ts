@@ -97,36 +97,23 @@ test('a token Soma does not accept is refused before anything is read', async ()
   expect(reads).toBe(0);
 });
 
-// Whether Supabase's user endpoint accepts a token its OAuth server issued to
-// an app is not confirmed, so the connector can also verify one by signature.
-test('a token issued to Claude is accepted on its signature when the user endpoint refuses it', async () => {
-  const ISSUER = 'https://soma.supabase.co/auth/v1', STUDENT = '11111111-1111-4111-8111-111111111111';
-  const good = { sub: STUDENT, email: 'student@example.com', iss: ISSUER, role: 'authenticated', aud: 'authenticated', client_id: 'claude-client' };
-  const admin = (claims: Row | null, sub: Row | null = { status: 'active', trial_start: null, extension_start: null }, userEndpoint: Row | null = null) => {
+// Supabase's user endpoint decides whose token it is (it accepts the tokens
+// its OAuth server issues to Claude: confirmed live 2026-10-11), and a refusal
+// is logged with its reason, since the first failed connection left no trace.
+test('a token is judged by Supabase, then by the subscription, and a refusal logs why', async () => {
+  const admin = (user: Row | null, error: Row | null = null, sub: Row | null = { status: 'active', trial_start: null, extension_start: null }) => {
     const query: any = { select: () => query, eq: () => query, maybeSingle: async () => ({ data: sub, error: null }) };
-    return {
-      auth: {
-        getUser: async () => userEndpoint ? { data: { user: userEndpoint }, error: null } : { data: { user: null }, error: { status: 403, code: 'bad_jwt' } },
-        getClaims: async () => claims ? { data: { claims }, error: null } : { data: null, error: { status: 401, code: 'invalid_jwt' } },
-      },
-      from: () => query,
-    };
+    return { auth: { getUser: async () => ({ data: { user }, error }) }, from: () => query };
   };
-  const quiet = console.error; console.error = () => {};
+  expect(await authorizeConnector(admin({ id: 'student', email: 'a@b.c' }), 't')).toEqual({ ok: true, userId: 'student' });
+  expect(await authorizeConnector(admin({ id: 'student' }, null, null), 't')).toMatchObject({ ok: false, status: 402 });
+  const logged: string[] = [], quiet = console.error; console.error = (line: string) => { logged.push(line); };
   try {
-    expect(await authorizeConnector(admin(good), 't', ISSUER)).toEqual({ ok: true, userId: STUDENT });
-    // The subscription rule still applies to the student the signature names.
-    expect(await authorizeConnector(admin(good, null), 't', ISSUER)).toMatchObject({ ok: false, status: 402 });
-    // A bad signature, another project's token, a signed-out role, or an
-    // ordinary session the user endpoint refused: all turned away.
-    expect(await authorizeConnector(admin(null), 't', ISSUER)).toMatchObject({ ok: false, status: 401 });
-    expect(await authorizeConnector(admin({ ...good, iss: 'https://other.supabase.co/auth/v1' }), 't', ISSUER)).toMatchObject({ ok: false, status: 401 });
-    expect(await authorizeConnector(admin({ ...good, role: 'anon' }), 't', ISSUER)).toMatchObject({ ok: false, status: 401 });
-    expect(await authorizeConnector(admin({ ...good, sub: 'not-an-id' }), 't', ISSUER)).toMatchObject({ ok: false, status: 401 });
-    expect(await authorizeConnector(admin({ ...good, client_id: undefined }), 't', ISSUER)).toMatchObject({ ok: false, status: 401 });
+    expect(await authorizeConnector(admin(null, { status: 403, code: 'bad_jwt' }), 'secret-token')).toMatchObject({ ok: false, status: 401 });
+    // Supabase being down is not the student's token being wrong.
+    expect(await authorizeConnector(admin(null, { status: 502 }), 't')).toMatchObject({ ok: false, status: 503 });
   } finally { console.error = quiet; }
-  // When the user endpoint does accept the token, that is who it is.
-  expect(await authorizeConnector(admin(null, undefined, { id: 'from-endpoint', email: 'a@b.c' }), 't', ISSUER)).toEqual({ ok: true, userId: 'from-endpoint' });
+  expect(logged).toEqual(['{"event":"connector_token_refused","status":403,"code":"bad_jwt"}']);
 });
 
 test('the sign-in server is published where Claude looks for it', async () => {

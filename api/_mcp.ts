@@ -51,39 +51,22 @@ function defaultDb(): ConnectorDb {
 }
 const defaultAuthServer = () => `${(process.env.VITE_SUPABASE_URL ?? '').replace(/\/+$/, '')}/auth/v1`;
 
-type ClaimsLike = { sub?: unknown; email?: unknown; iss?: unknown; role?: unknown; aud?: unknown; client_id?: unknown };
-type AuthLike = {
-  getUser(token: string): Promise<{ data: { user: { id: string; email?: string } | null }; error: { status?: number; code?: string } | null }>;
-  getClaims(token: string): Promise<{ data: { claims: ClaimsLike } | null; error: { status?: number; code?: string } | null }>;
-};
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+type AuthLike = { getUser(token: string): Promise<{ data: { user: { id: string; email?: string } | null }; error: { status?: number; code?: string } | null }> };
 
 /**
- * Who a token belongs to, then whether they may use Soma's AI features.
- *
- * Other routes ask Supabase's user endpoint. Whether that endpoint accepts a
- * token issued by Supabase's OAuth server to an app is not confirmed, so such
- * a token is also accepted on its signature: it must be signed by this
- * project's key, unexpired, from this project's sign-in server and for a
- * signed-in user. An ordinary session token is still judged by the user
- * endpoint alone.
+ * Who a token belongs to, then whether they may use Soma's AI features: the
+ * same two checks as /api/chat. Supabase's user endpoint is the judge, so a
+ * connection the student has revoked stops working at once. A refused token
+ * logs why (status and error code only, never the token); the first
+ * connection failed with nothing in the logs to say where.
  */
-export async function authorizeConnector(admin: { auth: unknown; from(table: string): unknown }, token: string, issuer: string, devEmail?: string): Promise<Authorization> {
-  const auth = admin.auth as AuthLike;
+export async function authorizeConnector(admin: { auth: unknown; from(table: string): unknown }, token: string, devEmail?: string): Promise<Authorization> {
   let user: { id: string; email?: string } | null = null;
   try {
-    const asked = await auth.getUser(token);
-    if (asked.data?.user) user = { id: asked.data.user.id, email: asked.data.user.email };
-    else {
-      const { data, error } = await auth.getClaims(token);
-      const claims = data?.claims;
-      const fromApp = typeof claims?.client_id === 'string' && !!claims.client_id;
-      if (!error && claims && fromApp && claims.iss === issuer && claims.role === 'authenticated' && typeof claims.sub === 'string' && UUID.test(claims.sub)) {
-        user = { id: claims.sub, ...(typeof claims.email === 'string' ? { email: claims.email } : {}) };
-      }
-      // Why the user endpoint said no, and what the signature check found. No token, no ids.
-      console.error(JSON.stringify({ event: 'connector_token', accepted: !!user, user_endpoint: { status: asked.error?.status ?? null, code: asked.error?.code ?? null }, signature: error ? { status: error.status ?? null, code: error.code ?? null } : { from_app: fromApp, issuer_ok: claims?.iss === issuer, role: typeof claims?.role === 'string' ? claims.role : null, aud: typeof claims?.aud === 'string' ? claims.aud.slice(0, 60) : Array.isArray(claims?.aud) ? 'list' : null } }));
-    }
+    const asked = await (admin.auth as AuthLike).getUser(token);
+    if (asked.error && (!asked.error.status || asked.error.status >= 500)) return { ok: false, status: 503, error: 'auth_service_unavailable' };
+    user = asked.data?.user ?? null;
+    if (!user) console.error(JSON.stringify({ event: 'connector_token_refused', status: asked.error?.status ?? null, code: asked.error?.code ?? null }));
   } catch {
     return { ok: false, status: 503, error: 'auth_service_unavailable' };
   }
@@ -95,7 +78,7 @@ export async function authorizeConnector(admin: { auth: unknown; from(table: str
 async function defaultAuthorize(token: string): Promise<Authorization> {
   const url = process.env.VITE_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return { ok: false, status: 503, error: 'server_not_configured' };
-  return authorizeConnector(createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } }), token, defaultAuthServer(), process.env.DEVELOPER_EMAIL);
+  return authorizeConnector(createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } }), token, process.env.DEVELOPER_EMAIL);
 }
 
 /** Where this request reached Soma, so the addresses handed to Claude match it. */
