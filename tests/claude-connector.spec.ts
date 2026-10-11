@@ -2,14 +2,17 @@ import { test, expect, type Page } from '@playwright/test';
 import { readdirSync, readFileSync } from 'fs';
 import { createConnectorHandler, authorizeConnector } from '../api/_mcp';
 import { supabaseDb, TOOLS, type ConnectorDb } from '../api/_connector';
+import { zonedToUtc, studyWindowOf, zoneFitsHistory, openSlots, firstFit, clockAt, type Busy } from '../api/_placement';
+import { googleBusy, type CalendarRead } from '../api/_connectorCalendar';
 import * as importSchedule from '../api/import-schedule';
 
 // The Claude connector (2026-10-11): a student adds Soma to Claude, which can
 // then read their plan and add tasks and reading-list sections. "i cant give
 // soma the entire pdf doc of a texbook, but i can give it to claude … and even
 // ask claude what problems to solve from the textbook". Claude picks what,
-// which day and how long; it never writes a clock time, marks work done or
-// deletes anything.
+// which day and how long; Soma picks the clock time ("make soma auto-place
+// clock times for tasks claude adds"). Claude never marks work done or deletes
+// anything.
 
 type Row = Record<string, unknown>;
 const ME = 'student-1', OTHER = 'student-2';
@@ -40,6 +43,7 @@ function tables(): Record<string, Row[]> {
       { id: 'i3', user_id: ME, subject_id: 'phys', label: '4.3', title: null, position: 2, done_at: null, todo_id: null },
       { id: 'i4', user_id: ME, subject_id: 'phys', label: '4.4', title: null, position: 3, done_at: null, todo_id: null },
     ],
+    settings: [{ user_id: ME, data: { studyWindow: { start: '08:00', end: '23:00' }, theme: 'light' } }],
     documents: [
       { id: '11111111-1111-4111-8111-111111111111', user_id: ME, subject_id: 'phys', file_name: 'Physics syllabus.pdf', doc_type: 'syllabus', extraction_status: 'done', extracted_text: 'Week 7: momentum. '.repeat(3000), created_at: '2026-09-01T00:00:00Z' },
       { id: '22222222-2222-4222-8222-222222222222', user_id: OTHER, subject_id: 'theirs', file_name: 'Their notes.pdf', doc_type: 'other', extraction_status: 'done', extracted_text: 'private', created_at: '2026-09-01T00:00:00Z' },
@@ -64,11 +68,11 @@ function response() {
   const res = { status: (s: number) => { result.status = s; return res; }, json: (v: unknown) => { result.body = v; return res; }, setHeader: (k: string, v: string) => { result.headers[k] = v; }, end: () => { result.ended = true; } };
   return { result, res };
 }
-type Options = { db?: ConnectorDb; authorize?: () => Promise<{ ok: true; userId: string } | { ok: false; status: number; error: string }>; limited?: () => boolean };
+type Options = { db?: ConnectorDb; authorize?: () => Promise<{ ok: true; userId: string } | { ok: false; status: number; error: string }>; limited?: () => boolean; calendar?: () => Promise<CalendarRead> };
 async function post(body: unknown, opts: Options = {}, headers: Record<string, string> = { authorization: 'Bearer token', host: 'somastudy.app' }, method = 'POST') {
   const { result, res } = response();
   const db = opts.db ?? memoryDb();
-  await createConnectorHandler({ authorize: opts.authorize ?? (async () => ({ ok: true, userId: ME })), db: () => db, limited: opts.limited ?? (() => false), now: () => NOW, authServer: () => 'https://soma.supabase.co/auth/v1' })({ method, headers, body, query: { connector: 'mcp' } }, res);
+  await createConnectorHandler({ authorize: opts.authorize ?? (async () => ({ ok: true, userId: ME })), db: () => db, limited: opts.limited ?? (() => false), calendar: opts.calendar ?? (async () => ({ busy: [], complete: true })), now: () => NOW, authServer: () => 'https://soma.supabase.co/auth/v1' })({ method, headers, body, query: { connector: 'mcp' } }, res);
   return result;
 }
 /** Call one tool and read its JSON result (or its error text). */
@@ -158,12 +162,15 @@ test('Claude can start a session and list the tools', async () => {
   expect((await post({ jsonrpc: '2.0', id: 1, method: 'ping' }, {}, { authorization: 'Bearer token', host: 'somastudy.app' }, 'GET')).status).toBe(405);
 });
 
-test('no tool can delete, check work off, or write a clock time', () => {
+test('no tool can delete or check work off, and Claude cannot name a clock time', () => {
   const source = readFileSync('api/_connector.ts', 'utf8');
   expect(source).not.toMatch(/\.delete\(|delete\(table/);
-  // The only tables written are tasks and reading-list sections.
-  expect([...source.matchAll(/db\.(insert|upsert|update)\('(\w+)'/g)].map(m => `${m[1]} ${m[2]}`).sort()).toEqual(['insert todos', 'update course_items', 'upsert course_items']);
+  // The only tables written are tasks, their blocks and reading-list sections.
+  expect([...source.matchAll(/db\.(insert|upsert|update)\('(\w+)'/g)].map(m => `${m[1]} ${m[2]}`).sort()).toEqual(['insert todo_sessions', 'insert todos', 'update course_items', 'upsert course_items']);
   expect(TOOLS.filter(t => !t.readOnly).map(t => t.name)).toEqual(['save_reading_list', 'add_tasks']);
+  // A task carries a day, a length and at most bounds the student asked for; the time is Soma's to pick.
+  const task = (TOOLS.find(t => t.name === 'add_tasks')!.inputSchema.properties.tasks as { items: { properties: Row } }).items.properties;
+  expect(Object.keys(task).sort()).toEqual(['after', 'before', 'course', 'date', 'due', 'minutes', 'sections', 'title']);
 });
 
 // ── Reading ─────────────────────────────────────────────────────────────────
@@ -216,32 +223,155 @@ test('documents are read in pieces, and only the student\'s own', async () => {
 
 // ── Adding tasks ────────────────────────────────────────────────────────────
 
-test('tasks land on their day with a length and no clock time', async () => {
+const LA = 'America/Los_Angeles';
+/** An instant from Los Angeles wall-clock time in October 2026 (UTC−7). */
+const la = (day: string, clock: string) => Date.parse(`${day}T${clock}:00-07:00`);
+const added = (db: ReturnType<typeof memoryDb>) => db.data.todos.filter(t => !['t1', 't2', 't3', 't9'].includes(String(t.id)));
+const blocksOf = (db: ReturnType<typeof memoryDb>) => db.data.todo_sessions.filter(b => b.id !== 's1').map(({ id: _id, todo_id: _todo, ...b }) => b);
+
+test('Soma places each task in the first open stretch of its day and says when', async () => {
   const db = memoryDb();
-  const r = await tool('add_tasks', { tasks: [
+  // A class 9:00–9:59 on Wednesday.
+  const r = await tool('add_tasks', { timezone: LA, tasks: [
     { title: '  Stewart 3.4:\n problems 5, 11, 23  ', course: 'physics 5a', date: '2026-10-14', minutes: 45, due: '2026-10-16', sections: ['4.3', '4.2', '4.1', '9.9'] },
     { title: 'Review lecture 12', course: 'Math', date: '2026-10-14', minutes: 30 },
-  ] }, { db });
+  ] }, { db, calendar: async () => ({ busy: [[la('2026-10-14', '09:00'), la('2026-10-14', '09:59')]], complete: true }) });
   expect(r.data.added).toEqual([
-    { title: 'Stewart 3.4: problems 5, 11, 23', course: 'Physics 5A', date: '2026-10-14', weekday: 'Wed', minutes: 45, sections: ['4.3'], sections_not_linked: ['4.2 (already planned under another task)', '4.1 (already done)', '9.9 (not on the reading list)'] },
-    { title: 'Review lecture 12', course: 'Math 53', date: '2026-10-14', weekday: 'Wed', minutes: 30 },
+    // Study hours open at 8.
+    { title: 'Stewart 3.4: problems 5, 11, 23', course: 'Physics 5A', date: '2026-10-14', weekday: 'Wed', time: '08:00–08:45', minutes: 45, sections: ['4.3'], sections_not_linked: ['4.2 (already planned under another task)', '4.1 (already done)', '9.9 (not on the reading list)'] },
+    // 8:45–9:00 is too short, and class runs to 9:59: the next round time after it.
+    { title: 'Review lecture 12', course: 'Math 53', date: '2026-10-14', weekday: 'Wed', time: '10:00–10:30', minutes: 30 },
   ]);
-  expect(r.data.note).toContain('without a clock time');
-  const saved = db.data.todos.filter(t => !['t1', 't2', 't3', 't9'].includes(String(t.id)));
-  expect(saved.map(({ id: _id, ...t }) => t)).toEqual([
+  expect(r.data.note).toContain('Soma chose these times');
+  expect(added(db).map(({ id: _id, ...t }) => t)).toEqual([
     { user_id: ME, text: 'Stewart 3.4: problems 5, 11, 23', subject_id: 'phys', assignment_id: null, estimated_minutes: 45, status: 'nothing', date: '2026-10-14', due_date: '2026-10-16', kind: null, notes: null, order: null },
     { user_id: ME, text: 'Review lecture 12', subject_id: 'math', assignment_id: null, estimated_minutes: 30, status: 'nothing', date: '2026-10-14', due_date: null, kind: null, notes: null, order: null },
   ]);
-  // No block is written, so no clock time; the section it covers is now planned under it.
-  expect(db.data.todo_sessions).toHaveLength(1);
-  expect(db.data.course_items.find(i => i.id === 'i3')!.todo_id).toBe(saved[0].id);
+  // Saved the way the dashboard saves a block: the day, and the start and end as instants.
+  expect(blocksOf(db)).toEqual([
+    { user_id: ME, date: '2026-10-14', start_time: '2026-10-14T15:00:00.000Z', end_time: '2026-10-14T15:45:00.000Z' },
+    { user_id: ME, date: '2026-10-14', start_time: '2026-10-14T17:00:00.000Z', end_time: '2026-10-14T17:30:00.000Z' },
+  ]);
+  expect(db.data.todo_sessions.slice(1).map(b => b.todo_id)).toEqual(added(db).map(t => t.id));
+  expect(db.data.course_items.find(i => i.id === 'i3')!.todo_id).toBe(added(db)[0].id);
   expect(db.data.course_items.find(i => i.id === 'i2')!.todo_id).toBe('t1');
   expect(db.data.course_items.find(i => i.id === 'i1')!.done_at).toBe('2026-10-10T05:00:00Z');
+  // And Claude reads the same times back from the plan.
+  const plan = await tool('get_plan', { from: '2026-10-14', to: '2026-10-14', timezone: LA }, { db });
+  expect(plan.data.days[0].tasks.map((t: Row) => [t.title, t.time])).toEqual([['Stewart 3.4: problems 5, 11, 23', '08:00–08:45'], ['Review lecture 12', '10:00–10:30']]);
+});
+
+test('today\'s tasks start from now, go round the blocks already there, and keep to a time the student named', async () => {
+  const db = memoryDb();   // noon on Monday; "Physics reading" is planned 4–5 PM
+  const r = await tool('add_tasks', { timezone: LA, tasks: [
+    { title: 'Problem set 5 corrections', course: 'Physics 5A', date: '2026-10-12', minutes: 120 },
+    { title: 'Lab report draft', course: 'Physics 5A', date: '2026-10-12', minutes: 180 },
+    { title: 'Flashcards', course: 'Math 53', date: '2026-10-12', minutes: 30, after: '21:00' },
+    { title: 'Quiz review', course: 'Math 53', date: '2026-10-12', minutes: 45, after: '20:00', before: '21:00' },
+  ] }, { db });
+  expect(r.data.added.map((t: Row) => [t.title, t.time])).toEqual([
+    ['Problem set 5 corrections', '12:00–14:00'],
+    // Two hours are left before the 4 PM block, so three hours go after it.
+    ['Lab report draft', '17:00–20:00'],
+    ['Flashcards', '21:00–21:30'],
+    ['Quiz review', '20:00–20:45'],
+  ]);
+  // Never in the past: at 12:07 the next start is 12:15.
+  const later = memoryDb();
+  const body = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'add_tasks', arguments: { timezone: LA, tasks: [{ title: 'Quick review', course: 'Math 53', date: '2026-10-12', minutes: 20 }] } } };
+  const { result, res } = response();
+  await createConnectorHandler({ authorize: async () => ({ ok: true, userId: ME }), db: () => later, limited: () => false, calendar: async () => ({ busy: [], complete: true }), now: () => new Date('2026-10-12T19:07:00Z') })({ method: 'POST', headers: { authorization: 'Bearer t', host: 'somastudy.app' }, body, query: { connector: 'mcp' } }, res);
+  expect(JSON.parse((result.body as any).result.content[0].text).added[0].time).toBe('12:15–12:35');
+});
+
+test('a task that does not fit on its day is not added, and Claude is told what is open', async () => {
+  const db = memoryDb();
+  // Tuesday is busy 8:00–20:30 apart from 12:00–12:40.
+  const tuesday: Busy[] = [[la('2026-10-13', '08:00'), la('2026-10-13', '12:00')], [la('2026-10-13', '12:40'), la('2026-10-13', '20:30')]];
+  const r = await tool('add_tasks', { timezone: LA, tasks: [
+    { title: 'Practice midterm', course: 'Math 53', date: '2026-10-13', minutes: 180 },
+    { title: 'Short quiz prep', course: 'Math 53', date: '2026-10-13', minutes: 30 },
+    { title: 'Evening only', course: 'Math 53', date: '2026-10-13', minutes: 60, before: '18:00' },
+  ] }, { db, calendar: async () => ({ busy: tuesday, complete: true }) });
+  expect(r.data.added.map((t: Row) => [t.title, t.time])).toEqual([['Short quiz prep', '12:00–12:30']]);
+  expect(r.data.not_added).toEqual([
+    { title: 'Practice midterm', course: 'Math 53', date: '2026-10-13', minutes: 180, reason: 'No 180 minutes free on Tue 2026-10-13, inside study hours (08:00–23:00) and clear of the calendar and other blocks.', open_that_day: ['12:00–12:40 (40 min)', '20:30–23:00 (150 min)'] },
+    { title: 'Evening only', course: 'Math 53', date: '2026-10-13', minutes: 60, reason: 'No 60 minutes free on Tue 2026-10-13 before 18:00, inside study hours (08:00–23:00) and clear of the calendar and other blocks.', open_that_day: 'nothing' },
+  ]);
+  expect(added(db).map(t => t.text)).toEqual(['Short quiz prep']);
+  // An all-day event fills the day on the dashboard, so nothing is placed on it.
+  const allDay = await tool('add_tasks', { timezone: LA, tasks: [{ title: 'Reading', course: 'Math 53', date: '2026-10-15', minutes: 30 }] }, { db: memoryDb(), calendar: async () => ({ busy: [[la('2026-10-15', '00:00'), la('2026-10-16', '00:00')]], complete: true }) });
+  expect(allDay.data.added).toEqual([]);
+  expect(allDay.data.not_added[0].open_that_day).toBe('nothing');
+});
+
+test('a calendar Soma cannot read means no time is picked, and sending the task again places it', async () => {
+  const db = memoryDb();
+  const task = { title: 'Chapter 5 outline', course: 'Math 53', date: '2026-10-14', minutes: 60 };
+  const first = await tool('add_tasks', { timezone: LA, tasks: [task, { title: 'Full practice exam', course: 'Math 53', date: '2026-10-14', minutes: 300 }] }, { db, calendar: async () => ({ busy: [], complete: false }) });
+  expect(first.data.added.map((t: Row) => [t.title, t.time, String(t.no_time).slice(0, 44)])).toEqual([
+    ['Chapter 5 outline', undefined, 'Soma could not read the student\'s Google Cal'],
+    ['Full practice exam', undefined, 'Longer than 4 hours, the most Soma places in'],
+  ]);
+  expect(blocksOf(db)).toEqual([]);
+  expect(first.data.note).toBeUndefined();
+  // The calendar is back: the same task gets its time, and is not added twice.
+  const again = await tool('add_tasks', { timezone: LA, tasks: [task] }, { db });
+  expect(again.data.added).toEqual([]);
+  expect(again.data.given_a_time).toEqual([{ title: 'Chapter 5 outline', course: 'Math 53', date: '2026-10-14', weekday: 'Wed', time: '08:00–09:00', minutes: 60 }]);
+  expect(added(db).map(t => t.text)).toEqual(['Chapter 5 outline', 'Full practice exam']);
+  expect(db.data.todo_sessions.slice(1).map(b => b.todo_id)).toEqual([added(db)[0].id]);
+  // A calendar read that throws is treated the same way.
+  const broken = await tool('add_tasks', { timezone: LA, tasks: [{ title: 'Notes', course: 'Math 53', date: '2026-10-15', minutes: 30 }] }, { db: memoryDb(), calendar: async () => { throw new Error('down'); } });
+  expect(broken.data.added[0].no_time).toContain('could not read');
+});
+
+test('study hours decide where a day starts and ends, including past midnight and when they are off', async () => {
+  const hours = (studyWindow: Row) => { const db = memoryDb(); db.data.settings = [{ user_id: ME, data: { studyWindow } }, { user_id: OTHER, data: { studyWindow: { start: '03:00', end: '04:00' } } }]; return db; };
+  // 8 PM to 2 AM: four hours end at midnight, and the next hour starts on Thursday.
+  const night = hours({ start: '20:00', end: '02:00' });
+  const r = await tool('add_tasks', { timezone: LA, tasks: [
+    { title: 'Essay draft', course: 'Math 53', date: '2026-10-14', minutes: 240 },
+    { title: 'Essay edit', course: 'Math 53', date: '2026-10-14', minutes: 60 },
+    { title: 'One more hour', course: 'Math 53', date: '2026-10-14', minutes: 90 },
+  ] }, { db: night });
+  expect(r.data.added.map((t: Row) => [t.title, t.date, t.weekday, t.time])).toEqual([['Essay draft', '2026-10-14', 'Wed', '20:00–00:00'], ['Essay edit', '2026-10-15', 'Thu', '00:00–01:00']]);
+  expect(r.data.not_added.map((t: Row) => [t.title, t.open_that_day])).toEqual([['One more hour', ['01:00–02:00 (60 min)']]]);
+  // A block is saved on the day it starts, and so is its task, as the dashboard does.
+  expect(blocksOf(night).map(b => [b.date, b.start_time])).toEqual([['2026-10-14', '2026-10-15T03:00:00.000Z'], ['2026-10-15', '2026-10-15T07:00:00.000Z']]);
+  expect(added(night).map(t => t.date)).toEqual(['2026-10-14', '2026-10-15']);
+  // Off: any hour, but not before 8 AM unless the student named a time.
+  const off = hours({ start: '08:00', end: '23:00', off: true });
+  const o = await tool('add_tasks', { timezone: LA, tasks: [
+    { title: 'Morning pages', course: 'Math 53', date: '2026-10-14', minutes: 60 },
+    { title: 'Before class', course: 'Math 53', date: '2026-10-14', minutes: 45, after: '06:00' },
+    { title: 'Late night', course: 'Math 53', date: '2026-10-14', minutes: 60, after: '23:30' },
+  ] }, { db: off });
+  expect(o.data.added.map((t: Row) => t.time)).toEqual(['08:00–09:00', '06:00–06:45']);
+  expect(o.data.not_added[0].reason).toContain('inside study hours (any hour (study hours are off))');
+  // No saved settings: the app's default, 8 AM to 11 PM.
+  const none = memoryDb(); none.data.settings = [];
+  expect((await tool('add_tasks', { timezone: LA, tasks: [{ title: 'Default hours', course: 'Math 53', date: '2026-10-14', minutes: 30 }] }, { db: none })).data.added[0].time).toBe('08:00–08:30');
+});
+
+test('a time zone that does not match the student\'s own sessions places nothing', async () => {
+  const db = memoryDb();
+  // Three evenings of study in Los Angeles, each saved on the day it started.
+  for (const [i, day] of ['2026-10-07', '2026-10-08', '2026-10-09'].entries()) db.data.timer_sessions.push({ id: `e${i}`, user_id: ME, subject_id: 'math', task_text: 'Homework', date: day, start_time: new Date(la(day, '20:00')).toISOString(), end_time: new Date(la(day, '21:00')).toISOString(), duration_seconds: 3600 });
+  const task = { title: 'Wrong zone', course: 'Math 53', date: '2026-10-14', minutes: 30 };
+  const utc = await tool('add_tasks', { timezone: 'UTC', tasks: [task] }, { db });
+  expect(utc.isError).toBe(true);
+  expect(utc.text).toContain('"UTC" does not match the days this student\'s study sessions were saved on');
+  expect(db.writes).toEqual([]);
+  expect((await tool('add_tasks', { tasks: [task] }, { db })).text).toContain('Pass the student\'s time zone');
+  expect((await tool('add_tasks', { timezone: 'Mars/Olympus', tasks: [task] }, { db })).isError).toBe(true);
+  expect(db.writes).toEqual([]);
+  expect((await tool('add_tasks', { timezone: LA, tasks: [task] }, { db })).data.added[0].time).toBe('08:00–08:30');
 });
 
 test('a repeat, or a task already checked off, is skipped rather than doubled', async () => {
   const db = memoryDb();
-  const r = await tool('add_tasks', { tasks: [
+  const r = await tool('add_tasks', { timezone: LA, tasks: [
     { title: 'physics reading: 4.1-4.2', course: 'Physics 5A', date: '2026-10-12', minutes: 60 },
     { title: 'Math 53 Homework 14.3', course: 'Math 53', date: '2026-10-15', minutes: 60 },
     { title: 'Practice midterm', course: 'Math 53', date: '2026-10-15', minutes: 120 },
@@ -254,30 +384,103 @@ test('a repeat, or a task already checked off, is skipped rather than doubled', 
     { title: 'Practice Midterm', reason: 'Already on 2026-10-15.' },
   ]);
   expect(db.data.todos).toHaveLength(5);
+  expect(db.data.todo_sessions).toHaveLength(2);
 });
 
 test('one bad task means nothing is added, and the reply says what to fix', async () => {
   const db = memoryDb();
-  const r = await tool('add_tasks', { tasks: [
+  const r = await tool('add_tasks', { timezone: LA, tasks: [
     { title: 'Fine', course: 'Physics 5A', date: '2026-10-14', minutes: 45 },
     { title: 'When?', course: 'Physics 5A', date: 'next tuesday', minutes: 45 },
-    { title: 'Long ago', course: 'Physics 5A', date: '2026-09-01', minutes: 45 },
+    { title: 'Yesterday', course: 'Physics 5A', date: '2026-10-11', minutes: 45 },
     { title: 'All day', course: 'Physics 5A', date: '2026-10-14', minutes: 5000 },
     { title: 'Whose?', course: 'History 7B', date: '2026-10-14', minutes: 45 },
     { title: 'x'.repeat(141), course: 'Physics 5A', date: '2026-10-14', minutes: 45 },
+    { title: 'Sixish', course: 'Physics 5A', date: '2026-10-14', minutes: 45, after: '6pm' },
   ] }, { db });
   expect(r.isError).toBe(true);
   expect(r.text).toContain('Nothing was added.');
   expect(r.text).toContain('Task 2 ("When?"): date must be a date like 2026-10-12.');
-  expect(r.text).toContain('Task 3 ("Long ago"): 2026-09-01 is in the past.');
+  expect(r.text).toContain('Task 3 ("Yesterday"): 2026-10-11 is in the past.');
   expect(r.text).toContain('Task 4 ("All day"): minutes must be a whole number from 5 to 720.');
   // Another student's course is not a course here, and is never named.
   expect(r.text).toContain('No course is called "History 7B". The student\'s courses: Physics 5A, Math 53.');
   expect(r.text).toContain('Task 6\'s title is longer than 140 characters');
+  expect(r.text).toContain('Task 7 ("Sixish"): after must be a 24-hour time like 18:00.');
   expect(db.writes).toEqual([]);
-  expect((await tool('add_tasks', { tasks: Array.from({ length: 21 }, (_, i) => ({ title: `T${i}`, course: 'Math 53', date: '2026-10-14', minutes: 30 })) }, { db })).text).toBe('tasks takes at most 20 entries at a time.');
-  expect((await tool('add_tasks', { tasks: [{ title: 'Busy', course: 'Math 53', date: '2026-10-14', minutes: 30 }] }, { db, limited: () => true })).text).toContain('Too many requests');
+  expect((await tool('add_tasks', { timezone: LA, tasks: Array.from({ length: 21 }, (_, i) => ({ title: `T${i}`, course: 'Math 53', date: '2026-10-14', minutes: 30 })) }, { db })).text).toBe('tasks takes at most 20 entries at a time.');
+  expect((await tool('add_tasks', { timezone: LA, tasks: [{ title: 'Busy', course: 'Math 53', date: '2026-10-14', minutes: 30 }] }, { db, limited: () => true })).text).toContain('Too many requests');
   expect(db.writes).toEqual([]);
+});
+
+// ── The placement rules ─────────────────────────────────────────────────────
+
+test('clock times are worked out in the student\'s zone, across a clock change too', () => {
+  expect(new Date(zonedToUtc('2026-10-14', 8 * 60, LA)).toISOString()).toBe('2026-10-14T15:00:00.000Z');
+  // Clocks go back on Sun Nov 1 2026: midnight is still UTC−7, 8 AM is UTC−8.
+  expect(new Date(zonedToUtc('2026-11-01', 0, LA)).toISOString()).toBe('2026-11-01T07:00:00.000Z');
+  expect(new Date(zonedToUtc('2026-11-01', 8 * 60, LA)).toISOString()).toBe('2026-11-01T16:00:00.000Z');
+  // And forward on Sun Mar 8 2026.
+  expect(new Date(zonedToUtc('2026-03-08', 8 * 60, LA)).toISOString()).toBe('2026-03-08T15:00:00.000Z');
+  // Minutes past 1440 carry into the next day; a half-hour zone works too.
+  expect(new Date(zonedToUtc('2026-10-14', 25 * 60, LA)).toISOString()).toBe('2026-10-15T08:00:00.000Z');
+  expect(new Date(zonedToUtc('2026-10-14', 9 * 60, 'Asia/Kolkata')).toISOString()).toBe('2026-10-14T03:30:00.000Z');
+  // On the morning the clocks change, a task still lands at 8 by the student's clock.
+  const spot = firstFit(openSlots('2026-11-01', LA, { start: '08:00', end: '23:00' }, [], Date.parse('2026-10-30T00:00:00Z')), 60)!;
+  expect([clockAt(LA, spot[0]), clockAt(LA, spot[1])]).toEqual(['08:00', '09:00']);
+});
+
+test('study hours are read from saved settings the way the app reads them', () => {
+  expect(studyWindowOf({ studyWindow: { start: '09:30', end: '01:00', off: false } })).toEqual({ start: '09:30', end: '01:00' });
+  expect(studyWindowOf({ studyWindow: { start: '09:30', end: '22:00', off: true } })).toEqual({ start: '09:30', end: '22:00', off: true });
+  expect(studyWindowOf(null)).toEqual({ start: '08:00', end: '23:00' });
+  expect(studyWindowOf({ studyWindow: { start: 'nine', end: '22:00' } })).toEqual({ start: '08:00', end: '23:00' });
+  // An account from before study hours were one window: the widest span of its old per-day hours.
+  expect(studyWindowOf({ personalHours: { mon: { start: '10:00', end: '21:00' }, tue: { start: '07:30', end: '22:30' }, wed: {} } })).toEqual({ start: '07:30', end: '22:30' });
+  expect(studyWindowOf({ personalHoursEnabled: false, personalHours: { mon: { start: '10:00', end: '21:00' } } })).toEqual({ start: '08:00', end: '23:00' });
+});
+
+test('the zone check needs real disagreement before it refuses', () => {
+  const evening = (day: string) => ({ day, start: la(day, '20:00') });
+  const three = ['2026-10-07', '2026-10-08', '2026-10-09'].map(evening);
+  expect(zoneFitsHistory(three, LA)).toBe(true);
+  expect(zoneFitsHistory(three, 'UTC')).toBe(false);
+  expect(zoneFitsHistory(three, 'Asia/Tokyo')).toBe(false);
+  // A new account, or one odd row, is not evidence.
+  expect(zoneFitsHistory([], 'UTC')).toBe(true);
+  expect(zoneFitsHistory(three.slice(0, 2), 'UTC')).toBe(true);
+  // Mostly at home, a few sessions logged on a trip: still home.
+  expect(zoneFitsHistory([...three, ...three, { day: '2026-10-02', start: la('2026-10-01', '22:00') }], LA)).toBe(true);
+});
+
+test('the calendar is read as busy time only: no titles, all-day events whole, and it says when it is incomplete', async () => {
+  const soon = new Date(Date.now() + 3_600_000).toISOString();
+  const rows = [
+    { id: 'c1', user_id: ME, google_email: 'a@example.com', refresh_token: 'r', access_token: 'tok-1', access_token_expires_at: soon, selected_calendars: [{ id: 'classes' }, { id: 'broken' }] },
+    { id: 'c2', user_id: ME, google_email: 'b@example.com', refresh_token: 'r', access_token: 'tok-2', access_token_expires_at: soon, selected_calendars: [] },
+  ];
+  const filters: [string, string][] = [];
+  const admin = { from: () => ({ select: () => ({ eq: async (k: string, v: string) => { filters.push([k, v]); return { data: rows, error: null }; } }) }) };
+  const asked: string[] = [], realFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string, init: { headers: Record<string, string> }) => {
+    asked.push(`${init.headers.Authorization} ${new URL(url).pathname.split('/')[4]}`);
+    if (url.includes('/broken/')) return new Response('nope', { status: 403 });
+    return Response.json({ items: [
+      { summary: 'Physics lecture', start: { dateTime: '2026-10-14T09:00:00-07:00' }, end: { dateTime: '2026-10-14T09:59:00-07:00' } },
+      { summary: 'Fall break', start: { date: '2026-10-15' }, end: { date: '2026-10-16' } },
+      { summary: 'Cancelled lab', status: 'cancelled', start: { dateTime: '2026-10-14T13:00:00-07:00' }, end: { dateTime: '2026-10-14T15:00:00-07:00' } },
+    ] });
+  }) as never;
+  try {
+    const read = await googleBusy(admin, ME, la('2026-10-14', '00:00'), la('2026-10-16', '00:00'), LA);
+    expect(read.complete).toBe(false);   // one calendar could not be read
+    expect(read.busy).toEqual([[la('2026-10-14', '09:00'), la('2026-10-14', '09:59')], [la('2026-10-15', '00:00'), la('2026-10-16', '00:00')]]);
+    expect(JSON.stringify(read)).not.toMatch(/lecture|break/i);
+    expect(filters).toEqual([['user_id', ME]]);
+    expect(asked.sort()).toEqual(['Bearer tok-1 broken', 'Bearer tok-1 classes']);
+  } finally { globalThis.fetch = realFetch; }
+  const failing = { from: () => ({ select: () => ({ eq: async () => ({ data: null, error: { message: 'down' } }) }) }) };
+  expect(await googleBusy(failing, ME, 0, 1, LA)).toEqual({ busy: [], complete: false });
 });
 
 // ── Reading lists ───────────────────────────────────────────────────────────
@@ -319,14 +522,15 @@ test('every query is limited to the signed-in student, whatever the rows say', a
   const db = supabaseDb(admin);
   await db.select('todos', ME);
   await db.select('documents', ME, { id: 'doc' });
+  await db.select('settings', ME, { columns: 'data', first: true });
   await db.insert('todos', ME, [{ id: 'x', user_id: OTHER }]);
   await db.upsert('course_items', ME, [{ id: 'y', user_id: OTHER }]);
   await db.update('course_items', ME, ['y'], { todo_id: 'x' });
   expect(calls.map(c => [c.op, c.filters])).toEqual([
-    ['select', [['user_id', ME]]], ['select', [['user_id', ME], ['id', 'doc']]], ['insert', []], ['upsert', []], ['update', [['user_id', ME], ['id', ['y']]]],
+    ['select', [['user_id', ME]]], ['select', [['user_id', ME], ['id', 'doc']]], ['select', [['user_id', ME]]], ['insert', []], ['upsert', []], ['update', [['user_id', ME], ['id', ['y']]]],
   ]);
-  expect(calls[2].rows).toEqual([{ id: 'x', user_id: ME }]);
-  expect(calls[3].rows).toEqual([{ id: 'y', user_id: ME }]);
+  expect(calls[3].rows).toEqual([{ id: 'x', user_id: ME }]);
+  expect(calls[4].rows).toEqual([{ id: 'y', user_id: ME }]);
 });
 
 // ── Where it is deployed ────────────────────────────────────────────────────

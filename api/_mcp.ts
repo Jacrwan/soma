@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { authorizeChat } from './chat';
 import { isRateLimited } from './_rateLimit';
 import { INSTRUCTIONS, TOOLS, ToolError, supabaseDb, type ConnectorDb } from './_connector';
+import { googleBusy, type CalendarRead } from './_connectorCalendar';
 
 /**
  * The Claude connector: a Model Context Protocol server over plain HTTP, so a
@@ -26,6 +27,7 @@ type Authorization = { ok: true; userId: string } | { ok: false; status: number;
 type Deps = {
   authorize?: (token: string) => Promise<Authorization>;
   db?: () => ConnectorDb;
+  calendar?: (userId: string, from: number, to: number, zone: string) => Promise<CalendarRead>;
   limited?: (userId: string) => boolean;
   authServer?: () => string;
   fetchJson?: (url: string) => Promise<unknown>;
@@ -44,11 +46,13 @@ function limited(userId: string) {
   return recent.length > 120;
 }
 
-function defaultDb(): ConnectorDb {
+function adminClient() {
   const url = process.env.VITE_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error('server_not_configured');
-  return supabaseDb(createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } }));
+  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
 }
+const defaultDb = (): ConnectorDb => supabaseDb(adminClient());
+const defaultCalendar = (userId: string, from: number, to: number, zone: string) => googleBusy(adminClient(), userId, from, to, zone);
 const defaultAuthServer = () => `${(process.env.VITE_SUPABASE_URL ?? '').replace(/\/+$/, '')}/auth/v1`;
 
 type AuthLike = { getUser(token: string): Promise<{ data: { user: { id: string; email?: string } | null }; error: { status?: number; code?: string } | null }> };
@@ -135,7 +139,7 @@ export function createConnectorHandler(deps: Deps = {}) {
     const unknown = Object.keys(args).filter(k => !(k in tool.inputSchema.properties));
     if (unknown.length) return toolText(`${tool.name} does not take ${unknown.map(k => `"${k}"`).join(', ')}.`, true);
     try {
-      const result = JSON.stringify(await tool.run(args, { db: (deps.db ?? defaultDb)(), userId: auth.userId, now: (deps.now ?? (() => new Date()))() }));
+      const result = JSON.stringify(await tool.run(args, { db: (deps.db ?? defaultDb)(), userId: auth.userId, now: (deps.now ?? (() => new Date()))(), calendar: deps.calendar ?? defaultCalendar }));
       return toolText(result.length > MAX_RESULT_CHARS ? `${result.slice(0, MAX_RESULT_CHARS)}\n[Cut short: ask for a smaller range.]` : result);
     } catch (error) {
       if (error instanceof ToolError) return toolText(error.message, true);
