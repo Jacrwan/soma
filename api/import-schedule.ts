@@ -1,6 +1,7 @@
 /// <reference types="node" />
 import { verifyUserAndSubscription } from './chat';
 import { safeFetch, SafeFetchError } from './_safeFetch';
+import { createConnectorHandler } from './_mcp';
 
 export const config = { api: { bodyParser: { sizeLimit: '256kb' } } };
 export const maxDuration = 60;
@@ -179,4 +180,8 @@ export function createImportHandler(deps: Deps = {}) {
   };
 }
 
-export default createImportHandler();
+// This function also serves the Claude connector (_mcp.ts): the plan deploys
+// twelve functions and this is the twelfth. vercel.json marks those requests
+// with ?connector=…; everything else is the import above, unchanged.
+const importSchedule = createImportHandler(), connector = createConnectorHandler();
+export default (req: any, res: any) => typeof req.query?.connector === 'string' ? connector(req, res) : importSchedule(req, res);

@@ -9,6 +9,56 @@ still needed.
 
 ---
 
+## 2026-10-11
+
+### Claude connector: Claude reads the plan and adds tasks and reading-list sections
+- **Why:** "i cant give soma the entire pdf doc of a texbook, but i can give it
+  to claude and then give like more specific things from the texbook (like more
+  detialied then the chapters) and even ask claude what problems to solve".
+  The textbook stays in Claude; Claude works out what to study and puts it into
+  Soma.
+- **What:** Soma is a connector a student adds in Claude at
+  `https://somastudy.app/api/mcp`. Claude can read courses, the plan, deadlines,
+  reading lists, recorded study time and uploaded documents, and can add tasks
+  (title, course, day, minutes, optional due date and the sections it covers)
+  and add, rename, re-date or reorder reading-list sections.
+- **Rules it keeps:** Claude picks what, which day and how long, never a clock
+  time: a task arrives on its day with no time, as one added by hand does, and
+  no `todo_sessions` row is written. Nothing is deleted and nothing is marked
+  done; a reading list keeps its progress, its planned blocks and every section
+  left out of a save. A task already on that day, or already checked off under
+  the same name in the course, is skipped. One invalid task and none are saved.
+  Needs an active subscription or trial, like Soma's own AI.
+- **Sign-in:** Supabase's OAuth server. Claude sends the student to
+  `/oauth/consent`, a new page outside the app shell, where they sign in if
+  needed and press Allow. An app is named by where it sends the student back,
+  not by the name it gives itself; anything other than claude.ai / claude.com
+  gets a warning.
+- **Touched outside the new files, and why:** `api/import-schedule.ts` (its
+  default export also serves the connector, because the plan deploys twelve
+  functions and this is the twelfth; the import itself is unchanged),
+  `vercel.json` (five rewrites ahead of the catch-alls), `src/App.tsx` (the
+  route, the trial prompt kept off it, and the return to it after a Google
+  sign-in).
+- **Where:** `api/_connector.ts` (tools, database boundary), `api/_mcp.ts`
+  (protocol, sign-in discovery), `src/components/Connect/ConnectApproval.tsx`.
+- **Guard:** `tests/claude-connector.spec.ts` (21 tests), including "no tool can
+  delete, check work off, or write a clock time", "every query is limited to
+  the signed-in student", and "the connector rides on an existing function, and
+  the course-site import is unchanged" (fails if a thirteenth function appears).
+- **Setup still needed (Supabase dashboard, by the owner):** Authentication →
+  OAuth Server: turn it on and set the authorization path to `/oauth/consent`.
+  Authentication → OAuth Apps: add a client for Claude with redirect URI
+  `https://claude.ai/api/mcp/auth_callback` and paste its id and secret into
+  the connector's advanced settings in Claude. Leave dynamic registration off:
+  a token from this sign-in is the student's full Soma session, so only apps
+  registered by hand should be able to ask for one.
+- **Not verified:** the sign-in against the real Supabase project and a real
+  Claude session; neither can be run from the tests. Canvas assignments not yet
+  turned into tasks, and Google Calendar events, are not visible to Claude.
+
+---
+
 ## 2026-10-09
 
 ### Calendar: two tasks in one course never draw as one block
