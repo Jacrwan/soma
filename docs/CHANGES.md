@@ -11,24 +11,26 @@ still needed.
 
 ## 2026-10-11
 
-### Claude connector: Claude's sign-in token is checked by its signature
-- **Why:** the first real connection failed: "Authorization with Soma failed"
-  in Claude, with `/api/mcp` answering 401 four times. I read those as Claude's
-  token being refused. **That reading was wrong:** the next attempt, with the
-  logging below in place, showed those requests carry no token at all. The
-  failure is between Claude and Supabase (asking to sign in, or exchanging the
-  code), before Soma is involved. Still open as of this entry.
-- **What (kept, as a sound check in its own right):** when Supabase's user
-  endpoint refuses a token, the connector verifies it itself: signed by this
-  project's key (ES256, checked against the published keys), unexpired, issued
-  by this project's sign-in server, for a signed-in user, and issued to an app
-  (it carries a `client_id`). The subscription rule then applies as before. An
-  ordinary session token is still judged by the user endpoint alone. Each
-  refused token logs why (`connector_token`: status and error code only, never
-  the token); a request with no token logs nothing.
+### Claude connector: first real connection, and what it took
+- **Outcome:** connected and working on 2026-10-11 (live logs: Claude's
+  requests to `/api/mcp` answer 200 with its token).
+- **What failed first:** "Authorization with Soma failed" in Claude. Supabase's
+  log showed the sign-in request accepted and the code exchange
+  (`POST /auth/v1/oauth/token`) refused with 400. The Claude client had been
+  registered in Supabase as Confidential, with a secret. Supabase refuses the
+  exchange when the secret is wrong or is sent a different way from the one the
+  client is registered for; which of the two it was is not known. A **Public**
+  client (no secret) worked first time.
+- **A wrong turn, undone:** before the Supabase log was available I read the
+  401s on `/api/mcp` as Claude's token being refused, and made the connector
+  also accept an app's token on its signature. Those 401s were requests with
+  no token. That fallback is removed: it would have kept a revoked connection
+  working for up to an hour. Supabase's user endpoint is the only judge again.
+- **What stays:** a refused token logs why (`connector_token_refused`: status
+  and error code only, never the token).
 - **Where:** `api/_mcp.ts` (`authorizeConnector`).
-- **Guard:** `tests/claude-connector.spec.ts` › "a token issued to Claude is
-  accepted on its signature when the user endpoint refuses it".
+- **Guard:** `tests/claude-connector.spec.ts` › "a token is judged by Supabase,
+  then by the subscription, and a refusal logs why".
 
 ### Claude connector: Claude reads the plan and adds tasks and reading-list sections
 - **Why:** "i cant give soma the entire pdf doc of a texbook, but i can give it
@@ -67,13 +69,14 @@ still needed.
   the course-site import is unchanged" (fails if a thirteenth function appears).
 - **Setup still needed (Supabase dashboard, by the owner):** Authentication →
   OAuth Server: turn it on and set the authorization path to `/oauth/consent`.
-  Authentication → OAuth Apps: add a client for Claude with redirect URI
-  `https://claude.ai/api/mcp/auth_callback` and paste its id and secret into
-  the connector's advanced settings in Claude. Leave dynamic registration off:
+  Authentication → OAuth Apps: add a **Public** client for Claude with redirect
+  URIs `https://claude.ai/api/mcp/auth_callback` and
+  `https://claude.com/api/mcp/auth_callback`, and paste its id (no secret) into
+  the connector's advanced settings in Claude. Done by the owner 2026-10-11.
+  Leave dynamic registration off:
   a token from this sign-in is the student's full Soma session, so only apps
   registered by hand should be able to ask for one.
-- **Not verified:** the sign-in against the real Supabase project and a real
-  Claude session; neither can be run from the tests. Canvas assignments not yet
+- **Not covered:** Canvas assignments not yet
   turned into tasks, and Google Calendar events, are not visible to Claude.
 
 ---
