@@ -97,9 +97,8 @@ test('a token Soma does not accept is refused before anything is read', async ()
   expect(reads).toBe(0);
 });
 
-// 2026-10-11: Claude signed in, then Soma answered its token with 401 four
-// times and Claude showed "Authorization with Soma failed". Supabase's user
-// endpoint had refused the token its own OAuth server issued.
+// Whether Supabase's user endpoint accepts a token its OAuth server issued to
+// an app is not confirmed, so the connector can also verify one by signature.
 test('a token issued to Claude is accepted on its signature when the user endpoint refuses it', async () => {
   const ISSUER = 'https://soma.supabase.co/auth/v1', STUDENT = '11111111-1111-4111-8111-111111111111';
   const good = { sub: STUDENT, email: 'student@example.com', iss: ISSUER, role: 'authenticated', aud: 'authenticated', client_id: 'claude-client' };
