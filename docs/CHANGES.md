@@ -11,6 +11,49 @@ still needed.
 
 ## 2026-10-11
 
+### Claude connector: Soma places clock times for tasks Claude adds
+- **Why:** "make soma auto-place clock times for tasks claude adds". Tasks
+  from Claude arrived on their day with no time, and the student had to give
+  each one a time by hand.
+- **What:** `add_tasks` now places each task when it is added and tells Claude
+  the time. The rules are the app's own (`freeTime` / `autoPlace`), restated on
+  the server because that code runs in the browser: the first open stretch of
+  the day that holds the whole task, inside study hours (read from saved
+  settings; 8 AM–11 PM when none are saved; with hours off, not before 8 AM
+  unless a time was asked for), clear of Google Calendar events (all-day events
+  fill the day, as on the dashboard) and of every planned block, never in the
+  past, starts on five-minute marks, tasks placed in the order given. The block
+  is saved exactly as the dashboard saves one (`todo_sessions`: day, start,
+  end), so the dashboard, calendar and editor show it with no change to them.
+- **Claude still cannot name a time.** A task takes a day, a length, and
+  optional `after` / `before` bounds for a time the student asked for.
+- **When it does not fit:** the task is not added, and the reply lists what is
+  open that day, so Claude asks the student instead of leaving an untimed
+  task. It is never split. Over 4 hours, or when the calendar could not be read
+  (the app refuses AI schedules in that state too), the task is added without a
+  time and says why; sending it again once the calendar is back gives the same
+  task its time instead of adding a second one.
+- **Time zone:** the server does not know it, so `timezone` is now required.
+  A zone that disagrees with the days the student's own sessions were saved on
+  (three or more, and more than agree) is refused before anything is written:
+  a wrong zone would put every task hours off.
+- **Different from the app:** an event the student marked "Skipping" on one
+  device still counts as busy here, because that mark is kept in the browser.
+- **Where:** `api/_placement.ts` (new: rules, zone arithmetic),
+  `api/_connectorCalendar.ts` (new: calendar as busy time, start and end
+  only), `api/_connector.ts` (`add_tasks`), `api/_mcp.ts`.
+- **Guard:** `tests/claude-connector.spec.ts` › "Soma places each task in the
+  first open stretch of its day and says when", "today's tasks start from now…",
+  "a task that does not fit on its day is not added…", "a calendar Soma cannot
+  read…", "study hours decide where a day starts and ends…", "a time zone that
+  does not match…", "clock times are worked out in the student's zone, across a
+  clock change too", "the calendar is read as busy time only…".
+- **Test changed on purpose:** "no tool can delete, check work off, or write a
+  clock time" is now "…and Claude cannot name a clock time": the connector does
+  write blocks now; what it guards is that Claude has no way to choose the time.
+- **Not verified:** the Google Calendar read against a real account, and a real
+  task added from Claude; the tests use stand-ins for both.
+
 ### Claude connector: first real connection, and what it took
 - **Outcome:** connected and working on 2026-10-11 (live logs: Claude's
   requests to `/api/mcp` answer 200 with its token).
@@ -44,8 +87,8 @@ still needed.
   (title, course, day, minutes, optional due date and the sections it covers)
   and add, rename, re-date or reorder reading-list sections.
 - **Rules it keeps:** Claude picks what, which day and how long, never a clock
-  time: a task arrives on its day with no time, as one added by hand does, and
-  no `todo_sessions` row is written. Nothing is deleted and nothing is marked
+  time (as first built a task arrived with no time; Soma now places it, see
+  "Soma places clock times for tasks Claude adds" above). Nothing is deleted and nothing is marked
   done; a reading list keeps its progress, its planned blocks and every section
   left out of a save. A task already on that day, or already checked off under
   the same name in the course, is skipped. One invalid task and none are saved.
