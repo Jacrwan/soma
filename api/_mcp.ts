@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { authorizeChat } from './chat';
 import { isRateLimited } from './_rateLimit';
 import { INSTRUCTIONS, TOOLS, ToolError, supabaseDb, type ConnectorDb } from './_connector';
-import { googleBusy, type CalendarRead } from './_connectorCalendar';
+import { googleEvents, type CalendarRead } from './_connectorCalendar';
 
 /**
  * The Claude connector: a Model Context Protocol server over plain HTTP, so a
@@ -52,7 +52,7 @@ function adminClient() {
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
 }
 const defaultDb = (): ConnectorDb => supabaseDb(adminClient());
-const defaultCalendar = (userId: string, from: number, to: number, zone: string) => googleBusy(adminClient(), userId, from, to, zone);
+const defaultCalendar = (userId: string, from: number, to: number, zone: string) => googleEvents(adminClient(), userId, from, to, zone);
 const defaultAuthServer = () => `${(process.env.VITE_SUPABASE_URL ?? '').replace(/\/+$/, '')}/auth/v1`;
 
 type AuthLike = { getUser(token: string): Promise<{ data: { user: { id: string; email?: string } | null }; error: { status?: number; code?: string } | null }> };

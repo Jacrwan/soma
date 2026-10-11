@@ -132,7 +132,7 @@ export default function ConnectApproval({ user }: { user: User | null }) {
             <div className={styles.can}>
               <p className={styles.canLabel}>{details.claude ? 'Claude' : 'It'} will be able to</p>
               <ul className={styles.list}>
-                <li>See your courses, tasks, plan, reading lists, study time and uploaded documents</li>
+                <li>See your courses, tasks, plan, reading lists, study time, uploaded documents and the Google Calendar events shown in Soma</li>
                 <li>Add tasks and reading-list sections</li>
               </ul>
               {details.claude && <p className={styles.cannot}>Through this connection it can’t delete anything or check work off. You can disconnect it at any time in Claude’s connector settings.</p>}

@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'fs';
 import { createConnectorHandler, authorizeConnector } from '../api/_mcp';
 import { supabaseDb, TOOLS, type ConnectorDb } from '../api/_connector';
 import { zonedToUtc, studyWindowOf, zoneFitsHistory, openSlots, firstFit, clockAt, type Busy } from '../api/_placement';
-import { googleBusy, type CalendarRead } from '../api/_connectorCalendar';
+import { googleEvents, type CalendarRead } from '../api/_connectorCalendar';
 import * as importSchedule from '../api/import-schedule';
 
 // The Claude connector (2026-10-11): a student adds Soma to Claude, which can
@@ -63,16 +63,19 @@ function memoryDb(data = tables()): ConnectorDb & { data: Record<string, Row[]>;
   };
 }
 
+/** A calendar holding these busy stretches (or these events). */
+const cal = (busy: (Busy | { title: string; start: number; end: number; allDay?: boolean })[] = [], complete = true, connected = true): CalendarRead => ({ events: busy.map(b => Array.isArray(b) ? { title: 'Busy', start: b[0], end: b[1] } : b), complete, connected });
+
 function response() {
   const result = { status: 200, body: undefined as unknown, headers: {} as Record<string, string>, ended: false };
   const res = { status: (s: number) => { result.status = s; return res; }, json: (v: unknown) => { result.body = v; return res; }, setHeader: (k: string, v: string) => { result.headers[k] = v; }, end: () => { result.ended = true; } };
   return { result, res };
 }
-type Options = { db?: ConnectorDb; authorize?: () => Promise<{ ok: true; userId: string } | { ok: false; status: number; error: string }>; limited?: () => boolean; calendar?: () => Promise<CalendarRead> };
+type Options = { db?: ConnectorDb; authorize?: () => Promise<{ ok: true; userId: string } | { ok: false; status: number; error: string }>; limited?: () => boolean; calendar?: (...args: unknown[]) => Promise<CalendarRead> };
 async function post(body: unknown, opts: Options = {}, headers: Record<string, string> = { authorization: 'Bearer token', host: 'somastudy.app' }, method = 'POST') {
   const { result, res } = response();
   const db = opts.db ?? memoryDb();
-  await createConnectorHandler({ authorize: opts.authorize ?? (async () => ({ ok: true, userId: ME })), db: () => db, limited: opts.limited ?? (() => false), calendar: opts.calendar ?? (async () => ({ busy: [], complete: true })), now: () => NOW, authServer: () => 'https://soma.supabase.co/auth/v1' })({ method, headers, body, query: { connector: 'mcp' } }, res);
+  await createConnectorHandler({ authorize: opts.authorize ?? (async () => ({ ok: true, userId: ME })), db: () => db, limited: opts.limited ?? (() => false), calendar: opts.calendar ?? (async () => cal()), now: () => NOW, authServer: () => 'https://soma.supabase.co/auth/v1' })({ method, headers, body, query: { connector: 'mcp' } }, res);
   return result;
 }
 /** Call one tool and read its JSON result (or its error text). */
@@ -193,6 +196,33 @@ test('the plan matches the dashboard: blocks at their times, untimed tasks on th
   expect((await tool('get_plan', { day: '2026-10-12' })).text).toBe('get_plan does not take "day".');
 });
 
+// "now let claude see my google calendar events too" (2026-10-11).
+test('the plan lists Google Calendar events on their days, as the dashboard draws them', async () => {
+  const at = (day: string, clock: string) => Date.parse(`${day}T${clock}:00-07:00`);
+  const events = [
+    { title: 'Physics 5A lecture', start: at('2026-10-12', '09:00'), end: at('2026-10-12', '09:59') },
+    { title: 'Fall break', start: at('2026-10-13', '00:00'), end: at('2026-10-14', '00:00'), allDay: true },
+    { title: 'Overnight shift', start: at('2026-10-13', '22:00'), end: at('2026-10-14', '02:00') },
+  ];
+  let asked: number[] = [];
+  const { data } = await tool('get_plan', { from: '2026-10-12', to: '2026-10-14', timezone: 'America/Los_Angeles' }, { calendar: async (...a: unknown[]) => { asked = a.slice(1, 3) as number[]; return cal(events); } });
+  // The whole of the days asked for, in the student's zone.
+  expect(asked).toEqual([at('2026-10-12', '00:00'), at('2026-10-15', '00:00')]);
+  expect(data.days.map((d: Row) => d.events)).toEqual([
+    [{ title: 'Physics 5A lecture', time: '09:00–09:59' }],
+    [{ title: 'Fall break', all_day: true }, { title: 'Overnight shift', time: '22:00–23:59' }],
+    [{ title: 'Overnight shift', time: '00:00–02:00' }],
+  ]);
+  // Tasks are still there beside them, and the plan says nothing about the calendar when it was read in full.
+  expect(data.days[0].tasks.map((t: Row) => t.title)).toEqual(['Physics reading: 4.1–4.2']);
+  expect(data.calendar).toBeUndefined();
+  // A calendar that can't be read, or isn't connected, leaves the plan intact and says which.
+  const unread = await tool('get_plan', { from: '2026-10-12', to: '2026-10-12' }, { calendar: async () => { throw new Error('down'); } });
+  expect(unread.data.calendar).toContain('could not read all of the student\'s Google Calendar');
+  expect(unread.data.days[0].tasks).toHaveLength(1);
+  expect((await tool('get_plan', { from: '2026-10-12', to: '2026-10-12' }, { calendar: async () => cal([], true, false) })).data.calendar).toBe('No Google Calendar is connected in Soma, so no events are listed.');
+});
+
 test('reading lists report done only from checkmarks, and courses, deadlines and study time are the student\'s own', async () => {
   const lists = await tool('get_reading_lists', { course: 'physics' });
   expect(lists.data.reading_lists).toEqual([{ course: 'Physics 5A', sections: [
@@ -235,7 +265,7 @@ test('Soma places each task in the first open stretch of its day and says when',
   const r = await tool('add_tasks', { timezone: LA, tasks: [
     { title: '  Stewart 3.4:\n problems 5, 11, 23  ', course: 'physics 5a', date: '2026-10-14', minutes: 45, due: '2026-10-16', sections: ['4.3', '4.2', '4.1', '9.9'] },
     { title: 'Review lecture 12', course: 'Math', date: '2026-10-14', minutes: 30 },
-  ] }, { db, calendar: async () => ({ busy: [[la('2026-10-14', '09:00'), la('2026-10-14', '09:59')]], complete: true }) });
+  ] }, { db, calendar: async () => cal([[la('2026-10-14', '09:00'), la('2026-10-14', '09:59')]]) });
   expect(r.data.added).toEqual([
     // Study hours open at 8.
     { title: 'Stewart 3.4: problems 5, 11, 23', course: 'Physics 5A', date: '2026-10-14', weekday: 'Wed', time: '08:00–08:45', minutes: 45, sections: ['4.3'], sections_not_linked: ['4.2 (already planned under another task)', '4.1 (already done)', '9.9 (not on the reading list)'] },
@@ -280,7 +310,7 @@ test('today\'s tasks start from now, go round the blocks already there, and keep
   const later = memoryDb();
   const body = { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'add_tasks', arguments: { timezone: LA, tasks: [{ title: 'Quick review', course: 'Math 53', date: '2026-10-12', minutes: 20 }] } } };
   const { result, res } = response();
-  await createConnectorHandler({ authorize: async () => ({ ok: true, userId: ME }), db: () => later, limited: () => false, calendar: async () => ({ busy: [], complete: true }), now: () => new Date('2026-10-12T19:07:00Z') })({ method: 'POST', headers: { authorization: 'Bearer t', host: 'somastudy.app' }, body, query: { connector: 'mcp' } }, res);
+  await createConnectorHandler({ authorize: async () => ({ ok: true, userId: ME }), db: () => later, limited: () => false, calendar: async () => cal(), now: () => new Date('2026-10-12T19:07:00Z') })({ method: 'POST', headers: { authorization: 'Bearer t', host: 'somastudy.app' }, body, query: { connector: 'mcp' } }, res);
   expect(JSON.parse((result.body as any).result.content[0].text).added[0].time).toBe('12:15–12:35');
 });
 
@@ -292,7 +322,7 @@ test('a task that does not fit on its day is not added, and Claude is told what 
     { title: 'Practice midterm', course: 'Math 53', date: '2026-10-13', minutes: 180 },
     { title: 'Short quiz prep', course: 'Math 53', date: '2026-10-13', minutes: 30 },
     { title: 'Evening only', course: 'Math 53', date: '2026-10-13', minutes: 60, before: '18:00' },
-  ] }, { db, calendar: async () => ({ busy: tuesday, complete: true }) });
+  ] }, { db, calendar: async () => cal(tuesday) });
   expect(r.data.added.map((t: Row) => [t.title, t.time])).toEqual([['Short quiz prep', '12:00–12:30']]);
   expect(r.data.not_added).toEqual([
     { title: 'Practice midterm', course: 'Math 53', date: '2026-10-13', minutes: 180, reason: 'No 180 minutes free on Tue 2026-10-13, inside study hours (08:00–23:00) and clear of the calendar and other blocks.', open_that_day: ['12:00–12:40 (40 min)', '20:30–23:00 (150 min)'] },
@@ -300,7 +330,7 @@ test('a task that does not fit on its day is not added, and Claude is told what 
   ]);
   expect(added(db).map(t => t.text)).toEqual(['Short quiz prep']);
   // An all-day event fills the day on the dashboard, so nothing is placed on it.
-  const allDay = await tool('add_tasks', { timezone: LA, tasks: [{ title: 'Reading', course: 'Math 53', date: '2026-10-15', minutes: 30 }] }, { db: memoryDb(), calendar: async () => ({ busy: [[la('2026-10-15', '00:00'), la('2026-10-16', '00:00')]], complete: true }) });
+  const allDay = await tool('add_tasks', { timezone: LA, tasks: [{ title: 'Reading', course: 'Math 53', date: '2026-10-15', minutes: 30 }] }, { db: memoryDb(), calendar: async () => cal([{ title: 'Fall break', start: la('2026-10-15', '00:00'), end: la('2026-10-16', '00:00'), allDay: true }]) });
   expect(allDay.data.added).toEqual([]);
   expect(allDay.data.not_added[0].open_that_day).toBe('nothing');
 });
@@ -308,7 +338,7 @@ test('a task that does not fit on its day is not added, and Claude is told what 
 test('a calendar Soma cannot read means no time is picked, and sending the task again places it', async () => {
   const db = memoryDb();
   const task = { title: 'Chapter 5 outline', course: 'Math 53', date: '2026-10-14', minutes: 60 };
-  const first = await tool('add_tasks', { timezone: LA, tasks: [task, { title: 'Full practice exam', course: 'Math 53', date: '2026-10-14', minutes: 300 }] }, { db, calendar: async () => ({ busy: [], complete: false }) });
+  const first = await tool('add_tasks', { timezone: LA, tasks: [task, { title: 'Full practice exam', course: 'Math 53', date: '2026-10-14', minutes: 300 }] }, { db, calendar: async () => cal([], false) });
   expect(first.data.added.map((t: Row) => [t.title, t.time, String(t.no_time).slice(0, 44)])).toEqual([
     ['Chapter 5 outline', undefined, 'Soma could not read the student\'s Google Cal'],
     ['Full practice exam', undefined, 'Longer than 4 hours, the most Soma places in'],
@@ -453,34 +483,44 @@ test('the zone check needs real disagreement before it refuses', () => {
   expect(zoneFitsHistory([...three, ...three, { day: '2026-10-02', start: la('2026-10-01', '22:00') }], LA)).toBe(true);
 });
 
-test('the calendar is read as busy time only: no titles, all-day events whole, and it says when it is incomplete', async () => {
+test('the calendar is read as a title and a time, nothing more, and it says when it is incomplete', async () => {
   const soon = new Date(Date.now() + 3_600_000).toISOString();
   const rows = [
     { id: 'c1', user_id: ME, google_email: 'a@example.com', refresh_token: 'r', access_token: 'tok-1', access_token_expires_at: soon, selected_calendars: [{ id: 'classes' }, { id: 'broken' }] },
     { id: 'c2', user_id: ME, google_email: 'b@example.com', refresh_token: 'r', access_token: 'tok-2', access_token_expires_at: soon, selected_calendars: [] },
   ];
   const filters: [string, string][] = [];
-  const admin = { from: () => ({ select: () => ({ eq: async (k: string, v: string) => { filters.push([k, v]); return { data: rows, error: null }; } }) }) };
-  const asked: string[] = [], realFetch = globalThis.fetch;
+  const admin = (data: unknown) => ({ from: () => ({ select: () => ({ eq: async (k: string, v: string) => { filters.push([k, v]); return { data, error: null }; } }) }) });
+  const asked: string[] = [], fields: string[] = [], realFetch = globalThis.fetch;
   globalThis.fetch = (async (url: string, init: { headers: Record<string, string> }) => {
     asked.push(`${init.headers.Authorization} ${new URL(url).pathname.split('/')[4]}`);
+    fields.push(new URL(url).searchParams.get('fields')!);
     if (url.includes('/broken/')) return new Response('nope', { status: 403 });
     return Response.json({ items: [
-      { summary: 'Physics lecture', start: { dateTime: '2026-10-14T09:00:00-07:00' }, end: { dateTime: '2026-10-14T09:59:00-07:00' } },
       { summary: 'Fall break', start: { date: '2026-10-15' }, end: { date: '2026-10-16' } },
+      { summary: '  Physics\n lecture ', description: 'Room 4, bring the lab notebook', location: 'Pimentel', start: { dateTime: '2026-10-14T09:00:00-07:00' }, end: { dateTime: '2026-10-14T09:59:00-07:00' } },
+      { start: { dateTime: '2026-10-14T11:00:00-07:00' }, end: { dateTime: '2026-10-14T12:00:00-07:00' } },
       { summary: 'Cancelled lab', status: 'cancelled', start: { dateTime: '2026-10-14T13:00:00-07:00' }, end: { dateTime: '2026-10-14T15:00:00-07:00' } },
     ] });
   }) as never;
   try {
-    const read = await googleBusy(admin, ME, la('2026-10-14', '00:00'), la('2026-10-16', '00:00'), LA);
-    expect(read.complete).toBe(false);   // one calendar could not be read
-    expect(read.busy).toEqual([[la('2026-10-14', '09:00'), la('2026-10-14', '09:59')], [la('2026-10-15', '00:00'), la('2026-10-16', '00:00')]]);
-    expect(JSON.stringify(read)).not.toMatch(/lecture|break/i);
+    const read = await googleEvents(admin(rows), ME, la('2026-10-14', '00:00'), la('2026-10-16', '00:00'), LA);
+    expect(read).toEqual({ complete: false, connected: true, events: [   // one calendar could not be read
+      { title: 'Physics lecture', start: la('2026-10-14', '09:00'), end: la('2026-10-14', '09:59') },
+      { title: 'Calendar commitment', start: la('2026-10-14', '11:00'), end: la('2026-10-14', '12:00') },
+      { title: 'Fall break', start: la('2026-10-15', '00:00'), end: la('2026-10-16', '00:00'), allDay: true },
+    ] });
+    // Descriptions, locations and guests are not even asked for.
+    expect(new Set(fields)).toEqual(new Set(['nextPageToken,items(status,summary,start,end)']));
     expect(filters).toEqual([['user_id', ME]]);
     expect(asked.sort()).toEqual(['Bearer tok-1 broken', 'Bearer tok-1 classes']);
+    // No calendar chosen on any account: nothing is asked of Google, and it says so.
+    asked.length = 0;
+    expect(await googleEvents(admin([rows[1]]), ME, 0, 1, LA)).toEqual({ events: [], complete: true, connected: false });
+    expect(asked).toEqual([]);
   } finally { globalThis.fetch = realFetch; }
   const failing = { from: () => ({ select: () => ({ eq: async () => ({ data: null, error: { message: 'down' } }) }) }) };
-  expect(await googleBusy(failing, ME, 0, 1, LA)).toEqual({ busy: [], complete: false });
+  expect(await googleEvents(failing, ME, 0, 1, LA)).toEqual({ events: [], complete: false, connected: true });
 });
 
 // ── Reading lists ───────────────────────────────────────────────────────────
@@ -592,6 +632,7 @@ test('the student sees what Claude will be able to do, and Allow sends them back
   await page.goto('/oauth/consent?authorization_id=auth-123');
   await expect(page.getByRole('heading', { name: 'Let Claude use your Soma?' })).toBeVisible();
   await expect(page.getByText('Signed in as student@example.com')).toBeVisible();
+  await expect(page.getByText('uploaded documents and the Google Calendar events shown in Soma')).toBeVisible();
   await expect(page.getByText('Add tasks and reading-list sections')).toBeVisible();
   await expect(page.getByText('it can’t delete anything or check work off')).toBeVisible();
   await expect(page.getByText('This is not Claude')).toHaveCount(0);
