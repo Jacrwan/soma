@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readdirSync, readFileSync } from 'fs';
-import { createConnectorHandler } from '../api/_mcp';
+import { createConnectorHandler, authorizeConnector } from '../api/_mcp';
 import { supabaseDb, TOOLS, type ConnectorDb } from '../api/_connector';
 import * as importSchedule from '../api/import-schedule';
 
@@ -95,6 +95,39 @@ test('a token Soma does not accept is refused before anything is read', async ()
   expect(r.status).toBe(401);
   expect(r.headers['WWW-Authenticate']).toContain('error="invalid_token"');
   expect(reads).toBe(0);
+});
+
+// 2026-10-11: Claude signed in, then Soma answered its token with 401 four
+// times and Claude showed "Authorization with Soma failed". Supabase's user
+// endpoint had refused the token its own OAuth server issued.
+test('a token issued to Claude is accepted on its signature when the user endpoint refuses it', async () => {
+  const ISSUER = 'https://soma.supabase.co/auth/v1', STUDENT = '11111111-1111-4111-8111-111111111111';
+  const good = { sub: STUDENT, email: 'student@example.com', iss: ISSUER, role: 'authenticated', aud: 'authenticated', client_id: 'claude-client' };
+  const admin = (claims: Row | null, sub: Row | null = { status: 'active', trial_start: null, extension_start: null }, userEndpoint: Row | null = null) => {
+    const query: any = { select: () => query, eq: () => query, maybeSingle: async () => ({ data: sub, error: null }) };
+    return {
+      auth: {
+        getUser: async () => userEndpoint ? { data: { user: userEndpoint }, error: null } : { data: { user: null }, error: { status: 403, code: 'bad_jwt' } },
+        getClaims: async () => claims ? { data: { claims }, error: null } : { data: null, error: { status: 401, code: 'invalid_jwt' } },
+      },
+      from: () => query,
+    };
+  };
+  const quiet = console.error; console.error = () => {};
+  try {
+    expect(await authorizeConnector(admin(good), 't', ISSUER)).toEqual({ ok: true, userId: STUDENT });
+    // The subscription rule still applies to the student the signature names.
+    expect(await authorizeConnector(admin(good, null), 't', ISSUER)).toMatchObject({ ok: false, status: 402 });
+    // A bad signature, another project's token, a signed-out role, or an
+    // ordinary session the user endpoint refused: all turned away.
+    expect(await authorizeConnector(admin(null), 't', ISSUER)).toMatchObject({ ok: false, status: 401 });
+    expect(await authorizeConnector(admin({ ...good, iss: 'https://other.supabase.co/auth/v1' }), 't', ISSUER)).toMatchObject({ ok: false, status: 401 });
+    expect(await authorizeConnector(admin({ ...good, role: 'anon' }), 't', ISSUER)).toMatchObject({ ok: false, status: 401 });
+    expect(await authorizeConnector(admin({ ...good, sub: 'not-an-id' }), 't', ISSUER)).toMatchObject({ ok: false, status: 401 });
+    expect(await authorizeConnector(admin({ ...good, client_id: undefined }), 't', ISSUER)).toMatchObject({ ok: false, status: 401 });
+  } finally { console.error = quiet; }
+  // When the user endpoint does accept the token, that is who it is.
+  expect(await authorizeConnector(admin(null, undefined, { id: 'from-endpoint', email: 'a@b.c' }), 't', ISSUER)).toEqual({ ok: true, userId: 'from-endpoint' });
 });
 
 test('the sign-in server is published where Claude looks for it', async () => {

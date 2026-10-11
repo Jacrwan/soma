@@ -11,6 +11,25 @@ still needed.
 
 ## 2026-10-11
 
+### Claude connector: Claude's sign-in token is checked by its signature
+- **Why:** the first real connection failed: "Authorization with Soma failed"
+  in Claude. The live logs show Claude signed in, then `/api/mcp` answered its
+  token with 401 four times. The connector asked Supabase's user endpoint about
+  the token, as every other route does, and that endpoint refused the token
+  Supabase's own OAuth server had just issued.
+- **What:** when the user endpoint refuses a token, the connector verifies it
+  itself: signed by this project's key (ES256, checked against the published
+  keys), unexpired, issued by this project's sign-in server, for a signed-in
+  user, and issued to an app (it carries a `client_id`). The subscription rule
+  then applies as before. An ordinary session token is still judged by the user
+  endpoint alone. Each refusal now logs why (`connector_token`: status and
+  error code only, never the token).
+- **Where:** `api/_mcp.ts` (`authorizeConnector`).
+- **Guard:** `tests/claude-connector.spec.ts` › "a token issued to Claude is
+  accepted on its signature when the user endpoint refuses it".
+- **Not verified:** that this was the whole cause. The next connection attempt
+  writes the reason to the logs either way.
+
 ### Claude connector: Claude reads the plan and adds tasks and reading-list sections
 - **Why:** "i cant give soma the entire pdf doc of a texbook, but i can give it
   to claude and then give like more specific things from the texbook (like more
