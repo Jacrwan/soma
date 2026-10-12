@@ -179,22 +179,49 @@ function placeOn(want: Want, board: Board): Placed {
     const exact = exactSpot(want.date, want.start, want.minutes, zone, taken, now);
     return 'problem' in exact ? { reason: exact.problem } : { spot: exact.spot, ...(exact.over.length ? { over: exact.over } : {}) };
   }
-  if (want.minutes > 240) return { untimed: true, reason: 'Longer than 4 hours, the most Soma places by itself in one block. Give start to put it at a time the student agreed to, or they can set its time in Soma.' };
-  if (!board.calendarRead) return { untimed: true, reason: 'Soma could not read the student\'s Google Calendar, so it did not pick a time that might land on a class. They can reconnect it in Soma\'s settings; sending this again then places it. A time the student agreed to can still be given as start.' };
+  if (want.minutes > 240) return { untimed: true, reason: 'Longer than 4 hours, the most Soma places by itself in one block. Send its start as HH:mm to put it at a time the student agreed to, or they can set its time in Soma.' };
+  if (!board.calendarRead) return { untimed: true, reason: 'Soma could not read the student\'s Google Calendar, so it did not pick a time that might land on a class. They can reconnect it in Soma\'s settings; sending this again then places it. A time the student agreed to can still be sent as start (HH:mm).' };
   const slots = openSlots(want.date, zone, window, taken.map(t => t.span), now, { after: want.after, before: want.before });
   const spot = firstFit(slots, want.minutes);
   if (spot) return { spot };
   const bounds = `${want.after ? ` after ${want.after}` : ''}${want.before ? ` before ${want.before}` : ''}`;
   const open = slots.slice(0, 5).map(([a, z]) => `${clockAt(zone, a)}–${clockAt(zone, z)} (${Math.round((z - a) / 60_000)} min)`);
-  return { reason: `No ${want.minutes} minutes free on ${weekday(want.date)} ${want.date}${bounds}, inside study hours (${windowLabel(window)}) and clear of the calendar and other blocks. If the student agreed to a specific time, including one outside study hours, send it as start.`, open: open.length ? open : 'nothing' };
+  return { reason: `No ${want.minutes} minutes free on ${weekday(want.date)} ${want.date}${bounds}, inside study hours (${windowLabel(window)}) and clear of the calendar and other blocks. If the student agreed to a specific time, including one outside study hours, send it as start (HH:mm).`, open: open.length ? open : 'nothing' };
 }
 
+/**
+ * Every task says how its time is chosen: the time the student agreed to, or
+ * "auto" for Soma to pick. It is asked for outright because Claude keeps the
+ * tool list it saw when the student first connected: an older list has no
+ * `start`, and Soma was silently picking times for plans whose times had been
+ * agreed. A request without it is refused before anything is saved, with what
+ * to send instead, which is how Claude learns of it.
+ */
+const HOW_TO_TIME = 'Every task needs "start". If the student gave or accepted specific times, send each one as 24-hour HH:mm: the task is saved at exactly that time, at any hour, overnight and outside study hours included. Only when no time was agreed, send "start": "auto" and Soma picks one inside their study hours. Soma accepts "start" even if your list of this tool\'s fields does not show it.';
+function needStart(rows: Row[], what: string) {
+  if (rows.some(r => r.start === undefined || r.start === null || r.start === '')) throw new ToolError(`Nothing was ${what}. ${HOW_TO_TIME}`);
+}
 /** What a time must be to be saved, checked before anything is read or written. */
 function whenOf(t: Row, label: string): { start?: string; after?: string; before?: string } {
-  for (const k of ['start', 'after', 'before'] as const) if (t[k] !== undefined && t[k] !== null && !isClock(t[k])) throw new ToolError(`${label}: ${k} must be a 24-hour time like 18:00.`);
-  if (t.start && (t.after || t.before)) throw new ToolError(`${label}: give start, or after/before, not both.`);
-  return { start: (t.start ?? undefined) as string | undefined, after: (t.after ?? undefined) as string | undefined, before: (t.before ?? undefined) as string | undefined };
+  const auto = t.start === 'auto';
+  if (!auto && !isClock(t.start)) throw new ToolError(`${label}: start must be a 24-hour time like 18:00, or "auto" for Soma to pick.`);
+  for (const k of ['after', 'before'] as const) if (t[k] !== undefined && t[k] !== null && !isClock(t[k])) throw new ToolError(`${label}: ${k} must be a 24-hour time like 18:00.`);
+  if (!auto && (t.after || t.before)) throw new ToolError(`${label}: after and before only apply when start is "auto".`);
+  return { start: auto ? undefined : t.start as string, after: (t.after ?? undefined) as string | undefined, before: (t.before ?? undefined) as string | undefined };
 }
+
+/**
+ * Save a block's new time. Its task's day goes with it when this is the
+ * task's only block, as it does when a block is moved in the editor.
+ */
+async function saveTime(db: ConnectorDb, userId: string, zone: string, task: Task, block: Row | undefined, spot: Busy, blocks: Row[]) {
+  const day = dayIn(zone, spot[0]), times = { date: day, start_time: new Date(spot[0]).toISOString(), end_time: new Date(spot[1]).toISOString() };
+  if (block) await db.update('todo_sessions', userId, [text(block.id)], times);
+  else await db.insert('todo_sessions', userId, [{ id: randomUUID(), todo_id: task.id, ...times }]);
+  if (blocks.filter(b => text(b.todo_id) === task.id).length <= 1 && task.date !== day) await db.update('todos', userId, [task.id], { date: day });
+}
+/** "Mon 2026-10-12 16:00–17:00", for saying where a block was. */
+const spanLabel = (zone: string, block: Row) => { const a = Date.parse(utcIso(text(block.start_time))), z = Date.parse(utcIso(text(block.end_time))); return `${weekday(dayIn(zone, a))} ${dayIn(zone, a)} ${clockAt(zone, a)}–${clockAt(zone, z)}`; };
 
 /** Everything already on the student's days: their own blocks (named by task) and their calendar. */
 type Taken = Marked & { id?: string };
@@ -427,7 +454,7 @@ export const TOOLS: Tool[] = [
   },
   {
     name: 'add_tasks', title: 'Add tasks', readOnly: false,
-    description: 'Put study tasks on the student\'s Soma plan, each with a clock time. Two ways to set the time. (1) The student agreed to a time, whether it is their own plan or a schedule you proposed and they accepted: pass start, and the task goes exactly there, at any hour (overnight and outside study hours included) and even over a calendar event. (2) No time was agreed: leave start out and Soma picks the first open stretch that day inside the student\'s study hours, clear of their calendar and other blocks; after/before narrow it. Either way the reply gives the time saved: report that, never one of your own. A task that cannot go where asked is not added and the reply says why. The title is what the student sees on the dashboard, so name the exact work ("Stewart 3.4: problems 5, 11, 23, 41"), not a chapter. Only call this once the student has agreed to the specific tasks.',
+    description: 'Put study tasks on the student\'s Soma plan, each with a clock time. Every task needs start. If the student gave or accepted specific times (their own plan, or a schedule you proposed and they agreed to), send each as HH:mm: the task is saved at exactly that time, at any hour, overnight and outside study hours included, even over a calendar event. Only when no time was agreed, send "auto" and Soma picks the first open stretch that day inside the student\'s study hours, clear of their calendar and other blocks; after/before narrow it. Sending a task that is already on that date with a new HH:mm start moves it to that time instead of adding it twice. The reply gives the times saved: report those, never your own. A task that cannot go where asked is not added and the reply says why. The title is what the student sees on the dashboard, so name the exact work ("Stewart 3.4: problems 5, 11, 23, 41"), not a chapter, and do not put the time in the title. Only call this once the student has agreed to the specific tasks.',
     inputSchema: {
       type: 'object', required: ['tasks', 'timezone'], additionalProperties: false,
       properties: {
@@ -435,15 +462,15 @@ export const TOOLS: Tool[] = [
         tasks: {
           type: 'array', minItems: 1, maxItems: 20,
           items: {
-            type: 'object', required: ['title', 'course', 'date', 'minutes'], additionalProperties: false,
+            type: 'object', required: ['title', 'course', 'date', 'minutes', 'start'], additionalProperties: false,
             properties: {
-              title: { type: 'string', description: 'The exact work, at most 140 characters.' },
+              title: { type: 'string', description: 'The exact work, at most 140 characters. No clock times in it.' },
               course: { type: 'string', description: 'The course name, as get_courses gives it.' },
               date: DATE('The calendar date the task starts on, in the student\'s time zone. 1 AM on Monday is Monday\'s date, even if it is part of Sunday night\'s plan'),
-              minutes: { type: 'integer', minimum: 5, maximum: 720, description: 'How long it should take. Without start, Soma places up to 240 minutes in one block.' },
-              start: { type: 'string', description: 'The start time the student agreed to, 24-hour HH:mm. The task is saved at exactly this time. Leave out to let Soma pick.' },
-              after: { type: 'string', description: 'When Soma picks: do not start before this time, 24-hour HH:mm. Not with start.' },
-              before: { type: 'string', description: 'When Soma picks: finish by this time, 24-hour HH:mm. Not with start.' },
+              minutes: { type: 'integer', minimum: 5, maximum: 720, description: 'How long it should take. With "auto", Soma places up to 240 minutes in one block.' },
+              start: { type: 'string', description: 'The start time the student agreed to, 24-hour HH:mm, saved exactly; or "auto" when no time was agreed and Soma should pick.' },
+              after: { type: 'string', description: 'With "auto" only: do not start before this time, 24-hour HH:mm.' },
+              before: { type: 'string', description: 'With "auto" only: finish by this time, 24-hour HH:mm.' },
               due: DATE('When the work is due, if it has a deadline'),
               sections: { type: 'array', maxItems: 30, items: { type: 'string' }, description: 'Reading-list labels this task covers, e.g. ["4.1", "4.2"]. Checking the task off in Soma marks them done.' },
             },
@@ -455,6 +482,7 @@ export const TOOLS: Tool[] = [
       if (!args.timezone) throw new ToolError('Pass the student\'s time zone as timezone (e.g. "America/Los_Angeles") so Soma can place the tasks. Ask them if you do not know it.');
       const zone = zoneOf(args.timezone);
       const wanted = list(args.tasks, 20, 'tasks');
+      needStart(wanted, 'added');
       const [all, todos, items, blocks, recorded, settings] = await Promise.all([
         courses(db, userId), tasks(db, userId), sections(db, userId), db.select('todo_sessions', userId),
         db.select('timer_sessions', userId, { columns: 'id,date,start_time' }), db.select('settings', userId, { columns: 'data', first: true }),
@@ -488,9 +516,16 @@ export const TOOLS: Tool[] = [
       // One read of the calendar for every day in the request, a day past the last for blocks that run past midnight.
       const days = drafts.map(d => d.date).sort();
       const read = await calendar(userId, zonedToUtc(days[0], 0, zone), zonedToUtc(days[days.length - 1], 2880, zone), zone).catch(() => UNREAD);
-      const board: Board = { zone, window: studyWindowOf(settings[0]?.data), taken: takenBy(blocks, todos, read), now: now.getTime(), calendarRead: read.complete };
+      // A task already on its date, sent again with an agreed time, is moved to that
+      // time. Those blocks step aside first, so they don't block each other's new places.
+      const blockOf = (t: Task) => { const mine = blocks.filter(b => text(b.todo_id) === t.id); return mine.length === 1 && mine[0].start_time && mine[0].end_time ? mine[0] : undefined; };
+      const retiming = new Map<string, Row>();
+      for (const d of drafts) { const here = todos.find(t => t.date === d.date && t.status !== 'done' && key(t.courseId, t.title) === key(d.course.id, d.title)); const block = d.start && here ? blockOf(here) : undefined; if (here && block && !retiming.has(here.id)) retiming.set(here.id, block); }
+      const stepping = new Set([...retiming.values()].map(b => text(b.id)));
+      const board: Board = { zone, window: studyWindowOf(settings[0]?.data), taken: takenBy(blocks, todos, read).filter(t => !t.id || !stepping.has(t.id)), now: now.getTime(), calendarRead: read.complete };
 
       const added: Row[] = [], timed: Row[] = [], notAdded: Row[] = [], skipped: { title: string; reason: string }[] = [];
+      const retimes: { task: Task; block: Row; spot: Busy }[] = [];
       const todoRows: Row[] = [], sessionRows: Row[] = [], links: { taskId: string; ids: string[] }[] = [];
       const claimed = new Set<string>(), batch = new Set<string>();
       for (const d of drafts) {
@@ -499,7 +534,19 @@ export const TOOLS: Tool[] = [
         const here = same.find(t => t.date === d.date);
         // Already on that day with no time yet: this gives it one, rather than adding it twice.
         const waiting = here && here.status !== 'done' && !scheduled.has(here.id) && !batch.has(repeat) ? here : undefined;
-        if ((here && !waiting) || batch.has(repeat)) { skipped.push({ title: d.title, reason: `Already on ${d.date}. To change its time, use move_tasks.` }); continue; }
+        const retime = here && !batch.has(repeat) ? retiming.get(here.id) : undefined;
+        if (here && retime) {
+          batch.add(repeat);
+          const placed = placeOn(d, board);
+          const old: Busy = [Date.parse(utcIso(text(retime.start_time))), Date.parse(utcIso(text(retime.end_time)))];
+          if (!placed.spot) { board.taken.push({ span: old, title: here.title, own: true }); skipped.push({ title: d.title, reason: `Already on ${d.date} at ${clockAt(zone, old[0])}–${clockAt(zone, old[1])}, and it stays there. ${placed.reason}` }); continue; }
+          board.taken.push({ span: placed.spot, title: here.title, own: true });
+          retimes.push({ task: here, block: retime, spot: placed.spot });
+          const day = dayIn(zone, placed.spot[0]);
+          timed.push({ title: here.title, course: d.course.name, was: spanLabel(zone, retime), date: day, weekday: weekday(day), time: `${clockAt(zone, placed.spot[0])}–${clockAt(zone, placed.spot[1])}`, minutes: d.minutes, ...(placed.over?.length ? { over_calendar_events: placed.over } : {}) });
+          continue;
+        }
+        if ((here && !waiting) || batch.has(repeat)) { const at = here && blockOf(here); skipped.push({ title: d.title, reason: `Already on ${d.date}${at ? ` at ${spanLabel(zone, at).split(' ')[2]}` : ''}. To change its time, send it again with its start as HH:mm, or use move_tasks.` }); continue; }
         // Soma treats same-named tasks in a course as one piece of work, and this one is finished.
         if (!waiting && same.some(t => t.status === 'done')) { skipped.push({ title: d.title, reason: `A task with this name in ${d.course.name} is already checked off. If this is new work, give it a different title.` }); continue; }
         batch.add(repeat);
@@ -542,19 +589,20 @@ export const TOOLS: Tool[] = [
       // there without a time, and sending them again gives them one.
       if (todoRows.length) await db.insert('todos', userId, todoRows);
       if (sessionRows.length) await db.insert('todo_sessions', userId, sessionRows);
+      for (const r of retimes) await saveTime(db, userId, zone, r.task, r.block, r.spot, blocks);
       for (const link of links) await db.update('course_items', userId, link.ids, { todo_id: link.taskId });
       return {
         timezone: zone, added,
         ...(timed.length ? { given_a_time: timed } : {}),
         ...(notAdded.length ? { not_added: notAdded } : {}),
         ...(skipped.length ? { skipped } : {}),
-        ...(sessionRows.length ? { note: 'These are the times saved in Soma. Tell the student the times as given here; move_tasks changes one.' } : {}),
+        ...(sessionRows.length || retimes.length ? { note: 'These are the times saved in Soma. Tell the student the times as given here. To change one, send the task again with its start as HH:mm, or use move_tasks.' } : {}),
       };
     },
   },
   {
     name: 'move_tasks', title: 'Move tasks', readOnly: false,
-    description: 'Change when tasks already on the plan happen: another day, another time, or both, or give a time to a task that has none. Take each id from get_plan. As with add_tasks, pass start for a time the student agreed to (any hour), or leave it out and Soma picks the first open stretch on that date. Blocks moved together make room for each other, so two can swap. Nothing is deleted, renamed or checked off, and a task that is checked off is not moved. Only call this once the student has agreed to the changes.',
+    description: 'Change when tasks already on the plan happen: another day, another time, or both, or give a time to a task that has none. Take each id from get_plan. Every move needs start, as in add_tasks: the time the student agreed to as HH:mm (saved exactly, any hour), or "auto" for Soma to pick the first open stretch on that date. Blocks moved together make room for each other, so two can swap. Nothing is deleted, renamed or checked off, and a task that is checked off is not moved. Only call this once the student has agreed to the changes.',
     inputSchema: {
       type: 'object', required: ['moves', 'timezone'], additionalProperties: false,
       properties: {
@@ -562,14 +610,14 @@ export const TOOLS: Tool[] = [
         moves: {
           type: 'array', minItems: 1, maxItems: 20,
           items: {
-            type: 'object', required: ['id', 'date'], additionalProperties: false,
+            type: 'object', required: ['id', 'date', 'start'], additionalProperties: false,
             properties: {
               id: { type: 'string', description: 'The id of the task or block, from get_plan.' },
               date: DATE('The calendar date it should start on, in the student\'s time zone. 1 AM on Monday is Monday\'s date'),
-              start: { type: 'string', description: 'The start time the student agreed to, 24-hour HH:mm. Leave out to let Soma pick.' },
+              start: { type: 'string', description: 'The start time the student agreed to, 24-hour HH:mm, saved exactly; or "auto" for Soma to pick.' },
               minutes: { type: 'integer', minimum: 5, maximum: 720, description: 'A new length. Leave out to keep the length it has.' },
-              after: { type: 'string', description: 'When Soma picks: do not start before this time, 24-hour HH:mm. Not with start.' },
-              before: { type: 'string', description: 'When Soma picks: finish by this time, 24-hour HH:mm. Not with start.' },
+              after: { type: 'string', description: 'With "auto" only: do not start before this time, 24-hour HH:mm.' },
+              before: { type: 'string', description: 'With "auto" only: finish by this time, 24-hour HH:mm.' },
             },
           },
         },
@@ -579,6 +627,7 @@ export const TOOLS: Tool[] = [
       if (!args.timezone) throw new ToolError('Pass the student\'s time zone as timezone (e.g. "America/Los_Angeles"). Ask them if you do not know it.');
       const zone = zoneOf(args.timezone);
       const wanted = list(args.moves, 20, 'moves');
+      needStart(wanted, 'moved');
       const [todos, blocks, recorded, settings] = await Promise.all([
         tasks(db, userId), db.select('todo_sessions', userId), db.select('timer_sessions', userId, { columns: 'id,date,start_time' }), db.select('settings', userId, { columns: 'data', first: true }),
       ]);
@@ -620,7 +669,7 @@ export const TOOLS: Tool[] = [
       const moved: Row[] = [], notMoved: Row[] = [];
       const writes: { move: typeof moves[number]; spot: Busy }[] = [];
       for (const m of moves) {
-        const was = m.block?.start_time && m.block?.end_time ? { was: `${weekday(dayIn(zone, instant(m.block.start_time)))} ${dayIn(zone, instant(m.block.start_time))} ${clockAt(zone, instant(m.block.start_time))}–${clockAt(zone, instant(m.block.end_time))}` } : { was: `${weekday(m.task.date)} ${m.task.date}, no time` };
+        const was = m.block?.start_time && m.block?.end_time ? { was: spanLabel(zone, m.block) } : { was: `${weekday(m.task.date)} ${m.task.date}, no time` };
         const placed = placeOn(m, board);
         if (!placed.spot) {
           // It stays where it was, and so keeps that time from the others.
@@ -633,13 +682,7 @@ export const TOOLS: Tool[] = [
         const day = dayIn(zone, placed.spot[0]);
         moved.push({ id: m.id, title: m.task.title, ...was, date: day, weekday: weekday(day), time: `${clockAt(zone, placed.spot[0])}–${clockAt(zone, placed.spot[1])}`, minutes: m.minutes, ...(placed.over?.length ? { over_calendar_events: placed.over } : {}) });
       }
-      for (const { move, spot } of writes) {
-        const day = dayIn(zone, spot[0]), times = { date: day, start_time: new Date(spot[0]).toISOString(), end_time: new Date(spot[1]).toISOString() };
-        if (move.block) await db.update('todo_sessions', userId, [text(move.block.id)], times);
-        else await db.insert('todo_sessions', userId, [{ id: randomUUID(), todo_id: move.task.id, ...times }]);
-        // Its task's day goes with it when this is the task's only block, as it does when a block is moved in the editor.
-        if (blocks.filter(b => text(b.todo_id) === move.task.id).length <= 1 && move.task.date !== day) await db.update('todos', userId, [move.task.id], { date: day });
-      }
+      for (const { move, spot } of writes) await saveTime(db, userId, zone, move.task, move.block, spot, blocks);
       return { timezone: zone, moved, ...(notMoved.length ? { not_moved: notMoved } : {}), ...(moved.length ? { note: 'These are the times now saved in Soma. Tell the student the times as given here.' } : {}) };
     },
   },
@@ -649,7 +692,7 @@ export const INSTRUCTIONS = [
   'Soma is the student\'s study planner. Use it to see what they have to do and what they have actually done, and to put a plan you have agreed with them into their week.',
   'Read before you plan: get_courses, then get_plan, get_reading_lists, get_deadlines and get_study_time as needed.',
   'A checkmark (status "done") and recorded study time are the only record of past work. Never treat a task or a section as finished because its date has passed or because it was planned.',
-  'You decide what to study, on which day and for how long. When the student has agreed to specific times (their own plan, or a schedule you proposed and they accepted), save each task at that time with start: any hour is allowed, overnight included. When no time was agreed, leave start out and Soma picks one inside their study hours. Always report the times the tools return.',
+  'You decide what to study, on which day and for how long. Every task you add or move needs start. When the student has agreed to specific times (their own plan, or a schedule you proposed and they accepted), send each as HH:mm: it is saved exactly, at any hour, overnight included. Only when no time was agreed, send "auto" and Soma picks one inside their study hours. Always report the times the tools return, and keep clock times out of task titles.',
   'You can change the plan yourself: move_tasks moves a block to another day or time. Do not tell the student to drag blocks or add tasks by hand for something these tools can do.',
   'Only call add_tasks, move_tasks or save_reading_list after the student has agreed to the specific tasks, moves or sections. Titles are what they see on their dashboard: name the exact sections and problems.',
   'Dates are YYYY-MM-DD in the student\'s time zone. Pass their IANA time zone as `timezone` when a tool takes one; ask once if you do not know it.',

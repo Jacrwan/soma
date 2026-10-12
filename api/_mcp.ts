@@ -92,6 +92,21 @@ function origin(req: any): string {
   return `${/^(localhost|127\.0\.0\.1)(:|$)/.test(host) ? 'http' : 'https'}://${host}`;
 }
 
+/**
+ * Which tool was called and which fields it carried: names only, never a
+ * value. When a plan came out wrong there was nothing to show whether Claude
+ * had sent the times or not.
+ */
+export function callShape(params: unknown) {
+  const { name, arguments: given } = (params ?? {}) as { name?: unknown; arguments?: unknown };
+  const args = given && typeof given === 'object' && !Array.isArray(given) ? given as Record<string, unknown> : {};
+  const lists = Object.fromEntries(Object.entries(args).filter(([, v]) => Array.isArray(v)).map(([k, v]) => {
+    const items = (v as unknown[]).filter(i => i && typeof i === 'object' && !Array.isArray(i)) as Record<string, unknown>[];
+    return [k, { count: (v as unknown[]).length, fields: [...new Set(items.flatMap(i => Object.keys(i)))].sort().slice(0, 20).map(f => f.slice(0, 30)) }];
+  }));
+  return { event: 'connector_call', tool: typeof name === 'string' ? name.slice(0, 40) : null, fields: Object.keys(args).sort().slice(0, 20).map(f => f.slice(0, 30)), ...(Object.keys(lists).length ? { lists } : {}) };
+}
+
 const rpcError = (id: unknown, code: number, message: string) => ({ jsonrpc: '2.0', id: id ?? null, error: { code, message } });
 const toolText = (value: string, isError = false) => ({ content: [{ type: 'text', text: value }], ...(isError ? { isError: true } : {}) });
 
@@ -164,9 +179,12 @@ export function createConnectorHandler(deps: Deps = {}) {
     }
     if (method === 'ping') return result({});
     if (method === 'tools/list') {
+      // Claude keeps the list it is given here; this shows when it last asked for it.
+      console.log(JSON.stringify({ event: 'connector_tools_listed' }));
       return result({ tools: TOOLS.map(t => ({ name: t.name, title: t.title, description: t.description, inputSchema: t.inputSchema, annotations: { title: t.title, readOnlyHint: t.readOnly, destructiveHint: false, idempotentHint: true, openWorldHint: false } })) });
     }
     if (method === 'tools/call') {
+      console.log(JSON.stringify(callShape(params)));
       const called = await callTool(params, auth);
       return called ? result(called) : rpcError(id, -32602, 'Unknown tool');
     }
