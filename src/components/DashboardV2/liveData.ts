@@ -162,7 +162,11 @@ export async function savePlanBlock(userId:string,origin:Date,block:PlanBlock,sn
  let subject=snapshot.subjects.find(s=>s.name.toLowerCase()===(block.external ? commitmentSubject : block.subject).toLowerCase());
  if(!subject){subject={id:crypto.randomUUID(),name:block.external ? commitmentSubject : block.subject,color:block.subjectColor ?? '#42a5f5',totalTimeToday:0};await checkedWrite('subjects',{id:subject.id,user_id:userId,name:subject.name,color:subject.color,archived:false});}
  const previous=snapshot.todos.find(t=>t.id===original?.todoId);
- const todo:Todo={...previous,id:previous?.id??crypto.randomUUID(),text:block.title,subjectId:subject.id,status:block.state==='Completed' ? 'done' : block.state==='Partially completed' ? 'in_progress' : 'nothing',date:previous?.date??localDate(dateAt(origin,block.day)),estimatedMinutes:previous?.estimatedMinutes??(block.estimatedMinutes || block.minutes)};
+ // A block moved to another date takes its task's day with it when it is the
+ // task's only block. Otherwise the task kept the old day, and came back on
+ // it the moment its time was taken off.
+ const movedDay=!!original && !!block.time && original.day!==block.day && snapshot.sessions.filter(sn=>sn.todoId===previous?.id).length<=1;
+ const todo:Todo={...previous,id:previous?.id??crypto.randomUUID(),text:block.title,subjectId:subject.id,status:block.state==='Completed' ? 'done' : block.state==='Partially completed' ? 'in_progress' : 'nothing',date:movedDay ? localDate(dateAt(origin,block.day)) : previous?.date??localDate(dateAt(origin,block.day)),estimatedMinutes:previous?.estimatedMinutes??(block.estimatedMinutes || block.minutes)};
  await storage.saveTodo(todo);
  // Checked off (or unchecked) in the editor: its same-named blocks follow.
  if(previous && previous.status!==todo.status)await setTaskStatus(userId,snapshot,previous,todo.status,false);
@@ -172,7 +176,7 @@ export async function savePlanBlock(userId:string,origin:Date,block:PlanBlock,sn
  if(previous && previous.text!==todo.text && previous.subjectId && previous.subjectId===todo.subjectId && !snapshot.todos.some(t=>t.id!==previous.id && t.text===previous.text && t.subjectId===previous.subjectId))await renameLoggedTime(userId,previous.subjectId,previous.text,todo.text);
  try {
   if(!block.time && original?.sessionId){const {error}=await supabase.from('todo_sessions').delete().eq('id',original.sessionId).eq('user_id',userId);if(error)throw new Error(error.message);}
-  if(block.time){const [start,end]=block.time.split('–');const date=localDate(dateAt(origin,block.day));const existing=snapshot.sessions.find(s=>s.id===original?.sessionId);const unchanged=existing && original?.time===block.time;await checkedWrite('todo_sessions',{id:original?.sessionId??crypto.randomUUID(),user_id:userId,todo_id:todo.id,date:unchanged ? existing.date : date,start_time:unchanged ? existing.startTime : new Date(`${date}T${start}:00`).toISOString(),end_time:unchanged ? existing.endTime : new Date(new Date(`${date}T${start}:00`).getTime()+spanMinutes(start,end)*60000).toISOString()});}
+  if(block.time){const [start,end]=block.time.split('–');const date=localDate(dateAt(origin,block.day));const existing=snapshot.sessions.find(s=>s.id===original?.sessionId);/* Same time on another day is a move: only the same day and time keeps what's stored. */const unchanged=existing && original?.time===block.time && original?.day===block.day;await checkedWrite('todo_sessions',{id:original?.sessionId??crypto.randomUUID(),user_id:userId,todo_id:todo.id,date:unchanged ? existing.date : date,start_time:unchanged ? existing.startTime : new Date(`${date}T${start}:00`).toISOString(),end_time:unchanged ? existing.endTime : new Date(new Date(`${date}T${start}:00`).getTime()+spanMinutes(start,end)*60000).toISOString()});}
  }catch(error){
   if(!previous){const {error:cleanup}=await supabase.from('todos').delete().eq('id',todo.id).eq('user_id',userId);if(cleanup)throw new Error('The task saved, but its time did not. Open Day View to schedule it before trying again.');}
   else throw new Error('Task details saved, but the time change failed. Your previous schedule remains. Please retry.');
