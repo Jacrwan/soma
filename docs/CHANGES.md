@@ -11,6 +11,39 @@ still needed.
 
 ## 2026-10-11
 
+### Claude connector: every task says how its time is chosen
+- **Why:** after agreed times and `move_tasks` shipped, Claude still replied
+  "the tools I have can't set a clock time or move tasks", and seven blocks of
+  an agreed overnight plan landed at times Soma picked ("bro im actually gonna
+  crashout"). The live log shows those calls reached the new version: Claude
+  was working from the tool list it saved when the student first connected, so
+  it sent tasks with no time, and a task with no time meant "Soma picks".
+- **What:** `start` is required on every task and every move: the agreed time
+  as HH:mm, or `"auto"` for Soma to pick. A request without it is refused
+  before anything is saved, and the refusal says what to send and that `start`
+  is accepted even if Claude's list doesn't show it. This is how Claude learned
+  to send `timezone`. Nothing is placed by default any more.
+- **Fixing what's there without `move_tasks`:** sending a task that is already
+  on that date with an HH:mm `start` moves it to that time instead of skipping
+  it (reported under `given_a_time` with where it was). Blocks retimed together
+  step aside for each other. `"auto"` on a task that has a time leaves it alone.
+- **A block in progress saves:** an agreed time is refused as passed only when
+  the whole block is over, not when its start has gone by. (5:15–8:45 PM
+  entered at 5:30 PM is the block the student is in.) This differs from the
+  app, which goes by the start.
+- **Logging:** each tool call logs which tool and which fields it carried, and
+  each `tools/list` logs that it happened. Names only, never a value.
+- **Where:** `api/_connector.ts` (`needStart`, `whenOf`, `saveTime`,
+  `add_tasks`, `move_tasks`), `api/_placement.ts` (`exactSpot`), `api/_mcp.ts`
+  (`callShape`).
+- **Guard:** `tests/claude-connector.spec.ts` › "a task sent without saying how
+  its time is chosen is refused, with what to send", "sending a task that is
+  already there with its agreed time moves it, instead of adding it twice",
+  "each tool call is logged by its shape only…".
+- **Setup still needed:** in Claude, remove the Soma connector and add it
+  again so it reads the current tool list (`move_tasks`, calendar events in
+  the plan). Agreed times work without that.
+
 ### Claude connector: agreed times are saved as given, and Claude can move blocks
 - **Why:** an all-nighter planned with Claude could not be entered. Claude's
   reply: "Soma ignored the overnight again. It only places tasks between about

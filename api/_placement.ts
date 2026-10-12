@@ -109,17 +109,16 @@ export function zoneFitsHistory(sessions: { day: string; start: number }[], zone
   return !(misses >= 3 && misses > fits);
 }
 
-/** How long after a start time it can still be saved: "start now" arrives a few minutes old. */
-const START_GRACE = 15 * MINUTE;
 export type Marked = { span: Busy; title: string; own: boolean };
 /**
  * A time the student named, taken as given: [start, end], the calendar events
  * it runs over (allowed, and reported), or why it can't go there. Study hours
- * don't apply: the student said when.
+ * don't apply: the student said when. A block that has started but not ended
+ * is the one the student is in now, so it is saved; one that is over is not.
  */
 export function exactSpot(day: string, start: string, minutes: number, zone: string, taken: Marked[], now: number): { spot: Busy; over: string[] } | { problem: string } {
   const from = zonedToUtc(day, minutesOf(start), zone), to = from + minutes * MINUTE;
-  if (from < now - START_GRACE) return { problem: 'That start time has already passed.' };
+  if (to <= now) return { problem: 'That time has already passed.' };
   const hits = taken.filter(t => t.span[0] < to && t.span[1] > from);
   const mine = hits.find(t => t.own);
   if (mine) return { problem: `That overlaps "${mine.title}" (${clockAt(zone, mine.span[0])}–${clockAt(zone, mine.span[1])}). Move that block first, or use another time.` };
