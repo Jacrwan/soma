@@ -11,6 +11,50 @@ still needed.
 
 ## 2026-10-11
 
+### Claude connector: agreed times are saved as given, and Claude can move blocks
+- **Why:** an all-nighter planned with Claude could not be entered. Claude's
+  reply: "Soma ignored the overnight again. It only places tasks between about
+  8am and midnight … I can't set clock times, so you'll need to drag the
+  blocks", then a table of blocks to move by hand and two to "add manually".
+  The owner: "bro what is this". The connector placed only inside study hours,
+  gave Claude no way to use a time the student had agreed to, and no way to
+  move a block once placed.
+- **What, adding:** a task may carry `start`, the time the student agreed to
+  (their own plan, or a schedule Claude proposed and they accepted). It is
+  saved exactly there: any hour, overnight and outside study hours included,
+  up to 12 hours, and over a calendar event (the reply names the event). It is
+  refused only when the time has passed (15 minutes' grace) or lands on another
+  of the student's blocks, which the reply names. This is the app's own rule
+  for a time the student states. Without `start`, Soma still picks, inside
+  study hours, as before.
+- **What, moving:** a new tool, `move_tasks`: another day, another time, a new
+  length, or a time for a task that has none. Ids come from `get_plan`, which
+  now gives one for every task and block. Blocks moved together step aside for
+  each other, so two can swap. One that can't go where asked stays where it
+  was. A checked-off task is not moved. The task's day follows its only block,
+  as in the editor.
+- **Still true:** nothing is deleted, renamed or checked off. The only change
+  to an existing task is its day.
+- **Told to Claude:** use `start` for agreed times, report the times the tools
+  return, and do not tell the student to drag blocks or add tasks by hand for
+  something the tools can do. The approval page now says "Add tasks, move them
+  to another time, and add reading-list sections".
+- **Where:** `api/_placement.ts` (`exactSpot`), `api/_connector.ts`
+  (`placeOn`, `add_tasks`, `move_tasks`, `get_plan` ids),
+  `src/components/Connect/ConnectApproval.tsx`.
+- **Guard:** `tests/claude-connector.spec.ts` › "a time the student agreed to
+  is saved exactly, overnight and outside study hours included", "an agreed
+  time is refused only when it has passed or lands on another block", "Claude
+  can move a block to another time or day…", "blocks moved together make room
+  for each other…", "finished work, another student's blocks and made-up ids
+  are not moved".
+- **Test changed on purpose:** "…and Claude cannot name a clock time" is now
+  "no tool can delete or check work off; what the connector may write is listed
+  here". Claude can now pass a time the student agreed to; the test pins the
+  exact writes instead (an existing task is only ever given a new day).
+- **Not verified:** with a real Claude session; whether Claude uses `start`
+  rather than leaving it out is up to how it reads the tool description.
+
 ### Block editor: pick the date a block is on
 - **Why:** "we have to allow the user to be able to choose the date for the
   schedule time as well similar to logging the past sessions". Edit block had
