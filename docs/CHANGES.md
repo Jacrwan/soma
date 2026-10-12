@@ -11,6 +11,40 @@ still needed.
 
 ## 2026-10-11
 
+### Block editor: pick the date a block is on
+- **Why:** "we have to allow the user to be able to choose the date for the
+  schedule time as well similar to logging the past sessions". Edit block had
+  a start and an end time only, so a block could be planned only on the day on
+  screen, and a block on the wrong day had to be deleted and made again.
+- **What:** with "Schedule a time" on, the editor shows Starts on [date]
+  [Start time] and Ends on [date] [End time], for both Edit block and a new
+  block. It opens on the block's own date. The end date follows the start: the
+  same day, or the next day when the end time runs past midnight. It can be
+  changed, but a block is still at most a day long, so an end date the times
+  can't reach is refused with the reason. Saving on another date moves the
+  block there, and the dashboard says "Saved on Wed, Oct 14." because the
+  block leaves the day on screen.
+- **Two things fixed in saving, which the date field would otherwise have hit:**
+  a block saved on another day at the same clock time used to keep its old
+  day (the save treated an unchanged time as nothing to do); and a moved block
+  left its task on the old day, where it would reappear once its time was
+  taken off. The task's day now follows when the block is its only one; a task
+  planned in several sittings keeps its day and only that sitting moves.
+  Soma's own moves go through the same save, so "move it to tomorrow, same
+  time" is fixed with it.
+- **Labels:** "Starts on" / "Ends on", not "Start date" / "End date": the
+  past-session forms in the same panel already use those names.
+- **Untouched:** the past-session forms, the time fields and their rules (12
+  hours past midnight), tasks with no time (no date field until a time is
+  scheduled), the demo dashboard (`/dashboard-v2` has no dates).
+- **Limit:** the overlap notice only knows the week on screen; a date outside
+  it saves without that warning.
+- **Where:** `src/components/DashboardV2/PlanEditor.tsx`, `liveData.ts`
+  (`savePlanBlock`), `DashboardV2.tsx` (passes the date of day 0, the message).
+- **Guard:** `tests/block-date.spec.ts` (6 tests); "a block opens on its own
+  date, and saving another date moves it there at the same time" and "one
+  sitting of a task planned twice moves alone…" fail without the save fix.
+
 ### Claude connector: Claude sees Google Calendar events
 - **Why:** "now let claude see my google calendar events too". Claude could
   see tasks but not classes and other commitments, so it planned days without
