@@ -12,6 +12,10 @@
  * quarter hour. A task that doesn't fit whole is not split; it is reported
  * back so Claude can ask the student.
  *
+ * A time the student agreed to is different, as it is in the app: it goes
+ * exactly there, at any hour and over a calendar event, and is refused only
+ * when it has passed or lands on another of their blocks (`exactSpot`).
+ *
  * The browser knows the student's time zone; the server has to be told it, so
  * every time here is an instant (epoch milliseconds) worked out from a day and
  * a zone.
@@ -23,7 +27,7 @@ export type Busy = [number, number];
 
 const CLOCK = /^([01]\d|2[0-3]):[0-5]\d$/;
 export const isClock = (v: unknown): v is string => typeof v === 'string' && CLOCK.test(v);
-const minutesOf = (clock: string) => { const [h, m] = clock.split(':').map(Number); return h * 60 + m; };
+export const minutesOf = (clock: string) => { const [h, m] = clock.split(':').map(Number); return h * 60 + m; };
 const MINUTE = 60_000;
 const ceilTo = (instant: number, minutes: number) => Math.ceil(instant / (minutes * MINUTE)) * minutes * MINUTE;
 
@@ -103,4 +107,21 @@ export function zoneFitsHistory(sessions: { day: string; start: number }[], zone
   let fits = 0, misses = 0;
   for (const s of sessions) if (dayIn(zone, s.start) === s.day) fits++; else misses++;
   return !(misses >= 3 && misses > fits);
+}
+
+/** How long after a start time it can still be saved: "start now" arrives a few minutes old. */
+const START_GRACE = 15 * MINUTE;
+export type Marked = { span: Busy; title: string; own: boolean };
+/**
+ * A time the student named, taken as given: [start, end], the calendar events
+ * it runs over (allowed, and reported), or why it can't go there. Study hours
+ * don't apply: the student said when.
+ */
+export function exactSpot(day: string, start: string, minutes: number, zone: string, taken: Marked[], now: number): { spot: Busy; over: string[] } | { problem: string } {
+  const from = zonedToUtc(day, minutesOf(start), zone), to = from + minutes * MINUTE;
+  if (from < now - START_GRACE) return { problem: 'That start time has already passed.' };
+  const hits = taken.filter(t => t.span[0] < to && t.span[1] > from);
+  const mine = hits.find(t => t.own);
+  if (mine) return { problem: `That overlaps "${mine.title}" (${clockAt(zone, mine.span[0])}–${clockAt(zone, mine.span[1])}). Move that block first, or use another time.` };
+  return { spot: [from, to], over: [...new Set(hits.map(t => t.title))] };
 }
