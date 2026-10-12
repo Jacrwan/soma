@@ -475,28 +475,51 @@ test('a session past midnight is drawn on both days, and its details show when i
  await expect(page.getByRole('dialog')).toContainText('2h 57m');
 });
 
-// The calendar shows past sessions only: a finished block from the plan
-// appears; upcoming or unfinished planned blocks don't.
-test('a finished past block from the plan shows on the calendar; upcoming ones do not',async({page})=>{
+// "when i logged time for a study block before the scheduled time and i check
+// off on it the block itself like the timed section appears in the calendar
+// but obviously the calendar should onl show the times that you logged study
+// time right ?" (2026-10-12). The calendar drew a checked-off block at its
+// planned time unless a session for that task started on the same day, so
+// studying a block early, the day before, left its planned time showing too.
+// It now draws recorded time only. This replaces "a finished past block from
+// the plan shows on the calendar", on purpose.
+test('nothing from the plan is drawn on the calendar: checked off or not, only logged time shows',async({page})=>{
  // Set before signing in, so the test session's expiry follows the same clock.
  await page.clock.install({time:new Date(`${date}T12:00:00`)});
  const state=await setup(page);
+ const yesterday=new Date(new Date(`${date}T21:00:00`).getTime()-86_400_000);
+ const yday=`${yesterday.getFullYear()}-${String(yesterday.getMonth()+1).padStart(2,'0')}-${String(yesterday.getDate()).padStart(2,'0')}`;
  state.tables.todos.push(
-  {id:'done-read',user_id:account.id,text:'Physics Reading: 4.6 - 4.9',subject_id:'biology',status:'done',date},
+  // Planned for 10:40 this morning, studied last night instead, then checked off.
+  {id:'early',user_id:account.id,text:'Physics Reading: 4.6 - 4.9',subject_id:'biology',status:'done',date},
+  // Checked off with no time logged at all.
+  {id:'no-log',user_id:account.id,text:'Skim the syllabus',subject_id:'biology',status:'done',date},
   {id:'later',user_id:account.id,text:'Later reading',subject_id:'biology',status:'nothing',date},
  );
  state.tables.todo_sessions.push(
-  {id:'s-done',user_id:account.id,todo_id:'done-read',date,start_time:iso('10:40'),end_time:iso('11:45')},
+  {id:'s-early',user_id:account.id,todo_id:'early',date,start_time:iso('10:40'),end_time:iso('11:45')},
+  {id:'s-no-log',user_id:account.id,todo_id:'no-log',date,start_time:iso('08:00'),end_time:iso('08:30')},
   {id:'s-later',user_id:account.id,todo_id:'later',date,start_time:iso('15:00'),end_time:iso('16:00')},
  );
+ state.tables.timer_sessions=[{id:'night-before',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Physics Reading: 4.6 - 4.9',date:yday,start_time:yesterday.toISOString(),end_time:new Date(yesterday.getTime()+50*60_000).toISOString(),duration_seconds:50*60}];
  await openWeek(page);
- const past=page.locator('[data-source=plan]',{hasText:'Physics Reading: 4.6 - 4.9'});
- await expect(past).toBeVisible();
- await expect(page.locator('[data-source=plan]',{hasText:'Later reading'})).toHaveCount(0);
- // Planned 9:00–9:45 but not done: not a past session.
- await expect(page.locator('[data-source=plan]',{hasText:'Cell review'})).toHaveCount(0);
- await past.click();
- await expect(page.getByRole('dialog')).toContainText('A finished session from your plan');
+ // The one stretch that was studied, at the time it was studied. (The week
+ // starts on Sunday, so on a Sunday last night is on the previous page.)
+ const lastNightShown=day.getDay()!==0;
+ await expect(recorded(page)).toHaveCount(lastNightShown ? 1 : 0);
+ if(lastNightShown){
+  await recorded(page).first().dispatchEvent('click');
+  await expect(page.getByRole('dialog')).toContainText('9:00 PM');
+  await expect(page.getByRole('dialog')).toContainText('9:50 PM');
+  await expect(page.getByRole('dialog')).toContainText('50m');
+  await page.getByRole('dialog').getByRole('button',{name:'Close'}).click();
+ }
+ // And no block at 10:40 AM, 8:00 AM or 3:00 PM: none of those were studied.
+ await expect(page.locator('[data-source=plan]')).toHaveCount(0);
+ const week=page.locator('[data-source=recorded],[data-source=plan]');
+ await expect(week.filter({hasText:'Skim the syllabus'})).toHaveCount(0);
+ await expect(week.filter({hasText:'Later reading'})).toHaveCount(0);
+ await expect(week.filter({hasText:'Cell review'})).toHaveCount(0);
 });
 
 test('a finished block with time recorded shows the recorded time, not the plan',async({page})=>{

@@ -5,7 +5,7 @@ import { getWeekRange, isCacheStale } from '../../lib/googleCalendar';
 import {
   listConnections, startConnectFlow, fetchAggregatedEvents, GoogleCalendarError,
 } from '../../lib/googleCalendarConnections';
-import { TimeBlock, Subject, GoogleCalendarEvent, GoogleCalendarConnection, TimerSession, Todo, TodoSession } from '../../types';
+import { TimeBlock, Subject, GoogleCalendarEvent, GoogleCalendarConnection, TimerSession, Todo } from '../../types';
 import { formatDateTime, formatHourLabel, useTimeFormat, type TimeFormat } from '../../lib/timeFormat';
 import {
   addDays, getSundayOfWeek, getFirstOfMonth, startOfDay,
@@ -131,50 +131,14 @@ function studySpans(sessions: TimerSession[], blocks: TimeBlock[], sessionsLoade
   return merged;
 }
 
-/** A block of the plan: the same todo_sessions rows the dashboard shows. */
-interface PlanSpan {
-  id: string;
-  todoId: string;
-  subjectId?: string;
-  task: string;
-  start: Date;
-  end: Date;
-  done: boolean;
-  commitment: boolean;
-}
-
-const COMMITMENT_SUBJECT = 'Personal commitments';
-
-/** Only past sessions: blocks that have ended and are marked done. The
- *  calendar is a record of studying, not a second copy of the plan. */
-function planSpans(planned: TodoSession[], todos: Todo[], subjects: Subject[]): PlanSpan[] {
-  const out: PlanSpan[] = [];
-  const now = Date.now();
-  for (const s of planned) {
-    const todo = todos.find(t => t.id === s.todoId);
-    if (!todo || !s.startTime || !s.endTime) continue;
-    if (todo.status !== 'done' || new Date(s.endTime).getTime() > now) continue;
-    out.push({
-      id: `plan-${s.id}`, todoId: todo.id, subjectId: todo.subjectId, task: todo.text,
-      start: new Date(s.startTime), end: new Date(s.endTime), done: todo.status === 'done',
-      commitment: subjects.find(sn => sn.id === todo.subjectId)?.name === COMMITMENT_SUBJECT,
-    });
-  }
-  return out;
-}
-
-/**
- * The calendar shows what actually happened: recorded sessions at their real
- * times, the same list as a task's Past sessions. A finished planned block is
- * only drawn when nothing was recorded for that task that day (marked done
- * without the timer); otherwise its planned times would sit beside, or be
- * blended into, the real ones and match neither.
+/*
+ * The calendar shows study time that was recorded, and nothing from the plan.
+ * A checked-off block used to be drawn at its planned time when no session for
+ * that task started on the same day. Study a 2 AM block the evening before,
+ * check it off, and the calendar showed the evening you studied and the 2 AM
+ * you didn't. A block finished without the timer has no time to show: it is
+ * added from the task's Past sessions, like any other forgotten session.
  */
-const onlyUnrecorded = (plans: PlanSpan[], sessions: TimerSession[]) => {
-  const key = (subjectId: string | undefined, task: string, when: Date) => `${subjectId}|${task.trim().toLowerCase()}|${when.toDateString()}`;
-  const recorded = new Set(sessions.map(sn => key(sn.subjectId, sn.task ?? '', new Date(sn.startTime))));
-  return plans.filter(p => !recorded.has(key(p.subjectId, p.task, p.start)));
-};
 
 interface Filters {
   gcal: boolean;
@@ -221,7 +185,6 @@ interface PositionedEvent {
   width: number;
   block?: TimeBlock;
   span?: StudySpan;
-  plan?: PlanSpan;
   gcalEvent?: GoogleCalendarEvent;
 }
 
@@ -332,13 +295,12 @@ export default function CalendarTab({ selectedDate, onSelectDate, onOpenDay }: C
   const [dueTasks, setDueTasks] = useState<Todo[]>(() => storage.getTodos().filter(t => !!t.dueDate));
   // The plan's scheduled blocks, read from the same table the dashboard uses,
   // so a block added in Edit plan or by Soma shows here too.
-  const [planned, setPlanned] = useState<TodoSession[]>([]);
 
   const [currentMinutes, setCurrentMinutes] = useState(() => {
     const now = new Date();
     return now.getHours() * 60 + now.getMinutes();
   });
-  const [weekBlockModal, setWeekBlockModal] = useState<{ block: TimeBlock; subject: Subject | undefined; span?: StudySpan; plan?: PlanSpan } | null>(null);
+  const [weekBlockModal, setWeekBlockModal] = useState<{ block: TimeBlock; subject: Subject | undefined; span?: StudySpan } | null>(null);
   const [deleteError, setDeleteError] = useState('');
   const [weekBlockEditMode, setWeekBlockEditMode] = useState(false);
   const [weekBlockEditForm, setWeekBlockEditForm] = useState<WeekBlockEditForm>({
@@ -415,7 +377,6 @@ export default function CalendarTab({ selectedDate, onSelectDate, onOpenDay }: C
     let cancelled = false;
     const refresh = () => {
       if (!cancelled) { setDueTasks(storage.getTodos().filter(t => !!t.dueDate)); setDataVersion(v => v + 1); }
-      void storage.fetchPlannedSessions().then(rows => { if (!cancelled) setPlanned(rows); }).catch(() => { /* the rest still draws */ });
     };
     void storage.fetchAllTodos().then(refresh).catch(() => { /* non-fatal */ });
     void storage.whenTokensLoaded().then(refresh);
@@ -592,14 +553,6 @@ export default function CalendarTab({ selectedDate, onSelectDate, onOpenDay }: C
     setWeekBlockEditMode(false);
   }
 
-  function openPlan(plan: PlanSpan) {
-    const subject = storage.getSubjects().find(s => s.id === plan.subjectId);
-    const shown: TimeBlock = { id: plan.id, subjectId: plan.subjectId ?? '', task: plan.task, startTime: plan.start.toISOString(), endTime: plan.end.toISOString(), source: 'manual' };
-    setDeleteError('');
-    setWeekBlockModal({ block: shown, subject, plan });
-    setWeekBlockEditMode(false);
-  }
-
   // Month view chip data
   const chipsByDate = useMemo(() => {
     const map = new Map<string, Chip[]>();
@@ -632,11 +585,6 @@ export default function CalendarTab({ selectedDate, onSelectDate, onOpenDay }: C
       }
     }
     if (filters.soma) {
-      const plans = onlyUnrecorded(planSpans(planned, storage.getTodos(), subjects), sessions);
-      for (const p of plans) {
-        const subj = subjects.find(s => s.id === p.subjectId);
-        add(p.start, { id: p.id, label: p.task, bgColor: p.commitment ? GCAL_COLOR : subj?.color ?? '#9e9e9e', type: 'soma', sortKey: p.start.getTime() });
-      }
       for (const span of studySpans(sessions, blocks, sessionsLoaded)) {
         const subj = subjects.find(s => s.id === span.subjectId);
         add(span.start, { id: span.id, label: span.task || subj?.name || 'Study', bgColor: subj?.color ?? '#9e9e9e', type: 'soma', sortKey: span.start.getTime() });
@@ -645,7 +593,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onOpenDay }: C
     for (const chips of map.values()) chips.sort((a, b) => a.sortKey - b.sortKey);
     return map;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters, dataVersion, sessions, sessionsLoaded, dueTasks, planned]);
+  }, [filters, dataVersion, sessions, sessionsLoaded, dueTasks]);
 
   const getPositionedEventsForDay = useCallback((day: Date): {
     events: PositionedEvent[];
@@ -666,7 +614,6 @@ export default function CalendarTab({ selectedDate, onSelectDate, onOpenDay }: C
       endMin: number;
       block?: TimeBlock;
       span?: StudySpan;
-      plan?: PlanSpan;
       gcalEvent?: GoogleCalendarEvent;
     }
 
@@ -678,23 +625,18 @@ export default function CalendarTab({ selectedDate, onSelectDate, onOpenDay }: C
       // clock times alone turned it into a 30-minute stub and lost the morning.
       const dayStart = startOfDay(day), dayEnd = addDays(dayStart, 1);
       const clip = (start: Date, end: Date) => [Math.round((Math.max(+start, +dayStart) - +dayStart) / 60000), Math.round((Math.min(+end, +dayEnd) - +dayStart) / 60000)];
-      // Recorded sessions at their real times, plus finished planned blocks
-      // with nothing recorded. Never blended: a union of plan and session
-      // matched neither the plan nor the Past sessions list.
-      type Drawn = { id: string; subjectId?: string; task: string; start: Date; end: Date; plan?: PlanSpan; span?: StudySpan; commitment: boolean };
-      const merged: Drawn[] = [
-        ...onlyUnrecorded(planSpans(planned, storage.getTodos(), subjects), sessions).map(p => ({ id: p.id, subjectId: p.subjectId, task: p.task, start: p.start, end: p.end, plan: p, commitment: p.commitment })),
-        ...studySpans(sessions, blocks, sessionsLoaded).map(sp => ({ id: sp.id, subjectId: sp.subjectId, task: sp.task, start: sp.start, end: sp.end, span: sp, commitment: false })),
-      ];
-      for (const d of merged) {
+      // Recorded sessions at their real times, the same list as Past sessions.
+      // Nothing from the plan: a planned time is not a time that was studied.
+      for (const span of studySpans(sessions, blocks, sessionsLoaded)) {
+        const d = { id: span.id, subjectId: span.subjectId, task: span.task, start: span.start, end: span.end, span };
         if (+d.end <= +dayStart || +d.start >= +dayEnd) continue;
         const [startMin, endMin] = clip(d.start, d.end);
         // Under five minutes is almost always a focus session stopped by
         // accident; it used to render as a dot, which added noise, not signal.
         if (endMin - startMin < 5) continue;
         const subject = subjects.find(sn => sn.id === d.subjectId);
-        const baseColor = d.commitment ? GCAL_COLOR : subject?.color ?? '#9e9e9e';
-        const label = d.commitment ? 'Personal commitment' : (subject?.name ?? d.task) || 'Study';
+        const baseColor = subject?.color ?? '#9e9e9e';
+        const label = (subject?.name ?? d.task) || 'Study';
         events.push({
           id: d.id,
           type: 'soma',
@@ -705,10 +647,8 @@ export default function CalendarTab({ selectedDate, onSelectDate, onOpenDay }: C
           textColor: 'var(--text-primary)',
           startMin,
           endMin: endMin > startMin ? endMin : startMin + 30,
-          block: !d.plan && d.span?.blockId ? blocks.find(b => b.id === d.span!.blockId) : undefined,
+          block: d.span.blockId ? blocks.find(b => b.id === d.span.blockId) : undefined,
           span: d.span,
-          // The details show the whole stretch that was drawn.
-          plan: d.plan ? { ...d.plan, start: d.start, end: d.end } : undefined,
         });
       }
     }
@@ -807,11 +747,10 @@ export default function CalendarTab({ selectedDate, onSelectDate, onOpenDay }: C
         width: 1 / numColsArr[i],
         block: ev.block,
         span: ev.span,
-        plan: ev.plan,
         gcalEvent: ev.gcalEvent,
       })),
     };
-  }, [filters, sessions, sessionsLoaded, planned]);
+  }, [filters, sessions, sessionsLoaded]);
 
   function goToPrev() {
     if (viewMode === 'month') setViewMonth(d => new Date(d.getFullYear(), d.getMonth() - 1, 1));
@@ -1177,7 +1116,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onOpenDay }: C
                         <div
                           key={ev.id}
                           className={`${styles.weekViewBlock}${ev.type === 'soma' ? ` ${styles.weekViewBlockSoma}` : ` ${styles.weekViewBlockGcal}`}`}
-                          data-source={ev.plan ? 'plan' : ev.type === 'soma' ? 'recorded' : 'calendar'}
+                          data-source={ev.type === 'soma' ? 'recorded' : 'calendar'}
                           style={{
                             top: ev.top,
                             height: ev.height,
@@ -1186,19 +1125,17 @@ export default function CalendarTab({ selectedDate, onSelectDate, onOpenDay }: C
                             background: ev.color,
                             borderColor: ev.borderColor,
                           }}
-                          tabIndex={ev.type === 'soma' && (ev.block || ev.span || ev.plan) ? 0 : undefined}
-                          role={ev.type === 'soma' && (ev.block || ev.span || ev.plan) ? 'button' : undefined}
+                          tabIndex={ev.type === 'soma' && (ev.block || ev.span) ? 0 : undefined}
+                          role={ev.type === 'soma' && (ev.block || ev.span) ? 'button' : undefined}
                           onClick={e => {
                             e.stopPropagation();
-                            if (ev.plan) openPlan(ev.plan);
-                            else if (ev.type === 'soma' && (ev.block || ev.span)) openStudy(ev.block, ev.span);
+                            if (ev.type === 'soma' && (ev.block || ev.span)) openStudy(ev.block, ev.span);
                           }}
                           onKeyDown={e => {
-                            if ((e.key === 'Enter' || e.key === ' ') && ev.type === 'soma' && (ev.block || ev.span || ev.plan)) {
+                            if ((e.key === 'Enter' || e.key === ' ') && ev.type === 'soma' && (ev.block || ev.span)) {
                               e.preventDefault();
                               e.stopPropagation();
-                              if (ev.plan) openPlan(ev.plan);
-                              else openStudy(ev.block, ev.span);
+                              openStudy(ev.block, ev.span);
                             }
                           }}
                           title={[ev.label, ev.sublabel].filter(Boolean).join(': ')}
@@ -1314,21 +1251,14 @@ export default function CalendarTab({ selectedDate, onSelectDate, onOpenDay }: C
                 {weekBlockModal.span?.sessionIds.length ? (
                   <p className={styles.weekModalNote}>Recorded study time. To correct the minutes, open the task on the dashboard.</p>
                 ) : null}
-                {weekBlockModal.plan && (
-                  <p className={styles.weekModalNote}>A finished session from your plan. Change or remove it with Edit plan on the dashboard.</p>
-                )}
                 {deleteError && <p role="alert" className={styles.weekModalNote}>{deleteError}</p>}
-                {weekBlockModal.plan ? (
-                  <div className={styles.weekModalActions}>
-                    <button className={styles.weekModalEditBtn} onClick={() => navigate('/dashboard')}>Open dashboard</button>
-                  </div>
-                ) : <div className={styles.weekModalActions}>
+                <div className={styles.weekModalActions}>
                   {/* Editing the calendar's copy of a session never changed the session, so only plain blocks can be edited here. */}
                   {!weekBlockModal.span?.sessionIds.length && weekBlockModal.span?.blockId && (
                     <button className={styles.weekModalEditBtn} onClick={() => openWeekBlockEdit(weekBlockModal.block)}>Edit</button>
                   )}
                   <button className={styles.weekModalDeleteBtn} onClick={() => weekBlockModal.span?.sessionIds.length ? void deleteStudy(weekBlockModal.span) : deleteWeekBlock(weekBlockModal.block.id)}>Delete</button>
-                </div>}
+                </div>
                 <button className={styles.weekModalCancel} onClick={() => setWeekBlockModal(null)}>Close</button>
               </>
             )}

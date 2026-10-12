@@ -9,6 +9,37 @@ still needed.
 
 ---
 
+## 2026-10-12
+
+### Calendar: only logged study time, nothing from the plan
+- **Why:** "when i logged time for a study block before the scheduled time and
+  i check off on it the block itself like the timed section appears in the
+  calendar but obviously the calendar should onl show the times that you logged
+  study time right ?" A checked-off block was drawn at its planned time unless
+  a session for that task had started on the same calendar day. Study a block
+  early, on the day before (an overnight plan does this all the time), check it
+  off, and the calendar showed both the evening that was studied and the
+  planned hours that weren't.
+- **What:** the calendar draws recorded sessions and nothing else from Soma,
+  in the week view and the month chips. No planned block appears on it,
+  checked off or not.
+- **Changed on purpose, replacing the 2026-09-29 rule:** a block checked off
+  with no time logged used to appear at its planned time ("A finished session
+  from your plan"). It no longer appears: there is no record of when it was
+  done, and Insights never counted it either, so the two now agree. To put it
+  on the calendar, add the time from the task's Past sessions ("Forgot to start
+  the timer? Add a session").
+- **Untouched:** recorded sessions and how they merge and draw, Google
+  Calendar events, deadlines, the dashboard and its checkmarks, Insights.
+- **Where:** `src/components/Calendar/CalendarTab.tsx` (`planSpans`,
+  `onlyUnrecorded` and the plan branch of the block dialog removed).
+- **Guard:** `tests/session-times-and-calendar.spec.ts` › "nothing from the
+  plan is drawn on the calendar: checked off or not, only logged time shows".
+  It replaces "a finished past block from the plan shows on the calendar;
+  upcoming ones do not", whose first half is the behaviour removed.
+
+---
+
 ## 2026-10-11
 
 ### Claude connector: every task says how its time is chosen
