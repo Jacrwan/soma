@@ -397,6 +397,38 @@ test('two tasks in the same course never draw as one block',async({page})=>{
  await expect(page.getByText('2:30 PM',{exact:false}).first()).toBeVisible();
 });
 
+// Reported 2026-10-12: Tue Oct 6 showed the 9:20 PM and 9:31 PM Math sessions
+// twice each, side by side, while Past sessions listed them once. The task had
+// been renamed since: its sessions carried the new name, the timer's copies in
+// this browser the old one, and a copy no longer counted as its own session.
+test('a session is drawn once when its task was renamed after the timer recorded it',async({page})=>{
+ const state=await setup(page);
+ state.tables.timer_sessions=[
+  {id:'short',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Math 53 Homework — Chapters 14.3, 14.4',date,start_time:iso('13:20'),end_time:iso('13:31'),duration_seconds:11*60},
+  {id:'long',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Math 53 Homework — Chapters 14.3, 14.4',date,start_time:iso('13:31'),end_time:iso('15:21'),duration_seconds:110*60},
+  // A different task in the same course is still its own block.
+  {id:'other',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Practice midterm',date,start_time:iso('16:00'),end_time:iso('16:40'),duration_seconds:40*60},
+ ];
+ await page.addInitScript(({a,b,c,d,e})=>{
+  localStorage.setItem('soma_blocks',JSON.stringify([
+   // The timer's own copies, still under the name the task had that evening.
+   {id:'copy-short',subjectId:'biology',task:'Math 53 Homework - Chapters 14.3–14.5',startTime:a,endTime:b,source:'manual',timerSessionId:'short'},
+   {id:'copy-long',subjectId:'biology',task:'Math 53 Homework - Chapters 14.3–14.5',startTime:b,endTime:c,source:'manual',timerSessionId:'long'},
+   // And one that differs only by a dash and capitals.
+   {id:'copy-other',subjectId:'biology',task:'practice  midterm.',startTime:d,endTime:e,source:'manual'},
+  ]));
+ },{a:iso('13:20'),b:iso('13:31'),c:iso('15:21'),d:iso('16:00'),e:iso('16:40')});
+ await openWeek(page);
+ // The Math sitting (resumed once, so one stretch) and the midterm: two blocks, not six.
+ await expect(recorded(page)).toHaveCount(2);
+ await expect(recorded(page).filter({hasText:'14.3–14.5'})).toHaveCount(0);
+ await recorded(page).filter({hasText:'14.3, 14.4'}).last().dispatchEvent('click');
+ // The same minutes as Past sessions: 11 + 110.
+ await expect(page.getByRole('dialog')).toContainText('1:20 PM');
+ await expect(page.getByRole('dialog')).toContainText('3:21 PM');
+ await expect(page.getByRole('dialog')).toContainText('2h 1m');
+});
+
 test('a failed session load leaves the calendar drawn, not emptied',async({page})=>{
  const state=await setup(page);
  await page.addInitScript(({start,end})=>{
