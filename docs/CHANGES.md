@@ -11,6 +11,30 @@ still needed.
 
 ## 2026-10-12
 
+### Calendar: a session whose task was renamed is drawn once, not twice
+- **Why:** "whats going on here theres duplicates". Tue Oct 6 showed the
+  9:20 PM and 9:31 PM Math 53 sessions twice each, side by side. Past sessions
+  and the server both list them once.
+- **Cause:** the timer keeps a copy of each session in this browser
+  (`soma_blocks`), under the task's name at the time. The task was renamed
+  afterwards ("…Chapters 14.3–14.5" to "…Chapters 14.3, 14.4"): renaming
+  renames the sessions on the server, not the browser's copies. Since
+  2026-10-09 the calendar joins records only when they are the same task, so a
+  copy under the old name stopped joining its own session and was drawn beside
+  it. Not caused by the entry below; it came from the 2026-10-09 change and
+  showed up on any day with a renamed task.
+- **What:** a copy that names its session (by id) goes by that session's task
+  and course, so it always joins it. And "same task" ignores case, spacing and
+  punctuation, as it does on the dashboard ("Homework - Ch 14" is
+  "Homework — Ch 14").
+- **Kept:** two different tasks in one course are still two blocks (the
+  2026-10-09 guard passes unchanged). Consecutive sittings of one task still
+  draw as one stretch.
+- **Where:** `src/components/Calendar/CalendarTab.tsx` (`studySpans`).
+- **Guard:** `tests/session-times-and-calendar.spec.ts` › "a session is drawn
+  once when its task was renamed after the timer recorded it" (6 blocks
+  without the fix, 2 with).
+
 ### Calendar: only logged study time, nothing from the plan
 - **Why:** "when i logged time for a study block before the scheduled time and
   i check off on it the block itself like the timed section appears in the

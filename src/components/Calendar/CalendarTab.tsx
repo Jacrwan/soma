@@ -59,7 +59,10 @@ function studySpans(sessions: TimerSession[], blocks: TimeBlock[], sessionsLoade
   // stay two blocks, each with its own time: merging them once drew a 21-minute
   // session on another task as part of the block before it. A record with no
   // task name is a copy of the same stretch and may join either.
-  const sameTask = (a?: string, b?: string) => !a?.trim() || !b?.trim() || a.trim().toLowerCase() === b.trim().toLowerCase();
+  // Case, spacing and punctuation don't make it different work, as on the
+  // dashboard: "Homework - Ch 14" is "Homework — Ch 14".
+  const name = (t?: string) => (t ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const sameTask = (a?: string, b?: string) => !name(a) || !name(b) || name(a) === name(b);
   const sessionEnd = (s: TimerSession) =>
     s.endTime ? ms(s.endTime) : ms(s.startTime) + s.durationSeconds * 1000;
 
@@ -72,15 +75,21 @@ function studySpans(sessions: TimerSession[], blocks: TimeBlock[], sessionsLoade
       // The timer's own copy of a session. Size it to the sessions still
       // there, so a correction shrinks it and the last delete removes it.
       const from = ms(block.startTime), to = ms(block.endTime);
+      // The copy is its session, whatever each is called now. Renaming a task
+      // renames its sessions on the server but not this browser's copy, and a
+      // copy under the old name was drawn as a second block beside its own
+      // session. So the copy goes by the session's name and course.
+      const own = sessions.find(s => s.id === block.timerSessionId);
+      const subjectId = own?.subjectId ?? block.subjectId, task = own?.task ?? block.task;
       const mine = sessions.filter(s =>
         s.id === block.timerSessionId ||
-        (s.subjectId === block.subjectId && sameTask(s.task, block.task) && ms(s.startTime) >= from && ms(s.startTime) <= to));
+        (s.subjectId === subjectId && sameTask(s.task, task) && ms(s.startTime) >= from && ms(s.startTime) <= to));
       if (mine.length === 0) continue;
       candidates.push({
         id: `soma-${block.id}`,
         blockId: block.id,
-        subjectId: block.subjectId,
-        task: block.task,
+        subjectId,
+        task,
         start: new Date(Math.min(...mine.map(s => ms(s.startTime)))),
         end: new Date(Math.max(...mine.map(sessionEnd))),
         sessionIds: [], blockIds: [block.id], studiedSeconds: 0,
