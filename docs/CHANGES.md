@@ -9,6 +9,35 @@ still needed.
 
 ---
 
+## 2026-10-19
+
+### Renaming one block of a task renames only that block
+- **Why:** "instead of physics 5a homework, i did gemini generated practice
+  quizzes from 3 to 4". "Physics 5A: HW 6" had two blocks that day, 1:40 and
+  3:00. Soma renamed the 3:00 one; the 1:40 one changed too. Renaming it back
+  changed both back, and Soma went in circles telling the student the other
+  block "stays".
+- **Cause:** a block has no name of its own; it shows its task's. The two
+  blocks were two times of one task, so a rename (from Soma or Edit plan)
+  renamed the task, and with it every block of it. All the time logged on the
+  task moved to the new name too.
+- **What:** renaming one of a task's several blocks makes that block its own
+  task under the new name, on the block's day. Only the timer sittings under
+  the old name that overlap where the block was go with it; the rest stays
+  with the task's other blocks. The new task keeps the course and kind, and
+  takes the block's checkmark state, but not the old task's Canvas
+  assignment, reading-list sections or notes: it is other work.
+- **Unchanged:** a task with a single block is renamed in place as before
+  (the 2026-10-01 rule that moves its logged time still applies). Checking
+  off, moving and removing are untouched. Reading-progress retitles ("read
+  through 4.3") still rename the whole task.
+- **Where:** `src/components/DashboardV2/liveData.ts` (`savePlanBlock`).
+- **Guard:** `tests/ai-plan-changes.spec.ts` › "renaming one block of a task
+  with two blocks renames only that block, with the time logged during it"
+  (3 tasks without the fix, 4 with).
+- **Setup:** none. Blocks already renamed together stay one task: rename the
+  one that should differ once more and it splits off.
+
 ## 2026-10-12
 
 ### Calendar: a session whose task was renamed is drawn once, not twice

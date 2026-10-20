@@ -74,7 +74,7 @@ async function setup(page: Page, reply: unknown, edit?: (db: Record<string, Row[
   });
   await page.goto('/dashboard');
   await page.getByLabel('Next seven days').getByRole('button').nth(1).click();
-  await expect(page.getByText('Hog project review')).toBeVisible();
+  await expect(page.getByText('Hog project review').first()).toBeVisible();
   return state;
 }
 async function ask(page: Page, text: string) {
@@ -239,6 +239,31 @@ test('rename: an existing block is renamed in place, not recreated', async ({ pa
   expect(state.db.todo_sessions.find(x => x.id === 's-cs')!.start_time).toBe(at(1, '17:30'));   // time untouched
   // The time already logged on it moves with the name, so Insights still finds it.
   expect(state.db.timer_sessions.find(x => x.id === 'focus-1')!.task_text).toBe('Hog project — final review');
+});
+
+test('renaming one block of a task with two blocks renames only that block, with the time logged during it', async ({ page }) => {
+  // Reported: "Physics 5A: HW 6" at 1:40 and 3:00; the 3:00 one was spent on
+  // practice quizzes. Renaming it renamed both, and renaming back did too.
+  const focus = (id: string, from: string, to: string, seconds: number) => ({ id, user_id: account.id, subject_id: 'cs', subject_name: 'CS 61A', task_text: 'Hog project review', date: TOMORROW, start_time: at(1, from), end_time: at(1, to), duration_seconds: seconds });
+  const state = await setup(page, { reply: 'Renamed it.', blocks: [], changes: [{ action: 'update', id: 's-cs2', title: 'CS 61A: practice quizzes' }] }, db => {
+    db.todo_sessions.push({ id: 's-cs2', user_id: account.id, todo_id: 't-cs', date: TOMORROW, start_time: at(1, '20:00'), end_time: at(1, '21:00') });
+    db.timer_sessions.push(focus('focus-early', '17:30', '18:10', 2400), focus('focus-late', '20:05', '20:59', 3240));
+  });
+  await ask(page, 'rename the 8pm hog block to practice quizzes');
+  await page.getByRole('button', { name: /Accept all \(1\)/ }).click();
+  await expect(page.getByRole('button', { name: /Accept all/ })).toHaveCount(0);
+  await expect.poll(() => state.db.todos.length).toBe(4);
+  const quizzes = state.db.todos.find(t => t.text === 'CS 61A: practice quizzes')!;
+  expect(quizzes.subject_id).toBe('cs');
+  expect(state.db.todos.find(t => t.id === 't-cs')!.text).toBe('Hog project review');
+  expect(state.db.todo_sessions.find(x => x.id === 's-cs')!.todo_id).toBe('t-cs');
+  expect(state.db.todo_sessions.find(x => x.id === 's-cs2')!.todo_id).toBe(quizzes.id);
+  expect(state.db.todo_sessions.find(x => x.id === 's-cs2')!.start_time).toBe(at(1, '20:00'));
+  // Only the sitting during the renamed block goes with it.
+  expect(state.db.timer_sessions.find(x => x.id === 'focus-late')!.task_text).toBe('CS 61A: practice quizzes');
+  expect(state.db.timer_sessions.find(x => x.id === 'focus-early')!.task_text).toBe('Hog project review');
+  await expect(page.getByText('Hog project review')).toBeVisible();
+  await expect(page.getByText('CS 61A: practice quizzes')).toBeVisible();
 });
 
 test('update can rename and retime together; omitted fields keep their values', async ({ page }) => {

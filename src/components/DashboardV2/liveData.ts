@@ -166,21 +166,37 @@ export async function savePlanBlock(userId:string,origin:Date,block:PlanBlock,sn
  // task's only block. Otherwise the task kept the old day, and came back on
  // it the moment its time was taken off.
  const movedDay=!!original && !!block.time && original.day!==block.day && snapshot.sessions.filter(sn=>sn.todoId===previous?.id).length<=1;
- const todo:Todo={...previous,id:previous?.id??crypto.randomUUID(),text:block.title,subjectId:subject.id,status:block.state==='Completed' ? 'done' : block.state==='Partially completed' ? 'in_progress' : 'nothing',date:movedDay ? localDate(dateAt(origin,block.day)) : previous?.date??localDate(dateAt(origin,block.day)),estimatedMinutes:previous?.estimatedMinutes??(block.estimatedMinutes || block.minutes)};
+ // A block's title is its task's. Renaming one of a task's several blocks
+ // ("HW 6" at 1:40 and 3:00, the 3:00 one spent on practice quizzes) used to
+ // rename every block of it: the block becomes its own task instead. It is
+ // other work, so it leaves the task's Canvas assignment, sections and notes behind.
+ const session=snapshot.sessions.find(s=>s.id===original?.sessionId);
+ const split=!!previous && !!session && previous.text!==block.title && snapshot.sessions.some(sn=>sn.todoId===previous.id && sn.id!==session.id);
+ const kept=split ? {kind:previous!.kind} : previous;
+ const todo:Todo={...kept,id:split ? crypto.randomUUID() : previous?.id??crypto.randomUUID(),text:block.title,subjectId:subject.id,status:block.state==='Completed' ? 'done' : block.state==='Partially completed' ? 'in_progress' : 'nothing',date:movedDay || split ? localDate(dateAt(origin,block.day)) : previous?.date??localDate(dateAt(origin,block.day)),estimatedMinutes:split ? block.minutes || undefined : previous?.estimatedMinutes??(block.estimatedMinutes || block.minutes)};
  await storage.saveTodo(todo);
  // Checked off (or unchecked) in the editor: its same-named blocks follow.
- if(previous && previous.status!==todo.status)await setTaskStatus(userId,snapshot,previous,todo.status,false);
+ if(previous && !split && previous.status!==todo.status)await setTaskStatus(userId,snapshot,previous,todo.status,false);
  // Logged time is found by title. A rename used to leave it under the old one:
  // the dashboard still spread it over the day's blocks, but Insights lost it
  // from the task. Not when another task shares the old title; that time is theirs too.
- if(previous && previous.text!==todo.text && previous.subjectId && previous.subjectId===todo.subjectId && !snapshot.todos.some(t=>t.id!==previous.id && t.text===previous.text && t.subjectId===previous.subjectId))await renameLoggedTime(userId,previous.subjectId,previous.text,todo.text);
+ if(previous && !split && previous.text!==todo.text && previous.subjectId && previous.subjectId===todo.subjectId && !snapshot.todos.some(t=>t.id!==previous.id && t.text===previous.text && t.subjectId===previous.subjectId))await renameLoggedTime(userId,previous.subjectId,previous.text,todo.text);
  try {
   if(!block.time && original?.sessionId){const {error}=await supabase.from('todo_sessions').delete().eq('id',original.sessionId).eq('user_id',userId);if(error)throw new Error(error.message);}
   if(block.time){const [start,end]=block.time.split('–');const date=localDate(dateAt(origin,block.day));const existing=snapshot.sessions.find(s=>s.id===original?.sessionId);/* Same time on another day is a move: only the same day and time keeps what's stored. */const unchanged=existing && original?.time===block.time && original?.day===block.day;await checkedWrite('todo_sessions',{id:original?.sessionId??crypto.randomUUID(),user_id:userId,todo_id:todo.id,date:unchanged ? existing.date : date,start_time:unchanged ? existing.startTime : new Date(`${date}T${start}:00`).toISOString(),end_time:unchanged ? existing.endTime : new Date(new Date(`${date}T${start}:00`).getTime()+spanMinutes(start,end)*60000).toISOString()});}
  }catch(error){
-  if(!previous){const {error:cleanup}=await supabase.from('todos').delete().eq('id',todo.id).eq('user_id',userId);if(cleanup)throw new Error('The task saved, but its time did not. Open Day View to schedule it before trying again.');}
+  if(!previous || split){const {error:cleanup}=await supabase.from('todos').delete().eq('id',todo.id).eq('user_id',userId);if(cleanup)throw new Error(split ? 'The new name saved, but the block did not move to it. Refresh before trying again.' : 'The task saved, but its time did not. Open Day View to schedule it before trying again.');}
   else throw new Error('Task details saved, but the time change failed. Your previous schedule remains. Please retry.');
   throw error;
+ }
+ // Only the time recorded during this block goes with it: the timer sittings
+ // under the old title that overlap where the block was. The rest stays with
+ // the task's other blocks.
+ if(split && previous!.subjectId===todo.subjectId){
+  const [from,to]=[+new Date(session!.startTime??0),+new Date(session!.endTime??0)];
+  const during=snapshot.history.filter(h=>h.subject_id===todo.subjectId && h.task_text===previous!.text && h.start_time && h.end_time && +new Date(utc(h.start_time))<to && +new Date(utc(h.end_time))>from);
+  for(const h of during){const {error}=await supabase.from('timer_sessions').update({task_text:todo.text}).eq('id',h.id).eq('user_id',userId);if(error)throw new Error(`The block was renamed, but its recorded study time is still under "${previous!.text}".`);}
+  if(during.length)window.dispatchEvent(new Event('soma_insights_changed'));
  }
  if(original?.legacyId)storage.setTimeBlocks(storage.getTimeBlocks().filter(b=>b.id!==original.legacyId));
  await Promise.all([storage.fetchAllTodos(),storage.loadSubjects()]);
