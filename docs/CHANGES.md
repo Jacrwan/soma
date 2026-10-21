@@ -9,6 +9,28 @@ still needed.
 
 ---
 
+## 2026-10-20
+
+### "Some other day" / "a different day" no longer lands on today
+- **Why:** "you gotta move all the cs lecture videos to some other day i cant
+  watch them today", then "DELETE THE CS LECTURE REVIEW SESSIONS FROM TODAY
+  AND THEN MAKE NEW ONES ON A DIFFERENT DAY". Soma said tomorrow evening; the
+  cards put them on Tue (today) and asked about slots that don't exist.
+- **Cause:** the "Today by default" rule (2026-10-06) forces work onto today
+  unless the message names a day. "Some other day" and "a different day" named
+  none, so Soma's tomorrow was overridden. Pre-existing, not a regression.
+- **What:** `namesOtherDay` also counts asking for work off today: "another /
+  a different / some other / later / next day", "not today", "off today",
+  "anything but today". Then Soma's choice of day stands. The prompt says the
+  same. "I'm not going to lecture today" still doesn't count (it's a skip).
+- **Where:** `src/lib/statedTime.ts` (`namesOtherDay`), `src/lib/assistant.ts`
+  (DATES line of the prompt).
+- **Guard:** `tests/ai-whole-day.spec.ts` › "asking for another day ("a
+  different day") is not read as today" and ""not today" and "some other
+  day" count as naming another day; a skipped class does not" (both fail
+  without the fix).
+- **Setup:** none. The blocks proposed earlier are still on today: ask again.
+
 ## 2026-10-19
 
 ### Renaming one block of a task renames only that block
