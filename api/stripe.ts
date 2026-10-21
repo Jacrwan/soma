@@ -2,7 +2,7 @@
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { isRateLimited } from './_rateLimit';
-import { TRIAL_DAYS, EXTENSION_MS, trialLengthMs } from './_trial';
+import { TRIAL_DAYS, EXTENSION_MS, trialLengthMs, computeStatus } from './_trial';
 import { budgetStatus, TOPUP_PRICE_CENTS, TOPUP_ADDS_USD } from './_budget';
 
 const ALLOWED_ORIGINS = [
@@ -25,23 +25,6 @@ function applyCors(req: any, res: any): boolean {
 function origin(req: any): string {
   const raw = req.headers['origin'] as string | undefined;
   return raw && ALLOWED_ORIGINS.includes(raw) ? raw : 'https://somastudy.app';
-}
-
-function computeStatus(row: {
-  status: string;
-  trial_start: string | null;
-  extension_start: string | null;
-  stripe_subscription_id?: string | null;
-}): string {
-  if (row.stripe_subscription_id) return row.status;
-  const now = Date.now();
-  if (row.status === 'trialing' && row.trial_start) {
-    return now > new Date(row.trial_start).getTime() + trialLengthMs(row.trial_start) ? 'trial_expired' : 'trialing';
-  }
-  if (row.status === 'trial_extended' && row.extension_start) {
-    return now > new Date(row.extension_start).getTime() + EXTENSION_MS ? 'trial_extension_expired' : 'trial_extended';
-  }
-  return row.status;
 }
 
 // ── Action handlers ───────────────────────────────────────────────────────────
@@ -177,27 +160,46 @@ async function createSubscription(user: any, admin: any, stripe: Stripe, body: R
   return res.json({ success: true, subscriptionId: subscription.id, trialEndsAt });
 }
 
-async function createCheckoutSession(user: any, admin: any, stripe: Stripe, body: Record<string, unknown>, req: any, res: any) {
+/** Stripe statuses after which a subscription can't bill again. */
+const ENDED_STATUSES = ['canceled', 'incomplete_expired'];
+
+export async function createCheckoutSession(user: any, admin: any, stripe: Stripe, body: Record<string, unknown>, req: any, res: any) {
   const plan = body.plan === 'semester' ? 'semester' : 'monthly';
   const priceId = plan === 'semester'
     ? process.env.STRIPE_PRICE_ID_SEMESTER ?? ''
     : process.env.STRIPE_PRICE_ID_MONTHLY ?? '';
   if (!priceId) return res.status(500).json({ error: 'Price ID not configured' });
 
-  const { data: sub } = await admin
+  const { data: sub, error: lookupError } = await admin
     .from('subscriptions')
     .select('status, trial_start, extension_start, stripe_customer_id, stripe_subscription_id')
     .eq('user_id', user.id)
-    .single();
+    .maybeSingle();
 
-  if (sub?.stripe_subscription_id) return res.status(409).json({ error: 'Already subscribed' });
-  if (sub?.status === 'active')     return res.status(409).json({ error: 'Already subscribed' });
+  // A failed read must not look like a new student: that would hand a payer
+  // a second subscription and a second trial.
+  if (lookupError) return res.status(503).json({ error: 'Could not verify subscription. Please try again.' });
+  if (sub?.status === 'active') return res.status(409).json({ error: 'Already subscribed' });
 
-  const hasFreeTrial  = !!sub?.trial_start;
-  const trialExpired  = hasFreeTrial && Date.now() > new Date(sub.trial_start).getTime() + trialLengthMs(sub.trial_start);
+  // A canceled subscription can be replaced; one that can still bill can't.
+  // Stripe decides which, not the stored status. Before 2026-10-21 any stored
+  // subscription id was refused, so a canceled student could never come back.
+  if (sub?.stripe_subscription_id) {
+    let previous: Stripe.Subscription | null = null;
+    try {
+      previous = await stripe.subscriptions.retrieve(sub.stripe_subscription_id);
+    } catch (err: any) {
+      if (err?.code !== 'resource_missing') return res.status(503).json({ error: 'Could not verify subscription. Please try again.' });
+    }
+    if (previous && !ENDED_STATUSES.includes(previous.status)) return res.status(409).json({ error: 'Already subscribed' });
+  }
 
-  // One free trial per account. Someone whose trial has ended pays from day one.
-  if (hasFreeTrial && !trialExpired) return res.status(409).json({ error: 'Free trial has not ended yet' });
+  // One free trial per account: a trial without a card (trial_start), or any
+  // Stripe subscription before this one. Someone who had one pays from day one.
+  const hasFreeTrial  = !!sub?.trial_start || !!sub?.stripe_subscription_id;
+  const trialRunning  = !!sub?.trial_start && !sub.stripe_subscription_id
+    && Date.now() <= new Date(sub.trial_start).getTime() + trialLengthMs(sub.trial_start);
+  if (trialRunning) return res.status(409).json({ error: 'Free trial has not ended yet' });
   const trialDays = hasFreeTrial ? 0 : TRIAL_DAYS;
 
   let customerId = sub?.stripe_customer_id as string | undefined;

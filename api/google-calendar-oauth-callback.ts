@@ -1,31 +1,16 @@
 /// <reference types="node" />
 import { createClient } from '@supabase/supabase-js';
-import { EXTENSION_MS, trialLengthMs } from './_trial';
+import { computeStatus } from './_trial';
 
 const CALENDAR_LIMIT_FREE = 2;
 const CALENDAR_LIMIT_PREMIUM = 3;
-
-function computeStatus(row: {
-  status: string;
-  trial_start: string | null;
-  extension_start: string | null;
-}): string {
-  const now = Date.now();
-  if (row.status === 'trialing' && row.trial_start) {
-    return now > new Date(row.trial_start).getTime() + trialLengthMs(row.trial_start) ? 'trial_expired' : 'trialing';
-  }
-  if (row.status === 'trial_extended' && row.extension_start) {
-    return now > new Date(row.extension_start).getTime() + EXTENSION_MS ? 'trial_extension_expired' : 'trial_extended';
-  }
-  return row.status;
-}
 
 // Same tiering the rest of the app uses for premium-gated features — trial
 // counts as premium-equivalent while it lasts.
 async function getCalendarLimit(admin: any, userId: string): Promise<number> {
   const { data: sub } = await admin
     .from('subscriptions')
-    .select('status, trial_start, extension_start')
+    .select('status, trial_start, extension_start, stripe_subscription_id')
     .eq('user_id', userId)
     .single();
   if (!sub) return CALENDAR_LIMIT_FREE;

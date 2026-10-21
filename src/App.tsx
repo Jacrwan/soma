@@ -136,7 +136,8 @@ function AppShell({ user, sessionResolved, onLogout }: {
   const location = useLocation();
   const navigate = useNavigate();
   const subscription = useSubscription();
-  const aiLocked = subscription.status !== 'loading' && !hasAIAccess(subscription.status);
+  // Not when billing couldn't be checked: that may be someone who pays.
+  const aiLocked = subscription.status !== 'loading' && subscription.status !== 'unavailable' && !hasAIAccess(subscription.status);
   // Collapsed sidebar is a per-device preference, like the theme.
   const [navCollapsed, setNavCollapsed] = useState(() => {
     try { return localStorage.getItem('soma_nav_collapsed') === '1'; } catch { return false; }

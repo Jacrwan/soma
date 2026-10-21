@@ -11,6 +11,62 @@ still needed.
 
 ## 2026-10-21
 
+### Billing: trials reach the AI, canceled students can come back, a failed check never asks for money
+- **Why:** a read-only audit of the subscription code (notes in the session
+  folder, `subscription-audit-2026-10-21.md`). No live data was read; the
+  owner's checks below still decide how many students were affected.
+- **Causes (pre-existing):** (1) Checkout trials never had `trial_start`, and
+  the AI's status check timed trials from it, so the AI (chat, course-site
+  import, Claude connector) could refuse a student Settings showed as on a
+  free trial. Three copies of the status check disagreed. (2) A canceled
+  subscription kept its id, and checkout refused anyone with one ("Already
+  subscribed"), so a canceled student could never subscribe again; Pricing
+  offered them a free trial. (3) `invoice.payment_succeeded` set `active`,
+  including for the $0 invoice that starts a trial: trials could be stored as
+  paying (subscriber budget, top-ups, "Premium"). (4) When billing couldn't
+  be checked, the AI tab showed "Start free trial — $10.99/mo", Pricing
+  treated the student as free, Settings said "Free". (5) Deleting an account
+  canceled the Stripe subscription only if trialing or active; past due and
+  unpaid ones kept charging. (6) The webhook saved the plan as 'premium',
+  ignored failed writes (Stripe never retried), and read fields newer Stripe
+  API versions moved.
+- **What:**
+  - One `computeStatus` in `api/_trial.ts`, used by `api/stripe.ts`,
+    `api/chat.ts`, `api/google-calendar-oauth-callback.ts`. A row with a Stripe
+    subscription has Stripe's status; only a trial without one is timed, and
+    a missing start date still counts as ended.
+  - Webhook (`api/stripe-webhook.ts`): every subscription event and a paid
+    invoice store Stripe's own status (`subscriptionRow`), the plan from the
+    price charged (`planOf`), Stripe's trial start when none is on file, and
+    the period end from either payload shape. The old 'trial_extended'
+    mapping is gone (extensions ended 2026-09-24). An event about an old,
+    ended subscription can't overwrite the new one. A failed write answers
+    500 so Stripe retries; the trial-will-end flag stays best-effort.
+  - Checkout (`createCheckoutSession`): a failed read answers 503 instead of
+    looking like a new student. A stored subscription that Stripe says has
+    ended can be replaced, charged today with no second trial; one Stripe
+    can still bill answers 409.
+  - Failed check (`unavailable`): the AI tab shows "Couldn't check your
+    subscription" with Try again; Pricing shows the same and sells nothing;
+    Settings says "Not checked" with Try again; the AI nav isn't locked.
+  - Pricing for a canceled student: "Welcome back", Subscribe, charged today.
+  - Account deletion cancels any Stripe subscription not already canceled,
+    and stops with nothing deleted if billing can't be read.
+  - The canceled full-app paywall is unchanged (owner's call, 2026-10-21).
+- **Where:** `api/_trial.ts`, `api/chat.ts`, `api/stripe.ts`,
+  `api/stripe-webhook.ts`, `api/delete-account.ts`,
+  `api/google-calendar-oauth-callback.ts`, `src/App.tsx`,
+  `src/components/AI/AITab.tsx`, `src/components/Pricing/PricingPage.tsx`,
+  `src/components/Settings/SettingsTab.tsx`.
+- **Tests:** `tests/billing.spec.ts`.
+- **Still needed (owner, read-only):** confirm in Stripe that the price in
+  Vercel's `STRIPE_PRICE_ID_MONTHLY` is $10.99 every month and
+  `STRIPE_PRICE_ID_SEMESTER` is $28.99 every 4 months (the monthly variable
+  was created 2026-05-26, before the $10.99 price). Check the webhook
+  endpoint's events and failed deliveries. Rows written before this fix
+  correct themselves on each student's next Stripe event; trials stored as
+  `active` and missing `trial_start` stay until then (SQL in the audit notes).
+
 ### Soma: your times go where you said; everything else works around them
 - **Why:** "I SAID MATH 53 HOMEWORK 14.3 to 14.6 FROM NOW UNTIL LIKE 1:00PM ...
   ESSAY 1 until 7:15 PM ... UNTIL 10:00PM PROJECT 3 Checkpoint 2 and CS LAB 7",

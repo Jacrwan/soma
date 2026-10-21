@@ -48,16 +48,20 @@ export default async function handler(req: any, res: any) {
 
   const uid = user.id;
 
-  // Cancel active Stripe subscription before deleting (prevent ghost billing)
+  // Cancel the Stripe subscription before deleting (prevent ghost billing).
+  // Anything not yet canceled — trialing, active, past due, unpaid — would
+  // keep charging the card of an account that no longer exists. Until
+  // 2026-10-21 only trialing and active ones were canceled.
   if (stripeKey) {
+    const { data: sub, error: lookupError } = await admin
+      .from('subscriptions')
+      .select('stripe_subscription_id, status')
+      .eq('user_id', uid)
+      .maybeSingle();
+    // Without knowing, deleting could leave a subscription billing nobody.
+    if (lookupError) return res.status(503).json({ error: 'Could not reach billing. Nothing was deleted; please try again.' });
     try {
-      const { data: sub } = await admin
-        .from('subscriptions')
-        .select('stripe_subscription_id, status')
-        .eq('user_id', uid)
-        .single();
-
-      if (sub?.stripe_subscription_id && (sub.status === 'trialing' || sub.status === 'active')) {
+      if (sub?.stripe_subscription_id && sub.status !== 'canceled') {
         const stripe = new Stripe(stripeKey);
         await stripe.subscriptions.cancel(sub.stripe_subscription_id);
       }
