@@ -2,7 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { loadMemoryContext, learnFromMessage } from './_memory';
 import { waitUntil } from '@vercel/functions';
-import { EXTENSION_MS, trialLengthMs } from './_trial';
+import { computeStatus } from './_trial';
 import { recordUsage, type Usage } from './_usage';
 import { budgetStatus, type BudgetStatus } from './_budget';
 import { loadConversationNotes, noteFromChat, isConversationId } from './_notes';
@@ -12,14 +12,8 @@ export const config = { api: { bodyParser: { sizeLimit: '4.5mb' } } };
 export const maxDuration = 150;
 type Authorization = { ok:true; userId:string; unlimited?:true } | { ok:false; status:number; error:string };
 
-export function computeStatus(row:{status:string;trial_start:string|null;extension_start:string|null},now=Date.now()):string {
- const start=row.status==='trial_extended' ? row.extension_start : row.trial_start;
- if(row.status==='trialing' || row.status==='trial_extended'){
-  const timestamp=start ? Date.parse(start) : NaN;
-  if(!Number.isFinite(timestamp) || now>=timestamp+(row.status==='trialing' ? trialLengthMs(row.trial_start) : EXTENSION_MS))return 'trial_expired';
- }
- return row.status;
-}
+// Shared with Settings and the calendar limit, so they can't disagree about who has access.
+export { computeStatus };
 
 // Exported separately so database failures and entitlement decisions can be tested without network access.
 export async function authorizeChat(admin:ReturnType<typeof createClient>,token:string,devEmail?:string):Promise<Authorization>{
@@ -28,7 +22,7 @@ export async function authorizeChat(admin:ReturnType<typeof createClient>,token:
   if(error && (!error.status || error.status>=500))return {ok:false,status:503,error:'auth_service_unavailable'};
   if(error || !user)return {ok:false,status:401,error:'auth_required'};
   if(devEmail && user.email?.toLowerCase()===devEmail.trim().toLowerCase())return {ok:true,userId:user.id,unlimited:true};
-  const {data:sub,error:lookupError}=await admin.from('subscriptions').select('status, trial_start, extension_start').eq('user_id',user.id).maybeSingle();
+  const {data:sub,error:lookupError}=await admin.from('subscriptions').select('status, trial_start, extension_start, stripe_subscription_id').eq('user_id',user.id).maybeSingle();
   if(lookupError)return {ok:false,status:503,error:'subscription_unavailable'};
   const status=sub ? computeStatus(sub) : 'free';
   if(!['trialing','trial_extended','active'].includes(status))return {ok:false,status:402,error:'subscription_required'};

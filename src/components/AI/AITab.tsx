@@ -10,7 +10,7 @@ import { askSoma, applyProposal, applyAll, dismissProposal } from '../../lib/ass
 import { useProposals, getProposals, resolutionOf } from '../../lib/proposalStore';
 import { listDocuments } from '../../lib/documents';
 import { formatClockRange } from '../../lib/timeFormat';
-import { useSubscription, hasAIAccess } from '../../lib/subscription';
+import { useSubscription, hasAIAccess, refreshSubscription } from '../../lib/subscription';
 import { ChatMessage, ChatSession } from '../../types';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import TrialSetupModal from '../Trial/TrialSetupModal';
@@ -247,12 +247,32 @@ function ThinkingIndicator() {
 
 function AILockedScreen({ status }: { status: string }) {
   const navigate = useNavigate();
+  const [showModal, setShowModal] = useState(false);
 
   const starIcon = (
     <svg className={styles.lockedIcon} width="28" height="28" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M7 1L8.1 5.9L13 7L8.1 8.1L7 13L5.9 8.1L1 7L5.9 5.9Z"/>
     </svg>
   );
+
+  // Billing couldn't be checked. This may be someone who already pays, so
+  // never offer a trial or a price here; just try again.
+  if (status === 'unavailable') {
+    return (
+      <div className={styles.lockedLayout}>
+        <div className={styles.lockedCard}>
+          {starIcon}
+          <h2 className={styles.lockedTitle}>Couldn't check your subscription</h2>
+          <p className={styles.lockedDesc}>
+            Nothing about your plan has changed. Try again in a moment.
+          </p>
+          <button className={styles.lockedBtn} onClick={() => void refreshSubscription()}>
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Trial over (including the old extended trials) — pay to continue
   if (status === 'trial_expired' || status === 'trial_extension_expired') {
@@ -274,8 +294,6 @@ function AILockedScreen({ status }: { status: string }) {
   }
 
   // Free user — show trial setup modal (plan selection + card upfront)
-  const [showModal, setShowModal] = useState(false);
-
   return (
     <>
       {showModal && (

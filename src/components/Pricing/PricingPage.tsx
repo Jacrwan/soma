@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { useSubscription, startCheckout } from '../../lib/subscription';
+import { useSubscription, startCheckout, refreshSubscription } from '../../lib/subscription';
 import TrialSetupModal from '../Trial/TrialSetupModal';
 import { MONTHLY_PRICE, SEMESTER_PRICE, SEMESTER_PER_MONTH, SEMESTER_SAVINGS, TRIAL_DAYS, type Plan } from '../../lib/pricing';
 import styles from './PricingPage.module.css';
@@ -61,6 +61,11 @@ export default function PricingPage() {
   }, [subscription.status, navigate]);
 
   const isTrialExpired = subscription.status === 'trial_expired' || subscription.status === 'trial_extension_expired';
+  // A canceled student already had their trial: they subscribe, charged today.
+  const isCanceled = subscription.status === 'canceled';
+  const paysToday = isTrialExpired || isCanceled;
+  // Billing couldn't be checked: this may be a payer, so offer nothing to buy.
+  const lookupFailed = subscription.status === 'unavailable';
 
   async function handleCta() {
     if (isLoggedIn === null || subscription.status === 'loading') return;
@@ -70,7 +75,15 @@ export default function PricingPage() {
       return;
     }
 
-    if (isTrialExpired) {
+    if (lookupFailed) {
+      setError(null);
+      setLoading(true);
+      await refreshSubscription();
+      setLoading(false);
+      return;
+    }
+
+    if (paysToday) {
       // Trial ended — straight to Stripe checkout for the chosen plan, charged today
       setLoading(true);
       setError(null);
@@ -88,12 +101,16 @@ export default function PricingPage() {
     }
   }
 
-  const ctaLabel = isTrialExpired
+  const ctaLabel = lookupFailed
+    ? 'Try again'
+    : paysToday
     ? 'Subscribe'
     : loading ? 'Starting…' : `Start free ${TRIAL_DAYS}-day trial`;
 
   const billed = plan === 'monthly' ? `${MONTHLY_PRICE}/month` : `${SEMESTER_PRICE} every 4 months`;
-  const ctaMeta = isTrialExpired
+  const ctaMeta = lookupFailed
+    ? 'Nothing is charged until your subscription has been checked'
+    : paysToday
     ? `${billed}, starting today · Cancel anytime`
     : `${billed} after trial · Cancel anytime`;
 
@@ -113,7 +130,17 @@ export default function PricingPage() {
 
       <div className={styles.page}>
         <p className={styles.eyebrow}>Soma Premium</p>
-        {isTrialExpired ? (
+        {lookupFailed ? (
+          <>
+            <h1 className={styles.headline}>Couldn't check your subscription</h1>
+            <p className={styles.sub}>Nothing about your plan has changed. Try again in a moment.</p>
+          </>
+        ) : isCanceled ? (
+          <>
+            <h1 className={styles.headline}>Welcome back</h1>
+            <p className={styles.sub}>Subscribe to get the AI features back.</p>
+          </>
+        ) : isTrialExpired ? (
           <>
             <h1 className={styles.headline}>Your free trial has ended</h1>
             <p className={styles.sub}>Subscribe to keep using the AI features.</p>
@@ -176,7 +203,7 @@ export default function PricingPage() {
                 <span className={styles.priceEquiv}>{SEMESTER_PER_MONTH}/mo</span>
               </>
             )}
-            {!isTrialExpired && (
+            {!paysToday && !lookupFailed && (
               <span className={styles.trial}>{TRIAL_DAYS}-day free trial</span>
             )}
           </div>

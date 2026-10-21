@@ -14,7 +14,7 @@ import { SkeletonBlock } from '../UI/Skeleton';
 import CourseSiteImport from './CourseSiteImport';
 import { supabase } from '../../lib/supabase';
 import { friendlyError } from '../../lib/errors';
-import { useSubscription, openBillingPortal, hasAIAccess, getGoogleCalendarLimit, GOOGLE_CALENDAR_LIMIT_PREMIUM } from '../../lib/subscription';
+import { useSubscription, openBillingPortal, refreshSubscription, hasAIAccess, getGoogleCalendarLimit, GOOGLE_CALENDAR_LIMIT_PREMIUM } from '../../lib/subscription';
 import { getIcalAssignments } from '../../lib/canvas';
 import {
   listConnections, listCalendarsForConnection, updateSelectedCalendars, disconnectConnection, startConnectFlow,
@@ -746,6 +746,7 @@ export default function SettingsTab() {
                    subscription.status === 'active'                   ? 'Premium' :
                    subscription.status === 'canceled'                 ? 'Canceled' :
                    subscription.status === 'past_due'                 ? 'Past due' :
+                   subscription.status === 'unavailable'              ? 'Not checked' :
                    'Free'}
                 </span>
               </div>
@@ -790,10 +791,20 @@ export default function SettingsTab() {
                 <p className={styles.subNote}>Your subscription is set to cancel at the end of the billing period.</p>
               )}
 
+              {subscription.status === 'unavailable' && (
+                <p className={styles.subNote}>We couldn't reach billing just now. Nothing about your plan has changed.</p>
+              )}
+
               {subError && <p className={styles.subError}>{subError}</p>}
             </div>
 
             <div className={styles.subActions}>
+              {subscription.status === 'unavailable' && (
+                <button className={styles.subBtn} onClick={() => void refreshSubscription()}>
+                  Try again
+                </button>
+              )}
+
               {subscription.status === 'free' && (
                 <button className={styles.subBtnPrimary} onClick={() => navigate('/pricing')}>
                   Start free {TRIAL_DAYS}-day trial
