@@ -120,18 +120,17 @@ test('skipping the class allows it', async ({ page }) => {
   await expect(page.getByRole('log')).not.toContainText("Couldn't place");
 });
 
-test('when nothing fits, it asks with real options instead of just refusing', async ({ page }) => {
+// Changed 2026-10-21: this used to ask ("Needs your call") with options.
+// "im sick of the needs your call shit": work that doesn't fit its window now
+// runs on past it that day, and the card says so.
+test('when it doesn\'t fit before its bound, it runs on past it that day instead of asking', async ({ page }) => {
   await setup(page, { reply: 'Trying.', blocks: [{ title: 'Long essay', subject: 'Physics 5A', date: TOMORROW, minutes: 240, after: '13:00', before: '16:00' }] });
   await ask(page, 'essay tomorrow afternoon before discussion');
   const log = page.getByRole('log');
-  await expect(log).toContainText('Needs your call');
-  await expect(log).toContainText("there isn't 240 min open");
-  // What's open in the window, what's open later that day, and the first slot that fits whole.
-  await expect(log).toContainText('a shorter block in what\'s open after 1:00 PM before 4:00 PM: 1:00 PM–4:00 PM (180 min)');
-  await expect(log).toContainText('use later');
-  await expect(log).toContainText('the first open 240-minute slot');
-  await expect(log).toContainText('Which do you want?');
+  await expect(log).toContainText('Trying.');
+  await expect(log).not.toContainText('Needs your call');
   await expect(log).not.toContainText("Couldn't place");
+  await expect(page.getByText(/Didn't fit before 4:00 PM/)).toBeVisible();
 });
 
 // The reported Monday: CS lecture ends 1 PM, Math discussion 2–3 PM, Physics discussion at 4 PM.
@@ -340,11 +339,15 @@ test('long work that fits in one slot stays in one piece', async ({ page }) => {
   expect(state.prompt).toContain('"smallestPiece":"30 min"');
 });
 
-test('with a larger smallest piece, a split that would leave a scrap is asked about instead', async ({ page }) => {
+test('with a larger smallest piece, a split that would leave a scrap goes whole after the window instead', async ({ page }) => {
   // 76 minutes across two 60-minute gaps can't be two pieces of at least 45.
   await setup(page, { reply: 'Trying.', changes: [{ action: 'move', id: 's-hw', date: TOMORROW, minutes: 76, after: '13:00', before: '16:00' }] }, math, undefined, { chunks: { min: 45 } });
   await ask(page, 'homework tomorrow afternoon before discussion');
-  await expect(page.getByRole('log')).toContainText('Needs your call');
+  await expect(page.getByRole('log')).toContainText('Trying.');
+  await expect(page.getByRole('log')).not.toContainText('Needs your call');
+  // No 30-minute scrap: one 76-minute block.
+  await expect(page.getByRole('log')).toContainText(/Physics HW 4: \w+ \d{1,2}:\d{2} [AP]M–\d{1,2}:\d{2} [AP]M$/m);
+  await expect(page.getByText(/Didn't fit before 4:00 PM/)).toBeVisible();
 });
 
 // Reported 2026-10-06 at 12:45 AM: "start the plan now, I'm not sleeping until

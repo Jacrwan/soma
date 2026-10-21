@@ -154,14 +154,18 @@ test('blocks that trade places are moved together, though neither can go first',
   expect(byId['s-phys'].start_time).toBe(at(1, '10:30'));
 });
 
-test('accepting one half of a trade says to accept both', async ({ page }) => {
-  await setup(page, { reply: 'Swapped.', blocks: [], changes: [
+// Changed 2026-10-21: this used to refuse with "Accept all moves them
+// together". Accepting one card now brings the moves it depends on.
+test('accepting one half of a trade moves both', async ({ page }) => {
+  const state = await setup(page, { reply: 'Swapped.', blocks: [], changes: [
     { action: 'move', id: 's-lit', date: TOMORROW, start: '09:00', end: '10:30' },
     { action: 'move', id: 's-phys', date: TOMORROW, start: '10:30', end: '12:30' },
   ] });
   await ask(page, 'do english first, then physics');
   await page.getByRole('button', { name: 'Accept', exact: true }).first().click();
-  await expect(page.getByRole('alert')).toContainText('Accept all moves them together');
+  await expect.poll(() => state.db.todo_sessions.find(x => x.id === 's-lit')?.start_time).toBe(at(1, '09:00'));
+  await expect.poll(() => state.db.todo_sessions.find(x => x.id === 's-phys')?.start_time).toBe(at(1, '10:30'));
+  await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
 test('a trade that would still collide is refused, and nothing moves', async ({ page }) => {
@@ -183,11 +187,17 @@ test('a trade that would still collide is refused, and nothing moves', async ({ 
   expect(byId['s-phys'].start_time).toBe(at(1, '09:00'));
 });
 
-test('moving onto a block that stays put is still refused', async ({ page }) => {
-  await setup(page, { reply: 'Here.', blocks: [], changes: [{ action: 'move', id: 's-lit', date: TOMORROW, start: '18:00', end: '19:00' }] });
+// Changed 2026-10-21: this used to be refused ("overlaps"). The time the
+// student gives wins; a block of theirs that can move is moved out of the way.
+test('moving onto a block that can move moves that block out of the way', async ({ page }) => {
+  const state = await setup(page, { reply: 'Here.', blocks: [], changes: [{ action: 'move', id: 's-lit', date: TOMORROW, start: '18:00', end: '19:00' }] });
   await ask(page, 'move english to 6');
-  await expect(page.getByRole('log')).toContainText('Move Gulliver');
-  await expect(page.getByRole('log')).toContainText('overlaps');
+  await expect(page.getByRole('log')).not.toContainText("Couldn't place");
+  await expect(page.getByText(/to make room for "Gulliver/)).toBeVisible();
+  await page.getByRole('button', { name: /^Accept all/ }).click();
+  await expect.poll(() => state.db.todo_sessions.find(x => x.id === 's-lit')?.start_time).toBe(at(1, '18:00'));
+  const cs = state.db.todo_sessions.find(x => x.id === 's-cs')!;
+  expect(+new Date(String(cs.end_time)) <= +new Date(at(1, '18:00')) || +new Date(String(cs.start_time)) >= +new Date(at(1, '19:00'))).toBe(true);
 });
 
 test('remove deletes the block and the task behind it', async ({ page }) => {
