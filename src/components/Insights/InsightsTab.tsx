@@ -351,7 +351,8 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
       cells.push({ day: d, minutes: heatmapMinutesMap[d] ?? 0, isToday });
     }
     const firstDow = new Date(year, month, 1).getDay();
-    return { cells, firstDayOfWeekMon: (firstDow + 6) % 7, year, month };
+    // Weeks run Sunday to Saturday, Sunday on the left (asked 2026-10-20).
+    return { cells, leadingBlanks: firstDow, year, month };
   }, [calendarOffset, heatmapMinutesMap]);
 
   if (loading && (!data || data.sessions.length === 0)) return <InsightsSkeleton />;
@@ -592,12 +593,12 @@ export default function InsightsTab({ userId }: { userId: string | null }) {
             ><ChevronIcon direction="right" /></button>
           </div>
           <div className={styles.heatmapDow}>
-            {['M','T','W','T','F','S','S'].map((d, i) => (
+            {['S','M','T','W','T','F','S'].map((d, i) => (
               <span key={i} className={styles.heatmapDowCell}>{d}</span>
             ))}
           </div>
           <div className={styles.heatmapGrid}>
-            {Array.from({ length: heatmapData.firstDayOfWeekMon }).map((_, i) => (
+            {Array.from({ length: heatmapData.leadingBlanks }).map((_, i) => (
               <div key={`empty-${i}`} className={styles.heatmapCellEmpty} />
             ))}
             {heatmapData.cells.map(({ day, minutes, isToday }) => {
