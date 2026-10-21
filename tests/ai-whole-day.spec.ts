@@ -114,6 +114,28 @@ test('a day the student names is kept', async ({ page }) => {
   expect(db.todo_sessions[0].date).toBe(TOMORROW);
 });
 
+// Reported 2026-10-20: "you gotta move all the cs lecture videos to some other
+// day i cant watch them today", then "...make new ones on a different day".
+// Soma said tomorrow evening; the app put them back on today.
+test('asking for another day ("a different day") is not read as today', async ({ page }) => {
+  const db = await setup(page, ctx => ({ reply: 'Tomorrow evening then.', changes: [{ action: 'remove', id: idOf(ctx, 'Math 53 Homework - Chapters 14.3–14.5') }], blocks: [{ title: 'Math 53 Homework - Chapters 14.3–14.5', subject: 'Physics 5A', date: TOMORROW, minutes: 50, after: '17:40' }] }), d => {
+    d.todos.push({ id: 't-math', user_id: 'u', text: 'Math 53 Homework - Chapters 14.3–14.5', subject_id: 'phys', status: 'nothing', date: TODAY });
+    d.todo_sessions.push({ id: 's-math', user_id: 'u', todo_id: 't-math', date: TODAY, start_time: at('19:00'), end_time: at('19:50') });
+  });
+  await ask(page, 'just delete the math sessions from today and then make new ones on a different day');
+  await expect(page.getByRole('log')).toContainText('Tomorrow evening then.');
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => db.todo_sessions.find(s => s.id === 's-math')?.date).toBe(TOMORROW);
+});
+
+test('"not today" and "some other day" count as naming another day; a skipped class does not', async () => {
+  const { namesOtherDay } = await import('../src/lib/statedTime');
+  for (const t of ['move all the cs lecture videos to some other day i cant watch them today', 'make new ones on a different day', 'not today', 'take it off today', 'any day but today'])
+    expect(namesOtherDay(t), t).toBe(true);
+  for (const t of ["i'm not going to cs lecture today", 'i also want to do a past math 53 midterm', 'do it at another time'])
+    expect(namesOtherDay(t), t).toBe(false);
+});
+
 test('work moved past its due date says so on the card', async ({ page }) => {
   await setup(page, ctx => ({ reply: 'Lab tomorrow.', changes: [{ action: 'move', id: idOf(ctx, 'CS 61A Lab 5'), date: TOMORROW, minutes: 30, after: '09:00' }] }), d => {
     d.todos.push({ id: 't-lab', user_id: 'u', text: 'CS 61A Lab 5', subject_id: 'phys', status: 'nothing', date: '', due_date: TODAY });
