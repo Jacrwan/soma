@@ -11,6 +11,40 @@ still needed.
 
 ## 2026-10-20
 
+### Soma makes room instead of asking; a failed move keeps its slot
+- **Why:** "this needs your call thing is actually pissing me the fuck off
+  ... unless ive specificially said ... a specific time for a specific
+  session soma should have the ability to move stuff around". And Accept on
+  the 10.5 review failed: "That time overlaps a scheduled session".
+- **Cause (overlap):** every block a reply changes is lifted out of the plan
+  first. The 10.5 review was placed at 9:30 PM, the 10.9 review's slot; 10.9's
+  own move then failed and it went back, under 10.5. Pre-existing since
+  2026-09-27.
+- **What:**
+  - A reply whose failed change sits under something else placed in it is
+    read again with that block left where it is (`settled`, `stuck`).
+  - When work doesn't fit, the app moves the student's other blocks to make
+    room (`makeRoom`): as few as will do, each to the next open time that day
+    or a later day, never past its due date. Each move is its own card,
+    "Moves from … to make room for X". Accepting X applies those moves first;
+    dismissing X drops them.
+  - Never moved: calendar events, checked-off, started, past or timed blocks,
+    blocks this reply already changes, and blocks whose time the student set:
+    a time told to Soma and accepted, or one set by hand in Edit plan
+    (`src/lib/pinnedBlocks.ts`, browser storage, per task, date and start).
+  - Still no room, on a day Soma chose (not today, not a day the message
+    names): the next day with room, noted "<day> was full". Today's work never
+    rolls to another day on its own (2026-10-06 rule kept).
+  - "Needs your call" is left only for what none of that can place.
+- **Where:** `src/lib/assistant.ts` (`place`, `makeRoom`, `settled`,
+  `applyProposal`, `dismissProposal`, prompt DATES line),
+  `src/lib/pinnedBlocks.ts`, `LiveDashboard.tsx` (`save`), `PlanEditor.tsx`
+  (`pinned`, `bumps` on PlanBlock).
+- **Guard:** `tests/ai-make-room.spec.ts` (5 tests; all fail without this).
+- **Setup:** none. Times set before today aren't remembered as the student's,
+  so Soma may suggest moving one once; it still needs Accept. Pins are per
+  device.
+
 ### "Some other day" / "a different day" no longer lands on today
 - **Why:** "you gotta move all the cs lecture videos to some other day i cant
   watch them today", then "DELETE THE CS LECTURE REVIEW SESSIONS FROM TODAY

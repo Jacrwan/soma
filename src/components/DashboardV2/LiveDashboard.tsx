@@ -8,6 +8,7 @@ import { storage } from '../../lib/storage';
 import { formatClockRange } from '../../lib/timeFormat';
 import { listDocuments } from '../../lib/documents';
 import { askSoma, applyProposal, applyAll, dismissProposal, type ApplyOptions } from '../../lib/assistant';
+import { pinBlock, pinKey } from '../../lib/pinnedBlocks';
 import { useProposals, updateProposals } from '../../lib/proposalStore';
 import { dashboardDayFor } from '../../lib/calendarView';
 import { coveredBy, finishThrough, rangeLabel, renameLoggedTime, retitle } from '../../lib/courseItems';
@@ -162,7 +163,10 @@ export default function LiveDashboard({userId}:{userId:string}) {
    }
    const fresh=await readPlan(userId,origin,rangeRef.current,7);
    if(snapshot?.blocks.some(b=>b.id===block.id) && !fresh.blocks.some(b=>b.id===block.id))throw new Error('This block changed elsewhere. Refresh and try again.');
-   await savePlanBlock(userId,origin,block,fresh);
+   const todoId=await savePlanBlock(userId,origin,block,fresh);
+   // A time set by hand is the student's: Soma won't move it to make room.
+   const was=fresh.blocks.find(b=>b.id===block.id);
+   if(block.time && (!was || was.time!==block.time || was.day!==block.day))pinBlock(userId,pinKey(todoId,localDate(dateAt(origin,block.day)),block.time.split('–')[0]));
    try{await reload();}catch{throw new Error('Your change saved, but refreshing failed. Refresh the page before making another change.');}
   }catch(e){setError(e instanceof Error ? e.message : 'Could not save. Please retry.');throw e;}
   finally{writing.current=false;setBusy(false);}
