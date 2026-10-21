@@ -28,6 +28,8 @@ interface StudySpan {
   sessionIds: string[];
   blockIds: string[];
   studiedSeconds: number;
+  /** Stretches the timer was paused, as [from, to] epoch ms: drawn faint. */
+  pauses: [number, number][];
 }
 
 /**
@@ -65,6 +67,16 @@ function studySpans(sessions: TimerSession[], blocks: TimeBlock[], sessionsLoade
   const sameTask = (a?: string, b?: string) => !name(a) || !name(b) || name(a) === name(b);
   const sessionEnd = (s: TimerSession) =>
     s.endTime ? ms(s.endTime) : ms(s.startTime) + s.durationSeconds * 1000;
+  // A paused timer saves one session from Start to Stop, counting only the
+  // time it ran. Its pauses are drawn faint so the block doesn't read as
+  // studied straight through. Kept only while they still add up: a session
+  // corrected by hand afterwards no longer matches them, and is drawn whole.
+  const pausesOf = (s: TimerSession): [number, number][] => {
+    const start = ms(s.startTime), end = sessionEnd(s);
+    const list = (s.pauses ?? []).filter(p => Array.isArray(p) && p[1] > p[0]).map(([a, z]): [number, number] => [start + a * 1000, Math.min(end, start + z * 1000)]);
+    const paused = list.reduce((n, [a, z]) => n + Math.max(0, z - a), 0);
+    return list.length && Math.abs((end - start - paused) / 1000 - s.durationSeconds) <= 120 ? list : [];
+  };
 
   const candidates: StudySpan[] = [];
 
@@ -92,7 +104,7 @@ function studySpans(sessions: TimerSession[], blocks: TimeBlock[], sessionsLoade
         task,
         start: new Date(Math.min(...mine.map(s => ms(s.startTime)))),
         end: new Date(Math.max(...mine.map(sessionEnd))),
-        sessionIds: [], blockIds: [block.id], studiedSeconds: 0,
+        sessionIds: [], blockIds: [block.id], studiedSeconds: 0, pauses: [],
       });
       continue;
     }
@@ -104,7 +116,7 @@ function studySpans(sessions: TimerSession[], blocks: TimeBlock[], sessionsLoade
       task: block.task,
       start: new Date(block.startTime),
       end: new Date(block.endTime),
-      sessionIds: [], blockIds: [block.id], studiedSeconds: 0,
+      sessionIds: [], blockIds: [block.id], studiedSeconds: 0, pauses: [],
     });
   }
 
@@ -116,7 +128,7 @@ function studySpans(sessions: TimerSession[], blocks: TimeBlock[], sessionsLoade
         task: s.task,
         start: new Date(s.startTime),
         end: new Date(sessionEnd(s)),
-        sessionIds: [s.id], blockIds: [], studiedSeconds: Math.max(0, s.durationSeconds || 0),
+        sessionIds: [s.id], blockIds: [], studiedSeconds: Math.max(0, s.durationSeconds || 0), pauses: pausesOf(s),
       });
     }
   }
@@ -127,7 +139,8 @@ function studySpans(sessions: TimerSession[], blocks: TimeBlock[], sessionsLoade
   for (const span of [...candidates].sort((a, b) => +a.start - +b.start)) {
     const hit = merged.find(m =>
       m.subjectId === span.subjectId && sameTask(m.task, span.task) && +span.start < +m.end && +span.end > +m.start);
-    if (!hit) { merged.push({ ...span, sessionIds: [...span.sessionIds], blockIds: [...span.blockIds] }); continue; }
+    if (!hit) { merged.push({ ...span, sessionIds: [...span.sessionIds], blockIds: [...span.blockIds], pauses: [...span.pauses] }); continue; }
+    hit.pauses.push(...span.pauses);
     if (+span.start < +hit.start) hit.start = span.start;
     if (+span.end > +hit.end) hit.end = span.end;
     hit.sessionIds.push(...span.sessionIds.filter(id => !hit.sessionIds.includes(id)));
@@ -224,6 +237,17 @@ function weekMinToTop(clockMinutes: number): number {
 // Lightens a #rrggbb color into a translucent fill for an event's background,
 // keeping the full color for its border/accent — same "tinted block, solid
 // accent" look Soma's own time blocks already use.
+/**
+ * A study block's fill with its paused stretches faint: the same colour at a
+ * fraction of the strength, as hard stops in a top-to-bottom gradient.
+ */
+function withPauses(fill: string, startMin: number, endMin: number, pauses: [number, number][]): string {
+  const faint = fill.replace(/rgba\((\d+), (\d+), (\d+), ([\d.]+)\)/, (_, r, g, b, a) => `rgba(${r}, ${g}, ${b}, ${(Number(a) / 4).toFixed(3)})`);
+  const pct = (m: number) => `${(Math.min(Math.max(m, startMin), endMin) - startMin) / Math.max(1, endMin - startMin) * 100}%`;
+  const stops = [...pauses].sort((a, b) => a[0] - b[0]).flatMap(([a, z]) => [`${fill} ${pct(a)}`, `${faint} ${pct(a)}`, `${faint} ${pct(z)}`, `${fill} ${pct(z)}`]);
+  return `linear-gradient(to bottom, ${fill} 0%, ${stops.join(', ')}, ${fill} 100%)`;
+}
+
 function tint(hex: string, alpha: number): string {
   const clean = hex.replace('#', '');
   if (!/^[0-9a-fA-F]{6}$/.test(clean)) return `rgba(150, 150, 150, ${alpha})`;
@@ -624,6 +648,8 @@ export default function CalendarTab({ selectedDate, onSelectDate, onOpenDay }: C
       block?: TimeBlock;
       span?: StudySpan;
       gcalEvent?: GoogleCalendarEvent;
+      /** Paused stretches, in minutes of this day. */
+      pauses?: [number, number][];
     }
 
     const events: RawEvent[] = [];
@@ -658,6 +684,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onOpenDay }: C
           endMin: endMin > startMin ? endMin : startMin + 30,
           block: d.span.blockId ? blocks.find(b => b.id === d.span.blockId) : undefined,
           span: d.span,
+          pauses: d.span.pauses.filter(([a, z]) => z > +dayStart && a < +dayEnd).map(([a, z]) => clip(new Date(a), new Date(z)) as [number, number]),
         });
       }
     }
@@ -747,7 +774,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onOpenDay }: C
         type: ev.type,
         label: ev.label,
         sublabel: ev.sublabel,
-        color: ev.color,
+        color: ev.pauses?.length ? withPauses(ev.color, ev.startMin, ev.endMin, ev.pauses) : ev.color,
         borderColor: ev.borderColor,
         textColor: ev.textColor ?? ev.borderColor ?? 'var(--text-primary)',
         top: weekMinToTop(ev.startMin),

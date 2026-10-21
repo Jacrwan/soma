@@ -296,3 +296,43 @@ test('arrow keys nudge the pill and Escape resets it', async ({ page }) => {
   const reset = (await pill.boundingBox())!;
   expect(Math.round(vp.height - (reset.y + reset.height))).toBe(52);
 });
+
+// The calendar draws a pause faint, so the timer has to remember when each
+// one was: one session, Start to Stop, with the pauses inside it.
+test('pausing records when the pause was, and it survives a reload', async ({ page }) => {
+  const state = await setup(page);
+  await page.clock.install();
+  await startFocus(page, state);
+  await page.clock.fastForward('10:00');
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await page.clock.fastForward('20:00');
+  await page.reload();
+  await expect(page.getByLabel('Focus timer')).toContainText('Cell review');
+  await page.getByRole('button', { name: 'Resume', exact: true }).click();
+  await page.clock.fastForward('05:00');
+  await page.getByRole('button', { name: 'Stop & save', exact: true }).click();
+  await expect.poll(() => state.tables.timer_sessions.length).toBe(1);
+  const row = state.tables.timer_sessions[0] as { duration_seconds: number; pauses: [number, number][]; start_time: string; end_time: string };
+  expect(row.pauses).toHaveLength(1);
+  const [[from, to]] = row.pauses;
+  expect(Math.abs(from - 600)).toBeLessThan(10);
+  expect(Math.abs(to - 1800)).toBeLessThan(10);
+  expect(Math.abs(row.duration_seconds - 900)).toBeLessThan(10);
+});
+
+test('before the pauses column exists, the session still saves without them', async ({ page }) => {
+  const state = await setup(page);
+  await page.route('**/rest/v1/timer_sessions*', r => r.request().method() === 'POST' && 'pauses' in (r.request().postDataJSON() ?? {})
+    ? r.fulfill({ status: 400, json: { code: 'PGRST204', message: "Could not find the 'pauses' column of 'timer_sessions' in the schema cache" } }) : r.fallback());
+  await page.clock.install();
+  await startFocus(page, state);
+  await page.clock.fastForward('02:00');
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await page.clock.fastForward('02:00');
+  await page.getByRole('button', { name: 'Resume', exact: true }).click();
+  await page.clock.fastForward('02:00');
+  await page.getByRole('button', { name: 'Stop & save', exact: true }).click();
+  await expect.poll(() => state.tables.timer_sessions.length).toBe(1);
+  expect(state.tables.timer_sessions[0].pauses).toBeUndefined();
+  await expect(page.getByText(/Could not finish saving/)).toHaveCount(0);
+});

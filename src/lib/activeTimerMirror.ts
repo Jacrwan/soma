@@ -27,6 +27,8 @@ export interface TimerMirror {
   isPaused: boolean;
   /** Date.now() when this snapshot was written. */
   markedAtMs: number;
+  /** Pauses so far, as [from, to] epoch ms; `to` is null while paused. */
+  pauses?: [number, number | null][];
 }
 
 export function readMirror(): TimerMirror | null {

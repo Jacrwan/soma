@@ -201,6 +201,10 @@ export function inferSubjectId(
 
 // ── storage object ────────────────────────────────────────────────────────
 
+/** Whether timer_sessions has the pauses column (timer_sessions_pauses_migration.sql). */
+let pausesColumn = true;
+const missingPauses = (e: { message?: string; code?: string }) => e.code === '42703' || e.code === 'PGRST204' || /pauses/.test(e.message ?? '');
+
 export const storage = {
   getUserId: uid,
   async assertUser(expectedId:string):Promise<void>{if(await uid()!==expectedId)throw new Error('account_changed');},
@@ -921,15 +925,18 @@ export const storage = {
     const rows: TimerSession[] = [];
     const pageSize = 1000;
     for (let from = 0; ; from += pageSize) {
-      const { data, error } = await supabase
+      const page = (columns: string) => supabase
         .from('timer_sessions')
-        .select('id,subject_id,task_text,start_time,end_time,duration_seconds')
+        .select(columns)
         .eq('user_id', id)
         .order('id')
         .range(from, from + pageSize - 1);
+      let { data, error } = await page(pausesColumn ? 'id,subject_id,task_text,start_time,end_time,duration_seconds,pauses' : 'id,subject_id,task_text,start_time,end_time,duration_seconds');
+      // Before timer_sessions_pauses_migration.sql runs there is no pauses column.
+      if (error && pausesColumn && missingPauses(error)) { pausesColumn = false; ({ data, error } = await page('id,subject_id,task_text,start_time,end_time,duration_seconds')); }
       if (error) throw new Error(error.message);
       for (const r of data ?? []) {
-        const row = r as Record<string, unknown>;
+        const row = r as unknown as Record<string, unknown>;
         if (!row.start_time) continue;
         rows.push({
           id: String(row.id),
@@ -938,6 +945,7 @@ export const storage = {
           startTime: ensureUtcSuffix(String(row.start_time)),
           endTime: row.end_time ? ensureUtcSuffix(String(row.end_time)) : '',
           durationSeconds: Number(row.duration_seconds ?? 0),
+          ...(Array.isArray(row.pauses) ? { pauses: row.pauses as [number, number][] } : {}),
         });
       }
       if (!data || data.length < pageSize) break;
@@ -947,7 +955,7 @@ export const storage = {
 
   async saveTimerSession(session: TimerSession, subjectName: string): Promise<void> {
     const id = await uid();
-    const { error } = await supabase.from('timer_sessions').upsert({
+    const row = {
       id: session.id,
       user_id: id,
       subject_id: session.subjectId,
@@ -957,7 +965,11 @@ export const storage = {
       end_time: new Date(session.endTime).toISOString(),
       duration_seconds: session.durationSeconds,
       date: (() => { const d = new Date(session.startTime); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })(),
-    });
+    };
+    // Pauses are extra: a session is never lost because the column isn't there yet.
+    const withPauses = pausesColumn && session.pauses?.length ? { ...row, pauses: session.pauses } : row;
+    let { error } = await supabase.from('timer_sessions').upsert(withPauses);
+    if (error && withPauses !== row && missingPauses(error)) { pausesColumn = false; ({ error } = await supabase.from('timer_sessions').upsert(row)); }
     if (error) throw new Error(error.message);
     window.dispatchEvent(new Event('soma_insights_changed'));
   },

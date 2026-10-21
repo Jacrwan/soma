@@ -50,6 +50,9 @@ export interface TimerSession {
   durationSeconds: number;
   linkedBlockId?: string;
   pauseDurationSeconds?: number;
+  /** When the timer was paused, as [from, to] seconds after startTime. The
+   *  calendar draws these faint: inside the session, but not counted. */
+  pauses?: [number, number][];
 }
 
 export interface TodoSession {
