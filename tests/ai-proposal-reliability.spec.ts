@@ -62,11 +62,16 @@ test('skipping a calendar event: a block over it is proposed with a visible over
   expect(state.sessionWrites[0].date).toBe(TOMORROW);
 });
 
-test("a block over the student's own study session is still refused", async ({ page }) => {
+// Changed 2026-10-21: this used to be refused ("overlaps a scheduled
+// session"). A planned block whose time the student didn't set is moved out
+// of the way, on a card of its own; it is never overlapped silently.
+test("a block over the student's own planned session moves that session, never overlaps it", async ({ page }) => {
   await setup(page, [{ reply: 'Here.', blocks: [{ title: 'Physics reading', subject: 'Physics 5A', date: TOMORROW, start: '15:30', end: '16:30' }] }], { ownSession: true });
   await page.goto('/dashboard');
   await ask(page, 'plan physics tomorrow afternoon');
-  await expect(page.getByRole('log')).toContainText('overlaps a scheduled session');
+  await expect(page.getByRole('log')).not.toContainText("Couldn't place");
+  await page.getByLabel('Next seven days').getByRole('button').nth(1).click();
+  await expect(page.getByText(/Moves from 3:00 PM–4:00 PM to make room for "Physics reading"/)).toBeVisible();
 });
 
 test('Soma is told which proposals were placed and which were not, and sees pending ones', async ({ page }) => {

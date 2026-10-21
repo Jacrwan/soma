@@ -9,6 +9,59 @@ still needed.
 
 ---
 
+## 2026-10-21
+
+### Soma: your times go where you said; everything else works around them
+- **Why:** "I SAID MATH 53 HOMEWORK 14.3 to 14.6 FROM NOW UNTIL LIKE 1:00PM ...
+  ESSAY 1 until 7:15 PM ... UNTIL 10:00PM PROJECT 3 Checkpoint 2 and CS LAB 7",
+  reviews after. Soma sent those times; the app refused five ("That time
+  overlaps a scheduled session"), asked about four reviews ("Needs your
+  call", options like "Thu at 1:50 AM"), and Accept on one card said "it is
+  waiting to move. Accept all moves them together". "im sick of the needs
+  your call shit".
+- **Causes (pre-existing):** (1) a stated time was refused when the
+  student's own flexible blocks sat there; only Soma's picks could move
+  blocks (2026-10-20). (2) A failed move went back to its slot and blocked
+  the next one: a cascade. (3) "After the 10.5 review" was read as where
+  10.5 was, not where it was moving in the same reply. (4) What didn't fit
+  was asked about, not placed. (5) A card that needed other moves first
+  couldn't be accepted alone.
+- **What:**
+  - Placement order: deletes, renames, check-offs and every stated time
+    first, then what Soma times itself (`doChange`, `doNew`, `fixed`).
+  - A stated time (or a start and end Soma was given) moves the flexible
+    blocks in its way (`clearFor`), on cards of their own. Another piece of
+    the same task inside that time is taken into it instead ("Takes in its
+    other piece there"). Pinned, started, checked-off blocks and events are
+    never moved.
+  - "After X" / "before X" where X moves in the same reply uses X's new time
+    (`resolveLate`).
+  - What doesn't fit runs on: later that day past a "before" it couldn't fit
+    ("Didn't fit before 4:00 PM"), else the next day with room, never past
+    its due date ("Today is full after 10:00 PM"). "Needs your call" is left
+    only when nothing fits in the week before the due date. This replaces
+    the 2026-10-06 "when it doesn't fit, ask" part of Today by default; Soma
+    still can't pick another day for work that fits today.
+  - With study hours off, Soma doesn't start work it times itself between
+    2 and 8 AM. Work chained from "now" ("I'm not sleeping") still runs
+    through the night; stated times go anywhere.
+  - A card that needs other cards' moves first (`needs`, set on every card
+    whose time is where a moving block sits now) is accepted with all of
+    them, as Accept all would; a trade or a loop goes in together.
+- **Where:** `src/lib/assistant.ts` (`interpret`: `place`, `makeRoom`,
+  `relocate`, `clearFor`, `resolveLate`, `autoPlace`'s `wake`; `applyProposal`),
+  `PlanEditor.tsx` (`needs` on PlanBlock).
+- **Guard:** `tests/ai-replay-2026-10-21.spec.ts` (the real plan, events and
+  message; fails on the old code with "Needs your call"). Rewritten on
+  purpose: `auto-placement.spec.ts` › "when it doesn't fit before its bound,
+  it runs on past it…", "…a split that would leave a scrap goes whole after
+  the window…"; `ai-plan-changes.spec.ts` › "accepting one half of a trade
+  moves both", "moving onto a block that can move moves that block…";
+  `ai-proposal-reliability.spec.ts` › "…moves that session, never overlaps
+  it"; `ai-make-room.spec.ts` › "a full morning runs on later that day".
+- **Setup:** none. Not yet checked against the real model
+  (`tests/ai-real-model.spec.ts` needs ANTHROPIC_API_KEY).
+
 ## 2026-10-20
 
 ### Insights: the study streak month starts on Sunday

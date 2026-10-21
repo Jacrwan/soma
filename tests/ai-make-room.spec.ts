@@ -30,6 +30,8 @@ test('a move that fails keeps its slot: nothing else is offered on top of it', a
   ] }), d => {
     block(d, 'a', 'Review A', TODAY, '19:00', '19:40');
     block(d, 'c', 'Review C', TODAY, '21:30', '22:20');
+    // Due today, so C can't roll to tomorrow: its move really fails.
+    d.todos.find(t => t.id === 't-c')!.due_date = TODAY;
   });
   await ask(page, 'move my reviews later');
   await expect(page.getByRole('log')).toContainText('Moving both.');
@@ -84,7 +86,7 @@ test('dismissing the work also drops the moves that made room for it', async ({ 
   expect(startOf(db, 's-flex')).toBe(at('19:00'));
 });
 
-test('a day Soma chose that is full rolls to the next day with room, instead of asking', async ({ page }) => {
+test('a full morning runs on later that day, instead of asking', async ({ page }) => {
   const tomorrow = dayAfter(1), next = dayAfter(2);
   await pin(page, `t-busy@${tomorrow}T08:00`);
   const db = await setup(page, () => ({ reply: 'Early tomorrow.', blocks: [{ title: 'Lecture review', subject: 'Physics 5A', date: tomorrow, minutes: 60, before: '09:00' }] }), d => {
@@ -93,6 +95,8 @@ test('a day Soma chose that is full rolls to the next day with room, instead of 
   await ask(page, 'put a lecture review on some other day, not today');
   await expect(page.getByRole('log')).toContainText('Early tomorrow.');
   await expect(page.getByRole('log')).not.toContainText('Needs your call');
+  await expect(page.getByText(/Didn't fit before 9:00 AM/)).toBeVisible();
   await page.getByRole('button', { name: 'Accept', exact: true }).first().click();
-  await expect.poll(() => db.todo_sessions.find(s => db.todos.find(t => t.id === s.todo_id)?.text === 'Lecture review')?.date).toBe(next);
+  await expect.poll(() => db.todo_sessions.find(s => db.todos.find(t => t.id === s.todo_id)?.text === 'Lecture review')?.start_time).toBe(new Date(`${tomorrow}T09:00:00`).toISOString());
+  expect(next).toBeTruthy();
 });
