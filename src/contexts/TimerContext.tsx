@@ -77,6 +77,18 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
 
   // Snapshot the running session locally so a reload can restore it without
   // waiting on (or depending on) the network.
+  // This window's own writes to active_timer. A sync that reads the row while
+  // one is on its way, or that began before the last change here, reads what
+  // this window just changed: following it undid a pause, and the paused time
+  // was counted as studied.
+  const writesRef = useRef(0);
+  const changedAtRef = useRef(0);
+  const shared = (write: Promise<void>) => { writesRef.current++; changedAtRef.current = Date.now(); return write.finally(() => { writesRef.current--; }); };
+  // When this session was paused, so the calendar can show those stretches
+  // as not studied. A pause still open has no end yet.
+  const pausesRef = useRef<[number, number | null][]>([]);
+  const pauseAt = (ms: number) => { const last = pausesRef.current[pausesRef.current.length - 1]; if (!last || last[1] !== null) pausesRef.current = [...pausesRef.current, [ms, null]]; };
+  const resumeAt = (ms: number) => { const last = pausesRef.current[pausesRef.current.length - 1]; if (last && last[1] === null) pausesRef.current = [...pausesRef.current.slice(0, -1), [last[0], Math.max(last[0], ms)]]; };
   const mirror = useCallback((session: ActiveSession, accumulatedSeconds: number, isPaused: boolean) => {
     writeMirror({
       userId: userIdRef.current,
@@ -86,6 +98,7 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
       task: session.task,
       sessionStartTimeISO: session.sessionStartTimeISO,
       accumulatedSeconds, isPaused, markedAtMs: Date.now(),
+      pauses: pausesRef.current,
     });
   }, []);
 
@@ -106,6 +119,7 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
       };
       activeSessionRef.current = session;
       setActiveSession(session);
+      pausesRef.current = Array.isArray(local.pauses) ? local.pauses : [];
       start(elapsedFromMirror(local));
       if (local.isPaused) pause();
     }
@@ -149,6 +163,8 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
         : row.accumulated_seconds + Math.max(0, drift);
       activeSessionRef.current = session;
       setActiveSession(session);
+      // Picked up from another device: only a pause still running is known (since start_time).
+      pausesRef.current = row.is_paused && Number.isFinite(startedMs) ? [[startedMs, null]] : [];
       start(resumedElapsed);
       if (row.is_paused) pause();
       mirror(session, resumedElapsed, row.is_paused);
@@ -177,12 +193,13 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
       // Never race this window's own save: stopping writes the session and
       // then deletes the row, and reading in between looks like a stop
       // elsewhere.
-      if (savingRef.current || pendingSaveRef.current) return;
+      if (savingRef.current || pendingSaveRef.current || writesRef.current) return;
 
+      const began = Date.now();
       let row: Awaited<ReturnType<typeof storage.getActiveTimer>>;
       try { row = await storage.getActiveTimer(); }
       catch { return; }   // offline or failing: keep showing what we have
-      if (cancelled || savingRef.current || pendingSaveRef.current) return;
+      if (cancelled || savingRef.current || pendingSaveRef.current || writesRef.current || changedAtRef.current >= began) return;
 
       const local = activeSessionRef.current;
 
@@ -206,6 +223,7 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
           };
           activeSessionRef.current = session;
           setActiveSession(session);
+          pausesRef.current = row.is_paused && Number.isFinite(startedMs) ? [[startedMs, null]] : [];
           start(elapsedNow);
           if (row.is_paused) pause();
           mirror(session, elapsedNow, row.is_paused);
@@ -214,7 +232,9 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
 
         // Same session: follow a pause or resume made in the other window.
         if (row.is_paused !== isPausedRef.current) {
-          if (row.is_paused) { pause(); } else { start(elapsedNow); }
+          // start_time is when the other window paused or resumed.
+          const at = Number.isFinite(startedMs) ? startedMs : Date.now();
+          if (row.is_paused) { pauseAt(at); pause(); } else { resumeAt(at); start(elapsedNow); }
           mirror(local, elapsedNow, row.is_paused);
         }
         return;
@@ -286,12 +306,13 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
     }
 
     const session: ActiveSession = { subject, task, sessionStartTimeISO: sessionStartISO };
+    pausesRef.current = [];
     activeSessionRef.current=session;
     setActiveSession(session);
     setPendingSession(null);
     start(preSeconds);
     mirror(session, preSeconds, false);
-    void storage.upsertActiveTimer({
+    void shared(storage.upsertActiveTimer({
       subject_id: subject.id,
       subject_name: subject.name,
       task_text: task || null,
@@ -299,7 +320,7 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
       start_time: toLocalISO(now),
       accumulated_seconds: preSeconds,
       is_paused: false,
-    }).catch(() => setError('Timer is running on this device, but could not sync. Keep this page open and retry saving when you stop.'));
+    })).catch(() => setError('Timer is running on this device, but could not sync. Keep this page open and retry saving when you stop.'));
   }, [start, mirror]);
 
   const pauseSession = useCallback(() => {
@@ -307,8 +328,9 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
     if (!session || savingRef.current) return;
     const acc = pause();
     elapsedRef.current=acc;
+    pauseAt(Date.now());
     mirror(session, acc, true);
-    void storage.upsertActiveTimer({
+    void shared(storage.upsertActiveTimer({
       subject_id: session.subject.id,
       subject_name: session.subject.name,
       task_text: session.task || null,
@@ -316,7 +338,7 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
       start_time: toLocalISO(new Date()),
       accumulated_seconds: acc,
       is_paused: true,
-    }).catch(() => setError('Pause could not sync. Keep this page open until the session is saved.'));
+    })).catch(() => setError('Pause could not sync. Keep this page open until the session is saved.'));
   }, [pause, mirror]);
 
   const resumeSession = useCallback(() => {
@@ -324,8 +346,9 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
     if (!session || savingRef.current || pendingSaveRef.current) return;
     resume();
     const acc = elapsedRef.current;
+    resumeAt(Date.now());
     mirror(session, acc, false);
-    void storage.upsertActiveTimer({
+    void shared(storage.upsertActiveTimer({
       subject_id: session.subject.id,
       subject_name: session.subject.name,
       task_text: session.task || null,
@@ -333,7 +356,7 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
       start_time: toLocalISO(new Date()),
       accumulated_seconds: acc,
       is_paused: false,
-    }).catch(() => setError('Resume could not sync. Keep this page open until the session is saved.'));
+    })).catch(() => setError('Resume could not sync. Keep this page open until the session is saved.'));
   }, [resume, mirror]);
 
   const stopSession = useCallback(async (): Promise<boolean> => {
@@ -344,6 +367,11 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
     elapsedRef.current=durationSeconds;
     mirror(session, durationSeconds, true);
     const endTime = toLocalISO(new Date());
+    // Pauses as seconds into the session; one still open ran until Stop.
+    const startMs = new Date(session.sessionStartTimeISO).getTime(), endMs = new Date(endTime).getTime();
+    const pauses = pausesRef.current
+      .map(([a, z]): [number, number] => [Math.max(0, Math.round((a - startMs) / 1000)), Math.round(((z ?? endMs) - startMs) / 1000)])
+      .filter(([a, z]) => z - a >= 30);
 
     // Capture continuation state before clearing refs
     const continuationBlockId = continuationBlockIdRef.current;
@@ -360,6 +388,7 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
       endTime,
       durationSeconds,
       ...(pauseDuration > 0 ? { pauseDurationSeconds: pauseDuration } : {}),
+      ...(pauses.length ? { pauses } : {}),
     };
     pendingSaveRef.current=timerSession;
     try {
@@ -368,7 +397,7 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
       await storage.deleteActiveTimer();
     } catch {setError('Could not finish saving focus. Your timer is paused; press Stop to retry.');savingRef.current=false;setSaving(false);return false;}
     clearMirror();
-    stop();setActiveSession(null);activeSessionRef.current=null;pendingSaveRef.current=null;continuationBlockIdRef.current=null;pauseDurationRef.current=0;
+    stop();setActiveSession(null);activeSessionRef.current=null;pendingSaveRef.current=null;continuationBlockIdRef.current=null;pauseDurationRef.current=0;pausesRef.current=[];
     savingRef.current=false;setSaving(false);
     storage.setTimerSessions([...storage.getTimerSessions().filter(s=>s.id!==timerSession.id), timerSession]);
     // Let the Bosses feature credit this study time as damage.

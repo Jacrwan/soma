@@ -650,3 +650,29 @@ test('past sessions are listed newest first by time, and a session past midnight
  const endDay=next.toLocaleDateString(undefined,{month:'short',day:'numeric'});
  expect(rows[0]).toContain(`– ${endDay} 12:35 AM`);
 });
+
+// "what happens to the calendar view when you pause the timer?" (2026-10-20).
+// Pausing saves one session from Start to Stop that counts only the running
+// time. The block was drawn solid, so a dinner break read as studied.
+test('a paused stretch is drawn faint inside its session; a corrected session is drawn whole',async({page})=>{
+ const state=await setup(page);
+ state.tables.timer_sessions=[
+  // 1:00 to 3:00, paused 1:40 to 2:20: 80 minutes studied.
+  {id:'paused',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Cell review',date,start_time:iso('13:00'),end_time:iso('15:00'),duration_seconds:80*60,pauses:[[40*60,80*60]]},
+  // Corrected by hand to 60 minutes since: the pause no longer adds up.
+  {id:'edited',user_id:account.id,subject_id:'biology',subject_name:'Biology',task_text:'Essay',date,start_time:iso('17:00'),end_time:iso('19:00'),duration_seconds:60*60,pauses:[[10*60,30*60]]},
+ ];
+ await openWeek(page);
+ const paused=recorded(page).filter({hasText:'Cell review'});
+ await expect(paused).toHaveCount(1);
+ const fill=await paused.evaluate(el=>getComputedStyle(el).backgroundImage);
+
+ expect(fill).toContain('linear-gradient');
+ // Faint from a third of the way down to two thirds.
+ expect(fill).toMatch(/33\.3\d*%/);
+ expect(fill).toMatch(/66\.6\d*%/);
+ expect(await recorded(page).filter({hasText:'Essay'}).evaluate(el=>getComputedStyle(el).backgroundImage)).toBe('none');
+ // Still the minutes it ran.
+ await paused.dispatchEvent('click');
+ await expect(page.getByRole('dialog')).toContainText('1h 20m');
+});

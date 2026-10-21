@@ -11,6 +11,36 @@ still needed.
 
 ## 2026-10-20
 
+### Calendar: paused time is drawn faint inside its session
+- **Why:** "what happens to the calendar view when you pause the timer?" A
+  paused session is saved as one row from Start to Stop that counts only the
+  running time, and the calendar drew it solid, so a break read as studied.
+  The owner asked for "a really faint of the same color", not split blocks.
+- **What:** the timer records each pause (start and end) while it runs, in
+  the local mirror so a reload keeps them, and saves them with the session
+  as `pauses` ([from, to] seconds after start). The week view fills those
+  stretches with the block's colour at a quarter strength. A session
+  corrected by hand afterwards no longer adds up with its pauses and is
+  drawn solid. Minutes studied are unchanged everywhere.
+- **Also fixed (same pause path):** the 5-second sync could read the shared
+  timer row before this window's own Pause had saved, take it as "resumed
+  elsewhere" and restart the timer, counting the pause as studied. The sync
+  now ignores reads made while this window's write is in flight, or begun
+  before its last change. Pre-existing.
+- **Where:** `src/contexts/TimerContext.tsx`, `src/lib/activeTimerMirror.ts`,
+  `src/lib/storage.ts` (`saveTimerSession`, `fetchTimerSessions`),
+  `src/types/index.ts`, `src/components/Calendar/CalendarTab.tsx`
+  (`studySpans`, `withPauses`).
+- **Guard:** `tests/timer-recovery.spec.ts` › "pausing records when the pause
+  was, and it survives a reload" (counted the pause before the sync fix),
+  "before the pauses column exists, the session still saves without them";
+  `tests/session-times-and-calendar.spec.ts` › "a paused stretch is drawn
+  faint inside its session; a corrected session is drawn whole".
+- **Setup:** run `timer_sessions_pauses_migration.sql` in Supabase. Until
+  then sessions save without pauses and draw solid, as before. Sessions
+  recorded before this have no pauses. A session picked up on another device
+  mid-way knows only a pause still running there.
+
 ### Soma makes room instead of asking; a failed move keeps its slot
 - **Why:** "this needs your call thing is actually pissing me the fuck off
   ... unless ive specificially said ... a specific time for a specific
