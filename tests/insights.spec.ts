@@ -451,3 +451,14 @@ test('peak hours show this week only, spread across hours, and expand to all 24'
   expect(await scroller.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
   await expect(section.getByRole('button', { name: 'Show less' })).toBeVisible();
 });
+
+// "can it start on sunday so sunday is far left before monday" (2026-10-20).
+test('the study streak month starts its weeks on Sunday', async ({ page }) => {
+  await setup(page);
+  await page.goto('/insights');
+  await expect(summary(page)).toBeVisible();
+  await expect(page.locator('[class*="heatmapDowCell"]')).toHaveText(['S', 'M', 'T', 'W', 'T', 'F', 'S']);
+  // The 1st sits under its own weekday: one blank per day before it from Sunday.
+  const d = new Date();
+  await expect(page.locator('[class*="heatmapCellEmpty"]')).toHaveCount(new Date(d.getFullYear(), d.getMonth(), 1).getDay());
+});

@@ -11,6 +11,15 @@ still needed.
 
 ## 2026-10-20
 
+### Insights: the study streak month starts on Sunday
+- **Why:** "can it start on sunday so sunday is far left before monday".
+- **What:** the month grid's weeks run Sunday to Saturday (S M T W T F S),
+  and the 1st sits under its own weekday. Only this grid; nothing else in
+  Insights or the Calendar changed.
+- **Where:** `src/components/Insights/InsightsTab.tsx` (`leadingBlanks`).
+- **Guard:** `tests/insights.spec.ts` › "the study streak month starts its
+  weeks on Sunday".
+
 ### Calendar: paused time is drawn faint inside its session
 - **Why:** "what happens to the calendar view when you pause the timer?" A
   paused session is saved as one row from Start to Stop that counts only the
