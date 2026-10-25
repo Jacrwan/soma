@@ -48,6 +48,13 @@ Canvas tab ── canvas.js ──▶ chrome.storage.local ──▶ bridge.js �
   notification a day before and three hours before each, and the popup lists
   them. Reminders and the badge each have a switch. Notifications are made
   in the browser; nothing about them leaves it.
+- **What changed:** `common.js` compares each sync with the last one for that
+  site (`diff`): new work (not already handed in), a moved due date, a grade
+  posted, a new announcement. Nothing on a site's first sync. Changes ride on
+  the snapshot (`changes`, 14 days, newest first), so Soma's Deadlines and
+  AI get them through the normal bridge. `background.js` notifies each new
+  change once, or one summary when a sync brings more than three; the popup
+  lists the last week and has a switch.
 - **common.js** is shared by the readers: when to sync and how a read is stored.
 - **bridge.js** runs on Soma's pages and hands the snapshot to the app with
   `window.postMessage`. The app (`src/lib/canvasExtension.ts`) validates it

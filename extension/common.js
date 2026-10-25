@@ -24,6 +24,63 @@
 
   const pause = ms => new Promise(r => setTimeout(r, ms));
 
+  // ── What changed ──────────────────────────────────────────────────────────
+  // Each sync is compared with the one before it, and what's new is kept on
+  // the snapshot (`changes`, the last 14 days, newest first) so it reaches
+  // Soma, other devices and the AI the same way the rest does.
+
+  const KEEP_CHANGES_MS = 14 * 86400000;
+  const MAX_CHANGES = 50;
+  /** "CS-170-1: Intro to…" → "CS-170-1"; "PHYS 151, Fall 2026" → "PHYS 151". */
+  const shortCourse = name => String(name || '').split(/[:,]| - /)[0].trim().slice(0, 30);
+  const handedIn = (kind, a) => kind === 'gradescope' ? a.status !== 'not_submitted'
+    : kind === 'webassign' ? a.status === 'complete'
+    : !!(a.excused || a.submittedAt || ['submitted', 'graded', 'pending_review'].includes(a.workflowState));
+  const graded = (kind, a) => kind === 'gradescope' ? a.status === 'graded'
+    : kind === 'webassign' ? false
+    : a.workflowState === 'graded' || a.score != null;
+
+  /**
+   * What's different in `next` compared with `prev`: work added, a due date
+   * moved, a grade posted, an announcement. Nothing on a site's first sync,
+   * which would otherwise report the whole semester as new.
+   */
+  function diff(prev, next) {
+    if (!prev || !Array.isArray(prev.assignments)) return [];
+    const kind = next.kind || 'canvas';
+    const at = next.syncedAt;
+    const courseOf = new Map((next.courses || []).map(c => [c.id, shortCourse(c.name || c.shortName)]));
+    const before = new Map(prev.assignments.map(a => [a.id, a]));
+    const out = [];
+    const base = a => ({ at, site: kind, assignmentId: a.id, name: a.name, course: courseOf.get(a.courseId) || '', url: a.htmlUrl || '' });
+    for (const a of next.assignments || []) {
+      const old = before.get(a.id);
+      // New work, unless it was already handed in or is long past.
+      if (!old) {
+        if (!handedIn(kind, a) && (!a.dueAt || Date.parse(a.dueAt) > Date.now() - 86400000)) out.push({ ...base(a), type: 'new', to: a.dueAt || null });
+        continue;
+      }
+      if ((old.dueAt || null) !== (a.dueAt || null) && a.dueAt) out.push({ ...base(a), type: 'due_moved', from: old.dueAt || null, to: a.dueAt });
+      if (!graded(kind, old) && graded(kind, a)) out.push({ ...base(a), type: 'graded', score: a.score ?? null, maxScore: a.pointsPossible ?? a.maxScore ?? null });
+    }
+    if (kind === 'canvas') {
+      const seen = new Set((prev.announcements || []).map(n => n.id));
+      for (const n of next.announcements || []) {
+        if (!seen.has(n.id)) out.push({ at, site: kind, type: 'announcement', name: n.title, course: courseOf.get(n.courseId) || '', url: n.htmlUrl || '' });
+      }
+    }
+    return out;
+  }
+
+  /** The new snapshot, carrying its own changes plus the recent ones before it. */
+  function withChanges(prev, next) {
+    const now = Date.now();
+    const recent = [...diff(prev, next), ...((prev && prev.changes) || [])]
+      .filter(c => Date.parse(c.at) > now - KEEP_CHANGES_MS)
+      .slice(0, MAX_CHANGES);
+    return { ...next, changes: recent };
+  }
+
   // One sync per site at a time, whoever asked for it.
   const running = new Map();
 
@@ -42,8 +99,10 @@
       const attemptedAt = new Date().toISOString();
       await chrome.storage.local.set({ status: { ...status, [host]: { ...(status[host] || {}), attemptedAt } } });
       try {
-        const snapshot = await read(settings);
+        const fetched = await read(settings);
+        // Read storage again after the read: another site may have synced meanwhile.
         const fresh = await chrome.storage.local.get(['snapshots', 'status']);
+        const snapshot = withChanges((fresh.snapshots || {})[host], fetched);
         await chrome.storage.local.set({
           snapshots: { ...(fresh.snapshots || {}), [host]: snapshot },
           status: { ...(fresh.status || {}), [host]: {
@@ -77,5 +136,5 @@
     // runSync never rejects, so a tab cut off by a reload stays quiet.
   }
 
-  self.somaSync = { start, runSync, text, pause };
+  self.somaSync = { start, runSync, text, pause, diff, withChanges };
 })();

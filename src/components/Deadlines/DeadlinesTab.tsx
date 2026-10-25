@@ -4,6 +4,7 @@ import { formatDateTime, useTimeFormat } from '../../lib/timeFormat';
 import { CanvasAssignment, Todo, isSubmittable } from '../../types';
 import { getIcalAssignments } from '../../lib/canvas';
 import { CANVAS_CHANGED } from '../../lib/canvasExtension';
+import WhatChanged from './WhatChanged';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './DeadlinesTab.module.css';
 
@@ -624,6 +625,8 @@ export default function DeadlinesTab() {
                 ))}
               </select>
             </div>
+
+            <WhatChanged />
 
             {filtered.length === 0 ? (
               <div className={styles.empty}>

@@ -53,8 +53,27 @@ export interface DeepAssignment {
 
 export interface DeepAnnouncement { id: number; courseId: number; title: string; message: string; postedAt: string; htmlUrl: string }
 
+/**
+ * Something that changed between two syncs of a site, worked out by the
+ * extension (extension/common.js) and kept on the snapshot for 14 days.
+ */
+export interface SnapshotChange {
+  at: string;
+  site: 'canvas' | 'gradescope' | 'webassign';
+  type: 'new' | 'due_moved' | 'graded' | 'announcement';
+  name: string;
+  course: string;
+  url: string;
+  assignmentId?: number;
+  from?: string | null;
+  to?: string | null;
+  score?: number | null;
+  maxScore?: number | null;
+}
+
 export interface CanvasSnapshot {
   kind: 'canvas';
+  changes: SnapshotChange[];
   v: number;
   host: string;
   syncedAt: string;
@@ -98,6 +117,7 @@ export interface GradescopeAssignment {
 }
 export interface GradescopeSnapshot {
   kind: 'gradescope';
+  changes: SnapshotChange[];
   v: number;
   host: string;
   syncedAt: string;
@@ -125,6 +145,7 @@ export interface WebassignAssignment {
 }
 export interface WebassignSnapshot {
   kind: 'webassign';
+  changes: SnapshotChange[];
   v: number;
   host: string;
   syncedAt: string;
@@ -190,7 +211,35 @@ export function normalizeSnapshot(raw: unknown): SourceSnapshot | null {
     if (id === null || courseId === null || !courseIds.has(courseId) || !postedAt) return [];
     return [{ id, courseId, title: str(n.title, MAX.name), message: str(n.message, MAX.message), postedAt, htmlUrl: link(n.htmlUrl, host) }];
   });
-  return { kind: 'canvas', v: SNAPSHOT_VERSION, host, syncedAt, courses, groups, assignments, announcements };
+  return { kind: 'canvas', v: SNAPSHOT_VERSION, host, syncedAt, courses, groups, assignments, announcements, changes: normalizeChanges(r.changes, host, 'canvas') };
+}
+
+const CHANGE_TYPES = ['new', 'due_moved', 'graded', 'announcement'];
+
+/** A snapshot's changes, checked like the rest of it. Its site is the snapshot's, whatever the entry says. */
+function normalizeChanges(raw: unknown, host: string, site: SnapshotChange['site']): SnapshotChange[] {
+  return list(raw, 50).flatMap(c => {
+    const at = iso(c.at), name = str(c.name, MAX.name);
+    if (!at || !name || !CHANGE_TYPES.includes(c.type as string)) return [];
+    const assignmentId = num(c.assignmentId), score = num(c.score), maxScore = num(c.maxScore);
+    return [{
+      at, site, type: c.type as SnapshotChange['type'], name,
+      course: str(c.course, 60), url: link(c.url, host),
+      ...(assignmentId !== null ? { assignmentId } : {}),
+      ...(c.from !== undefined ? { from: iso(c.from) } : {}),
+      ...(c.to !== undefined ? { to: iso(c.to) } : {}),
+      ...(score !== null ? { score } : {}),
+      ...(maxScore !== null ? { maxScore } : {}),
+    }];
+  });
+}
+
+/** What changed across every site in the last `days`, newest first. */
+export function recentChanges(days = 7, snapshots = getLocalSnapshots(), now = Date.now()): SnapshotChange[] {
+  const since = now - days * 86_400_000;
+  return Object.values(snapshots).flatMap(s => s.changes)
+    .filter(c => Date.parse(c.at) >= since)
+    .sort((a, b) => b.at.localeCompare(a.at));
 }
 
 function normalizeGradescope(r: Record<string, unknown>, syncedAt: string): GradescopeSnapshot {
@@ -213,7 +262,7 @@ function normalizeGradescope(r: Record<string, unknown>, syncedAt: string): Grad
       score: num(a.score), maxScore: num(a.maxScore),
     }];
   });
-  return { kind: 'gradescope', v: SNAPSHOT_VERSION, host, syncedAt, courses, assignments };
+  return { kind: 'gradescope', v: SNAPSHOT_VERSION, host, syncedAt, courses, assignments, changes: normalizeChanges(r.changes, host, 'gradescope') };
 }
 
 function normalizeWebassign(r: Record<string, unknown>, syncedAt: string): WebassignSnapshot {
@@ -234,7 +283,7 @@ function normalizeWebassign(r: Record<string, unknown>, syncedAt: string): Webas
       parts, answered, score: num(a.score), maxScore: num(a.maxScore),
     }];
   });
-  return { kind: 'webassign', v: SNAPSHOT_VERSION, host, syncedAt, courses, assignments };
+  return { kind: 'webassign', v: SNAPSHOT_VERSION, host, syncedAt, courses, assignments, changes: normalizeChanges(r.changes, host, 'webassign') };
 }
 
 // ── This browser's copy, by Canvas site ─────────────────────────────────────

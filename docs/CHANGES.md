@@ -11,6 +11,42 @@ still needed.
 
 ## 2026-10-25
 
+### What changed: new work, moved due dates, grades and announcements
+- **Why:** deadlines move and grades land without anyone noticing; the
+  extension already had every sync, so it can say what's different.
+- **What:**
+  - Extension (`common.js`): each sync is compared with the previous one
+    for that site. New work (unless already handed in or long past), a
+    moved due date, a grade posted (Canvas graded or scored; Gradescope
+    graded), a new Canvas announcement. Nothing on a site's first sync.
+    Changes are kept on the snapshot for 14 days (at most 50), newest first.
+    Storage is re-read after the site read, so a sync of another site in
+    the meantime isn't overwritten.
+  - `background.js` notifies each new change once (a moved due date at
+    higher priority), or one summary when more than three arrive together;
+    clicking opens the work, or Soma's Deadlines for a summary. The popup
+    lists the last week, with a "Tell me when something changes" switch.
+  - App: `normalizeChanges` checks every change like the rest of a snapshot
+    (known types only, same-site links only, the snapshot's own site).
+    Deadlines shows a "What changed · last 7 days" panel
+    (`WhatChanged.tsx`, four rows, then Show all), which shows the day as
+    well as the time, since a moved due date often keeps its time, and
+    wraps on phones. The AI gets "WHAT CHANGED THIS WEEK" (not
+    announcements, which it already has).
+- **Where:** `extension/common.js`, `background.js`, `popup.*`,
+  `README.md`, `src/lib/canvasDeepSync.ts` (`SnapshotChange`,
+  `recentChanges`), `src/lib/aiContext.ts`,
+  `src/components/Deadlines/WhatChanged.tsx`, `DeadlinesTab.tsx`,
+  `DeadlinesTab.module.css`, privacy text (both copies).
+- **Guard:** `tests/extension-reminders.spec.ts` (what counts as a change
+  per site, none on first sync, 14-day keep, one notice per change, summary
+  for many, never twice, the switch) and `tests/canvas-extension.spec.ts`
+  (panel order and details, off-site links and unknown types dropped,
+  older than a week hidden, hidden when empty). Checked by screenshot in
+  light and dark at 1280×720 and at phone width, with no horizontal overflow.
+- **Setup still needed:** reload the extension. Changes start from the
+  second sync after that.
+
 ### Soma for Canvas reminds you before work is due
 - **Why:** the point of syncing Gradescope and WebAssign was not forgetting
   them, and that needs a nudge, not just a list in Soma.

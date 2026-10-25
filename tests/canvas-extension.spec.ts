@@ -228,3 +228,42 @@ test('WebAssign: a snapshot claiming another host is refused', async ({ page }) 
   expect(saved).toHaveLength(0);
   await expect(page.getByText('HW 8')).toHaveCount(0);
 });
+
+test('What changed on Deadlines: moved dates, new work and grades, newest first; bad entries dropped', async ({ page }) => {
+  await setup(page);
+  await page.goto('/deadlines');
+  await expect(page.getByText('Cell structure homework')).toBeVisible();
+  const now = Date.now();
+  const ago = (h: number) => new Date(now - h * 3600_000).toISOString();
+  await fromExtension(page, snapshot({ changes: [
+    { at: ago(1), site: 'canvas', type: 'due_moved', name: 'Microscope lab report', course: 'BIO 101', url: 'https://school.instructure.com/courses/456/assignments/124', assignmentId: 124, from: `${offset(2)}T18:00:00Z`, to: `${offset(3)}T18:00:00Z` },
+    { at: ago(5), site: 'canvas', type: 'graded', name: 'Lab 2', course: 'BIO 101', url: 'https://school.instructure.com/courses/456/assignments/90', score: 9, maxScore: 10 },
+    { at: ago(30), site: 'canvas', type: 'new', name: 'Field trip form', course: 'BIO 101', url: 'https://evil.example/phish', to: `${offset(5)}T18:00:00Z` },
+    // Dropped: not a kind of change, and older than the panel's week.
+    { at: ago(2), site: 'canvas', type: 'deleted_everything', name: 'Bogus', course: '', url: '' },
+    { at: ago(24 * 9), site: 'canvas', type: 'new', name: 'Last month', course: '', url: '' },
+  ] }));
+
+  const panel = page.getByRole('region', { name: 'What changed' });
+  await expect(panel).toBeVisible();
+  const rows = panel.getByRole('listitem');
+  await expect(rows).toHaveCount(3);
+  await expect(rows.nth(0)).toContainText('Due date moved');
+  await expect(rows.nth(0)).toContainText('Microscope lab report');
+  await expect(rows.nth(1)).toContainText('9 / 10');
+  await expect(rows.nth(2)).toContainText('Field trip form');
+  // A link to another site never survives: that row isn't a link.
+  await expect(rows.nth(2).getByRole('link')).toHaveCount(0);
+  await expect(rows.nth(0).getByRole('link')).toHaveAttribute('href', 'https://school.instructure.com/courses/456/assignments/124');
+  await expect(panel).not.toContainText('Bogus');
+  await expect(panel).not.toContainText('Last month');
+});
+
+test('What changed stays hidden until there is a change', async ({ page }) => {
+  await setup(page);
+  await page.goto('/deadlines');
+  await expect(page.getByText('Cell structure homework')).toBeVisible();
+  await fromExtension(page, snapshot());
+  await expect(page.getByText('Microscope lab report')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'What changed' })).toHaveCount(0);
+});

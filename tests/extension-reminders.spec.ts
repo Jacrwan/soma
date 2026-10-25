@@ -144,3 +144,97 @@ test('reminders and badge can each be turned off', async ({ page }) => {
   expect(l.notes).toHaveLength(0);
   expect(l.badge.at(-1)).toBe('');
 });
+
+// ── What changed ────────────────────────────────────────────────────────────
+
+type Change = { type: string; name: string; course: string; from?: string | null; to?: string | null; score?: number | null; maxScore?: number | null; at: string };
+const diff = (page: Page, prev: unknown, next: unknown) => page.evaluate(([p, n]) => (self as unknown as { somaSync: { diff: (a: unknown, b: unknown) => Change[] } }).somaSync.diff(p, n), [prev, next]);
+
+async function loadCommon(page: Page) {
+  await page.goto('about:blank');
+  await page.addScriptTag({ content: read('extension/common.js') });
+}
+
+const canvasPrev = () => ({
+  kind: 'canvas', host: 'school.instructure.com', syncedAt: at(-3),
+  courses: [{ id: 1, name: 'CS-170-1: Intro to Computer Science I' }],
+  assignments: [
+    { id: 10, courseId: 1, name: 'Lab 6', dueAt: at(30), workflowState: 'unsubmitted', score: null, htmlUrl: 'https://school.instructure.com/a/10' },
+    { id: 11, courseId: 1, name: 'Lab 5', dueAt: at(-20), workflowState: 'submitted', score: null, htmlUrl: 'https://school.instructure.com/a/11' },
+  ],
+  announcements: [{ id: 100, courseId: 1, title: 'Welcome', postedAt: at(-48) }],
+});
+
+test('what changed: nothing on a site\'s first sync', async ({ page }) => {
+  await loadCommon(page);
+  expect(await diff(page, undefined, { ...canvasPrev(), syncedAt: at(0) })).toEqual([]);
+});
+
+test('what changed: new work, a moved due date, a grade, an announcement', async ({ page }) => {
+  await loadCommon(page);
+  const prev = canvasPrev();
+  const next = structuredClone(prev);
+  next.syncedAt = at(0);
+  next.assignments[0].dueAt = at(54);                       // pushed back a day
+  Object.assign(next.assignments[1], { workflowState: 'graded', score: 9 });
+  (next.assignments as Record<string, unknown>[]).push(
+    { id: 12, courseId: 1, name: 'Lab 7', dueAt: at(100), workflowState: 'unsubmitted', score: null, htmlUrl: 'https://school.instructure.com/a/12' },
+    // New but already handed in: not news.
+    { id: 13, courseId: 1, name: 'Quiz 9', dueAt: at(10), workflowState: 'submitted', submittedAt: at(-1), score: null },
+  );
+  next.announcements.push({ id: 101, courseId: 1, title: 'Exam room changed', postedAt: at(-1) });
+  const changes = await diff(page, prev, next);
+  expect(changes.map(c => [c.type, c.name])).toEqual([
+    ['due_moved', 'Lab 6'], ['graded', 'Lab 5'], ['new', 'Lab 7'], ['announcement', 'Exam room changed'],
+  ]);
+  expect(changes[0]).toMatchObject({ course: 'CS-170-1', from: prev.assignments[0].dueAt });
+  expect(changes[1]).toMatchObject({ score: 9 });
+});
+
+test('what changed: Gradescope grades and WebAssign due dates', async ({ page }) => {
+  await loadCommon(page);
+  const gsPrev = { kind: 'gradescope', syncedAt: at(-2), courses: [{ id: 2, shortName: 'FA26_CS_170_1', name: 'CS-170-1: Intro' }], assignments: [{ id: 20, courseId: 2, name: 'Coding Problem 3', dueAt: at(5), status: 'submitted' }] };
+  const gsNext = { ...gsPrev, syncedAt: at(0), assignments: [{ ...gsPrev.assignments[0], status: 'graded', score: 95, maxScore: 100 }] };
+  expect(await diff(page, gsPrev, gsNext)).toMatchObject([{ type: 'graded', name: 'Coding Problem 3', score: 95, maxScore: 100 }]);
+  const waPrev = { kind: 'webassign', syncedAt: at(-2), courses: [{ id: 3, name: 'PHYS 151, Fall 2026' }], assignments: [{ id: 30, courseId: 3, name: 'HW8', dueAt: at(20), status: 'not_started' }] };
+  const waNext = { ...waPrev, syncedAt: at(0), assignments: [{ ...waPrev.assignments[0], dueAt: at(44) }] };
+  expect(await diff(page, waPrev, waNext)).toMatchObject([{ type: 'due_moved', name: 'HW8', course: 'PHYS 151' }]);
+});
+
+test('what changed: kept for 14 days on the snapshot, newest first', async ({ page }) => {
+  await loadCommon(page);
+  const prev = { ...canvasPrev(), changes: [
+    { at: at(-24 * 3), type: 'new', name: 'Older but kept' },
+    { at: at(-24 * 20), type: 'new', name: 'Too old' },
+  ] };
+  const next = { ...canvasPrev(), syncedAt: at(0), assignments: [...canvasPrev().assignments, { id: 12, courseId: 1, name: 'Lab 7', dueAt: at(100), workflowState: 'unsubmitted' }] };
+  const out = await page.evaluate(([p, n]) => (self as unknown as { somaSync: { withChanges: (a: unknown, b: unknown) => { changes: Change[] } } }).somaSync.withChanges(p, n), [prev, next]);
+  expect(out.changes.map(c => c.name)).toEqual(['Lab 7', 'Older but kept']);
+});
+
+test('what changed: a notice per change, a summary for many, never twice, and a switch', async ({ page }) => {
+  const now = at(0), due = at(30);
+  const one = (name: string, type = 'new') => ({ at: now, site: 'canvas', type, name, course: 'CS-170-1', url: `https://school.instructure.com/${name}`, to: due });
+  const withChanges = (changes: unknown[]) => ({ 'school.instructure.com': { kind: 'canvas', host: 'school.instructure.com', courses: [], assignments: [], changes } });
+  await loadBackground(page, { snapshots: withChanges([one('Lab 7'), one('Lab 6', 'due_moved')]) });
+  const announce = () => page.evaluate(() => (window as unknown as { announceChanges: () => Promise<void> }).announceChanges());
+  await announce();
+  let l = await log(page);
+  expect(l.notes.map(n => n.title)).toEqual(['New: Lab 7', 'Due date moved: Lab 6']);
+  await announce();
+  expect((await log(page)).notes).toHaveLength(2);
+
+  // Four more at once: one summary.
+  await page.evaluate(s => { (window as unknown as { __data: Record<string, unknown> }).__data.snapshots = s; }, withChanges([one('Lab 7'), one('Lab 6', 'due_moved'), one('A'), one('B'), one('C', 'graded'), one('D', 'announcement')]));
+  await announce();
+  l = await log(page);
+  expect(l.notes.at(-1)).toMatchObject({ title: '4 things changed', message: '2 new · 1 graded · 1 announcement' });
+  await page.evaluate(id => (window as unknown as { __fire: (n: string, ...a: unknown[]) => Promise<unknown> }).__fire('click', id), l.notes.at(-1)!.id);
+  await expect.poll(async () => (await log(page)).opened).toEqual(['https://somastudy.app/deadlines']);
+});
+
+test('what changed: turned off, nothing is announced', async ({ page }) => {
+  await loadBackground(page, { settings: { changes: false }, snapshots: { h: { changes: [{ at: at(0), type: 'new', name: 'Lab 7', url: '' }] } } });
+  await page.evaluate(() => (window as unknown as { announceChanges: () => Promise<void> }).announceChanges());
+  expect((await log(page)).notes).toHaveLength(0);
+});

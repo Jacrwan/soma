@@ -78,7 +78,9 @@ function Privacy() {
             each current assignment's name, due date and how many of its question parts you have
             answered (and your points, unless you turn that off). While Chrome is open it checks these
             sites again every two hours and when you open Soma, so Soma stays current; you can turn
-            that off in the extension. The extension hands these details to
+            that off in the extension. It also keeps a two-week list of what changed between
+            syncs (new work, moved due dates, grades posted, announcements), built from the same
+            details. The extension hands these details to
             your open Soma tab, which saves them to your account so the AI and your other devices
             can use them. You can remove them any time in Settings → Integrations.
           </li>

@@ -15,7 +15,11 @@ importScripts('common.js', 'due.js');
 //    notification fires once a day before and again three hours before each
 //    one. Both can be turned off in the popup.
 //
-// 3. Turning the extension on for a school whose Canvas has its own domain
+// 3. What changed. Each sync records what's new since the last one (common.js:
+//    new work, a moved due date, a grade posted, an announcement); each new
+//    change gets one notification, or one summary when a sync brings several.
+//
+// 4. Turning the extension on for a school whose Canvas has its own domain
 // (canvas.emory.edu and the like). The popup asks Chrome for that one site,
 // but Chrome's permission prompt closes the popup, so anything the popup
 // meant to do after "Allow" never ran. This does it instead, whenever access
@@ -152,17 +156,62 @@ async function remind() {
   await chrome.storage.local.set({ reminded: next });
 }
 
+// ── What changed ──────────────────────────────────────────────────────────
+
+const SOMA_DEADLINES = 'https://somastudy.app/deadlines';
+const changeKey = (host, c) => `${host}|${c.type}|${c.assignmentId ?? c.name}|${c.at}`;
+
+function describe(c) {
+  const course = c.course ? `${c.course} · ` : '';
+  if (c.type === 'new') return { title: `New: ${c.name}`, message: `${course}${c.to ? `due ${when(c.to)}` : 'no due date'}` };
+  if (c.type === 'due_moved') return { title: `Due date moved: ${c.name}`, message: `${course}now ${when(c.to)}${c.from ? ` (was ${when(c.from)})` : ''}` };
+  if (c.type === 'graded') return { title: `Graded: ${c.name}`, message: `${course}${c.score != null && c.maxScore ? `${c.score} / ${c.maxScore}` : 'grade posted'}` };
+  return { title: `Announcement: ${c.name}`, message: c.course || 'New announcement' };
+}
+
+/** Notify about changes not told yet. Several at once become one summary. */
+async function announceChanges() {
+  const { snapshots = {}, settings = {}, told = {} } = await chrome.storage.local.get(['snapshots', 'settings', 'told']);
+  const current = Object.entries(snapshots).flatMap(([host, s]) => (s.changes || []).map(c => ({ key: changeKey(host, c), c })));
+  const fresh = current.filter(x => !told[x.key]);
+  // Remember only changes still on a snapshot, so this can't grow forever.
+  const next = Object.fromEntries(current.map(x => [x.key, told[x.key] || { url: x.c.url }]));
+  if (fresh.length && settings.changes !== false) {
+    if (fresh.length <= 3) {
+      for (const { key, c } of fresh) chrome.notifications.create(`somachg:${key}`, { type: 'basic', iconUrl: 'icons/icon-128.png', priority: c.type === 'due_moved' ? 1 : 0, ...describe(c) });
+    } else {
+      const counts = {};
+      for (const { c } of fresh) counts[c.type] = (counts[c.type] || 0) + 1;
+      const label = (t, n) => t === 'announcement' ? (n > 1 ? 'announcements' : 'announcement') : { new: 'new', due_moved: 'moved', graded: 'graded' }[t];
+      chrome.notifications.create('somachg:summary', {
+        type: 'basic', iconUrl: 'icons/icon-128.png',
+        title: `${fresh.length} things changed`,
+        message: Object.entries(counts).map(([t, n]) => `${n} ${label(t, n)}`).join(' · '),
+      });
+      next['somachg:summary'] = { url: SOMA_DEADLINES };
+    }
+  }
+  await chrome.storage.local.set({ told: next });
+}
+
 chrome.notifications.onClicked.addListener(async id => {
-  if (!id.startsWith('soma:')) return;
-  const { reminded = {} } = await chrome.storage.local.get('reminded');
-  const url = reminded[id.slice(5)] && reminded[id.slice(5)].url;
+  let url;
+  if (id.startsWith('soma:')) {
+    const { reminded = {} } = await chrome.storage.local.get('reminded');
+    url = reminded[id.slice(5)] && reminded[id.slice(5)].url;
+  } else if (id.startsWith('somachg:')) {
+    const { told = {} } = await chrome.storage.local.get('told');
+    url = id === 'somachg:summary' ? SOMA_DEADLINES : told[id.slice(8)] && told[id.slice(8)].url;
+  } else return;
   if (url && /^https:\/\//.test(url)) await chrome.tabs.create({ url });
   chrome.notifications.clear(id);
 });
 
-// A finished sync, or a changed setting, can change what's due.
+// A finished sync, or a changed setting, can change what's due and what's new.
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && (changes.snapshots || changes.settings)) void remind();
+  if (area !== 'local') return;
+  if (changes.snapshots || changes.settings) void remind();
+  if (changes.snapshots) void announceChanges();
 });
 
 chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === REMIND) void remind(); });

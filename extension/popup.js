@@ -40,6 +40,40 @@ async function renderDue() {
   }));
 }
 
+const CHANGE_WORDS = { new: 'New', due_moved: 'Due date moved', graded: 'Graded', announcement: 'Announcement' };
+
+async function renderChanged() {
+  const { snapshots = {} } = await chrome.storage.local.get('snapshots');
+  const week = Date.now() - 7 * 86400000;
+  const all = Object.values(snapshots).flatMap(s => s.changes || [])
+    .filter(c => Date.parse(c.at) > week)
+    .sort((a, b) => b.at.localeCompare(a.at))
+    .slice(0, 8);
+  if (!all.length) return;
+  $('changedCard').hidden = false;
+  $('changed').replaceChildren(...all.map(c => {
+    const li = document.createElement('li');
+    const name = document.createElement('div');
+    name.className = 'site';
+    name.textContent = `${CHANGE_WORDS[c.type] || 'Changed'}: ${c.name}`;
+    const detail = document.createElement('div');
+    detail.className = 'small muted';
+    const what = c.type === 'due_moved' ? `now ${self.somaDue.when(c.to)}`
+      : c.type === 'new' && c.to ? `due ${self.somaDue.when(c.to)}`
+      : c.type === 'graded' && c.score != null && c.maxScore ? `${c.score} / ${c.maxScore}` : '';
+    detail.textContent = [c.course, what].filter(Boolean).join(' · ');
+    li.append(name, detail);
+    if (/^https:\/\//.test(c.url || '')) {
+      li.tabIndex = 0;
+      li.setAttribute('role', 'link');
+      li.style.cursor = 'pointer';
+      li.onclick = () => chrome.tabs.create({ url: c.url });
+      li.onkeydown = e => { if (e.key === 'Enter') chrome.tabs.create({ url: c.url }); };
+    }
+    return li;
+  }));
+}
+
 async function renderSites() {
   const { status = {} } = await chrome.storage.local.get('status');
   const hosts = Object.keys(status).filter(h => status[h].syncedAt || status[h].error);
@@ -132,7 +166,7 @@ async function init() {
   const { settings = {} } = await chrome.storage.local.get('settings');
   $('grades').checked = settings.grades !== false;
   $('background').checked = settings.background !== false;
-  for (const id of ['reminders', 'badge']) {
+  for (const id of ['changes', 'reminders', 'badge']) {
     $(id).checked = settings[id] !== false;
     $(id).onchange = async e => {
       const { settings: current = {} } = await chrome.storage.local.get('settings');
@@ -164,7 +198,7 @@ async function init() {
       textContent: 'Removed from this browser. To remove it from your Soma account too, use Settings → Canvas in Soma.',
     }));
   };
-  await Promise.all([renderDue(), renderSites(), renderHere()]);
+  await Promise.all([renderDue(), renderChanged(), renderSites(), renderHere()]);
 }
 
 void init();

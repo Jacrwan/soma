@@ -22,6 +22,11 @@
     <ul id="due"><li class="muted">Nothing due in the next two days that isn’t handed in.</li></ul>
   </section>
 
+  <section class="card" id="changedCard" hidden>
+    <h2>What changed</h2>
+    <ul id="changed"></ul>
+  </section>
+
   <section class="card">
     <h2>Synced</h2>
     <ul id="sites"><li class="muted">Nothing yet. Open Canvas, Gradescope or WebAssign once and it keeps them in sync from then on.</li></ul>
@@ -29,6 +34,11 @@
   </section>
 
   <section class="card">
+    <label class="toggle">
+      <input type="checkbox" id="changes">
+      <span>Tell me when something changes</span>
+    </label>
+    <p class="muted small">New work, a moved due date, a grade posted, or an announcement.</p>
     <label class="toggle">
       <input type="checkbox" id="reminders">
       <span>Remind me before things are due</span>
