@@ -12,6 +12,7 @@ import { applyTimeFormat, formatClock } from '../../lib/timeFormat';
 import { requestMemory, type MemoryState, type MemoryMutation } from '../../lib/aiMemory';
 import { SkeletonBlock } from '../UI/Skeleton';
 import CourseSiteImport from './CourseSiteImport';
+import CanvasDeepSyncRow from './CanvasDeepSyncRow';
 import { supabase } from '../../lib/supabase';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, openBillingPortal, refreshSubscription, hasAIAccess, getGoogleCalendarLimit, GOOGLE_CALENDAR_LIMIT_PREMIUM } from '../../lib/subscription';
@@ -1012,6 +1013,8 @@ export default function SettingsTab() {
                   )}
                 </div>
               </div>
+
+              <CanvasDeepSyncRow />
 
               <div className={`${styles.integrationRow} ${styles.gcalSection}`}>
                 <div className={styles.gcalSectionHeader}>

@@ -77,6 +77,17 @@ export interface CanvasAssignment {
   submittedAt?: string | null;
   score?: number | null;
   pointsPossible?: number | null;
+  /** From deep sync (src/lib/canvasDeepSync.ts); the calendar feed has none of these. */
+  groupName?: string;
+  /** Percent of the course grade this assignment's group is worth, when the course weights groups. */
+  groupWeight?: number;
+  missing?: boolean;
+  late?: boolean;
+  deepSynced?: boolean;
+  /** Handed in on Gradescope rather than Canvas. */
+  platform?: 'gradescope';
+  /** The last moment Gradescope still takes it, when it allows late work. */
+  lateDueAt?: string;
 }
 
 export interface CanvasCourse {

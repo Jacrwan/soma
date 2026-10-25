@@ -3,6 +3,7 @@ import { storage } from '../../lib/storage';
 import { formatDateTime, useTimeFormat } from '../../lib/timeFormat';
 import { CanvasAssignment, Todo, isSubmittable } from '../../types';
 import { getIcalAssignments } from '../../lib/canvas';
+import { CANVAS_CHANGED } from '../../lib/canvasExtension';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './DeadlinesTab.module.css';
 
@@ -35,6 +36,8 @@ type Deadline = {
   dueLabel: string;
   status: Status;
   url: string | null;
+  /** Handed in on Gradescope, which is the easy one to forget. */
+  platform?: 'gradescope';
 };
 
 const TODO_TO_STATUS: Record<Todo['status'], Status> = {
@@ -192,6 +195,13 @@ export default function DeadlinesTab() {
     return () => { cancelled = true; window.removeEventListener('soma_todos_changed', refresh); };
   }, []);
 
+  // The Canvas extension's sync can land while this page is open.
+  useEffect(() => {
+    const refresh = () => setAssignments(storage.getCachedIcalAssignments());
+    window.addEventListener(CANVAS_CHANGED, refresh);
+    return () => window.removeEventListener(CANVAS_CHANGED, refresh);
+  }, []);
+
   useEffect(() => {
     if (!icalUrl) return;
     const cached = storage.getCachedIcalAssignments();
@@ -235,7 +245,7 @@ export default function DeadlinesTab() {
       await storage.syncCanvasSubjects(fetched);
       storage.setCachedIcalAssignments(fetched);
       storage.setCacheTimestamp(Date.now());
-      setAssignments(fetched);
+      setAssignments(storage.getCachedIcalAssignments());
       setLastSynced(Date.now());
     } catch (e: unknown) {
       setIcalError(e instanceof Error ? e.message : 'Failed to sync calendar feed');
@@ -256,7 +266,7 @@ export default function DeadlinesTab() {
       storage.setCachedIcalAssignments(fetched);
       storage.setCacheTimestamp(Date.now());
       setIcalUrl(url);
-      setAssignments(fetched);
+      setAssignments(storage.getCachedIcalAssignments());
       setLastSynced(Date.now());
       setSetupIcalUrl('');
     } catch (e: unknown) {
@@ -271,7 +281,8 @@ export default function DeadlinesTab() {
     storage.setCachedIcalAssignments([]);
     storage.setCachedAssignments([]);
     setIcalUrl('');
-    setAssignments([]);
+    // What the Canvas extension synced stays until it's removed in Settings.
+    setAssignments(storage.getCachedIcalAssignments());
   }
 
   function updateStatus(id: number, status: string) {
@@ -345,7 +356,7 @@ export default function DeadlinesTab() {
   // Only when there is genuinely nothing to show. A student who imports from a
   // course site and never connects Canvas still has deadlines, and used to be
   // shown this prompt instead of them.
-  if (!icalUrl && !anyToShow && tasksLoaded) {
+  if (!icalUrl && !anyToShow && assignments.length === 0 && tasksLoaded) {
     return (
       <div className={styles.setupOverlay}>
         <div className={styles.setupCard}>
@@ -409,8 +420,10 @@ export default function DeadlinesTab() {
       color: courseColor(a.courseId, a.courseName),
       dueKey: dayKey(new Date(a.dueAt)),
       dueLabel: fmtDueTime(a.dueAt),
-      status: (assignmentStatus[a.id] ?? 'not_started') as Status,
+      // A status the student set wins; otherwise one Canvas says was handed in is done.
+      status: (assignmentStatus[a.id] ?? (a.status === 'done' ? 'done' : 'not_started')) as Status,
       url: a.htmlUrl,
+      ...(a.platform ? { platform: a.platform } : {}),
     }));
 
   // A task imported from a course site already exists as a Canvas assignment
@@ -456,8 +469,12 @@ export default function DeadlinesTab() {
     a === NO_COURSE ? 1 : b === NO_COURSE ? -1 : a.localeCompare(b),
   );
 
+  // A Canvas item is done when the student cleared it, or when Canvas says it
+  // was handed in and the student hasn't set a status of their own.
   const isDone = (item: Deadline) =>
-    item.source === 'canvas' ? !!clearedAssignments[item.canvasId!] : item.status === 'done';
+    item.source === 'canvas'
+      ? !!clearedAssignments[item.canvasId!] || (assignmentStatus[item.canvasId!] === undefined && item.status === 'done')
+      : item.status === 'done';
 
   const filtered = allItems
     .filter(i => selectedCourse === null || i.courseName === selectedCourse)
@@ -490,7 +507,7 @@ export default function DeadlinesTab() {
       >
         <span className={styles.dot} style={{ background: item.color, opacity: done ? 0.3 : 1 }} />
         <div className={styles.assignmentInfo}>
-          <span className={styles.assignmentCourse}>{item.courseName}</span>
+          <span className={styles.assignmentCourse}>{item.courseName}{item.platform === 'gradescope' ? ' · Gradescope' : ''}</span>
           <span className={styles.assignmentName}>{item.title}</span>
         </div>
         <span className={styles.dueTime}>{item.dueLabel}</span>
@@ -515,7 +532,7 @@ export default function DeadlinesTab() {
               href={item.url}
               target="_blank"
               rel="noopener noreferrer"
-              title="Open in Canvas"
+              title={item.platform === 'gradescope' ? 'Open in Gradescope' : 'Open in Canvas'}
             >↗</a>
           )}
         </div>

@@ -68,6 +68,17 @@ function Privacy() {
             itself is cached in your browser rather than stored on our servers.
           </li>
           <li>
+            <strong>Soma for Canvas extension</strong> — if you install it, the extension reads
+            Canvas inside your own browser, with your own sign-in: your active courses, assignment
+            groups and weights, assignments with their descriptions and your submission status,
+            recent announcements, and (unless you turn it off) your scores and current grades. No
+            password, cookie or token leaves your browser. On Gradescope it reads your current
+            courses and each assignment's name, due and late due dates, and whether you submitted
+            it (and its score, unless you turn that off). The extension hands these details to
+            your open Soma tab, which saves them to your account so the AI and your other devices
+            can use them. You can remove them any time in Settings → Integrations.
+          </li>
+          <li>
             <strong>Course websites you import</strong> — when you paste a course site's schedule
             page, its text is sent to Anthropic to pick out the dated work. Only the items you choose
             to add are saved, as tasks.
@@ -843,6 +854,7 @@ function DataDeletion() {
         </p>
         <ul>
           <li>Cached Canvas assignments and your Canvas feed link</li>
+          <li>Canvas details the Soma for Canvas extension synced to this browser</li>
           <li>Cached Google Calendar events</li>
           <li>Local app preferences and theme settings</li>
           <li>
@@ -864,6 +876,7 @@ function DataDeletion() {
           <li>Saved AI chats, AI memory, and AI usage records</li>
           <li>Documents you uploaded, including the files themselves</li>
           <li>Google Calendar connections and their stored tokens</li>
+          <li>Canvas details synced by the Soma for Canvas extension</li>
           <li>App settings and preferences stored on our servers</li>
         </ul>
         <p>
