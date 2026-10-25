@@ -99,7 +99,7 @@ export function buildCanvasSection(todos: Todo[] = [], subjects: { id: string; n
       a.groupName ? `${a.groupName}${a.groupWeight ? ` group, ${a.groupWeight}% of grade` : ''}` : '',
     ].filter(Boolean).join(', ');
     const brief = a.description ? a.description.slice(0, 280) + (a.description.length > 280 ? '…' : '') : '';
-    return `- ${a.name} — ${a.courseName} — Due ${due}${worth ? ` | ${worth}` : ''}${a.missing ? ' | marked missing in Canvas' : ''}${a.platform === 'gradescope' ? ` | handed in on Gradescope${a.lateDueAt ? `, late until ${withWeekday(dayOf(new Date(a.lateDueAt)))} ${clock(new Date(a.lateDueAt))}` : ''}` : ''} | assignmentId: ${a.id} | courseId: ${a.courseId}${brief ? `\n  About: ${brief}` : ''}`;
+    return `- ${a.name} — ${a.courseName} — Due ${due}${worth ? ` | ${worth}` : ''}${a.missing ? ' | marked missing in Canvas' : ''}${a.platform ? ` | handed in on ${a.platform === 'gradescope' ? 'Gradescope' : 'WebAssign'}${a.lateDueAt ? `, late until ${withWeekday(dayOf(new Date(a.lateDueAt)))} ${clock(new Date(a.lateDueAt))}` : ''}` : ''}${a.progress ? ` | ${a.progress}` : ''} | assignmentId: ${a.id} | courseId: ${a.courseId}${brief ? `\n  About: ${brief}` : ''}`;
   });
 
   return `\nCANVAS ASSIGNMENTS (not yet scheduled as tasks; submitted ones are left out):\n${lines.join('\n')}\n${buildCanvasCourseSection(now)}`;

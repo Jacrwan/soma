@@ -105,8 +105,36 @@ export interface GradescopeSnapshot {
   assignments: GradescopeAssignment[];
 }
 
-export type SourceSnapshot = CanvasSnapshot | GradescopeSnapshot;
+/**
+ * WebAssign, read from the student's class home page and each current
+ * assignment's page (extension/webassign.js). Only current assignments: the
+ * home page lists past ones by id alone.
+ */
+export interface WebassignAssignment {
+  id: number;
+  courseId: number;
+  name: string;
+  dueAt: string | null;
+  htmlUrl: string;
+  /** From the question parts: none answered, some, or all. */
+  status: 'not_started' | 'in_progress' | 'complete';
+  parts: number;
+  answered: number;
+  score: number | null;
+  maxScore: number | null;
+}
+export interface WebassignSnapshot {
+  kind: 'webassign';
+  v: number;
+  host: string;
+  syncedAt: string;
+  courses: { id: number; name: string }[];
+  assignments: WebassignAssignment[];
+}
+
+export type SourceSnapshot = CanvasSnapshot | GradescopeSnapshot | WebassignSnapshot;
 export const GRADESCOPE_HOST = 'www.gradescope.com';
+export const WEBASSIGN_HOST = 'www.webassign.net';
 
 /** A snapshot as the extension sent it, checked; null when it isn't one. */
 export function normalizeSnapshot(raw: unknown): SourceSnapshot | null {
@@ -117,6 +145,7 @@ export function normalizeSnapshot(raw: unknown): SourceSnapshot | null {
   if (r.v !== SNAPSHOT_VERSION || !host || !syncedAt) return null;
   // Snapshots from before Gradescope have no kind: they are Canvas.
   if (r.kind === 'gradescope') return host === GRADESCOPE_HOST ? normalizeGradescope(r, syncedAt) : null;
+  if (r.kind === 'webassign') return host === WEBASSIGN_HOST ? normalizeWebassign(r, syncedAt) : null;
   if (r.kind !== undefined && r.kind !== 'canvas') return null;
 
   const courses: DeepCourse[] = list(r.courses, MAX.courses).flatMap(c => {
@@ -187,6 +216,27 @@ function normalizeGradescope(r: Record<string, unknown>, syncedAt: string): Grad
   return { kind: 'gradescope', v: SNAPSHOT_VERSION, host, syncedAt, courses, assignments };
 }
 
+function normalizeWebassign(r: Record<string, unknown>, syncedAt: string): WebassignSnapshot {
+  const host = WEBASSIGN_HOST;
+  const courses = list(r.courses, MAX.courses).flatMap(c => {
+    const id = num(c.id), name = str(c.name, MAX.name);
+    return id !== null && name ? [{ id, name }] : [];
+  });
+  const courseIds = new Set(courses.map(c => c.id));
+  const STATUSES = ['not_started', 'in_progress', 'complete'];
+  const assignments: WebassignAssignment[] = list(r.assignments, MAX.assignments).flatMap(a => {
+    const id = num(a.id), courseId = num(a.courseId), name = str(a.name, MAX.name);
+    if (id === null || courseId === null || !courseIds.has(courseId) || !name) return [];
+    const parts = Math.max(0, num(a.parts) ?? 0), answered = Math.min(parts, Math.max(0, num(a.answered) ?? 0));
+    return [{
+      id, courseId, name, dueAt: iso(a.dueAt), htmlUrl: link(a.htmlUrl, host),
+      status: (STATUSES.includes(a.status as string) ? a.status : 'not_started') as WebassignAssignment['status'],
+      parts, answered, score: num(a.score), maxScore: num(a.maxScore),
+    }];
+  });
+  return { kind: 'webassign', v: SNAPSHOT_VERSION, host, syncedAt, courses, assignments };
+}
+
 // ── This browser's copy, by Canvas site ─────────────────────────────────────
 
 export function getLocalSnapshots(): Record<string, SourceSnapshot> {
@@ -254,7 +304,9 @@ export function mergeDeepSync(feed: CanvasAssignment[], snapshots = getLocalSnap
     if (known.has(a.id) || !a.dueAt || Date.parse(a.dueAt) < since) continue;
     merged.push(enrich(undefined, a, s));
   }
-  for (const g of all) if (g.kind === 'gradescope') mergeGradescope(merged, g, since);
+  const courses = canvasCoursesIn(merged, canvasSnapshots(snapshots));
+  for (const g of all) if (g.kind === 'gradescope') mergeGradescope(merged, g, since, courses);
+  for (const w of all) if (w.kind === 'webassign') mergeWebassign(merged, w, courses);
   return merged;
 }
 
@@ -312,8 +364,7 @@ const sameWork = (a: string, b: string) => {
  * was handed in; anything else is added as its own deadline, under the
  * Canvas course of the same department and number when there is one.
  */
-function mergeGradescope(merged: CanvasAssignment[], g: GradescopeSnapshot, since: number) {
-  const canvasCourses = [...new Map(merged.filter(a => a.courseName && a.platform !== 'gradescope').map(a => [a.courseId, { id: a.courseId, name: a.courseName }])).values()];
+function mergeGradescope(merged: CanvasAssignment[], g: GradescopeSnapshot, since: number, canvasCourses: CanvasCourseRef[]) {
   for (const a of g.assignments) {
     if (!a.dueAt) continue;
     const handedIn = a.status !== 'not_submitted';
@@ -322,7 +373,7 @@ function mergeGradescope(merged: CanvasAssignment[], g: GradescopeSnapshot, sinc
     if (Date.parse(a.dueAt) < since && (handedIn || due < since)) continue;
     const course = g.courses.find(c => c.id === a.courseId);
     const home = course && canvasCourses.find(c => sameCourse(c.name, course.shortName) || sameCourse(c.name, course.name));
-    const twin = home && merged.find(m => m.courseId === home.id && m.platform !== 'gradescope' && sameWork(m.name, a.name));
+    const twin = home && merged.find(m => m.courseId === home.id && !m.platform && sameWork(m.name, a.name));
     if (twin) {
       twin.platform = 'gradescope';
       twin.htmlUrl = a.htmlUrl || twin.htmlUrl;
@@ -343,6 +394,64 @@ function mergeGradescope(merged: CanvasAssignment[], g: GradescopeSnapshot, sinc
       score: a.score,
       platform: 'gradescope',
       ...(a.lateDueAt ? { lateDueAt: a.lateDueAt } : {}),
+      deepSynced: true,
+    });
+  }
+}
+
+type CanvasCourseRef = { id: number; name: string };
+
+/**
+ * The Canvas courses a platform's work can join by name: those in the list
+ * and those deep sync knows (a course whose only work is old isn't in the
+ * list). Busiest first, so "PHYS 151" lands in PHYS-151-1, where the work is,
+ * rather than its empty PHYS-151-LAB1 section.
+ */
+function canvasCoursesIn(merged: CanvasAssignment[], canvas: CanvasSnapshot[] = []): CanvasCourseRef[] {
+  const work = new Map<number, number>();
+  for (const a of merged) if (!a.platform) work.set(a.courseId, (work.get(a.courseId) ?? 0) + 1);
+  for (const s of canvas) for (const a of s.assignments) work.set(a.courseId, (work.get(a.courseId) ?? 0) + 1);
+  const byId = new Map<number, CanvasCourseRef>();
+  // The feed's name first: it's the one Subjects were made from.
+  for (const a of merged) if (a.courseName && !a.platform && !byId.has(a.courseId)) byId.set(a.courseId, { id: a.courseId, name: a.courseName });
+  for (const s of canvas) for (const c of s.courses) if (!byId.has(c.id)) byId.set(c.id, { id: c.id, name: c.name });
+  return [...byId.values()].sort((a, b) => (work.get(b.id) ?? 0) - (work.get(a.id) ?? 0));
+}
+
+/**
+ * WebAssign work into the list, under the Canvas course with the same
+ * department and number ("PHYS 151, Fall 2026" is PHYS-151-1). Done when
+ * every question part has been answered; partly answered is in progress. A
+ * Canvas entry with the same name (a linked assignment) takes that status
+ * instead of a second row.
+ */
+function mergeWebassign(merged: CanvasAssignment[], w: WebassignSnapshot, canvasCourses: CanvasCourseRef[]) {
+  for (const a of w.assignments) {
+    if (!a.dueAt) continue;
+    const course = w.courses.find(c => c.id === a.courseId);
+    const home = course && canvasCourses.find(c => sameCourse(c.name, course.name));
+    const status: CanvasAssignment['status'] = a.status === 'complete' ? 'done' : a.status === 'in_progress' ? 'in_progress' : 'not_started';
+    const progress = a.parts ? `${a.answered} of ${a.parts} parts answered` : undefined;
+    const twin = home && merged.find(m => m.courseId === home.id && !m.platform && sameWork(m.name, a.name));
+    if (twin) {
+      twin.platform = 'webassign';
+      twin.htmlUrl = a.htmlUrl || twin.htmlUrl;
+      if (status !== 'not_started') twin.status = status;
+      if (progress) twin.progress = progress;
+      continue;
+    }
+    merged.push({
+      id: -a.id,
+      name: a.name,
+      courseId: home?.id ?? 0,
+      courseName: home?.name ?? course?.name ?? 'WebAssign',
+      dueAt: a.dueAt,
+      htmlUrl: a.htmlUrl,
+      status,
+      pointsPossible: a.maxScore,
+      score: a.score,
+      platform: 'webassign',
+      ...(progress ? { progress } : {}),
       deepSynced: true,
     });
   }

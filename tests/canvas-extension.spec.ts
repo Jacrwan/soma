@@ -113,7 +113,7 @@ test('Settings shows the sync and removes it everywhere', async ({ page }) => {
 
   await page.goto('/settings');
   await page.getByRole('button', { name: 'Integrations' }).click();
-  await expect(page.getByText(/1 courses, 2 assignments from school\.instructure\.com/)).toBeVisible();
+  await expect(page.getByText(/school\.instructure\.com: 1 courses, 2 assignments/)).toBeVisible();
 
   page.once('dialog', d => void d.accept());
   await page.getByRole('button', { name: 'Remove synced data' }).click();
@@ -162,4 +162,69 @@ test('Gradescope: a snapshot claiming another host is refused', async ({ page })
   await page.waitForTimeout(300);
   expect(saved).toHaveLength(0);
   await expect(page.getByText('Problem set 2')).toHaveCount(0);
+});
+
+test('Sync now in Settings asks the extension and reports how each site went', async ({ page }) => {
+  await setup(page);
+  await page.goto('/deadlines');
+  await expect(page.getByText('Cell structure homework')).toBeVisible();
+  await fromExtension(page, snapshot());
+  await expect(page.getByText('Microscope lab report')).toBeVisible();
+
+  await page.goto('/settings');
+  await page.getByRole('button', { name: 'Integrations' }).click();
+  await expect(page.getByText(/school\.instructure\.com: 1 courses/)).toBeVisible();
+  // Stand in for the extension's bridge: it says it's here, then answers a sync request.
+  await page.evaluate(() => {
+    window.addEventListener('message', e => {
+      if (e.data?.source === 'soma-app' && e.data.type === 'sync_request') {
+        window.postMessage({ source: 'soma-extension', type: 'sync_done', results: [
+          { host: 'school.instructure.com', ok: true, error: null },
+          { host: 'www.gradescope.com', ok: false, error: 'Sign in to Gradescope, then sync again.' },
+        ] }, window.location.origin);
+      }
+    });
+    window.postMessage({ source: 'soma-extension', type: 'present', version: '0.1.0' }, window.location.origin);
+  });
+  await page.getByRole('button', { name: 'Sync now' }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'www.gradescope.com: Sign in to Gradescope' })).toBeVisible();
+});
+
+const webassign = (over: Row = {}) => ({
+  kind: 'webassign', v: 1, host: 'www.webassign.net', syncedAt: new Date().toISOString(),
+  courses: [{ id: 7700001, name: 'BIO 101, Fall 2026' }],
+  assignments: [
+    { id: 5001, courseId: 7700001, name: 'HW 7', dueAt: `${offset(1)}T17:00:00Z`, htmlUrl: 'https://www.webassign.net/web/Student/Assignment-Responses/last?dep=5001', status: 'complete', parts: 3, answered: 3, score: null, maxScore: 4 },
+    { id: 5002, courseId: 7700001, name: 'Lab Quiz 4', dueAt: `${offset(2)}T21:30:00Z`, htmlUrl: 'https://www.webassign.net/web/Student/Assignment-Responses/last?dep=5002', status: 'in_progress', parts: 3, answered: 1, score: null, maxScore: 4 },
+    { id: 5003, courseId: 7700001, name: 'HW 8', dueAt: `${offset(3)}T17:00:00Z`, htmlUrl: 'https://www.webassign.net/web/Student/Assignment-Responses/last?dep=5003', status: 'not_started', parts: 3, answered: 0, score: null, maxScore: 3 },
+  ],
+  ...over,
+});
+
+test('WebAssign: work joins its Canvas course, with how far along it is', async ({ page }) => {
+  const { saved } = await setup(page);
+  await page.goto('/deadlines');
+  await expect(page.getByText('Cell structure homework')).toBeVisible();
+
+  await page.evaluate(s => window.postMessage({ source: 'soma-extension', type: 'canvas_snapshot', snapshot: s }, window.location.origin), webassign());
+
+  await expect(page.getByText('HW 8')).toBeVisible();
+  await expect(page.getByText('Biology 101 · WebAssign').first()).toBeVisible();
+  // Partly answered shows its progress and is in progress, not "not started".
+  await expect(page.getByText('Biology 101 · WebAssign · 1 of 3 parts answered')).toBeVisible();
+  await expect(page.getByLabel('Status: Lab Quiz 4')).toHaveValue('in_progress');
+  // Every part answered: done, so off the active list.
+  await expect(page.getByText('HW 7', { exact: true })).toHaveCount(0);
+  await expect.poll(() => saved.length).toBe(1);
+  expect(saved[0]).toMatchObject({ user_id: account.id, host: 'www.webassign.net' });
+});
+
+test('WebAssign: a snapshot claiming another host is refused', async ({ page }) => {
+  const { saved } = await setup(page);
+  await page.goto('/deadlines');
+  await expect(page.getByText('Cell structure homework')).toBeVisible();
+  await page.evaluate(s => window.postMessage({ source: 'soma-extension', type: 'canvas_snapshot', snapshot: s }, window.location.origin), webassign({ host: 'www.gradescope.com' }));
+  await page.waitForTimeout(300);
+  expect(saved).toHaveLength(0);
+  await expect(page.getByText('HW 8')).toHaveCount(0);
 });

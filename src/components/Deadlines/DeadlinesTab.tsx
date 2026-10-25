@@ -36,8 +36,9 @@ type Deadline = {
   dueLabel: string;
   status: Status;
   url: string | null;
-  /** Handed in on Gradescope, which is the easy one to forget. */
-  platform?: 'gradescope';
+  /** Handed in on Gradescope or WebAssign, the easy ones to forget. */
+  platform?: 'gradescope' | 'webassign';
+  progress?: string;
 };
 
 const TODO_TO_STATUS: Record<Todo['status'], Status> = {
@@ -46,6 +47,8 @@ const TODO_TO_STATUS: Record<Todo['status'], Status> = {
 const STATUS_TO_TODO: Record<Status, Todo['status']> = {
   not_started: 'nothing', in_progress: 'in_progress', done: 'done',
 };
+
+const PLATFORM_NAMES = { gradescope: 'Gradescope', webassign: 'WebAssign' } as const;
 
 /** Tasks with no course still have to appear; they group under one label. */
 const NO_COURSE = 'No course';
@@ -420,10 +423,12 @@ export default function DeadlinesTab() {
       color: courseColor(a.courseId, a.courseName),
       dueKey: dayKey(new Date(a.dueAt)),
       dueLabel: fmtDueTime(a.dueAt),
-      // A status the student set wins; otherwise one Canvas says was handed in is done.
-      status: (assignmentStatus[a.id] ?? (a.status === 'done' ? 'done' : 'not_started')) as Status,
+      // A status the student set wins; otherwise what Canvas, Gradescope or
+      // WebAssign say (handed in is done; WebAssign partly answered is in progress).
+      status: (assignmentStatus[a.id] ?? a.status ?? 'not_started') as Status,
       url: a.htmlUrl,
       ...(a.platform ? { platform: a.platform } : {}),
+      ...(a.progress ? { progress: a.progress } : {}),
     }));
 
   // A task imported from a course site already exists as a Canvas assignment
@@ -507,7 +512,7 @@ export default function DeadlinesTab() {
       >
         <span className={styles.dot} style={{ background: item.color, opacity: done ? 0.3 : 1 }} />
         <div className={styles.assignmentInfo}>
-          <span className={styles.assignmentCourse}>{item.courseName}{item.platform === 'gradescope' ? ' · Gradescope' : ''}</span>
+          <span className={styles.assignmentCourse}>{item.courseName}{item.platform ? ` · ${PLATFORM_NAMES[item.platform]}` : ''}{item.progress && item.status !== 'done' ? ` · ${item.progress}` : ''}</span>
           <span className={styles.assignmentName}>{item.title}</span>
         </div>
         <span className={styles.dueTime}>{item.dueLabel}</span>
@@ -532,7 +537,7 @@ export default function DeadlinesTab() {
               href={item.url}
               target="_blank"
               rel="noopener noreferrer"
-              title={item.platform === 'gradescope' ? 'Open in Gradescope' : 'Open in Canvas'}
+              title={`Open in ${item.platform ? PLATFORM_NAMES[item.platform] : 'Canvas'}`}
             >↗</a>
           )}
         </div>

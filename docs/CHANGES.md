@@ -11,6 +11,69 @@ still needed.
 
 ## 2026-10-25
 
+### Soma for Canvas reads WebAssign
+- **Why:** at Emory, PHYS 151's Canvas lists one exam; every homework lives
+  in WebAssign, so Soma couldn't see it.
+- **What:** `extension/webassign.js` reads the class home page
+  (`/v4cgi/student.pl`): its current assignments are JSON in
+  `#js-student-myAssignmentsWrapper[data-assignments]` (id, name, due in epoch
+  seconds). Each assignment's page gives progress from its question parts:
+  all answered is complete, some is in progress, with points only when
+  grades are on. Course name from the page title, id from the class context
+  id. Past assignments (ids only) are not read. Runs on visit, in the
+  background and from Sync now, like the others. App: `webassign` snapshots
+  (only from `www.webassign.net`) join the Canvas course with the same number
+  and department; Canvas courses for joining now include deep sync's own
+  list, busiest first, so PHYS 151 lands in PHYS-151-1 rather than its empty
+  lab section. Deadlines shows "· WebAssign" and "n of m parts answered", and
+  partly done work is in progress; the AI is told the same.
+- **Where:** `extension/webassign.js`, `manifest.json` (host and content
+  script), `background.js`, `offscreen.html`, `popup.html`,
+  `src/lib/canvasDeepSync.ts`, `src/lib/aiContext.ts`, `src/types/index.ts`,
+  `src/components/Deadlines/DeadlinesTab.tsx`, privacy text (both copies),
+  `extension/README.md`, `docs/extension-plan.md`.
+- **Guard:** `tests/extension-readers.spec.ts` (WebAssign: due times,
+  complete / in progress / not started from parts, grades off, signed out
+  keeps the last sync; synthetic fixtures in `tests/fixtures/webassign/`
+  modelled on the real page) and `tests/canvas-extension.spec.ts` (joins
+  its Canvas course with progress shown; wrong-host snapshot refused). The
+  reader was also run once in the owner's signed-in WebAssign and read both
+  current PHYS 151 assignments correctly.
+- **Setup still needed:** reload the extension; visit WebAssign once so
+  background sync knows it.
+
+### Soma for Canvas keeps itself in sync, without visits to Canvas or Gradescope
+- **Why:** a site synced only when the student visited it (at most every 3
+  hours), so a student who lives in Soma saw stale work, and something handed
+  in just after a sync stayed "not done" for hours.
+- **What:** `extension/background.js` re-reads every site the student has
+  synced before, every two hours while Chrome is open (alarm), and whenever
+  Soma opens (bridge asks; skipped if under 20 minutes old). The readers now
+  take an origin (`canvasReader`, `gradescopeReader`) so they run either in
+  the site's tab or in a hidden offscreen page (`offscreen.html`/`.js`; a
+  worker has no DOM). Sync logic is shared in `common.js` (`runSync`, one run
+  per site at a time). Visits sync at most every 30 minutes, down from 3
+  hours. Popup: "Keep in sync in the background" toggle (on by default) and
+  Sync everything now. Soma's Settings row: Sync now (via the bridge), with
+  each site's result; it lists every synced site.
+- **Where:** `extension/` (`background.js`, `common.js`, `canvas.js`,
+  `gradescope.js`, `offscreen.*`, `bridge.js`, `popup.*`, `manifest.json`
+  adds `alarms` and `offscreen`), `src/lib/canvasExtension.ts`
+  (`requestSync`), `src/components/Settings/CanvasDeepSyncRow.tsx`, privacy
+  text (both copies), `extension/README.md`, `docs/extension-plan.md`.
+- **Guard:** `tests/canvas-extension.spec.ts` (Sync now reports each site),
+  `tests/extension-readers.spec.ts` (a reader run by origin from another
+  page, as the offscreen page does, reads the site and starts no sync of its
+  own). The alarm and offscreen document themselves are checked in Chrome.
+- **Also:** reloading the extension left the old copies of its scripts in
+  open tabs throwing "Extension context invalidated" on every message.
+  `bridge.js` now notices it was cut off and goes quiet; `runSync` never
+  rejects. Guard: the "goes quiet" test in `tests/extension-readers.spec.ts`
+  (fails on the previous bridge with that error).
+- **Setup still needed:** reload the extension. Background requests use the
+  student's sign-in cookies; if Chrome blocks those for extension requests,
+  background sync records an error and visits still work.
+
 ### Soma for Canvas: turning on a school's own Canvas domain works; Emory course names match
 - **Why:** first real use, at Emory (`canvas.emory.edu`). Chrome granted the
   site, but nothing synced: Chrome's permission prompt closes the popup, and

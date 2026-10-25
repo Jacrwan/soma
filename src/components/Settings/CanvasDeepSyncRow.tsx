@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CANVAS_CHANGED, deepSyncStatus, extensionPresent, forgetDeepSync } from '../../lib/canvasExtension';
+import { CANVAS_CHANGED, deepSyncStatus, extensionPresent, forgetDeepSync, requestSync } from '../../lib/canvasExtension';
 import { formatDateTime } from '../../lib/timeFormat';
 import styles from './SettingsTab.module.css';
 
@@ -14,6 +14,8 @@ export default function CanvasDeepSyncRow() {
   const [present, setPresent] = useState(extensionPresent);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [note, setNote] = useState('');
 
   useEffect(() => {
     const refresh = () => { setSites(deepSyncStatus()); setPresent(extensionPresent()); };
@@ -29,6 +31,16 @@ export default function CanvasDeepSyncRow() {
     finally { setBusy(false); }
   }
 
+  async function syncNow() {
+    setSyncing(true); setError(''); setNote('');
+    const results = await requestSync();
+    setSyncing(false);
+    const failed = results.filter(r => !r.ok);
+    if (!results.length) setError('The extension didn’t answer. Make sure it’s turned on in Chrome.');
+    else if (failed.length) setError(failed.map(f => `${f.host}: ${f.error ?? 'didn’t sync'}`).join(' '));
+    else setNote('Up to date.');
+  }
+
   const latest = sites[0];
   return (
     <div className={styles.integrationRow}>
@@ -36,17 +48,22 @@ export default function CanvasDeepSyncRow() {
         <span className={styles.integrationLabel}>Canvas extension</span>
         <span className={styles.integrationDescription}>
           {latest
-            ? `${latest.courses} courses, ${latest.assignments} assignments from ${latest.host} · synced ${formatDateTime(new Date(latest.syncedAt))}`
+            ? `${sites.map(s => `${s.host}: ${s.courses} courses, ${s.assignments} assignments`).join(' · ')} · last synced ${formatDateTime(new Date(latest.syncedAt))}. Keeps itself up to date while Chrome is open.`
             : present
               ? 'Installed. Open Canvas in this browser and it syncs on its own.'
               : 'Adds assignment details, points, submissions, grades and announcements. Reads Canvas in your browser, with your own sign-in.'}
         </span>
         {error && <span role="alert" className={styles.integrationDescription}>{error}</span>}
+        {note && <span role="status" className={styles.integrationDescription}>{note}</span>}
       </div>
       <div className={styles.integrationActions}>
         {latest ? (
           <>
-            <span className={styles.connectedBadge}>Syncing</span>
+            {present && (
+              <button className={styles.connectBtn} onClick={() => void syncNow()} disabled={syncing}>
+                {syncing ? 'Syncing…' : 'Sync now'}
+              </button>
+            )}
             <button className={styles.disconnectBtn} onClick={() => void forget()} disabled={busy}>
               {busy ? 'Removing…' : 'Remove synced data'}
             </button>

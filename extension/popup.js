@@ -20,6 +20,7 @@ async function renderSites() {
   const hosts = Object.keys(status).filter(h => status[h].syncedAt || status[h].error);
   const list = $('sites');
   if (!hosts.length) return;
+  $('syncAll').hidden = false;
   list.replaceChildren(...hosts.map(h => {
     const s = status[h];
     const li = document.createElement('li');
@@ -105,6 +106,20 @@ async function renderHere() {
 async function init() {
   const { settings = {} } = await chrome.storage.local.get('settings');
   $('grades').checked = settings.grades !== false;
+  $('background').checked = settings.background !== false;
+  $('background').onchange = async e => {
+    const { settings: current = {} } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({ settings: { ...current, background: e.target.checked } });
+  };
+  $('syncAll').onclick = async () => {
+    const btn = $('syncAll');
+    btn.disabled = true;
+    btn.textContent = 'Syncing…';
+    await chrome.runtime.sendMessage({ type: 'sync_all', force: true }).catch(() => []);
+    btn.disabled = false;
+    btn.textContent = 'Sync everything now';
+    await renderSites();
+  };
   $('grades').onchange = async e => {
     const { settings: current = {} } = await chrome.storage.local.get('settings');
     await chrome.storage.local.set({ settings: { ...current, grades: e.target.checked } });

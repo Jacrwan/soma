@@ -84,8 +84,10 @@ export interface CanvasAssignment {
   missing?: boolean;
   late?: boolean;
   deepSynced?: boolean;
-  /** Handed in on Gradescope rather than Canvas. */
-  platform?: 'gradescope';
+  /** Handed in on Gradescope or WebAssign rather than Canvas. */
+  platform?: 'gradescope' | 'webassign';
+  /** How far along it is, where the platform says ("12 of 23 parts answered"). */
+  progress?: string;
   /** The last moment Gradescope still takes it, when it allows late work. */
   lateDueAt?: string;
 }

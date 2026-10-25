@@ -18,7 +18,9 @@ import {
  * the page:
  *   extension → app  { source: 'soma-extension', type: 'present', version }
  *                    { source: 'soma-extension', type: 'canvas_snapshot', snapshot }
+ *                    { source: 'soma-extension', type: 'sync_done', results }
  *   app → extension  { source: 'soma-app', type: 'hello' }          ask for what it has
+ *                    { source: 'soma-app', type: 'sync_request' }   re-read every site now
  *                    { source: 'soma-app', type: 'snapshot_saved', host, syncedAt }
  *                    { source: 'soma-app', type: 'forget' }         the student removed synced data
  */
@@ -44,7 +46,7 @@ async function save(userId: string, snapshot: SourceSnapshot) {
   setLocalSnapshot(snapshot);
   // Canvas courses with work in them become Subjects, the way the feed's do.
   // Not every enrollment: orientation and club "courses" have no assignments.
-  // Gradescope work joins the Canvas course of the same name instead.
+  // Gradescope and WebAssign work join the Canvas course of the same name instead.
   if (snapshot.kind === 'canvas') {
     const withWork = snapshot.courses.filter(c => snapshot.assignments.some(a => a.courseId === c.id));
     await storage.syncCanvasSubjects(withWork.map(c => ({
@@ -96,6 +98,31 @@ export function startCanvasBridge(userId: string): () => void {
   // The extension's bridge may have loaded before this listener.
   post({ type: 'hello' });
   return () => window.removeEventListener('message', onMessage);
+}
+
+export type SyncResult = { host: string; ok: boolean; error: string | null };
+
+/**
+ * Ask the extension to re-read every site now (Settings → Sync now). The new
+ * snapshots arrive through the bridge as usual; this resolves with how each
+ * site went, or an empty list if the extension didn't answer in time.
+ */
+export function requestSync(timeoutMs = 120_000): Promise<SyncResult[]> {
+  return new Promise(resolve => {
+    const done = (results: SyncResult[]) => { window.removeEventListener('message', onMessage); clearTimeout(timer); resolve(results); };
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== window || event.origin !== window.location.origin) return;
+      const msg = event.data as { source?: unknown; type?: unknown; results?: unknown };
+      if (msg?.source !== 'soma-extension' || msg.type !== 'sync_done') return;
+      const results = Array.isArray(msg.results) ? msg.results : [];
+      done(results.flatMap(r => r && typeof r === 'object' && typeof (r as SyncResult).host === 'string'
+        ? [{ host: (r as SyncResult).host.slice(0, 100), ok: (r as SyncResult).ok === true, error: typeof (r as SyncResult).error === 'string' ? (r as SyncResult).error!.slice(0, 200) : null }]
+        : []));
+    };
+    const timer = setTimeout(() => done([]), timeoutMs);
+    window.addEventListener('message', onMessage);
+    post({ type: 'sync_request' });
+  });
 }
 
 /** When each Canvas site was last synced, newest first. */

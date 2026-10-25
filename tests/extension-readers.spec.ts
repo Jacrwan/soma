@@ -128,3 +128,107 @@ test('Sync now and the popup probe get answers', async ({ page }) => {
   const probe = await page.evaluate(() => (window as unknown as { __send: (m: unknown) => Promise<unknown> }).__send({ type: 'probe' }));
   expect(probe).toMatchObject({ supported: true, host: 'www.gradescope.com' });
 });
+
+test('the background sync can run a reader by origin, away from the site\'s own tab', async ({ page }) => {
+  // offscreen.js calls self.somaReaders[kind](origin); here from a page on another site.
+  await gradescopeSite(page);
+  await page.route('https://soma.test/**', r => r.fulfill({ contentType: 'text/html', body: '<html><body></body></html>' }));
+  await page.route('https://www.gradescope.com/**', async route => {
+    const url = new URL(route.request().url());
+    const body = url.pathname === '/' ? fixture('dashboard.html') : url.pathname === '/courses/600001' ? fixture('course-physics.html') : '<html></html>';
+    await route.fulfill({ contentType: 'text/html', body, headers: { 'Access-Control-Allow-Origin': 'https://soma.test', 'Access-Control-Allow-Credentials': 'true' } });
+  });
+  await runReader(page, 'https://soma.test/', ['common.js', 'gradescope.js']);
+  const snap = await page.evaluate(async () => {
+    const readers = (self as unknown as { somaReaders: Record<string, (o: string) => (s: { grades: boolean }) => Promise<{ kind: string; assignments: unknown[] }>> }).somaReaders;
+    return readers.gradescope('https://www.gradescope.com')({ grades: true });
+  });
+  expect(snap.kind).toBe('gradescope');
+  expect(snap.assignments).toHaveLength(3);
+  // Not on Gradescope, so it didn't start a sync of its own.
+  expect((await stored(page)).snapshots).toBeUndefined();
+});
+
+test('a bridge cut off by an extension reload goes quiet instead of throwing', async ({ page }) => {
+  // After a reload, every chrome.* call in a tab's old copy of the script throws.
+  const errors: string[] = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.route('https://somastudy.app/**', r => r.fulfill({ contentType: 'text/html', body: '<html><body></body></html>' }));
+  await page.addInitScript(() => {
+    let dead = false;
+    const gone = () => { if (dead) throw new Error('Extension context invalidated.'); };
+    (window as unknown as { __kill: () => void }).__kill = () => { dead = true; };
+    (window as unknown as { chrome: unknown }).chrome = {
+      runtime: {
+        get id() { gone(); return 'ext'; },
+        getManifest: () => ({ version: '0.1.0' }),
+        sendMessage: () => { gone(); return Promise.resolve([]); },
+      },
+      storage: {
+        local: { get: async () => { gone(); return {}; }, set: async () => { gone(); }, remove: async () => { gone(); } },
+        onChanged: { addListener: () => {} },
+      },
+    };
+  });
+  await page.goto('https://somastudy.app/');
+  await page.addScriptTag({ content: read('extension/bridge.js') });
+  await page.evaluate(() => (window as unknown as { __kill: () => void }).__kill());
+  await page.evaluate(() => {
+    for (const type of ['hello', 'sync_request', 'forget']) window.postMessage({ source: 'soma-app', type }, window.location.origin);
+  });
+  await page.waitForTimeout(300);
+  expect(errors).toEqual([]);
+});
+
+async function webassignSite(page: Page, { signedOut = false } = {}) {
+  const fetched: string[] = [];
+  await page.route('https://www.webassign.net/**', route => {
+    const url = new URL(route.request().url());
+    fetched.push(url.pathname + url.search);
+    if (signedOut) return route.fulfill({ contentType: 'text/html', body: '<html><body><form><input type="password"></form></body></html>' });
+    const dep = url.searchParams.get('dep');
+    const body = url.pathname === '/v4cgi/student.pl' ? read('tests/fixtures/webassign/home.html')
+      : url.pathname === '/web/Student/Assignment-Responses/last' && dep ? read(`tests/fixtures/webassign/assignment-${dep}.html`)
+      : '<html><body></body></html>';
+    return route.fulfill({ contentType: 'text/html', body });
+  });
+  return fetched;
+}
+
+test('WebAssign: current assignments, due times, and how far along each is', async ({ page }) => {
+  const fetched = await webassignSite(page);
+  await runReader(page, 'https://www.webassign.net/v4cgi/student.pl', ['common.js', 'webassign.js']);
+  await expect.poll(async () => !!(await stored(page)).snapshots?.['www.webassign.net']).toBe(true);
+  const snap = (await stored(page)).snapshots!['www.webassign.net'] as {
+    kind: string; courses: { id: number; name: string }[];
+    assignments: { id: number; name: string; dueAt: string; status: string; parts: number; answered: number; score: number | null; maxScore: number | null; htmlUrl: string }[];
+  };
+  expect(snap.kind).toBe('webassign');
+  // Course from the page title, id from the class's context id.
+  expect(snap.courses).toEqual([{ id: 7700001, name: 'BIO 101, Fall 2026' }]);
+  const byId = new Map(snap.assignments.map(a => [a.id, a]));
+  // Due times are epoch seconds in the page's data.
+  expect(byId.get(5001)).toMatchObject({ name: 'HW 7, due 10/26 1pm', dueAt: '2026-10-26T17:00:00.000Z', status: 'complete', parts: 3, answered: 3, score: 3.5, maxScore: 4 });
+  expect(byId.get(5002)).toMatchObject({ status: 'in_progress', parts: 3, answered: 1 });
+  expect(byId.get(5003)).toMatchObject({ status: 'not_started', answered: 0, score: null });
+  expect(byId.get(5003)!.htmlUrl).toBe('https://www.webassign.net/web/Student/Assignment-Responses/last?dep=5003');
+  // Past assignments are only ids on the home page: never fetched.
+  expect(fetched.some(f => /dep=400[12]/.test(f))).toBe(false);
+});
+
+test('WebAssign: grades off keeps progress but drops the score', async ({ page }) => {
+  await webassignSite(page);
+  await runReader(page, 'https://www.webassign.net/v4cgi/student.pl', ['common.js', 'webassign.js'], { grades: false });
+  await expect.poll(async () => !!(await stored(page)).snapshots?.['www.webassign.net']).toBe(true);
+  const hw7 = ((await stored(page)).snapshots!['www.webassign.net'].assignments as { id: number; status: string; score: unknown }[]).find(a => a.id === 5001)!;
+  expect(hw7).toMatchObject({ status: 'complete', score: null });
+});
+
+test('WebAssign: signed out records it and keeps the last sync', async ({ page }) => {
+  await webassignSite(page, { signedOut: true });
+  // A page that isn't a sign-in form, so the reader starts; its fetches hit the sign-in page.
+  await page.route('https://www.webassign.net/web/Student/Home', r => r.fulfill({ contentType: 'text/html', body: '<div id="js-student-myAssignmentsWrapper"></div>' }));
+  await runReader(page, 'https://www.webassign.net/web/Student/Home', ['common.js', 'webassign.js']);
+  await expect.poll(async () => (await stored(page)).status?.['www.webassign.net']?.error ?? null).toBe('Sign in to WebAssign, then sync again.');
+  expect((await stored(page)).snapshots?.['www.webassign.net']).toBeUndefined();
+});

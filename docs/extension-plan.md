@@ -32,6 +32,7 @@ becomes one normaliser per kind behind a shared `mergeSources()`.
 | 2 | **Gradescope** — built (2026-10-25) | Real due dates and submission status for psets graded outside Canvas (most STEM courses) | The biggest gap in "what's due": Canvas often just says "submit on Gradescope". | M |
 | 3 | **Ed Discussion / Piazza** | Staff posts, pinned clarifications, exam logistics | Like announcements: deadlines move here first. Only staff and pinned posts, never classmates' posts. | M |
 | 4 | **Course websites** (cs61a.org style) | Schedules, readings, homework links | Soma already has a course-site import; the extension can run it on the page the student is viewing, including pages behind CalNet. | S |
+| 4b | **WebAssign** — built (2026-10-25) | Current assignments, due times, parts answered | Physics and math homework Canvas never lists | — |
 | 5 | **Other LMSs**: Blackboard Ultra, Brightspace (D2L), Moodle, Google Classroom | The Canvas data, for the schools that don't use Canvas | Opens the market beyond Canvas schools. Each has a JSON API the signed-in page uses. Google Classroom has an official API and should use OAuth instead. | M each |
 | 6 | **Lecture video** (YouTube, Kaltura, Panopto) | Title, length, transcript where the page exposes one | "Watch lecture 12" gets a real length estimate, and transcripts become searchable course material. | M |
 | 7 | **Anything else: "Send to Soma"** | Right-click or press a shortcut on any page or PDF: save it as a task, reading or document for a course | Covers everything without an adapter, and is the habit loop: the student captures, Soma plans. | S |
@@ -52,7 +53,10 @@ becomes one normaliser per kind behind a shared `mergeSources()`.
 
 - Read only, only the student's own view, only on sites they turn on (one
   optional host permission each, asked for at the moment they click).
-- Sync on visit or on request, never constant background crawling.
+- Sync on visit, when Soma opens, on request, and every two hours while
+  Chrome is open, only for sites the student already synced, one request at
+  a time. Background sync can be turned off. Never a crawl of anything the
+  student hasn't opened.
 - Never other students' content: no rosters, no classmates' discussion posts.
 - Grades stay optional, and everything a source synced can be removed in one
   click, in the extension and in Soma.

@@ -61,5 +61,7 @@ button.primary { background: var(--accent); color: var(--on-accent); border-colo
 button.quiet { border-color: transparent; background: transparent; color: var(--muted); }
 button:disabled { opacity: .6; cursor: default; }
 .toggle { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+button.sync-all { margin-top: 10px; width: 100%; }
+.toggle + .small { margin-bottom: 10px; }
 footer { display: flex; justify-content: space-between; margin-bottom: 8px; }
 .privacy { margin: 0; }

@@ -19,10 +19,16 @@
 
   <section class="card">
     <h2>Synced</h2>
-    <ul id="sites"><li class="muted">Nothing yet. Open Canvas or Gradescope and it syncs on its own.</li></ul>
+    <ul id="sites"><li class="muted">Nothing yet. Open Canvas, Gradescope or WebAssign once and it keeps them in sync from then on.</li></ul>
+    <button id="syncAll" class="sync-all" hidden>Sync everything now</button>
   </section>
 
   <section class="card">
+    <label class="toggle">
+      <input type="checkbox" id="background">
+      <span>Keep in sync in the background</span>
+    </label>
+    <p class="muted small">Every two hours while Chrome is open, and whenever you open Soma. Turned off, it syncs only when you visit the site.</p>
     <label class="toggle">
       <input type="checkbox" id="grades">
       <span>Include grades and scores</span>
@@ -35,7 +41,7 @@
     <button id="forget" class="quiet">Remove synced data</button>
   </footer>
 
-  <p class="muted small privacy">Canvas and Gradescope are read in this browser with your own sign-in. No password, cookie or token leaves it; Soma only gets the course details listed above.</p>
+  <p class="muted small privacy">Canvas, Gradescope and WebAssign are read in this browser with your own sign-in. No password, cookie or token leaves it; Soma only gets the course details listed above.</p>
 
   <script src="popup.js"></script>
 </body>
