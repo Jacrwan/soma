@@ -11,6 +11,32 @@ still needed.
 
 ## 2026-10-25
 
+### Soma for Canvas reminds you before work is due
+- **Why:** the point of syncing Gradescope and WebAssign was not forgetting
+  them, and that needs a nudge, not just a list in Soma.
+- **What:** `extension/due.js` works out what's due in the next 48 hours and
+  not handed in across Canvas, Gradescope and WebAssign. A Canvas entry and
+  its platform twin (same name, due within a day) count once, and done on
+  either clears both; Canvas work handed in on paper or with no submission
+  (`submissionTypes`, now recorded by `canvas.js`) is skipped. The toolbar
+  badge shows the count. `background.js` sends a notification a day before
+  and again three hours before each item, once per stage, checking every 15
+  minutes and after every sync; clicking opens the assignment. The popup
+  lists Due soon and has switches for reminders and the badge (both on by
+  default). Placeholder icons added (`extension/icons/`), since
+  notifications need one. The bridge also matches the PR's Vercel preview
+  address, for testing.
+- **Where:** `extension/due.js`, `background.js`, `canvas.js`,
+  `popup.*`, `manifest.json` (`notifications`, icons, preview match),
+  `icons/`, `README.md`.
+- **Guard:** `tests/extension-reminders.spec.ts` (what counts as due soon,
+  twins once, paper work skipped, badge count, one notice per stage, the
+  three-hour notice after the day-before one, click opens the work, both
+  switches). Checked against the owner's real synced data: one item in the
+  next 48 hours (CS 170 Coding Problem 3, Gradescope).
+- **Setup still needed:** reload the extension; Chrome asks to allow
+  notifications. Remove the preview match before publishing.
+
 ### Soma for Canvas reads WebAssign
 - **Why:** at Emory, PHYS 151's Canvas lists one exam; every homework lives
   in WebAssign, so Soma couldn't see it.

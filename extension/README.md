@@ -41,6 +41,13 @@ Canvas tab ── canvas.js ──▶ chrome.storage.local ──▶ bridge.js �
   parts (`td.points.questionGrade[id^="dashboard_box"]`, `td.submissions`).
   All parts answered is done, some is in progress. Past assignments are only
   ids there and aren't read. Checked against a real Emory PHYS 151 class.
+- **due.js** decides what's due in the next 48 hours and not handed in, from
+  all three sites, counting a Canvas entry and its Gradescope or WebAssign
+  twin once (done on either clears both) and skipping Canvas work handed in
+  on paper. The toolbar badge shows the count; `background.js` sends a
+  notification a day before and three hours before each, and the popup lists
+  them. Reminders and the badge each have a switch. Notifications are made
+  in the browser; nothing about them leaves it.
 - **common.js** is shared by the readers: when to sync and how a read is stored.
 - **bridge.js** runs on Soma's pages and hands the snapshot to the app with
   `window.postMessage`. The app (`src/lib/canvasExtension.ts`) validates it
@@ -68,8 +75,9 @@ student hasn't synced themselves at least once.
 
 ## Before publishing to the Chrome Web Store
 
-- Add icons (16, 48, 128) and a `"icons"` entry in `manifest.json`.
-- Remove the `localhost` matches from the bridge content script.
+- Icons are placeholders (`icons/`, generated); replace with final artwork.
+- Remove the `localhost` and `soma-git-feat-canvas-extension-…vercel.app`
+  (PR preview) matches from the bridge content script.
 - Fill in the store's privacy section from the Soma privacy policy's
   "Soma for Canvas extension" paragraph; the single purpose is "sync the
   student's own Canvas, Gradescope and WebAssign coursework into Soma".

@@ -18,12 +18,27 @@
   </section>
 
   <section class="card">
+    <h2>Due soon</h2>
+    <ul id="due"><li class="muted">Nothing due in the next two days that isn’t handed in.</li></ul>
+  </section>
+
+  <section class="card">
     <h2>Synced</h2>
     <ul id="sites"><li class="muted">Nothing yet. Open Canvas, Gradescope or WebAssign once and it keeps them in sync from then on.</li></ul>
     <button id="syncAll" class="sync-all" hidden>Sync everything now</button>
   </section>
 
   <section class="card">
+    <label class="toggle">
+      <input type="checkbox" id="reminders">
+      <span>Remind me before things are due</span>
+    </label>
+    <p class="muted small">A notification a day before and again three hours before anything not handed in.</p>
+    <label class="toggle">
+      <input type="checkbox" id="badge">
+      <span>Show the count on the toolbar icon</span>
+    </label>
+    <p class="muted small">How many things are due in the next two days and not handed in.</p>
     <label class="toggle">
       <input type="checkbox" id="background">
       <span>Keep in sync in the background</span>
@@ -43,6 +58,7 @@
 
   <p class="muted small privacy">Canvas, Gradescope and WebAssign are read in this browser with your own sign-in. No password, cookie or token leaves it; Soma only gets the course details listed above.</p>
 
+  <script src="due.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

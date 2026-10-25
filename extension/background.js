@@ -1,4 +1,4 @@
-importScripts('common.js');
+importScripts('common.js', 'due.js');
 
 // The extension's background worker. Two jobs:
 //
@@ -10,7 +10,12 @@ importScripts('common.js');
 //    Students can turn this off in the popup; a site they're signed out of
 //    records "Sign in…" and keeps its last sync.
 //
-// 2. Turning the extension on for a school whose Canvas has its own domain
+// 2. Due-soon reminders. The toolbar badge counts work due in the next 48
+//    hours that isn't handed in (due.js decides, the popup lists it), and a
+//    notification fires once a day before and again three hours before each
+//    one. Both can be turned off in the popup.
+//
+// 3. Turning the extension on for a school whose Canvas has its own domain
 // (canvas.emory.edu and the like). The popup asks Chrome for that one site,
 // but Chrome's permission prompt closes the popup, so anything the popup
 // meant to do after "Allow" never ran. This does it instead, whenever access
@@ -113,9 +118,60 @@ chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
   return false;
 });
 
-function schedule() {
-  chrome.alarms.create(ALARM, { periodInMinutes: EVERY_MINUTES, delayInMinutes: 1 });
+// ── Due-soon reminders ──────────────────────────────────────────────────────
+
+const REMIND = 'soma-remind';
+const { dueSoon, when, HOUR } = self.somaDue;
+
+/** Update the badge, and notify about anything that just came within a day or three hours. */
+async function remind() {
+  const { snapshots = {}, settings = {}, reminded = {} } = await chrome.storage.local.get(['snapshots', 'settings', 'reminded']);
+  const now = Date.now();
+  const soon = dueSoon(snapshots, now, 48);
+  await chrome.action.setBadgeBackgroundColor({ color: '#3b47c4' });
+  await chrome.action.setBadgeText({ text: settings.badge !== false && soon.length ? String(soon.length) : '' });
+
+  // Only what's still due soon is remembered, so the list can't grow forever.
+  const next = {};
+  for (const w of soon) {
+    const left = Date.parse(w.dueAt) - now;
+    const stage = left <= 3 * HOUR ? 'hours' : left <= 24 * HOUR ? 'day' : null;
+    const before = reminded[w.key];
+    next[w.key] = { stage: before ? before.stage : null, url: w.url };
+    if (!stage || settings.reminders === false) continue;
+    if (before && (before.stage === stage || before.stage === 'hours')) continue;
+    next[w.key].stage = stage;
+    chrome.notifications.create(`soma:${w.key}`, {
+      type: 'basic',
+      iconUrl: 'icons/icon-128.png',
+      title: `${w.name} is due ${when(w.dueAt)}`,
+      message: `${w.course ? `${w.course} · ` : ''}${w.note || 'Not handed in yet'}`,
+      priority: stage === 'hours' ? 2 : 0,
+    });
+  }
+  await chrome.storage.local.set({ reminded: next });
 }
 
-chrome.runtime.onInstalled.addListener(() => { void catchUp(); schedule(); });
-chrome.runtime.onStartup.addListener(() => { void catchUp(); schedule(); });
+chrome.notifications.onClicked.addListener(async id => {
+  if (!id.startsWith('soma:')) return;
+  const { reminded = {} } = await chrome.storage.local.get('reminded');
+  const url = reminded[id.slice(5)] && reminded[id.slice(5)].url;
+  if (url && /^https:\/\//.test(url)) await chrome.tabs.create({ url });
+  chrome.notifications.clear(id);
+});
+
+// A finished sync, or a changed setting, can change what's due.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && (changes.snapshots || changes.settings)) void remind();
+});
+
+chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === REMIND) void remind(); });
+
+function schedule() {
+  chrome.alarms.create(ALARM, { periodInMinutes: EVERY_MINUTES, delayInMinutes: 1 });
+  // Time passing is enough to cross "a day before" or "three hours before".
+  chrome.alarms.create(REMIND, { periodInMinutes: 15, delayInMinutes: 0.5 });
+}
+
+chrome.runtime.onInstalled.addListener(() => { void catchUp(); schedule(); void remind(); });
+chrome.runtime.onStartup.addListener(() => { void catchUp(); schedule(); void remind(); });

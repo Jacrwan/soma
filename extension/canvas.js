@@ -90,6 +90,8 @@
               groupId: a.assignment_group_id || null,
               submittedAt: s.submitted_at || null,
               workflowState: s.workflow_state || 'unsubmitted',
+              // How it's handed in: "on_paper" or "none" never shows as submitted, so reminders skip those.
+              submissionTypes: Array.isArray(a.submission_types) ? a.submission_types.slice(0, 6).map(String) : [],
               score: grades && typeof s.score === 'number' ? s.score : null,
               grade: grades && s.grade != null ? String(s.grade) : null,
               missing: s.missing === true,

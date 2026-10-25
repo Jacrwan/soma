@@ -15,6 +15,31 @@ const ago = iso => {
   return hours < 24 ? `${hours} h ago` : `${Math.round(hours / 24)} d ago`;
 };
 
+async function renderDue() {
+  const { snapshots = {} } = await chrome.storage.local.get('snapshots');
+  const soon = self.somaDue.dueSoon(snapshots, Date.now(), 48);
+  if (!soon.length) return;
+  $('due').replaceChildren(...soon.map(w => {
+    const li = document.createElement('li');
+    li.tabIndex = 0;
+    li.setAttribute('role', 'link');
+    const name = document.createElement('div');
+    name.className = 'site';
+    name.textContent = w.name;
+    const detail = document.createElement('div');
+    detail.className = 'small muted';
+    const at = document.createElement('span');
+    at.className = 'due-when';
+    at.textContent = self.somaDue.when(w.dueAt);
+    detail.append(at, ` · ${[w.course, w.note].filter(Boolean).join(' · ')}`);
+    li.append(name, detail);
+    const open = () => { if (/^https:\/\//.test(w.url || '')) chrome.tabs.create({ url: w.url }); };
+    li.onclick = open;
+    li.onkeydown = e => { if (e.key === 'Enter') open(); };
+    return li;
+  }));
+}
+
 async function renderSites() {
   const { status = {} } = await chrome.storage.local.get('status');
   const hosts = Object.keys(status).filter(h => status[h].syncedAt || status[h].error);
@@ -107,6 +132,13 @@ async function init() {
   const { settings = {} } = await chrome.storage.local.get('settings');
   $('grades').checked = settings.grades !== false;
   $('background').checked = settings.background !== false;
+  for (const id of ['reminders', 'badge']) {
+    $(id).checked = settings[id] !== false;
+    $(id).onchange = async e => {
+      const { settings: current = {} } = await chrome.storage.local.get('settings');
+      await chrome.storage.local.set({ settings: { ...current, [id]: e.target.checked } });
+    };
+  }
   $('background').onchange = async e => {
     const { settings: current = {} } = await chrome.storage.local.get('settings');
     await chrome.storage.local.set({ settings: { ...current, background: e.target.checked } });
@@ -132,7 +164,7 @@ async function init() {
       textContent: 'Removed from this browser. To remove it from your Soma account too, use Settings → Canvas in Soma.',
     }));
   };
-  await Promise.all([renderSites(), renderHere()]);
+  await Promise.all([renderDue(), renderSites(), renderHere()]);
 }
 
 void init();
