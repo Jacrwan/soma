@@ -52,5 +52,8 @@
   "action": {
     "default_popup": "popup.html",
     "default_title": "Soma for Canvas"
+  },
+  "background": {
+    "service_worker": "background.js"
   }
 }

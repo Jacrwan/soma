@@ -56,18 +56,14 @@ async function syncNow(tabId) {
 }
 
 async function enableSite(tab, origin) {
+  // Chrome's prompt usually closes this popup; background.js then turns the
+  // site on and starts the sync. If the popup is still open, say so here.
   const granted = await chrome.permissions.request({ origins: [`${origin}/*`] });
   if (!granted) return;
-  const host = new URL(origin).host;
-  try {
-    await chrome.scripting.registerContentScripts([{
-      id: `canvas-${host}`, matches: [`${origin}/*`], js: ['common.js', 'canvas.js'], runAt: 'document_idle', persistAcrossSessions: true,
-    }]);
-  } catch { /* already registered */ }
-  await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['common.js', 'canvas.js'] });
   $('enableSite').hidden = true;
-  $('syncNow').hidden = false;
-  await syncNow(tab.id);
+  $('hereText').textContent = 'Turned on. Syncing now; open this popup again in a moment to see it.';
+  await new Promise(r => setTimeout(r, 1500));
+  await renderSites();
 }
 
 async function renderHere() {

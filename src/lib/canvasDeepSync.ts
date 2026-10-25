@@ -261,6 +261,7 @@ export function mergeDeepSync(feed: CanvasAssignment[], snapshots = getLocalSnap
 // ── Gradescope ──────────────────────────────────────────────────────────────
 
 // Departments spelled differently on the two sites.
+const NOT_DEPT = new Set(['fall', 'spring', 'summer', 'winter', 'fa', 'sp', 'su', 'wi', 'term', 'semester', 'quarter', 'section', 'sec', 'lec', 'lecture', 'lab', 'dis', 'disc', 'discussion', 'sem', 'seminar', 'group', 'week', 'unit', 'chapter', 'part']);
 const DEPT_ALIASES: Record<string, string> = { compsci: 'cs', computerscience: 'cs', comsci: 'cs', phys: 'physics', mathematics: 'math', eleng: 'ee', chem: 'chemistry' };
 
 /**
@@ -270,8 +271,11 @@ const DEPT_ALIASES: Record<string, string> = { compsci: 'cs', computerscience: '
  */
 function courseParts(name: string): { dept: string; num: string }[] {
   const out: { dept: string; num: string }[] = [];
-  for (const m of name.toLowerCase().matchAll(/(?:([a-z]+)\s+)?([a-z]+)\s*(\d+[a-z]*)\b/g)) {
-    for (const raw of [m[2], m[1] ? m[1] + m[2] : '']) {
+  // Dashes and underscores separate parts too: "CS-170-1", "FA26_CS_170_1".
+  for (const m of name.toLowerCase().replace(/[^a-z0-9]+/g, ' ').matchAll(/(?:([a-z]+)\s+)?([a-z]+)\s*(\d+[a-z]*)\b/g)) {
+    // "Fall 2026", "LEC 001", "FA26" name the term or section, not the course.
+    if (NOT_DEPT.has(m[2]) || /^(19|20)\d\d$/.test(m[3])) continue;
+    for (const raw of [m[2], m[1] && !NOT_DEPT.has(m[1]) ? m[1] + m[2] : '']) {
       if (raw) out.push({ dept: DEPT_ALIASES[raw] ?? raw, num: m[3] });
     }
   }

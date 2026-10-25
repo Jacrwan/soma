@@ -11,6 +11,26 @@ still needed.
 
 ## 2026-10-25
 
+### Soma for Canvas: turning on a school's own Canvas domain works; Emory course names match
+- **Why:** first real use, at Emory (`canvas.emory.edu`). Chrome granted the
+  site, but nothing synced: Chrome's permission prompt closes the popup, and
+  the popup was the one meant to register the script and start the sync
+  afterwards. Separately, Emory names courses `CS-170-1: … - Fall 2026` in
+  Canvas and `FA26_CS_170_1` on Gradescope; dashes and underscores never
+  matched, and a shared "Fall 2026" could have joined unrelated courses.
+- **What:** `extension/background.js` (new service worker) registers the
+  Canvas reader for any site the student grants and starts it in open tabs,
+  on grant and again on every start or reload, so an earlier grant catches
+  up; a removed grant unregisters it. The popup only asks and says it's
+  syncing. `sameCourse` treats any punctuation as a separator and ignores
+  term, section and year parts (`Fall 2026`, `LEC 001`, `FA26`).
+- **Where:** `extension/background.js`, `extension/manifest.json`,
+  `extension/popup.js`, `src/lib/canvasDeepSync.ts`.
+- **Guard:** `tests/course-matching.spec.ts` (Emory names match their
+  course and not each other; terms and sections never match). The service
+  worker has no automated test; checked by reloading the extension.
+- **Setup still needed:** reload the extension in `chrome://extensions`.
+
 ### Soma for Canvas reads Gradescope too
 - **Why:** much STEM work is handed in on Gradescope. Canvas either shows
   nothing for it or shows a linked entry that never learns it was submitted,
