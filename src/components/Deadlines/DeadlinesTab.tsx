@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { formatDateTime, useTimeFormat } from '../../lib/timeFormat';
 import { CanvasAssignment, Todo, isSubmittable } from '../../types';
@@ -40,7 +41,14 @@ type Deadline = {
   /** Handed in on Gradescope or WebAssign, the easy ones to forget. */
   platform?: 'gradescope' | 'webassign';
   progress?: string;
+  /** An exam or test: it gets "Plan review" (exam mode). */
+  exam?: boolean;
+  /** When it is, for the review request: the due time, or the day. */
+  whenLabel?: string;
 };
+
+/** Names that mean an exam rather than homework: "Midterm 1", "Final Exam", "Test 2". */
+const EXAM_NAME = /\b(exam|midterm|final|test)\b/i;
 
 const TODO_TO_STATUS: Record<Todo['status'], Status> = {
   nothing: 'not_started', in_progress: 'in_progress', done: 'done',
@@ -136,6 +144,7 @@ function fmtSynced(ts: number): string {
 
 export default function DeadlinesTab() {
   useTimeFormat(); // re-render when the 12h/24h preference changes
+  const navigate = useNavigate();
   const [icalUrl, setIcalUrl] = useState(() => storage.getCanvasIcalUrl());
   const [setupIcalUrl, setSetupIcalUrl] = useState('');
   const [connectLoading, setConnectLoading] = useState(false);
@@ -430,6 +439,8 @@ export default function DeadlinesTab() {
       url: a.htmlUrl,
       ...(a.platform ? { platform: a.platform } : {}),
       ...(a.progress ? { progress: a.progress } : {}),
+      ...(EXAM_NAME.test(a.name) ? { exam: true } : {}),
+      whenLabel: new Date(a.dueAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
     }));
 
   // A task imported from a course site already exists as a Canvas assignment
@@ -465,6 +476,8 @@ export default function DeadlinesTab() {
         dueLabel: 'All day',
         status: TODO_TO_STATUS[t.status],
         url: null,
+        ...(t.kind === 'exam' || EXAM_NAME.test(t.text) ? { exam: true } : {}),
+        whenLabel: new Date(`${t.dueDate!.slice(0, 10)}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
       };
     })
     .filter(item => item.courseName === NO_COURSE || !archivedCourseNames.has(item.courseName));
@@ -501,6 +514,12 @@ export default function DeadlinesTab() {
   }
   const orderedDateKeys = [...dateGroups.keys()].sort();
 
+  /** Exam mode: ask Soma for review sessions across the days before this exam. */
+  function planReview(item: Deadline) {
+    const course = item.courseName === NO_COURSE ? '' : ` in ${item.courseName}`;
+    navigate('/ai', { state: { ask: `Plan my review for "${item.title}"${course}, on ${item.whenLabel}.` } });
+  }
+
   function renderRow(item: Deadline) {
     const done = isDone(item);
     const open = () => { if (item.url) window.open(item.url, '_blank', 'noopener,noreferrer'); };
@@ -518,6 +537,9 @@ export default function DeadlinesTab() {
         </div>
         <span className={styles.dueTime}>{item.dueLabel}</span>
         <div className={styles.assignmentControls} onClick={e => e.stopPropagation()}>
+          {item.exam && !done && item.dueKey >= dayKey(new Date()) && (
+            <button type="button" className={styles.reviewBtn} onClick={() => planReview(item)} aria-label={`Plan review for ${item.title}`}>Plan review</button>
+          )}
           <select
             className={`${styles.statusSelect}${item.status === 'done' ? ` ${styles.statusSelectDone}` : ''}`}
             value={item.status}

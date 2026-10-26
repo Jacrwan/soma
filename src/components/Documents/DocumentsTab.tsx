@@ -8,6 +8,8 @@ import {
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './DocumentsTab.module.css';
 import ReadingLists from './ReadingLists';
+import CourseSiteImport from '../Settings/CourseSiteImport';
+import { nextUnusedColor } from '../../lib/subjectColors';
 
 type LoadState = 'loading' | 'ready' | 'not_set_up' | 'error';
 
@@ -32,6 +34,8 @@ export default function DocumentsTab() {
   const [docs, setDocs] = useState<SomaDocument[]>([]);
   const [state, setState] = useState<LoadState>('loading');
   const [actionError, setActionError] = useState('');
+  // A syllabus or guide being read for its dates (CourseSiteImport, in place).
+  const [reading, setReading] = useState<SomaDocument | null>(null);
 
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<DocumentType | 'all'>('all');
@@ -290,6 +294,9 @@ export default function DocumentsTab() {
         {subjectBadge(doc)}
         {typeBadge(doc)}
         <span className={styles.fileMeta}>{formatSize(doc.sizeBytes)} · {formatDate(doc.createdAt)}</span>
+        {(doc.docType === 'syllabus' || doc.docType === 'guide') && doc.extractionStatus === 'done' && doc.extractedText && (
+          <button type="button" className={styles.fileAction} onClick={() => setReading(doc)} title="Find exams and deadlines in this document">Find dates</button>
+        )}
         <button type="button" className={styles.fileDelete} onClick={() => handleDelete(doc)} title="Delete">×</button>
       </div>
     );
@@ -303,6 +310,24 @@ export default function DocumentsTab() {
       </div>
 
       <ReadingLists subjects={subjects} docs={docs} />
+
+      {reading && (
+        <CourseSiteImport
+          key={reading.id}
+          source={{ text: reading.extractedText ?? '', fileName: reading.fileName, courseId: reading.subjectId ?? undefined }}
+          onClose={() => setReading(null)}
+          courses={subjects}
+          createCourse={name => {
+            const current = storage.getSubjects();
+            const existing = current.find(s => !s.archived && s.name.toLowerCase() === name.toLowerCase());
+            if (existing) return existing;
+            const subject: Subject = { id: crypto.randomUUID(), name, color: nextUnusedColor(current), totalTimeToday: 0, archived: false, source: 'manual' };
+            storage.setSubjects([...current, subject]);
+            setSubjects(s => [...s, subject]);
+            return subject;
+          }}
+        />
+      )}
 
       <div className={styles.toolbar}>
         <input

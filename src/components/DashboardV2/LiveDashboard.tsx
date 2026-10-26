@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import PracticeCard from './PracticeCard';
 import { useLocation, useNavigate } from 'react-router-dom';
 import DashboardV2 from './DashboardV2';
 import { dateAt, deletePlanBlock, localDate, readPlan, savePlanBlock, setTaskStatus, utcIso, type Snapshot } from './liveData';
@@ -217,12 +218,12 @@ export default function LiveDashboard({userId}:{userId:string}) {
   }catch(e){setError(e instanceof Error ? e.message : 'Could not save your progress.');throw e;}
   finally{writing.current=false;setBusy(false);}
  }
- async function propose(text:string,day:number){
+ async function propose(text:string,day:number,onReply?:(soFar:string)=>void){
   if(writing.current)throw new Error('Please wait for your plan to finish saving.');
   // Asked just after midnight, before the page has rolled over: Soma still
   // answers for today, and the day on screen keeps its date.
   const now=dateAt(new Date(),0),shift=Math.round((+now-+origin)/86_400_000);
-  const result=await askSoma({userId,origin:now,text,history:conversation.current,selectedDay:Math.max(0,day-shift),activeBlockId:active?.id,conversationId:memory.id});
+  const result=await askSoma({userId,origin:now,text,history:conversation.current,selectedDay:Math.max(0,day-shift),activeBlockId:active?.id,conversationId:memory.id,onReply});
   conversation.current=result.history;
   memory.history=result.history;
   const [asked,answered]=result.history.slice(-2);
@@ -290,5 +291,5 @@ export default function LiveDashboard({userId}:{userId:string}) {
  }finally{writing.current=false;}
 },logsFor:(b)=>{const live=snapshot.blocks.find(x=>x.id===b.id);if(!live)return [];return snapshot.history.filter(h=>h.subject_id===live.subjectId && h.task_text===live.title && (h.duration_seconds||0)>0).map(h=>({id:h.id,date:h.date,minutes:Math.round((h.duration_seconds||0)/60),start:h.start_time?utcIso(h.start_time):undefined,end:h.end_time?utcIso(h.end_time):undefined}))
  // Newest first by when each session started; the date alone left same-day sessions in any order.
- .sort((a,c)=>new Date(c.start??`${c.date}T12:00:00`).getTime()-new Date(a.start??`${a.date}T12:00:00`).getTime());},focus:<section className={styles.focus} aria-label="Focus timer"><h2>Focus</h2><p className={styles.description}>{timer.activeSession?.subject.name??'One thing at a time.'}</p><h3>{timer.activeSession?.task??'Ready when you are'}</h3><div className={styles.timer}>{String(Math.floor(timer.elapsed/60)).padStart(2,'0')}<span>:</span>{String(timer.elapsed%60).padStart(2,'0')}</div>{timer.activeSession ? <div className={styles.focusActions}><button disabled={timer.saving || timer.savePending} onClick={()=>timer.isPaused ? timer.resumeSession() : timer.pauseSession()}>{timer.isPaused ? 'Resume' : 'Pause'}</button><button disabled={timer.saving} onClick={()=>void timer.stopSession()}>{timer.saving ? 'Saving…' : 'Stop & save'}</button></div> : <p className={styles.description}>Choose Focus on a study block to begin.</p>}{timer.error && <p role="alert">{timer.error}</p>}<small>Actual work is tracked separately from your plan. Complete the task when it is finished.</small></section>}}/></>;
+ .sort((a,c)=>new Date(c.start??`${c.date}T12:00:00`).getTime()-new Date(a.start??`${a.date}T12:00:00`).getTime());},focus:<section className={styles.focus} aria-label="Focus timer"><h2>Focus</h2><p className={styles.description}>{timer.activeSession?.subject.name??'One thing at a time.'}</p><h3>{timer.activeSession?.task??'Ready when you are'}</h3><div className={styles.timer}>{String(Math.floor(timer.elapsed/60)).padStart(2,'0')}<span>:</span>{String(timer.elapsed%60).padStart(2,'0')}</div>{timer.activeSession ? <div className={styles.focusActions}><button disabled={timer.saving || timer.savePending} onClick={()=>timer.isPaused ? timer.resumeSession() : timer.pauseSession()}>{timer.isPaused ? 'Resume' : 'Pause'}</button><button disabled={timer.saving} onClick={()=>void timer.stopSession()}>{timer.saving ? 'Saving…' : 'Stop & save'}</button></div> : <p className={styles.description}>Choose Focus on a study block to begin.</p>}{timer.error && <p role="alert">{timer.error}</p>}{timer.activeSession && <PracticeCard key={`${timer.activeSession.subject.id}|${timer.activeSession.task}`} subjectId={timer.activeSession.subject.id} subject={timer.activeSession.subject.name} task={timer.activeSession.task} sections={active?.todoId ? coveredBy(snapshot.items,active.todoId).map(i=>`${i.label}${i.title ? ` ${i.title}` : ''}`) : undefined}/>}<small>Actual work is tracked separately from your plan. Complete the task when it is finished.</small></section>}}/></>;
 }

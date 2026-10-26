@@ -35,7 +35,7 @@ export async function verifyUserAndSubscription(token:string):Promise<Authorizat
  return authorizeChat(createClient(url,key,{auth:{autoRefreshToken:false,persistSession:false}}),token,process.env.DEVELOPER_EMAIL);
 }
 
-async function defaultBudget(userId:string):Promise<BudgetStatus|null>{
+export async function defaultBudget(userId:string):Promise<BudgetStatus|null>{
  const url=process.env.VITE_SUPABASE_URL,key=process.env.SUPABASE_SERVICE_ROLE_KEY;
  if(!url || !key)return null;
  return budgetStatus(createClient(url,key,{auth:{autoRefreshToken:false,persistSession:false}}) as never,userId);
@@ -43,12 +43,17 @@ async function defaultBudget(userId:string):Promise<BudgetStatus|null>{
 
 export function validateChatInput(body:unknown):string|null{
  if(!body || typeof body!=='object')return 'invalid_request';
- const {messages,systemPrompt,context,model,effort,purpose,conversationId}=body as Record<string,unknown>;
+ const {messages,systemPrompt,context,model,effort,purpose,conversationId,stream}=body as Record<string,unknown>;
  if(systemPrompt!==undefined && typeof systemPrompt!=='string')return 'invalid_system_prompt';
+ // Streaming is for Soma's replies, which the student watches arrive.
+ if(stream!==undefined && (stream!==true || model!=='sonnet' || purpose!==undefined))return 'invalid_stream';
  if(context!==undefined && typeof context!=='string')return 'invalid_context';
  if(model!==undefined && model!=='sonnet')return 'invalid_model';
  if(effort!==undefined && effort!=='low' && effort!=='medium')return 'invalid_effort';
- if(purpose!==undefined && purpose!=='triage')return 'invalid_purpose';
+ // 'triage' sorts a message; 'study' writes practice questions. Both are
+ // Haiku, with no memory and nothing learned: small, cheap, one-off.
+ if(purpose!==undefined && purpose!=='triage' && purpose!=='study')return 'invalid_purpose';
+ if(purpose!==undefined && model!==undefined)return 'invalid_model';
  if(conversationId!==undefined && !isConversationId(conversationId))return 'invalid_conversation';
  if(!Array.isArray(messages) || !messages.length || messages.length>50)return 'invalid_messages';
  let chars=(typeof systemPrompt==='string' ? systemPrompt.length : 0)+(typeof context==='string' ? context.length : 0);
@@ -84,6 +89,49 @@ function rateLimited(userId:string){
  hits.set(userId,[...times,now]);return false;
 }
 
+/**
+ * A streamed reply, passed on as it arrives: Anthropic's events in, a simpler
+ * stream out, one line per event:
+ *   data: {"t":"…"}                      more of the reply's text
+ *   data: {"done":true,"stop_reason":…}  finished
+ *   data: {"error":"…"}                  failed part-way (same codes as JSON errors)
+ * Usage is counted from the stream's own totals, like any other reply, even
+ * when it fails part-way.
+ */
+export async function relayStream(body:ReadableStream<Uint8Array>,res:any,hooks:{record:(model:string,usage:Usage)=>void;done:(text:string)=>void}){
+ res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Cache-Control':'no-cache, no-transform','X-Accel-Buffering':'no'});
+ res.flushHeaders?.();
+ const send=(o:unknown)=>res.write(`data: ${JSON.stringify(o)}\n\n`);
+ const reader=body.getReader(),decoder=new TextDecoder();
+ let buffer='',text='',model='claude-sonnet-5-5',stop:string|undefined,usage:Usage={},failed='';
+ try {
+  for(;;){
+   const {value,done}=await reader.read();
+   if(done)break;
+   buffer+=decoder.decode(value,{stream:true});
+   let cut;
+   while((cut=buffer.indexOf('\n\n'))>=0){
+    const event=buffer.slice(0,cut);buffer=buffer.slice(cut+2);
+    const line=event.split('\n').find(l=>l.startsWith('data:'));
+    if(!line)continue;
+    let e:any;try{e=JSON.parse(line.slice(5).trim());}catch{continue;}
+    if(e.type==='message_start'){model=e.message?.model??model;usage={...usage,...(e.message?.usage??{})};}
+    else if(e.type==='content_block_delta' && e.delta?.type==='text_delta' && typeof e.delta.text==='string'){text+=e.delta.text;send({t:e.delta.text});}
+    else if(e.type==='message_delta'){stop=e.delta?.stop_reason??stop;if(e.usage)usage={...usage,...e.usage};}
+    else if(e.type==='error'){failed=e.error?.type==='overloaded_error' ? 'overloaded' : 'upstream_unavailable';}
+   }
+  }
+ }catch(error){
+  failed=error instanceof Error && ['TimeoutError','AbortError'].includes(error.name) ? 'request_timeout' : 'upstream_unavailable';
+ }
+ if(usage.input_tokens!==undefined || usage.output_tokens!==undefined)hooks.record(model,usage);
+ if(!failed && stop==='max_tokens')failed='response_incomplete';
+ if(!failed && !text.trim())failed='invalid_ai_response';
+ if(failed)send({error:failed});
+ else{send({done:true,stop_reason:stop});hooks.done(text);}
+ res.end();
+}
+
 export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Authorization>;request?:typeof fetch;apiKey?:()=>string|undefined;limited?:(id:string)=>boolean;memory?:(userId:string,query:string)=>Promise<string>;learn?:(userId:string,message:string,assistantContext:string,apiKey:string)=>Promise<void>;defer?:(task:Promise<unknown>)=>void;record?:(userId:string,kind:'reply'|'triage',model:string,usage:Usage)=>Promise<void>;budget?:(userId:string)=>Promise<BudgetStatus|null>;notes?:(userId:string,query:string,conversationId?:string)=>Promise<string>;noteChat?:(userId:string,conversationId:string,message:string,reply:string,apiKey:string)=>Promise<void>}={}){
  return async function handler(req:any,res:any){
   const origin=req.headers.origin;
@@ -108,15 +156,17 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
    }
    const key=(deps.apiKey??(()=>process.env.ANTHROPIC_API_KEY))();
    if(!key)return res.status(503).json({error:'server_not_configured'});
-   const {messages,systemPrompt,context,model,effort,purpose,conversationId}=req.body;
+   const {messages,systemPrompt,context,model,effort,purpose,conversationId,stream}=req.body;
    // The first pass that sorts a message (and answers small talk) needs no
    // memory, and learning from the message is left to the reply proper.
    const triage=purpose==='triage';
+   // A cheap one-off: no memory, no notes, nothing learned (triage, study).
+   const cheap=triage || purpose==='study';
    const lastContent=messages[messages.length-1].content;
    const query=typeof lastContent==='string' ? lastContent : lastContent.filter((b:any)=>b.type==='text').map((b:any)=>b.text).join(' ');
-   const savedMemory=triage ? '' : await (deps.memory??loadMemoryContext)(auth.userId,query);
+   const savedMemory=cheap ? '' : await (deps.memory??loadMemoryContext)(auth.userId,query);
    // Notes from earlier chats, only when they match what is being asked.
-   const notes=triage ? '' : await (deps.notes??loadConversationNotes)(auth.userId,query,conversationId);
+   const notes=cheap ? '' : await (deps.notes??loadConversationNotes)(auth.userId,query,conversationId);
    // Prompt caching is a prefix match. systemPrompt (instructions, documents)
    // stays the same between messages, and so do the earlier turns of the chat;
    // the live plan (context) and memory (ranked per request) change every call.
@@ -138,10 +188,23 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
    const sonnet=model==='sonnet';
    const response=await (deps.request??fetch)('https://api.anthropic.com/v1/messages',{
     method:'POST',signal:AbortSignal.timeout(140_000),headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json',...(sonnet ? {'anthropic-beta':'server-side-fallback-2026-07-01'} : {})},
-    body:JSON.stringify({model:sonnet ? 'claude-sonnet-5-5' : 'claude-haiku-4-5-20251001',max_tokens:sonnet ? 16000 : 8192,...(sonnet ? {output_config:{effort:effort==='low' ? 'low' : 'medium'},fallbacks:'default'} : {}),...(system.length ? {system} : {}),messages:sent}),
+    body:JSON.stringify({model:sonnet ? 'claude-sonnet-5-5' : 'claude-haiku-4-5-20251001',max_tokens:sonnet ? 16000 : purpose==='study' ? 2000 : 8192,...(sonnet ? {output_config:{effort:effort==='low' ? 'low' : 'medium'},fallbacks:'default'} : {}),...(system.length ? {system} : {}),messages:sent,...(stream===true ? {stream:true} : {})}),
    });
    if(response.status===429)return res.status(429).json({error:'rate_limit'});
    if(response.status===529)return res.status(529).json({error:'overloaded'});
+   const afterReply=(text:string)=>{
+    // Learn from what the student said, after the reply is on its way. A failure
+    // here must never affect the conversation, so it is detached and swallowed.
+    const previous=messages.length>1 ? messages[messages.length-2] : null;
+    const assistantContext=previous?.role==='assistant' ? (typeof previous.content==='string' ? previous.content : previous.content.filter((b:any)=>b.type==='text').map((b:any)=>b.text).join(' ')) : '';
+    if(!cheap)(deps.defer??waitUntil)((deps.learn??learnFromMessage)(auth.userId,query,assistantContext,key).catch(()=>{}));
+    // This conversation's note, updated with what was just said.
+    if(!cheap && isConversationId(conversationId))(deps.defer??waitUntil)((deps.noteChat??noteFromChat)(auth.userId,conversationId,query,text,key).catch(()=>{}));
+   };
+   if(stream===true && response.ok && response.body)return relayStream(response.body,res,{
+    record:(model:string,usage:Usage)=>(deps.defer??waitUntil)((deps.record??recordUsage)(auth.userId,'reply',model,usage).catch(()=>{})),
+    done:afterReply,
+   });
    const data=await response.json().catch(()=>null) as {error?:{message?:string};content?:{type:string;text?:string}[];stop_reason?:string;model?:string;usage?:Usage}|null;
    if(!response.ok){
     if(response.status===400 && /too long|token|context/i.test(data?.error?.message??''))return res.status(400).json({error:'context_too_long'});
@@ -153,13 +216,7 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
    if(data?.stop_reason==='max_tokens')return res.status(502).json({error:'response_incomplete'});
    const text=data?.content?.filter(b=>b.type==='text' && typeof b.text==='string').map(b=>b.text).join('\n');
    if(!text?.trim())return res.status(502).json({error:'invalid_ai_response'});
-   // Learn from what the student said, after the reply is on its way. A failure
-   // here must never affect the conversation, so it is detached and swallowed.
-   const previous=messages.length>1 ? messages[messages.length-2] : null;
-   const assistantContext=previous?.role==='assistant' ? (typeof previous.content==='string' ? previous.content : previous.content.filter((b:any)=>b.type==='text').map((b:any)=>b.text).join(' ')) : '';
-   if(!triage)(deps.defer??waitUntil)((deps.learn??learnFromMessage)(auth.userId,query,assistantContext,key).catch(()=>{}));
-   // This conversation's note, updated with what was just said.
-   if(!triage && isConversationId(conversationId))(deps.defer??waitUntil)((deps.noteChat??noteFromChat)(auth.userId,conversationId,query,text,key).catch(()=>{}));
+   afterReply(text);
    return res.status(200).json({content:[{type:'text',text}],stop_reason:data?.stop_reason});
   }catch(error){
    const timedOut=error instanceof Error && ['TimeoutError','AbortError'].includes(error.name);

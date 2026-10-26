@@ -36,6 +36,7 @@ const ERRORS: Record<string, string> = {
   fetch_timeout: 'The website took too long to answer. Try again, or paste the page text.',
   subscription_required: 'Importing from a website is part of Soma Premium.',
   rate_limit: 'Too many imports in a minute. Please wait and try again.',
+  ai_budget_used: 'You’ve used this month’s Soma. Reading documents waits until it resets, or until you add more in Settings.',
   unreadable_response: "Soma couldn't read that schedule. Try again, or paste just the schedule table.",
   response_incomplete: 'That schedule is too long to read at once. Paste one part of it at a time.',
 };
@@ -48,16 +49,19 @@ const pretty = (due: string, time: string | null) => {
   return time ? `${date}, ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}` : date;
 };
 
-export default function CourseSiteImport({ courses, createCourse, onImported }: {
+export default function CourseSiteImport({ courses, createCourse, onImported, source, onClose }: {
   courses: Subject[];
   createCourse: (name: string) => Subject;
   onImported?: (courseId: string) => void;
+  /** An uploaded syllabus or guide to read instead of a web page (Documents). */
+  source?: { text: string; fileName: string; courseId?: string };
+  onClose?: () => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(!!source);
   const [url, setUrl] = useState('');
-  const [pasteMode, setPasteMode] = useState(false);
-  const [text, setText] = useState('');
-  const [courseId, setCourseId] = useState('');
+  const [pasteMode, setPasteMode] = useState(!!source);
+  const [text, setText] = useState(source?.text.slice(0, 200_000) ?? '');
+  const [courseId, setCourseId] = useState(source?.courseId ?? '');
   const [newCourse, setNewCourse] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -156,23 +160,27 @@ export default function CourseSiteImport({ courses, createCourse, onImported }: 
   }
 
   return (
-    <section className={styles.siteImport} aria-label="Import from a course website">
-      <h3 className={styles.archivedTitle}>Import from a course website</h3>
+    <section className={styles.siteImport} aria-label={source ? `Find dates in ${source.fileName}` : 'Import from a course website'}>
+      <h3 className={styles.archivedTitle}>{source ? `Find exams and deadlines in ${source.fileName}` : 'Import from a course website'}</h3>
       <p className={styles.archivedEmpty}>
-        For classes that don't use Canvas. Paste the course site's address and Soma will find the homework, labs, projects and exams with dates. You choose what to keep.
+        {source
+          ? 'Soma reads the document for homework, labs, projects and exams with dates. You choose what to keep; each becomes a task, and exams can then get a review plan.'
+          : "For classes that don't use Canvas. Paste the course site's address and Soma will find the homework, labs, projects and exams with dates. You choose what to keep."}
       </p>
 
-      {pasteMode ? (
+      {source ? null : pasteMode ? (
         <textarea className={styles.siteImportText} aria-label="Course page text" placeholder="Paste the schedule part of the course page here" value={text} onChange={e => setText(e.target.value)} />
       ) : (
         <input className={styles.courseNameInput} aria-label="Course website address" placeholder="https://cs61a.org" value={url} onChange={e => setUrl(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && canRead) void read(); }} />
       )}
       <div className={styles.courseActions}>
         <button className={styles.restoreBtn} disabled={!canRead} onClick={() => void read()}>{busy && !result ? 'Reading…' : 'Find deadlines'}</button>
-        <button className={styles.linkBtn} onClick={() => { setPasteMode(m => !m); setError(''); }}>
-          {pasteMode ? 'Use a web address instead' : 'Site needs a login? Paste the page text'}
-        </button>
-        <button className={styles.linkBtn} onClick={() => { setOpen(false); setResult(null); setError(''); setDone(null); }}>Close</button>
+        {!source && (
+          <button className={styles.linkBtn} onClick={() => { setPasteMode(m => !m); setError(''); }}>
+            {pasteMode ? 'Use a web address instead' : 'Site needs a login? Paste the page text'}
+          </button>
+        )}
+        <button className={styles.linkBtn} onClick={() => { setOpen(false); setResult(null); setError(''); setDone(null); onClose?.(); }}>Close</button>
       </div>
 
       {error && <p className={styles.courseError} role="alert">{error}</p>}

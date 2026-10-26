@@ -11,6 +11,90 @@ still needed.
 
 ## 2026-10-25
 
+### Study features and cheaper AI: practice, exam mode, syllabus dates, streaming, document search
+- **Why:** Soma only answered "when"; students also need "what" and "do I
+  know it". The owner asked for this with AI use kept cheap.
+- **What:**
+  - **Grade-aware priorities** (`assistant.ts`): tasks carry "worth N%
+    group / N pts" from deep sync; new PRIORITIES rules weigh worth against
+    due date, with the reason given. No extra AI calls.
+  - **Exam mode:** Deadlines shows "Plan review" on upcoming exams (task
+    kind exam, or a name with exam/midterm/final/test). It opens the AI tab
+    with "Plan my review for … on …", sent once (cleared so a reload doesn't
+    repeat it). New EXAM PREP rules: spaced sessions before the exam, open
+    reading first, then review and practice; ask when the date or coverage
+    isn't known. One normal planning call.
+  - **Practice in focus blocks** (`PracticeCard.tsx`, `practice.ts`): four
+    multiple-choice questions from the matching passages (about 6,000
+    characters) of the course's own documents, checked as answered. A new
+    `purpose: 'study'` in `api/chat.ts`: Haiku, max 2,000 output tokens,
+    no memory or notes, nothing learned. Counted as a reply. A set is cached
+    for the day; at most 3 new sets per block per day. Marking sections done
+    stays with the student's check-off.
+  - **Syllabus dates:** a syllabus or guide in Documents gets "Find dates",
+    which runs the existing course-site importer on its extracted text, in
+    place; the student picks what to keep (exams then get Plan review).
+  - **Document search** (`docSearch.ts`): documents are split into passages
+    and ranked with BM25 in the browser; about 9,000 characters of the best
+    matches travel with the message instead of every document (cut at
+    45,000) in the cached instructions. Students rarely send two messages
+    within the 5-minute cache window, so the old way paid the cache-write
+    price nearly every time; this is roughly 4× cheaper per message on
+    documents and searches all of them.
+  - **Streaming** (`api/chat.ts` `relayStream`, `ai.ts` `readStream`,
+    `aiResponse.ts` `partialReply`): Soma's replies stream on the AI page
+    and the dashboard's Ask Soma; the reply text is decoded from the
+    partial JSON. Usage is recorded from the stream's totals, including
+    when it fails part-way; nothing is learned from an unfinished reply.
+    Thinking never leaves the server. A non-streamed answer (an error, or a
+    host that buffers) is read as before.
+  - **Importer metered:** `api/import-schedule.ts` used Sonnet 4.6 (not in
+    the price table, so unpriced) and never counted against the budget. It
+    now uses Sonnet 5.5 at low effort, refuses at the budget (402
+    ai_budget_used), and records usage.
+- **Behaviour change in tests:** `tests/ai-triage.spec.ts` now finds
+  documents in the message context rather than the cached system prompt
+  (the guarantee is the same: documents only when they matter, framed as
+  untrusted data), and gains a long-document test.
+- **Where:** `api/chat.ts`, `api/import-schedule.ts`, `src/lib/ai.ts`,
+  `aiResponse.ts`, `assistant.ts`, `aiContext.ts`, `docSearch.ts`,
+  `practice.ts`, `src/components/AI/AITab.tsx`,
+  `DashboardV2/DashboardV2.tsx`, `LiveDashboard.tsx`, `PracticeCard.*`,
+  `Deadlines/DeadlinesTab.*`, `Documents/DocumentsTab.*`,
+  `Settings/CourseSiteImport.tsx`.
+- **Guard:** `tests/study-features.spec.ts` (practice on Haiku from the
+  course's passage, checked and cached; unreadable answer; exam mode sends
+  once; Find dates; study requests use no memory and are counted; the
+  importer stops at the budget and records usage), `tests/ai-streaming.spec.ts`
+  (relay, no thinking leaked, usage counted on success, max tokens and a
+  dropped connection; dashboard stream and failure), `tests/ai-triage.spec.ts`.
+- **Setup still needed:** none (no schema change; study calls are recorded
+  under kind `reply`). Streaming relies on Vercel streaming Node function
+  responses; check on a preview deployment that replies appear as they're
+  written.
+
+### Soma for Canvas: a Chrome Web Store release package
+- **Why:** to publish the extension rather than load it unpacked.
+- **What:** `npm run build:extension` (`extension/build-release.mjs`) copies
+  the extension to `dist-extension/` (ignored by git), limits the bridge to
+  `somastudy.app` (localhost and the PR preview would otherwise receive
+  students' coursework from a published build), checks name and description
+  length, version format, https-only matches and that every named file is
+  present, and zips it. The manifest description is now 118 characters (the
+  store allows 132; it was about 160). `extension/STORE_LISTING.md` has the
+  listing, single purpose, a justification per permission, data-usage
+  answers, reviewer notes and a pre-submit checklist.
+  `tests/store-screenshots.spec.ts` renders two 1280×800 screenshots with
+  made-up coursework into `extension/store/`; it runs only with
+  `STORE_SHOTS=1`.
+- **Where:** `extension/build-release.mjs`, `STORE_LISTING.md`, `store/`,
+  `manifest.json`, `README.md`, `package.json`, `.gitignore`,
+  `tests/store-screenshots.spec.ts`.
+- **Guard:** the build fails on any of the checks above; checked that the
+  zip's bridge matches only somastudy.app.
+- **Setup still needed:** merge and deploy PR #4, final icons, a terms check,
+  a publisher account; then upload the zip.
+
 ### What changed: new work, moved due dates, grades and announcements
 - **Why:** deadlines move and grades land without anyone noticing; the
   extension already had every sync, so it can say what's different.
