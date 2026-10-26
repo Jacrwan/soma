@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Soma for Canvas",
   "version": "0.1.0",
-  "description": "Brings your Canvas, Gradescope and WebAssign assignments, submissions, grades and announcements into Soma. Reads them in your browser only, with your own sign-in.",
+  "description": "Keeps Soma up to date with your Canvas, Gradescope and WebAssign work: what's due, what's handed in, and what changed.",
   "permissions": [
     "storage",
     "scripting",

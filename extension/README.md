@@ -80,16 +80,15 @@ student hasn't synced themselves at least once.
    **Sync now**. Back in Soma, Deadlines shows submitted work as done, and
    Settings → Integrations shows "Canvas extension · synced …".
 
-## Before publishing to the Chrome Web Store
+## Publishing to the Chrome Web Store
 
-- Icons are placeholders (`icons/`, generated); replace with final artwork.
-- Remove the `localhost` and `soma-git-feat-canvas-extension-…vercel.app`
-  (PR preview) matches from the bridge content script.
-- Fill in the store's privacy section from the Soma privacy policy's
-  "Soma for Canvas extension" paragraph; the single purpose is "sync the
-  student's own Canvas, Gradescope and WebAssign coursework into Soma".
-- Have the terms checked: some schools' acceptable-use policies, and
-  Gradescope's and Cengage's (WebAssign) terms, restrict automated access.
+`npm run build:extension` makes the upload,
+`dist-extension/soma-for-canvas-<version>.zip`: it takes the localhost and PR
+preview addresses out of the bridge, checks the store's limits (name,
+description length, version, https-only matches) and that every file the
+extension names is in the build. `STORE_LISTING.md` has the listing text,
+the permission justifications, the data-usage answers, notes for the
+reviewer and a checklist; screenshots are in `store/`.
 
 ## Known limits
 
