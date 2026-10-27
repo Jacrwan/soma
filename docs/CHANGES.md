@@ -11,6 +11,22 @@ still needed.
 
 ## 2026-10-27
 
+### Onboarding explains the Soma for Canvas extension, with the Web Store link
+
+The extension is on the Chrome Web Store, but nothing in Soma pointed to it.
+Onboarding has a new optional step after Canvas ("Add the Soma for Canvas
+extension"): three plain steps for how it works, what it reads (never the
+Canvas password), and an "Add to Chrome" link that turns into "Installed" once
+the extension answers. Settings → Canvas extension shows the same link while it
+isn't installed. Onboarding is now 4 steps and then the welcome screen.
+
+- Where: `OnboardingFlow.tsx` (step 4) and its CSS, `CanvasDeepSyncRow.tsx`,
+  `EXTENSION_STORE_URL` in `src/lib/canvasExtension.ts`.
+- Guard test: `tests/regressions.spec.ts` ("onboarding Canvas sync creates
+  courses in the already mounted Day View") now goes through the new step and
+  checks the heading and the Web Store link.
+- Setup: none.
+
 ### Settings: "Clear local Soma data" now removes the synced grades too
 
 The button only cleared this browser's copy of what the extension synced. The

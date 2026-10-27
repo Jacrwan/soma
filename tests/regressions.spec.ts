@@ -213,6 +213,10 @@ test('onboarding Canvas sync creates courses in the already mounted Day View', a
   await page.getByRole('button', { name: 'Connect', exact: true }).click();
   await expect.poll(() => state.subjects.length).toBe(1);
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  // The extension step explains it and links to the Chrome Web Store.
+  await expect(page.getByRole('heading', { name: 'Add the Soma for Canvas extension' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Add to Chrome' })).toHaveAttribute('href', /chromewebstore\.google\.com\/detail\/soma-for-canvas\/hfiggdemebihcchcinhdmenhdebioanm/);
+  await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await page.getByRole('button', { name: 'Start using Soma', exact: true }).click();
   await expect(page.getByText('Biology 101', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Start your free trial' })).toHaveCount(0);

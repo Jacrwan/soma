@@ -26,6 +26,9 @@ import {
  */
 
 export const CANVAS_CHANGED = 'soma_canvas_changed';
+
+/** The extension's Chrome Web Store page. */
+export const EXTENSION_STORE_URL = 'https://chromewebstore.google.com/detail/soma-for-canvas/hfiggdemebihcchcinhdmenhdebioanm';
 const TABLE = 'canvas_snapshots';
 
 let extensionVersion: string | null = null;

@@ -370,3 +370,21 @@
 .consent a:hover {
   color: var(--text-secondary);
 }
+
+a.connectBtn {
+  display: inline-block;
+  align-self: flex-start;
+  text-decoration: none;
+}
+
+ol.integDesc {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+
+a.connectBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

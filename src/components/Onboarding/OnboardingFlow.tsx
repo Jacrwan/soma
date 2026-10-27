@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { getIcalAssignments } from '../../lib/canvas';
+import { CANVAS_CHANGED, EXTENSION_STORE_URL, extensionPresent } from '../../lib/canvasExtension';
 import type { University } from '../../lib/universities';
 import UniversityPicker from '../shared/UniversityPicker';
 import styles from './OnboardingFlow.module.css';
@@ -30,7 +31,7 @@ interface Props {
 }
 
 export default function OnboardingFlow({ userName, onComplete }: Props) {
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
 
   // Step 1 — age
   const [birthday, setBirthday] = useState('');
@@ -46,6 +47,14 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
   const [canvasError, setCanvasError] = useState('');
   const [canvasConnecting, setCanvasConnecting] = useState(false);
   const [canvasConnected, setCanvasConnected] = useState(!!storage.getCanvasIcalUrl());
+
+  // Step 4 — the extension: the bridge says so when it is installed
+  const [extensionHere, setExtensionHere] = useState(() => !!extensionPresent());
+  useEffect(() => {
+    const refresh = () => setExtensionHere(!!extensionPresent());
+    window.addEventListener(CANVAS_CHANGED, refresh);
+    return () => window.removeEventListener(CANVAS_CHANGED, refresh);
+  }, []);
 
   // Final save
   const [saving, setSaving] = useState(false);
@@ -139,10 +148,10 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
           <span className={styles.logoName}>Soma</span>
         </div>
 
-        {/* Progress dots (steps 1–3 only) */}
-        {step <= 3 && (
-          <div className={styles.progress} aria-label={`Step ${step} of 3`}>
-            {[1, 2, 3].map(n => (
+        {/* Progress dots (steps 1–4 only) */}
+        {step <= 4 && (
+          <div className={styles.progress} aria-label={`Step ${step} of 4`}>
+            {[1, 2, 3, 4].map(n => (
               <div key={n} className={`${styles.dot}${step >= n ? ` ${styles.dotFilled}` : ''}`} />
             ))}
           </div>
@@ -290,8 +299,44 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
           </div>
         )}
 
-        {/* ── STEP 4 — Welcome ──────────────────────────────────────────── */}
+        {/* ── STEP 4 — Soma for Canvas extension ─────────────────────────── */}
         {step === 4 && (
+          <div className={styles.step}>
+            <h1 className={styles.heading}>Add the Soma for Canvas extension</h1>
+            <p className={styles.sub}>Optional. It reads Canvas in your own browser so Soma also has points, submissions, grades and announcements, and keeps itself up to date.</p>
+
+            <div className={styles.integBlock}>
+              <div className={styles.integHeader}>
+                <span className={styles.integTitle}>How it works</span>
+                {extensionHere && <span className={styles.integBadge}>Installed</span>}
+              </div>
+              <ol className={styles.integDesc}>
+                <li>Add it to Chrome from the Chrome Web Store (it also works in Edge and Brave).</li>
+                <li>Open Canvas in that browser and sign in as usual. The extension reads your courses from the page you are already signed in to.</li>
+                <li>Keep Soma open in a tab once. Your grades and assignment details show up in Soma, and it syncs on its own after that.</li>
+              </ol>
+              <p className={styles.integDesc}>It never sees your Canvas password. You can see or remove what it synced in Settings.</p>
+              {!extensionHere && (
+                <a className={styles.connectBtn} href={EXTENSION_STORE_URL} target="_blank" rel="noopener noreferrer">
+                  Add to Chrome
+                </a>
+              )}
+            </div>
+
+            <div className={styles.actions}>
+              <button className={styles.backBtn} onClick={() => setStep(3)}>Back</button>
+              <div className={styles.actionsRight}>
+                {!extensionHere && <button className={styles.skipBtn} onClick={() => setStep(5)}>Skip for now</button>}
+                <button className={styles.primaryBtn} onClick={() => setStep(5)}>Continue</button>
+              </div>
+            </div>
+
+            {consent}
+          </div>
+        )}
+
+        {/* ── STEP 5 — Welcome ──────────────────────────────────────────── */}
+        {step === 5 && (
           <div className={`${styles.step} ${styles.welcome}`}>
             <div className={styles.welcomeCheck} aria-hidden="true">✓</div>
             <h1 className={styles.heading}>You're all set, {firstName}!</h1>

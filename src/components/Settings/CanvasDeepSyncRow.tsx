@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CANVAS_CHANGED, deepSyncStatus, extensionPresent, forgetDeepSync, requestSync } from '../../lib/canvasExtension';
+import { CANVAS_CHANGED, EXTENSION_STORE_URL, deepSyncStatus, extensionPresent, forgetDeepSync, requestSync } from '../../lib/canvasExtension';
 import { formatDateTime } from '../../lib/timeFormat';
 import styles from './SettingsTab.module.css';
 
@@ -70,7 +70,9 @@ export default function CanvasDeepSyncRow() {
           </>
         ) : present ? (
           <span className={styles.connectedBadge}>Installed</span>
-        ) : null}
+        ) : (
+          <a className={styles.connectBtn} href={EXTENSION_STORE_URL} target="_blank" rel="noopener noreferrer">Add to Chrome</a>
+        )}
       </div>
     </div>
   );
