@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import DOMPurify from 'dompurify';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { formatDateTime, useTimeFormat } from '../../lib/timeFormat';
 import { aiErrorMessage } from '../../lib/aiResponse';
@@ -336,6 +336,8 @@ export default function AITab() {
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [loading, setLoading] = useState(false);
+  // The reply as it streams in, shown in place of the thinking dots.
+  const [streamText, setStreamText] = useState('');
   // This month's Soma: shown under the input; used up, asking pauses.
   const budget = useAiBudget();
   const paused = budgetUsedUp(budget);
@@ -448,7 +450,20 @@ export default function AITab() {
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, loading]);
+  }, [messages, loading, streamText]);
+
+  // Exam mode (Deadlines → Plan review) arrives with its request: send it
+  // once, as soon as the chat is ready, and clear it so a reload doesn't repeat it.
+  const location = useLocation();
+  const navigateHere = useNavigate();
+  const asked = useRef(false);
+  useEffect(() => {
+    const ask = (location.state as { ask?: unknown } | null)?.ask;
+    if (asked.current || typeof ask !== 'string' || !ask.trim() || sessionsLoading || !activeSessionId || !userId) return;
+    asked.current = true;
+    navigateHere(location.pathname, { replace: true, state: null });
+    void send(ask.slice(0, 500));
+  }, [location.state, sessionsLoading, activeSessionId, userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (voiceTriggered && input.trim() && !loading) {
@@ -601,9 +616,9 @@ export default function AITab() {
     recognition.start();
   }
 
-  async function send() {
+  async function send(override?: string) {
     if (paused) return;
-    const text = input.trim();
+    const text = (override ?? input).trim();
     if (!text || loading || !activeSessionId) return;
 
     const isVoice = voiceTriggered;
@@ -627,7 +642,7 @@ export default function AITab() {
       const history=session.messages
         .map(m=>({role:m.role,content:m.modelContent ?? stripTags(m.content),...(m.at ? {at:m.at} : {})}))
         .filter(m=>m.content.trim());
-      const result=await askSoma({userId:requestUserId,origin:dateAt(new Date(),0),text,history,voice:isVoice,conversationId:activeSessionId ?? undefined});
+      const result=await askSoma({userId:requestUserId,origin:dateAt(new Date(),0),text,history,voice:isVoice,conversationId:activeSessionId ?? undefined,onReply:setStreamText});
       await storage.assertUser(requestUserId);
       const made=getProposals(requestUserId).filter(p=>result.proposedIds.includes(p.id));
       const assistantMsg: ChatMessage = {
@@ -646,6 +661,7 @@ export default function AITab() {
       updateSession(activeSessionId, s => ({ ...s, messages: [...s.messages, errorMsg] }));
     } finally {
       setLoading(false);
+      setStreamText('');
     }
   }
 
@@ -795,7 +811,13 @@ export default function AITab() {
               })() : null}
             </div>
           ))}
-          {loading && <ThinkingIndicator />}
+          {loading && (streamText
+            ? (
+              <div className={`${styles.messageRow} ${styles.assistantRow}`} aria-live="polite" aria-busy="true">
+                <div className={`${styles.bubble} ${styles.assistantBubble}`} dangerouslySetInnerHTML={{ __html: formatMessage(streamText) }} />
+              </div>
+            )
+            : <ThinkingIndicator />)}
           <div ref={messagesEndRef} />
         </div>
 
@@ -827,7 +849,7 @@ export default function AITab() {
             </button>
             <button
               className={styles.sendBtn}
-              onClick={send}
+              onClick={() => void send()}
               disabled={loading || !input.trim() || paused}
             >Send</button>
           </div>

@@ -9,7 +9,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "playwright test"
+    "test": "playwright test",
+    "build:extension": "node extension/build-release.mjs"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "^6.6.0",

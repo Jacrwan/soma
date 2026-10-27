@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { formatDateTime, useTimeFormat } from '../../lib/timeFormat';
 import { CanvasAssignment, Todo, isSubmittable } from '../../types';
 import { getIcalAssignments } from '../../lib/canvas';
+import { CANVAS_CHANGED } from '../../lib/canvasExtension';
+import WhatChanged from './WhatChanged';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './DeadlinesTab.module.css';
 
@@ -35,7 +38,17 @@ type Deadline = {
   dueLabel: string;
   status: Status;
   url: string | null;
+  /** Handed in on Gradescope or WebAssign, the easy ones to forget. */
+  platform?: 'gradescope' | 'webassign';
+  progress?: string;
+  /** An exam or test: it gets "Plan review" (exam mode). */
+  exam?: boolean;
+  /** When it is, for the review request: the due time, or the day. */
+  whenLabel?: string;
 };
+
+/** Names that mean an exam rather than homework: "Midterm 1", "Final Exam", "Test 2". */
+const EXAM_NAME = /\b(exam|midterm|final|test)\b/i;
 
 const TODO_TO_STATUS: Record<Todo['status'], Status> = {
   nothing: 'not_started', in_progress: 'in_progress', done: 'done',
@@ -43,6 +56,8 @@ const TODO_TO_STATUS: Record<Todo['status'], Status> = {
 const STATUS_TO_TODO: Record<Status, Todo['status']> = {
   not_started: 'nothing', in_progress: 'in_progress', done: 'done',
 };
+
+const PLATFORM_NAMES = { gradescope: 'Gradescope', webassign: 'WebAssign' } as const;
 
 /** Tasks with no course still have to appear; they group under one label. */
 const NO_COURSE = 'No course';
@@ -129,6 +144,7 @@ function fmtSynced(ts: number): string {
 
 export default function DeadlinesTab() {
   useTimeFormat(); // re-render when the 12h/24h preference changes
+  const navigate = useNavigate();
   const [icalUrl, setIcalUrl] = useState(() => storage.getCanvasIcalUrl());
   const [setupIcalUrl, setSetupIcalUrl] = useState('');
   const [connectLoading, setConnectLoading] = useState(false);
@@ -192,6 +208,13 @@ export default function DeadlinesTab() {
     return () => { cancelled = true; window.removeEventListener('soma_todos_changed', refresh); };
   }, []);
 
+  // The Canvas extension's sync can land while this page is open.
+  useEffect(() => {
+    const refresh = () => setAssignments(storage.getCachedIcalAssignments());
+    window.addEventListener(CANVAS_CHANGED, refresh);
+    return () => window.removeEventListener(CANVAS_CHANGED, refresh);
+  }, []);
+
   useEffect(() => {
     if (!icalUrl) return;
     const cached = storage.getCachedIcalAssignments();
@@ -235,7 +258,7 @@ export default function DeadlinesTab() {
       await storage.syncCanvasSubjects(fetched);
       storage.setCachedIcalAssignments(fetched);
       storage.setCacheTimestamp(Date.now());
-      setAssignments(fetched);
+      setAssignments(storage.getCachedIcalAssignments());
       setLastSynced(Date.now());
     } catch (e: unknown) {
       setIcalError(e instanceof Error ? e.message : 'Failed to sync calendar feed');
@@ -256,7 +279,7 @@ export default function DeadlinesTab() {
       storage.setCachedIcalAssignments(fetched);
       storage.setCacheTimestamp(Date.now());
       setIcalUrl(url);
-      setAssignments(fetched);
+      setAssignments(storage.getCachedIcalAssignments());
       setLastSynced(Date.now());
       setSetupIcalUrl('');
     } catch (e: unknown) {
@@ -271,7 +294,8 @@ export default function DeadlinesTab() {
     storage.setCachedIcalAssignments([]);
     storage.setCachedAssignments([]);
     setIcalUrl('');
-    setAssignments([]);
+    // What the Canvas extension synced stays until it's removed in Settings.
+    setAssignments(storage.getCachedIcalAssignments());
   }
 
   function updateStatus(id: number, status: string) {
@@ -345,7 +369,7 @@ export default function DeadlinesTab() {
   // Only when there is genuinely nothing to show. A student who imports from a
   // course site and never connects Canvas still has deadlines, and used to be
   // shown this prompt instead of them.
-  if (!icalUrl && !anyToShow && tasksLoaded) {
+  if (!icalUrl && !anyToShow && assignments.length === 0 && tasksLoaded) {
     return (
       <div className={styles.setupOverlay}>
         <div className={styles.setupCard}>
@@ -409,8 +433,14 @@ export default function DeadlinesTab() {
       color: courseColor(a.courseId, a.courseName),
       dueKey: dayKey(new Date(a.dueAt)),
       dueLabel: fmtDueTime(a.dueAt),
-      status: (assignmentStatus[a.id] ?? 'not_started') as Status,
+      // A status the student set wins; otherwise what Canvas, Gradescope or
+      // WebAssign say (handed in is done; WebAssign partly answered is in progress).
+      status: (assignmentStatus[a.id] ?? a.status ?? 'not_started') as Status,
       url: a.htmlUrl,
+      ...(a.platform ? { platform: a.platform } : {}),
+      ...(a.progress ? { progress: a.progress } : {}),
+      ...(EXAM_NAME.test(a.name) ? { exam: true } : {}),
+      whenLabel: new Date(a.dueAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }),
     }));
 
   // A task imported from a course site already exists as a Canvas assignment
@@ -446,6 +476,8 @@ export default function DeadlinesTab() {
         dueLabel: 'All day',
         status: TODO_TO_STATUS[t.status],
         url: null,
+        ...(t.kind === 'exam' || EXAM_NAME.test(t.text) ? { exam: true } : {}),
+        whenLabel: new Date(`${t.dueDate!.slice(0, 10)}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
       };
     })
     .filter(item => item.courseName === NO_COURSE || !archivedCourseNames.has(item.courseName));
@@ -456,8 +488,12 @@ export default function DeadlinesTab() {
     a === NO_COURSE ? 1 : b === NO_COURSE ? -1 : a.localeCompare(b),
   );
 
+  // A Canvas item is done when the student cleared it, or when Canvas says it
+  // was handed in and the student hasn't set a status of their own.
   const isDone = (item: Deadline) =>
-    item.source === 'canvas' ? !!clearedAssignments[item.canvasId!] : item.status === 'done';
+    item.source === 'canvas'
+      ? !!clearedAssignments[item.canvasId!] || (assignmentStatus[item.canvasId!] === undefined && item.status === 'done')
+      : item.status === 'done';
 
   const filtered = allItems
     .filter(i => selectedCourse === null || i.courseName === selectedCourse)
@@ -478,6 +514,12 @@ export default function DeadlinesTab() {
   }
   const orderedDateKeys = [...dateGroups.keys()].sort();
 
+  /** Exam mode: ask Soma for review sessions across the days before this exam. */
+  function planReview(item: Deadline) {
+    const course = item.courseName === NO_COURSE ? '' : ` in ${item.courseName}`;
+    navigate('/ai', { state: { ask: `Plan my review for "${item.title}"${course}, on ${item.whenLabel}.` } });
+  }
+
   function renderRow(item: Deadline) {
     const done = isDone(item);
     const open = () => { if (item.url) window.open(item.url, '_blank', 'noopener,noreferrer'); };
@@ -490,11 +532,14 @@ export default function DeadlinesTab() {
       >
         <span className={styles.dot} style={{ background: item.color, opacity: done ? 0.3 : 1 }} />
         <div className={styles.assignmentInfo}>
-          <span className={styles.assignmentCourse}>{item.courseName}</span>
+          <span className={styles.assignmentCourse}>{item.courseName}{item.platform ? ` · ${PLATFORM_NAMES[item.platform]}` : ''}{item.progress && item.status !== 'done' ? ` · ${item.progress}` : ''}</span>
           <span className={styles.assignmentName}>{item.title}</span>
         </div>
         <span className={styles.dueTime}>{item.dueLabel}</span>
         <div className={styles.assignmentControls} onClick={e => e.stopPropagation()}>
+          {item.exam && !done && item.dueKey >= dayKey(new Date()) && (
+            <button type="button" className={styles.reviewBtn} onClick={() => planReview(item)} aria-label={`Plan review for ${item.title}`}>Plan review</button>
+          )}
           <select
             className={`${styles.statusSelect}${item.status === 'done' ? ` ${styles.statusSelectDone}` : ''}`}
             value={item.status}
@@ -515,7 +560,7 @@ export default function DeadlinesTab() {
               href={item.url}
               target="_blank"
               rel="noopener noreferrer"
-              title="Open in Canvas"
+              title={`Open in ${item.platform ? PLATFORM_NAMES[item.platform] : 'Canvas'}`}
             >↗</a>
           )}
         </div>
@@ -602,6 +647,8 @@ export default function DeadlinesTab() {
                 ))}
               </select>
             </div>
+
+            <WhatChanged />
 
             {filtered.length === 0 ? (
               <div className={styles.empty}>

@@ -1,0 +1,84 @@
+{
+  "manifest_version": 3,
+  "name": "Soma for Canvas",
+  "version": "0.1.0",
+  "description": "Keeps Soma up to date with your Canvas, Gradescope and WebAssign work: what's due, what's handed in, and what changed.",
+  "permissions": [
+    "storage",
+    "scripting",
+    "activeTab",
+    "alarms",
+    "offscreen",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://*.instructure.com/*",
+    "https://www.gradescope.com/*",
+    "https://www.webassign.net/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.instructure.com/*"
+      ],
+      "js": [
+        "common.js",
+        "canvas.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.gradescope.com/*"
+      ],
+      "js": [
+        "common.js",
+        "gradescope.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.webassign.net/*"
+      ],
+      "js": [
+        "common.js",
+        "webassign.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://somastudy.app/*",
+        "https://www.somastudy.app/*",
+        "http://localhost:5173/*",
+        "http://localhost:5174/*",
+        "https://soma-git-feat-canvas-extension-jacrwans-projects.vercel.app/*"
+      ],
+      "js": [
+        "bridge.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Soma for Canvas",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}

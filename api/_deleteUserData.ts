@@ -12,6 +12,7 @@
 export const USER_TABLES = [
   'documents',
   'course_items',
+  'canvas_snapshots',
   'todo_sessions',
   'timer_sessions',
   'active_timer',

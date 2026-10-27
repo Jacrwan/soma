@@ -9,6 +9,324 @@ still needed.
 
 ---
 
+## 2026-10-25
+
+### Study features and cheaper AI: practice, exam mode, syllabus dates, streaming, document search
+- **Why:** Soma only answered "when"; students also need "what" and "do I
+  know it". The owner asked for this with AI use kept cheap.
+- **What:**
+  - **Grade-aware priorities** (`assistant.ts`): tasks carry "worth N%
+    group / N pts" from deep sync; new PRIORITIES rules weigh worth against
+    due date, with the reason given. No extra AI calls.
+  - **Exam mode:** Deadlines shows "Plan review" on upcoming exams (task
+    kind exam, or a name with exam/midterm/final/test). It opens the AI tab
+    with "Plan my review for … on …", sent once (cleared so a reload doesn't
+    repeat it). New EXAM PREP rules: spaced sessions before the exam, open
+    reading first, then review and practice; ask when the date or coverage
+    isn't known. One normal planning call.
+  - **Practice in focus blocks** (`PracticeCard.tsx`, `practice.ts`): four
+    multiple-choice questions from the matching passages (about 6,000
+    characters) of the course's own documents, checked as answered. A new
+    `purpose: 'study'` in `api/chat.ts`: Haiku, max 2,000 output tokens,
+    no memory or notes, nothing learned. Counted as a reply. A set is cached
+    for the day; at most 3 new sets per block per day. Marking sections done
+    stays with the student's check-off.
+  - **Syllabus dates:** a syllabus or guide in Documents gets "Find dates",
+    which runs the existing course-site importer on its extracted text, in
+    place; the student picks what to keep (exams then get Plan review).
+  - **Document search** (`docSearch.ts`): documents are split into passages
+    and ranked with BM25 in the browser; about 9,000 characters of the best
+    matches travel with the message instead of every document (cut at
+    45,000) in the cached instructions. Students rarely send two messages
+    within the 5-minute cache window, so the old way paid the cache-write
+    price nearly every time; this is roughly 4× cheaper per message on
+    documents and searches all of them.
+  - **Streaming** (`api/chat.ts` `relayStream`, `ai.ts` `readStream`,
+    `aiResponse.ts` `partialReply`): Soma's replies stream on the AI page
+    and the dashboard's Ask Soma; the reply text is decoded from the
+    partial JSON. Usage is recorded from the stream's totals, including
+    when it fails part-way; nothing is learned from an unfinished reply.
+    Thinking never leaves the server. A non-streamed answer (an error, or a
+    host that buffers) is read as before.
+  - **Importer metered:** `api/import-schedule.ts` used Sonnet 4.6 (not in
+    the price table, so unpriced) and never counted against the budget. It
+    now uses Sonnet 5.5 at low effort, refuses at the budget (402
+    ai_budget_used), and records usage.
+- **Behaviour change in tests:** `tests/ai-triage.spec.ts` now finds
+  documents in the message context rather than the cached system prompt
+  (the guarantee is the same: documents only when they matter, framed as
+  untrusted data), and gains a long-document test.
+- **Where:** `api/chat.ts`, `api/import-schedule.ts`, `src/lib/ai.ts`,
+  `aiResponse.ts`, `assistant.ts`, `aiContext.ts`, `docSearch.ts`,
+  `practice.ts`, `src/components/AI/AITab.tsx`,
+  `DashboardV2/DashboardV2.tsx`, `LiveDashboard.tsx`, `PracticeCard.*`,
+  `Deadlines/DeadlinesTab.*`, `Documents/DocumentsTab.*`,
+  `Settings/CourseSiteImport.tsx`.
+- **Guard:** `tests/study-features.spec.ts` (practice on Haiku from the
+  course's passage, checked and cached; unreadable answer; exam mode sends
+  once; Find dates; study requests use no memory and are counted; the
+  importer stops at the budget and records usage), `tests/ai-streaming.spec.ts`
+  (relay, no thinking leaked, usage counted on success, max tokens and a
+  dropped connection; dashboard stream and failure), `tests/ai-triage.spec.ts`.
+- **Setup still needed:** none (no schema change; study calls are recorded
+  under kind `reply`). Streaming relies on Vercel streaming Node function
+  responses; check on a preview deployment that replies appear as they're
+  written.
+
+### Soma for Canvas: a Chrome Web Store release package
+- **Why:** to publish the extension rather than load it unpacked.
+- **What:** `npm run build:extension` (`extension/build-release.mjs`) copies
+  the extension to `dist-extension/` (ignored by git), limits the bridge to
+  `somastudy.app` (localhost and the PR preview would otherwise receive
+  students' coursework from a published build), checks name and description
+  length, version format, https-only matches and that every named file is
+  present, and zips it. The manifest description is now 118 characters (the
+  store allows 132; it was about 160). `extension/STORE_LISTING.md` has the
+  listing, single purpose, a justification per permission, data-usage
+  answers, reviewer notes and a pre-submit checklist.
+  `tests/store-screenshots.spec.ts` renders two 1280×800 screenshots with
+  made-up coursework into `extension/store/`; it runs only with
+  `STORE_SHOTS=1`.
+- **Where:** `extension/build-release.mjs`, `STORE_LISTING.md`, `store/`,
+  `manifest.json`, `README.md`, `package.json`, `.gitignore`,
+  `tests/store-screenshots.spec.ts`.
+- **Guard:** the build fails on any of the checks above; checked that the
+  zip's bridge matches only somastudy.app.
+- **Setup still needed:** merge and deploy PR #4, final icons, a terms check,
+  a publisher account; then upload the zip.
+
+### What changed: new work, moved due dates, grades and announcements
+- **Why:** deadlines move and grades land without anyone noticing; the
+  extension already had every sync, so it can say what's different.
+- **What:**
+  - Extension (`common.js`): each sync is compared with the previous one
+    for that site. New work (unless already handed in or long past), a
+    moved due date, a grade posted (Canvas graded or scored; Gradescope
+    graded), a new Canvas announcement. Nothing on a site's first sync.
+    Changes are kept on the snapshot for 14 days (at most 50), newest first.
+    Storage is re-read after the site read, so a sync of another site in
+    the meantime isn't overwritten.
+  - `background.js` notifies each new change once (a moved due date at
+    higher priority), or one summary when more than three arrive together;
+    clicking opens the work, or Soma's Deadlines for a summary. The popup
+    lists the last week, with a "Tell me when something changes" switch.
+  - App: `normalizeChanges` checks every change like the rest of a snapshot
+    (known types only, same-site links only, the snapshot's own site).
+    Deadlines shows a "What changed · last 7 days" panel
+    (`WhatChanged.tsx`, four rows, then Show all), which shows the day as
+    well as the time, since a moved due date often keeps its time, and
+    wraps on phones. The AI gets "WHAT CHANGED THIS WEEK" (not
+    announcements, which it already has).
+- **Where:** `extension/common.js`, `background.js`, `popup.*`,
+  `README.md`, `src/lib/canvasDeepSync.ts` (`SnapshotChange`,
+  `recentChanges`), `src/lib/aiContext.ts`,
+  `src/components/Deadlines/WhatChanged.tsx`, `DeadlinesTab.tsx`,
+  `DeadlinesTab.module.css`, privacy text (both copies).
+- **Guard:** `tests/extension-reminders.spec.ts` (what counts as a change
+  per site, none on first sync, 14-day keep, one notice per change, summary
+  for many, never twice, the switch) and `tests/canvas-extension.spec.ts`
+  (panel order and details, off-site links and unknown types dropped,
+  older than a week hidden, hidden when empty). Checked by screenshot in
+  light and dark at 1280×720 and at phone width, with no horizontal overflow.
+- **Setup still needed:** reload the extension. Changes start from the
+  second sync after that.
+
+### Soma for Canvas reminds you before work is due
+- **Why:** the point of syncing Gradescope and WebAssign was not forgetting
+  them, and that needs a nudge, not just a list in Soma.
+- **What:** `extension/due.js` works out what's due in the next 48 hours and
+  not handed in across Canvas, Gradescope and WebAssign. A Canvas entry and
+  its platform twin (same name, due within a day) count once, and done on
+  either clears both; Canvas work handed in on paper or with no submission
+  (`submissionTypes`, now recorded by `canvas.js`) is skipped. The toolbar
+  badge shows the count. `background.js` sends a notification a day before
+  and again three hours before each item, once per stage, checking every 15
+  minutes and after every sync; clicking opens the assignment. The popup
+  lists Due soon and has switches for reminders and the badge (both on by
+  default). Placeholder icons added (`extension/icons/`), since
+  notifications need one. The bridge also matches the PR's Vercel preview
+  address, for testing.
+- **Where:** `extension/due.js`, `background.js`, `canvas.js`,
+  `popup.*`, `manifest.json` (`notifications`, icons, preview match),
+  `icons/`, `README.md`.
+- **Guard:** `tests/extension-reminders.spec.ts` (what counts as due soon,
+  twins once, paper work skipped, badge count, one notice per stage, the
+  three-hour notice after the day-before one, click opens the work, both
+  switches). Checked against the owner's real synced data: one item in the
+  next 48 hours (CS 170 Coding Problem 3, Gradescope).
+- **Setup still needed:** reload the extension; Chrome asks to allow
+  notifications. Remove the preview match before publishing.
+
+### Soma for Canvas reads WebAssign
+- **Why:** at Emory, PHYS 151's Canvas lists one exam; every homework lives
+  in WebAssign, so Soma couldn't see it.
+- **What:** `extension/webassign.js` reads the class home page
+  (`/v4cgi/student.pl`): its current assignments are JSON in
+  `#js-student-myAssignmentsWrapper[data-assignments]` (id, name, due in epoch
+  seconds). Each assignment's page gives progress from its question parts:
+  all answered is complete, some is in progress, with points only when
+  grades are on. Course name from the page title, id from the class context
+  id. Past assignments (ids only) are not read. Runs on visit, in the
+  background and from Sync now, like the others. App: `webassign` snapshots
+  (only from `www.webassign.net`) join the Canvas course with the same number
+  and department; Canvas courses for joining now include deep sync's own
+  list, busiest first, so PHYS 151 lands in PHYS-151-1 rather than its empty
+  lab section. Deadlines shows "· WebAssign" and "n of m parts answered", and
+  partly done work is in progress; the AI is told the same.
+- **Where:** `extension/webassign.js`, `manifest.json` (host and content
+  script), `background.js`, `offscreen.html`, `popup.html`,
+  `src/lib/canvasDeepSync.ts`, `src/lib/aiContext.ts`, `src/types/index.ts`,
+  `src/components/Deadlines/DeadlinesTab.tsx`, privacy text (both copies),
+  `extension/README.md`, `docs/extension-plan.md`.
+- **Guard:** `tests/extension-readers.spec.ts` (WebAssign: due times,
+  complete / in progress / not started from parts, grades off, signed out
+  keeps the last sync; synthetic fixtures in `tests/fixtures/webassign/`
+  modelled on the real page) and `tests/canvas-extension.spec.ts` (joins
+  its Canvas course with progress shown; wrong-host snapshot refused). The
+  reader was also run once in the owner's signed-in WebAssign and read both
+  current PHYS 151 assignments correctly.
+- **Setup still needed:** reload the extension; visit WebAssign once so
+  background sync knows it.
+
+### Soma for Canvas keeps itself in sync, without visits to Canvas or Gradescope
+- **Why:** a site synced only when the student visited it (at most every 3
+  hours), so a student who lives in Soma saw stale work, and something handed
+  in just after a sync stayed "not done" for hours.
+- **What:** `extension/background.js` re-reads every site the student has
+  synced before, every two hours while Chrome is open (alarm), and whenever
+  Soma opens (bridge asks; skipped if under 20 minutes old). The readers now
+  take an origin (`canvasReader`, `gradescopeReader`) so they run either in
+  the site's tab or in a hidden offscreen page (`offscreen.html`/`.js`; a
+  worker has no DOM). Sync logic is shared in `common.js` (`runSync`, one run
+  per site at a time). Visits sync at most every 30 minutes, down from 3
+  hours. Popup: "Keep in sync in the background" toggle (on by default) and
+  Sync everything now. Soma's Settings row: Sync now (via the bridge), with
+  each site's result; it lists every synced site.
+- **Where:** `extension/` (`background.js`, `common.js`, `canvas.js`,
+  `gradescope.js`, `offscreen.*`, `bridge.js`, `popup.*`, `manifest.json`
+  adds `alarms` and `offscreen`), `src/lib/canvasExtension.ts`
+  (`requestSync`), `src/components/Settings/CanvasDeepSyncRow.tsx`, privacy
+  text (both copies), `extension/README.md`, `docs/extension-plan.md`.
+- **Guard:** `tests/canvas-extension.spec.ts` (Sync now reports each site),
+  `tests/extension-readers.spec.ts` (a reader run by origin from another
+  page, as the offscreen page does, reads the site and starts no sync of its
+  own). The alarm and offscreen document themselves are checked in Chrome.
+- **Also:** reloading the extension left the old copies of its scripts in
+  open tabs throwing "Extension context invalidated" on every message.
+  `bridge.js` now notices it was cut off and goes quiet; `runSync` never
+  rejects. Guard: the "goes quiet" test in `tests/extension-readers.spec.ts`
+  (fails on the previous bridge with that error).
+- **Setup still needed:** reload the extension. Background requests use the
+  student's sign-in cookies; if Chrome blocks those for extension requests,
+  background sync records an error and visits still work.
+
+### Soma for Canvas: turning on a school's own Canvas domain works; Emory course names match
+- **Why:** first real use, at Emory (`canvas.emory.edu`). Chrome granted the
+  site, but nothing synced: Chrome's permission prompt closes the popup, and
+  the popup was the one meant to register the script and start the sync
+  afterwards. Separately, Emory names courses `CS-170-1: … - Fall 2026` in
+  Canvas and `FA26_CS_170_1` on Gradescope; dashes and underscores never
+  matched, and a shared "Fall 2026" could have joined unrelated courses.
+- **What:** `extension/background.js` (new service worker) registers the
+  Canvas reader for any site the student grants and starts it in open tabs,
+  on grant and again on every start or reload, so an earlier grant catches
+  up; a removed grant unregisters it. The popup only asks and says it's
+  syncing. `sameCourse` treats any punctuation as a separator and ignores
+  term, section and year parts (`Fall 2026`, `LEC 001`, `FA26`).
+- **Where:** `extension/background.js`, `extension/manifest.json`,
+  `extension/popup.js`, `src/lib/canvasDeepSync.ts`.
+- **Guard:** `tests/course-matching.spec.ts` (Emory names match their
+  course and not each other; terms and sections never match). The service
+  worker has no automated test; checked by reloading the extension.
+- **Setup still needed:** reload the extension in `chrome://extensions`.
+
+### Soma for Canvas reads Gradescope too
+- **Why:** much STEM work is handed in on Gradescope. Canvas either shows
+  nothing for it or shows a linked entry that never learns it was submitted,
+  so Soma kept such work "not done" or missed it entirely.
+- **What:**
+  - `extension/gradescope.js` on `www.gradescope.com`: reads the course list
+    (newest term, student courses, never an instructor section or a menu
+    link) and each course's assignments table: name, due, late due, and No
+    Submission / Submitted / score (score dropped when grades are off).
+    Same-site GETs only, on visit or Sync now. If no course page can be read
+    it records an error and keeps the last good sync.
+  - `extension/common.js`: the sync runner both readers share (moved out of
+    `canvas.js`, behaviour unchanged); the popup's probe is now site-neutral.
+  - App: snapshots carry `kind` (`canvas`, or none for older ones;
+    `gradescope` only from `www.gradescope.com`). `mergeDeepSync` joins each
+    Gradescope course to the Canvas course with the same number and
+    department (`sameCourse`: BIO 101 = Biology 101, COMPSCI = CS). A Canvas
+    entry with the same name learns it was handed in and links to
+    Gradescope; other work is added with a negative id, labelled
+    "· Gradescope" on Deadlines; the AI is told it is handed in on
+    Gradescope and its late due date. Gradescope courses don't create
+    Subjects. Stored in `canvas_snapshots` under host `www.gradescope.com`
+    (no schema change).
+  - Privacy policy (both copies) lists what is read on Gradescope.
+- **Where:** `extension/` (`common.js`, `gradescope.js`, `canvas.js`,
+  `manifest.json`, `popup.*`, `README.md`), `src/lib/canvasDeepSync.ts`,
+  `src/lib/canvasExtension.ts`, `src/lib/aiContext.ts`, `src/types/index.ts`,
+  `src/components/Deadlines/DeadlinesTab.tsx`, legal pages.
+- **Guard:** `tests/extension-readers.spec.ts` (both readers in a real page
+  against synthetic sites: term and section filtering, statuses, due and
+  late due times, grades off, unreadable pages keep the last sync) and
+  `tests/canvas-extension.spec.ts` (Gradescope twin marked done and not
+  listed twice; Gradescope-only work added and labelled; a Gradescope
+  snapshot from another host refused).
+- **Setup still needed:** check the reader against a real Gradescope course
+  page; fixtures are synthetic, modelled on Gradescope's markup.
+
+### Soma for Canvas: a browser extension for what the calendar feed leaves out
+- **Why:** the feed gives a title and a due date, so Soma couldn't tell a
+  2-hour problem set from a discussion post, kept listing work already handed
+  in, and knew nothing of weights, grades or announcements. Collecting Canvas
+  tokens is against most schools' policies; an extension reading the
+  student's own session in their own browser isn't collecting anything.
+- **What:**
+  - `extension/` (Manifest V3, unpacked for now): `canvas.js` reads
+    `/api/v1` on the Canvas site the student is on — active courses (current
+    grade), assignment groups and weights, assignments with their own
+    submission, the last 30 days of announcements — at most every 3 hours, or
+    on Sync now. `bridge.js` posts the snapshot to an open Soma tab. The
+    extension holds no Soma session, never calls Soma's servers, sends no
+    cookie or token, and never writes to Canvas. Grades can be turned off;
+    a school on its own domain is enabled one site at a time.
+  - App: `src/lib/canvasDeepSync.ts` validates a snapshot (types, lengths,
+    links only to the same Canvas site, assignments only for listed courses)
+    and merges it into `getCachedAssignments`/`getCachedIcalAssignments`:
+    descriptions, points, group weights, and handed-in work marked done.
+    Dated work the feed missed is added (due from two weeks ago on).
+    `src/lib/canvasExtension.ts` listens for the bridge, saves to
+    `canvas_snapshots` under the signed-in student (never an id from the
+    message), ignores older snapshots, loads other devices' copies, and
+    removes everything on request.
+  - AI context (`buildCanvasSection`): points, group weight, "missing",
+    a 280-character brief, current grades and the last two weeks'
+    announcements, framed as untrusted data. Submitted work is left out.
+  - Deadlines: a Canvas item handed in counts as done unless the student set
+    a status; the page refreshes when a sync lands; extension-only students
+    aren't shown the setup card.
+  - Settings → Integrations: "Canvas extension" row with last sync and
+    Remove synced data. Privacy policy (both copies), Data Deletion page and
+    account deletion (`canvas_snapshots` in `USER_TABLES`) cover it.
+- **Where:** `extension/`, `src/lib/canvasDeepSync.ts`,
+  `src/lib/canvasExtension.ts`, `src/lib/storage.ts`, `src/lib/aiContext.ts`,
+  `src/types/index.ts`, `src/App.tsx`,
+  `src/components/Deadlines/DeadlinesTab.tsx`,
+  `src/components/Settings/CanvasDeepSyncRow.tsx`,
+  `src/components/Settings/SettingsTab.tsx`,
+  `src/components/Legal/LegalPage.tsx`, `public/privacy.html`,
+  `api/_deleteUserData.ts`, `docs/extension-plan.md`.
+- **Guard:** `tests/canvas-extension.spec.ts` (submission becomes done and
+  missed work is added, saved under the signed-in student; malformed
+  snapshots ignored; an older snapshot can't replace a newer one; Settings
+  removes it everywhere, scoped to the student).
+- **Setup still needed:** run `canvas_snapshots_migration.sql` (new table,
+  RLS; until then a sync stays in the browser that got it). Before the Chrome
+  Web Store: icons, drop the localhost matches, store privacy answers, and a
+  terms check. See `extension/README.md`.
+
 ## 2026-10-21
 
 ### Billing: trials reach the AI, canceled students can come back, a failed check never asks for money

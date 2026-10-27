@@ -41,6 +41,7 @@ test('a question goes to Sonnet at low effort, without documents it doesn\'t nee
   const main = calls.find(c => c.purpose !== 'triage')!;
   expect(main).toMatchObject({ model: 'sonnet', effort: 'low' });
   expect(String(main.systemPrompt)).not.toContain('STUDENT DOCUMENTS');
+  expect(String(main.context)).not.toContain('STUDENT DOCUMENTS');
 });
 
 test('planning goes to Sonnet at medium effort, with documents when they matter', async ({ page }) => {
@@ -50,7 +51,10 @@ test('planning goes to Sonnet at medium effort, with documents when they matter'
   await expect(page.getByRole('log')).toContainText('Planned.');
   const main = calls.find(c => c.purpose !== 'triage')!;
   expect(main).toMatchObject({ model: 'sonnet', effort: 'medium' });
-  expect(String(main.systemPrompt)).toContain('14.3, 14.4, 14.5');
+  // Documents travel with the message, as the passages that match it
+  // (docSearch.ts), not in the cached instructions: changed 2026-10-25.
+  expect(String(main.context)).toContain('14.3, 14.4, 14.5');
+  expect(String(main.systemPrompt)).not.toContain('14.3, 14.4, 14.5');
 });
 
 test('a first pass that can\'t be read sends the message to the full Soma', async ({ page }) => {
@@ -60,7 +64,22 @@ test('a first pass that can\'t be read sends the message to the full Soma', asyn
   await expect(page.getByRole('log')).toContainText('Full answer.');
   const main = calls.find(c => c.purpose !== 'triage')!;
   expect(main).toMatchObject({ effort: 'medium' });
-  expect(String(main.systemPrompt)).toContain('STUDENT DOCUMENTS');
+  expect(String(main.context)).toContain('STUDENT DOCUMENTS');
+});
+
+test('long documents: only the passages that match the message are sent', async ({ page }) => {
+  // About 60,000 characters: more than the old 45,000 cut-off, which used to
+  // drop the end of it and still send the rest with every message.
+  const filler = Array.from({ length: 600 }, (_, i) => `Week ${i} notes on general course logistics and reminders.`).join('\n\n');
+  const long = { ...doc, id: 'd2', file_name: 'PHYS-reader.pdf', doc_type: 'reading', extracted_text: `${filler}\n\nProblem set 9 covers rotational inertia, torque and angular momentum.\n\n${filler}` };
+  await setup(page, () => ({ reply: 'Planned.' }), d => { d.documents = [long]; });
+  const calls = await withFirstPass(page, '{"route":"plan","docs":true}');
+  await ask(page, 'plan problem set 9 on angular momentum and torque');
+  await expect(page.getByRole('log')).toContainText('Planned.');
+  const main = calls.find(c => c.purpose !== 'triage')!;
+  const context = String(main.context);
+  expect(context).toContain('Problem set 9 covers rotational inertia');
+  expect(context.length).toBeLessThan(long.extracted_text.length / 3);
 });
 
 test('the server runs the first pass without memory, records it apart, and honours low effort', async () => {

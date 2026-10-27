@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Soma for Canvas</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <span class="brand">soma</span>
+    <span class="sub">for Canvas</span>
+  </header>
+
+  <section id="here" class="card" hidden>
+    <p id="hereText"></p>
+    <button id="syncNow" class="primary" hidden>Sync now</button>
+    <button id="enableSite" class="primary" hidden>Use Soma on this site</button>
+  </section>
+
+  <section class="card">
+    <h2>Due soon</h2>
+    <ul id="due"><li class="muted">Nothing due in the next two days that isn’t handed in.</li></ul>
+  </section>
+
+  <section class="card" id="changedCard" hidden>
+    <h2>What changed</h2>
+    <ul id="changed"></ul>
+  </section>
+
+  <section class="card">
+    <h2>Synced</h2>
+    <ul id="sites"><li class="muted">Nothing yet. Open Canvas, Gradescope or WebAssign once and it keeps them in sync from then on.</li></ul>
+    <button id="syncAll" class="sync-all" hidden>Sync everything now</button>
+  </section>
+
+  <section class="card">
+    <label class="toggle">
+      <input type="checkbox" id="changes">
+      <span>Tell me when something changes</span>
+    </label>
+    <p class="muted small">New work, a moved due date, a grade posted, or an announcement.</p>
+    <label class="toggle">
+      <input type="checkbox" id="reminders">
+      <span>Remind me before things are due</span>
+    </label>
+    <p class="muted small">A notification a day before and again three hours before anything not handed in.</p>
+    <label class="toggle">
+      <input type="checkbox" id="badge">
+      <span>Show the count on the toolbar icon</span>
+    </label>
+    <p class="muted small">How many things are due in the next two days and not handed in.</p>
+    <label class="toggle">
+      <input type="checkbox" id="background">
+      <span>Keep in sync in the background</span>
+    </label>
+    <p class="muted small">Every two hours while Chrome is open, and whenever you open Soma. Turned off, it syncs only when you visit the site.</p>
+    <label class="toggle">
+      <input type="checkbox" id="grades">
+      <span>Include grades and scores</span>
+    </label>
+    <p class="muted small">Turned off, Soma still sees what’s due and what you’ve handed in, but no scores. Applies from the next sync.</p>
+  </section>
+
+  <footer>
+    <button id="openSoma">Open Soma</button>
+    <button id="forget" class="quiet">Remove synced data</button>
+  </footer>
+
+  <p class="muted small privacy">Canvas, Gradescope and WebAssign are read in this browser with your own sign-in. No password, cookie or token leaves it; Soma only gets the course details listed above.</p>
+
+  <script src="due.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

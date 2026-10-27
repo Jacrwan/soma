@@ -23,8 +23,9 @@ export async function sendMessage(
   model?: 'sonnet',
   attachments?: Attachment[],
   responseFormat?: 'dashboard',
-  /** Sonnet's thinking effort, and whether this is the cheap first pass that sorts a message. */
-  options: { effort?: 'low' | 'medium'; purpose?: 'triage'; conversationId?: string } = {},
+  /** Sonnet's thinking effort, and whether this is the cheap first pass that sorts a message.
+   *  `onText` streams the reply: it's called with everything received so far. */
+  options: { effort?: 'low' | 'medium'; purpose?: 'triage' | 'study'; conversationId?: string; onText?: (soFar: string) => void } = {},
 ): Promise<string> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
@@ -64,11 +65,40 @@ export async function sendMessage(
       ...(options.effort ? { effort: options.effort } : {}),
       ...(options.purpose ? { purpose: options.purpose } : {}),
       ...(options.conversationId ? { conversationId: options.conversationId } : {}),
+      ...(options.onText && model === 'sonnet' && !options.purpose ? { stream: true } : {}),
     }),
   }).catch(error => { if (error instanceof Error && ['TimeoutError','AbortError'].includes(error.name)) throw new Error('request_timeout'); throw error; });
 
-  const text=await readAIResponse(res);
+  // A streamed reply when the server sent one; anything else (an error, or a
+  // server that answered in one piece) is read as before.
+  const streamed=res.ok && options.onText && (res.headers.get('content-type') ?? '').includes('text/event-stream');
+  const text=streamed ? await readStream(res, options.onText!) : await readAIResponse(res);
   const {data:{session:current}}=await supabase.auth.getSession();
   if(current?.user.id!==session?.user.id)throw new Error('account_changed');
+  return text;
+}
+
+/** The reply from /api/chat's stream (see relayStream in api/chat.ts). */
+async function readStream(res: Response, onText: (soFar: string) => void): Promise<string> {
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '', text = '', finished = false;
+  for (;;) {
+    const { value, done } = await reader.read().catch(() => ({ value: undefined, done: true }));
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let cut;
+    while ((cut = buffer.indexOf('\n\n')) >= 0) {
+      const line = buffer.slice(0, cut).trim(); buffer = buffer.slice(cut + 2);
+      if (!line.startsWith('data:')) continue;
+      let event: { t?: unknown; done?: unknown; error?: unknown };
+      try { event = JSON.parse(line.slice(5)); } catch { continue; }
+      if (typeof event.error === 'string') throw new Error(event.error);
+      if (typeof event.t === 'string') { text += event.t; onText(text); }
+      if (event.done === true) finished = true;
+    }
+  }
+  // A stream that stopped without saying it finished was cut off.
+  if (!finished) throw new Error(text ? 'response_incomplete' : 'upstream_unavailable');
   return text;
 }

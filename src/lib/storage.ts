@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { Subject, TimeBlock, TimerSession, CanvasAssignment, CanvasCourse, Todo, TodoSession, GoogleCalendarEvent, ChatMessage, ChatSession, asTodoKind } from '../types';
+import { mergeDeepSync, clearLocalSnapshots } from './canvasDeepSync';
 
 const SOMA_TODOS_KEY = 'soma_todos';
 const SOMA_BLOCKS_KEY = 'soma_blocks';
@@ -375,9 +376,11 @@ export const storage = {
     })();
   },
 
-  getCachedIcalAssignments: () => normalizeIcalAssignments(
+  // Both reads include what the Canvas extension synced (canvasDeepSync.ts),
+  // so every page and the AI see descriptions, points and submissions.
+  getCachedIcalAssignments: () => mergeDeepSync(normalizeIcalAssignments(
     get<import('../types').CanvasAssignment[]>(KEYS.cachedIcalAssignments, []),
-  ),
+  )),
   setCachedIcalAssignments: (v: import('../types').CanvasAssignment[]) => {
     const normalized = normalizeIcalAssignments(v);
     set(KEYS.cachedIcalAssignments, normalized);
@@ -395,7 +398,7 @@ export const storage = {
   setCachedCourses: (v: CanvasCourse[]) => set(KEYS.cachedCourses, v),
 
   getCachedAssignments: (): CanvasAssignment[] =>
-    normalizeIcalAssignments(get<CanvasAssignment[]>(KEYS.cachedIcalAssignments, [])),
+    mergeDeepSync(normalizeIcalAssignments(get<CanvasAssignment[]>(KEYS.cachedIcalAssignments, []))),
   setCachedAssignments: (v: CanvasAssignment[]) => set(KEYS.cachedAssignments, normalizeIcalAssignments(v)),
 
   getCacheTimestamp: (): number | null => get<number | null>(KEYS.cacheTimestamp, null),
@@ -1030,6 +1033,7 @@ export const storage = {
     localStorage.removeItem(KEYS.canvasIcalUrl);
     localStorage.removeItem(KEYS.assignmentStatus);
     localStorage.removeItem(KEYS.clearedAssignments);
+    clearLocalSnapshots();
     // Remove Canvas-sourced subjects — write-through syncs deletion to Supabase
     const manualOnly = _subjects.filter(s => s.source !== 'canvas');
     storage.setSubjects(manualOnly);

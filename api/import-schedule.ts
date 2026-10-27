@@ -1,5 +1,8 @@
 /// <reference types="node" />
-import { verifyUserAndSubscription } from './chat';
+import { verifyUserAndSubscription, defaultBudget } from './chat';
+import { recordUsage, type Usage } from './_usage';
+import type { BudgetStatus } from './_budget';
+import { waitUntil } from '@vercel/functions';
 import { safeFetch, SafeFetchError } from './_safeFetch';
 import { createConnectorHandler } from './_mcp';
 
@@ -16,7 +19,7 @@ export const maxDuration = 60;
  * safeFetch, framed to the model as data, and every returned item is validated.
  */
 
-type Authorization = { ok: true; userId: string } | { ok: false; status: number; error: string };
+type Authorization = { ok: true; userId: string; unlimited?: true } | { ok: false; status: number; error: string };
 export type ScheduleItem = { title: string; type: string; due: string; time: string | null; evidence: string; unverified?: boolean };
 
 const TYPES = ['homework', 'lab', 'project', 'exam', 'quiz', 'reading', 'discussion', 'other'];
@@ -95,9 +98,12 @@ Reply with JSON only:
 type Deps = {
   authorize?: (token: string) => Promise<Authorization>;
   fetchPage?: (url: string) => Promise<{ url: string; contentType: string; body: string }>;
-  model?: (system: string, user: string) => Promise<{ text: string; stopReason?: string }>;
+  model?: (system: string, user: string) => Promise<{ text: string; stopReason?: string; model?: string; usage?: Usage }>;
   apiKey?: () => string | undefined;
   limited?: (userId: string) => boolean;
+  budget?: (userId: string) => Promise<BudgetStatus | null>;
+  record?: (userId: string, kind: 'reply', model: string, usage: Usage) => Promise<void>;
+  defer?: (task: Promise<unknown>) => void;
 };
 
 const hits = new Map<string, number[]>();
@@ -127,6 +133,12 @@ export function createImportHandler(deps: Deps = {}) {
       const auth = await (deps.authorize ?? verifyUserAndSubscription)(token);
       if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
       if ((deps.limited ?? limited)(auth.userId)) { res.setHeader('Retry-After', '60'); return res.status(429).json({ error: 'rate_limit' }); }
+      // Reading a page or a syllabus is AI use like any other: it counts
+      // against the month's budget, and past it, it waits like Soma does.
+      if (!auth.unlimited) {
+        const budget = await (deps.budget ?? defaultBudget)(auth.userId);
+        if (budget && budget.used >= budget.available) return res.status(402).json({ error: 'ai_budget_used' });
+      }
       const key = (deps.apiKey ?? (() => process.env.ANTHROPIC_API_KEY))();
       if (!key) return res.status(503).json({ error: 'server_not_configured' });
 
@@ -153,14 +165,17 @@ export function createImportHandler(deps: Deps = {}) {
       const model = deps.model ?? (async (system: string, user: string) => {
         const response = await fetch('https://api.anthropic.com/v1/messages', {
           method: 'POST', signal: AbortSignal.timeout(45_000),
-          headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-          body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 8000, system, messages: [{ role: 'user', content: user }] }),
+          headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json', 'anthropic-beta': 'server-side-fallback-2026-07-01' },
+          // Sonnet 5.5 at low effort: it was Sonnet 4.6, which costs more per
+          // token and wasn't counted against the student's budget at all.
+          body: JSON.stringify({ model: 'claude-sonnet-5-5', max_tokens: 8000, output_config: { effort: 'low' }, fallbacks: 'default', system, messages: [{ role: 'user', content: user }] }),
         });
         if (!response.ok) throw new Error(response.status === 429 || response.status === 529 ? 'model_busy' : 'model_unavailable');
-        const data = await response.json() as { content?: { type: string; text?: string }[]; stop_reason?: string };
-        return { text: data.content?.filter(b => b.type === 'text').map(b => b.text ?? '').join('') ?? '', stopReason: data.stop_reason };
+        const data = await response.json() as { content?: { type: string; text?: string }[]; stop_reason?: string; model?: string; usage?: Usage };
+        return { text: data.content?.filter(b => b.type === 'text').map(b => b.text ?? '').join('') ?? '', stopReason: data.stop_reason, model: data.model, usage: data.usage };
       });
       const reply = await model(SYSTEM(today), `<page source="${source ?? 'pasted text'}">\n${excerpt}\n</page>`);
+      if (reply.usage) (deps.defer ?? waitUntil)((deps.record ?? recordUsage)(auth.userId, 'reply', reply.model ?? 'claude-sonnet-5-5', reply.usage).catch(() => {}));
       if (reply.stopReason === 'max_tokens') return res.status(502).json({ error: 'response_incomplete' });
 
       let parsed: { course?: unknown; items?: unknown };

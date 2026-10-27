@@ -16,6 +16,7 @@ import { localDate } from './components/DashboardV2/liveData';
 import { useSubscription, refreshSubscription, hasAIAccess } from './lib/subscription';
 import { TimerProvider } from './contexts/TimerContext';
 import { clearMirror } from './lib/activeTimerMirror';
+import { startCanvasBridge } from './lib/canvasExtension';
 import TimerOverlay from './components/Timer/TimerOverlay';
 import LandingPage from './components/Landing/LandingPage';
 import LegalPage from './components/Legal/LegalPage';
@@ -523,6 +524,12 @@ export default function App() {
       subscription.unsubscribe();
     };
   }, []);
+
+  // The Soma for Canvas extension hands its sync to whichever Soma tab is open.
+  useEffect(() => {
+    if (!userId) return;
+    return startCanvasBridge(userId);
+  }, [userId]);
 
   // Signing in with Google from the Claude connector's approval page comes
   // back to /dashboard; return to the approval that was waiting.

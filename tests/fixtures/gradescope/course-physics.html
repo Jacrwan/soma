@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<!-- Synthetic. Modelled on a Gradescope student course page: one row per
+     assignment, a status cell, and release / due / late due times carrying a
+     datetime attribute. No real student, course or school data. -->
+<html>
+<head><title>PHYSICS 7A Dashboard | Gradescope</title></head>
+<body>
+  <table class="table" id="assignments-student-table">
+    <thead>
+      <tr><th>Name</th><th>Status</th><th>Released</th><th>Due (PDT)</th></tr>
+    </thead>
+    <tbody>
+      <tr role="row">
+        <th class="table--primaryLink" scope="row">
+          <a aria-label="View Homework 4" href="/courses/600001/assignments/7001/submissions/88001">Homework 4</a>
+        </th>
+        <td class="submissionStatus"><div class="submissionStatus--text">Submitted</div></td>
+        <td class="sorting_1">
+          <div class="submissionTimeChart">
+            <time class="submissionTimeChart--releaseDate" datetime="2026-10-20 09:00:00 -0700">Oct 20</time>
+            <time class="submissionTimeChart--dueDate" datetime="2026-10-27 23:59:00 -0700">Oct 27 at 11:59PM</time>
+          </div>
+        </td>
+      </tr>
+      <tr role="row">
+        <th class="table--primaryLink" scope="row">
+          <button class="js-submitAssignment" data-assignment-id="7002" data-post-url="/courses/600001/assignments/7002/submissions" type="button">Homework 5: Momentum</button>
+        </th>
+        <td class="submissionStatus"><div class="submissionStatus--text">No Submission</div></td>
+        <td>
+          <div class="submissionTimeChart">
+            <time class="submissionTimeChart--releaseDate" datetime="2026-10-27 09:00:00 -0700">Oct 27</time>
+            <time class="submissionTimeChart--dueDate" datetime="2026-11-03 23:59:00 -0800">Nov 03 at 11:59PM</time>
+            <time class="submissionTimeChart--dueDate" aria-label="Late Due Date" datetime="2026-11-05 23:59:00 -0800">Late Due Date: Nov 05 at 11:59PM</time>
+          </div>
+        </td>
+      </tr>
+      <tr role="row">
+        <th class="table--primaryLink" scope="row">
+          <a href="/courses/600001/assignments/7000/submissions/87000">Homework 3</a>
+        </th>
+        <td class="submissionStatus"><div class="submissionStatus--score">8.5 / 10.0</div></td>
+        <td>
+          <div class="submissionTimeChart">
+            <time class="submissionTimeChart--releaseDate" datetime="2026-10-13 09:00:00 -0700">Oct 13</time>
+            <time class="submissionTimeChart--dueDate" datetime="2026-10-20 23:59:00 -0700">Oct 20 at 11:59PM</time>
+          </div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</body>
+</html>
