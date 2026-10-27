@@ -9,6 +9,93 @@ still needed.
 
 ---
 
+## 2026-10-26
+
+### The extension uses Soma's logo
+
+The extension's icons were placeholders (a blue ring). They are now Soma's
+four-point star, scaled from `public/favicon.png`, at 16, 32, 48 and 128 px:
+toolbar, extensions page, notifications and the store listing.
+
+- Where: `extension/icons/icon-*.png`; `extension/STORE_LISTING.md` checklist.
+- Guard test: none; images only, no code changed.
+- Setup: reload the extension in `chrome://extensions` to see them.
+
+### Grades page: each course's grade and every score, from Canvas and Gradescope
+
+The extension already collected grades and scores, but nothing showed them: the
+Grades tab was an empty placeholder with no menu entry. There is now a Grades
+page in the sidebar: one card per course with its grade shown big (Canvas's
+course grade, or the average of the scores when Canvas gives none). Clicking a
+card opens the course: the big grade again, points earned, and the score on
+each graded assignment with a bar, newest first. Gradescope scores join the
+Canvas course of the same department and number, tagged "Gradescope", or get
+their own card; work Canvas already shows a score for is not listed twice.
+Ungraded and excused work is left out, and a course with nothing to show has
+no card. It reads the local synced copy: no AI, no server call, no database
+change.
+
+- Where: `src/lib/grades.ts` (`buildGrades`), `src/components/Grades/GradesTab.tsx`
+  and its CSS, route `/grades` and sidebar entry in `src/App.tsx`;
+  `sameWork` in `src/lib/canvasDeepSync.ts` is now exported.
+- Guard test: `tests/grades.spec.ts` (cards, merge, dedupe, excluded work, empty state).
+- Setup: none. Needs the extension with "Include grades and scores" on.
+
+### The app and the extension no longer answer each other forever
+
+The app said "hello" every time the extension said "present", and the extension
+answers every "hello" with "present" and all its snapshots. Opening Soma with
+the extension installed sent thousands of messages a second, so the page was
+being hammered. The app now says hello once, the first time it hears "present".
+
+- Where: `src/lib/canvasExtension.ts` (`startCanvasBridge`).
+- Guard test: `tests/canvas-extension.spec.ts` › "the app answers the extension
+  once, not every time it says it is here". Fails without the fix (2,796 hellos
+  in half a second), passes with it.
+- Setup: none. Reload the page; the extension needs no change.
+
+### Soma as an agent: email drafts, calendar events, and the morning brief
+- **Why:** the owner asked for Soma to act more like Meta's Muse, an agent
+  that does things in your apps, while keeping AI use cheap.
+- **What:**
+  - **Actions** (`src/lib/agentActions.ts`, `AI/ActionCards.tsx`): the
+    assistant may return `"actions"`: an email draft (to, subject, body) or a
+    calendar event (title, date, optional times). Each shows as a card:
+    Open in Gmail / Open in Mail / Copy, or Add to Google Calendar /
+    Download .ics. Soma never sends or saves anything; the student does,
+    in their own app. No new permissions: Google Calendar stays read-only,
+    no Gmail access. Everything from the model is checked (known kinds,
+    real-looking addresses only, lengths, exact date and time formats, at
+    most three) and the .ics text is escaped. New AGENT ACTIONS rules: say
+    "drafted", never "sent"; the student's voice with "[Your name]"; an
+    address only if given or in their documents; nothing that asks for
+    answers, gets around course rules or impersonates anyone. Dashboard
+    replies note the drafts and keep them on the saved chat, so the cards
+    appear on the AI page.
+  - **Morning brief** (`src/lib/brief.ts`, `DashboardV2/AgentBrief.tsx`):
+    under the date on the dashboard: due today, due tomorrow (not done;
+    Canvas, Gradescope, WebAssign and tasks), what changed in the last day,
+    and what was planned yesterday but not checked off. Worked out in the
+    browser with no AI call. "Plan my day" opens the AI page with a request
+    naming those items (sent once). Hidden for the day on request; absent
+    when there's nothing to say.
+- **Cost:** the brief is free; Plan my day is one ordinary planning call,
+  only when clicked; actions are part of the same reply.
+- **Not done (on purpose):** talking to Soma by SMS or WhatsApp needs a
+  new server function, and the Vercel plan is at its 12-function limit.
+  Writing straight to Google Calendar would need the calendar.events
+  scope and another Google verification.
+- **Where:** `src/lib/agentActions.ts`, `brief.ts`, `assistant.ts`,
+  `dashboardChatMemory.ts`, `src/types/index.ts`,
+  `src/components/AI/ActionCards.*`, `AI/AITab.tsx`,
+  `DashboardV2/AgentBrief.*`, `DashboardV2.tsx`, `LiveDashboard.tsx`.
+- **Guard:** `tests/soma-agent.spec.ts` (action checks, links, .ics
+  escaping a title that tries to add a field, cards on the AI page, brief
+  contents with no AI call, Plan my day's request, hide and empty, drafts
+  from the dashboard kept for the AI page). Checked by screenshot, desktop
+  and phone width.
+- **Setup still needed:** none.
+
 ## 2026-10-25
 
 ### Study features and cheaper AI: practice, exam mode, syllabus dates, streaming, document search

@@ -17,6 +17,7 @@ import TrialSetupModal from '../Trial/TrialSetupModal';
 import styles from './AITab.module.css';
 import { MONTHLY_PRICE, SEMESTER_PRICE, TRIAL_DAYS } from '../../lib/pricing';
 import AiBudgetMeter from '../UI/AiBudgetMeter';
+import ActionCards from './ActionCards';
 import { useAiBudget, budgetUsedUp } from '../../lib/aiBudget';
 
 declare global {
@@ -649,6 +650,7 @@ export default function AITab() {
         id: crypto.randomUUID(), role: 'assistant', content: result.display,
         modelContent: result.history[result.history.length-1].content, at: result.history[result.history.length-1].at,
         ...(made.length ? { proposals: made } : {}),
+        ...(result.actions?.length ? { actions: result.actions } : {}),
       };
       updateSession(activeSessionId, s => ({ ...s, messages: [...s.messages, assistantMsg] }));
       if (isVoice) speakText(result.display);
@@ -794,6 +796,7 @@ export default function AITab() {
                 className={`${styles.bubble} ${msg.role === 'user' ? styles.userBubble : styles.assistantBubble}`}
                 dangerouslySetInnerHTML={{ __html: formatMessage(stripTags(msg.content)) }}
               />
+              {msg.role === 'assistant' && msg.actions?.length ? <ActionCards actions={msg.actions} /> : null}
               {msg.role === 'assistant' && msg.proposals?.length ? (() => {
                 const live = new Map(pendingProposals.map(p => [p.id, p]));
                 const shown = msg.proposals.map(p => live.get(p.id) ?? p);

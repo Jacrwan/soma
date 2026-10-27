@@ -10,8 +10,8 @@ Screenshots are in `extension/store/` (regenerate with
 - [ ] PR #4 is merged and deployed, so `somastudy.app` can receive what the
       extension syncs. Published earlier, it would sync, but Soma would show
       nothing.
-- [ ] Final icons in `extension/icons/` (16, 32, 48, 128 px). The current ones
-      are placeholders.
+- [x] Icons in `extension/icons/` (16, 32, 48, 128 px) are Soma's logo, scaled
+      from `public/favicon.png`.
 - [ ] Terms check: some schools' acceptable-use policies, and Gradescope's and
       Cengage's (WebAssign) terms, restrict automated access. Have this
       looked at before publishing.

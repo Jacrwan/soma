@@ -201,6 +201,8 @@ export interface ChatMessage {
   modelContent?: string;
   /** Soma's proposals from this reply, as they were made. */
   proposals?: PlanBlock[];
+  /** Emails and calendar events Soma got ready for the student to send or add themselves. */
+  actions?: import('../lib/agentActions').AgentAction[];
   /** What the student did with each proposal, by id. */
   proposalStatus?: Record<string, 'accepted' | 'dismissed'>;
   /** When it was sent (ISO), so a chat picked up the next day reads in time. */

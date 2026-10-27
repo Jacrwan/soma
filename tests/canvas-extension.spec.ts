@@ -190,6 +190,26 @@ test('Sync now in Settings asks the extension and reports how each site went', a
   await expect(page.getByRole('alert').filter({ hasText: 'www.gradescope.com: Sign in to Gradescope' })).toBeVisible();
 });
 
+test('the app answers the extension once, not every time it says it is here', async ({ page }) => {
+  await setup(page);
+  await page.goto('/deadlines');
+  await expect(page.getByText('Cell structure homework')).toBeVisible();
+  // Stand in for the bridge, which answers every hello with "present". If the
+  // app answered each of those with another hello they would ping-pong forever.
+  const hellos = await page.evaluate(async () => {
+    let n = 0;
+    window.addEventListener('message', e => {
+      if (e.data?.source !== 'soma-app' || e.data.type !== 'hello') return;
+      n++;
+      window.postMessage({ source: 'soma-extension', type: 'present', version: '0.1.0' }, window.location.origin);
+    });
+    window.postMessage({ source: 'soma-extension', type: 'present', version: '0.1.0' }, window.location.origin);
+    await new Promise(r => setTimeout(r, 500));
+    return n;
+  });
+  expect(hellos).toBeLessThanOrEqual(1);
+});
+
 const webassign = (over: Row = {}) => ({
   kind: 'webassign', v: 1, host: 'www.webassign.net', syncedAt: new Date().toISOString(),
   courses: [{ id: 7700001, name: 'BIO 101, Fall 2026' }],
