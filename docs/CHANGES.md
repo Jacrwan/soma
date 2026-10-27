@@ -9,6 +9,18 @@ still needed.
 
 ---
 
+## 2026-10-27 (dashboard shows synced work)
+
+### Dashboard: the subject bar and week strip show what's due
+
+They only counted study blocks planned on the dashboard, so with Canvas synced
+but nothing planned the bar was empty and every day said "Open day" (the brief
+above it listed the same work as due today). With nothing planned, the bar now
+shows the day's due Canvas work by subject ("Due, by subject"), and each day in
+the strip says "N due". Planned blocks still take over as before. Where:
+`DashboardV2/liveData.ts` `dueItems`, `LiveDashboard.tsx` (refreshes on
+CANVAS_CHANGED and subject changes), `DashboardV2.tsx`. Not tested, by request.
+
 ## 2026-10-27 (Canvas walkthrough)
 
 ### An animated walkthrough of setting up the extension
