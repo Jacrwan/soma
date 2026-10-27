@@ -13,6 +13,7 @@ import { requestMemory, type MemoryState, type MemoryMutation } from '../../lib/
 import { SkeletonBlock } from '../UI/Skeleton';
 import CourseSiteImport from './CourseSiteImport';
 import CanvasDeepSyncRow from './CanvasDeepSyncRow';
+import { forgetDeepSync } from '../../lib/canvasExtension';
 import { supabase } from '../../lib/supabase';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, openBillingPortal, refreshSubscription, hasAIAccess, getGoogleCalendarLimit, GOOGLE_CALENDAR_LIMIT_PREMIUM } from '../../lib/subscription';
@@ -459,15 +460,19 @@ export default function SettingsTab() {
     setCanvasIcalUrl('');
   }
 
-  function handleClearLocalData() {
-    if (!window.confirm('This will remove all cached Canvas data, Google events, access tokens, and app preferences from this browser. This cannot be undone. Continue?')) return;
+  async function handleClearLocalData() {
+    if (!window.confirm('This will remove all synced Canvas data and grades, Google events, access tokens, and app preferences from this browser. This cannot be undone. Continue?')) return;
     setClearDataLoading(true);
     try {
+      // Grades and the rest of what the extension synced also live in the account
+      // and the extension; left there, they would come straight back on reload.
+      await forgetDeepSync();
       storage.clearLocalData();
       // Reload so the app re-initialises from a clean state
       window.location.reload();
-    } catch {
+    } catch (e) {
       setClearDataLoading(false);
+      window.alert(e instanceof Error ? e.message : 'Could not clear your data. Please retry.');
     }
   }
 
@@ -696,7 +701,7 @@ export default function SettingsTab() {
                 <div className={styles.dangerZoneItem}>
                   <div className={styles.dangerZoneText}>
                     <span className={styles.dangerZoneName}>Clear local Soma data</span>
-                    <span className={styles.dangerZoneDesc}>Removes cached Canvas data, Google events, tokens, and preferences from this browser only</span>
+                    <span className={styles.dangerZoneDesc}>Removes synced Canvas data and grades (here, in your account and in the extension), Google events, tokens, and preferences from this browser</span>
                   </div>
                   <button
                     className={styles.profileDeleteBtn}

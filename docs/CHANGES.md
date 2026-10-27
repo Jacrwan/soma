@@ -9,7 +9,33 @@ still needed.
 
 ---
 
+## 2026-10-27
+
+### Settings: "Clear local Soma data" now removes the synced grades too
+
+The button only cleared this browser's copy of what the extension synced. The
+copy in the student's account (and the extension's own) stayed, and came back
+on the reload, so Grades and Deadlines looked untouched. It now removes all
+three first, the same way "Remove synced data" does, and says so if that
+fails instead of reloading. Where: `SettingsTab.tsx` `handleClearLocalData`.
+Guarded by: `tests/canvas-extension.spec.ts` ("Clear local Soma data also
+removes the synced grades from the account"). Setup needed: none.
+
 ## 2026-10-26
+
+### Extension popup: "Remove synced data" now clears every card
+
+The button deleted the extension's saved data but only redrew the list of
+synced sites, so "Due soon" and "What changed" kept showing the old work and it
+looked as if nothing had happened. All three cards (and the Sync everything
+now button) now reset. It removes this browser's copy only; the popup says to
+use Settings in Soma for the copy in the student's account.
+
+- Where: `extension/popup.js` (`renderDue`, `renderChanged`, `renderSites` now
+  handle "nothing left", and the button re-renders them).
+- Guard test: `tests/extension-popup.spec.ts`. Fails without the fix.
+- Setup: ships with the next extension version (the store review in progress
+  has the old popup); reload the extension to use it unpacked.
 
 ### Privacy policy: the extension reads Canvas only
 

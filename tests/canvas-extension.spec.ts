@@ -122,6 +122,21 @@ test('Settings shows the sync and removes it everywhere', async ({ page }) => {
   await expect(page.getByText(/Adds assignment details/)).toBeVisible();
 });
 
+test('Clear local Soma data also removes the synced grades from the account', async ({ page }) => {
+  const { deleted } = await setup(page);
+  await page.goto('/deadlines');
+  await expect(page.getByText('Cell structure homework')).toBeVisible();
+  await fromExtension(page, snapshot());
+  await expect(page.getByText('Microscope lab report')).toBeVisible();
+
+  await page.goto('/settings');
+  page.once('dialog', d => void d.accept());
+  await page.getByRole('button', { name: 'Clear data' }).click();
+  await expect.poll(() => deleted.length).toBe(1);
+  expect(deleted[0]).toContain(`user_id=eq.${account.id}`);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('soma_canvas_deep_sync'))).toBeNull();
+});
+
 const gradescope = (over: Row = {}) => ({
   kind: 'gradescope', v: 1, host: 'www.gradescope.com', syncedAt: new Date().toISOString(),
   courses: [{ id: 600001, shortName: 'BIO 101', name: 'Biology', term: 'Fall 2026' }, { id: 600009, shortName: 'ASTRO 10', name: 'Astronomy' }],

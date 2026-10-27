@@ -18,7 +18,13 @@ const ago = iso => {
 async function renderDue() {
   const { snapshots = {} } = await chrome.storage.local.get('snapshots');
   const soon = self.somaDue.dueSoon(snapshots, Date.now(), 48);
-  if (!soon.length) return;
+  if (!soon.length) {
+    const none = document.createElement('li');
+    none.className = 'muted';
+    none.textContent = 'Nothing due in the next two days that isn’t handed in.';
+    $('due').replaceChildren(none);
+    return;
+  }
   $('due').replaceChildren(...soon.map(w => {
     const li = document.createElement('li');
     li.tabIndex = 0;
@@ -49,8 +55,8 @@ async function renderChanged() {
     .filter(c => Date.parse(c.at) > week)
     .sort((a, b) => b.at.localeCompare(a.at))
     .slice(0, 8);
-  if (!all.length) return;
-  $('changedCard').hidden = false;
+  $('changedCard').hidden = !all.length;
+  if (!all.length) { $('changed').replaceChildren(); return; }
   $('changed').replaceChildren(...all.map(c => {
     const li = document.createElement('li');
     const name = document.createElement('div');
@@ -78,8 +84,8 @@ async function renderSites() {
   const { status = {} } = await chrome.storage.local.get('status');
   const hosts = Object.keys(status).filter(h => status[h].syncedAt || status[h].error);
   const list = $('sites');
+  $('syncAll').hidden = !hosts.length;
   if (!hosts.length) return;
-  $('syncAll').hidden = false;
   list.replaceChildren(...hosts.map(h => {
     const s = status[h];
     const li = document.createElement('li');
@@ -193,6 +199,8 @@ async function init() {
   $('openSoma').onclick = () => chrome.tabs.create({ url: SOMA_URL });
   $('forget').onclick = async () => {
     await chrome.storage.local.remove(['snapshots', 'status']);
+    // Every card shows what was synced, so all of them reset, not just the list of sites.
+    await Promise.all([renderDue(), renderChanged(), renderSites()]);
     $('sites').replaceChildren(Object.assign(document.createElement('li'), {
       className: 'muted',
       textContent: 'Removed from this browser. To remove it from your Soma account too, use Settings → Canvas in Soma.',
