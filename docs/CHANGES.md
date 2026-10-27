@@ -9,6 +9,25 @@ still needed.
 
 ---
 
+## 2026-10-27 (interactive Canvas onboarding)
+
+### Onboarding: a live checklist driven by the extension
+
+Step 3 ("Bring in Canvas") is now a three-part checklist that ticks itself off:
+1. Add to Chrome (Web Store link). Back from the store tab, it offers
+   "I added it, reload", because Chrome only connects an extension to pages
+   opened after install; the answers so far survive the reload
+   (`sessionStorage` `soma_ob_progress`). Done when the bridge says `present`.
+2. Open Canvas: the student types their Canvas address and opens it, then
+   sees "Waiting for the first sync" until the first snapshot lands. A
+   non-instructure address gets the popup's "Use Soma on this site" hint.
+3. You're connected: the courses found (in their subject colours, with the
+   letter grade), the next three things due, and how to pin the extension and
+   what its popup shows (Due soon, What changed, Sync now, reminders, grades).
+Continue appears once something has synced; until then it's Skip for now.
+Where: `Onboarding/ExtensionSetup.tsx`, `OnboardingFlow.tsx`. Guarded by:
+`tests/regressions.spec.ts` (onboarding), updated but not run. Setup needed: none.
+
 ## 2026-10-27 (calendar feed removed)
 
 ### Canvas comes only from the Soma for Canvas extension

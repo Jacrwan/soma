@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { storage } from '../../lib/storage';
-import { CANVAS_CHANGED, EXTENSION_STORE_URL, extensionPresent } from '../../lib/canvasExtension';
+import { CANVAS_CHANGED, deepSyncStatus } from '../../lib/canvasExtension';
+import ExtensionSetup from './ExtensionSetup';
 import type { University } from '../../lib/universities';
 import UniversityPicker from '../shared/UniversityPicker';
 import styles from './OnboardingFlow.module.css';
@@ -24,31 +25,42 @@ export const EDUCATION_LABELS: Record<EducationId, string> = {
   other:   'Other',
 };
 
+const PROGRESS_KEY = 'soma_ob_progress';
+type Progress = { step?: 1 | 2 | 3 | 4; birthday?: string; education?: EducationId | ''; university?: University | null };
+function readProgress(): Progress {
+  try { return JSON.parse(sessionStorage.getItem(PROGRESS_KEY) ?? '{}') as Progress; } catch { return {}; }
+}
+
 interface Props {
   userName: string;
   onComplete: () => void;
 }
 
 export default function OnboardingFlow({ userName, onComplete }: Props) {
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  // Adding the extension means reloading this page, so the answers so far
+  // are kept for the tab's lifetime.
+  const [saved] = useState(readProgress);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(saved.step ?? 1);
 
   // Step 1 — age
-  const [birthday, setBirthday] = useState('');
+  const [birthday, setBirthday] = useState(saved.birthday ?? '');
   const [ageBlocked, setAgeBlocked] = useState(false);
 
   // Step 2 — education
-  const [education, setEducation] = useState<EducationId | ''>('');
-  const [university, setUniversity] = useState<University | null>(null);
+  const [education, setEducation] = useState<EducationId | ''>(saved.education ?? '');
+  const [university, setUniversity] = useState<University | null>(saved.university ?? null);
   const asksUniversity = education === 'college' || education === 'grad';
 
-
-  // Step 3 — the extension: the bridge says so when it is installed
-  const [extensionHere, setExtensionHere] = useState(() => !!extensionPresent());
+  // Step 3 — Canvas, through the extension. Synced once a snapshot has landed.
+  const [synced, setSynced] = useState(() => deepSyncStatus().length > 0);
   useEffect(() => {
-    const refresh = () => setExtensionHere(!!extensionPresent());
+    const refresh = () => setSynced(deepSyncStatus().length > 0);
     window.addEventListener(CANVAS_CHANGED, refresh);
     return () => window.removeEventListener(CANVAS_CHANGED, refresh);
   }, []);
+  const keepProgress = () => {
+    try { sessionStorage.setItem(PROGRESS_KEY, JSON.stringify({ step, birthday, education, university })); } catch { /* blocked: they answer again */ }
+  };
 
   // Final save
   const [saving, setSaving] = useState(false);
@@ -92,6 +104,7 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
       });
     } catch { /* fail silently */ }
     localStorage.removeItem('soma_ob_edu');
+    try { sessionStorage.removeItem(PROGRESS_KEY); } catch { /* nothing kept */ }
     setSaving(false);
     onComplete();
   }
@@ -217,35 +230,20 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
           </div>
         )}
 
-        {/* ── STEP 3 — Soma for Canvas extension ─────────────────────────── */}
+        {/* ── STEP 3 — Canvas, through the extension ───────────────────── */}
         {step === 3 && (
           <div className={styles.step}>
-            <h1 className={styles.heading}>Add the Soma for Canvas extension</h1>
-            <p className={styles.sub}>Optional. It reads Canvas in your own browser so Soma also has points, submissions, grades and announcements, and keeps itself up to date.</p>
+            <h1 className={styles.heading}>Bring in Canvas</h1>
+            <p className={styles.sub}>Soma for Canvas reads your courses, due dates and grades in your own browser, and keeps Soma up to date on its own.</p>
 
-            <div className={styles.integBlock}>
-              <div className={styles.integHeader}>
-                <span className={styles.integTitle}>How it works</span>
-                {extensionHere && <span className={styles.integBadge}>Installed</span>}
-              </div>
-              <ol className={styles.integDesc}>
-                <li>Add it to Chrome from the Chrome Web Store (it also works in Edge and Brave).</li>
-                <li>Open Canvas in that browser and sign in as usual. The extension reads your courses from the page you are already signed in to.</li>
-                <li>Keep Soma open in a tab once. Your grades and assignment details show up in Soma, and it syncs on its own after that.</li>
-              </ol>
-              <p className={styles.integDesc}>It never sees your Canvas password. You can see or remove what it synced in Settings.</p>
-              {!extensionHere && (
-                <a className={styles.connectBtn} href={EXTENSION_STORE_URL} target="_blank" rel="noopener noreferrer">
-                  Add to Chrome
-                </a>
-              )}
-            </div>
+            <ExtensionSetup onBeforeReload={keepProgress} />
 
             <div className={styles.actions}>
               <button className={styles.backBtn} onClick={() => setStep(2)}>Back</button>
               <div className={styles.actionsRight}>
-                {!extensionHere && <button className={styles.skipBtn} onClick={() => setStep(4)}>Skip for now</button>}
-                <button className={styles.primaryBtn} onClick={() => setStep(4)}>Continue</button>
+                {synced
+                  ? <button className={styles.primaryBtn} onClick={() => setStep(4)}>Continue</button>
+                  : <button className={styles.skipBtn} onClick={() => setStep(4)}>Skip for now</button>}
               </div>
             </div>
 
