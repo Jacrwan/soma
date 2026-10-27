@@ -178,11 +178,11 @@ test('onboarding explains the Canvas extension, then lands on the app', async ({
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await page.getByRole('button', { name: /College \/ University/ }).click();
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
-  // Canvas comes in through the extension, not a calendar feed.
-  await expect(page.getByRole('heading', { name: 'Add the Soma for Canvas extension' })).toBeVisible();
-  await expect(page.getByPlaceholder(/instructure/)).toHaveCount(0);
+  // Canvas comes in through the extension: the first thing asked is to add it.
+  await expect(page.getByRole('heading', { name: 'Bring in Canvas' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Add to Chrome' })).toHaveAttribute('href', /chromewebstore\.google\.com\/detail\/soma-for-canvas\/hfiggdemebihcchcinhdmenhdebioanm/);
-  await page.getByRole('button', { name: 'Continue', exact: true }).click();
+  // Nothing synced yet, so the way on is to skip.
+  await page.getByRole('button', { name: 'Skip for now', exact: true }).click();
   await page.getByRole('button', { name: 'Start using Soma', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Start your free trial' })).toHaveCount(0);
 });
