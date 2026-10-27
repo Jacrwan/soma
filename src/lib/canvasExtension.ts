@@ -82,9 +82,12 @@ export function startCanvasBridge(userId: string): () => void {
     const msg = event.data as { source?: unknown; type?: unknown; snapshot?: unknown; version?: unknown };
     if (!msg || msg.source !== 'soma-extension') return;
     if (msg.type === 'present') {
+      const first = extensionVersion === null;
       extensionVersion = typeof msg.version === 'string' ? msg.version.slice(0, 20) : 'unknown';
       window.dispatchEvent(new Event(CANVAS_CHANGED));
-      post({ type: 'hello' });
+      // Say hello once, to get the saved snapshots. The extension answers every
+      // hello with "present", so answering each of those would never end.
+      if (first) post({ type: 'hello' });
       return;
     }
     if (msg.type !== 'canvas_snapshot') return;

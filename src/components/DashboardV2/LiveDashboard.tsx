@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import AgentBrief from './AgentBrief';
 import PracticeCard from './PracticeCard';
 import { useLocation, useNavigate } from 'react-router-dom';
 import DashboardV2 from './DashboardV2';
@@ -22,7 +23,7 @@ import { eventKey, skippedKeys, SKIPS_CHANGED } from '../../lib/skippedEvents';
 async function mirrorToChatSession(memory:DashboardChatMemory) {
  if(!memory.display.length)return;
  const firstUser=memory.display.find(m=>m.role==='user')?.content??'Dashboard chat';
- await storage.upsertChatSession({id:memory.id,date:localDate(new Date(memory.createdAt)),title:firstUser.slice(0,60),messages:memory.display.map((m,i)=>({id:`${memory.id}-${i}`,role:m.role,content:m.content,...(m.at ? {at:m.at} : {})})),createdAt:memory.createdAt},memory.userId);
+ await storage.upsertChatSession({id:memory.id,date:localDate(new Date(memory.createdAt)),title:firstUser.slice(0,60),messages:memory.display.map((m,i)=>({id:`${memory.id}-${i}`,role:m.role,content:m.content,...(m.at ? {at:m.at} : {}),...(m.actions?.length ? {actions:m.actions} : {})})),createdAt:memory.createdAt},memory.userId);
 }
 
 /**
@@ -227,11 +228,13 @@ export default function LiveDashboard({userId}:{userId:string}) {
   conversation.current=result.history;
   memory.history=result.history;
   const [asked,answered]=result.history.slice(-2);
-  memory.display.push({role:'user',content:text,at:asked?.at},{role:'assistant',content:result.display,at:answered?.at});
+  memory.display.push({role:'user',content:text,at:asked?.at},{role:'assistant',content:result.display,at:answered?.at,...(result.actions?.length ? {actions:result.actions} : {})});
   await mirrorToChatSession(memory).catch(()=>setError('Your reply is available here, but chat history could not be saved. Keep this page open.'));
   // Proposals live in this week; bring it back on screen if another is showing.
   if(result.proposedCount && rangeRef.current!==0)setRangeStart(0);
-  return {reply:result.display,day:result.showDay===undefined ? undefined : result.showDay+shift};
+  // Drafts and events show as cards on the AI page, where this chat is kept too.
+  const ready=result.actions?.length ? `\n\n${result.actions.map(a=>a.kind==='email' ? `Drafted email: "${a.subject}"` : `Calendar event: ${a.title}`).join('\n')}\nOpen the AI page to send or add ${result.actions.length===1 ? 'it' : 'them'}.` : '';
+  return {reply:result.display+ready,day:result.showDay===undefined ? undefined : result.showDay+shift};
  }
  if(!snapshot)return error
   ? <div className={styles.loading}><p role="alert">{error}</p><button onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Retry dashboard</button></div>
@@ -255,7 +258,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   else setError('');
  }
  const pulseDays=Array.from({length:7},(_,i)=>snapshot.history.filter(h=>h.date===localDate(dateAt(origin,i-6))).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0));
- return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,onFocus:b=>{const live=snapshot.blocks.find(x=>x.id===b.id);const subject=snapshot.subjects.find(s=>s.id===live?.subjectId);if(subject)timer.startSession(subject,b.title,0);else setError('Choose a subject with Edit plan before starting focus.');},pulseSeconds:pulseDays.reduce((a,b)=>a+b,0),pulseDays,subjectNames:snapshot.subjects.filter(s=>!s.archived).map(s=>s.name),usedColors:snapshot.subjects.map(s=>s.color),onEditSession:async(sessionId,minutes,startTime,date)=>{
+ return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<AgentBrief/>,onFocus:b=>{const live=snapshot.blocks.find(x=>x.id===b.id);const subject=snapshot.subjects.find(s=>s.id===live?.subjectId);if(subject)timer.startSession(subject,b.title,0);else setError('Choose a subject with Edit plan before starting focus.');},pulseSeconds:pulseDays.reduce((a,b)=>a+b,0),pulseDays,subjectNames:snapshot.subjects.filter(s=>!s.archived).map(s=>s.name),usedColors:snapshot.subjects.map(s=>s.color),onEditSession:async(sessionId,minutes,startTime,date)=>{
  const row=snapshot.history.find(h=>h.id===sessionId);
  if(!row)throw new Error('That session is no longer there. Refresh and try again.');
  // Keep where it started unless the correction moved it, then let the length
