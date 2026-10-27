@@ -11,6 +11,16 @@ still needed.
 
 ## 2026-10-26
 
+### The extension uses Soma's logo
+
+The extension's icons were placeholders (a blue ring). They are now Soma's
+four-point star, scaled from `public/favicon.png`, at 16, 32, 48 and 128 px:
+toolbar, extensions page, notifications and the store listing.
+
+- Where: `extension/icons/icon-*.png`; `extension/STORE_LISTING.md` checklist.
+- Guard test: none; images only, no code changed.
+- Setup: reload the extension in `chrome://extensions` to see them.
+
 ### Grades page: each course's grade and every score, from Canvas and Gradescope
 
 The extension already collected grades and scores, but nothing showed them: the
