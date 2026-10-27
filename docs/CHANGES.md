@@ -11,6 +11,20 @@ still needed.
 
 ## 2026-10-26
 
+### Privacy policy: the extension reads Canvas only
+
+The Chrome Web Store build of the extension reads Canvas only, but the privacy
+policy still said it read Gradescope and WebAssign. A store review compares the
+two, so the paragraph now describes Canvas alone, and adds the statement the
+store's User Data Policy asks for: the extension's data is used only to run
+Soma's features, is not sold, shared or used for advertising, and follows the
+Limited Use requirements. "Last updated" is October 26, 2026.
+
+- Where: `public/privacy.html` and `src/components/Legal/LegalPage.tsx`, kept
+  word for word the same.
+- Guard test: `tests/legal-pages.spec.ts` (the two copies say the same thing).
+- Setup: none. Live as soon as it deploys.
+
 ### Grades page redesigned: a ledger of courses, not a grid of cards
 
 The cards were identical gray boxes that didn't line up and left most of the

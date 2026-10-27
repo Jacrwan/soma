@@ -15,7 +15,7 @@ export type LegalType =
 
 // Per page, so an edit to one policy doesn't restamp the others. The static
 // /privacy.html and /terms.html carry the same dates.
-const UPDATED: Partial<Record<LegalType, string>> = { privacy: 'September 27, 2026', 'data-deletion': 'September 27, 2026', ai: 'September 27, 2026' };
+const UPDATED: Partial<Record<LegalType, string>> = { privacy: 'October 26, 2026', 'data-deletion': 'September 27, 2026', ai: 'September 27, 2026' };
 const UPDATED_DEFAULT = 'September 24, 2026';
 
 function Privacy() {
@@ -72,17 +72,16 @@ function Privacy() {
             Canvas inside your own browser, with your own sign-in: your active courses, assignment
             groups and weights, assignments with their descriptions and your submission status,
             recent announcements, and (unless you turn it off) your scores and current grades. No
-            password, cookie or token leaves your browser. On Gradescope it reads your current
-            courses and each assignment's name, due and late due dates, and whether you submitted
-            it (and its score, unless you turn that off). On WebAssign it reads your class name and
-            each current assignment's name, due date and how many of its question parts you have
-            answered (and your points, unless you turn that off). While Chrome is open it checks these
-            sites again every two hours and when you open Soma, so Soma stays current; you can turn
+            password, cookie or token leaves your browser. While Chrome is open it checks Canvas
+            again every two hours and when you open Soma, so Soma stays current; you can turn
             that off in the extension. It also keeps a two-week list of what changed between
             syncs (new work, moved due dates, grades posted, announcements), built from the same
             details. The extension hands these details to
             your open Soma tab, which saves them to your account so the AI and your other devices
-            can use them. You can remove them any time in Settings → Integrations.
+            can use them. You can remove them any time in Settings → Integrations. Soma uses what
+            the extension sends only to run Soma's own features for you. It does not sell it, share
+            it with anyone else, or use it for advertising, and its use of this information follows
+            the Chrome Web Store User Data Policy, including the Limited Use requirements.
           </li>
           <li>
             <strong>Course websites you import</strong> — when you paste a course site's schedule
