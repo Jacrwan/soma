@@ -67,25 +67,34 @@ test('Grades: a card per course with its grade and each score, Canvas and Grades
   await page.getByRole('button', { name: 'Grades' }).click();
   await expect(page).toHaveURL(/\/grades$/);
 
-  const bio = page.getByRole('region', { name: 'Biology 101' });
-  await expect(bio.getByLabel('Course grade B+, 88.5%')).toBeVisible();
-  await expect(bio.getByRole('listitem')).toHaveCount(2);
-  await expect(bio.getByRole('listitem').filter({ hasText: 'Cell structure homework' })).toContainText('9 / 10 · 90%');
+  // The page is the courses, each with its grade big; no assignments yet.
+  const bioCard = page.getByRole('button', { name: /^Biology 101, 2 graded/ });
+  await expect(bioCard.getByLabel('Course grade B+, 88.5%')).toBeVisible();
+  await expect(page.getByText('Cell structure homework')).toHaveCount(0);
+  // Nothing to show: no card.
+  await expect(page.getByRole('button', { name: /Empty Seminar/ })).toHaveCount(0);
+
+  // Opening a course lists the score on each graded assignment.
+  await bioCard.click();
+  await expect(page.getByRole('heading', { name: 'Biology 101' })).toBeVisible();
+  await expect(page.getByLabel('Course grade B+, 88.5%')).toBeVisible();
+  const items = page.getByRole('listitem');
+  await expect(items).toHaveCount(2);
+  await expect(items.filter({ hasText: 'Cell structure homework' })).toContainText('9 / 10');
+  await expect(items.filter({ hasText: 'Cell structure homework' })).toContainText('90%');
   // Gradescope work joins the Canvas course of the same number, tagged.
-  const ps2 = bio.getByRole('listitem').filter({ hasText: 'Problem set 2' });
-  await expect(ps2).toContainText('18 / 20 · 90%');
+  const ps2 = items.filter({ hasText: 'Problem set 2' });
+  await expect(ps2).toContainText('18 / 20');
   await expect(ps2).toContainText('Gradescope');
   // Not graded, or excused: not a score.
-  await expect(bio.getByText('Microscope lab report')).toHaveCount(0);
-  await expect(bio.getByText('Problem set 3')).toHaveCount(0);
-  await expect(bio.getByText('Excused quiz')).toHaveCount(0);
+  await expect(page.getByText('Microscope lab report')).toHaveCount(0);
+  await expect(page.getByText('Problem set 3')).toHaveCount(0);
+  await expect(page.getByText('Excused quiz')).toHaveCount(0);
 
-  // A Gradescope course Canvas doesn't have: its own card, no course grade.
-  const astro = page.getByRole('region', { name: 'Astronomy' });
-  await expect(astro.getByText('7.5 / 10 · 75%')).toBeVisible();
-  await expect(astro.getByLabel(/Course grade/)).toHaveCount(0);
-  // Nothing to show: no card.
-  await expect(page.getByRole('region', { name: 'Empty Seminar' })).toHaveCount(0);
+  // A Gradescope course Canvas doesn't have: its own card, headlined by its average.
+  await page.getByRole('button', { name: '← All courses' }).click();
+  const astro = page.getByRole('button', { name: /^Astronomy, 1 graded/ });
+  await expect(astro.getByLabel('Average 75%')).toBeVisible();
 });
 
 test('Grades: says how to get grades before anything has synced', async ({ page }) => {

@@ -15,8 +15,10 @@ still needed.
 
 The extension already collected grades and scores, but nothing showed them: the
 Grades tab was an empty placeholder with no menu entry. There is now a Grades
-page in the sidebar: one card per course with the course grade (Canvas) and the
-score on each graded assignment, newest first. Gradescope scores join the
+page in the sidebar: one card per course with its grade shown big (Canvas's
+course grade, or the average of the scores when Canvas gives none). Clicking a
+card opens the course: the big grade again, points earned, and the score on
+each graded assignment with a bar, newest first. Gradescope scores join the
 Canvas course of the same department and number, tagged "Gradescope", or get
 their own card; work Canvas already shows a score for is not listed twice.
 Ungraded and excused work is left out, and a course with nothing to show has

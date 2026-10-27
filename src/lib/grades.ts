@@ -28,10 +28,20 @@ export type GradeCourse = {
   percent: number | null;
   letter: string | null;
   items: GradeItem[];
+  /** Points earned and possible over the scores that have a maximum; the grade when Canvas gives none. */
+  points: { earned: number; possible: number; percent: number } | null;
 };
 
 const percentOf = (score: number, max: number | null) => max && max > 0 ? Math.round((score / max) * 1000) / 10 : null;
 const byDueDesc = (a: GradeItem, b: GradeItem) => (b.dueAt ?? '').localeCompare(a.dueAt ?? '') || a.name.localeCompare(b.name);
+
+function pointsOf(items: GradeItem[]): GradeCourse['points'] {
+  const scored = items.filter(i => i.max && i.max > 0);
+  const possible = scored.reduce((n, i) => n + (i.max as number), 0);
+  if (!possible) return null;
+  const earned = scored.reduce((n, i) => n + i.score, 0);
+  return { earned, possible, percent: percentOf(earned, possible) as number };
+}
 
 export function buildGrades(snapshots: Record<string, SourceSnapshot> = getLocalSnapshots()): GradeCourse[] {
   const courses: GradeCourse[] = [];
@@ -45,7 +55,7 @@ export function buildGrades(snapshots: Record<string, SourceSnapshot> = getLocal
           name: a.name, score: a.score as number, max: a.pointsPossible, percent: percentOf(a.score as number, a.pointsPossible),
           source: 'canvas' as const, grade: a.grade, late: a.late, dueAt: a.dueAt, url: a.htmlUrl,
         }));
-      const course: GradeCourse = { key: `${snap.host}:${c.id}`, name: c.name, percent: c.currentScore ?? null, letter: c.currentGrade ?? null, items };
+      const course: GradeCourse = { key: `${snap.host}:${c.id}`, name: c.name, percent: c.currentScore ?? null, letter: c.currentGrade ?? null, items, points: null };
       canvasIds.set(course.key, courses.push(course) - 1);
     }
   }
@@ -54,7 +64,7 @@ export function buildGrades(snapshots: Record<string, SourceSnapshot> = getLocal
   for (const gc of gradescope?.courses ?? []) {
     const label = gc.name || gc.shortName;
     const home = courses.find(c => sameCourse(c.name, label) || sameCourse(c.name, gc.shortName));
-    const target = home ?? courses[courses.push({ key: `${GRADESCOPE_HOST}:${gc.id}`, name: label, percent: null, letter: null, items: [] }) - 1];
+    const target = home ?? courses[courses.push({ key: `${GRADESCOPE_HOST}:${gc.id}`, name: label, percent: null, letter: null, items: [], points: null }) - 1];
     for (const a of gradescope!.assignments) {
       if (a.courseId !== gc.id || a.score === null) continue;
       // A Canvas entry linked to this Gradescope work already carries the score.
@@ -68,7 +78,7 @@ export function buildGrades(snapshots: Record<string, SourceSnapshot> = getLocal
 
   return courses
     .filter(c => c.percent !== null || c.letter !== null || c.items.length > 0)
-    .map(c => ({ ...c, items: [...c.items].sort(byDueDesc) }))
+    .map(c => ({ ...c, items: [...c.items].sort(byDueDesc), points: pointsOf(c.items) }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
