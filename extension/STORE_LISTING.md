@@ -76,9 +76,10 @@ You need a Soma account at somastudy.app.
 Soma is not affiliated with Instructure or Canvas.
 ```
 
-**Screenshots** (1280×800)
+**Screenshots** (1280×800; regenerate with `STORE_SHOTS=1 npx playwright test tests/store-screenshots.spec.ts`)
 1. `extension/store/screenshot-1-popup.png`: Due soon and What changed in the popup
 2. `extension/store/screenshot-2-deadlines.png`: Soma's Deadlines with synced Canvas work
+3. `extension/store/screenshot-3-grades.png`: Soma's Grades, a card per course
 
 **Small promo tile** (440×280): optional; not made yet.
 

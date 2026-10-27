@@ -24,7 +24,8 @@ three, for loading unpacked. Soma itself still understands their snapshots.
 - Where: `extension/build-release.mjs` (store build drops them and fails if
   any trace is left in the manifest, popup, offscreen page or worker);
   `extension/STORE_LISTING.md`; `tests/store-screenshots.spec.ts` and the
-  screenshots in `extension/store/`.
+  screenshots in `extension/store/` (now three, on Soma's colours and logo with
+  a headline each, instead of plain captures).
 - Guard test: the build itself checks the zip; there is no Playwright test.
 - Setup: none. Still open before publishing: Instructure's terms and schools'
   own policies. `public/privacy.html` still describes Gradescope and WebAssign
