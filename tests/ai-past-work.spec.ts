@@ -107,8 +107,15 @@ test('Canvas work checked off as a task is not listed as due, and past dates say
   await expect(page.getByText('Math 53 Practice Midterm')).toBeVisible();
   await page.evaluate(async a => {
     // @ts-expect-error Vite serves this browser-only module at runtime.
-    const { storage } = await import('/src/lib/storage.ts');
-    storage.setCachedIcalAssignments(a);
+    const { setLocalSnapshot } = await import('/src/lib/canvasDeepSync.ts');
+    // What the Canvas extension would have synced.
+    const courses = [...new Map(a.map((x: { courseId: number; courseName: string }) => [x.courseId, x.courseName])).entries()]
+      .map(([id, name]) => ({ id, name, courseCode: name, currentScore: null, currentGrade: null, weighted: false }));
+    setLocalSnapshot({
+      v: 1, host: 'school.instructure.com', syncedAt: new Date().toISOString(), courses, groups: [], announcements: [],
+      assignments: a.map((x: { id: number; courseId: number; name: string; dueAt: string; htmlUrl: string }) =>
+        ({ id: x.id, courseId: x.courseId, name: x.name, dueAt: x.dueAt, htmlUrl: x.htmlUrl, description: '', pointsPossible: null, groupId: null, workflowState: 'unsubmitted' })),
+    });
   }, assignments);
   await ask(page, 'what is due?', 1);
 

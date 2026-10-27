@@ -62,10 +62,8 @@ function Privacy() {
             ask it to.
           </li>
           <li>
-            <strong>Canvas data</strong> — when you connect Canvas, Soma saves your Canvas calendar
-            feed URL to your account and reads your assignments and due dates from it through a
-            Vercel serverless proxy. Your courses are saved to your account; the assignment list
-            itself is cached in your browser rather than stored on our servers.
+            <strong>Canvas data</strong> — Soma gets your Canvas data only from the Soma for Canvas
+            extension, described next. Your courses are saved to your account.
           </li>
           <li>
             <strong>Soma for Canvas extension</strong> — if you install it, the extension reads
@@ -530,7 +528,7 @@ function Terms() {
       <div className={styles.section}>
         <h2>8. Third-party services</h2>
         <p>
-          Soma integrates with Canvas (via iCal feeds), Google (sign-in and Google Calendar),
+          Soma integrates with Canvas (through the Soma for Canvas extension), Google (sign-in and Google Calendar),
           Anthropic (AI), Supabase, Vercel, and Stripe. Use of those services is subject to their
           own terms. Soma is not responsible for the availability, accuracy, or actions of
           third-party services.
@@ -907,8 +905,8 @@ function DataDeletion() {
           >
             Google account permissions
           </a>{' '}
-          and remove Soma. Canvas calendar feeds do not require revocation — simply disconnect
-          the feed URL in Soma's settings.
+          and remove Soma. To stop Canvas syncing, remove the Soma for Canvas extension in Chrome
+          and use Remove synced data in Soma's settings.
         </p>
       </div>
 

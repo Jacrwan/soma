@@ -1,3 +1,4 @@
+import { deepSyncStatus } from '../../lib/canvasExtension';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import DOMPurify from 'dompurify';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -766,7 +767,7 @@ export default function AITab() {
       <div className={styles.chatArea}>
         <div className={styles.messageList}>
           {messages.length === 0 && (() => {
-            const canvasConnected = Boolean(storage.getCanvasIcalUrl());
+            const canvasConnected = deepSyncStatus().length > 0;
             const chips = canvasConnected
               ? ['Plan my week', "What's due soon?", 'Help me focus today']
               : ['Plan my day', 'What should I study first?'];

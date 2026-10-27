@@ -62,7 +62,7 @@ const fromExtension = (page: Page, snap: unknown) =>
 test('a synced submission is done, and work the feed missed is added', async ({ page }) => {
   const { saved } = await setup(page);
   await page.goto('/deadlines');
-  await expect(page.getByText('Cell structure homework')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Add to Chrome' })).toBeVisible();
 
   await fromExtension(page, snapshot());
 
@@ -78,7 +78,7 @@ test('a synced submission is done, and work the feed missed is added', async ({ 
 test('a malformed snapshot is ignored', async ({ page }) => {
   const { saved } = await setup(page);
   await page.goto('/deadlines');
-  await expect(page.getByText('Cell structure homework')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Add to Chrome' })).toBeVisible();
 
   await fromExtension(page, { ...snapshot(), v: 99 });
   await fromExtension(page, { ...snapshot(), host: 'not a host' });
@@ -93,7 +93,7 @@ test('an older snapshot does not replace a newer one', async ({ page }) => {
   const { saved } = await setup(page);
   await page.goto('/deadlines');
   // Signed in and listening, as when the extension answers the app's hello.
-  await expect(page.getByText('Cell structure homework')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Add to Chrome' })).toBeVisible();
   await fromExtension(page, snapshot());
   await expect.poll(() => saved.length).toBe(1);
 
@@ -107,7 +107,7 @@ test('Settings shows the sync and removes it everywhere', async ({ page }) => {
   const { deleted } = await setup(page);
   await page.goto('/deadlines');
   // Signed in and listening, as when the extension answers the app's hello.
-  await expect(page.getByText('Cell structure homework')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Add to Chrome' })).toBeVisible();
   await fromExtension(page, snapshot());
   await expect(page.getByText('Microscope lab report')).toBeVisible();
 
@@ -119,13 +119,13 @@ test('Settings shows the sync and removes it everywhere', async ({ page }) => {
   await page.getByRole('button', { name: 'Remove synced data' }).click();
   await expect.poll(() => deleted.length).toBe(1);
   expect(deleted[0]).toContain(`user_id=eq.${account.id}`);
-  await expect(page.getByText(/Adds assignment details/)).toBeVisible();
+  await expect(page.getByText(/Brings in your courses/)).toBeVisible();
 });
 
 test('Clear local Soma data also removes the synced grades from the account', async ({ page }) => {
   const { deleted } = await setup(page);
   await page.goto('/deadlines');
-  await expect(page.getByText('Cell structure homework')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Add to Chrome' })).toBeVisible();
   await fromExtension(page, snapshot());
   await expect(page.getByText('Microscope lab report')).toBeVisible();
 
@@ -154,7 +154,9 @@ const gradescope = (over: Row = {}) => ({
 test('Gradescope: a linked Canvas entry learns it was handed in, and Gradescope-only work is added', async ({ page }) => {
   const { saved } = await setup(page);
   await page.goto('/deadlines');
-  await expect(page.getByText('Cell structure homework')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Add to Chrome' })).toBeVisible();
+  // The other sites join the Canvas courses the extension read.
+  await fromExtension(page, snapshot());
 
   await page.evaluate(s => window.postMessage({ source: 'soma-extension', type: 'canvas_snapshot', snapshot: s }, window.location.origin), gradescope());
 
@@ -165,14 +167,14 @@ test('Gradescope: a linked Canvas entry learns it was handed in, and Gradescope-
   await expect(page.getByText('Biology 101 · Gradescope').first()).toBeVisible();
   await expect(page.getByText('Star chart')).toBeVisible();
   await expect(page.getByText('ASTRO 10 · Gradescope')).toBeVisible();
-  await expect.poll(() => saved.length).toBe(1);
-  expect(saved[0]).toMatchObject({ user_id: account.id, host: 'www.gradescope.com' });
+  await expect.poll(() => saved.length).toBe(2);
+  expect(saved[1]).toMatchObject({ user_id: account.id, host: 'www.gradescope.com' });
 });
 
 test('Gradescope: a snapshot claiming another host is refused', async ({ page }) => {
   const { saved } = await setup(page);
   await page.goto('/deadlines');
-  await expect(page.getByText('Cell structure homework')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Add to Chrome' })).toBeVisible();
   await page.evaluate(s => window.postMessage({ source: 'soma-extension', type: 'canvas_snapshot', snapshot: s }, window.location.origin), gradescope({ host: 'school.instructure.com' }));
   await page.waitForTimeout(300);
   expect(saved).toHaveLength(0);
@@ -182,7 +184,7 @@ test('Gradescope: a snapshot claiming another host is refused', async ({ page })
 test('Sync now in Settings asks the extension and reports how each site went', async ({ page }) => {
   await setup(page);
   await page.goto('/deadlines');
-  await expect(page.getByText('Cell structure homework')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Add to Chrome' })).toBeVisible();
   await fromExtension(page, snapshot());
   await expect(page.getByText('Microscope lab report')).toBeVisible();
 
@@ -208,7 +210,7 @@ test('Sync now in Settings asks the extension and reports how each site went', a
 test('the app answers the extension once, not every time it says it is here', async ({ page }) => {
   await setup(page);
   await page.goto('/deadlines');
-  await expect(page.getByText('Cell structure homework')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Add to Chrome' })).toBeVisible();
   // Stand in for the bridge, which answers every hello with "present". If the
   // app answered each of those with another hello they would ping-pong forever.
   const hellos = await page.evaluate(async () => {
@@ -239,7 +241,9 @@ const webassign = (over: Row = {}) => ({
 test('WebAssign: work joins its Canvas course, with how far along it is', async ({ page }) => {
   const { saved } = await setup(page);
   await page.goto('/deadlines');
-  await expect(page.getByText('Cell structure homework')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Add to Chrome' })).toBeVisible();
+  // The other sites join the Canvas courses the extension read.
+  await fromExtension(page, snapshot());
 
   await page.evaluate(s => window.postMessage({ source: 'soma-extension', type: 'canvas_snapshot', snapshot: s }, window.location.origin), webassign());
 
@@ -250,14 +254,14 @@ test('WebAssign: work joins its Canvas course, with how far along it is', async 
   await expect(page.getByLabel('Status: Lab Quiz 4')).toHaveValue('in_progress');
   // Every part answered: done, so off the active list.
   await expect(page.getByText('HW 7', { exact: true })).toHaveCount(0);
-  await expect.poll(() => saved.length).toBe(1);
-  expect(saved[0]).toMatchObject({ user_id: account.id, host: 'www.webassign.net' });
+  await expect.poll(() => saved.length).toBe(2);
+  expect(saved[1]).toMatchObject({ user_id: account.id, host: 'www.webassign.net' });
 });
 
 test('WebAssign: a snapshot claiming another host is refused', async ({ page }) => {
   const { saved } = await setup(page);
   await page.goto('/deadlines');
-  await expect(page.getByText('Cell structure homework')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Add to Chrome' })).toBeVisible();
   await page.evaluate(s => window.postMessage({ source: 'soma-extension', type: 'canvas_snapshot', snapshot: s }, window.location.origin), webassign({ host: 'www.gradescope.com' }));
   await page.waitForTimeout(300);
   expect(saved).toHaveLength(0);
@@ -267,7 +271,7 @@ test('WebAssign: a snapshot claiming another host is refused', async ({ page }) 
 test('What changed on Deadlines: moved dates, new work and grades, newest first; bad entries dropped', async ({ page }) => {
   await setup(page);
   await page.goto('/deadlines');
-  await expect(page.getByText('Cell structure homework')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Add to Chrome' })).toBeVisible();
   const now = Date.now();
   const ago = (h: number) => new Date(now - h * 3600_000).toISOString();
   await fromExtension(page, snapshot({ changes: [
@@ -297,7 +301,7 @@ test('What changed on Deadlines: moved dates, new work and grades, newest first;
 test('What changed stays hidden until there is a change', async ({ page }) => {
   await setup(page);
   await page.goto('/deadlines');
-  await expect(page.getByText('Cell structure homework')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Add to Chrome' })).toBeVisible();
   await fromExtension(page, snapshot());
   await expect(page.getByText('Microscope lab report')).toBeVisible();
   await expect(page.getByRole('region', { name: 'What changed' })).toHaveCount(0);

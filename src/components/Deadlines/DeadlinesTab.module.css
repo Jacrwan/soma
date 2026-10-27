@@ -93,6 +93,7 @@
   font-weight: 600;
   cursor: pointer;
   align-self: flex-end;
+  text-decoration: none;
 }
 
 .setupBtn:hover:not(:disabled) {

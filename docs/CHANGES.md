@@ -9,6 +9,22 @@ still needed.
 
 ---
 
+## 2026-10-27 (calendar feed removed)
+
+### Canvas comes only from the Soma for Canvas extension
+
+The Canvas calendar (ICS) feed is gone: no feed step in onboarding, no
+Connect/Disconnect row in Settings, no feed setup card or Refresh on Deadlines.
+Deadlines, the AI and Grades read what the extension synced
+(`mergeDeepSync([])` in `storage.getCachedIcalAssignments`); a feed cached by an
+older version is ignored. With nothing synced, Deadlines, onboarding and
+Settings offer the Chrome Web Store link (`EXTENSION_STORE_URL`), and Refresh
+asks the extension to sync. Onboarding is now three steps plus the welcome.
+Landing copy, the privacy policy and the terms no longer describe the feed.
+Guarded by: `tests/canvas-extension.spec.ts`, `tests/deadlines.spec.ts`,
+`tests/regressions.spec.ts` (onboarding). Setup needed: none. `api/canvas-ical.ts`
+is now unused and can be deleted to free a serverless function slot.
+
 ## 2026-10-27
 
 ### Onboarding explains the Soma for Canvas extension, with the Web Store link

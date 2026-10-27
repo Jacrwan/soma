@@ -3,15 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { formatDateTime, useTimeFormat } from '../../lib/timeFormat';
 import { CanvasAssignment, Todo, isSubmittable } from '../../types';
-import { getIcalAssignments } from '../../lib/canvas';
-import { CANVAS_CHANGED } from '../../lib/canvasExtension';
+import { CANVAS_CHANGED, EXTENSION_STORE_URL, deepSyncStatus, extensionPresent, requestSync } from '../../lib/canvasExtension';
 import WhatChanged from './WhatChanged';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './DeadlinesTab.module.css';
 
 /**
  * Everything that is due, whatever it came from. Canvas assignments arrive
- * from the calendar feed; classes that keep their schedule on their own site
+ * from the Soma for Canvas extension; classes that keep their schedule on their own site
  * (cs61a.org and the like) are imported as tasks with a due date, and so are
  * the tasks a student writes themselves. All of it is one list grouped by
  * day, because "what is due on Thursday" does not care which source it
@@ -145,12 +144,10 @@ function fmtSynced(ts: number): string {
 export default function DeadlinesTab() {
   useTimeFormat(); // re-render when the 12h/24h preference changes
   const navigate = useNavigate();
-  const [icalUrl, setIcalUrl] = useState(() => storage.getCanvasIcalUrl());
-  const [setupIcalUrl, setSetupIcalUrl] = useState('');
-  const [connectLoading, setConnectLoading] = useState(false);
-  const [connectError, setConnectError] = useState('');
-  const [icalSyncing, setIcalSyncing] = useState(false);
-  const [icalError, setIcalError] = useState('');
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState('');
+  // Canvas comes from the Soma for Canvas extension; this is when it last synced.
+  const [synced, setSynced] = useState(() => deepSyncStatus()[0]?.syncedAt ?? null);
 
   const [assignments, setAssignments] = useState<CanvasAssignment[]>(
     () => storage.getCachedIcalAssignments(),
@@ -164,7 +161,6 @@ export default function DeadlinesTab() {
   // Courses are filtered by name: Canvas courses are synced into Subjects by
   // name already, so it is the one key both sources share.
   const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
-  const [lastSynced, setLastSynced] = useState<number | null>(() => storage.getCacheTimestamp());
   const [statusFilter, setStatusFilter] = useState<'all' | 'not_started' | 'in_progress' | 'done'>('all');
 
   // Imported and hand-written tasks. getTodos() is a synchronous read of a
@@ -210,92 +206,17 @@ export default function DeadlinesTab() {
 
   // The Canvas extension's sync can land while this page is open.
   useEffect(() => {
-    const refresh = () => setAssignments(storage.getCachedIcalAssignments());
+    const refresh = () => { setAssignments(storage.getCachedIcalAssignments()); setSynced(deepSyncStatus()[0]?.syncedAt ?? null); };
     window.addEventListener(CANVAS_CHANGED, refresh);
     return () => window.removeEventListener(CANVAS_CHANGED, refresh);
   }, []);
 
-  useEffect(() => {
-    if (!icalUrl) return;
-    const cached = storage.getCachedIcalAssignments();
-    const cacheTs = storage.getCacheTimestamp();
-    const cacheFresh = !!cacheTs && Date.now() - cacheTs < CACHE_MAX_AGE;
-    if (cached.length === 0 || !cacheFresh) {
-      loadIcalData();
-    } else {
-      void storage.syncCanvasSubjects(cached).catch(e => {
-        setIcalError(e instanceof Error ? e.message : 'Could not save Canvas courses.');
-      });
-    }
-  }, [icalUrl]);
-
-  // getCanvasIcalUrl() reads an in-memory value populated asynchronously by
-  // storage.loadTokens(). If this tab mounts before that finishes (direct
-  // navigation to /canvas, a slow connection, etc.), the initial useState
-  // above can capture an empty string even though Canvas is actually
-  // connected. Rather than gate the whole page behind a "Checking..."
-  // placeholder while that resolves, show the "Connect Canvas" prompt
-  // immediately — a real user with no connection wants that instruction
-  // right away, not a spinner — and quietly upgrade to the connected view
-  // the moment the real state comes back, with no action needed from them.
-  useEffect(() => {
-    if (icalUrl) return;
-    let cancelled = false;
-    storage.whenTokensLoaded().then(() => {
-      if (cancelled) return;
-      const latest = storage.getCanvasIcalUrl();
-      if (latest) setIcalUrl(latest);
-    });
-    return () => { cancelled = true; };
-  }, [icalUrl]);
-
-  async function loadIcalData() {
-    if (!icalUrl) return;
-    setIcalSyncing(true);
-    setIcalError('');
-    try {
-      const fetched = await getIcalAssignments(icalUrl);
-      await storage.syncCanvasSubjects(fetched);
-      storage.setCachedIcalAssignments(fetched);
-      storage.setCacheTimestamp(Date.now());
-      setAssignments(storage.getCachedIcalAssignments());
-      setLastSynced(Date.now());
-    } catch (e: unknown) {
-      setIcalError(e instanceof Error ? e.message : 'Failed to sync calendar feed');
-    } finally {
-      setIcalSyncing(false);
-    }
-  }
-
-  async function handleConnectIcal() {
-    const url = setupIcalUrl.trim();
-    if (!url) return;
-    setConnectLoading(true);
-    setConnectError('');
-    try {
-      const fetched = await getIcalAssignments(url);
-      await storage.syncCanvasSubjects(fetched);
-      storage.setCanvasIcalUrl(url);
-      storage.setCachedIcalAssignments(fetched);
-      storage.setCacheTimestamp(Date.now());
-      setIcalUrl(url);
-      setAssignments(storage.getCachedIcalAssignments());
-      setLastSynced(Date.now());
-      setSetupIcalUrl('');
-    } catch (e: unknown) {
-      setConnectError(e instanceof Error ? e.message : 'Invalid calendar feed URL.');
-    } finally {
-      setConnectLoading(false);
-    }
-  }
-
-  function handleDisconnect() {
-    storage.setCanvasIcalUrl('');
-    storage.setCachedIcalAssignments([]);
-    storage.setCachedAssignments([]);
-    setIcalUrl('');
-    // What the Canvas extension synced stays until it's removed in Settings.
-    setAssignments(storage.getCachedIcalAssignments());
+  async function refreshNow() {
+    setSyncing(true); setSyncError('');
+    const results = await requestSync(60_000);
+    setSyncing(false);
+    if (!results.length) setSyncError('The extension didn’t answer. Make sure it’s turned on in Chrome.');
+    else if (results.some(r => !r.ok)) setSyncError(results.filter(r => !r.ok).map(r => `${r.host}: ${r.error ?? 'didn’t sync'}`).join(' '));
   }
 
   function updateStatus(id: number, status: string) {
@@ -361,7 +282,7 @@ export default function DeadlinesTab() {
   const datedTodos = todos.filter(t => !!t.dueDate);
   // Still waiting on whichever source could fill the page, with nothing cached
   // to show in the meantime.
-  const loading = (!tasksLoaded || (icalSyncing && assignments.length === 0))
+  const loading = (!tasksLoaded)
     && assignments.length === 0 && datedTodos.length === 0;
   const anyToShow = datedTodos.some(t => isSubmittable(t.kind) || !!t.assignmentId || !t.kind);
 
@@ -369,36 +290,22 @@ export default function DeadlinesTab() {
   // Only when there is genuinely nothing to show. A student who imports from a
   // course site and never connects Canvas still has deadlines, and used to be
   // shown this prompt instead of them.
-  if (!icalUrl && !anyToShow && assignments.length === 0 && tasksLoaded) {
+  if (!anyToShow && assignments.length === 0 && tasksLoaded) {
+    const here = !!extensionPresent();
     return (
       <div className={styles.setupOverlay}>
         <div className={styles.setupCard}>
-          <span className={styles.setupTitle}>Connect Canvas</span>
+          <span className={styles.setupTitle}>{here ? 'Open Canvas to sync' : 'Connect Canvas'}</span>
           <div className={styles.setupHintNoBorder}>
-            Paste your Canvas calendar feed URL to sync assignment due dates — no token needed.
+            {here
+              ? 'The Soma for Canvas extension is installed. Open Canvas in this browser, signed in as usual, and your assignments, due dates and grades appear here.'
+              : 'The Soma for Canvas extension reads your courses, assignments, due dates and grades from Canvas in your own browser, with your own sign-in. Add it, open Canvas once, and they appear here.'}
           </div>
-          <div className={styles.setupField}>
-            <label className={styles.setupLabel}>Canvas Calendar Feed URL</label>
-            <input
-              className={styles.setupInput}
-              placeholder="https://school.instructure.com/feeds/calendars/user_...ics"
-              value={setupIcalUrl}
-              onChange={e => setSetupIcalUrl(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleConnectIcal(); }}
-            />
-          </div>
-          {connectError && <span className={styles.setupError}>{connectError}</span>}
-          <button
-            className={styles.setupBtn}
-            onClick={handleConnectIcal}
-            disabled={connectLoading || !setupIcalUrl.trim()}
-          >
-            {connectLoading ? 'Connecting…' : 'Connect'}
-          </button>
-          <div className={styles.setupHint}>
-            <strong>How to get your calendar URL:</strong><br />
-            Canvas → Calendar → scroll to bottom right → Calendar Feed → copy the link
-          </div>
+          {!here && (
+            <a className={styles.setupBtn} href={EXTENSION_STORE_URL} target="_blank" rel="noopener noreferrer">
+              Add to Chrome
+            </a>
+          )}
         </div>
       </div>
     );
@@ -575,34 +482,31 @@ export default function DeadlinesTab() {
           <button className={`${styles.subNavBtn} ${styles.subNavBtnActive}`}>Everything due</button>
         </div>
         <div className={styles.syncRow}>
-          {icalUrl && lastSynced && (
+          {synced && (
             <span className={styles.syncLabel}>
-              📅 Calendar Feed · Last synced: {fmtSynced(lastSynced)}
+              Canvas · Last synced: {fmtSynced(Date.parse(synced))}
             </span>
           )}
-          {icalError && <span className={styles.syncError}>{icalError}</span>}
+          {syncError && <span className={styles.syncError}>{syncError}</span>}
           {taskError && <span className={styles.syncError} role="alert">{taskError}</span>}
-          {icalUrl && (
+          {extensionPresent() && (
             <button
               className={styles.refreshBtn}
-              onClick={loadIcalData}
-              disabled={icalSyncing}
+              onClick={() => void refreshNow()}
+              disabled={syncing}
               title="Refresh"
-            >{icalSyncing ? '…' : '↻'}</button>
+            >{syncing ? '…' : '↻'}</button>
           )}
         </div>
-        {icalUrl && (
-          <button className={styles.disconnectLink} onClick={handleDisconnect}>Disconnect</button>
-        )}
       </div>
 
       <div className={styles.main}>
         {/* Canvas is not connected but there are deadlines to show, so this
             offers the connection rather than standing in front of them. */}
-        {!loading && !icalUrl && (
+        {!loading && assignments.length === 0 && (
           <div className={styles.setupHintNoBorder} style={{ marginBottom: 14 }}>
             These are your imported and hand-written deadlines.{' '}
-            <a href="/settings">Connect Canvas</a> to pull your assignments in too.
+            <a href={EXTENSION_STORE_URL} target="_blank" rel="noopener noreferrer">Add the Canvas extension</a> to pull your assignments in too.
           </div>
         )}
 

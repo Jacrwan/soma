@@ -24,6 +24,14 @@ const canvasAssignments = [{
 
 async function setup(page: Page, { subjects = [] as Row[], todos = [] as Row[], canvas = false } = {}) {
   const state = { subjects: [...subjects], todos: [...todos] };
+  if (canvas) {
+    // Canvas reaches Soma through the extension, which keeps this copy in the browser.
+    const snap = { v: 1, host: 'school.instructure.com', syncedAt: new Date().toISOString(),
+      courses: [{ id: 456, name: 'Biology 101', courseCode: 'BIO 101', currentScore: null, currentGrade: null, weighted: false }],
+      groups: [], announcements: [],
+      assignments: canvasAssignments.map(a => ({ id: a.id, courseId: a.courseId, name: a.name, dueAt: a.dueAt, htmlUrl: a.htmlUrl, description: '', pointsPossible: 10, groupId: null, workflowState: 'unsubmitted' })) };
+    await page.addInitScript(x => localStorage.setItem('soma_canvas_deep_sync', JSON.stringify({ [x.host]: x })), snap);
+  }
   await page.addInitScript(a => {
     localStorage.setItem('sb-soma-regression-auth-token', JSON.stringify({ access_token: 't', refresh_token: 'r', token_type: 'bearer', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, user: a }));
   }, account);
@@ -56,15 +64,15 @@ test('imported deadlines show even when Canvas was never connected', async ({ pa
 
   // The bug: this used to be the "Connect Canvas" card and nothing else.
   await expect(page.getByText('Lab 3')).toBeVisible();
-  await expect(page.getByPlaceholder(/instructure/)).toHaveCount(0);
-  // The connection is still offered, just not in the way.
-  await expect(page.getByRole('link', { name: 'Connect Canvas' })).toBeVisible();
+  await expect(page.getByText('Connect Canvas')).toHaveCount(0);
+  // The extension is still offered, just not in the way.
+  await expect(page.getByRole('link', { name: 'Add the Canvas extension' })).toBeVisible();
 });
 
 test('the setup card still shows when there is genuinely nothing due', async ({ page }) => {
   await setup(page);
   await page.goto('/deadlines');
-  await expect(page.getByPlaceholder(/instructure/)).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Add to Chrome' })).toBeVisible();
 });
 
 test('Canvas assignments and imported deadlines share one list', async ({ page }) => {

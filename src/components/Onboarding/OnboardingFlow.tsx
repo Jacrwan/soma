@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { storage } from '../../lib/storage';
-import { getIcalAssignments } from '../../lib/canvas';
 import { CANVAS_CHANGED, EXTENSION_STORE_URL, extensionPresent } from '../../lib/canvasExtension';
 import type { University } from '../../lib/universities';
 import UniversityPicker from '../shared/UniversityPicker';
@@ -31,7 +30,7 @@ interface Props {
 }
 
 export default function OnboardingFlow({ userName, onComplete }: Props) {
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
   // Step 1 — age
   const [birthday, setBirthday] = useState('');
@@ -42,13 +41,8 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
   const [university, setUniversity] = useState<University | null>(null);
   const asksUniversity = education === 'college' || education === 'grad';
 
-  // Step 3 — integrations
-  const [canvasUrl, setCanvasUrl] = useState('');
-  const [canvasError, setCanvasError] = useState('');
-  const [canvasConnecting, setCanvasConnecting] = useState(false);
-  const [canvasConnected, setCanvasConnected] = useState(!!storage.getCanvasIcalUrl());
 
-  // Step 4 — the extension: the bridge says so when it is installed
+  // Step 3 — the extension: the bridge says so when it is installed
   const [extensionHere, setExtensionHere] = useState(() => !!extensionPresent());
   useEffect(() => {
     const refresh = () => setExtensionHere(!!extensionPresent());
@@ -72,28 +66,6 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
     if (age < 13) { setAgeBlocked(true); return; }
     setAgeBlocked(false);
     setStep(2);
-  }
-
-  // ── Step 3 ────────────────────────────────────────────────────────────────
-
-  async function connectCanvas() {
-    const url = canvasUrl.trim();
-    if (!url) return;
-    setCanvasConnecting(true);
-    setCanvasError('');
-    try {
-      const fetched = await getIcalAssignments(url);
-      await storage.syncCanvasSubjects(fetched);
-      storage.setCanvasIcalUrl(url);
-      storage.setCachedIcalAssignments(fetched);
-      storage.setCachedAssignments(fetched);
-      storage.setCacheTimestamp(Date.now());
-      setCanvasConnected(true);
-    } catch (e: unknown) {
-      setCanvasError(e instanceof Error ? e.message : 'Invalid URL. Check your Canvas calendar feed URL.');
-    } finally {
-      setCanvasConnecting(false);
-    }
   }
 
   // ── Completion ────────────────────────────────────────────────────────────
@@ -148,10 +120,10 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
           <span className={styles.logoName}>Soma</span>
         </div>
 
-        {/* Progress dots (steps 1–4 only) */}
-        {step <= 4 && (
-          <div className={styles.progress} aria-label={`Step ${step} of 4`}>
-            {[1, 2, 3, 4].map(n => (
+        {/* Progress dots (steps 1–3 only) */}
+        {step <= 3 && (
+          <div className={styles.progress} aria-label={`Step ${step} of 3`}>
+            {[1, 2, 3].map(n => (
               <div key={n} className={`${styles.dot}${step >= n ? ` ${styles.dotFilled}` : ''}`} />
             ))}
           </div>
@@ -245,62 +217,8 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
           </div>
         )}
 
-        {/* ── STEP 3 — Integrations ─────────────────────────────────────── */}
+        {/* ── STEP 3 — Soma for Canvas extension ─────────────────────────── */}
         {step === 3 && (
-          <div className={styles.step}>
-            <h1 className={styles.heading}>Connect your tools</h1>
-            <p className={styles.sub}>You can always do this later in Settings.</p>
-
-            {/* Canvas */}
-            <div className={styles.integBlock}>
-              <div className={styles.integHeader}>
-                <span className={styles.integTitle}>Canvas</span>
-                {canvasConnected && <span className={styles.integBadge}>Connected</span>}
-              </div>
-              <p className={styles.integDesc}>
-                Paste your Canvas calendar feed URL to sync assignments.
-              </p>
-              {!canvasConnected && (
-                <>
-                  <div className={styles.integRow}>
-                    <input
-                      className={styles.input}
-                      type="url"
-                      placeholder="https://school.instructure.com/feeds/calendars/..."
-                      value={canvasUrl}
-                      onChange={e => { setCanvasUrl(e.target.value); setCanvasError(''); }}
-                    />
-                    <button
-                      className={styles.connectBtn}
-                      onClick={connectCanvas}
-                      disabled={!canvasUrl.trim() || canvasConnecting}
-                    >
-                      {canvasConnecting ? 'Connecting…' : 'Connect'}
-                    </button>
-                  </div>
-                  {canvasError && <p className={styles.integError}>{canvasError}</p>}
-                </>
-              )}
-            </div>
-
-            <div className={styles.actions}>
-              <button className={styles.backBtn} onClick={() => setStep(2)}>Back</button>
-              <div className={styles.actionsRight}>
-                <button className={styles.skipBtn} onClick={() => setStep(4)}>
-                  Skip for now
-                </button>
-                <button className={styles.primaryBtn} onClick={() => setStep(4)}>
-                  Continue
-                </button>
-              </div>
-            </div>
-
-            {consent}
-          </div>
-        )}
-
-        {/* ── STEP 4 — Soma for Canvas extension ─────────────────────────── */}
-        {step === 4 && (
           <div className={styles.step}>
             <h1 className={styles.heading}>Add the Soma for Canvas extension</h1>
             <p className={styles.sub}>Optional. It reads Canvas in your own browser so Soma also has points, submissions, grades and announcements, and keeps itself up to date.</p>
@@ -324,10 +242,10 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
             </div>
 
             <div className={styles.actions}>
-              <button className={styles.backBtn} onClick={() => setStep(3)}>Back</button>
+              <button className={styles.backBtn} onClick={() => setStep(2)}>Back</button>
               <div className={styles.actionsRight}>
-                {!extensionHere && <button className={styles.skipBtn} onClick={() => setStep(5)}>Skip for now</button>}
-                <button className={styles.primaryBtn} onClick={() => setStep(5)}>Continue</button>
+                {!extensionHere && <button className={styles.skipBtn} onClick={() => setStep(4)}>Skip for now</button>}
+                <button className={styles.primaryBtn} onClick={() => setStep(4)}>Continue</button>
               </div>
             </div>
 
@@ -335,8 +253,8 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
           </div>
         )}
 
-        {/* ── STEP 5 — Welcome ──────────────────────────────────────────── */}
-        {step === 5 && (
+        {/* ── STEP 4 — Welcome ──────────────────────────────────────────── */}
+        {step === 4 && (
           <div className={`${styles.step} ${styles.welcome}`}>
             <div className={styles.welcomeCheck} aria-hidden="true">✓</div>
             <h1 className={styles.heading}>You're all set, {firstName}!</h1>

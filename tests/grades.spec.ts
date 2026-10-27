@@ -61,7 +61,7 @@ test('Grades: a card per course with its grade and each score, Canvas and Grades
   await setup(page);
   await page.goto('/deadlines');
   // The app listens for the extension once it has loaded the student's work.
-  await expect(page.getByText('Reading response')).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Add to Chrome' })).toBeVisible();
   await send(page, canvas);
   await send(page, gradescope);
   await page.getByRole('button', { name: 'Grades' }).click();
