@@ -11,6 +11,24 @@ still needed.
 
 ## 2026-10-26
 
+### Grades page: each course's grade and every score, from Canvas and Gradescope
+
+The extension already collected grades and scores, but nothing showed them: the
+Grades tab was an empty placeholder with no menu entry. There is now a Grades
+page in the sidebar: one card per course with the course grade (Canvas) and the
+score on each graded assignment, newest first. Gradescope scores join the
+Canvas course of the same department and number, tagged "Gradescope", or get
+their own card; work Canvas already shows a score for is not listed twice.
+Ungraded and excused work is left out, and a course with nothing to show has
+no card. It reads the local synced copy: no AI, no server call, no database
+change.
+
+- Where: `src/lib/grades.ts` (`buildGrades`), `src/components/Grades/GradesTab.tsx`
+  and its CSS, route `/grades` and sidebar entry in `src/App.tsx`;
+  `sameWork` in `src/lib/canvasDeepSync.ts` is now exported.
+- Guard test: `tests/grades.spec.ts` (cards, merge, dedupe, excluded work, empty state).
+- Setup: none. Needs the extension with "Include grades and scores" on.
+
 ### The app and the extension no longer answer each other forever
 
 The app said "hello" every time the extension said "present", and the extension

@@ -399,7 +399,7 @@ export function sameCourse(a: string, b: string): boolean {
 
 const workName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 /** "Homework 4" in Canvas is "Homework 4" or "Homework 4: Kinematics" on Gradescope. */
-const sameWork = (a: string, b: string) => {
+export const sameWork = (a: string, b: string) => {
   const x = workName(a), y = workName(b);
   if (!x || !y) return false;
   if (x === y) return true;
