@@ -99,7 +99,6 @@ const COURSE_COLORS = [
   '#ef5350', '#42a5f5', '#66bb6a', '#ab47bc',
   '#ffa726', '#26c6da', '#ec407a', '#8d6e63',
 ];
-const CACHE_MAX_AGE = 10 * 60 * 1000;
 
 function fmtDueTime(iso: string) {
   return formatDateTime(new Date(iso));

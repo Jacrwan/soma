@@ -10,7 +10,6 @@ import AiBudgetMeter from '../UI/AiBudgetMeter';
 import { useAiBudget } from '../../lib/aiBudget';
 import { applyTimeFormat, formatClock } from '../../lib/timeFormat';
 import { requestMemory, type MemoryState, type MemoryMutation } from '../../lib/aiMemory';
-import { SkeletonBlock } from '../UI/Skeleton';
 import CourseSiteImport from './CourseSiteImport';
 import CanvasDeepSyncRow from './CanvasDeepSyncRow';
 import { forgetDeepSync } from '../../lib/canvasExtension';
@@ -60,13 +59,6 @@ export default function SettingsTab() {
   const [pendingUniversity, setPendingUniversity] = useState<University | null>(null);
   const [uniSaving, setUniSaving]             = useState(false);
   const asksUniversity = educationLevel === 'college' || educationLevel === 'grad';
-
-  const [tokensLoaded, setTokensLoaded] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    storage.whenTokensLoaded().then(() => { if (!cancelled) setTokensLoaded(true); });
-    return () => { cancelled = true; };
-  }, []);
 
   // Local data state
   const [clearDataLoading, setClearDataLoading] = useState(false);
