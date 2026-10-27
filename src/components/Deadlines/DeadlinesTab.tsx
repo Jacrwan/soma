@@ -5,6 +5,7 @@ import { formatDateTime, useTimeFormat } from '../../lib/timeFormat';
 import { CanvasAssignment, Todo, isSubmittable } from '../../types';
 import { CANVAS_CHANGED, EXTENSION_STORE_URL, deepSyncStatus, extensionPresent, requestSync } from '../../lib/canvasExtension';
 import WhatChanged from './WhatChanged';
+import ExtensionSetup from '../Onboarding/ExtensionSetup';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './DeadlinesTab.module.css';
 
@@ -290,21 +291,11 @@ export default function DeadlinesTab() {
   // course site and never connects Canvas still has deadlines, and used to be
   // shown this prompt instead of them.
   if (!anyToShow && assignments.length === 0 && tasksLoaded) {
-    const here = !!extensionPresent();
     return (
       <div className={styles.setupOverlay}>
-        <div className={styles.setupCard}>
-          <span className={styles.setupTitle}>{here ? 'Open Canvas to sync' : 'Connect Canvas'}</span>
-          <div className={styles.setupHintNoBorder}>
-            {here
-              ? 'The Soma for Canvas extension is installed. Open Canvas in this browser, signed in as usual, and your assignments, due dates and grades appear here.'
-              : 'The Soma for Canvas extension reads your courses, assignments, due dates and grades from Canvas in your own browser, with your own sign-in. Add it, open Canvas once, and they appear here.'}
-          </div>
-          {!here && (
-            <a className={styles.setupBtn} href={EXTENSION_STORE_URL} target="_blank" rel="noopener noreferrer">
-              Add to Chrome
-            </a>
-          )}
+        <div className={styles.guideCard}>
+          <span className={styles.setupTitle}>Bring in Canvas</span>
+          <ExtensionSetup />
         </div>
       </div>
     );

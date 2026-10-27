@@ -1,5 +1,12 @@
 /* A checklist that ticks itself off as the extension reports in. */
 
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  width: 100%;
+}
+
 .list {
   list-style: none;
   margin: 0;

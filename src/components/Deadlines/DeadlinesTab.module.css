@@ -5,6 +5,16 @@
   align-items: center;
   justify-content: center;
   height: 100%;
+  overflow-y: auto;
+}
+
+.guideCard {
+  width: min(560px, 100%);
+  margin: auto;
+  padding: 32px 16px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
 .setupCard {

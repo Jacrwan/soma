@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { storage } from '../../lib/storage';
 import { CANVAS_CHANGED, EXTENSION_STORE_URL, deepSyncStatus, extensionPresent } from '../../lib/canvasExtension';
 import { canvasSnapshots, getLocalSnapshots } from '../../lib/canvasDeepSync';
+import CanvasGuide from './CanvasGuide';
 import styles from './ExtensionSetup.module.css';
 
 /**
@@ -44,7 +45,7 @@ function Mark({ state, n }: { state: 'todo' | 'active' | 'done'; n: number }) {
 
 interface Props {
   /** Save what the student answered so far, before the page reloads. */
-  onBeforeReload: () => void;
+  onBeforeReload?: () => void;
 }
 
 export default function ExtensionSetup({ onBeforeReload }: Props) {
@@ -80,7 +81,7 @@ export default function ExtensionSetup({ onBeforeReload }: Props) {
   }
 
   function reload() {
-    onBeforeReload();
+    onBeforeReload?.();
     window.location.reload();
   }
 
@@ -107,6 +108,8 @@ export default function ExtensionSetup({ onBeforeReload }: Props) {
   };
 
   return (
+    <div className={styles.wrap}>
+    <CanvasGuide start={stage === 'install' ? 'install' : stage === 'canvas' ? 'canvas' : 'soma'} />
     <ol className={styles.list} aria-live="polite">
       {/* 1 — Add it */}
       <li className={`${styles.item} ${styles[state('install')]}`}>
@@ -234,5 +237,6 @@ export default function ExtensionSetup({ onBeforeReload }: Props) {
         </div>
       </li>
     </ol>
+    </div>
   );
 }
