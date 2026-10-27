@@ -11,6 +11,25 @@ still needed.
 
 ## 2026-10-26
 
+### The store build of the extension reads Canvas only
+
+Cengage's terms (WebAssign) bar scripts, scrapers and data mining, and
+Gradescope's bar scraping and any access other than through their interface.
+So the Chrome Web Store build leaves both out: no Gradescope or WebAssign
+permissions, content scripts, reader files or words in the popup, and the
+listing text, permission justifications and screenshots describe Canvas only.
+The source keeps the readers: `npm run build:extension -- --all` builds all
+three, for loading unpacked. Soma itself still understands their snapshots.
+
+- Where: `extension/build-release.mjs` (store build drops them and fails if
+  any trace is left in the manifest, popup, offscreen page or worker);
+  `extension/STORE_LISTING.md`; `tests/store-screenshots.spec.ts` and the
+  screenshots in `extension/store/`.
+- Guard test: the build itself checks the zip; there is no Playwright test.
+- Setup: none. Still open before publishing: Instructure's terms and schools'
+  own policies. `public/privacy.html` still describes Gradescope and WebAssign
+  reading; it needs the owner's call before the extension goes public.
+
 ### The extension uses Soma's logo
 
 The extension's icons were placeholders (a blue ring). They are now Soma's

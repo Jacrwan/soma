@@ -26,24 +26,14 @@ const snapshots = () => ({
     kind: 'canvas', host: 'school.instructure.com', syncedAt: at(-0.2),
     courses: [{ id: 1, name: 'BIO 101: Cell Biology - Fall 2026', courseCode: 'BIO 101' }],
     assignments: [
+      { id: 11, courseId: 1, name: 'Quiz 3: Mitosis', dueAt: dueOn(2, 13, 0), htmlUrl: 'https://school.instructure.com/a/11', workflowState: 'unsubmitted', pointsPossible: 20 },
       { id: 10, courseId: 1, name: 'Microscope lab report', dueAt: dueOn(1, 23, 59), htmlUrl: 'https://school.instructure.com/a/10', workflowState: 'unsubmitted', submissionTypes: ['online_upload'] },
     ],
     changes: [
+      { at: at(-3), site: 'canvas', type: 'graded', name: 'Homework 4', course: 'BIO 101', url: '', score: 18, maxScore: 20 },
       { at: at(-1), site: 'canvas', type: 'due_moved', name: 'Microscope lab report', course: 'BIO 101', url: '', from: dueOn(0, 23, 59), to: dueOn(1, 23, 59) },
       { at: at(-6), site: 'canvas', type: 'announcement', name: 'Midterm moved to Room 201', course: 'BIO 101', url: '' },
     ],
-  },
-  'www.gradescope.com': {
-    kind: 'gradescope', host: 'www.gradescope.com', syncedAt: at(-0.2),
-    courses: [{ id: 2, shortName: 'CS 61A', name: 'CS 61A: Structure and Interpretation' }],
-    assignments: [{ id: 20, courseId: 2, name: 'Project 2: Cats', dueAt: dueOn(1, 17, 0), htmlUrl: 'https://www.gradescope.com/x', status: 'not_submitted' }],
-    changes: [{ at: at(-3), site: 'gradescope', type: 'graded', name: 'Homework 4', course: 'CS 61A', url: '', score: 18, maxScore: 20 }],
-  },
-  'www.webassign.net': {
-    kind: 'webassign', host: 'www.webassign.net', syncedAt: at(-0.2),
-    courses: [{ id: 3, name: 'PHYS 7A, Fall 2026' }],
-    assignments: [{ id: 30, courseId: 3, name: 'HW 8: Momentum', dueAt: dueOn(2, 13, 0), htmlUrl: 'https://www.webassign.net/y', status: 'in_progress', parts: 17, answered: 6 }],
-    changes: [],
   },
 });
 
@@ -67,7 +57,7 @@ async function popupShot(page: Page) {
     };
   }, { snapshots: snapshots(), status: status(), settings: {} });
   await page.goto('https://extension.test/popup.html');
-  await expect(page.getByText('Project 2: Cats')).toBeVisible();
+  await expect(page.getByText('Quiz 3: Mitosis')).toBeVisible();
   // The popup is 320px wide: shown at 2× on a quiet backdrop, as it looks over a page.
   await page.addStyleTag({ content: `
     html { background: #ecebf6; min-height: 100%; }
@@ -101,6 +91,7 @@ test('store screenshot: Soma Deadlines with synced work', async ({ page }) => {
   await page.route('**/api/stripe', r => r.fulfill({ json: { status: 'active' } }));
   await page.route('**/api/canvas-ical', r => r.fulfill({ json: { assignments: [
     { id: 10, name: 'Microscope lab report', courseId: 1, courseName: 'BIO 101: Cell Biology - Fall 2026', dueAt: dueOn(1, 23, 59), htmlUrl: 'https://school.instructure.com/a/10', status: 'not_started' },
+    { id: 11, name: 'Quiz 3: Mitosis', courseId: 1, courseName: 'BIO 101: Cell Biology - Fall 2026', dueAt: dueOn(2, 13, 0), htmlUrl: 'https://school.instructure.com/a/11', status: 'not_started' },
   ] } }));
   await page.goto('/deadlines');
   await expect(page.getByText('Microscope lab report').first()).toBeVisible();
@@ -108,6 +99,6 @@ test('store screenshot: Soma Deadlines with synced work', async ({ page }) => {
     await page.evaluate(snap => window.postMessage({ source: 'soma-extension', type: 'canvas_snapshot', snapshot: { v: 1, ...snap } }, window.location.origin), s);
   }
   await expect(page.getByRole('region', { name: 'What changed' })).toBeVisible();
-  await expect(page.getByText('HW 8: Momentum')).toBeVisible();
+  await expect(page.getByText('Quiz 3: Mitosis').first()).toBeVisible();
   await page.screenshot({ path: path.join(out, 'screenshot-2-deadlines.png') });
 });

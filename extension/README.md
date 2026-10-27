@@ -102,3 +102,9 @@ reviewer and a checklist; screenshots are in `store/`.
   is signed in on the open Soma tab.
 - Very large courses are capped at 1,000 assignments per course (10 pages).
 - Turning grades off applies from the next sync.
+
+## Store build
+
+`npm run build:extension` builds the Chrome Web Store zip, which reads Canvas
+only (Gradescope and WebAssign restrict automated access in their terms).
+`npm run build:extension -- --all` builds all three sites, for loading unpacked.
