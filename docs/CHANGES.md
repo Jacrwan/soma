@@ -9,6 +9,20 @@ still needed.
 
 ---
 
+## 2026-10-27 (Canvas walkthrough)
+
+### An animated walkthrough of setting up the extension
+
+`Onboarding/CanvasGuide.tsx` plays a short, silent walkthrough drawn in the page
+(no video file): the Web Store with a cursor clicking Add to Chrome and Add
+extension, Canvas being read with a "Synced" toast, the work landing in Soma
+with a grade, and the extension's popup. It autoplays, has play/pause and four
+clickable chapters with progress bars, starts at the step the student is
+actually on, and shows final frames only under reduced motion. It sits above
+the live checklist (`ExtensionSetup`) in onboarding and now also replaces the
+plain-text "Open Canvas to sync" card on an empty Deadlines page. Checked by
+eye in the browser; no tests run. Setup needed: none.
+
 ## 2026-10-27 (interactive Canvas onboarding)
 
 ### Onboarding: a live checklist driven by the extension
