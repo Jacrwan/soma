@@ -78,26 +78,6 @@ async function authRefresh(page: Page) {
   });
 }
 
-for (const entry of ['canvas', 'settings']) {
-  test(`connecting Canvas from ${entry} persists courses visible in Day View`, async ({ page }) => {
-    const state = await setup(page);
-    await page.goto(`/${entry}`);
-    if (entry === 'settings') {
-      await page.getByRole('button', { name: 'Integrations', exact: true }).click();
-      await page.getByRole('button', { name: 'Connect', exact: true }).first().click();
-    }
-    await page.getByPlaceholder(/https:\/\/.*instructure/).fill('https://school.instructure.com/feed.ics');
-    await page.getByRole('button', { name: /^(Connect|Connect Canvas)$/ }).last().click();
-    await expect.poll(() => state.subjects.length).toBe(1);
-    await openDayView(page);
-    await expect(page.getByText('Biology 101', { exact: true }).first()).toBeVisible();
-    await page.reload();
-    await expect(page.getByText('Biology 101', { exact: true }).first()).toBeVisible();
-    expect(state.subjects).toHaveLength(1);
-    expect(state.deletes).toBe(0);
-  });
-}
-
 test('dismissed payment prompt stays closed after auth refresh and navigation', async ({ page }) => {
   await setup(page, 'free');
   await page.goto('/day-view');
@@ -150,16 +130,6 @@ test('opening Day View preserves archived and manual subjects', async ({ page })
   expect(state.deletes).toBe(0);
 });
 
-test('failed course persistence shows a sync error instead of success', async ({ page }) => {
-  const state = await setup(page);
-  state.failSubjects = true;
-  await page.goto('/canvas');
-  await page.getByPlaceholder(/https:\/\/.*instructure/).fill('https://school.instructure.com/feed.ics');
-  await page.getByRole('button', { name: /^(Connect|Connect Canvas)$/ }).click();
-  await expect(page.getByText(/Course save failed/)).toBeVisible();
-  expect(state.subjects).toHaveLength(0);
-});
-
 test('repeat Canvas sync preserves renamed, archived and manual courses', async ({ page }) => {
   const existing = [
     { id: 'canvas', canvas_course_id: 456, name: 'My biology', archived: true, source: 'canvas', color: '#ef5350' },
@@ -201,23 +171,18 @@ test('subscription is refreshed after a free user completes checkout in another 
 });
 
 
-test('onboarding Canvas sync creates courses in the already mounted Day View', async ({ page }) => {
-  const state = await setup(page, 'active', [], true);
+test('onboarding explains the Canvas extension, then lands on the app', async ({ page }) => {
+  await setup(page, 'active', [], true);
   await page.goto('/day-view?onboarding_source=canvas');
   await page.getByLabel('Date of birth').fill('2000-01-01');
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await page.getByRole('button', { name: /College \/ University/ }).click();
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Connect your tools' })).toBeVisible();
-  await page.getByPlaceholder(/https:\/\/.*instructure/).fill('https://school.instructure.com/feed.ics');
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
-  await expect.poll(() => state.subjects.length).toBe(1);
-  await page.getByRole('button', { name: 'Continue', exact: true }).click();
-  // The extension step explains it and links to the Chrome Web Store.
+  // Canvas comes in through the extension, not a calendar feed.
   await expect(page.getByRole('heading', { name: 'Add the Soma for Canvas extension' })).toBeVisible();
+  await expect(page.getByPlaceholder(/instructure/)).toHaveCount(0);
   await expect(page.getByRole('link', { name: 'Add to Chrome' })).toHaveAttribute('href', /chromewebstore\.google\.com\/detail\/soma-for-canvas\/hfiggdemebihcchcinhdmenhdebioanm/);
   await page.getByRole('button', { name: 'Continue', exact: true }).click();
   await page.getByRole('button', { name: 'Start using Soma', exact: true }).click();
-  await expect(page.getByText('Biology 101', { exact: true }).first()).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Start your free trial' })).toHaveCount(0);
 });

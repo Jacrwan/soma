@@ -5,9 +5,8 @@ import styles from './SettingsTab.module.css';
 
 /**
  * The Soma for Canvas extension: whether it's here, when each Canvas site
- * last synced, and removing what it synced. The calendar feed row above it
- * still works on its own; the extension adds descriptions, points,
- * submissions, grades and announcements.
+ * last synced, and removing what it synced. It is how Canvas reaches Soma:
+ * courses, assignments, due dates, points, submissions, grades and announcements.
  */
 export default function CanvasDeepSyncRow() {
   const [sites, setSites] = useState(deepSyncStatus);
@@ -51,7 +50,7 @@ export default function CanvasDeepSyncRow() {
             ? `${sites.map(s => `${s.host}: ${s.courses} courses, ${s.assignments} assignments`).join(' · ')} · last synced ${formatDateTime(new Date(latest.syncedAt))}. Keeps itself up to date while Chrome is open.`
             : present
               ? 'Installed. Open Canvas in this browser and it syncs on its own.'
-              : 'Adds assignment details, points, submissions, grades and announcements. Reads Canvas in your browser, with your own sign-in.'}
+              : 'Brings in your courses, assignments, due dates, submissions, grades and announcements. Reads Canvas in your browser, with your own sign-in.'}
         </span>
         {error && <span role="alert" className={styles.integrationDescription}>{error}</span>}
         {note && <span role="status" className={styles.integrationDescription}>{note}</span>}

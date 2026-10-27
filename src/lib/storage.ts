@@ -378,9 +378,9 @@ export const storage = {
 
   // Both reads include what the Canvas extension synced (canvasDeepSync.ts),
   // so every page and the AI see descriptions, points and submissions.
-  getCachedIcalAssignments: () => mergeDeepSync(normalizeIcalAssignments(
-    get<import('../types').CanvasAssignment[]>(KEYS.cachedIcalAssignments, []),
-  )),
+  // The calendar feed is gone: Canvas reaches Soma only through the extension,
+  // so a feed cached by an earlier version is ignored.
+  getCachedIcalAssignments: () => mergeDeepSync([]),
   setCachedIcalAssignments: (v: import('../types').CanvasAssignment[]) => {
     const normalized = normalizeIcalAssignments(v);
     set(KEYS.cachedIcalAssignments, normalized);
@@ -397,8 +397,7 @@ export const storage = {
   getCachedCourses: (): CanvasCourse[] => get(KEYS.cachedCourses, []),
   setCachedCourses: (v: CanvasCourse[]) => set(KEYS.cachedCourses, v),
 
-  getCachedAssignments: (): CanvasAssignment[] =>
-    mergeDeepSync(normalizeIcalAssignments(get<CanvasAssignment[]>(KEYS.cachedIcalAssignments, []))),
+  getCachedAssignments: (): CanvasAssignment[] => mergeDeepSync([]),
   setCachedAssignments: (v: CanvasAssignment[]) => set(KEYS.cachedAssignments, normalizeIcalAssignments(v)),
 
   getCacheTimestamp: (): number | null => get<number | null>(KEYS.cacheTimestamp, null),

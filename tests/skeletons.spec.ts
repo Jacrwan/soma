@@ -141,23 +141,6 @@ test('the AI page announces loading the same way', async ({ page }) => {
   await gate.release();
 });
 
-test('settings does not offer Connect to an account already connected', async ({ page }) => {
-  const gate = await setup(page, ['settings']);
-  await page.goto('/settings');
-  await page.getByRole('button', { name: 'Integrations', exact: true }).click();
-
-  // Scoped to the Canvas row: Google Calendar has a Connect button of its own.
-  const canvas = page.getByTestId('canvas-connection');
-  await expect(canvas).toBeVisible();
-  // The row waits rather than guessing, which is what stopped it flashing
-  // "Connect" at a student whose Canvas is already set up.
-  await expect(canvas.getByRole('button', { name: 'Connect', exact: true })).toHaveCount(0);
-
-  await gate.release();
-  // Once the answer is in, the row commits to it.
-  await expect(canvas.getByRole('button', { name: 'Connect', exact: true })).toBeVisible();
-});
-
 test('the calendar keeps its grid and says what is still arriving', async ({ page }) => {
   const gate = await setup(page, ['timer_sessions']);
   await page.goto('/calendar');

@@ -10,14 +10,12 @@ import AiBudgetMeter from '../UI/AiBudgetMeter';
 import { useAiBudget } from '../../lib/aiBudget';
 import { applyTimeFormat, formatClock } from '../../lib/timeFormat';
 import { requestMemory, type MemoryState, type MemoryMutation } from '../../lib/aiMemory';
-import { SkeletonBlock } from '../UI/Skeleton';
 import CourseSiteImport from './CourseSiteImport';
 import CanvasDeepSyncRow from './CanvasDeepSyncRow';
 import { forgetDeepSync } from '../../lib/canvasExtension';
 import { supabase } from '../../lib/supabase';
 import { friendlyError } from '../../lib/errors';
 import { useSubscription, openBillingPortal, refreshSubscription, hasAIAccess, getGoogleCalendarLimit, GOOGLE_CALENDAR_LIMIT_PREMIUM } from '../../lib/subscription';
-import { getIcalAssignments } from '../../lib/canvas';
 import {
   listConnections, listCalendarsForConnection, updateSelectedCalendars, disconnectConnection, startConnectFlow,
 } from '../../lib/googleCalendarConnections';
@@ -61,30 +59,6 @@ export default function SettingsTab() {
   const [pendingUniversity, setPendingUniversity] = useState<University | null>(null);
   const [uniSaving, setUniSaving]             = useState(false);
   const asksUniversity = educationLevel === 'college' || educationLevel === 'grad';
-
-  // Canvas integration state
-  const [canvasIcalUrl, setCanvasIcalUrl] = useState(() => storage.getCanvasIcalUrl());
-  const [showCanvasModal, setShowCanvasModal] = useState(false);
-  const [canvasIcalInput, setCanvasIcalInput] = useState('');
-  const [canvasConnecting, setCanvasConnecting] = useState(false);
-  const [canvasError, setCanvasError] = useState('');
-
-  // getCanvasIcalUrl() above reads an in-memory value populated
-  // asynchronously by loadTokens(). If Settings mounts before that resolves
-  // (e.g. direct navigation to /settings), the Integrations row can show
-  // "Connect" for an account that's already connected — re-check once
-  // loading settles.
-  const [tokensLoaded, setTokensLoaded] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    storage.whenTokensLoaded().then(() => {
-      if (cancelled) return;
-      const latest = storage.getCanvasIcalUrl();
-      if (latest) setCanvasIcalUrl(latest);
-      setTokensLoaded(true);
-    });
-    return () => { cancelled = true; };
-  }, []);
 
   // Local data state
   const [clearDataLoading, setClearDataLoading] = useState(false);
@@ -429,35 +403,6 @@ export default function SettingsTab() {
   async function handleSignOut() {
     await supabase.auth.signOut();
     window.location.href = '/login';
-  }
-
-  async function connectIcal() {
-    const url = canvasIcalInput.trim();
-    if (!url) return;
-    setCanvasConnecting(true);
-    setCanvasError('');
-    try {
-      const fetched = await getIcalAssignments(url);
-      await storage.syncCanvasSubjects(fetched);
-      storage.setCanvasIcalUrl(url);
-      storage.setCachedIcalAssignments(fetched);
-      storage.setCachedAssignments(fetched);
-      storage.setCacheTimestamp(Date.now());
-      setCanvasIcalUrl(url);
-      setShowCanvasModal(false);
-      setCanvasIcalInput('');
-    } catch (e: unknown) {
-      setCanvasError(e instanceof Error ? e.message : 'Invalid calendar feed URL.');
-    } finally {
-      setCanvasConnecting(false);
-    }
-  }
-
-  function disconnectIcal() {
-    storage.setCanvasIcalUrl('');
-    storage.setCachedIcalAssignments([]);
-    storage.setCachedAssignments([]);
-    setCanvasIcalUrl('');
   }
 
   async function handleClearLocalData() {
@@ -999,26 +944,6 @@ export default function SettingsTab() {
             <h2 className={styles.sectionTitle}>Integrations</h2>
             <div className={styles.integrationList}>
 
-              {/* Canvas — Calendar Feed (iCal) */}
-              <div className={styles.integrationRow}>
-                <div className={styles.integrationInfo}>
-                  <span className={styles.integrationLabel}>Canvas</span>
-                  <span className={styles.integrationDescription}>Sync assignment due dates via your Canvas calendar feed URL</span>
-                </div>
-                <div className={styles.integrationActions} data-testid="canvas-connection">
-                  {!tokensLoaded && !canvasIcalUrl ? (
-                    <SkeletonBlock width={96} height={32} borderRadius={7} />
-                  ) : canvasIcalUrl ? (
-                    <>
-                      <span className={styles.connectedBadge}>Connected</span>
-                      <button className={styles.disconnectBtn} onClick={disconnectIcal}>Disconnect</button>
-                    </>
-                  ) : (
-                    <button className={styles.connectBtn} onClick={() => { setCanvasError(''); setShowCanvasModal(true); }}>Connect</button>
-                  )}
-                </div>
-              </div>
-
               <CanvasDeepSyncRow />
 
               <div className={`${styles.integrationRow} ${styles.gcalSection}`}>
@@ -1373,42 +1298,6 @@ export default function SettingsTab() {
         onConfirm={archiveCanvasCourses}
         onDismiss={() => setShowSemesterModal(false)}
       />
-    )}
-
-    {/* Canvas connect modal */}
-    {showCanvasModal && (
-      <div className={styles.modalOverlay} onClick={() => setShowCanvasModal(false)}>
-        <div className={styles.modalBox} onClick={e => e.stopPropagation()}>
-          <span className={styles.modalTitle}>Connect Canvas</span>
-          <div className={styles.modalHint}>
-            Paste your Canvas calendar feed URL to sync assignment due dates — no token needed.
-          </div>
-          <div className={styles.modalField}>
-            <label className={styles.modalLabel}>Canvas Calendar Feed URL</label>
-            <input
-              className={styles.modalInput}
-              placeholder="https://school.instructure.com/feeds/calendars/user_…ics"
-              value={canvasIcalInput}
-              autoFocus
-              onChange={e => setCanvasIcalInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') connectIcal(); if (e.key === 'Escape') setShowCanvasModal(false); }}
-            />
-          </div>
-          {canvasError && <span className={styles.modalError}>{canvasError}</span>}
-          <div className={styles.modalHint}>
-            <strong>How to get your calendar URL:</strong><br />
-            Canvas → Calendar → scroll to bottom right → Calendar Feed → copy the link
-          </div>
-          <div className={styles.modalActions}>
-            <button
-              className={styles.modalSubmit}
-              onClick={connectIcal}
-              disabled={canvasConnecting || !canvasIcalInput.trim()}
-            >{canvasConnecting ? 'Connecting…' : 'Connect'}</button>
-            <button className={styles.modalCancel} onClick={() => setShowCanvasModal(false)}>Cancel</button>
-          </div>
-        </div>
-      </div>
     )}
 
 </>

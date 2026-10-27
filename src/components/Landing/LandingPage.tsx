@@ -1126,10 +1126,10 @@ export default function LandingPage() {
                   <h3 className="ln-step-t">Connect Canvas</h3>
                 </div>
                 <p className="ln-step-b">
-                  Paste your Canvas calendar feed URL. Your assignments and due dates import
-                  automatically, with nothing to type in by hand.
+                  Add the Soma for Canvas extension and open Canvas once. Your assignments, due
+                  dates and grades import automatically, with nothing to type in by hand.
                 </p>
-                <p className="ln-step-note">Read-only. No password or API token needed.</p>
+                <p className="ln-step-note">Read-only. It never sees your Canvas password.</p>
               </div>
             </div>
 
@@ -1357,14 +1357,14 @@ export default function LandingPage() {
           <div className="ln-faq-grid">
             {[
               ['Is Soma free?', `The core features (your dashboard, Canvas sync, calendar, the focus timer, documents, and insights) are free forever. The AI features have a ${TRIAL_DAYS}-day free trial, then ${MONTHLY_PRICE} a month or ${SEMESTER_PRICE} every 4 months. Signing up takes no card; starting the trial does.`],
-              ["Does it work with my school's Canvas?", 'Yes. Soma works with any school that uses Canvas LMS. Paste your Canvas calendar feed URL and your assignments sync automatically.'],
+              ["Does it work with my school's Canvas?", 'Yes. Soma works with any school that uses Canvas LMS. Add the Soma for Canvas extension and your assignments sync automatically.'],
               ['What about a class that is not on Canvas?', "Paste the course site's schedule page into Soma and it reads the dated homework, labs, projects and exams off it, then asks which ones to add and to which course."],
               ['Can I use it in high school?', 'Yes. Soma is built for both high school and college, including AP classes, honors courses, and anything else running on Canvas.'],
               ['What does the AI actually do?', "It reads your deadlines, your free hours and what is already on your plan, then builds or rearranges your day. It can add, move, rename and remove blocks, and it remembers lasting facts about how you work. Every change is a proposal you accept or dismiss before anything is saved."],
               ['Do I need a Google account?', 'Only if you want your lectures, shifts and office hours on the plan. Google Calendar access is read-only and optional, and scheduling, the timer and Canvas sync all work without it.'],
               ['Is my study time tracked for me?', "Not silently. You press Focus on a block and Soma times that session against the subject; the timer survives a reload or a closed tab. If you studied without starting it, or left it running overnight, you can add or correct the minutes afterwards."],
               ['Is my data private?', "Soma reads the sources you connect: your Canvas feed, any Google Calendar you link, and the documents you upload. Nothing else. Your study data is stored securely and never shared with third parties, and deleting your account deletes it."],
-              ['Is connecting Canvas safe?', "Your calendar feed is read-only. It can see assignment names and due dates, and nothing else. It can't reach your grades, files, or account, and you can regenerate the feed URL in Canvas at any time."],
+              ['Is connecting Canvas safe?', "The extension only reads Canvas in your own browser, with your own sign-in. It never sees your password, never changes anything in Canvas, and you can remove what it synced from Soma's settings at any time."],
             ].map(([q, a]) => (
               <div className="ln-faq-item" key={q}>
                 <h3 className="ln-faq-q">{q}</h3>
