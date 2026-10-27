@@ -24,6 +24,26 @@ async function rows(table:string,userId:string) {
 }
 function todoRow(r:Record<string,unknown>):Todo {return {id:String(r.id),text:String(r.text??''),status:r.status as Todo['status'],subjectId:r.subject_id as string|undefined,date:String(r.date??''),estimatedMinutes:r.estimated_minutes as number|undefined,dueDate:r.due_date as string|undefined,kind:asTodoKind(r.kind),assignmentId:r.assignment_id as number|undefined,notes:r.notes as string|undefined,order:r.order as number|undefined};}
 /** The plan for `days` days starting `startDay` days from origin (negative = the past). */
+const TONES:Record<string,string>={'#ef5350':'red','#42a5f5':'blue','#66bb6a':'green','#ab47bc':'purple','#ffa726':'orange','#26c6da':'cyan','#ec407a':'pink','#8d6e63':'brown'};
+/** A subject's colour as the dashboard's tone name. */
+export const toneOf = (hex?:string) => TONES[hex??'']??'blue';
+
+/** Synced Canvas work not yet handed in, by day from `origin`, for the week strip and the subject bar. */
+export type DueItem = { day:number; subject:string; color:string; title:string };
+export function dueItems(origin:Date):DueItem[] {
+ const subjects=storage.getSubjects();
+ const marked=storage.getAssignmentStatus();
+ const start=dateAt(origin,0).getTime();
+ return storage.getCachedAssignments().flatMap(a=>{
+  if(!a.dueAt || a.submittedAt || (marked[a.id] ?? a.status)==='done') return [];
+  const due=new Date(a.dueAt); due.setHours(0,0,0,0);
+  const day=Math.round((due.getTime()-start)/86_400_000);
+  const subject=subjects.find(s=>s.canvasCourseId===a.courseId) ?? subjects.find(s=>s.name.trim().toLowerCase()===a.courseName.trim().toLowerCase());
+  if(subject?.archived) return [];
+  return [{day,subject:subject?.name ?? a.courseName,color:toneOf(subject?.color),title:a.name}];
+ });
+}
+
 export async function readPlan(userId:string,origin:Date,startDay=0,days=7):Promise<Snapshot> {
  const calendar=fetchAggregatedEvents(dateAt(origin,startDay).toISOString(),dateAt(origin,startDay+days).toISOString(),true).then(events=>({events,error:''})).catch(()=>({events:[] as GoogleCalendarEvent[],error:'Calendar could not be fully loaded. Reconnect or retry before accepting AI schedules.'}));
  const [subjectRows,todoRows,sessionRows,historyRows,google,items]=await Promise.all([rows('subjects',userId),rows('todos',userId),rows('todo_sessions',userId),rows('timer_sessions',userId),calendar,loadCourseItems(userId)]);
@@ -32,8 +52,7 @@ export async function readPlan(userId:string,origin:Date,startDay=0,days=7):Prom
  const sessions:TodoSession[]=sessionRows.map(r=>({id:String(r.id),todoId:String(r.todo_id),date:String(r.date),startTime:r.start_time ? utc(String(r.start_time)) : undefined,endTime:r.end_time ? utc(String(r.end_time)) : undefined}));
  const history=historyRows as unknown as History[];
  const blocks:LiveBlock[]=[];
- const tones:Record<string,string>={'#ef5350':'red','#42a5f5':'blue','#66bb6a':'green','#ab47bc':'purple','#ffa726':'orange','#26c6da':'cyan','#ec407a':'pink','#8d6e63':'brown'};
- const color=(subjectId?:string)=>tones[subjects.find(s=>s.id===subjectId)?.color??'']??'blue';
+ const color=(subjectId?:string)=>toneOf(subjects.find(s=>s.id===subjectId)?.color);
  for(let day=startDay;day<startDay+days;day++){
   const date=localDate(dateAt(origin,day));
   const scheduled=sessions.filter(s=>s.date===date);
