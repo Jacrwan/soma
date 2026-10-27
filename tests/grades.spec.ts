@@ -71,6 +71,8 @@ test('Grades: a card per course with its grade and each score, Canvas and Grades
   const bioCard = page.getByRole('button', { name: /^Biology 101, 2 graded/ });
   await expect(bioCard.getByLabel('Course grade B+, 88.5%')).toBeVisible();
   await expect(page.getByText('Cell structure homework')).toHaveCount(0);
+  // The row carries the student's colour for the course.
+  await expect(bioCard.locator('[class*="dot"]')).toHaveCSS('background-color', 'rgb(102, 187, 106)');
   // Nothing to show: no card.
   await expect(page.getByRole('button', { name: /Empty Seminar/ })).toHaveCount(0);
 

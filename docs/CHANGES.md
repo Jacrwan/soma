@@ -11,6 +11,25 @@ still needed.
 
 ## 2026-10-26
 
+### Grades page redesigned: a ledger of courses, not a grid of cards
+
+The cards were identical gray boxes that didn't line up and left most of the
+page empty. The page is now one row per course: the course code with a dot in
+the student's colour for it, the title, a progress bar in that colour, and the
+grade big and right-aligned (the letter with the percent under it, or the
+percent alone). Opening a course shows the grade at 72px, then a table of
+assignments (score, a bar, percent); scores under 70% show their percent in red.
+The courses refresh when subjects load, which is when their colours arrive.
+On a phone the bar drops under the title and nothing scrolls sideways.
+
+- Where: `src/components/Grades/GradesTab.tsx` and its CSS; `src/lib/grades.ts`
+  (each course now has a `color`, from the subject with its Canvas course id,
+  else its name).
+- Guard test: `tests/grades.spec.ts` (rows, big grade, colour dot, course
+  view, empty state).
+- Setup: none. The store screenshot of this page (`extension/store/screenshot-3-grades.png`,
+  PR #6) shows the old design until it is regenerated.
+
 ### The extension uses Soma's logo
 
 The extension's icons were placeholders (a blue ring). They are now Soma's
