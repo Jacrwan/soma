@@ -23,11 +23,13 @@ still needed.
   Focus panel's own "Start focus" (start anytime, 2026-10-27) now matches.
 - **What:** the three files use `fileURLToPath(import.meta.url)`. The
   past-days test checks block buttons only (`/^Start focus:/`); the panel's
-  button starts a session now, so it belongs on any day. Tests only; no app
-  code changed.
-- **Not changed:** `extension/build-release.mjs` (`npm run
-  build:extension`) finds its folder the same way, so it has the same bug
-  in this folder. Left alone: not part of the request.
+  button starts a session now, so it belongs on any day. No app code
+  changed.
+- **Also fixed (owner asked, same day):** `extension/build-release.mjs`
+  (`npm run build:extension`) found its folder the same way and stopped at
+  "no such file … 02.%20soma/extension/manifest.json". It uses
+  `fileURLToPath` too, and builds `dist-extension/soma-for-canvas-0.1.0.zip`
+  with its store checks passing. The zip's contents are unchanged by this.
 - **Guard:** the full suite, 588 passed, 7 skipped (store screenshots run
   only with STORE_SHOTS=1).
 - **Setup:** none.
