@@ -9,6 +9,41 @@ still needed.
 
 ---
 
+## 2026-10-28
+
+### Soma writes no study material: practice questions removed
+- **Why:** the owner wants Soma to stay an academic life organizer (what to
+  work on, when, for how long, what's done), not a maker of study material.
+  Practice questions came in with "Study features and cheaper AI"
+  (2026-10-25, bfa006f).
+- **What:** the Focus panel's "Practice questions on this" card is gone
+  (`PracticeCard.tsx`, `PracticeCard.module.css`, `src/lib/practice.ts`
+  deleted; `LiveDashboard.tsx` no longer shows it). `api/chat.ts` refuses
+  `purpose: 'study'` (400 invalid_purpose), so nothing can ask the server
+  for it; `src/lib/ai.ts` no longer offers it. Soma's instructions gain a
+  SCOPE rule (`assistant.ts`): no practice questions, quizzes, flashcards,
+  summaries, notes, outlines, content explanations or answers; it says in
+  one line that it plans rather than makes material, and offers to plan the
+  time. Kept from the same change: exam mode (Plan review), grade-aware
+  priorities, Find dates in a syllabus, document search, streaming, the
+  metered importer. Those organize; they write nothing to study from.
+  Today's cached practice sets in a browser's localStorage are left to
+  expire with the day (the key holds the date).
+- **Where:** `api/chat.ts`, `src/lib/ai.ts`, `src/lib/assistant.ts`,
+  `src/components/DashboardV2/LiveDashboard.tsx`.
+- **Guard:** `tests/study-features.spec.ts` (a running Focus block shows no
+  practice and makes no AI call; the server refuses a study request). The
+  two practice tests and the Haiku study-cost test were removed with the
+  feature.
+- **Pre-existing failures, not from this change** (same on origin/master):
+  `tests/store-screenshots.spec.ts` and the extension reader/reminder specs
+  can't open their files when the project folder's path has a space ("02.
+  soma" becomes "02.%20soma"); `ai-plan-changes.spec.ts` "past days … without
+  Focus" fails because the new "Start focus anytime" button is on the page.
+- **Setup:** none.
+
+---
+
 ## 2026-10-27 (assignments show as blocks)
 
 - Synced Canvas work that isn't handed in now shows in the dashboard agenda as
@@ -591,6 +626,8 @@ being hammered. The app now says hello once, the first time it hears "present".
   RLS; until then a sync stays in the browser that got it). Before the Chrome
   Web Store: icons, drop the localhost matches, store privacy answers, and a
   terms check. See `extension/README.md`.
+
+---
 
 ## 2026-10-21
 

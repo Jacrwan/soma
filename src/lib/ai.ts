@@ -25,7 +25,7 @@ export async function sendMessage(
   responseFormat?: 'dashboard',
   /** Sonnet's thinking effort, and whether this is the cheap first pass that sorts a message.
    *  `onText` streams the reply: it's called with everything received so far. */
-  options: { effort?: 'low' | 'medium'; purpose?: 'triage' | 'study'; conversationId?: string; onText?: (soFar: string) => void } = {},
+  options: { effort?: 'low' | 'medium'; purpose?: 'triage'; conversationId?: string; onText?: (soFar: string) => void } = {},
 ): Promise<string> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;

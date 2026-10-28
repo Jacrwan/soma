@@ -50,9 +50,9 @@ export function validateChatInput(body:unknown):string|null{
  if(context!==undefined && typeof context!=='string')return 'invalid_context';
  if(model!==undefined && model!=='sonnet')return 'invalid_model';
  if(effort!==undefined && effort!=='low' && effort!=='medium')return 'invalid_effort';
- // 'triage' sorts a message; 'study' writes practice questions. Both are
- // Haiku, with no memory and nothing learned: small, cheap, one-off.
- if(purpose!==undefined && purpose!=='triage' && purpose!=='study')return 'invalid_purpose';
+ // 'triage' sorts a message: Haiku, with no memory and nothing learned.
+ // Soma organizes; it doesn't write study material, so there is no other purpose.
+ if(purpose!==undefined && purpose!=='triage')return 'invalid_purpose';
  if(purpose!==undefined && model!==undefined)return 'invalid_model';
  if(conversationId!==undefined && !isConversationId(conversationId))return 'invalid_conversation';
  if(!Array.isArray(messages) || !messages.length || messages.length>50)return 'invalid_messages';
@@ -160,13 +160,11 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
    // The first pass that sorts a message (and answers small talk) needs no
    // memory, and learning from the message is left to the reply proper.
    const triage=purpose==='triage';
-   // A cheap one-off: no memory, no notes, nothing learned (triage, study).
-   const cheap=triage || purpose==='study';
    const lastContent=messages[messages.length-1].content;
    const query=typeof lastContent==='string' ? lastContent : lastContent.filter((b:any)=>b.type==='text').map((b:any)=>b.text).join(' ');
-   const savedMemory=cheap ? '' : await (deps.memory??loadMemoryContext)(auth.userId,query);
+   const savedMemory=triage ? '' : await (deps.memory??loadMemoryContext)(auth.userId,query);
    // Notes from earlier chats, only when they match what is being asked.
-   const notes=cheap ? '' : await (deps.notes??loadConversationNotes)(auth.userId,query,conversationId);
+   const notes=triage ? '' : await (deps.notes??loadConversationNotes)(auth.userId,query,conversationId);
    // Prompt caching is a prefix match. systemPrompt (instructions, documents)
    // stays the same between messages, and so do the earlier turns of the chat;
    // the live plan (context) and memory (ranked per request) change every call.
@@ -188,7 +186,7 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
    const sonnet=model==='sonnet';
    const response=await (deps.request??fetch)('https://api.anthropic.com/v1/messages',{
     method:'POST',signal:AbortSignal.timeout(140_000),headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json',...(sonnet ? {'anthropic-beta':'server-side-fallback-2026-07-01'} : {})},
-    body:JSON.stringify({model:sonnet ? 'claude-sonnet-5-5' : 'claude-haiku-4-5-20251001',max_tokens:sonnet ? 16000 : purpose==='study' ? 2000 : 8192,...(sonnet ? {output_config:{effort:effort==='low' ? 'low' : 'medium'},fallbacks:'default'} : {}),...(system.length ? {system} : {}),messages:sent,...(stream===true ? {stream:true} : {})}),
+    body:JSON.stringify({model:sonnet ? 'claude-sonnet-5-5' : 'claude-haiku-4-5-20251001',max_tokens:sonnet ? 16000 : 8192,...(sonnet ? {output_config:{effort:effort==='low' ? 'low' : 'medium'},fallbacks:'default'} : {}),...(system.length ? {system} : {}),messages:sent,...(stream===true ? {stream:true} : {})}),
    });
    if(response.status===429)return res.status(429).json({error:'rate_limit'});
    if(response.status===529)return res.status(529).json({error:'overloaded'});
@@ -197,9 +195,9 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
     // here must never affect the conversation, so it is detached and swallowed.
     const previous=messages.length>1 ? messages[messages.length-2] : null;
     const assistantContext=previous?.role==='assistant' ? (typeof previous.content==='string' ? previous.content : previous.content.filter((b:any)=>b.type==='text').map((b:any)=>b.text).join(' ')) : '';
-    if(!cheap)(deps.defer??waitUntil)((deps.learn??learnFromMessage)(auth.userId,query,assistantContext,key).catch(()=>{}));
+    if(!triage)(deps.defer??waitUntil)((deps.learn??learnFromMessage)(auth.userId,query,assistantContext,key).catch(()=>{}));
     // This conversation's note, updated with what was just said.
-    if(!cheap && isConversationId(conversationId))(deps.defer??waitUntil)((deps.noteChat??noteFromChat)(auth.userId,conversationId,query,text,key).catch(()=>{}));
+    if(!triage && isConversationId(conversationId))(deps.defer??waitUntil)((deps.noteChat??noteFromChat)(auth.userId,conversationId,query,text,key).catch(()=>{}));
    };
    if(stream===true && response.ok && response.body)return relayStream(response.body,res,{
     record:(model:string,usage:Usage)=>(deps.defer??waitUntil)((deps.record??recordUsage)(auth.userId,'reply',model,usage).catch(()=>{})),

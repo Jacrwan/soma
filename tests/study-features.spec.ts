@@ -1,13 +1,13 @@
 import { test, expect, type Page } from '@playwright/test';
-import { createChatHandler } from '../api/chat';
+import { validateChatInput } from '../api/chat';
 import { createImportHandler } from '../api/import-schedule';
 
 /**
- * Study features (2026-10-25): practice questions in the Focus panel, exam
- * mode from Deadlines, finding dates in an uploaded syllabus, and what each
- * costs: practice runs on Haiku without memory, every call is counted against
- * the student's budget, and a course-site or syllabus read stops when the
- * budget is used.
+ * Study features (2026-10-25): exam mode from Deadlines, finding dates in an
+ * uploaded syllabus, and what each costs: every call is counted against the
+ * student's budget, and a course-site or syllabus read stops when the budget
+ * is used. Practice questions were removed on 2026-10-28: Soma organizes and
+ * writes no study material, which the first test and the server test guard.
  */
 
 const account = { id: '11111111-1111-4111-8111-111111111111', email: 'student@example.com', aud: 'authenticated', role: 'authenticated', created_at: '2025-01-01T00:00:00Z', app_metadata: {}, user_metadata: {} };
@@ -47,53 +47,19 @@ async function setup(page: Page, opts: { docs?: Row[]; todos?: Row[] } = {}) {
   return state;
 }
 
-const questions = { questions: [
-  { q: 'What do mitochondria produce?', choices: ['ATP', 'DNA', 'Lipids', 'Glucose'], answer: 0, why: 'Cellular respiration in mitochondria makes ATP.' },
-  { q: 'What do ribosomes build?', choices: ['Sugars', 'Proteins', 'Membranes', 'ATP'], answer: 1, why: 'Ribosomes join amino acids into proteins.' },
-] };
-
-test('practice: questions from the course\'s own documents, on Haiku, checked as answered, and kept for the day', async ({ page }) => {
+test('focus: a block in progress offers no AI-written practice and makes no AI call', async ({ page }) => {
+  // Soma organizes; it doesn't write study material (owner's call, 2026-10-28).
   await setup(page);
-  const calls: Row[] = [];
-  await page.route('**/api/chat', route => {
-    const body = route.request().postDataJSON() as Row;
-    calls.push(body);
-    return route.fulfill({ json: { content: [{ type: 'text', text: JSON.stringify(questions) }] } });
-  });
+  let calls = 0;
+  await page.route('**/api/chat', route => { calls++; return route.fulfill({ json: { content: [{ type: 'text', text: '{}' }] } }); });
   await page.goto('/dashboard');
   await page.getByRole('button', { name: 'Start focus: Cell review', exact: true }).click();
-  await expect(page.getByLabel('Focus timer')).toContainText('Cell review');
-
-  await page.getByRole('button', { name: 'Practice questions on this' }).click();
-  const card = page.getByRole('region', { name: 'Practice questions' });
-  await expect(card).toContainText('From ch4-cells.pdf');
-  // The cheap path: a study request (Haiku, no memory), with the matching passage.
-  expect(calls).toHaveLength(1);
-  expect(calls[0]).toMatchObject({ purpose: 'study' });
-  expect(calls[0].model).toBeUndefined();
-  expect(JSON.stringify(calls[0].messages)).toContain('mitochondria produce ATP');
-
-  await card.getByLabel('DNA').check();
-  await expect(card).toContainText('Not quite: it\'s “ATP”.');
-  await card.getByLabel('Proteins').check();
-  await expect(card).toContainText('1 of 2 right.');
-
-  // Hidden and reopened: today's set comes back without another call.
-  await card.getByRole('button', { name: 'Hide' }).click();
-  await page.getByRole('button', { name: 'Practice questions', exact: true }).click();
-  await expect(page.getByRole('region', { name: 'Practice questions' })).toBeVisible();
-  expect(calls).toHaveLength(1);
-});
-
-test('practice: an unreadable answer says so and charges nothing more', async ({ page }) => {
-  await setup(page);
-  let n = 0;
-  await page.route('**/api/chat', route => { n++; return route.fulfill({ json: { content: [{ type: 'text', text: 'Sure! Here are some questions…' }] } }); });
-  await page.goto('/dashboard');
-  await page.getByRole('button', { name: 'Start focus: Cell review', exact: true }).click();
-  await page.getByRole('button', { name: 'Practice questions on this' }).click();
-  await expect(page.getByRole('alert').filter({ hasText: 'unreadable' })).toBeVisible();
-  expect(n).toBe(1);
+  const focus = page.getByLabel('Focus timer');
+  await expect(focus).toContainText('Cell review');
+  await expect(page.getByRole('button', { name: /practice/i })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: /practice/i })).toHaveCount(0);
+  await page.waitForTimeout(500);
+  expect(calls).toBe(0);
 });
 
 test('exam mode: Plan review on an exam asks Soma for review across the days before', async ({ page }) => {
@@ -138,19 +104,9 @@ test('syllabus: Find dates reads the uploaded document through the importer and 
 
 // ── Cost, on the server ─────────────────────────────────────────────────────
 
-test('a study request runs on Haiku with no memory, nothing learned, and a small cap, and is counted', async () => {
-  let sent: Row | undefined, memory = 0, learned = 0; const recorded: unknown[][] = [];
-  const handler = createChatHandler({
-    authorize: async () => ({ ok: true, userId: 'u' }), apiKey: () => 'k', limited: () => false, budget: async () => null,
-    memory: async () => { memory++; return 'M'; }, notes: async () => { memory++; return 'N'; }, learn: async () => { learned++; }, defer: t => { void t; },
-    record: async (...a: unknown[]) => { recorded.push(a); },
-    request: async (_u: string, init: { body: string }) => { sent = JSON.parse(init.body); return Response.json({ model: 'claude-haiku-4-5-20251001', usage: { input_tokens: 1500, output_tokens: 400 }, content: [{ type: 'text', text: '{"questions":[]}' }] }); },
-  } as never);
-  const res = { status: () => res, json: () => res, setHeader: () => {}, end: () => res };
-  await handler({ method: 'POST', headers: { authorization: 'Bearer t' }, body: { messages: [{ role: 'user', content: 'Course: Biology' }], systemPrompt: 'Write questions', purpose: 'study' } }, res);
-  expect(sent).toMatchObject({ model: 'claude-haiku-4-5-20251001', max_tokens: 2000 });
-  expect([memory, learned]).toEqual([0, 0]);
-  expect(recorded[0][1]).toBe('reply');
+test('the server refuses a study request: Soma writes no study material', async () => {
+  expect(validateChatInput({ messages: [{ role: 'user', content: 'Course: Biology' }], systemPrompt: 'Write questions', purpose: 'study' })).toBe('invalid_purpose');
+  expect(validateChatInput({ messages: [{ role: 'user', content: 'hi' }], purpose: 'triage' })).toBeNull();
 });
 
 test('reading a course site or syllabus stops at the budget, and is counted when it runs', async () => {
