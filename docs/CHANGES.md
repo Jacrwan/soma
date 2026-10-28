@@ -9,6 +9,18 @@ still needed.
 
 ---
 
+## 2026-10-27 (start focus anytime)
+
+- The Focus panel on `/dashboard` no longer needs a plan block. With no
+  session running it shows a course picker (last used preselected), an
+  optional "what are you working on" field and **Start focus**. With no
+  courses at all the session is filed under a "General" subject so it still
+  saves. The Focus button on blocks works as before.
+  `src/components/DashboardV2/QuickFocus.tsx`, `LiveDashboard.tsx`,
+  `DashboardV2.module.css`. Only `LiveDashboard` loads it, so the
+  `/dashboard-v2` mock still makes no backend calls. No test yet (tests not
+  run, per the owner's request).
+
 ## 2026-10-27 (dashboard shows synced work)
 
 ### Dashboard: the subject bar and week strip show what's due

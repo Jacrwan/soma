@@ -299,3 +299,10 @@
 /* Deleting a block: set apart from Save and Cancel, and marked as destructive. */
 .editorButtons .editorDelete{margin-right:auto;color:var(--danger);border-color:color-mix(in oklch,var(--danger),transparent 65%)}
 .actions .deleteBlock{color:var(--danger);border-color:color-mix(in oklch,var(--danger),transparent 65%)}
+
+/* Start focus anytime, no plan block needed. */
+.quickFocus{display:grid;gap:8px}
+.quickFocus :is(select,input){width:100%;min-width:0;font:inherit;font-size:13px;color:var(--text-primary);background:var(--bg-secondary);border:1px solid var(--border);border-radius:7px;padding:8px 10px}
+.quickFocus :is(select,input):focus{outline:none;border-color:var(--accent)}
+.page .quickStart{background:var(--accent);border-color:var(--accent);color:var(--bg);font-weight:600;font-size:13px;min-height:38px}
+.page .quickStart:hover:not(:disabled){background:var(--accent);opacity:.9}
