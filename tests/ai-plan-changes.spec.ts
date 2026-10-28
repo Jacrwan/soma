@@ -314,7 +314,9 @@ test('past days: the arrows step back a day at a time and show its blocks, witho
   await expect(strip.getByRole('button').first()).toHaveAttribute('aria-pressed', 'true');
   await expect(strip.getByRole('button').first()).toContainText(String(offset(-3).getDate()));
   await expect(page.getByText('Old lab writeup')).toBeVisible();
-  await expect(page.getByRole('button', { name: /Start focus/ })).toHaveCount(0);
+  // No block of a past day can be focused. The Focus panel's own "Start focus"
+  // (start anytime, 2026-10-27) starts a session now, so it stays on any day.
+  await expect(page.getByRole('button', { name: /^Start focus:/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Next day' }).click();
   await expect(strip.getByRole('button').first()).toContainText(String(offset(-2).getDate()));
   await expect(strip.getByRole('button').first()).toHaveAttribute('aria-pressed', 'true');

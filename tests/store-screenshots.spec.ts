@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Chrome Web Store screenshots (1280×800) of Soma for Canvas: the real popup
@@ -15,7 +16,7 @@ import path from 'node:path';
 test.skip(!process.env.STORE_SHOTS, 'store screenshots run only with STORE_SHOTS=1');
 test.use({ deviceScaleFactor: 2 });
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const out = path.join(root, 'extension', 'store');
 const HOUR = 3600 * 1000;
 const at = (h: number) => new Date(Date.now() + h * HOUR).toISOString();

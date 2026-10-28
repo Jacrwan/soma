@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * The extension's site readers (extension/canvas.js, extension/gradescope.js)
@@ -9,7 +10,7 @@ import path from 'node:path';
  * stores, which is what the app then receives.
  */
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p: string) => fs.readFileSync(path.join(root, p), 'utf8');
 const fixture = (name: string) => read(`tests/fixtures/gradescope/${name}`);
 

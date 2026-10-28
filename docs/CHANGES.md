@@ -9,6 +9,31 @@ still needed.
 
 ---
 
+## 2026-10-28 (tests run in a folder with a space)
+
+### The extension, store-screenshot and past-days tests pass again
+- **Why:** 22 tests failed on master before any change today (noted in the
+  entry below).
+- **Cause:** (1) `tests/extension-readers.spec.ts`,
+  `tests/extension-reminders.spec.ts` and `tests/store-screenshots.spec.ts`
+  found the project folder with `new URL(import.meta.url).pathname`, which
+  keeps a space as "%20", so in "02. soma" they couldn't open their
+  fixtures or the logo. (2) `ai-plan-changes.spec.ts` "past days … without
+  Focus" checked for no button named like /Start focus/ at all, which the
+  Focus panel's own "Start focus" (start anytime, 2026-10-27) now matches.
+- **What:** the three files use `fileURLToPath(import.meta.url)`. The
+  past-days test checks block buttons only (`/^Start focus:/`); the panel's
+  button starts a session now, so it belongs on any day. Tests only; no app
+  code changed.
+- **Not changed:** `extension/build-release.mjs` (`npm run
+  build:extension`) finds its folder the same way, so it has the same bug
+  in this folder. Left alone: not part of the request.
+- **Guard:** the full suite, 588 passed, 7 skipped (store screenshots run
+  only with STORE_SHOTS=1).
+- **Setup:** none.
+
+---
+
 ## 2026-10-28
 
 ### Soma writes no study material: practice questions removed
@@ -35,7 +60,8 @@ still needed.
   practice and makes no AI call; the server refuses a study request). The
   two practice tests and the Haiku study-cost test were removed with the
   feature.
-- **Pre-existing failures, not from this change** (same on origin/master):
+- **Pre-existing failures, not from this change** (same on origin/master;
+  fixed the same day, entry above):
   `tests/store-screenshots.spec.ts` and the extension reader/reminder specs
   can't open their files when the project folder's path has a space ("02.
   soma" becomes "02.%20soma"); `ai-plan-changes.spec.ts` "past days … without

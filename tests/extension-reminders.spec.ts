@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Due-soon reminders (extension/due.js, and remind() in background.js): what
@@ -9,7 +10,7 @@ import path from 'node:path';
  * the chrome.* APIs they use stubbed and recorded.
  */
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p: string) => fs.readFileSync(path.join(root, p), 'utf8');
 const HOUR = 3600 * 1000;
 const at = (hoursFromNow: number) => new Date(Date.now() + hoursFromNow * HOUR).toISOString();
