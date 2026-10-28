@@ -9,6 +9,16 @@ still needed.
 
 ---
 
+## 2026-10-27 (assignments show as blocks)
+
+- Synced Canvas work that isn't handed in now shows in the dashboard agenda as
+  a block on its due day, under "Due today", with its due time, a **Focus**
+  button (starts the timer on that assignment) and a **Handed in** check that
+  marks it done and removes it. An assignment that already has a plan block
+  with the same title isn't shown twice. `liveData.ts` (`DueItem` gains id,
+  subjectId, dueAt), `DashboardV2.tsx` (`dueCard`), `LiveDashboard.tsx`.
+  No test yet (tests not run, per the owner's request).
+
 ## 2026-10-27 (start focus anytime)
 
 - The Focus panel on `/dashboard` no longer needs a plan block. With no

@@ -29,7 +29,7 @@ const TONES:Record<string,string>={'#ef5350':'red','#42a5f5':'blue','#66bb6a':'g
 export const toneOf = (hex?:string) => TONES[hex??'']??'blue';
 
 /** Synced Canvas work not yet handed in, by day from `origin`, for the week strip and the subject bar. */
-export type DueItem = { day:number; subject:string; color:string; title:string };
+export type DueItem = { id:number; day:number; subject:string; subjectId?:string; color:string; title:string; dueAt:string };
 export function dueItems(origin:Date):DueItem[] {
  const subjects=storage.getSubjects();
  const marked=storage.getAssignmentStatus();
@@ -40,7 +40,7 @@ export function dueItems(origin:Date):DueItem[] {
   const day=Math.round((due.getTime()-start)/86_400_000);
   const subject=subjects.find(s=>s.canvasCourseId===a.courseId) ?? subjects.find(s=>s.name.trim().toLowerCase()===a.courseName.trim().toLowerCase());
   if(subject?.archived) return [];
-  return [{day,subject:subject?.name ?? a.courseName,color:toneOf(subject?.color),title:a.name}];
+  return [{id:a.id,day,subject:subject?.name ?? a.courseName,subjectId:subject?.id,color:toneOf(subject?.color),title:a.name,dueAt:a.dueAt}];
  });
 }
 
