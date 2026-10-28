@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
+import { subjectForCourse } from '../../lib/canvasDeepSync';
 import { formatDateTime, useTimeFormat } from '../../lib/timeFormat';
 import { CanvasAssignment, Todo, isSubmittable } from '../../types';
 import { CANVAS_CHANGED, EXTENSION_STORE_URL, deepSyncStatus, extensionPresent, requestSync } from '../../lib/canvasExtension';
@@ -304,30 +305,30 @@ export default function DeadlinesTab() {
   // ── Main view ────────────────────────────────────────────────────────────────
   const subjects = storage.getSubjects();
   const archivedCourseNames = new Set(subjects.filter(s => s.archived).map(s => s.name));
-  const subjectsByName = new Map(subjects.map(s => [s.name, s]));
   const subjectsById = new Map(subjects.map(s => [s.id, s]));
+  // Synced work goes under the student's own course for it (subjectForCourse,
+  // the same match the dashboard, Calendar and Soma use), by its name there.
+  const courseOf = (a: CanvasAssignment) => subjectForCourse(subjects, a.courseId, a.courseName);
+  const shownAssignments = assignments.filter(a => !courseOf(a)?.archived);
 
   const canvasCourseIds = [...new Map(
-    assignments
-      .filter(a => a.courseId && a.courseName && !archivedCourseNames.has(a.courseName))
+    shownAssignments
+      .filter(a => a.courseId && a.courseName)
       .map(a => [a.courseId, a.courseName]),
   )];
   const courseColorMap = Object.fromEntries(
     canvasCourseIds.map(([id], i) => [id, COURSE_COLORS[i % COURSE_COLORS.length]]),
   );
-  const courseColor = (courseId: number, courseName: string) =>
-    subjectsByName.get(courseName)?.color ?? courseColorMap[courseId] ?? '#888';
 
-  const canvasItems: Deadline[] = assignments
-    .filter(a => !archivedCourseNames.has(a.courseName))
+  const canvasItems: Deadline[] = shownAssignments
     .map(a => ({
       key: `canvas-${a.id}`,
       source: 'canvas' as const,
       canvasId: a.id,
       todoId: null,
       title: a.name,
-      courseName: a.courseName,
-      color: courseColor(a.courseId, a.courseName),
+      courseName: courseOf(a)?.name ?? a.courseName,
+      color: courseOf(a)?.color ?? courseColorMap[a.courseId] ?? '#888',
       dueKey: dayKey(new Date(a.dueAt)),
       dueLabel: fmtDueTime(a.dueAt),
       // A status the student set wins; otherwise what Canvas, Gradescope or

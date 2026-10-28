@@ -6,6 +6,7 @@ import { asTodoKind } from '../../types';
 import type { PlanBlock } from './PlanEditor';
 import { loadCourseItems, coveredBy, markDone, renameLoggedTime, type CourseItem } from '../../lib/courseItems';
 import { rangeOf, spanMinutes } from '../../lib/clockRange';
+import { subjectForCourse } from '../../lib/canvasDeepSync';
 
 export type LiveBlock = PlanBlock & { todoId?: string; sessionId?: string; subjectId?: string; legacyId?: string };
 export type History = { id:string; subject_id:string; task_text:string; duration_seconds:number; date:string; start_time?:string; end_time?:string };
@@ -38,7 +39,7 @@ export function dueItems(origin:Date):DueItem[] {
   if(!a.dueAt || a.submittedAt || (marked[a.id] ?? a.status)==='done') return [];
   const due=new Date(a.dueAt); due.setHours(0,0,0,0);
   const day=Math.round((due.getTime()-start)/86_400_000);
-  const subject=subjects.find(s=>s.canvasCourseId===a.courseId) ?? subjects.find(s=>s.name.trim().toLowerCase()===a.courseName.trim().toLowerCase());
+  const subject=subjectForCourse(subjects,a.courseId,a.courseName);
   if(subject?.archived) return [];
   return [{id:a.id,day,subject:subject?.name ?? a.courseName,subjectId:subject?.id,color:toneOf(subject?.color),title:a.name,dueAt:a.dueAt}];
  });

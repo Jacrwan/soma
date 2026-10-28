@@ -1,5 +1,5 @@
 import { storage } from './storage';
-import { recentChanges, type SnapshotChange } from './canvasDeepSync';
+import { recentChanges, subjectForCourse, type SnapshotChange } from './canvasDeepSync';
 import { isSubmittable } from '../types';
 
 /**
@@ -20,19 +20,19 @@ const short = (name: string) => name.split(/[:,]| - /)[0].trim().slice(0, 30);
 export function buildBrief(now = new Date()): Brief {
   const today = key(now), tomorrow = key(shift(now, 1)), yesterday = key(shift(now, -1));
   const subjects = new Map(storage.getSubjects().map(s => [s.id, s.name]));
-  const archived = new Set(storage.getSubjects().filter(s => s.archived).map(s => s.name));
   const status = storage.getAssignmentStatus() as Record<string, string>;
   const due: BriefItem[] = [];
 
   for (const a of storage.getCachedAssignments()) {
-    if (!a.dueAt || archived.has(a.courseName)) continue;
+    const course = subjectForCourse(storage.getSubjects(), a.courseId, a.courseName);
+    if (!a.dueAt || course?.archived) continue;
     const done = (status[String(a.id)] ?? (a.status === 'done' ? 'done' : '')) === 'done';
     if (done) continue;
     const d = new Date(a.dueAt);
     // Due at 12:30 AM on Friday is Thursday night's work: count it for Thursday.
     const day = d.getHours() < 3 ? key(shift(d, -1)) : key(d);
     if (day !== today && day !== tomorrow) continue;
-    due.push({ title: a.name, course: short(a.courseName), due: a.dueAt, source: a.platform ?? 'canvas' });
+    due.push({ title: a.name, course: short(course?.name ?? a.courseName), due: a.dueAt, source: a.platform ?? 'canvas' });
   }
   const canvasIds = new Set(storage.getCachedAssignments().map(a => a.id));
   const slipped: BriefItem[] = [];

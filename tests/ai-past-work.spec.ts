@@ -122,5 +122,6 @@ test('Canvas work checked off as a task is not listed as due, and past dates say
   const prompt = bodies[0].systemPrompt;
   expect(prompt).toContain('CANVAS ASSIGNMENTS');
   expect(prompt).not.toContain('Analysis Exercise 3');
-  expect(prompt).toContain('Reading Response 4 — COMLIT R1B-LEC-005 — Due Fri 2026-10-02 23:59 (past due)');
+  // Under the student's own course name (subjectForCourse, 2026-10-28), not Canvas's.
+  expect(prompt).toContain('Reading Response 4 — COMLIT R1B — Due Fri 2026-10-02 23:59 (past due)');
 });

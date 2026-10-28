@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback, type CSSProperties } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
+import { subjectForCourse } from '../../lib/canvasDeepSync';
 import { getWeekRange, isCacheStale } from '../../lib/googleCalendar';
 import {
   listConnections, startConnectFlow, fetchAggregatedEvents, GoogleCalendarError,
@@ -1046,7 +1047,10 @@ export default function CalendarTab({ selectedDate, onSelectDate, onOpenDay }: C
             const chipsFor = (day: Date): DueChip[] => [
               ...assignments
                 .filter(a => a.dueAt && isSameDay(new Date(a.dueAt), day))
-                .map(a => ({ id: `canvas-${a.id}`, name: a.name, course: a.courseName, colour: subjectColor({ courseName: a.courseName }), dueKey: a.dueAt, url: a.htmlUrl })),
+                .map(a => {
+                  const subject = subjectForCourse(storage.getSubjects(), a.courseId, a.courseName);
+                  return { id: `canvas-${a.id}`, name: a.name, course: subject?.name ?? a.courseName, colour: subjectColor({ subjectId: subject?.id }), dueKey: a.dueAt, url: a.htmlUrl };
+                }),
               ...dueTasks
                 .filter(t => isSameDay(new Date(`${t.dueDate}T12:00:00`), day))
                 .map(t => ({

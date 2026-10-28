@@ -9,6 +9,53 @@ still needed.
 
 ---
 
+## 2026-10-28 (Canvas work under the student's own courses)
+
+### Synced Canvas work and announcements go under the course the student already has
+- **Why:** the owner asked whether assignments and announcements from the
+  extension land on the right Soma courses. Not reliably (checked with a
+  throwaway test before the fix):
+  (1) a course the student made ("Physics 5A") got a Canvas twin
+  ("PHYSICS 5A - LEC 001 - Fall 2026") holding all the synced work, because
+  only an identical name counted as the same course; (2) a Canvas-made
+  course the student renamed showed its Canvas name on Deadlines, in the
+  Calendar's chips, the brief and to Soma, and lost its colour there;
+  (3) archiving a renamed course didn't hide its work on Deadlines or from
+  Soma, which checked "archived" by name. Pre-existing: the sync's
+  name-only rule dates from the calendar feed; the pages each kept their own
+  rule.
+- **What:** one match, `subjectForCourse` in `src/lib/canvasDeepSync.ts`:
+  the course linked by Canvas id, else the same name (any case), else the
+  same department and number (`sameCourse`, Gradescope's matcher), never an
+  archived course or one linked to another Canvas course by that last rule
+  (last term's MATH 1A doesn't take this term's). `subjectForChange` does
+  the same for "What changed" records, which carry only a course name.
+  - Sync (`storage.syncCanvasSubjects`): a match is linked
+    (`canvas_course_id` saved on it) instead of a new course being made. Its
+    name, colour and `source` stay the student's, so disconnecting Canvas
+    never archives a course they made.
+  - Used by: dashboard due items (`liveData.ts`), Deadlines (name, colour,
+    course filter, archived), Calendar's due chips, the brief (`brief.ts`),
+    Grades colours (`grades.ts`), onboarding's course dots
+    (`ExtensionSetup.tsx`), What changed (`WhatChanged.tsx`), Soma's
+    context (`aiContext.ts`: assignments, grades, announcements and changes
+    under the student's course name; archived by the match), a done task in
+    the same course finishing its assignment, and `inferSubjectId`.
+  - Not changed: Day View (retired, still routed) keeps its name match.
+- **Where:** the files above.
+- **Guard:** `tests/canvas-course-mapping.spec.ts` (the match's rules; a
+  made course is linked, not duplicated, and its name reaches Deadlines and
+  Soma; a renamed course keeps its name; an archived one hides its work and
+  announcements; last term's archived course doesn't take this term's work).
+  The three page tests fail on the old matching. `tests/ai-past-work.spec.ts`
+  now expects the student's "COMLIT R1B", not Canvas's "COMLIT R1B-LEC-005".
+  Full suite: 593 passed, 7 skipped.
+- **Setup:** none. Duplicates the old rule already made stay until the
+  student archives or deletes them: the sync now links new work to the
+  Canvas twin (it holds the Canvas id), not back to their original.
+
+---
+
 ## 2026-10-28 (tests run in a folder with a space)
 
 ### The extension, store-screenshot and past-days tests pass again

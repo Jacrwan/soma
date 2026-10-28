@@ -1,5 +1,5 @@
 import { storage } from './storage';
-import { canvasSnapshots, getLocalSnapshots, sameCourse, sameWork, GRADESCOPE_HOST, type SourceSnapshot, type GradescopeSnapshot } from './canvasDeepSync';
+import { canvasSnapshots, getLocalSnapshots, sameCourse, sameWork, subjectForCourse, GRADESCOPE_HOST, type SourceSnapshot, type GradescopeSnapshot } from './canvasDeepSync';
 
 /**
  * The Grades page: one row per course, from what the extension synced.
@@ -46,10 +46,10 @@ function pointsOf(items: GradeItem[]): GradeCourse['points'] {
   return { earned, possible, percent: percentOf(earned, possible) as number };
 }
 
-/** A course's colour is the one on the student's subject for it: by Canvas course, else by name. */
+/** A course's colour is the one on the student's subject for it (subjectForCourse). */
 function colorOf(canvasId: number, name: string): string | null {
-  const subjects = storage.getSubjects().filter(s => !s.archived);
-  return (subjects.find(s => s.canvasCourseId === canvasId) ?? subjects.find(s => sameCourse(s.name, name)))?.color ?? null;
+  const subject = subjectForCourse(storage.getSubjects(), canvasId, name);
+  return subject && !subject.archived ? subject.color : null;
 }
 
 export function buildGrades(snapshots: Record<string, SourceSnapshot> = getLocalSnapshots()): GradeCourse[] {

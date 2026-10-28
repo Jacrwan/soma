@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { storage } from '../../lib/storage';
 import { CANVAS_CHANGED, EXTENSION_STORE_URL, deepSyncStatus, extensionPresent } from '../../lib/canvasExtension';
-import { canvasSnapshots, getLocalSnapshots } from '../../lib/canvasDeepSync';
+import { canvasSnapshots, getLocalSnapshots, subjectForCourse } from '../../lib/canvasDeepSync';
 import CanvasGuide from './CanvasGuide';
 import styles from './ExtensionSetup.module.css';
 
@@ -88,7 +88,7 @@ export default function ExtensionSetup({ onBeforeReload }: Props) {
   // What came in, once it has.
   const snapshot = canvasSnapshots(getLocalSnapshots())[0];
   const subjects = storage.getSubjects();
-  const colorOf = (id: number) => subjects.find(s => s.canvasCourseId === id)?.color ?? 'var(--accent)';
+  const colorOf = (id: number, name: string) => subjectForCourse(subjects, id, name)?.color ?? 'var(--accent)';
   const courses = snapshot
     ? snapshot.courses.filter(c => snapshot.assignments.some(a => a.courseId === c.id))
     : [];
@@ -201,7 +201,7 @@ export default function ExtensionSetup({ onBeforeReload }: Props) {
                 <ul className={styles.courses}>
                   {courses.slice(0, 6).map(c => (
                     <li key={c.id}>
-                      <span className={styles.dot} style={{ background: colorOf(c.id) }} aria-hidden="true" />
+                      <span className={styles.dot} style={{ background: colorOf(c.id, c.name) }} aria-hidden="true" />
                       <span className={styles.courseName}>{c.name}</span>
                       {c.currentGrade && <span className={styles.grade}>{c.currentGrade}</span>}
                     </li>

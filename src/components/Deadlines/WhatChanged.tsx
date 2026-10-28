@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { recentChanges, type SnapshotChange } from '../../lib/canvasDeepSync';
+import { recentChanges, subjectForChange, type SnapshotChange } from '../../lib/canvasDeepSync';
+import { storage } from '../../lib/storage';
 import { CANVAS_CHANGED } from '../../lib/canvasExtension';
 import { formatDateTime, useTimeFormat } from '../../lib/timeFormat';
 import styles from './DeadlinesTab.module.css';
@@ -57,7 +58,7 @@ export default function WhatChanged() {
               <span className={`${styles.changeType} ${c.type === 'due_moved' ? styles.changeTypeMoved : ''}`}>{LABELS[c.type]}</span>
               <span className={styles.assignmentInfo}>
                 <span className={styles.assignmentName}>{c.name}</span>
-                <span className={styles.assignmentCourse}>{[c.course, SITES[c.site]].filter(Boolean).join(' · ')}</span>
+                <span className={styles.assignmentCourse}>{[subjectForChange(storage.getSubjects(), c)?.name ?? c.course, SITES[c.site]].filter(Boolean).join(' · ')}</span>
               </span>
               <span className={styles.dueTime}>{detail(c)}</span>
             </>

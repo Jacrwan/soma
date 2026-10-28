@@ -397,6 +397,36 @@ export function sameCourse(a: string, b: string): boolean {
   }));
 }
 
+/**
+ * The student's Soma course for a synced one, the same on every page: the
+ * course linked to it by Canvas id (whatever the student renamed it), else one
+ * with the same name, else one with the same department and number ("Physics
+ * 5A" for "PHYSICS 5A - LEC 001 - Fall 2026"). The last is never an archived
+ * course or one linked to another Canvas course, so last term's MATH 1A can't
+ * take this term's work. A courseId of 0 means not known (Gradescope,
+ * WebAssign, a change record).
+ */
+export function subjectForCourse<T extends { name: string; canvasCourseId?: number; archived?: boolean }>(
+  subjects: T[], courseId: number, courseName: string,
+): T | undefined {
+  const linked = courseId ? subjects.find(s => s.canvasCourseId === courseId) : undefined;
+  if (linked) return linked;
+  const name = courseName.trim().toLowerCase();
+  if (!name) return undefined;
+  return subjects.find(s => s.name.trim().toLowerCase() === name)
+    ?? subjects.find(s => !s.archived && (!courseId || !s.canvasCourseId) && sameCourse(s.name, courseName));
+}
+
+/** The Soma course for a change record, which carries only the site's course name. */
+export function subjectForChange<T extends { name: string; canvasCourseId?: number; archived?: boolean }>(
+  subjects: T[], c: SnapshotChange, snapshots = getLocalSnapshots(),
+): T | undefined {
+  const id = c.site === 'canvas'
+    ? canvasSnapshots(snapshots).flatMap(s => s.courses).find(x => x.name === c.course)?.id ?? 0
+    : 0;
+  return subjectForCourse(subjects, id, c.course);
+}
+
 const workName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 /** "Homework 4" in Canvas is "Homework 4" or "Homework 4: Kinematics" on Gradescope. */
 export const sameWork = (a: string, b: string) => {

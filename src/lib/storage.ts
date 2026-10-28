@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import { Subject, TimeBlock, TimerSession, CanvasAssignment, CanvasCourse, Todo, TodoSession, GoogleCalendarEvent, ChatMessage, ChatSession, asTodoKind } from '../types';
-import { mergeDeepSync, clearLocalSnapshots } from './canvasDeepSync';
+import { mergeDeepSync, clearLocalSnapshots, subjectForCourse } from './canvasDeepSync';
 
 const SOMA_TODOS_KEY = 'soma_todos';
 const SOMA_BLOCKS_KEY = 'soma_blocks';
@@ -193,7 +193,7 @@ export function inferSubjectId(
   }
   for (const a of assignments) {
     if (a.courseName.length > 1 && lower.includes(a.courseName.toLowerCase())) {
-      const match = subjects.find(s => s.name.toLowerCase() === a.courseName.toLowerCase());
+      const match = subjectForCourse(subjects, a.courseId, a.courseName);
       if (match) return match.id;
     }
   }
@@ -297,17 +297,38 @@ export const storage = {
         '#ef5350', '#42a5f5', '#66bb6a', '#ab47bc',
         '#ffa726', '#26c6da', '#ec407a', '#8d6e63',
       ];
+      // A course the student already has (same id, name, or department and
+      // number) is linked to the Canvas course instead of made twice. Its
+      // name, colour and source stay theirs, so disconnecting Canvas never
+      // archives a course they made.
+      const linked: Subject[] = [];
       for (const assignment of normalizeIcalAssignments(assignments)) {
         const name = assignment.courseName.trim();
-        if (!name || subjects.some(s =>
-          s.canvasCourseId === assignment.courseId ||
-          s.name.trim().toLowerCase() === name.toLowerCase()
-        )) continue;
+        if (!name) continue;
+        const match = subjectForCourse(subjects, assignment.courseId, name);
+        if (match) {
+          if (!match.canvasCourseId && assignment.courseId) {
+            const link = { ...match, canvasCourseId: assignment.courseId };
+            subjects[subjects.indexOf(match)] = link;
+            linked.push(link);
+          }
+          continue;
+        }
         subjects.push({
           id: crypto.randomUUID(), name,
           color: colors[subjects.length % colors.length],
           totalTimeToday: 0, source: 'canvas', canvasCourseId: assignment.courseId,
         });
+      }
+      if (linked.length) {
+        const userId = await uid();
+        for (const s of linked) {
+          const { error } = await supabase.from('subjects').update({ canvas_course_id: s.canvasCourseId })
+            .eq('id', s.id).eq('user_id', userId);
+          if (error) throw new Error(error.message);
+        }
+        const ids = new Map(linked.map(s => [s.id, s.canvasCourseId]));
+        _subjects = _subjects.map(s => ids.has(s.id) ? { ...s, canvasCourseId: ids.get(s.id) } : s);
       }
       const created = subjects.slice(existing.length);
       if (created.length) {
@@ -320,8 +341,8 @@ export const storage = {
         if (error) throw new Error(error.message);
         // Preserve edits made to existing subjects while the save was pending.
         _subjects = [..._subjects, ...created];
-        window.dispatchEvent(new Event('soma_subjects_changed'));
       }
+      if (linked.length || created.length) window.dispatchEvent(new Event('soma_subjects_changed'));
       return _subjects;
     };
     canvasSubjectSync = canvasSubjectSync.catch(() => []).then(sync);
