@@ -9,6 +9,15 @@ still needed.
 
 ---
 
+## 2026-10-29 (Deadlines tab title)
+
+- The browser tab now reads "Deadlines | Soma" on the Deadlines page. The
+  title map in `src/App.tsx` only had the old `/canvas` path (as "Canvas |
+  Soma"), so `/deadlines` fell back to plain "Soma". Both paths now say
+  Deadlines. Guard: none. Setup: none.
+
+---
+
 ## 2026-10-28 (Landing page: one place, a plan that adapts)
 
 ### The landing page tells the new story

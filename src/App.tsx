@@ -209,7 +209,8 @@ function AppShell({ user, sessionResolved, onLogout }: {
     const titles: Record<string, string> = {
       '/dashboard': 'Dashboard | Soma',
       '/day-view':  'Day View | Soma',
-      '/canvas':    'Canvas | Soma',
+      '/deadlines': 'Deadlines | Soma',
+      '/canvas':    'Deadlines | Soma',
       '/grades':    'Grades | Soma',
       '/documents': 'Documents | Soma',
       '/ai':        'AI | Soma',
