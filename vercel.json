@@ -8,6 +8,8 @@
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/privacy", "destination": "/privacy.html" },
     { "source": "/terms", "destination": "/terms.html" },
+    { "source": "/blog", "destination": "/blog/index.html" },
+    { "source": "/blog/:slug([a-z0-9-]+)", "destination": "/blog/:slug.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [

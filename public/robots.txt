@@ -10,3 +10,4 @@ Disallow: /create
 Disallow: /insights
 
 Sitemap: https://somastudy.app/sitemap.xml
+Sitemap: https://somastudy.app/blog/sitemap.xml

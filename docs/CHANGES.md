@@ -9,6 +9,39 @@ still needed.
 
 ---
 
+## 2026-10-28 (Blog for search)
+
+### A blog at /blog, built as plain HTML pages
+- **Why:** the owner asked for an SEO blog. The app is a React page that
+  search engines see as an empty `<div id="root">`, so posts rendered by
+  React would barely be indexed.
+- **What:** each Markdown file in `content/blog/` becomes a static page at
+  `/blog/<file name>`: title, description, canonical link, Open Graph tags,
+  BlogPosting and breadcrumb structured data, reading time, a "Try Soma free"
+  box and links to other posts. Also `/blog` (the list), `/blog/rss.xml` and
+  `/blog/sitemap.xml` (added to `robots.txt`; `/blog` added to the main
+  sitemap). Styled like the landing page (light, Figtree, slate and blue).
+  Production pages load Vercel Web Analytics with the same path-only rule as
+  the app. A "Blog" link was added to the landing page footer. Three starter
+  posts: weighted grades, making a study schedule, keeping track of Canvas
+  assignments. To add a post: a new `.md` file with `title`, `description`
+  and `date` at the top (see the comment in `config/blog.ts`); `draft: true`
+  leaves it out.
+- **Where:** `config/blog.ts` (a Vite plugin: `vite build` writes
+  `dist/blog/`, `vite` serves the pages from memory), `vite.config.ts`,
+  `content/blog/`, `vercel.json` (`/blog` and `/blog/<slug>` rewrites before
+  the app's catch-all), `public/robots.txt`, `public/sitemap.xml`,
+  `src/components/Landing/LandingPage.tsx` (footer link only). `marked`
+  added as a dev dependency (build time only, nothing ships to the browser).
+- **Guard:** `tests/blog.spec.ts` (pages are server HTML, every post listed,
+  meta and structured data, RSS, sitemap, unknown post is a 404). Full
+  suite: 625 passed, 7 skipped.
+- **Setup:** after deploy, submit `https://somastudy.app/blog/sitemap.xml`
+  in Google Search Console. Posts have no share image: `index.html` points at
+  `/og-image.png`, which isn't in `public/`.
+
+---
+
 ## 2026-10-28 (Deadlines: no "Everything due" button)
 
 ### The lone "Everything due" tab is gone
