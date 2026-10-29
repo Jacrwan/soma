@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type React from 'react';
 import { supabase } from '../../lib/supabase';
 import { storage } from '../../lib/storage';
-import { asTodoKind, type Subject } from '../../types';
+import { asTodoKind, type Subject, type Todo } from '../../types';
 import styles from './SettingsTab.module.css';
 
 /**
@@ -18,9 +18,21 @@ type Result = { course: string | null; items: Item[]; source: string | null; tru
 /** Titles that differ only in case, spacing or punctuation are one task:
  *  "Project 3: Ants Vs. SomeBees - Checkpoint 1" and "…SomeBees checkpoint 1"
  *  were imported as two. */
-const sameTitle = (a: string, b: string) => {
-  const words = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-  return words(a) === words(b);
+const titleWords = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const sameTitle = (a: string, b: string) => titleWords(a) === titleWords(b);
+
+/**
+ * The same deadline worded differently by another read of the page: due the
+ * same day, the same kind, and every word of the shorter title in the longer
+ * ("Project 4: Animator checkpoint" and "Project 4: Animator (TypeScript)
+ * checkpoint"). A re-import added these as new tasks.
+ */
+const sameDeadline = (a: { title: string; due?: string; kind?: string | null }, b: { title: string; due?: string; kind?: string | null }) => {
+  if (sameTitle(a.title, b.title)) return true;
+  if (!a.due || a.due !== b.due || (a.kind && b.kind && a.kind !== b.kind)) return false;
+  const [x, y] = [titleWords(a.title).split(' '), titleWords(b.title).split(' ')];
+  const [short, long] = x.length <= y.length ? [x, new Set(y)] : [y, new Set(x)];
+  return short.length >= 2 && short.every(w => long.has(w));
 };
 
 type Receipt = { course: { id: string; name: string; color: string }; rows: { title: string; due: string; time: string | null; change: 'added' | 'updated' | 'unchanged' }[] };
@@ -90,7 +102,8 @@ export default function CourseSiteImport({ courses, createCourse, onImported, so
       if (!response.ok) { setError(explain(body?.error ?? '')); return; }
       const read = body as Result;
       // A page that lists an item twice (a calendar and a table) offers it once.
-      const data = { ...read, items: read.items.filter((item, i) => !read.items.slice(0, i).some(o => o.due === item.due && sameTitle(o.title, item.title))) };
+      const asDeadline = (o: Item) => ({ title: o.title, due: o.due, kind: asTodoKind(o.type) });
+      const data = { ...read, items: read.items.filter((item, i) => !read.items.slice(0, i).some(o => o.due === item.due && sameDeadline(asDeadline(o), asDeadline(item)))) };
       setResult(data);
       // Upcoming work is picked by default; anything already past is not.
       setChosen(new Set(data.items.map((item, i) => (item.due >= today ? i : -1)).filter(i => i >= 0)));
@@ -116,25 +129,35 @@ export default function CourseSiteImport({ courses, createCourse, onImported, so
     const rows: Receipt['rows'] = [];
     try {
       const subject = creating ? createCourse(name) : courses.find(c => c.id === courseId)!;
-      await storage.fetchAllTodos();
+      // The course's tasks, kept up to date as this import saves: saving doesn't
+      // touch the cache, so two items of one import couldn't see each other.
+      const known = (await storage.fetchAllTodos()).filter(t => t.subjectId === subject.id);
+      const remember = (t: Todo) => { const at = known.findIndex(k => k.id === t.id); if (at < 0) known.push(t); else known[at] = t; };
       for (const [i, item] of result.items.entries()) {
         if (!chosen.has(i)) continue;
-        // Re-importing updates a date rather than adding the same task twice.
-        const existing = storage.getTodos().find(t => t.subjectId === subject.id && sameTitle(t.text, item.title));
+        // Re-importing updates a date rather than adding the same task twice:
+        // the same title, or the same deadline worded differently.
+        const kind = asTodoKind(item.type);
+        const existing = known.find(t => sameTitle(t.text, item.title))
+          ?? known.find(t => sameDeadline({ title: t.text, due: t.dueDate, kind: t.kind }, { title: item.title, due: item.due, kind }));
+        // The receipt names the task as it is stored, which keeps its own wording.
         if (existing) {
           if (existing.dueDate === item.due) {
             // Same date, but the row may predate the kind column: fill it in
             // so re-importing is how older tasks get classified.
-            const kind = asTodoKind(item.type);
-            if (kind && existing.kind !== kind) await storage.saveTodo({ ...existing, kind });
-            rows.push({ title: item.title, due: item.due, time: item.time, change: 'unchanged' });
+            if (kind && existing.kind !== kind) { const next = { ...existing, kind }; await storage.saveTodo(next); remember(next); }
+            rows.push({ title: existing.text, due: item.due, time: item.time, change: 'unchanged' });
             continue;
           }
-          await storage.saveTodo({ ...existing, dueDate: item.due, date: existing.date === existing.dueDate ? item.due : existing.date, kind: asTodoKind(item.type) ?? existing.kind });
+          const next = { ...existing, dueDate: item.due, date: existing.date === existing.dueDate ? item.due : existing.date, kind: kind ?? existing.kind };
+          await storage.saveTodo(next);
+          remember(next);
           updated++;
-          rows.push({ title: item.title, due: item.due, time: item.time, change: 'updated' });
+          rows.push({ title: existing.text, due: item.due, time: item.time, change: 'updated' });
         } else {
-          await storage.saveTodo({ id: crypto.randomUUID(), text: item.title, status: 'nothing', subjectId: subject.id, dueDate: item.due, date: item.due, kind: asTodoKind(item.type) });
+          const next: Todo = { id: crypto.randomUUID(), text: item.title, status: 'nothing', subjectId: subject.id, dueDate: item.due, date: item.due, kind };
+          await storage.saveTodo(next);
+          remember(next);
           created++;
           rows.push({ title: item.title, due: item.due, time: item.time, change: 'added' });
         }

@@ -197,3 +197,44 @@ test('re-importing matches a task whose title differs only in punctuation and ca
   await expect(page.getByRole('status')).toContainText('Imported');
   expect(state.todos.map(t => t.id)).toEqual(['cp1']);
 });
+
+// Reported 2026-10-28: "Project 4: Animator checkpoint" and "Project 4:
+// Animator (TypeScript) checkpoint", both due Nov 13, on Deadlines: each read
+// of the page words a deadline a little differently.
+test('re-importing matches the same deadline worded differently, due the same day', async ({ page }) => {
+  const cs = { id: 'cs', user_id: account.id, name: 'CS 61A', color: '#26c6da', archived: false };
+  const state = await setup(page, [cs], [
+    { id: 'cp4', user_id: account.id, text: 'Project 4: Animator checkpoint', status: 'nothing', subject_id: 'cs', due_date: offset(10), date: offset(10), kind: 'project' },
+  ], { ...found, items: [checkpoint('Project 4: Animator (TypeScript) checkpoint')] });
+  await page.getByLabel('Course website address').fill('https://cs61a.org');
+  await page.getByRole('button', { name: 'Find deadlines' }).click();
+  await page.getByRole('button', { name: /^Import 1 deadline/ }).click();
+  await expect(page.getByRole('status')).toContainText('Imported');
+  expect(state.todos.map(t => t.text)).toEqual(['Project 4: Animator checkpoint']);
+});
+
+test('one read listing a deadline twice, worded differently, offers it once', async ({ page }) => {
+  const state = await setup(page, [], [], { ...found, items: [checkpoint('Project 4: Animator checkpoint'), checkpoint('Project 4: Animator (TypeScript) checkpoint')] });
+  await page.getByLabel('Course website address').fill('https://cs61a.org');
+  await page.getByRole('button', { name: 'Find deadlines' }).click();
+  await expect(page.getByLabel('Deadlines found').getByRole('checkbox')).toHaveCount(1);
+  await page.getByRole('button', { name: /^Import 1 deadline/ }).click();
+  await expect(page.getByRole('status')).toContainText('Imported');
+  expect(state.todos).toHaveLength(1);
+});
+
+test('different work stays apart: another kind, or another day', async ({ page }) => {
+  const due = offset(10);
+  const state = await setup(page, [], [], { ...found, items: [
+    { title: 'Lab 8', type: 'lab', due, time: null, evidence: 'Lab 8' },
+    { title: 'Lab 8 quiz', type: 'quiz', due, time: null, evidence: 'Lab 8 quiz' },
+    { title: 'Project 4: Animator', type: 'project', due: offset(17), time: null, evidence: 'Project 4' },
+    { title: 'Project 4: Animator checkpoint', type: 'project', due, time: null, evidence: 'Project 4 checkpoint' },
+  ] });
+  await page.getByLabel('Course website address').fill('https://cs61a.org');
+  await page.getByRole('button', { name: 'Find deadlines' }).click();
+  await expect(page.getByLabel('Deadlines found').getByRole('checkbox')).toHaveCount(4);
+  await page.getByRole('button', { name: /^Import 4 deadlines/ }).click();
+  await expect(page.getByRole('status')).toContainText('Imported');
+  expect(state.todos).toHaveLength(4);
+});

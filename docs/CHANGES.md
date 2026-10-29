@@ -9,6 +9,45 @@ still needed.
 
 ---
 
+## 2026-10-28 (course-site import: no more reworded duplicates)
+
+### Re-importing a course site matches the same deadline worded differently
+- **Why:** the owner's Deadlines listed "Project 4: Animator - Checkpoint",
+  "Project 4: Animator (TypeScript) checkpoint" and "Project 4: Animator
+  checkpoint", all CS 61A, due Nov 13.
+- **Cause:** only the course-site import (`CourseSiteImport.tsx`) gives
+  tasks a deadline kind, so all three came from importing cs61a.org. Each
+  read of a page words a deadline a little differently, and the import
+  matched only titles equal apart from case and punctuation: "(TypeScript)"
+  made a new task. The "- Checkpoint" / "checkpoint" pair needed even that,
+  which came on 2026-10-06 (most likely imported before). Also, the import
+  checked each item against the task cache from before it started
+  (`saveTodo` doesn't update it), so two items of one import never saw
+  each other.
+- **What:** `sameDeadline`: the same title, or the same due day, the same
+  kind (or one unknown) and every word of the shorter title in the longer
+  (at least two words). Used to offer a deadline once when one read lists it
+  twice, and to find the existing task on re-import (exact title first). An
+  import keeps its own running list of the course's tasks. A match keeps
+  the stored task's wording, and the receipt names it so.
+- **Existing duplicates:** `dedupe_imported_deadlines.sql` (one-off, PART 1
+  preview, PART 2 delete). Same rule; keeps a used task, else the fullest
+  title; deletes only untouched ones (not started, no Canvas link, no notes,
+  never scheduled, no reading sections, no study time under the title).
+  Checked against sample data in PGlite (Postgres in WASM): the three
+  Animator rows leave "(TypeScript)"; used tasks, other kinds, other days,
+  other students and one-word titles stay.
+- **Where:** `src/components/Settings/CourseSiteImport.tsx`,
+  `dedupe_imported_deadlines.sql`.
+- **Guard:** `tests/course-site-import.spec.ts` (a reworded re-import
+  matches; one read listing it twice offers it once; another kind or day
+  stays apart; the first two fail on the old code). Full suite: 600 passed,
+  7 skipped.
+- **Setup still needed (owner):** run `dedupe_imported_deadlines.sql` in the
+  Supabase SQL editor, PART 1 first.
+
+---
+
 ## 2026-10-28 (Deadlines: study blocks stay off, rows tidied)
 
 ### A deadline's study time under another name is its own task; What changed reads like the rows below it
