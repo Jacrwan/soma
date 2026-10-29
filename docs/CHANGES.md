@@ -9,6 +9,50 @@ still needed.
 
 ---
 
+## 2026-10-28 (Grades: spreadsheet import, Grading folds)
+
+### Import scores from a spreadsheet
+- **Why:** the owner asked for a way to bring in a sheet of grades instead of
+  typing each one.
+- **What:** "Import spreadsheet" beside "+ Add a score". Takes a .csv/.tsv
+  file, an .xlsx (Google Sheets and Excel downloads), or pasted cells
+  (Sheets, Excel, or the table on a Gradescope course page). Read in the
+  browser only: no AI, no upload; only the imported scores are saved, as
+  typed-in scores. The .xlsx reader is ours (`readXlsx`: the zip's central
+  directory, the browser's `DecompressionStream`, `DOMParser`), not the npm
+  `xlsx` package, which has unpatched advisories. Columns are found by header
+  ("Name/Assignment", "Score/Status/Points", "Out of/Possible",
+  "Category/Type", "Date/Due/Released") or by what they hold, and can be
+  changed; scores read as "18.0 / 20.0", "18/20", "92%" or a number with an
+  Out of column; dates as ISO, 9/5/2026, "Sep 05 at 11:59PM" or a sheet day
+  number. A preview says per row: New, Replaces yours (a typed-in score of
+  the same name, keeping its category unless the sheet names one), No score
+  yet, or Already synced (Canvas or Gradescope has it, so it never counts
+  twice), all left out but the first two. A Category column picks the
+  syllabus category it names; otherwise Soma guesses by name as for typed
+  scores. Up to 500 rows, 5 MB.
+- **Where:** `src/lib/gradeImport.ts` (new), `src/components/Grades/ScoreImport.tsx`
+  (new), `CourseGrades.tsx`, `GradesTab.module.css`.
+- **Guard:** `tests/grade-import.spec.ts` (CSV quoting, tabs, semicolons;
+  score and date formats; "9/1/2026" is a date, not 9 out of 1; columns by
+  header and by content; row statuses). `tests/grades.spec.ts` (Gradescope
+  paste → preview → import, replacing a score by name; an .xlsx built in the
+  test, with a Canvas duplicate left out).
+- **Setup:** none.
+
+### Grading folds to one line
+- **Why:** the owner asked for the weights/points section to be collapsible.
+- **What:** once a course's grading is set up, the Grading heading is a
+  toggle; folded it reads "Total points · 300 pts · 4 categories" or
+  "Weights · 9 categories". Folded by default; opening is remembered per
+  course on this device (`soma_grading_open`). Setting up, editing, Read
+  again and just saving always show it open.
+- **Where:** `CourseGrades.tsx`, `GradesTab.module.css`.
+- **Guard:** `tests/grades.spec.ts` (folded summary, opening it). Full suite:
+  620 passed, 7 skipped.
+
+---
+
 ## 2026-10-28 (Grades: courses graded by a total of points)
 
 ### A points course stays in points

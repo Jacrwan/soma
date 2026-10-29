@@ -588,6 +588,176 @@
   outline-offset: 1px;
 }
 
+/* Grading folds to one line once it's set up */
+.foldButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+}
+
+.foldButton:hover {
+  color: var(--text-primary);
+}
+
+.foldButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.foldChevron {
+  display: inline-block;
+  font-size: 16px;
+  line-height: 1;
+  transition: transform 0.15s;
+}
+
+.foldOpen {
+  transform: rotate(90deg);
+}
+
+.foldSummary {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Importing a spreadsheet */
+.importBox {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  margin: 6px 0 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.importBox .setupLead {
+  margin: 0;
+}
+
+.fileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+label.secondary {
+  position: relative;
+  display: inline-block;
+}
+
+label.secondary:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.mapRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+}
+
+.mapField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.mapField .select {
+  max-width: 200px;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+}
+
+.checkField {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding-bottom: 7px;
+}
+
+.importSummary {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.previewWrap {
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.preview {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.preview th {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.preview td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.preview tr:last-child td {
+  border-bottom: none;
+}
+
+.preview .skipped td {
+  color: var(--text-muted);
+}
+
+.statusCell {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.notice {
+  font-size: 13px;
+  color: var(--success);
+  margin: 4px 0 8px;
+}
+
 /* Grading: the categories */
 
 .categories {
@@ -842,5 +1012,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .row, .chevron, .star { transition: none; }
+  .row, .chevron, .star, .foldChevron { transition: none; }
 }

@@ -3,6 +3,7 @@ import { headline, showPercent, showScore, type GradeCourse, type GradeItem } fr
 import { byPoints, categoriesFromGroups, normalizeCategories, NOT_COUNTED, readGrading, type GradeBook, type GradeCategory, type GradeEntry, type ScaleStep } from '../../lib/gradeBooks';
 import { getCachedDocuments, listDocuments } from '../../lib/documents';
 import type { SomaDocument } from '../../types';
+import ScoreImport from './ScoreImport';
 import styles from './GradesTab.module.css';
 
 /**
@@ -216,13 +217,30 @@ function GradingEditor({ initial, scale: initialScale, onSave, onCancel }: {
   );
 }
 
+/** Whether a course's Grading is unfolded, remembered on this device only. */
+const OPEN_KEY = 'soma_grading_open';
+function readOpen(courseKey: string): boolean {
+  try { return (JSON.parse(localStorage.getItem(OPEN_KEY) ?? '[]') as unknown[]).includes(courseKey); } catch { return false; }
+}
+function writeOpen(courseKey: string, open: boolean) {
+  try {
+    const keys = (JSON.parse(localStorage.getItem(OPEN_KEY) ?? '[]') as unknown[]).filter((k): k is string => typeof k === 'string' && k !== courseKey);
+    localStorage.setItem(OPEN_KEY, JSON.stringify(open ? [...keys, courseKey].slice(-50) : keys));
+  } catch { /* storage blocked: it just won't be remembered */ }
+}
+
 function Grading({ course, onChange }: Pick<Props, 'course' | 'onChange'>) {
   const book = course.book;
   const categories = book?.categories ?? [];
   const [draft, setDraft] = useState<{ categories: GradeCategory[]; scale: ScaleStep[] | null } | null>(null);
   const [again, setAgain] = useState(false);
+  const [open, setOpen] = useState(() => readOpen(course.key));
   const w = course.weighted;
   const points = w?.mode === 'points';
+  // Setting it up or editing always shows; once set up it folds to one line.
+  const expanded = !categories.length || !!draft || again || open;
+  const toggle = () => { const next = !open; setOpen(next); writeOpen(course.key, next); };
+  const fold = categories.length > 0 && !draft && !again;
 
   const save = async (next: GradeCategory[], scale: ScaleStep[] | null) => {
     await onChange(b => {
@@ -233,65 +251,82 @@ function Grading({ course, onChange }: Pick<Props, 'course' | 'onChange'>) {
       return { ...b, categories: next, scale, picks, entries };
     });
     setDraft(null);
+    // Just saved: stay open on what was saved.
+    setOpen(true);
+    writeOpen(course.key, true);
   };
 
   return (
     <section className={styles.section} aria-labelledby="grading-title">
       <div className={styles.sectionHead}>
-        <h2 id="grading-title" className={styles.sectionTitle}>Grading</h2>
-        {categories.length > 0 && !draft && !again && (
+        <h2 id="grading-title" className={styles.sectionTitle}>
+          {fold ? (
+            <button type="button" className={styles.foldButton} onClick={toggle} aria-expanded={expanded} aria-controls="grading-body">
+              <span className={`${styles.foldChevron} ${expanded ? styles.foldOpen : ''}`} aria-hidden="true">›</span>
+              Grading
+            </button>
+          ) : 'Grading'}
+        </h2>
+        {fold && !expanded && (
+          <span className={styles.foldSummary}>
+            {points ? `Total points · ${showScore(w?.total ?? 0)} pts` : 'Weights'} · {categories.length} categor{categories.length === 1 ? 'y' : 'ies'}
+          </span>
+        )}
+        {fold && expanded && (
           <span className={styles.headActions}>
             <button type="button" className={styles.linkButton} onClick={() => setAgain(true)}>Read again</button>
             <button type="button" className={styles.linkButton} onClick={() => setDraft({ categories, scale: book?.scale ?? null })}>Edit</button>
           </span>
         )}
       </div>
-      {draft ? (
-        <GradingEditor initial={draft.categories} scale={draft.scale} onSave={save} onCancel={() => setDraft(null)} />
-      ) : !categories.length || again ? (
-        <GradingSetup course={course} onDraft={(c, scale) => { setAgain(false); setDraft({ categories: c, scale }); }} onCancel={again ? () => setAgain(false) : undefined} />
-      ) : (
-        <>
-          <ul className={styles.categories}>
-            {w?.categories.map(r => (
-              <li key={r.category.id} className={styles.category}>
-                <span className={styles.categoryName}>
-                  {r.category.name}
-                  {(r.category.covers || r.category.drop > 0) && (
-                    <span className={styles.itemMeta}>
-                      {r.category.covers}
-                      {r.category.drop > 0 && !/drop/i.test(r.category.covers) && `${r.category.covers ? ' · ' : ''}lowest ${r.category.drop} dropped`}
-                    </span>
-                  )}
-                </span>
-                <span className={styles.weight}>{points ? showPoints(r.category.points ?? 0) : showPercent(r.category.weight)}</span>
-                <Bar percent={r.percent} color={course.color} />
-                <span className={styles.categoryScore}>
-                  {r.percent !== null ? showPercent(r.percent) : <span className={styles.muted}>—</span>}
-                  <span className={styles.itemMeta}>
-                    {!r.count ? 'nothing yet'
-                      : points ? `${showScore(r.earned)} / ${showScore(r.possible)} pts${r.dropped ? `, ${r.dropped} dropped` : ''}`
-                      : `${r.count} score${r.count === 1 ? '' : 's'}${r.dropped ? `, ${r.dropped} dropped` : ''}`}
+      <div id="grading-body">
+        {!expanded ? null : draft ? (
+          <GradingEditor initial={draft.categories} scale={draft.scale} onSave={save} onCancel={() => setDraft(null)} />
+        ) : !categories.length || again ? (
+          <GradingSetup course={course} onDraft={(c, scale) => { setAgain(false); setDraft({ categories: c, scale }); }} onCancel={again ? () => setAgain(false) : undefined} />
+        ) : (
+          <>
+            <ul className={styles.categories}>
+              {w?.categories.map(r => (
+                <li key={r.category.id} className={styles.category}>
+                  <span className={styles.categoryName}>
+                    {r.category.name}
+                    {(r.category.covers || r.category.drop > 0) && (
+                      <span className={styles.itemMeta}>
+                        {r.category.covers}
+                        {r.category.drop > 0 && !/drop/i.test(r.category.covers) && `${r.category.covers ? ' · ' : ''}lowest ${r.category.drop} dropped`}
+                      </span>
+                    )}
                   </span>
-                </span>
-              </li>
-            ))}
-          </ul>
-          <div className={styles.gradingNotes}>
-            {w && !points && w.total !== 100 && <p className={styles.totalOff}>The weights add up to {round2(w.total)}%, not 100%.</p>}
-            {w && !points && w.percent !== null && w.counted < w.total && (
-              <p>Counting {round2(w.counted)}% of the grade so far; the rest isn’t graded yet.</p>
-            )}
-            {w && points && (
-              <p>{showScore(round2(w.earned))} of {showScore(round2(w.counted))} points graded so far, out of {showScore(w.total)} in the course.</p>
-            )}
-            {w && w.uncategorized > 0 && (
-              <p>{w.uncategorized} score{w.uncategorized === 1 ? ' isn’t' : 's aren’t'} in a category and {w.uncategorized === 1 ? 'doesn’t' : 'don’t'} count. Pick one below.</p>
-            )}
-            {book?.scale && <p className={styles.muted}>Letter grades: {book.scale.map(s => `${s.letter} ${showScore(s.min)}+${points ? ' pts' : ''}`).join(' · ')}</p>}
-          </div>
-        </>
-      )}
+                  <span className={styles.weight}>{points ? showPoints(r.category.points ?? 0) : showPercent(r.category.weight)}</span>
+                  <Bar percent={r.percent} color={course.color} />
+                  <span className={styles.categoryScore}>
+                    {r.percent !== null ? showPercent(r.percent) : <span className={styles.muted}>—</span>}
+                    <span className={styles.itemMeta}>
+                      {!r.count ? 'nothing yet'
+                        : points ? `${showScore(r.earned)} / ${showScore(r.possible)} pts${r.dropped ? `, ${r.dropped} dropped` : ''}`
+                        : `${r.count} score${r.count === 1 ? '' : 's'}${r.dropped ? `, ${r.dropped} dropped` : ''}`}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <div className={styles.gradingNotes}>
+              {w && !points && w.total !== 100 && <p className={styles.totalOff}>The weights add up to {round2(w.total)}%, not 100%.</p>}
+              {w && !points && w.percent !== null && w.counted < w.total && (
+                <p>Counting {round2(w.counted)}% of the grade so far; the rest isn’t graded yet.</p>
+              )}
+              {w && points && (
+                <p>{showScore(round2(w.earned))} of {showScore(round2(w.counted))} points graded so far, out of {showScore(w.total)} in the course.</p>
+              )}
+              {w && w.uncategorized > 0 && (
+                <p>{w.uncategorized} score{w.uncategorized === 1 ? ' isn’t' : 's aren’t'} in a category and {w.uncategorized === 1 ? 'doesn’t' : 'don’t'} count. Pick one below.</p>
+              )}
+              {book?.scale && <p className={styles.muted}>Letter grades: {book.scale.map(s => `${s.letter} ${showScore(s.min)}+${points ? ' pts' : ''}`).join(' · ')}</p>}
+            </div>
+          </>
+        )}
+      </div>
     </section>
   );
 }
@@ -396,6 +431,8 @@ function Row({ item, course, onPick, onEdit, onRemove }: {
 
 function Scores({ course, onChange }: Pick<Props, 'course' | 'onChange'>) {
   const [form, setForm] = useState<EntryForm | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const categories = course.book?.categories ?? [];
 
@@ -420,9 +457,16 @@ function Scores({ course, onChange }: Pick<Props, 'course' | 'onChange'>) {
     <section className={styles.section} aria-labelledby="scores-title">
       <div className={styles.sectionHead}>
         <h2 id="scores-title" className={styles.sectionTitle}>Scores</h2>
-        {!form && <button type="button" className={styles.secondary} onClick={() => setForm(blankEntry())}>+ Add a score</button>}
+        {!form && !importing && (
+          <span className={styles.headActions}>
+            <button type="button" className={styles.secondary} onClick={() => { setNotice(''); setImporting(true); }}>Import spreadsheet</button>
+            <button type="button" className={styles.secondary} onClick={() => { setNotice(''); setForm(blankEntry()); }}>+ Add a score</button>
+          </span>
+        )}
       </div>
-      <p className={styles.hint}>Scores from Gradescope and other sites Soma can’t read: add them here and they count with the rest.</p>
+      <p className={styles.hint}>Scores from Gradescope and other sites Soma can’t read: add them here, or import a spreadsheet, and they count with the rest.</p>
+      {importing && <ScoreImport course={course} onImport={onChange} onCancel={() => setImporting(false)} onDone={m => { setImporting(false); setNotice(m); }} />}
+      {notice && <p className={styles.notice} role="status">{notice}</p>}
       {form && !form.id && <EntryEditor initial={form} categories={categories} onSave={saveEntry} onCancel={() => setForm(null)} />}
       {error && <p className={styles.error} role="alert">{error}</p>}
       {course.items.length ? (

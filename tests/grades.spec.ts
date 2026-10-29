@@ -151,6 +151,11 @@ test('Grades: Canvas and typed-in scores make one grade, weighted the way the sy
 
   await bio.click();
   const grading = page.getByRole('region', { name: 'Grading' });
+  // Set up, it folds to one line until opened.
+  await expect(grading).toContainText('Weights · 2 categories');
+  await expect(grading.getByRole('listitem')).toHaveCount(0);
+  await grading.getByRole('button', { name: 'Grading' }).click();
+  await expect(grading.getByRole('button', { name: 'Grading' })).toHaveAttribute('aria-expanded', 'true');
   await expect(grading.getByRole('listitem').filter({ hasText: 'Homework' })).toContainText('40%');
   await expect(grading.getByRole('listitem').filter({ hasText: 'Homework' })).toContainText('90%');
   await expect(grading.getByRole('listitem').filter({ hasText: 'Exams' })).toContainText('80%');
@@ -261,6 +266,8 @@ test('Grades: a course graded by a total of points adds the points up, with cuto
   await expect(cs).toContainText('by points');
   await cs.click();
   const grading = page.getByRole('region', { name: 'Grading' });
+  await expect(grading).toContainText('Total points · 300 pts · 4 categories');
+  await grading.getByRole('button', { name: 'Grading' }).click();
   await expect(grading.getByRole('listitem').filter({ hasText: 'Projects' })).toContainText('100 pts');
   await expect(grading.getByRole('listitem').filter({ hasText: 'Midterm 1' })).toContainText('15 / 20 pts');
   await expect(grading).toContainText('40 of 47 points graded so far, out of 300 in the course.');
@@ -302,4 +309,78 @@ test('Grades: a points syllabus is read as points, not turned into percents', as
   const book = saved.at(-1) as { categories: { name: string; points: number; drop: number }[]; scale: unknown };
   expect(book.categories.map(c => [c.name, c.points, c.drop])).toEqual([['Projects', 100, 0], ['Final', 75, 0], ['Quizzes', 10, 3]]);
   expect(book.scale).toEqual([{ letter: 'A', min: 175 }]);
+});
+
+/** A minimal .xlsx: a zip (stored, not compressed) of a shared-strings file and one sheet. */
+function xlsx(rows: (string | number)[][]): Buffer {
+  const strings: string[] = [];
+  const cell = (v: string | number, r: number, c: number) => {
+    const ref = `${String.fromCharCode(65 + c)}${r + 1}`;
+    if (typeof v === 'number') return `<c r="${ref}"><v>${v}</v></c>`;
+    strings.push(v);
+    return `<c r="${ref}" t="s"><v>${strings.length - 1}</v></c>`;
+  };
+  const sheet = `<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${rows.map((row, r) => `<row r="${r + 1}">${row.map((v, c) => cell(v, r, c)).join('')}</row>`).join('')}</sheetData></worksheet>`;
+  const shared = `<?xml version="1.0"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${strings.map(t => `<si><t>${t}</t></si>`).join('')}</sst>`;
+  const files = [['xl/worksheets/sheet1.xml', sheet], ['xl/sharedStrings.xml', shared]].map(([name, body]) => ({ name: Buffer.from(name), data: Buffer.from(body) }));
+  const locals: Buffer[] = [], centrals: Buffer[] = [];
+  let offset = 0;
+  for (const f of files) {
+    const local = Buffer.alloc(30); local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt32LE(f.data.length, 18); local.writeUInt32LE(f.data.length, 22); local.writeUInt16LE(f.name.length, 26);
+    const central = Buffer.alloc(46); central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6); central.writeUInt32LE(f.data.length, 20); central.writeUInt32LE(f.data.length, 24); central.writeUInt16LE(f.name.length, 28); central.writeUInt32LE(offset, 42);
+    locals.push(local, f.name, f.data); centrals.push(central, f.name);
+    offset += 30 + f.name.length + f.data.length;
+  }
+  const dir = Buffer.concat(centrals);
+  const end = Buffer.alloc(22); end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(files.length, 8); end.writeUInt16LE(files.length, 10); end.writeUInt32LE(dir.length, 12); end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, dir, end]);
+}
+
+test('Grades: scores pasted from a Gradescope course page are checked, then imported', async ({ page }) => {
+  const saved: Record<string, unknown>[] = [];
+  const csBook = { id: '55555555-5555-4555-8555-555555555555', course_key: 'subject:cs', starred: false, picks: {}, scale: null,
+    categories: [{ id: 'hw', name: 'Homework', weight: 0, points: 10, covers: '', drop: 0, match: ['homework', 'hw'] }, { id: 'proj', name: 'Projects', weight: 0, points: 100, covers: '', drop: 0, match: [] }],
+    entries: [{ id: 'b', name: 'Hog', score: 23, max: 25, categoryId: 'proj', date: '2026-09-20' }] };
+  await setup(page, { subjects: [BIO, CS], books: [csBook], saved });
+  await openGrades(page);
+  await page.getByRole('button', { name: /^CS 61A Fall 2026/ }).click();
+  const scores = page.getByRole('region', { name: 'Scores' });
+  await scores.getByRole('button', { name: 'Import spreadsheet' }).click();
+  await scores.getByLabel('Pasted rows').fill('Name\tStatus\tReleased\tDue\nHomework 2\t1.5 / 2.0\tSep 08\tSep 12 at 11:59PM\nHog\t25.0 / 25.0\tSep 20\tSep 25 at 11:59PM\nLab 04\tSubmitted\t\tOct 02 at 11:59PM');
+  await scores.getByRole('button', { name: 'Read pasted rows' }).click();
+
+  await expect(scores).toContainText('1 new · 1 replace scores you added · 1 with no score yet, left out');
+  const preview = scores.getByRole('table');
+  await expect(preview.getByRole('row', { name: /Homework 2/ })).toContainText('1.5 / 2');
+  await expect(preview.getByRole('row', { name: /Homework 2/ })).toContainText('Homework');
+  await expect(preview.getByRole('row', { name: /Hog/ })).toContainText('Replaces yours');
+  await expect(preview.getByRole('row', { name: /Hog/ })).toContainText('Projects');
+  await expect(preview.getByRole('row', { name: /Lab 04/ })).toContainText('No score yet');
+  expect(saved).toHaveLength(0);
+
+  await scores.getByRole('button', { name: 'Import 2 scores' }).click();
+  await expect(scores.getByRole('status')).toHaveText('Imported 2 scores from pasted rows.');
+  const book = saved.at(-1) as { entries: { id: string; name: string; score: number; max: number; date: string | null }[] };
+  expect(book.entries.map(e => [e.id === 'b' ? 'b' : 'new', e.name, e.score, e.max])).toEqual([['b', 'Hog', 25, 25], ['new', 'Homework 2', 1.5, 2]]);
+  expect(book.entries[1].date).toMatch(/^\d{4}-09-08$/);
+  await expect(scores.getByRole('listitem').filter({ hasText: 'Homework 2' })).toContainText('Added by you');
+});
+
+test('Grades: an .xlsx from Google Sheets imports, leaving out what Canvas already shows', async ({ page }) => {
+  const saved: Record<string, unknown>[] = [];
+  await setup(page, { subjects: [BIO], books: [bioBook], saved });
+  await openGrades(page);
+  await page.getByRole('button', { name: /^Biology 101/ }).click();
+  const scores = page.getByRole('region', { name: 'Scores' });
+  await scores.getByRole('button', { name: 'Import spreadsheet' }).click();
+  await scores.getByLabel('Spreadsheet file').setInputFiles({
+    name: 'Bio grades.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    buffer: xlsx([['Assignment', 'Category', 'Score', 'Out of', 'Date'], ['Final exam', 'Exams', 88, 100, 46300], ['Cell structure homework', 'Homework', 9, 10, 46315]]),
+  });
+  await expect(scores).toContainText('From Bio grades.xlsx.');
+  await expect(scores).toContainText('1 new · 1 already synced from Canvas, left out');
+  await scores.getByRole('button', { name: 'Import 1 score' }).click();
+  await expect(scores.getByRole('status')).toHaveText('Imported 1 score from Bio grades.xlsx.');
+  const book = saved.at(-1) as { entries: { name: string; score: number; max: number; categoryId: string | null; date: string }[] };
+  expect(book.entries.at(-1)).toMatchObject({ name: 'Final exam', score: 88, max: 100, categoryId: 'cat-ex', date: '2026-10-05' });
 });
