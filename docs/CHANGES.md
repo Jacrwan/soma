@@ -9,6 +9,22 @@ still needed.
 
 ---
 
+## 2026-10-28 (Grades: two decimals)
+
+### Percents show two decimals
+- **Why:** the owner asked for grades with two digits after the point, not one.
+- **What:** every percent on the Grades page (course grade, category
+  averages, each score, "Canvas shows …") and in the AI's grade line shows
+  two decimals: 85.11%, 88.50%; whole numbers stay "90%". Scores, category
+  averages and the course grade are rounded to two decimals instead of one,
+  and a weighted grade is worked out from the unrounded category averages.
+- **Where:** `src/lib/grades.ts` (`round2`, `showPercent`).
+- **Guard:** `tests/grades.spec.ts` (74.67% weighted, 66.67% on a score;
+  expectations moved to 88.50% and 85.11%). Full suite: 622 passed, 7 skipped.
+- **Setup:** none.
+
+---
+
 ## 2026-10-28 (Grades: sort the scores)
 
 ### Scores sort by date, name, category or score

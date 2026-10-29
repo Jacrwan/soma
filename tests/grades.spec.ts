@@ -76,7 +76,7 @@ test('Grades: a card per course with its grade and each score, Canvas and Grades
 
   // The page is the courses, each with its grade big; no assignments yet.
   const bioCard = page.getByRole('button', { name: /^Biology 101, 2 graded/ });
-  await expect(bioCard.getByLabel('Course grade B+, 88.5%')).toBeVisible();
+  await expect(bioCard.getByLabel('Course grade B+, 88.50%')).toBeVisible();
   await expect(page.getByText('Cell structure homework')).toHaveCount(0);
   // The row carries the student's colour for the course.
   await expect(bioCard.locator('[class*="dot"]')).toHaveCSS('background-color', 'rgb(102, 187, 106)');
@@ -86,7 +86,7 @@ test('Grades: a card per course with its grade and each score, Canvas and Grades
   // Opening a course lists the score on each graded assignment.
   await bioCard.click();
   await expect(page.getByRole('heading', { name: 'Biology 101' })).toBeVisible();
-  await expect(page.getByLabel('Course grade B+, 88.5%')).toBeVisible();
+  await expect(page.getByLabel('Course grade B+, 88.50%')).toBeVisible();
   const items = page.getByRole('listitem');
   await expect(items).toHaveCount(2);
   await expect(items.filter({ hasText: 'Cell structure homework' })).toContainText('9 / 10');
@@ -160,7 +160,7 @@ test('Grades: Canvas and typed-in scores make one grade, weighted the way the sy
   await expect(grading.getByRole('listitem').filter({ hasText: 'Homework' })).toContainText('90%');
   await expect(grading.getByRole('listitem').filter({ hasText: 'Exams' })).toContainText('80%');
   await expect(grading).toContainText('Letter grades: A 93+');
-  await expect(page.getByText('Canvas shows 88.5%, from its own scores only.')).toBeVisible();
+  await expect(page.getByText('Canvas shows 88.50%, from its own scores only.')).toBeVisible();
   const scores = page.getByRole('region', { name: 'Scores' });
   await expect(scores.getByRole('listitem').filter({ hasText: 'Midterm 1' })).toContainText('Added by you');
   await expect(scores.getByLabel('Category for Midterm 1')).toHaveValue('cat-ex');
@@ -260,9 +260,9 @@ test('Grades: a course graded by a total of points adds the points up, with cuto
   await setup(page, { subjects: [BIO, CS], books: [csBook] });
   await openGrades(page);
 
-  // 2 + 23 + 15 = 40 of 47 graded: 85.1%, a pace of 255 of 300, a B.
+  // 2 + 23 + 15 = 40 of 47 graded: 85.11%, a pace of 255 of 300, a B.
   const cs = page.getByRole('button', { name: /^CS 61A Fall 2026, 3 graded/ });
-  await expect(cs.getByLabel('Grade by points B, 85.1%')).toBeVisible();
+  await expect(cs.getByLabel('Grade by points B, 85.11%')).toBeVisible();
   await expect(cs).toContainText('by points');
   await cs.click();
   const grading = page.getByRole('region', { name: 'Grading' });
@@ -417,4 +417,18 @@ test('Grades: scores sort by date, name, category or score, and a second click r
   await page.reload();
   await page.getByRole('button', { name: /^Biology 101/ }).click();
   await expect(page.getByRole('region', { name: 'Scores' }).getByRole('button', { name: 'Sort by category, in syllabus order' })).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('Grades: percents show two decimals', async ({ page }) => {
+  // 2/3 of homework at 40% and 40/50 of exams at 60%: 26.67 + 48 = 74.67%.
+  const book = { ...bioBook, scale: null, entries: [...bioBook.entries, { id: 'e3', name: 'HW 2', score: 2, max: 3, categoryId: 'cat-hw', date: '2026-10-02' }] };
+  const one = { ...canvas, assignments: canvas.assignments.filter(a => a.id !== 1) };
+  await setup(page, { subjects: [BIO], books: [book] });
+  await page.goto('/deadlines');
+  await expect(page.getByRole('link', { name: 'Add to Chrome' })).toBeVisible();
+  await send(page, one);
+  await page.getByRole('button', { name: 'Grades' }).click();
+  await expect(page.getByRole('button', { name: /^Biology 101/ }).getByLabel('Weighted grade 74.67%')).toBeVisible();
+  await page.getByRole('button', { name: /^Biology 101/ }).click();
+  await expect(page.getByRole('region', { name: 'Scores' }).getByRole('listitem').filter({ hasText: 'HW 2' })).toContainText('66.67%');
 });

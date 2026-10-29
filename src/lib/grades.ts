@@ -87,8 +87,9 @@ export type GradeCourse = {
   weighted: WeightedGrade | null;
 };
 
-const round1 = (n: number) => Math.round(n * 10) / 10;
-const percentOf = (score: number, max: number | null) => max && max > 0 ? round1((score / max) * 100) : null;
+/** Percents keep two decimals: 85.11%. */
+const round2 = (n: number) => Math.round(n * 100) / 100;
+const percentOf = (score: number, max: number | null) => max && max > 0 ? round2((score / max) * 100) : null;
 const byDueDesc = (a: GradeItem, b: GradeItem) => (b.dueAt ?? '').localeCompare(a.dueAt ?? '') || a.name.localeCompare(b.name);
 
 function pointsOf(items: GradeItem[]): GradeCourse['points'] {
@@ -124,7 +125,7 @@ export function weigh(items: GradeItem[], book: GradeBook): WeightedGrade {
     let earned = counted.reduce((n, i) => n + i.score, 0);
     const worth = category.points;
     if (points && worth !== null && possible > worth) { earned = (earned / possible) * worth; possible = worth; }
-    return { category, percent: possible > 0 ? round1((earned / possible) * 100) : null, earned, possible, count: mine.length, dropped };
+    return { category, percent: possible > 0 ? round2((earned / possible) * 100) : null, earned, possible, count: mine.length, dropped };
   });
   const uncategorized = items.filter(i => !i.categoryId).length;
   if (points) {
@@ -134,12 +135,12 @@ export function weigh(items: GradeItem[], book: GradeBook): WeightedGrade {
     const pace = counted > 0 ? earned / counted : null;
     // Cutoffs are points: the letter is the one this pace earns over the whole course.
     const letter = pace !== null && total > 0 ? book.scale?.find(s => pace * total >= s.min - 1e-9)?.letter ?? null : null;
-    return { percent: pace !== null ? round1(pace * 100) : null, letter, categories: results, uncategorized, mode: 'points', counted, total, earned };
+    return { percent: pace !== null ? round2(pace * 100) : null, letter, categories: results, uncategorized, mode: 'points', counted, total, earned };
   }
   const live = results.filter(r => r.percent !== null && r.category.weight > 0);
   const counted = live.reduce((n, r) => n + r.category.weight, 0);
   const total = book.categories.reduce((n, c) => n + c.weight, 0);
-  const percent = counted > 0 ? round1(live.reduce((n, r) => n + r.category.weight * (r.percent as number), 0) / counted) : null;
+  const percent = counted > 0 ? round2(live.reduce((n, r) => n + r.category.weight * (r.earned / r.possible) * 100, 0) / counted) : null;
   return {
     percent, letter: percent !== null ? letterFor(percent, book.scale) : null, categories: results,
     uncategorized, mode: 'weights', counted, total, earned: 0,
@@ -260,6 +261,6 @@ export function headline(c: GradeCourse): Headline {
   return { big: null, small: null, kind: 'none' };
 }
 
-/** "95.7%" without a trailing .0. */
-export const showPercent = (p: number) => `${Number.isInteger(p) ? p : p.toFixed(1)}%`;
+/** "95.67%", or "96%" for a whole number. */
+export const showPercent = (p: number) => `${Number.isInteger(p) ? p : p.toFixed(2)}%`;
 export const showScore = (n: number) => String(Math.round(n * 100) / 100);
