@@ -9,6 +9,41 @@ still needed.
 
 ---
 
+## 2026-10-28 (Grades: courses graded by a total of points)
+
+### A points course stays in points
+- **Why:** reading CS 61A's syllabus gave "Midterm 1 6.67%, Projects
+  33.33%…" adding to 99.99%. 61A has no weights: 300 points, each part worth
+  some of them, letter cutoffs in points. The prompt told the AI to turn
+  points into percents.
+- **What:** a category can carry `points` (null in a weights course); a book
+  is graded by points when every category has them (`byPoints`), and its
+  weights are then each one's share of the total (`normalizeCategories`), so
+  the two never disagree. No schema change: it rides in the categories JSON.
+  - The AI replies in the course's own system (`"mode":"points"` with points
+    and cutoffs in points, or weights), told never to convert; a stray
+    number of the other kind is dropped.
+  - `weigh` by points: the grade is points earned over points graded so far,
+    after drops; a category's graded points never exceed what it's worth (a
+    midterm scored 60/80 and worth 20 counts 15/20); the letter is where that
+    pace lands on the total, against cutoffs in points.
+  - Editor: "Graded by: Weights (%) / Total points", Points column in pts,
+    "300 points in all"; cutoffs in points. View: "100 pts" per category,
+    "15 / 20 pts" earned, "40 of 47 points graded so far, out of 300", "A
+    285+ pts"; the list row says "by points". "Read again" re-reads the
+    syllabus (nothing changes until saved). The example placeholders show on
+    the first editor row only.
+  - The AI context line says "graded the way the syllabus says".
+- **Where:** `src/lib/gradeBooks.ts`, `src/lib/grades.ts`,
+  `src/components/Grades/CourseGrades.tsx`, `GradesTab.tsx` and its CSS,
+  `src/lib/aiContext.ts`.
+- **Guard:** `tests/grades.spec.ts` (points course: total, scaled midterm,
+  letter by points, editor keeps points; a points syllabus is read as points
+  and saved with them). Full suite: 613 passed, 7 skipped.
+- **Setup:** none. A course already saved in percents: Grading → Read again.
+
+---
+
 ## 2026-10-28 (Grades: syllabus weights, typed-in scores, stars)
 
 ### One grade per course from Canvas, Gradescope and scores the student types in

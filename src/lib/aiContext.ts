@@ -159,7 +159,7 @@ export function buildCanvasCourseSection(now = new Date()): string {
     const h = headline(c);
     if (h.kind === 'none' || h.kind === 'average') return [];
     const name = c.subjectId ? subjects.find(s => s.id === c.subjectId)?.name ?? c.name : c.name;
-    return [`- ${name}: ${[h.big, h.small].filter(Boolean).join(' · ')}${h.kind === 'weighted' ? ' (weighted by the syllabus, including scores the student entered)' : ''}`];
+    return [`- ${name}: ${[h.big, h.small].filter(Boolean).join(' · ')}${h.kind === 'weighted' ? ' (graded the way the syllabus says, including scores the student entered)' : ''}`];
   });
   const names = new Map(courses.map(c => [c.id, label(c)]));
   const since = now.getTime() - 14 * 86_400_000;

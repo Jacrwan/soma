@@ -47,7 +47,7 @@ function CourseRow({ course, onOpen, onStar }: { course: GradeCourse; onOpen: ()
           <Bar percent={course.weighted?.percent ?? course.percent ?? course.points?.percent ?? null} color={course.color} />
           <span className={styles.rowCount}>
             {count ? `${count} graded` : 'No scores yet'}
-            {h.kind === 'weighted' && ' · weighted'}
+            {h.kind === 'weighted' && (course.weighted?.mode === 'points' ? ' · by points' : ' · weighted')}
           </span>
         </span>
         <Grade course={course} />

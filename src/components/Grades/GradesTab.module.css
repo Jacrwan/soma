@@ -541,6 +541,53 @@
   max-width: 420px;
 }
 
+.headActions {
+  display: inline-flex;
+  gap: 12px;
+}
+
+.modeRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.segmented button {
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 12px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.segmented button:hover {
+  color: var(--text-primary);
+}
+
+.segmented .segOn {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.segmented button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* Grading: the categories */
 
 .categories {
@@ -551,7 +598,7 @@
 
 .category {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 64px minmax(80px, 180px) 96px;
+  grid-template-columns: minmax(0, 1fr) 80px minmax(80px, 180px) 110px;
   align-items: center;
   gap: 4px 20px;
   padding: 12px 0;
@@ -786,7 +833,7 @@
   .rowBar .track { flex: 1; }
   .gradeLarge .gradeBig { font-size: 56px; }
   .detailHead .grade { align-items: flex-start; }
-  .category { grid-template-columns: minmax(0, 1fr) 52px 72px; }
+  .category { grid-template-columns: minmax(0, 1fr) 64px 92px; }
   .category > .track { display: none; }
   .columns, .item { grid-template-columns: minmax(0, 1fr) 72px 44px; }
   .columns > :nth-child(2), .columns > :nth-child(3), .item > :nth-child(2), .item > :nth-child(3) { display: none; }

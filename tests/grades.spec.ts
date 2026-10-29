@@ -234,3 +234,72 @@ test('Grades: the AI reads the categories from the syllabus, and the student che
   expect(book.scale).toEqual([{ letter: 'A', min: 93 }, { letter: 'B', min: 83 }]);
   await expect(grading.getByRole('listitem').filter({ hasText: 'Homework' })).toContainText('Weekly homework; lowest 2 dropped');
 });
+
+test('Grades: a course graded by a total of points adds the points up, with cutoffs in points', async ({ page }) => {
+  const csBook = {
+    id: '44444444-4444-4444-8444-444444444444', course_key: 'subject:cs', starred: false, picks: {},
+    categories: [
+      { id: 'hw', name: 'Homework', weight: 0, points: 10, covers: '', drop: 0, match: ['hw'] },
+      { id: 'proj', name: 'Projects', weight: 0, points: 100, covers: 'Four projects', drop: 0, match: [] },
+      { id: 'mt', name: 'Midterm 1', weight: 0, points: 20, covers: '', drop: 0, match: [] },
+      { id: 'fin', name: 'Final', weight: 0, points: 170, covers: '', drop: 0, match: [] },
+    ],
+    scale: [{ letter: 'A', min: 285 }, { letter: 'B+', min: 260 }, { letter: 'B', min: 250 }],
+    entries: [
+      { id: 'a', name: 'HW 01', score: 2, max: 2, categoryId: null, date: '2026-09-01' },
+      { id: 'b', name: 'Hog', score: 23, max: 25, categoryId: 'proj', date: '2026-09-20' },
+      // Scored out of 80 on Gradescope, worth 20 in the course: counts as 15 of 20.
+      { id: 'c', name: 'Midterm 1', score: 60, max: 80, categoryId: 'mt', date: '2026-10-01' },
+    ],
+  };
+  await setup(page, { subjects: [BIO, CS], books: [csBook] });
+  await openGrades(page);
+
+  // 2 + 23 + 15 = 40 of 47 graded: 85.1%, a pace of 255 of 300, a B.
+  const cs = page.getByRole('button', { name: /^CS 61A Fall 2026, 3 graded/ });
+  await expect(cs.getByLabel('Grade by points B, 85.1%')).toBeVisible();
+  await expect(cs).toContainText('by points');
+  await cs.click();
+  const grading = page.getByRole('region', { name: 'Grading' });
+  await expect(grading.getByRole('listitem').filter({ hasText: 'Projects' })).toContainText('100 pts');
+  await expect(grading.getByRole('listitem').filter({ hasText: 'Midterm 1' })).toContainText('15 / 20 pts');
+  await expect(grading).toContainText('40 of 47 points graded so far, out of 300 in the course.');
+  await expect(grading).toContainText('A 285+ pts');
+  await expect(page.getByText('40 of 47 points so far')).toBeVisible();
+
+  // Editing keeps the points: no percent weights appear.
+  await grading.getByRole('button', { name: 'Edit' }).click();
+  await expect(page.getByRole('radio', { name: 'Total points' })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByLabel('Category 2 points')).toHaveValue('100');
+  await expect(page.getByText('300 points in all')).toBeVisible();
+});
+
+test('Grades: a points syllabus is read as points, not turned into percents', async ({ page }) => {
+  const saved: Record<string, unknown>[] = [];
+  const syllabus = { id: 'doc1', subject_id: 'cs', file_name: 'CS 61A syllabus.pdf', storage_path: 'x', file_type: 'application/pdf', size_bytes: 1, doc_type: 'syllabus', created_at: '2026-08-20T00:00:00Z', extraction_status: 'done', extracted_text: 'Your course grade is computed from 300 points: projects 100, final 75, midterms 20 + 45 + 20 ...' };
+  await setup(page, { subjects: [BIO, CS], documents: [syllabus], saved });
+  let prompt = '';
+  await page.route('**/api/chat', route => {
+    prompt = JSON.stringify(route.request().postDataJSON());
+    return route.fulfill({ json: { content: [{ type: 'text', text: JSON.stringify({ mode: 'points', categories: [
+      { name: 'Projects', points: 100, covers: 'Four projects', drop: 0, match: ['proj'] },
+      // A stray percent beside the points is ignored.
+      { name: 'Final', points: 75, weight: 25, covers: '', drop: 0, match: ['final'] },
+      { name: 'Quizzes', points: 10, covers: 'Best 5 of 8', drop: 3, match: ['quiz'] },
+    ], scale: [{ letter: 'A', min: 175 }] }) }] } });
+  });
+  await openGrades(page);
+  await page.getByRole('button', { name: /^CS 61A Fall 2026/ }).click();
+  await page.getByRole('button', { name: 'Read grading from CS 61A syllabus.pdf' }).click();
+
+  await expect(page.getByRole('radio', { name: 'Total points' })).toHaveAttribute('aria-checked', 'true');
+  expect(prompt).toContain('Never turn points into percents');
+  await expect(page.getByLabel('Category 1 points')).toHaveValue('100');
+  await expect(page.getByText('185 points in all')).toBeVisible();
+  await expect(page.getByLabel('Letter grade cutoffs')).toHaveValue('A 175');
+  await page.getByRole('button', { name: 'Save grading' }).click();
+  await expect(page.getByRole('region', { name: 'Grading' }).getByRole('listitem')).toHaveCount(3);
+  const book = saved.at(-1) as { categories: { name: string; points: number; drop: number }[]; scale: unknown };
+  expect(book.categories.map(c => [c.name, c.points, c.drop])).toEqual([['Projects', 100, 0], ['Final', 75, 0], ['Quizzes', 10, 3]]);
+  expect(book.scale).toEqual([{ letter: 'A', min: 175 }]);
+});

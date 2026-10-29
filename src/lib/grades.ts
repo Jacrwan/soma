@@ -1,6 +1,6 @@
 import { storage } from './storage';
 import { canvasSnapshots, getLocalSnapshots, sameCourse, sameWork, subjectForCourse, GRADESCOPE_HOST, type SourceSnapshot, type GradescopeSnapshot } from './canvasDeepSync';
-import { cachedGradeBooks, guessCategory, NOT_COUNTED, type GradeBook, type GradeCategory } from './gradeBooks';
+import { byPoints, cachedGradeBooks, guessCategory, NOT_COUNTED, type GradeBook, type GradeCategory } from './gradeBooks';
 import type { Subject } from '../types';
 
 /**
@@ -39,6 +39,10 @@ export type CategoryResult = {
   category: GradeCategory;
   /** The average in this category after drops; null with nothing graded yet. */
   percent: number | null;
+  /** Points earned and graded in it after drops. In a points course, never more
+   *  than the category is worth: a midterm scored out of 80 and worth 20 counts as 20. */
+  earned: number;
+  possible: number;
   count: number;
   dropped: number;
 };
@@ -51,9 +55,14 @@ export type WeightedGrade = {
   categories: CategoryResult[];
   /** Scores in no category: not counted until the student picks one. */
   uncategorized: number;
-  /** The weight of the categories with scores, out of their total. */
+  /** How the syllabus grades: percent weights, or a total of points. */
+  mode: 'weights' | 'points';
+  /** Weights: the weight of the categories with scores, out of their total.
+   *  Points: the points graded so far, out of the course's total points. */
   counted: number;
   total: number;
+  /** Points: what has been earned of `counted`. */
+  earned: number;
 };
 
 export type GradeCourse = {
@@ -96,29 +105,44 @@ export function letterFor(percent: number, scale: { letter: string; min: number 
 }
 
 /**
- * The grade the syllabus's weights give. Inside a category scores count by
- * points (earned over possible), after dropping its lowest; across categories
- * each counts its weight, over the categories that have a score so far, the
- * way a running course grade is worked out.
+ * The grade the syllabus gives. Inside a category scores count by points
+ * (earned over possible), after dropping its lowest. A course graded by
+ * weights counts each category its weight, over the categories with a score
+ * so far, the way a running course grade is worked out. A course graded by a
+ * total of points adds the points up: the grade is the points earned over the
+ * points graded so far, and its letter is where that pace lands on the total.
  */
 export function weigh(items: GradeItem[], book: GradeBook): WeightedGrade {
+  const points = byPoints(book.categories);
   const results: CategoryResult[] = book.categories.map(category => {
     const mine = items.filter(i => i.categoryId === category.id);
     const scored = mine.filter(i => i.max && i.max > 0).sort((a, b) => (a.percent ?? 0) - (b.percent ?? 0));
     const dropped = scored.length > category.drop ? category.drop : 0;
     const lowest = new Set(scored.slice(0, dropped));
     const counted = mine.filter(i => !lowest.has(i));
-    const possible = counted.reduce((n, i) => n + (i.max ?? 0), 0);
-    const earned = counted.reduce((n, i) => n + i.score, 0);
-    return { category, percent: possible > 0 ? round1((earned / possible) * 100) : null, count: mine.length, dropped };
+    let possible = counted.reduce((n, i) => n + (i.max ?? 0), 0);
+    let earned = counted.reduce((n, i) => n + i.score, 0);
+    const worth = category.points;
+    if (points && worth !== null && possible > worth) { earned = (earned / possible) * worth; possible = worth; }
+    return { category, percent: possible > 0 ? round1((earned / possible) * 100) : null, earned, possible, count: mine.length, dropped };
   });
+  const uncategorized = items.filter(i => !i.categoryId).length;
+  if (points) {
+    const earned = results.reduce((n, r) => n + r.earned, 0);
+    const counted = results.reduce((n, r) => n + r.possible, 0);
+    const total = book.categories.reduce((n, c) => n + (c.points as number), 0);
+    const pace = counted > 0 ? earned / counted : null;
+    // Cutoffs are points: the letter is the one this pace earns over the whole course.
+    const letter = pace !== null && total > 0 ? book.scale?.find(s => pace * total >= s.min - 1e-9)?.letter ?? null : null;
+    return { percent: pace !== null ? round1(pace * 100) : null, letter, categories: results, uncategorized, mode: 'points', counted, total, earned };
+  }
   const live = results.filter(r => r.percent !== null && r.category.weight > 0);
   const counted = live.reduce((n, r) => n + r.category.weight, 0);
   const total = book.categories.reduce((n, c) => n + c.weight, 0);
   const percent = counted > 0 ? round1(live.reduce((n, r) => n + r.category.weight * (r.percent as number), 0) / counted) : null;
   return {
     percent, letter: percent !== null ? letterFor(percent, book.scale) : null, categories: results,
-    uncategorized: items.filter(i => !i.categoryId).length, counted, total,
+    uncategorized, mode: 'weights', counted, total, earned: 0,
   };
 }
 

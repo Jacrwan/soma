@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { headline, showPercent, showScore, type GradeCourse, type GradeItem } from '../../lib/grades';
-import { categoriesFromGroups, NOT_COUNTED, readGrading, type GradeBook, type GradeCategory, type GradeEntry, type ScaleStep } from '../../lib/gradeBooks';
+import { byPoints, categoriesFromGroups, normalizeCategories, NOT_COUNTED, readGrading, type GradeBook, type GradeCategory, type GradeEntry, type ScaleStep } from '../../lib/gradeBooks';
 import { getCachedDocuments, listDocuments } from '../../lib/documents';
 import type { SomaDocument } from '../../types';
 import styles from './GradesTab.module.css';
@@ -38,7 +38,7 @@ export function Grade({ course, large }: { course: GradeCourse; large?: boolean 
   const h = headline(course);
   const label = !h.big ? 'No grade yet'
     : h.kind === 'average' ? `Average ${h.big}`
-    : `${h.kind === 'weighted' ? 'Weighted grade' : 'Course grade'} ${[h.big, h.small].filter(Boolean).join(', ')}`;
+    : `${h.kind !== 'weighted' ? 'Course grade' : course.weighted?.mode === 'points' ? 'Grade by points' : 'Weighted grade'} ${[h.big, h.small].filter(Boolean).join(', ')}`;
   return (
     <span className={`${styles.grade} ${large ? styles.gradeLarge : ''}`} role="img" aria-label={label}>
       <span className={styles.gradeBig}>{h.big ?? '–'}</span>
@@ -52,14 +52,18 @@ const scaleText = (scale: ScaleStep[] | null) => (scale ?? []).map(s => `${s.let
 function parseScale(text: string): ScaleStep[] | null {
   const steps = [...text.matchAll(/([A-F][+-]?|P|NP)\s*[:=≥>]*\s*(\d+(?:\.\d+)?)/gi)]
     .map(m => ({ letter: m[1].toUpperCase(), min: Number(m[2]) }))
-    .filter(s => s.min >= 0 && s.min <= 100)
+    .filter(s => s.min >= 0 && s.min <= 100000)
     .sort((a, b) => b.min - a.min);
   return steps.length ? steps : null;
 }
 
-type Draft = { id: string; name: string; weight: string; covers: string; drop: string; match: string[] };
-const toDraft = (c: GradeCategory): Draft => ({ id: c.id, name: c.name, weight: String(c.weight), covers: c.covers, drop: String(c.drop || ''), match: c.match });
-const blankDraft = (): Draft => ({ id: crypto.randomUUID(), name: '', weight: '', covers: '', drop: '', match: [] });
+/** "100 pts", "2.5 pts". */
+const showPoints = (n: number) => `${showScore(n)} pt${n === 1 ? '' : 's'}`;
+
+/** `amount` is the weight in percent, or in a points course the points. */
+type Draft = { id: string; name: string; amount: string; covers: string; drop: string; match: string[] };
+const toDraft = (c: GradeCategory): Draft => ({ id: c.id, name: c.name, amount: String(c.points ?? c.weight), covers: c.covers, drop: String(c.drop || ''), match: c.match });
+const blankDraft = (): Draft => ({ id: crypto.randomUUID(), name: '', amount: '', covers: '', drop: '', match: [] });
 
 /** The course's documents that Soma has read, the syllabus first. */
 function readableDocs(docs: SomaDocument[], subjectId: string | null): SomaDocument[] {
@@ -69,7 +73,7 @@ function readableDocs(docs: SomaDocument[], subjectId: string | null): SomaDocum
     .sort((a, b) => rank(a) - rank(b));
 }
 
-function GradingSetup({ course, onDraft }: { course: GradeCourse; onDraft: (categories: GradeCategory[], scale: ScaleStep[] | null) => void }) {
+function GradingSetup({ course, onDraft, onCancel }: { course: GradeCourse; onDraft: (categories: GradeCategory[], scale: ScaleStep[] | null) => void; onCancel?: () => void }) {
   const [docs, setDocs] = useState(() => readableDocs(getCachedDocuments(), course.subjectId));
   const [docId, setDocId] = useState('');
   const [paste, setPaste] = useState<string | null>(null);
@@ -120,6 +124,7 @@ function GradingSetup({ course, onDraft }: { course: GradeCourse; onDraft: (cate
             <button type="button" className={styles.secondary} disabled={reading} onClick={() => onDraft(categoriesFromGroups(course.canvasGroups), null)}>Use Canvas’s weights</button>
           )}
           <button type="button" className={styles.linkButton} disabled={reading} onClick={() => onDraft([], null)}>Add them yourself</button>
+          {onCancel && <button type="button" className={styles.linkButton} disabled={reading} onClick={onCancel}>Cancel</button>}
         </div>
       ) : (
         <form className={styles.pasteForm} onSubmit={e => { e.preventDefault(); if (paste.trim()) read(paste); }}>
@@ -142,24 +147,27 @@ function GradingEditor({ initial, scale: initialScale, onSave, onCancel }: {
   onSave: (categories: GradeCategory[], scale: ScaleStep[] | null) => Promise<void>; onCancel: () => void;
 }) {
   const [rows, setRows] = useState<Draft[]>(() => initial.length ? initial.map(toDraft) : [blankDraft()]);
+  const [mode, setMode] = useState<'weights' | 'points'>(() => byPoints(initial) ? 'points' : 'weights');
+  const points = mode === 'points';
   const [scale, setScale] = useState(() => scaleText(initialScale));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const total = round2(rows.reduce((n, r) => n + (Number(r.weight) || 0), 0));
+  const total = round2(rows.reduce((n, r) => n + (Number(r.amount) || 0), 0));
   const set = (id: string, patch: Partial<Draft>) => setRows(rs => rs.map(r => r.id === id ? { ...r, ...patch } : r));
 
   const save = async (e: FormEvent) => {
     e.preventDefault();
-    const filled = rows.filter(r => r.name.trim() || r.weight.trim());
-    const bad = filled.find(r => !r.name.trim() || !(Number(r.weight) >= 0 && Number(r.weight) <= 100) || r.weight.trim() === '');
-    if (bad) { setError('Each category needs a name and a weight from 0 to 100.'); return; }
+    const filled = rows.filter(r => r.name.trim() || r.amount.trim());
+    const bad = filled.find(r => !r.name.trim() || r.amount.trim() === '' || !(Number(r.amount) >= 0 && Number(r.amount) <= (points ? 100000 : 100)));
+    if (bad) { setError(points ? 'Each category needs a name and its points.' : 'Each category needs a name and a weight from 0 to 100.'); return; }
     setSaving(true);
     setError('');
     try {
-      await onSave(filled.map(r => ({
-        id: r.id, name: r.name.trim().slice(0, 60), weight: round2(Number(r.weight)), covers: r.covers.trim().slice(0, 200),
+      await onSave(normalizeCategories(filled.map(r => ({
+        id: r.id, name: r.name.trim().slice(0, 60), covers: r.covers.trim().slice(0, 200),
+        weight: points ? 0 : round2(Number(r.amount)), points: points ? round2(Number(r.amount)) : null,
         drop: Math.max(0, Math.min(20, Math.floor(Number(r.drop) || 0))), match: r.match,
-      })), parseScale(scale));
+      }))), parseScale(scale));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save. Please retry.');
       setSaving(false);
@@ -168,15 +176,22 @@ function GradingEditor({ initial, scale: initialScale, onSave, onCancel }: {
 
   return (
     <form className={styles.editor} onSubmit={save}>
+      <div className={styles.modeRow} role="radiogroup" aria-label="How the course is graded">
+        <span className={styles.muted}>Graded by</span>
+        <span className={styles.segmented}>
+          <button type="button" role="radio" aria-checked={!points} className={!points ? styles.segOn : ''} onClick={() => setMode('weights')}>Weights (%)</button>
+          <button type="button" role="radio" aria-checked={points} className={points ? styles.segOn : ''} onClick={() => setMode('points')}>Total points</button>
+        </span>
+      </div>
       <div className={styles.editHead} aria-hidden="true">
-        <span>Category</span><span>What counts</span><span className={styles.right}>Weight</span><span className={styles.right}>Drop lowest</span><span />
+        <span>Category</span><span>What counts</span><span className={styles.right}>{points ? 'Points' : 'Weight'}</span><span className={styles.right}>Drop lowest</span><span />
       </div>
       {rows.map((r, n) => (
         <div key={r.id} className={styles.editRow}>
-          <input className={styles.input} value={r.name} onChange={e => set(r.id, { name: e.target.value })} placeholder="Homework" aria-label={`Category ${n + 1} name`} />
-          <input className={styles.input} value={r.covers} onChange={e => set(r.id, { covers: e.target.value })} placeholder="Weekly problem sets" aria-label={`Category ${n + 1}: what counts`} />
+          <input className={styles.input} value={r.name} onChange={e => set(r.id, { name: e.target.value })} placeholder={n === 0 ? 'Homework' : ''} aria-label={`Category ${n + 1} name`} />
+          <input className={styles.input} value={r.covers} onChange={e => set(r.id, { covers: e.target.value })} placeholder={n === 0 ? 'e.g. Weekly problem sets' : ''} aria-label={`Category ${n + 1}: what counts`} />
           <span className={styles.withUnit}>
-            <input className={`${styles.input} ${styles.num}`} inputMode="decimal" value={r.weight} onChange={e => set(r.id, { weight: e.target.value })} placeholder="20" aria-label={`Category ${n + 1} weight in percent`} />%
+            <input className={`${styles.input} ${styles.num}`} inputMode="decimal" value={r.amount} onChange={e => set(r.id, { amount: e.target.value })} placeholder={points ? '100' : '20'} aria-label={points ? `Category ${n + 1} points` : `Category ${n + 1} weight in percent`} />{points ? 'pts' : '%'}
           </span>
           <input className={`${styles.input} ${styles.num}`} inputMode="numeric" value={r.drop} onChange={e => set(r.id, { drop: e.target.value })} placeholder="0" aria-label={`Category ${n + 1}: lowest scores dropped`} />
           <button type="button" className={styles.remove} onClick={() => setRows(rs => rs.filter(x => x.id !== r.id))} aria-label={`Remove ${r.name || `category ${n + 1}`}`}>×</button>
@@ -184,11 +199,13 @@ function GradingEditor({ initial, scale: initialScale, onSave, onCancel }: {
       ))}
       <div className={styles.editFoot}>
         <button type="button" className={styles.linkButton} onClick={() => setRows(rs => [...rs, blankDraft()])}>+ Add category</button>
-        <span className={total === 100 ? styles.totalOk : styles.totalOff}>Weights add up to {total}%</span>
+        {points
+          ? <span className={styles.totalOk}>{showScore(total)} points in all</span>
+          : <span className={total === 100 ? styles.totalOk : styles.totalOff}>Weights add up to {total}%</span>}
       </div>
       <label className={styles.scaleField}>
         <span>Letter grades <span className={styles.muted}>(optional)</span></span>
-        <input className={styles.input} value={scale} onChange={e => setScale(e.target.value)} placeholder="A 93, A- 90, B+ 87, B 83" />
+        <input className={styles.input} value={scale} onChange={e => setScale(e.target.value)} placeholder={points ? 'A 285, A- 270, B+ 250 (in points)' : 'A 93, A- 90, B+ 87, B 83'} aria-label="Letter grade cutoffs" />
       </label>
       {error && <p className={styles.error} role="alert">{error}</p>}
       <div className={styles.setupRow}>
@@ -203,7 +220,9 @@ function Grading({ course, onChange }: Pick<Props, 'course' | 'onChange'>) {
   const book = course.book;
   const categories = book?.categories ?? [];
   const [draft, setDraft] = useState<{ categories: GradeCategory[]; scale: ScaleStep[] | null } | null>(null);
+  const [again, setAgain] = useState(false);
   const w = course.weighted;
+  const points = w?.mode === 'points';
 
   const save = async (next: GradeCategory[], scale: ScaleStep[] | null) => {
     await onChange(b => {
@@ -220,14 +239,17 @@ function Grading({ course, onChange }: Pick<Props, 'course' | 'onChange'>) {
     <section className={styles.section} aria-labelledby="grading-title">
       <div className={styles.sectionHead}>
         <h2 id="grading-title" className={styles.sectionTitle}>Grading</h2>
-        {categories.length > 0 && !draft && (
-          <button type="button" className={styles.linkButton} onClick={() => setDraft({ categories, scale: book?.scale ?? null })}>Edit</button>
+        {categories.length > 0 && !draft && !again && (
+          <span className={styles.headActions}>
+            <button type="button" className={styles.linkButton} onClick={() => setAgain(true)}>Read again</button>
+            <button type="button" className={styles.linkButton} onClick={() => setDraft({ categories, scale: book?.scale ?? null })}>Edit</button>
+          </span>
         )}
       </div>
       {draft ? (
         <GradingEditor initial={draft.categories} scale={draft.scale} onSave={save} onCancel={() => setDraft(null)} />
-      ) : !categories.length ? (
-        <GradingSetup course={course} onDraft={(c, scale) => setDraft({ categories: c, scale })} />
+      ) : !categories.length || again ? (
+        <GradingSetup course={course} onDraft={(c, scale) => { setAgain(false); setDraft({ categories: c, scale }); }} onCancel={again ? () => setAgain(false) : undefined} />
       ) : (
         <>
           <ul className={styles.categories}>
@@ -242,24 +264,31 @@ function Grading({ course, onChange }: Pick<Props, 'course' | 'onChange'>) {
                     </span>
                   )}
                 </span>
-                <span className={styles.weight}>{showPercent(r.category.weight)}</span>
+                <span className={styles.weight}>{points ? showPoints(r.category.points ?? 0) : showPercent(r.category.weight)}</span>
                 <Bar percent={r.percent} color={course.color} />
                 <span className={styles.categoryScore}>
                   {r.percent !== null ? showPercent(r.percent) : <span className={styles.muted}>—</span>}
-                  <span className={styles.itemMeta}>{r.count ? `${r.count} score${r.count === 1 ? '' : 's'}${r.dropped ? `, ${r.dropped} dropped` : ''}` : 'nothing yet'}</span>
+                  <span className={styles.itemMeta}>
+                    {!r.count ? 'nothing yet'
+                      : points ? `${showScore(r.earned)} / ${showScore(r.possible)} pts${r.dropped ? `, ${r.dropped} dropped` : ''}`
+                      : `${r.count} score${r.count === 1 ? '' : 's'}${r.dropped ? `, ${r.dropped} dropped` : ''}`}
+                  </span>
                 </span>
               </li>
             ))}
           </ul>
           <div className={styles.gradingNotes}>
-            {w && w.total !== 100 && <p className={styles.totalOff}>The weights add up to {round2(w.total)}%, not 100%.</p>}
-            {w && w.percent !== null && w.counted < w.total && (
+            {w && !points && w.total !== 100 && <p className={styles.totalOff}>The weights add up to {round2(w.total)}%, not 100%.</p>}
+            {w && !points && w.percent !== null && w.counted < w.total && (
               <p>Counting {round2(w.counted)}% of the grade so far; the rest isn’t graded yet.</p>
+            )}
+            {w && points && (
+              <p>{showScore(round2(w.earned))} of {showScore(round2(w.counted))} points graded so far, out of {showScore(w.total)} in the course.</p>
             )}
             {w && w.uncategorized > 0 && (
               <p>{w.uncategorized} score{w.uncategorized === 1 ? ' isn’t' : 's aren’t'} in a category and {w.uncategorized === 1 ? 'doesn’t' : 'don’t'} count. Pick one below.</p>
             )}
-            {book?.scale && <p className={styles.muted}>Letter grades: {book.scale.map(s => `${s.letter} ${s.min}+`).join(' · ')}</p>}
+            {book?.scale && <p className={styles.muted}>Letter grades: {book.scale.map(s => `${s.letter} ${showScore(s.min)}+${points ? ' pts' : ''}`).join(' · ')}</p>}
           </div>
         </>
       )}
@@ -417,7 +446,7 @@ export default function CourseGrades({ course, title, code, onChange, onBack, he
   const outside = useMemo(() => course.items.filter(i => i.source !== 'canvas').length, [course.items]);
   const summary = [
     course.items.length ? `${course.items.length} score${course.items.length === 1 ? '' : 's'}` : '',
-    h.kind === 'weighted' ? 'weighted by the syllabus' : h.kind === 'canvas' ? 'grade from Canvas' : course.points ? `${showScore(course.points.earned)} of ${showScore(course.points.possible)} points` : '',
+    h.kind === 'weighted' ? (course.weighted?.mode === 'points' ? `${showScore(round2(course.weighted.earned))} of ${showScore(round2(course.weighted.counted))} points so far` : 'weighted by the syllabus') : h.kind === 'canvas' ? 'grade from Canvas' : course.points ? `${showScore(course.points.earned)} of ${showScore(course.points.possible)} points` : '',
   ].filter(Boolean).join(' · ');
 
   return (
