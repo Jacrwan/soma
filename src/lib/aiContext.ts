@@ -4,6 +4,7 @@ import { withWeekday } from './courseItems';
 import { canvasSnapshots, recentChanges, subjectForChange, subjectForCourse } from './canvasDeepSync';
 import { search } from './docSearch';
 import type { CanvasAssignment, Todo } from '../types';
+import { isPartSitting } from './planIt';
 
 /**
  * Context shared by both AI surfaces — the AI page and the dashboard's Ask
@@ -87,8 +88,9 @@ const courseCode = (s: string) => /[a-z]+/.exec(s.toLowerCase())?.[0] ?? '';
 function finishedAsTask(a: CanvasAssignment, todos: Todo[], subjects: { id: string; name: string }[]) {
   const name = words(a.name);
   const course = subjectForCourse(storage.getSubjects(), a.courseId, a.courseName);
+  // One Plan it sitting of several ("Examen L2 · 1 of 3") doesn't finish it.
   return todos.some(t => t.status === 'done' && (t.assignmentId === a.id || (
-    !!name && ` ${words(t.text)} `.includes(` ${name} `) && (
+    !!name && !isPartSitting(t.text) && ` ${words(t.text)} `.includes(` ${name} `) && (
       (!!course && t.subjectId === course.id) ||
       (courseCode(subjects.find(s => s.id === t.subjectId)?.name ?? '') === courseCode(a.courseName) && !!courseCode(a.courseName))
     )

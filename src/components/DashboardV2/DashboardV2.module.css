@@ -300,9 +300,35 @@
 .editorButtons .editorDelete{margin-right:auto;color:var(--danger);border-color:color-mix(in oklch,var(--danger),transparent 65%)}
 .actions .deleteBlock{color:var(--danger);border-color:color-mix(in oklch,var(--danger),transparent 65%)}
 
-/* Start focus anytime, no plan block needed. */
-.quickFocus{display:grid;gap:8px}
-.quickFocus :is(select,input){width:100%;min-width:0;font:inherit;font-size:13px;color:var(--text-primary);background:var(--bg-secondary);border:1px solid var(--border);border-radius:7px;padding:8px 10px}
-.quickFocus :is(select,input):focus{outline:none;border-color:var(--accent)}
-.page .quickStart{background:var(--accent);border-color:var(--accent);color:var(--bg);font-weight:600;font-size:13px;min-height:38px}
-.page .quickStart:hover:not(:disabled){background:var(--accent);opacity:.9}
+
+/* Plan it (PlanIt.tsx): a due assignment spread into sittings before it's due. */
+.planItWhat{display:grid;gap:2px;margin:2px 0 14px}
+.planItWhat span{font-size:12px;font-weight:600;color:var(--tone,var(--text-secondary))}
+.planItWhat strong{font-size:16px;font-weight:600}
+.planItWhat small{font-size:12px;color:var(--text-secondary)}
+.planItForm{display:grid;gap:12px}
+.planItForm fieldset{border:0;padding:0;margin:0;display:grid;gap:6px;min-width:0}
+.planItForm legend{padding:0;margin-bottom:6px;font-size:12px;font-weight:600;color:var(--text-secondary)}
+.planItForm fieldset small{font-size:11px;color:var(--text-secondary)}
+.planItChips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.planItChips button{min-height:30px;padding:4px 10px;font-size:12px;background:transparent;color:var(--text-secondary)}
+.planItChips button[aria-pressed="true"]{background:var(--bg-tertiary);color:var(--text-primary);border-color:var(--text-secondary)}
+.planItMinutes{display:flex!important;flex-direction:row!important;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary)}
+.planItMinutes input{width:72px!important;min-height:30px}
+.page .planItGo{background:var(--accent);border-color:var(--accent);color:var(--bg);font-weight:600;flex:1}
+.page .planItGo:hover:not(:disabled){background:var(--accent);opacity:.9}
+.planItResult{margin-top:14px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-secondary);display:grid;gap:8px}
+.planItResult p{margin:0;font-size:12px}
+.planItResult ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.planItResult li{display:grid;grid-template-columns:96px auto 1fr;gap:8px;align-items:baseline;font-size:12px;font-variant-numeric:tabular-nums}
+.planItResult li span{color:var(--text-secondary)}
+.planItResult li strong{font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.planItLog{margin-top:18px;padding-top:14px;border-top:1px solid var(--border);display:grid;gap:8px}
+.planItLog h3{margin:0;font-size:13px;font-weight:600}
+.planItLogRow{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) 64px auto;gap:6px}
+.planItLogRow input{min-width:0;min-height:30px;padding:4px 6px;font-size:12px}
+.planItLogRow button{min-height:30px;padding:4px 10px;font-size:12px}
+.block[data-kind=due] .actions{max-width:none;flex-wrap:nowrap}
+.dueProgress{color:var(--tone,var(--text-secondary))}
+.dueUnplanned{color:var(--text-secondary);font-style:normal}
+@media (max-width:600px){.planItResult li{grid-template-columns:1fr auto}.planItResult li strong{grid-column:1/-1}.planItLogRow{grid-template-columns:1fr 1fr}}

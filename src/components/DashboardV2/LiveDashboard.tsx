@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AgentBrief from './AgentBrief';
 import { CANVAS_CHANGED } from '../../lib/canvasExtension';
-import QuickFocus from './QuickFocus';
 import { useLocation, useNavigate } from 'react-router-dom';
 import DashboardV2 from './DashboardV2';
-import { dateAt, deletePlanBlock, dueItems, localDate, readPlan, savePlanBlock, setTaskStatus, utcIso, type Snapshot } from './liveData';
+import { dateAt, deletePlanBlock, dueItems, localDate, readPlan, savePlanBlock, setTaskStatus, toneOf, utcIso, type Snapshot } from './liveData';
 import type { PlanBlock, PlanState } from './PlanEditor';
 import { useTimerContext } from '../../contexts/TimerContext';
 import { storage } from '../../lib/storage';
@@ -12,7 +11,8 @@ import { formatClockRange } from '../../lib/timeFormat';
 import { listDocuments } from '../../lib/documents';
 import { askSoma, applyProposal, applyAll, dismissProposal, type ApplyOptions } from '../../lib/assistant';
 import { pinBlock, pinKey } from '../../lib/pinnedBlocks';
-import { useProposals, updateProposals } from '../../lib/proposalStore';
+import { useProposals, updateProposals, getProposals } from '../../lib/proposalStore';
+import { estimate as planEstimate, isSittingOf, placeSittings, type PlanTarget } from '../../lib/planIt';
 import { dashboardDayFor } from '../../lib/calendarView';
 import { coveredBy, finishThrough, rangeLabel, renameLoggedTime, retitle } from '../../lib/courseItems';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
@@ -134,8 +134,10 @@ export default function LiveDashboard({userId}:{userId:string}) {
  // A day clicked on the calendar ("YYYY-MM-DD") opens on that day.
  const location=useLocation(),navigate=useNavigate();
  const [picked]=useState(()=>{const day=(location.state as {day?:string}|null)?.day;if(!day)return null;const [y,m,d]=day.split('-').map(Number);return dashboardDayFor(new Date(y,m-1,d),new Date());});
+ // Plan it, asked for on Deadlines: opens with the dashboard.
+ const [planFromDeadlines]=useState(()=>(location.state as {planIt?:PlanTarget}|null)?.planIt ?? null);
  // Spent once: a reload or coming back later opens on today again.
- useEffect(()=>{if(picked)navigate(location.pathname,{replace:true,state:null});},[]);// eslint-disable-line react-hooks/exhaustive-deps
+ useEffect(()=>{if(picked || planFromDeadlines)navigate(location.pathname,{replace:true,state:null});},[]);// eslint-disable-line react-hooks/exhaustive-deps
  // Which week is on screen, in days from today: 0 is this week, -7 last week.
  const [rangeStart,setRangeStart]=useState(()=>picked?.rangeStart??0);
  // What the Canvas extension synced, kept current as syncs land and subjects load.
@@ -262,7 +264,36 @@ export default function LiveDashboard({userId}:{userId:string}) {
   else setError('');
  }
  const pulseDays=Array.from({length:7},(_,i)=>snapshot.history.filter(h=>h.date===localDate(dateAt(origin,i-6))).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0));
- return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<AgentBrief/>,due,onFocusDue:id=>{const x=due.find(d=>d.id===id);const subject=snapshot.subjects.find(s=>s.id===x?.subjectId);if(x&&subject)timer.startSession(subject,x.title,0);else setError('Add this course as a subject before starting focus on it.');},onDueDone:id=>{storage.setAssignmentStatus({...storage.getAssignmentStatus(),[id]:'done'});setDue(dueItems(origin));window.dispatchEvent(new Event(CANVAS_CHANGED));},onFocus:b=>{const live=snapshot.blocks.find(x=>x.id===b.id);const subject=snapshot.subjects.find(s=>s.id===live?.subjectId);if(subject)timer.startSession(subject,b.title,0);else setError('Choose a subject with Edit plan before starting focus.');},pulseSeconds:pulseDays.reduce((a,b)=>a+b,0),pulseDays,subjectNames:snapshot.subjects.filter(s=>!s.archived).map(s=>s.name),usedColors:snapshot.subjects.map(s=>s.color),onEditSession:async(sessionId,minutes,startTime,date)=>{
+ return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<AgentBrief/>,due:due.map(x=>{
+  // Plan it's sittings for this assignment, and the time logged on them (or on the assignment itself).
+  const mine=snapshot.todos.filter(t=>t.subjectId===x.subjectId && isSittingOf(t.text,x.title));
+  const seconds=snapshot.history.filter(h=>h.subject_id===x.subjectId && isSittingOf(h.task_text??'',x.title)).reduce((n,h)=>n+(h.duration_seconds||0),0);
+  return {...x,plan:{total:mine.length,done:mine.filter(t=>t.status==='done').length,minutes:Math.round(seconds/60)}};
+ }),initialPlan:planFromDeadlines ?? undefined,planIt:{
+  estimate:(target)=>planEstimate(target,snapshot.history),
+  place:async(target,choice)=>{
+   const subject=snapshot.subjects.find(s=>s.id===target.subjectId);
+   if(!subject)throw new Error('Add this course as a subject before planning it.');
+   // Today on, with suggestions already waiting counted as taken.
+   const plan=await readPlan(userId,origin,0,Math.min(60,Math.max(7,Math.ceil((new Date(`${choice.finishBy}T12:00:00`).getTime()-origin.getTime())/86_400_000)+2)));
+   const waiting=getProposals(userId).filter(p=>p.time && p.replaces===undefined && !(p.note?.startsWith('Plan it') && isSittingOf(p.title,target.title)));
+   const {blocks,missing}=placeSittings({...target,subject:subject.name,color:toneOf(subject.color)},choice,{...plan,blocks:[...plan.blocks,...waiting as unknown as Snapshot['blocks']]},origin,storage.getSomaSettings());
+   // Finding times again replaces the last suggestions for this assignment.
+   updateProposals(userId,items=>[...items.filter(p=>!(p.note?.startsWith('Plan it') && isSittingOf(p.title,target.title))),...blocks]);
+   return {placed:blocks.map(b=>({title:b.title,date:localDate(dateAt(origin,b.day)),time:b.time})),missing,firstDay:blocks[0]?.day};
+  },
+  log:async(target,date,minutes,start)=>{
+   const subject=snapshot.subjects.find(s=>s.id===target.subjectId);
+   if(!subject)throw new Error('Add this course as a subject before logging time on it.');
+   const at=/^([01]\d|2[0-3]):[0-5]\d$/.test(start??'') ? start! : '12:00';
+   const from=new Date(`${date}T${at}:00`);
+   writing.current=true;
+   try{
+    await storage.saveTimerSession({id:crypto.randomUUID(),subjectId:subject.id,task:target.title,startTime:from.toISOString(),endTime:new Date(from.getTime()+minutes*60000).toISOString(),durationSeconds:minutes*60},subject.name);
+    await reload();
+   }finally{writing.current=false;}
+  },
+ },onFocusDue:id=>{const x=due.find(d=>d.id===id);const subject=snapshot.subjects.find(s=>s.id===x?.subjectId);if(x&&subject)timer.startSession(subject,x.title,0);else setError('Add this course as a subject before starting focus on it.');},onDueDone:id=>{storage.setAssignmentStatus({...storage.getAssignmentStatus(),[id]:'done'});setDue(dueItems(origin));window.dispatchEvent(new Event(CANVAS_CHANGED));},onFocus:b=>{const live=snapshot.blocks.find(x=>x.id===b.id);const subject=snapshot.subjects.find(s=>s.id===live?.subjectId);if(subject)timer.startSession(subject,b.title,0);else setError('Choose a subject with Edit plan before starting focus.');},pulseSeconds:pulseDays.reduce((a,b)=>a+b,0),pulseDays,subjectNames:snapshot.subjects.filter(s=>!s.archived).map(s=>s.name),usedColors:snapshot.subjects.map(s=>s.color),onEditSession:async(sessionId,minutes,startTime,date)=>{
  const row=snapshot.history.find(h=>h.id===sessionId);
  if(!row)throw new Error('That session is no longer there. Refresh and try again.');
  // Keep where it started unless the correction moved it, then let the length
@@ -298,5 +329,5 @@ export default function LiveDashboard({userId}:{userId:string}) {
  }finally{writing.current=false;}
 },logsFor:(b)=>{const live=snapshot.blocks.find(x=>x.id===b.id);if(!live)return [];return snapshot.history.filter(h=>h.subject_id===live.subjectId && h.task_text===live.title && (h.duration_seconds||0)>0).map(h=>({id:h.id,date:h.date,minutes:Math.round((h.duration_seconds||0)/60),start:h.start_time?utcIso(h.start_time):undefined,end:h.end_time?utcIso(h.end_time):undefined}))
  // Newest first by when each session started; the date alone left same-day sessions in any order.
- .sort((a,c)=>new Date(c.start??`${c.date}T12:00:00`).getTime()-new Date(a.start??`${a.date}T12:00:00`).getTime());},focus:<section className={styles.focus} aria-label="Focus timer"><h2>Focus</h2><p className={styles.description}>{timer.activeSession?.subject.name??'One thing at a time.'}</p><h3>{timer.activeSession?.task??'Ready when you are'}</h3><div className={styles.timer}>{String(Math.floor(timer.elapsed/60)).padStart(2,'0')}<span>:</span>{String(timer.elapsed%60).padStart(2,'0')}</div>{timer.activeSession ? <div className={styles.focusActions}><button disabled={timer.saving || timer.savePending} onClick={()=>timer.isPaused ? timer.resumeSession() : timer.pauseSession()}>{timer.isPaused ? 'Resume' : 'Pause'}</button><button disabled={timer.saving} onClick={()=>void timer.stopSession()}>{timer.saving ? 'Saving…' : 'Stop & save'}</button></div> : <QuickFocus subjects={snapshot.subjects} onStart={(subject,task)=>timer.startSession(subject,task,0)}/>}{timer.error && <p role="alert">{timer.error}</p>}<small>Actual work is tracked separately from your plan. Complete the task when it is finished.</small></section>}}/></>;
+ .sort((a,c)=>new Date(c.start??`${c.date}T12:00:00`).getTime()-new Date(a.start??`${a.date}T12:00:00`).getTime());},focus:<section className={styles.focus} aria-label="Focus timer"><h2>Focus</h2><p className={styles.description}>{timer.activeSession?.subject.name??'One thing at a time.'}</p><h3>{timer.activeSession?.task??'Ready when you are'}</h3><div className={styles.timer}>{String(Math.floor(timer.elapsed/60)).padStart(2,'0')}<span>:</span>{String(timer.elapsed%60).padStart(2,'0')}</div>{timer.activeSession ? <div className={styles.focusActions}><button disabled={timer.saving || timer.savePending} onClick={()=>timer.isPaused ? timer.resumeSession() : timer.pauseSession()}>{timer.isPaused ? 'Resume' : 'Pause'}</button><button disabled={timer.saving} onClick={()=>void timer.stopSession()}>{timer.saving ? 'Saving…' : 'Stop & save'}</button></div> : <p className={styles.description}>Choose Focus on a study block or a due assignment to begin.</p>}{timer.error && <p role="alert">{timer.error}</p>}<small>Actual work is tracked separately from your plan. Complete the task when it is finished.</small></section>}}/></>;
 }

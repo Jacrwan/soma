@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { subjectForCourse } from '../../lib/canvasDeepSync';
+import type { PlanTarget } from '../../lib/planIt';
 import { formatDateTime, useTimeFormat } from '../../lib/timeFormat';
 import { CanvasAssignment, Todo, isSubmittable } from '../../types';
 import { CANVAS_CHANGED, EXTENSION_STORE_URL, deepSyncStatus, extensionPresent, requestSync } from '../../lib/canvasExtension';
@@ -46,6 +47,8 @@ type Deadline = {
   exam?: boolean;
   /** When it is, for the review request: the due time, or the day. */
   whenLabel?: string;
+  /** What Plan it plans, on the dashboard. */
+  plan?: PlanTarget;
 };
 
 /** Names that mean an exam rather than homework: "Midterm 1", "Final Exam", "Test 2". */
@@ -329,6 +332,7 @@ export default function DeadlinesTab() {
       title: a.name,
       courseName: courseOf(a)?.name ?? a.courseName,
       color: courseOf(a)?.color ?? courseColorMap[a.courseId] ?? '#888',
+      plan: { key: `canvas-${a.id}`, title: a.name, subject: courseOf(a)?.name ?? a.courseName, subjectId: courseOf(a)?.id, color: 'blue', due: a.dueAt },
       dueKey: dayKey(new Date(a.dueAt)),
       dueLabel: fmtDueTime(a.dueAt),
       // A status the student set wins; otherwise what Canvas, Gradescope or
@@ -368,6 +372,7 @@ export default function DeadlinesTab() {
         title: t.text,
         courseName: subject?.name ?? NO_COURSE,
         color: subject?.color ?? '#888',
+        plan: { key: `task-${t.id}`, title: t.text, subject: subject?.name ?? '', subjectId: t.subjectId, color: 'blue', due: t.dueDate!.slice(0, 10) },
         // Tasks carry a date with no time of day, so the day heading is the
         // whole story and the time column says as much.
         dueKey: t.dueDate!,
@@ -435,6 +440,9 @@ export default function DeadlinesTab() {
         </div>
         {item.exam && !done && item.dueKey >= dayKey(new Date()) && (
           <button type="button" className={styles.reviewBtn} onClick={e => { e.stopPropagation(); planReview(item); }} aria-label={`Plan review for ${item.title}`}>Plan review</button>
+        )}
+        {!item.exam && !done && item.plan?.subjectId && item.dueKey >= dayKey(new Date()) && (
+          <button type="button" className={styles.reviewBtn} onClick={e => { e.stopPropagation(); navigate('/dashboard', { state: { planIt: item.plan } }); }} aria-label={`Plan it: ${item.title}`}>Plan it</button>
         )}
         <span className={styles.dueTime}>{item.dueLabel}</span>
         <div className={styles.assignmentControls} onClick={e => e.stopPropagation()}>

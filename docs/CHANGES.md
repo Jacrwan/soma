@@ -9,6 +9,53 @@ still needed.
 
 ---
 
+## 2026-10-28 (Plan it)
+
+### Plan it: spread a due assignment into sittings before it's due
+- **Why:** the owner wants a manual way to put due work into time slots so
+  it gets done before the due date, and to log time on it.
+- **What:** "Plan it" on dashboard due cards and on Deadlines rows (not
+  exams, which keep Plan review; Deadlines opens the dashboard with it). A
+  panel: total time (Soma's guess from past work of the same kind in the
+  course, else the course average, else a guess), sittings (one up to an
+  hour, else ~50 min each), finish by (the day before it's due; today when
+  due today). `placeSittings` puts them in open study time with `freeTime`
+  (the slot finder Soma uses; no AI call), one a day where there's room,
+  as ordinary suggestions to accept; finding times again replaces them.
+  Sittings are tasks named "Title · 2 of 3"; the due card shows "1 of 3
+  sittings done · 40 min logged", or "Not planned yet" within 3 days.
+  "Already worked on it?" logs time under the assignment's name. One sitting
+  of several doesn't count as finishing the assignment for Soma
+  (`isPartSitting` in `aiContext.ts`). A due card stays beside a suggestion
+  with its name until it's accepted. Demo mode now carries a Canvas sync
+  (Canvas comes only from the extension since 2026-10-27; the demo still
+  wrote the old feed cache, so it had no due cards).
+- **Where:** `src/lib/planIt.ts`, `src/components/DashboardV2/PlanIt.tsx`,
+  `DashboardV2.tsx`, `LiveDashboard.tsx`, `DashboardV2.module.css`,
+  `src/components/Deadlines/DeadlinesTab.tsx`, `src/lib/aiContext.ts`,
+  `src/demo/client.ts`.
+- **Guard:** `tests/plan-it.spec.ts` (spread and order, never past the
+  finish day, around classes and not before now, two on one day with a
+  break, what doesn't fit is counted, defaults, estimate, sitting names).
+  Checked in the demo preview. Full suite: 607 passed, 7 skipped.
+- **Setup:** none (no schema change).
+
+### Focus panel: no Start focus form
+- **Why:** the owner asked to remove it. Focus starts from a study block or
+  a due assignment; Plan it puts due work on the plan to focus on.
+- **What:** the course picker, task field and Start focus button
+  ("start focus anytime", 2026-10-27, b21acc9) are gone; the panel says
+  "Choose Focus on a study block or a due assignment to begin." as it did
+  before, now naming due assignments. `QuickFocus.tsx` and its styles
+  deleted. `ai-plan-changes.spec.ts`'s past-days test checks for no Start
+  focus button at all again.
+- **Where:** `LiveDashboard.tsx`, `DashboardV2.module.css`.
+- **Guard:** full suite 606 passed, 7 skipped; `calendar-deadline-colours`
+  failed once under the full parallel run and passed three times alone
+  (timing, it doesn't touch the Focus panel). Checked in the demo preview.
+
+---
+
 ## 2026-10-28 (course-site import: no more reworded duplicates)
 
 ### Re-importing a course site matches the same deadline worded differently
