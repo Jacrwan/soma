@@ -166,45 +166,6 @@
   background: var(--bg);
 }
 
-/* ── Footer (hidden — legal links not surfaced) ── */
-
-.footer {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 10px 20px;
-  border-top: 1px solid var(--border);
-  background: var(--bg);
-  flex-wrap: wrap;
-}
-
-.footerLinks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
-}
-
-.footerLinks a {
-  font-size: 11px;
-  color: var(--text-muted, #5A5A6E);
-  text-decoration: none;
-  transition: color 0.14s;
-  white-space: nowrap;
-}
-
-.footerLinks a:hover {
-  color: oklch(65% 0.015 265);
-}
-
-.footerNotice {
-  font-size: 11px;
-  color: var(--text-muted, #5A5A6E);
-  white-space: nowrap;
-}
-
-
 /* ── Focus mode ── */
 
 :global(body.focus-mode) .app {

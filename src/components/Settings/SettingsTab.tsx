@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { storage, SomaSettings } from '../../lib/storage';
 import SemesterEndModal from '../shared/SemesterEndModal';
 import UniversityPicker from '../shared/UniversityPicker';
@@ -24,7 +24,19 @@ import type { GoogleCalendarConnection, GoogleCalendarInfo, Subject, SubjectColo
 import styles from './SettingsTab.module.css';
 import { MONTHLY_PRICE, TRIAL_DAYS } from '../../lib/pricing';
 
-type Section = 'profile' | 'subscription' | 'appearance' | 'hours' | 'memory' | 'integrations' | 'courses';
+type Section = 'profile' | 'subscription' | 'appearance' | 'hours' | 'memory' | 'integrations' | 'courses' | 'legal';
+
+// Moved here from the app-wide footer (2026-10-29). The landing footer, the
+// sign-up consent line and the Pricing page still link these publicly.
+const LEGAL_LINKS: [string, string, string][] = [
+  ['/privacy',       'Privacy Policy',  'What Soma collects and how it is used'],
+  ['/terms',         'Terms of Service', 'The agreement for using Soma'],
+  ['/billing',       'Billing',          'How subscriptions, trials and renewals work'],
+  ['/refund',        'Refunds',          'When and how you can get a refund'],
+  ['/data-deletion', 'Data Deletion',    'What deleting your account removes'],
+  ['/ai-disclaimer', 'AI Disclaimer',    'Limits of AI suggestions'],
+  ['/contact',       'Contact',          'Reach the Soma team'],
+];
 
 export default function SettingsTab() {
   const navigate = useNavigate();
@@ -429,6 +441,7 @@ export default function SettingsTab() {
     ['memory',        'Memory'],
     ['integrations',  'Integrations'],
     ['courses',       'Courses'],
+    ['legal',         'Legal'],
   ];
 
   return (
@@ -1287,6 +1300,25 @@ export default function SettingsTab() {
                 </div>
               )}
             </div>
+          </section>
+        )}
+
+        {activeSection === 'legal' && (
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>Legal</h2>
+            <ul className={styles.legalList}>
+              {LEGAL_LINKS.map(([to, name, desc]) => (
+                <li key={to}>
+                  <Link to={to} className={styles.legalLink}>
+                    <span className={styles.legalName}>{name}</span>
+                    <span className={styles.legalDesc}>{desc}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <p className={styles.legalNotice}>
+              © 2026 Soma. Not affiliated with Canvas, Instructure, Google, or any school.
+            </p>
           </section>
         )}
 

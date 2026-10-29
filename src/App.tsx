@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, Component, type ReactNode, type ErrorInfo } from 'react';
-import { Routes, Route, Navigate, Outlet, useLocation, useNavigate, Link } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from './lib/supabase';
 import AuthScreen from './components/Auth/AuthScreen';
@@ -384,21 +384,6 @@ function AppShell({ user, sessionResolved, onLogout }: {
         <main className={styles.main}>
           <Outlet />
         </main>
-
-        <footer className={styles.footer}>
-          <div className={styles.footerLinks}>
-            <Link to="/privacy">Privacy</Link>
-            <Link to="/terms">Terms</Link>
-            <Link to="/billing">Billing</Link>
-            <Link to="/refund">Refunds</Link>
-            <Link to="/data-deletion">Data Deletion</Link>
-            <Link to="/ai-disclaimer">AI Disclaimer</Link>
-            <Link to="/contact">Contact</Link>
-          </div>
-          <span className={styles.footerNotice}>
-            © 2026 Soma. Not affiliated with Canvas, Instructure, Google, or any school.
-          </span>
-        </footer>
       </div>
 
     </div>

@@ -232,6 +232,12 @@ export default function PricingPage() {
               Already have an account? <Link to="/login">Sign in</Link>
             </p>
           )}
+          <nav className={styles.legalLinks} aria-label="Legal">
+            <Link to="/terms">Terms</Link>
+            <Link to="/billing">Billing</Link>
+            <Link to="/refund">Refunds</Link>
+            <Link to="/privacy">Privacy</Link>
+          </nav>
         </div>
       </div>
 

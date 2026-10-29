@@ -9,6 +9,29 @@ still needed.
 
 ---
 
+## 2026-10-29 (Legal links move to Settings)
+
+- **Why:** the owner wanted the legal footer off the bottom of every app
+  screen. No law requires legal links on every signed-in page; they must be
+  easy to find, on the public homepage (Google OAuth review, Chrome Web Store,
+  CalOPPA), at sign-up (consent), and where people pay (Stripe).
+- **What:** the footer under every signed-in page is gone. Settings gains a
+  **Legal** section (last in its menu) with the same seven links (Privacy,
+  Terms, Billing, Refunds, Data Deletion, AI Disclaimer, Contact), each with
+  a one-line description, and the "Not affiliated with Canvas, Instructure,
+  Google, or any school" notice. The Pricing page, which only had these
+  links through that footer, now has Terms · Billing · Refunds · Privacy
+  under its button. Not changed: the landing page footer and the sign-up
+  consent line.
+- **Where:** `src/App.tsx` + `App.module.css` (footer removed),
+  `src/components/Settings/SettingsTab.tsx` + `.module.css` (`LEGAL_LINKS`,
+  Legal section), `src/components/Pricing/PricingPage.tsx` + `.module.css`.
+- **Guard:** none. Checked in the browser: Settings → Legal lists all seven
+  and they open; Pricing (signed out) shows its links.
+- **Setup:** none.
+
+---
+
 ## 2026-10-29 (Deadlines tab title)
 
 - The browser tab now reads "Deadlines | Soma" on the Deadlines page. The
