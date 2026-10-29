@@ -476,10 +476,7 @@ export default function DeadlinesTab() {
 
   return (
     <div className={styles.container}>
-      <div className={styles.topBar}>
-        <div className={styles.subNav}>
-          <button className={`${styles.subNavBtn} ${styles.subNavBtnActive}`}>Everything due</button>
-        </div>
+      {(synced || syncError || taskError || extensionPresent()) && <div className={styles.topBar}>
         <div className={styles.syncRow}>
           {synced && (
             <span className={styles.syncLabel}>
@@ -497,7 +494,7 @@ export default function DeadlinesTab() {
             >{syncing ? '…' : '↻'}</button>
           )}
         </div>
-      </div>
+      </div>}
 
       <div className={styles.main}>
         {/* Canvas is not connected but there are deadlines to show, so this

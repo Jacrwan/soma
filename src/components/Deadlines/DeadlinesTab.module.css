@@ -147,35 +147,10 @@
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-md);
+  min-height: 45px;
   padding: 8px var(--space-md);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
-}
-
-.subNav {
-  display: flex;
-  gap: 2px;
-  background: var(--bg-secondary);
-  border-radius: 8px;
-  padding: 2px;
-}
-
-.subNavBtn {
-  padding: 4px 12px;
-  border-radius: 6px;
-  border: none;
-  background: none;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: background 0.12s, color 0.12s;
-}
-
-.subNavBtnActive {
-  background: var(--bg);
-  color: var(--text-primary);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
 }
 
 .syncRow {

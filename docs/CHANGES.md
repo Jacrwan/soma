@@ -9,6 +9,23 @@ still needed.
 
 ---
 
+## 2026-10-28 (Deadlines: no "Everything due" button)
+
+### The lone "Everything due" tab is gone
+- **Why:** the owner asked what it was. It did nothing: the only tab left of
+  the old sub-nav when the page became "everything due" (2026-09-22,
+  07bfdc1), drawn as selected, with nothing to switch to.
+- **What:** removed with its styles. The top bar keeps the Canvas sync line
+  and refresh button at the right, at the same height (45px), and is left out
+  when there's nothing to show in it (no sync, no extension, no error).
+- **Where:** `src/components/Deadlines/DeadlinesTab.tsx` and its CSS.
+- **Guard:** none for a removed button; `tests/deadlines.spec.ts` and the full
+  suite pass: 622 passed, 7 skipped.
+- **Setup:** none. The onboarding guide's drawing of Soma (`CanvasGuide.tsx`)
+  still labels its mock page "Everything due"; left as is.
+
+---
+
 ## 2026-10-28 (Grades: two decimals)
 
 ### Percents show two decimals
