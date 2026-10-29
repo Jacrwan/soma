@@ -384,3 +384,37 @@ test('Grades: an .xlsx from Google Sheets imports, leaving out what Canvas alrea
   const book = saved.at(-1) as { entries: { name: string; score: number; max: number; categoryId: string | null; date: string }[] };
   expect(book.entries.at(-1)).toMatchObject({ name: 'Final exam', score: 88, max: 100, categoryId: 'cat-ex', date: '2026-10-05' });
 });
+
+test('Grades: scores sort by date, name, category or score, and a second click reverses', async ({ page }) => {
+  // Homework comes first in the syllabus, Exams second.
+  const book = { ...bioBook, entries: [...bioBook.entries, { id: 'e2', name: 'Alpha quiz', score: 10, max: 10, categoryId: 'cat-hw', date: '2026-10-01' }] };
+  await setup(page, { subjects: [BIO], books: [book] });
+  await openGrades(page);
+  await page.getByRole('button', { name: /^Biology 101/ }).click();
+  const scores = page.getByRole('region', { name: 'Scores' });
+  // Each row's assignment name: a link for synced work, plain text for typed-in.
+  const order = () => scores.getByRole('listitem').locator('[class*="itemName"]').evaluateAll(els => els.map(e => e.firstChild?.textContent ?? ''));
+
+  // Newest first until the student picks.
+  await expect.poll(order).toEqual(['Cell structure homework', 'Midterm 1', 'Alpha quiz']);
+  await expect(scores.getByRole('button', { name: 'Sort by date, newest first' })).toHaveAttribute('aria-pressed', 'true');
+  await scores.getByRole('button', { name: /^Sort by date/ }).click();
+  await expect.poll(order).toEqual(['Alpha quiz', 'Midterm 1', 'Cell structure homework']);
+
+  await scores.getByRole('button', { name: /^Sort by assignment/ }).click();
+  await expect.poll(order).toEqual(['Alpha quiz', 'Cell structure homework', 'Midterm 1']);
+  await scores.getByRole('button', { name: /^Sort by score/ }).click();
+  await expect.poll(order).toEqual(['Alpha quiz', 'Cell structure homework', 'Midterm 1']);   // 100%, 90%, 80%
+  await scores.getByRole('button', { name: /^Sort by score/ }).click();
+  await expect.poll(order).toEqual(['Midterm 1', 'Cell structure homework', 'Alpha quiz']);
+  await expect(scores.getByRole('button', { name: 'Sort by score, lowest first' })).toBeVisible();
+
+  // Syllabus order, newest first inside a category.
+  await scores.getByRole('button', { name: /^Sort by category/ }).click();
+  await expect.poll(order).toEqual(['Cell structure homework', 'Alpha quiz', 'Midterm 1']);
+
+  // Remembered on this device.
+  await page.reload();
+  await page.getByRole('button', { name: /^Biology 101/ }).click();
+  await expect(page.getByRole('region', { name: 'Scores' }).getByRole('button', { name: 'Sort by category, in syllabus order' })).toHaveAttribute('aria-pressed', 'true');
+});

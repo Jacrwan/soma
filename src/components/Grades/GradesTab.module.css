@@ -867,6 +867,45 @@ label.secondary:focus-within {
   color: var(--text-muted);
 }
 
+.sortPair {
+  display: inline-flex;
+  gap: 14px;
+}
+
+.sortButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+}
+
+.sortButton:hover,
+.sortOn {
+  color: var(--text-primary);
+}
+
+.sortButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.sortRight {
+  flex-direction: row-reverse;
+}
+
+.sortArrow {
+  display: inline-block;
+  min-width: 8px;
+  font-size: 11px;
+}
+
 .items {
   list-style: none;
   padding: 0;

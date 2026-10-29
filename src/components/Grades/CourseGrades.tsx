@@ -429,12 +429,67 @@ function Row({ item, course, onPick, onEdit, onRemove }: {
   );
 }
 
+type SortKey = 'date' | 'name' | 'category' | 'score';
+type Sort = { key: SortKey; desc: boolean };
+/** Which way a key sorts on its first click: newest, A–Z, syllabus order, highest. */
+const FIRST: Record<SortKey, boolean> = { date: true, name: false, category: false, score: true };
+const SORT_KEY = 'soma_scores_sort';
+function readSort(): Sort {
+  try {
+    const s = JSON.parse(localStorage.getItem(SORT_KEY) ?? 'null') as Partial<Sort> | null;
+    if (s && s.key && s.key in FIRST && typeof s.desc === 'boolean') return { key: s.key, desc: s.desc };
+  } catch { /* storage blocked or bad JSON */ }
+  return { key: 'date', desc: true };
+}
+
+/**
+ * The scores in the order the student chose. Ties, and work with no date or
+ * no percent, fall back to newest first; what can't be compared goes last.
+ */
+function sortItems(items: GradeItem[], sort: Sort, categories: GradeCategory[]): GradeItem[] {
+  const dir = sort.desc ? -1 : 1;
+  const byDate = (a: GradeItem, b: GradeItem) => (b.dueAt ?? '').localeCompare(a.dueAt ?? '');
+  const last = (a: unknown, b: unknown) => (a === null || a === undefined ? 1 : 0) - (b === null || b === undefined ? 1 : 0);
+  const order = new Map(categories.map((c, i) => [c.id, i]));
+  const compare: Record<SortKey, (a: GradeItem, b: GradeItem) => number> = {
+    date: (a, b) => last(a.dueAt, b.dueAt) || dir * (a.dueAt ?? '').localeCompare(b.dueAt ?? ''),
+    name: (a, b) => dir * a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
+    category: (a, b) => {
+      const x = a.categoryId ? order.get(a.categoryId) : a.group, y = b.categoryId ? order.get(b.categoryId) : b.group;
+      if (last(x, y)) return last(x, y);
+      return dir * (typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y)));
+    },
+    score: (a, b) => last(a.percent, b.percent) || dir * ((a.percent ?? 0) - (b.percent ?? 0)),
+  };
+  return [...items].sort((a, b) => compare[sort.key](a, b) || byDate(a, b) || a.name.localeCompare(b.name));
+}
+
+function SortButton({ label, k, sort, onSort, align }: { label: string; k: SortKey; sort: Sort; onSort: (k: SortKey) => void; align?: 'right' }) {
+  const on = sort.key === k;
+  const way = { date: ['oldest first', 'newest first'], name: ['A to Z', 'Z to A'], category: ['in syllabus order', 'in reverse order'], score: ['lowest first', 'highest first'] }[k];
+  return (
+    <button type="button" className={`${styles.sortButton} ${on ? styles.sortOn : ''} ${align === 'right' ? styles.sortRight : ''}`} onClick={() => onSort(k)}
+      aria-pressed={on} aria-label={`Sort by ${label.toLowerCase()}${on ? `, ${way[sort.desc ? 1 : 0]}` : ''}`}>
+      {label}
+      <span className={styles.sortArrow} aria-hidden="true">{on ? (sort.desc ? '↓' : '↑') : ''}</span>
+    </button>
+  );
+}
+
 function Scores({ course, onChange }: Pick<Props, 'course' | 'onChange'>) {
   const [form, setForm] = useState<EntryForm | null>(null);
   const [importing, setImporting] = useState(false);
+  const [sort, setSort] = useState<Sort>(readSort);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const categories = course.book?.categories ?? [];
+
+  const onSort = (key: SortKey) => {
+    const next = { key, desc: sort.key === key ? !sort.desc : FIRST[key] };
+    setSort(next);
+    try { localStorage.setItem(SORT_KEY, JSON.stringify(next)); } catch { /* not remembered */ }
+  };
+  const items = useMemo(() => sortItems(course.items, sort, categories), [course.items, sort, categories]);
 
   const run = (change: (b: GradeBook) => GradeBook) => { setError(''); onChange(change).catch(e => setError(e instanceof Error ? e.message : 'Could not save. Please retry.')); };
   const pick = (item: GradeItem, categoryId: string) => run(b => item.source === 'manual'
@@ -471,11 +526,18 @@ function Scores({ course, onChange }: Pick<Props, 'course' | 'onChange'>) {
       {error && <p className={styles.error} role="alert">{error}</p>}
       {course.items.length ? (
         <>
-          <div className={styles.columns} aria-hidden="true">
-            <span>Assignment</span><span>{categories.length ? 'Category' : 'Group'}</span><span /><span className={styles.right}>Score</span><span className={styles.right}>%</span>
+          <div className={styles.columns} role="group" aria-label="Sort scores">
+            <span className={styles.sortPair}>
+              <SortButton label="Assignment" k="name" sort={sort} onSort={onSort} />
+              <SortButton label="Date" k="date" sort={sort} onSort={onSort} />
+            </span>
+            <span><SortButton label={categories.length ? 'Category' : 'Group'} k="category" sort={sort} onSort={onSort} /></span>
+            <span />
+            <span className={styles.right}><SortButton label="Score" k="score" sort={sort} onSort={onSort} align="right" /></span>
+            <span className={styles.right} aria-hidden="true">%</span>
           </div>
           <ul className={styles.items}>
-            {course.items.map(i => form?.id && `manual:${form.id}` === i.key
+            {items.map(i => form?.id && `manual:${form.id}` === i.key
               ? <li key={i.key} className={styles.itemEditing}><EntryEditor initial={form} categories={categories} onSave={saveEntry} onCancel={() => setForm(null)} /></li>
               : <Row key={i.key} item={i} course={course} onPick={c => pick(i, c)} onEdit={() => edit(i)} onRemove={() => remove(i)} />)}
           </ul>

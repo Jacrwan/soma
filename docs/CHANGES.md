@@ -9,6 +9,25 @@ still needed.
 
 ---
 
+## 2026-10-28 (Grades: sort the scores)
+
+### Scores sort by date, name, category or score
+- **Why:** the owner asked to order a course's assignments by a click: by
+  date, category, score.
+- **What:** the Scores headers are buttons: Assignment (A–Z), Date (newest
+  first), Category (syllabus order; Canvas group name without categories)
+  and Score (by percent, highest first). A second click reverses; an arrow
+  marks the one in use. Ties fall back to newest first; work with no date or
+  no percent goes last. The choice is remembered on this device
+  (`soma_scores_sort`), for every course. Default is newest first, as before.
+- **Where:** `src/components/Grades/CourseGrades.tsx` (`sortItems`,
+  `SortButton`), `GradesTab.module.css`.
+- **Guard:** `tests/grades.spec.ts` (each order, reversing, remembered after a
+  reload). Full suite: 621 passed, 7 skipped.
+- **Setup:** none.
+
+---
+
 ## 2026-10-28 (Grades: spreadsheet import, Grading folds)
 
 ### Import scores from a spreadsheet
