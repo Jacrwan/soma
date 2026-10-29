@@ -4,7 +4,7 @@ import { storage } from '../../lib/storage';
 import { subjectForCourse } from '../../lib/canvasDeepSync';
 import type { PlanTarget } from '../../lib/planIt';
 import { formatDateTime, useTimeFormat } from '../../lib/timeFormat';
-import { CanvasAssignment, Todo, isSubmittable } from '../../types';
+import { CanvasAssignment, Todo, TodoKind, isSubmittable } from '../../types';
 import { CANVAS_CHANGED, EXTENSION_STORE_URL, deepSyncStatus, extensionPresent, requestSync } from '../../lib/canvasExtension';
 import WhatChanged from './WhatChanged';
 import ExtensionSetup from '../Onboarding/ExtensionSetup';
@@ -62,6 +62,19 @@ const STATUS_TO_TODO: Record<Status, Todo['status']> = {
 };
 
 const PLATFORM_NAMES = { gradescope: 'Gradescope', webassign: 'WebAssign' } as const;
+
+/**
+ * The kind "Hand in" gives a task with none, read from its name so the label
+ * is not plainly wrong where the kind shows (the morning brief, the Claude
+ * connector). Anything unrecognised is homework.
+ */
+function handInKind(title: string): TodoKind {
+  if (EXAM_NAME.test(title)) return 'exam';
+  if (/\bquiz/i.test(title)) return 'quiz';
+  if (/\blabs?\b/i.test(title)) return 'lab';
+  if (/\bproj(ect)?s?\b/i.test(title)) return 'project';
+  return 'homework';
+}
 
 /** Tasks with no course still have to appear; they group under one label. */
 const NO_COURSE = 'No course';
@@ -175,6 +188,7 @@ export default function DeadlinesTab() {
   // empty account from one that simply has not answered yet.
   const [tasksLoaded, setTasksLoaded] = useState(false);
   const [taskError, setTaskError] = useState('');
+  const [showUnsorted, setShowUnsorted] = useState(false);
 
   // storage.getSubjects() (used below to color-link each course to its
   // Subject) reads an in-memory list populated asynchronously by
@@ -283,6 +297,24 @@ export default function DeadlinesTab() {
     }
   }
 
+  // Sorting a task with no kind: "Hand in" makes it a deadline, "Prepare" takes
+  // it off this page. Same optimistic write and rollback as the status.
+  async function sortTask(todoId: string, kind: TodoKind) {
+    const previous = storage.getTodos().find(t => t.id === todoId);
+    if (!previous) return;
+    const next: Todo = { ...previous, kind };
+    setTaskError('');
+    setTodos(ts => ts.map(t => (t.id === todoId ? next : t)));
+    try {
+      await storage.saveTodo(next);
+      await storage.fetchAllTodos();
+      window.dispatchEvent(new Event('soma_todos_changed'));
+    } catch (e) {
+      setTodos(ts => ts.map(t => (t.id === todoId ? previous : t)));
+      setTaskError(e instanceof Error ? e.message : 'Could not save that change.');
+    }
+  }
+
   const datedTodos = todos.filter(t => !!t.dueDate);
   // Still waiting on whichever source could fill the page, with nothing cached
   // to show in the meantime.
@@ -355,9 +387,16 @@ export default function DeadlinesTab() {
   // burying Lab 3 among the chapters to read is how the page stopped being
   // useful. A task linked to a Canvas assignment counts whatever its kind.
   const submittable = (t: Todo) => isSubmittable(t.kind) || !!t.assignmentId;
-  // Saved before the kind column existed, so it is unknown rather than
-  // excluded. Re-importing the course site classifies these.
-  const unclassified = datedTodos.filter(t => !t.kind && !t.assignmentId);
+  // No kind: written by hand, added by the AI, or imported before the kind
+  // column existed. Nothing on the row says which, so these are not guessed
+  // at: they get their own "Not sorted" group, where the student sorts each
+  // one (re-importing a course site also sorts the ones it finds).
+  const unsorted = datedTodos
+    .filter(t => !t.kind && !t.assignmentId && t.status !== 'done')
+    .map(t => ({ todo: t, subject: t.subjectId ? subjectsById.get(t.subjectId) : undefined }))
+    .filter(({ subject }) => !subject?.archived)
+    .filter(({ subject }) => selectedCourse === null || (subject?.name ?? NO_COURSE) === selectedCourse)
+    .sort((a, b) => a.todo.dueDate!.localeCompare(b.todo.dueDate!) || a.todo.text.localeCompare(b.todo.text));
 
   const taskItems: Deadline[] = datedTodos
     .filter(submittable)
@@ -506,14 +545,6 @@ export default function DeadlinesTab() {
           </div>
         )}
 
-        {!loading && unclassified.length > 0 && (
-          <div className={styles.setupHintNoBorder} style={{ marginBottom: 14 }}>
-            {unclassified.length} {unclassified.length === 1 ? 'task is' : 'tasks are'} not sorted into
-            work to hand in and work to prepare, so {unclassified.length === 1 ? 'it is' : 'they are'} left
-            off this page. <a href="/settings">Re-import the course site</a> to sort {unclassified.length === 1 ? 'it' : 'them'}.
-          </div>
-        )}
-
         {loading && <DeadlinesSkeleton />}
 
         {!loading && (
@@ -574,6 +605,45 @@ export default function DeadlinesTab() {
                   );
                 })}
               </div>
+            )}
+
+            {statusFilter !== 'done' && unsorted.length > 0 && (
+              <section className={styles.unsorted} aria-labelledby="unsorted-heading">
+                <div className={styles.dateGroupHeader}>
+                  <h2 id="unsorted-heading" className={styles.dateGroupLabel}>Not sorted</h2>
+                  <span className={styles.dateGroupCount}>{unsorted.length}</span>
+                  <button
+                    type="button"
+                    className={styles.unsortedToggle}
+                    aria-expanded={showUnsorted}
+                    aria-controls="unsorted-list"
+                    onClick={() => setShowUnsorted(v => !v)}
+                  >{showUnsorted ? 'Hide' : 'Show'}</button>
+                </div>
+                <p className={styles.unsortedHint}>
+                  These have a due date, but Soma doesn't know whether you hand them in.
+                  Hand in adds one to your deadlines; Prepare takes it off this page.
+                  Tasks from a course site also sort when you <a href="/settings">re-import the course site</a>.
+                </p>
+                {showUnsorted && (
+                  <div id="unsorted-list" className={styles.assignmentList}>
+                    {unsorted.map(({ todo: t, subject }) => (
+                      <div key={t.id} className={styles.unsortedRow}>
+                        <span className={styles.dot} style={{ background: subject?.color ?? '#888' }} />
+                        <div className={styles.assignmentInfo}>
+                          <span className={styles.assignmentCourse}>{subject?.name ?? NO_COURSE}</span>
+                          <span className={styles.assignmentName}>{t.text}</span>
+                        </div>
+                        <span className={styles.dueTime}>
+                          {new Date(`${t.dueDate!.slice(0, 10)}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                        </span>
+                        <button type="button" className={styles.reviewBtn} aria-label={`Hand in: ${t.text}`} onClick={() => void sortTask(t.id, handInKind(t.text))}>Hand in</button>
+                        <button type="button" className={styles.sortPrepareBtn} aria-label={`Prepare: ${t.text}`} onClick={() => void sortTask(t.id, 'other')}>Prepare</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
             )}
           </>
         )}

@@ -9,6 +9,38 @@ still needed.
 
 ---
 
+## 2026-10-29 (Deadlines: tasks with no kind get a "Not sorted" group)
+
+- **Why:** the owner saw "49 tasks are not sorted… Re-import the course site
+  to sort them" and asked what it meant. The notice counted every dated task
+  with no kind and no Canvas link, which includes tasks written by hand or
+  added by the AI, not only course-site imports from before the kind column
+  (2026-09-22). No re-import ever gives those a kind, so the count never went
+  down. Nothing on a row says where a task came from, so the app cannot tell
+  the two apart; the owner chose a sortable group over showing them all
+  (old imported readings would bury the deadlines again) or only rewording.
+- **What:** the notice at the top is gone. Below the deadlines, a **Not
+  sorted** group (with a count; Show/Hide, hidden by default) lists dated
+  tasks with no kind that aren't done, in non-archived courses, following
+  the course filter; not shown under the Done filter. Each row has **Hand
+  in** (sets a kind read from the name: exam, quiz, lab, project, else
+  homework; the task joins the deadlines and the morning brief) and
+  **Prepare** (sets kind `other`; it leaves the page). Saved like a status
+  change: optimistic, rolled back with an error if the save fails. The hint
+  still says re-importing a course site sorts tasks from that site. On a
+  phone the name gets its own line.
+- **Where:** `src/components/Deadlines/DeadlinesTab.tsx` (`handInKind`,
+  `sortTask`, `unsorted`), `DeadlinesTab.module.css` (Not sorted styles).
+- **Guard:** `tests/deadlines.spec.ts`: "tasks with no kind are named in
+  their own group, not silently dropped" (replaces "tasks saved before the
+  kind column are named…", whose notice no longer exists; the behaviour it
+  protected, nothing dropped silently, still holds), "a hand-written task
+  can be sorted into deadlines with Hand in", "Prepare takes a task with no
+  kind off the page". All three fail on the old code.
+- **Setup:** none. No schema change: `todos.kind` already exists.
+
+---
+
 ## 2026-10-29 (Legal links move to Settings)
 
 - **Why:** the owner wanted the legal footer off the bottom of every app

@@ -115,15 +115,54 @@ test('a task linked to a Canvas assignment counts whatever its kind', async ({ p
   await expect(page.getByText('Reading quiz')).toBeVisible();
 });
 
-test('tasks saved before the kind column are named, not silently dropped', async ({ page }) => {
+test('tasks with no kind are named in their own group, not silently dropped', async ({ page }) => {
   await setup(page, { subjects: [CS61A], todos: [
+    importedTask(),
     importedTask({ id: 'old', text: 'Lab 2', kind: null }),
   ] });
   await page.goto('/deadlines');
 
+  // Not among the deadlines: nothing says whether it is handed in.
+  await expect(page.getByText('Lab 3')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Not sorted' })).toBeVisible();
   await expect(page.getByText('Lab 2')).toHaveCount(0);
-  await expect(page.getByText(/1 task is not sorted/)).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Re-import the course site' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 're-import the course site' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Show' }).click();
+  await expect(page.getByText('Lab 2')).toBeVisible();
+});
+
+// The notice used to blame every task with no kind on an old course-site
+// import and say re-importing would sort it. A task written by hand (or added
+// by the AI) has no kind either, and no import will ever give it one, so the
+// count never went down.
+test('a hand-written task can be sorted into deadlines with Hand in', async ({ page }) => {
+  const state = await setup(page, { subjects: [CS61A], todos: [
+    importedTask({ id: 'mine', text: 'Project proposal', kind: null }),
+  ] });
+  await page.goto('/deadlines');
+  await page.getByRole('button', { name: 'Show' }).click();
+  await page.getByRole('button', { name: 'Hand in: Project proposal' }).click();
+
+  // Now a deadline, with a status control like any other.
+  await expect(page.getByRole('combobox', { name: 'Status: Project proposal' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Not sorted' })).toHaveCount(0);
+  await expect.poll(() => state.todos.find(t => t.id === 'mine')?.kind).toBe('project');
+});
+
+test('Prepare takes a task with no kind off the page', async ({ page }) => {
+  const state = await setup(page, { subjects: [CS61A], todos: [
+    importedTask(),
+    importedTask({ id: 'mine', text: 'Read chapter 4', kind: null }),
+  ] });
+  await page.goto('/deadlines');
+  await page.getByRole('button', { name: 'Show' }).click();
+  await page.getByRole('button', { name: 'Prepare: Read chapter 4' }).click();
+
+  await expect(page.getByText('Read chapter 4')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Not sorted' })).toHaveCount(0);
+  await expect(page.getByText('Lab 3')).toBeVisible();
+  await expect.poll(() => state.todos.find(t => t.id === 'mine')?.kind).toBe('other');
 });
 
 test('marking an imported deadline done writes through to the task', async ({ page }) => {

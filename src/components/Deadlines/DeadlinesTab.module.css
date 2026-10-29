@@ -908,3 +908,69 @@
 
 .reviewBtn:hover { border-color: var(--accent); }
 .reviewBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── Not sorted: dated tasks with no kind ── */
+
+.unsorted {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.unsorted h2 { margin: 0; }
+
+.unsortedToggle {
+  font: inherit;
+  font-size: 12px;
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+.unsortedToggle:hover { text-decoration: underline; }
+.unsortedToggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
+.unsortedHint {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+  margin: 0 2px 4px;
+}
+
+.unsortedRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.sortPrepareBtn {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sortPrepareBtn:hover { border-color: var(--text-muted); }
+.sortPrepareBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* On a phone the name gets its own line; the date and buttons go under it. */
+@media (max-width: 600px) {
+  .unsortedRow { flex-wrap: wrap; }
+  .unsortedRow .assignmentInfo { flex-basis: calc(100% - 20px); }
+  .unsortedRow .assignmentName { white-space: normal; }
+  .unsortedRow .dueTime { margin-left: 14px; margin-right: auto; }
+}
