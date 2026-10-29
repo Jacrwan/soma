@@ -9,6 +9,45 @@ still needed.
 
 ---
 
+## 2026-10-28 (Blog: planner apps comparison)
+
+### Post: the best student planner apps in 2026
+- **Why:** the owner asked for a post on the best academic scheduling apps
+  of 2026 that puts Soma forward.
+- **What:** `content/blog/best-student-planner-apps-2026.md`. Ranks
+  MyStudyLife, Soma (#2, "best for bringing everything together"), Shovel,
+  Power Planner, Notion, Motion, Reclaim.ai and Google Calendar, each
+  section about the same length, Soma's a little longer. Shaped by the
+  owner's review: no disclaimer or "the one we build", no "dark horse";
+  Soma is "used by students at Stanford, Cornell, UC Berkeley, Emory and
+  more" (as the landing page says), brings Canvas, Gradescope, syllabus
+  dates, course files, grades and Google Calendar into one plan, and adapts
+  (learns from logged sessions, the `history` the planner gets; its
+  calendar shows the hours studied). Priced as free with a monthly or
+  semester upgrade (the Free plan on /pricing; Premium adds the AI). Two
+  screenshots from the demo account (`npm run demo`: dashboard, calendar
+  week) and a 1200×630 cover used when the post is shared. Facts about other
+  apps were checked on their own sites on 2026-10-28; their prices are kept
+  loose because they change often. No screenshots of other apps (their
+  images aren't ours to use).
+  Posts can now have images: `![alt](/blog/images/… "caption")` on its own
+  line is a captioned figure with its width and height read from the file,
+  lazy-loaded; a missing image fails the build. `image:` in the front
+  matter sets og:image, a large Twitter card and the structured data image.
+  Posts can write `{{MONTHLY_PRICE}}`, `{{SEMESTER_PRICE}}` and
+  `{{TRIAL_DAYS}}`, filled in from `src/lib/pricing.ts` at build time, so a
+  price change can't leave a post out of date (an unknown placeholder fails
+  the build). Tables in posts now wrap to fit the column instead of
+  scrolling sideways.
+- **Where:** `content/blog/best-student-planner-apps-2026.md`,
+  `public/blog/images/best-student-planner-apps-2026/`, `config/blog.ts`.
+- **Guard:** `tests/blog.spec.ts` (the post's prices match `pricing.ts`, no
+  placeholder left, share image, figures with sizes and captions). Full suite: 625 passed, 7 skipped; the
+  ai-wiring study-hours test failed once at 9:55 PM and passes alone.
+- **Setup:** none. Re-check competitor facts if the post is updated.
+
+---
+
 ## 2026-10-28 (Blog for search)
 
 ### A blog at /blog, built as plain HTML pages

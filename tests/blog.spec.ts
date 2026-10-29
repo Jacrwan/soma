@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { readdirSync } from 'node:fs';
+import { MONTHLY_PRICE } from '../src/lib/pricing';
 
 // The blog is static HTML made from content/blog/*.md (config/blog.ts), not the
 // React app: search engines must get the post text without running JavaScript.
@@ -32,6 +33,18 @@ test('a post has its title, description, canonical and structured data in the HT
   expect(html).toContain('<h2 id="courses-graded-by-points">');
   // Analytics are added to production builds only.
   expect(html).not.toContain('_vercel/insights');
+});
+
+test('Soma prices in a post come from src/lib/pricing.ts', async ({ request }) => {
+  const html = await (await request.get('/blog/best-student-planner-apps-2026')).text();
+  expect(html).not.toContain('{{');
+  // A share image, and screenshots as captioned figures with their size set.
+  expect(html).toContain('<meta property="og:image" content="https://somastudy.app/blog/images/best-student-planner-apps-2026/cover.png" />');
+  expect(html).toContain('<meta name="twitter:card" content="summary_large_image" />');
+  expect(html).toMatch(/<figure><img src="\/blog\/images\/best-student-planner-apps-2026\/soma-dashboard.png" alt="[^"]+" width="1280" height="800" loading="lazy" decoding="async" \/><figcaption>/);
+  expect(html).not.toMatch(/<p><figure>/);
+  expect((await request.get('/blog/images/best-student-planner-apps-2026/cover.png')).headers()['content-type']).toBe('image/png');
+  expect(html).toContain(`Premium adds the AI planner for ${MONTHLY_PRICE} a month.`);
 });
 
 test('RSS and the blog sitemap list every post; unknown posts are a 404', async ({ request }) => {

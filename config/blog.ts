@@ -10,12 +10,17 @@
 //   description: One or two sentences for Google and link previews (≤160 chars).
 //   date: 2026-10-28
 //   updated: 2026-11-02   (optional)
+//   image: /blog/images/x.png  (optional; the picture when the post is shared,
+//                               ideally 1200×630)
 //   draft: true           (optional; left out of the build)
 //   ---
+// Soma's prices come from src/lib/pricing.ts, never typed into a post: write
+// {{MONTHLY_PRICE}}, {{SEMESTER_PRICE}} or {{TRIAL_DAYS}}.
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { Marked } from 'marked'
 import type { Plugin } from 'vite'
+import { MONTHLY_PRICE, SEMESTER_PRICE, TRIAL_DAYS } from '../src/lib/pricing'
 
 export const SITE = 'https://somastudy.app'
 const POSTS_DIR = 'content/blog'
@@ -27,6 +32,7 @@ export type Post = {
   description: string
   date: string
   updated?: string
+  image?: string
   html: string
   minutes: number
 }
@@ -40,11 +46,49 @@ const slugify = (s: string) =>
 const longDate = (iso: string) =>
   new Date(`${iso}T12:00:00Z`).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
 
+// Width and height of a PNG or JPEG, so the page doesn't jump as images load.
+function imageSize(file: string): { width: number; height: number } | null {
+  const b = readFileSync(file)
+  if (b.readUInt32BE(0) === 0x89504e47) return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) }
+  if (b[0] === 0xff && b[1] === 0xd8) {
+    for (let i = 2; i < b.length - 9;) {
+      if (b[i] !== 0xff) { i++; continue }
+      const marker = b[i + 1]
+      if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
+        return { width: b.readUInt16BE(i + 7), height: b.readUInt16BE(i + 5) }
+      }
+      i += 2 + b.readUInt16BE(i + 2)
+    }
+  }
+  return null
+}
+
+let publicDir = 'public'
+
+// An image on the site must exist in public/ (a typo fails the build).
+function localImage(src: string) {
+  if (!src.startsWith('/')) return null
+  const file = join(publicDir, src)
+  if (!existsSync(file)) throw new Error(`blog image not found: public${src}`)
+  return imageSize(file)
+}
+
 // Headings get ids so a section can be linked to; links off the site open with
-// rel="noopener".
+// rel="noopener". ![alt](/blog/images/x.png "Caption") on its own line is a
+// figure with that caption.
 const markdown = new Marked({
   gfm: true,
   renderer: {
+    paragraph({ tokens }) {
+      const only = tokens.filter(t => !(t.type === 'text' && !t.raw.trim()))
+      if (only.length === 1 && only[0].type === 'image') return this.parser.parseInline(only)
+      return `<p>${this.parser.parseInline(tokens)}</p>\n`
+    },
+    image({ href, title, text }) {
+      const size = localImage(href)
+      const img = `<img src="${escapeHtml(href)}" alt="${escapeHtml(text)}"${size ? ` width="${size.width}" height="${size.height}"` : ''} loading="lazy" decoding="async" />`
+      return `<figure>${img}${title ? `<figcaption>${escapeHtml(title)}</figcaption>` : ''}</figure>\n`
+    },
     heading({ tokens, depth }) {
       const text = this.parser.parseInline(tokens)
       return `<h${depth} id="${slugify(text)}">${text}</h${depth}>\n`
@@ -71,13 +115,18 @@ function parsePost(file: string, source: string): (Post & { draft: boolean }) {
   for (const key of ['date', 'updated']) {
     if (meta[key] && !/^\d{4}-\d{2}-\d{2}$/.test(meta[key])) throw new Error(`${file}: ${key} must look like 2026-10-28`)
   }
-  const body = match[2]
+  const prices: Record<string, string> = { MONTHLY_PRICE, SEMESTER_PRICE, TRIAL_DAYS: String(TRIAL_DAYS) }
+  const body = match[2].replace(/\{\{(\w+)\}\}/g, (whole, key: string) => {
+    if (!(key in prices)) throw new Error(`${file}: unknown placeholder ${whole}`)
+    return prices[key]
+  })
   return {
     slug: file.replace(/\.md$/, ''),
     title: meta.title,
     description: meta.description,
     date: meta.date,
     updated: meta.updated || undefined,
+    image: meta.image ? (localImage(meta.image), meta.image) : undefined,
     draft: meta.draft === 'true',
     html: markdown.parse(body, { async: false }),
     minutes: Math.max(1, Math.round(body.split(/\s+/).filter(Boolean).length / 230)),
@@ -85,6 +134,7 @@ function parsePost(file: string, source: string): (Post & { draft: boolean }) {
 }
 
 export function loadPosts(root = process.cwd()): Post[] {
+  publicDir = join(root, 'public')
   const dir = join(root, POSTS_DIR)
   if (!existsSync(dir)) return []
   return readdirSync(dir)
@@ -166,9 +216,16 @@ h1 {
 .prose blockquote { margin-left: 0; padding: 2px 0 2px 20px; border-left: 3px solid var(--slate-300); color: var(--slate-600); }
 .prose code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: .88em; background: var(--slate-100); padding: .12em .38em; border-radius: 5px; }
 .prose hr { border: 0; border-top: 1px solid var(--slate-200); margin: 2.4em 0; }
-.prose table { width: 100%; border-collapse: collapse; font-size: 15.5px; display: block; overflow-x: auto; }
-.prose th, .prose td { text-align: left; padding: 10px 14px 10px 0; border-bottom: 1px solid var(--slate-200); white-space: nowrap; }
-.prose th { font-weight: 600; color: var(--slate-900); font-size: 14px; }
+.prose figure { margin: 2em 0; }
+.prose figure img {
+  display: block; width: 100%; height: auto; border-radius: 12px;
+  border: 1px solid var(--slate-200); box-shadow: 0 2px 6px rgba(15,23,42,.05), 0 16px 40px rgba(15,23,42,.08);
+}
+.prose figcaption { font-size: 14px; line-height: 1.5; color: var(--slate-500); margin-top: 12px; text-align: center; }
+.prose table { width: 100%; border-collapse: collapse; font-size: 15.5px; }
+.prose th, .prose td { text-align: left; vertical-align: top; padding: 10px 14px 10px 0; border-bottom: 1px solid var(--slate-200); line-height: 1.45; }
+.prose th { font-weight: 600; color: var(--slate-900); font-size: 14px; white-space: nowrap; }
+.prose td:first-child { white-space: nowrap; }
 
 .cta {
   margin: 56px 0 0; padding: 30px 32px; background: #fff;
@@ -201,6 +258,8 @@ h1 {
   .nav-link.hide-sm { display: none; }
   .wrap { padding: 48px 16px 0; }
   .prose { font-size: 17px; }
+  .prose table { font-size: 14px; }
+  .prose th, .prose td, .prose td:first-child { padding-right: 10px; white-space: normal; }
   .cta { padding: 24px 20px; }
   .foot-in { padding: 28px 16px; }
 }
@@ -222,6 +281,7 @@ function page(o: PageOptions & {
   path: string
   type: 'website' | 'article'
   head?: string
+  image?: string
   current: 'index' | 'post'
   body: string
 }) {
@@ -243,8 +303,8 @@ function page(o: PageOptions & {
 <meta property="og:title" content="${escapeHtml(o.title)}" />
 <meta property="og:description" content="${escapeHtml(o.description)}" />
 <meta property="og:site_name" content="Soma" />
-<meta name="twitter:card" content="summary" />
-<meta name="twitter:title" content="${escapeHtml(o.title)}" />
+<meta name="twitter:card" content="${o.image ? 'summary_large_image' : 'summary'}" />
+${o.image ? `<meta property="og:image" content="${SITE}${o.image}" />\n<meta name="twitter:image" content="${SITE}${o.image}" />\n` : ''}<meta name="twitter:title" content="${escapeHtml(o.title)}" />
 <meta name="twitter:description" content="${escapeHtml(o.description)}" />
 ${o.head ?? ''}<link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -324,6 +384,7 @@ export function renderPost(post: Post, posts: Post[], o: PageOptions) {
     path: `/blog/${post.slug}`,
     type: 'article',
     current: 'post',
+    image: post.image,
     head: `<meta property="article:published_time" content="${post.date}" />
 ${post.updated ? `<meta property="article:modified_time" content="${post.updated}" />\n` : ''}${jsonLd({
       '@context': 'https://schema.org',
@@ -332,6 +393,7 @@ ${post.updated ? `<meta property="article:modified_time" content="${post.updated
       description: post.description,
       url,
       mainEntityOfPage: url,
+      ...(post.image ? { image: `${SITE}${post.image}` } : {}),
       datePublished: post.date,
       dateModified: post.updated ?? post.date,
       author: { '@type': 'Organization', name: AUTHOR, url: SITE },
@@ -430,6 +492,7 @@ export function blogPlugin(): Plugin {
       server.middlewares.use((req, res, next) => {
         const path = (req.url ?? '').split(/[?#]/)[0].replace(/\/$/, '')
         if (path !== '/blog' && !path.startsWith('/blog/')) return next()
+        if (/\.(?!xml$)[a-z0-9]+$/i.test(path)) return next()
         try {
           const files = blogFiles(loadPosts(root), { analytics: false })
           const key = path === '/blog' ? 'blog/index.html' : path.endsWith('.xml') ? path.slice(1) : `${path.slice(1)}.html`
