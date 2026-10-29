@@ -433,11 +433,11 @@ export default function DeadlinesTab() {
           <span className={styles.assignmentCourse}>{item.courseName}{item.platform ? ` · ${PLATFORM_NAMES[item.platform]}` : ''}{item.progress && item.status !== 'done' ? ` · ${item.progress}` : ''}</span>
           <span className={styles.assignmentName}>{item.title}</span>
         </div>
+        {item.exam && !done && item.dueKey >= dayKey(new Date()) && (
+          <button type="button" className={styles.reviewBtn} onClick={e => { e.stopPropagation(); planReview(item); }} aria-label={`Plan review for ${item.title}`}>Plan review</button>
+        )}
         <span className={styles.dueTime}>{item.dueLabel}</span>
         <div className={styles.assignmentControls} onClick={e => e.stopPropagation()}>
-          {item.exam && !done && item.dueKey >= dayKey(new Date()) && (
-            <button type="button" className={styles.reviewBtn} onClick={() => planReview(item)} aria-label={`Plan review for ${item.title}`}>Plan review</button>
-          )}
           <select
             className={`${styles.statusSelect}${item.status === 'done' ? ` ${styles.statusSelectDone}` : ''}`}
             value={item.status}

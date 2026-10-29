@@ -9,6 +9,56 @@ still needed.
 
 ---
 
+## 2026-10-28 (Deadlines: study blocks stay off, rows tidied)
+
+### A deadline's study time under another name is its own task; What changed reads like the rows below it
+- **Why:** the owner's Deadlines showed "Review: past midterm 3 missed
+  problems", a study block, as overdue CS 61A work. Also: the "What changed"
+  announcement read "Announcement · title · Learning about Translation thr ·
+  Canvas"; the owner wants the kind on top, then the course's dot and name
+  like the deadline rows, then the announcement. And "Plan review" sat
+  between "All day" and the status, which looked off.
+- **Cause (pre-existing):** `savePlanBlock` (`liveData.ts`) renames a task
+  in place when the block is its only one, keeping its due date, kind and
+  Canvas link. Renaming a deadline's block, or Soma scheduling an
+  unscheduled deadline task under a new title (EXAM PREP titles review
+  "Review: …" and schedules tasks by their id), turned the deadline itself
+  into the study block: it stayed on Deadlines under the new name, and the
+  real deadline's name was gone. The owner's own task couldn't be read (the
+  Soma connector needs reconnecting), so the exact path for it is inferred.
+  What changed: the extension cuts a change's course name to 30 characters,
+  and the row showed that name, not the student's course.
+- **What:**
+  - A rename that gives a deadline's time (a block with a time, on a task
+    with a due date) another piece of work's name makes that block its own
+    task: no due date, no kind, no assignment; the block and the time
+    logged during it move to it; the deadline keeps its name and stays on
+    Deadlines. Same work (`sameWork`: "Hog project review" → "Hog project
+    review: final") or a rename with no time still renames the deadline.
+  - What changed rows: kind on its own line, then the course's dot (its
+    colour) and name, then the change; the site only when not Canvas.
+    `canvasCourseOfChange` finds the Canvas course from the synced
+    assignment or announcement the change names (then by name or its cut
+    prefix); the student's course name and colour come from
+    `subjectForChange`. The dashboard brief's "Changed" uses the same name.
+  - Deadlines: "Plan review" comes before the time label.
+- **Where:** `src/components/DashboardV2/liveData.ts`,
+  `src/lib/canvasDeepSync.ts`, `src/lib/brief.ts`,
+  `src/components/Deadlines/WhatChanged.tsx`, `DeadlinesTab.tsx`,
+  `DeadlinesTab.module.css`.
+- **Guard:** `tests/ai-plan-changes.spec.ts` (a deadline's block renamed to
+  other work is its own task and the deadline stays, also on the page; an
+  unscheduled deadline scheduled under another name stays; the same work
+  still renames it; the first two fail on the old code),
+  `tests/canvas-course-mapping.spec.ts` (What changed: kind, course, title,
+  in that order, by the student's course name and colour from a cut-off
+  Canvas name). Checked by screenshot. Full suite: 597 passed, 7 skipped.
+- **Setup still needed (owner):** the existing "Review: past midterm 3 missed
+  problems" task keeps its due date until cleared (SQL given in chat). The
+  deadline it was made from kept no record of its old name.
+
+---
+
 ## 2026-10-28 (Canvas work under the student's own courses)
 
 ### Synced Canvas work and announcements go under the course the student already has

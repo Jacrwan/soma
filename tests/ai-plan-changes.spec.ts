@@ -276,6 +276,50 @@ test('renaming one block of a task with two blocks renames only that block, with
   await expect(page.getByText('CS 61A: practice quizzes')).toBeVisible();
 });
 
+// Reported 2026-10-28: "Review: past midterm 3 missed problems", a study
+// block, sat on Deadlines as overdue CS 61A work. Renaming a deadline's only
+// block renamed the deadline itself, due date and kind included.
+const DUE = key(offset(3));
+const deadline = (db: Record<string, Row[]>) => Object.assign(db.todos.find(t => t.id === 't-cs')!, { due_date: DUE, kind: 'homework' });
+
+test('a deadline\'s study block renamed to other work becomes its own task; the deadline stays as it was', async ({ page }) => {
+  const state = await setup(page, { reply: 'Renamed it.', blocks: [], changes: [{ action: 'update', id: 's-cs', title: 'Review: past midterm 3 missed problems' }] }, deadline);
+  await ask(page, 'use the hog block to review midterm 3 instead');
+  await page.getByRole('button', { name: /Accept all \(1\)/ }).click();
+  await expect.poll(() => state.db.todos.length).toBe(4);
+  const review = state.db.todos.find(t => t.text === 'Review: past midterm 3 missed problems')!;
+  expect(review.due_date ?? null).toBeNull();
+  expect(review.kind ?? null).toBeNull();
+  expect(state.db.todo_sessions.find(x => x.id === 's-cs')!.todo_id).toBe(review.id);
+  expect(state.db.todos.find(t => t.id === 't-cs')).toMatchObject({ text: 'Hog project review', due_date: DUE, kind: 'homework' });
+
+  await page.goto('/deadlines');
+  await expect(page.getByText('Hog project review')).toBeVisible();
+  await expect(page.getByText('Review: past midterm 3 missed problems')).toHaveCount(0);
+});
+
+test('an unscheduled deadline Soma schedules under another name stays on Deadlines under its own', async ({ page }) => {
+  const state = await setup(page, { reply: 'Scheduled.', blocks: [], changes: [{ action: 'update', id: 't-hw', title: 'Review: Lab 8 mistakes', date: TOMORROW, start: '21:00', end: '22:00' }] }, db => {
+    db.todos.push({ id: 't-hw', user_id: account.id, text: 'Lab 8: Gleam Types', subject_id: 'cs', status: 'nothing', date: DUE, due_date: DUE, kind: 'lab' });
+  });
+  await ask(page, 'put a lab 8 review tomorrow at 9pm');
+  await page.getByRole('button', { name: /Accept all \(1\)/ }).click();
+  await expect.poll(() => state.db.todos.length).toBe(5);
+  const review = state.db.todos.find(t => t.text === 'Review: Lab 8 mistakes')!;
+  expect(review.due_date ?? null).toBeNull();
+  expect(state.db.todo_sessions.find(x => x.todo_id === review.id)!.start_time).toBe(at(1, '21:00'));
+  expect(state.db.todos.find(t => t.id === 't-hw')).toMatchObject({ text: 'Lab 8: Gleam Types', due_date: DUE, kind: 'lab' });
+});
+
+test('a deadline\'s block renamed to the same work still renames the deadline', async ({ page }) => {
+  const state = await setup(page, { reply: 'Renamed it.', blocks: [], changes: [{ action: 'update', id: 's-cs', title: 'Hog project review: final' }] }, deadline);
+  await ask(page, 'call it hog project review: final');
+  await page.getByRole('button', { name: /Accept all \(1\)/ }).click();
+  await expect.poll(() => state.db.todos.find(t => t.id === 't-cs')!.text).toBe('Hog project review: final');
+  expect(state.db.todos).toHaveLength(3);
+  expect(state.db.todos.find(t => t.id === 't-cs')).toMatchObject({ due_date: DUE, kind: 'homework' });
+});
+
 test('update can rename and retime together; omitted fields keep their values', async ({ page }) => {
   const state = await setup(page, { reply: 'Done.', blocks: [], changes: [{ action: 'update', id: 's-cs', title: 'Hog final', start: '20:00', end: '21:00' }] });
   await ask(page, 'push hog later and rename');

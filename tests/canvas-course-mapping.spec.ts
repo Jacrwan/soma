@@ -132,3 +132,20 @@ test('last term\'s archived course doesn\'t take this term\'s work: a new course
   await expect.poll(() => state.inserted.length).toBe(1);
   expect(state.inserted[0]).toMatchObject({ name: 'MATH 1A - Fall 2026', canvas_course_id: 200 });
 });
+
+test('What changed: an announcement sits under its course, by the student\'s name and colour, though Canvas\'s name was cut short', async ({ page }) => {
+  await setup(page, [{ id: 'tr', name: 'Translation', color: '#ab47bc', source: 'canvas', canvas_course_id: 456 }]);
+  const long = { id: 456, name: 'Learning about Translation through Film' };
+  await sync(page, long);
+  // A second sync carries the change the extension worked out, with the course name cut to 30 characters.
+  await page.evaluate(s => window.postMessage({ source: 'soma-extension', type: 'canvas_snapshot', snapshot: s }, window.location.origin), {
+    ...snapshot(long), syncedAt: new Date(Date.now() + 1000).toISOString(),
+    changes: [{ at: new Date().toISOString(), site: 'canvas', type: 'announcement', name: 'Midterm room change', course: 'Learning about Translation thr', url: '' }],
+  });
+  const region = page.getByRole('region', { name: 'What changed' });
+  await expect(region).toContainText('Midterm room change');
+  const row = region.getByRole('listitem');
+  // The kind of change first, then the course, then the announcement.
+  expect((await row.innerText()).split('\n').map(s => s.trim()).filter(Boolean)).toEqual(['Announcement', 'Translation', 'Midterm room change']);
+  await expect(row.locator('span[style*="background"]')).toHaveCSS('background-color', 'rgb(171, 71, 188)');
+});

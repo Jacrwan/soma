@@ -6,7 +6,7 @@ import { asTodoKind } from '../../types';
 import type { PlanBlock } from './PlanEditor';
 import { loadCourseItems, coveredBy, markDone, renameLoggedTime, type CourseItem } from '../../lib/courseItems';
 import { rangeOf, spanMinutes } from '../../lib/clockRange';
-import { subjectForCourse } from '../../lib/canvasDeepSync';
+import { sameWork, subjectForCourse } from '../../lib/canvasDeepSync';
 
 export type LiveBlock = PlanBlock & { todoId?: string; sessionId?: string; subjectId?: string; legacyId?: string };
 export type History = { id:string; subject_id:string; task_text:string; duration_seconds:number; date:string; start_time?:string; end_time?:string };
@@ -190,9 +190,16 @@ export async function savePlanBlock(userId:string,origin:Date,block:PlanBlock,sn
  // ("HW 6" at 1:40 and 3:00, the 3:00 one spent on practice quizzes) used to
  // rename every block of it: the block becomes its own task instead. It is
  // other work, so it leaves the task's Canvas assignment, sections and notes behind.
+ // A deadline is the same: study time given another name ("Review: past
+ // midterm 3 missed problems" in a homework's slot, from Soma or the editor)
+ // is its own task, and the deadline keeps its name and stays on Deadlines
+ // as itself. Renaming it to the same work ("Homework 7: Gleam") or without
+ // a time still renames the deadline.
  const session=snapshot.sessions.find(s=>s.id===original?.sessionId);
- const split=!!previous && !!session && previous.text!==block.title && snapshot.sessions.some(sn=>sn.todoId===previous.id && sn.id!==session.id);
- const kept=split ? {kind:previous!.kind} : previous;
+ const renamed=!!previous && previous.text!==block.title;
+ const offDeadline=renamed && !!previous!.dueDate && !!block.time && !sameWork(previous!.text,block.title);
+ const split=renamed && (offDeadline || (!!session && snapshot.sessions.some(sn=>sn.todoId===previous!.id && sn.id!==session.id)));
+ const kept=split ? (offDeadline ? {} : {kind:previous!.kind}) : previous;
  const todo:Todo={...kept,id:split ? crypto.randomUUID() : previous?.id??crypto.randomUUID(),text:block.title,subjectId:subject.id,status:block.state==='Completed' ? 'done' : block.state==='Partially completed' ? 'in_progress' : 'nothing',date:movedDay || split ? localDate(dateAt(origin,block.day)) : previous?.date??localDate(dateAt(origin,block.day)),estimatedMinutes:split ? block.minutes || undefined : previous?.estimatedMinutes??(block.estimatedMinutes || block.minutes)};
  await storage.saveTodo(todo);
  // Checked off (or unchecked) in the editor: its same-named blocks follow.
@@ -212,8 +219,8 @@ export async function savePlanBlock(userId:string,origin:Date,block:PlanBlock,sn
  // Only the time recorded during this block goes with it: the timer sittings
  // under the old title that overlap where the block was. The rest stays with
  // the task's other blocks.
- if(split && previous!.subjectId===todo.subjectId){
-  const [from,to]=[+new Date(session!.startTime??0),+new Date(session!.endTime??0)];
+ if(split && session && previous!.subjectId===todo.subjectId){
+  const [from,to]=[+new Date(session.startTime??0),+new Date(session.endTime??0)];
   const during=snapshot.history.filter(h=>h.subject_id===todo.subjectId && h.task_text===previous!.text && h.start_time && h.end_time && +new Date(utc(h.start_time))<to && +new Date(utc(h.end_time))>from);
   for(const h of during){const {error}=await supabase.from('timer_sessions').update({task_text:todo.text}).eq('id',h.id).eq('user_id',userId);if(error)throw new Error(`The block was renamed, but its recorded study time is still under "${previous!.text}".`);}
   if(during.length)window.dispatchEvent(new Event('soma_insights_changed'));

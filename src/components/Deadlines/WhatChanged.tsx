@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { recentChanges, subjectForChange, type SnapshotChange } from '../../lib/canvasDeepSync';
+import { canvasCourseOfChange, recentChanges, subjectForChange, type SnapshotChange } from '../../lib/canvasDeepSync';
 import { storage } from '../../lib/storage';
 import { CANVAS_CHANGED } from '../../lib/canvasExtension';
 import { formatDateTime, useTimeFormat } from '../../lib/timeFormat';
@@ -53,14 +53,19 @@ export default function WhatChanged() {
       </div>
       <ul className={`${styles.assignmentList} ${styles.changeList}`}>
         {shown.map(c => {
+          // Laid out like the deadlines below it: the kind of change on top,
+          // then the course's dot and name, then what changed.
+          const subject = subjectForChange(storage.getSubjects(), c);
+          const course = subject?.name ?? canvasCourseOfChange(c)?.name ?? c.course;
           const body = (
             <>
               <span className={`${styles.changeType} ${c.type === 'due_moved' ? styles.changeTypeMoved : ''}`}>{LABELS[c.type]}</span>
+              <span className={styles.dot} style={{ background: subject?.color ?? 'var(--text-muted)' }} />
               <span className={styles.assignmentInfo}>
+                <span className={styles.assignmentCourse}>{[course, c.site === 'canvas' ? '' : SITES[c.site]].filter(Boolean).join(' · ')}</span>
                 <span className={styles.assignmentName}>{c.name}</span>
-                <span className={styles.assignmentCourse}>{[subjectForChange(storage.getSubjects(), c)?.name ?? c.course, SITES[c.site]].filter(Boolean).join(' · ')}</span>
               </span>
-              <span className={styles.dueTime}>{detail(c)}</span>
+              {detail(c) && <span className={styles.dueTime}>{detail(c)}</span>}
             </>
           );
           const key = `${c.site}-${c.type}-${c.assignmentId ?? c.name}-${c.at}`;

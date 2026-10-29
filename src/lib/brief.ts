@@ -1,5 +1,5 @@
 import { storage } from './storage';
-import { recentChanges, subjectForCourse, type SnapshotChange } from './canvasDeepSync';
+import { canvasCourseOfChange, recentChanges, subjectForChange, subjectForCourse, type SnapshotChange } from './canvasDeepSync';
 import { isSubmittable } from '../types';
 
 /**
@@ -51,7 +51,9 @@ export function buildBrief(now = new Date()): Brief {
   return {
     today: due.filter(i => dayOf(i) === today).sort(byTime),
     tomorrow: due.filter(i => dayOf(i) === tomorrow).sort(byTime),
-    changed: recentChanges(1, undefined, now.getTime()).slice(0, 5),
+    // Under the student's course name, as on Deadlines' What changed.
+    changed: recentChanges(1, undefined, now.getTime()).slice(0, 5)
+      .map(c => ({ ...c, course: subjectForChange(storage.getSubjects(), c)?.name ?? canvasCourseOfChange(c)?.name ?? c.course })),
     slipped: slipped.slice(0, 5),
   };
 }

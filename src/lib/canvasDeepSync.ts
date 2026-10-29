@@ -417,14 +417,28 @@ export function subjectForCourse<T extends { name: string; canvasCourseId?: numb
     ?? subjects.find(s => !s.archived && (!courseId || !s.canvasCourseId) && sameCourse(s.name, courseName));
 }
 
-/** The Soma course for a change record, which carries only the site's course name. */
+/**
+ * The Canvas course a change record is about. The record carries only the
+ * course's name, cut to 30 characters by the extension ("Learning about
+ * Translation thr"), so the course is found from the synced assignment or
+ * announcement it names, and only then by name.
+ */
+export function canvasCourseOfChange(c: SnapshotChange, snapshots = getLocalSnapshots()): DeepCourse | undefined {
+  if (c.site !== 'canvas') return undefined;
+  const canvas = canvasSnapshots(snapshots);
+  const courses = canvas.flatMap(s => s.courses);
+  const id = (c.assignmentId ? canvas.flatMap(s => s.assignments).find(a => a.id === c.assignmentId)?.courseId : undefined)
+    ?? (c.type === 'announcement' ? canvas.flatMap(s => s.announcements).find(n => n.title === c.name)?.courseId : undefined);
+  return courses.find(x => x.id === id)
+    ?? courses.find(x => x.name === c.course || (!!c.course && x.name.startsWith(c.course)));
+}
+
+/** The Soma course for a change record (see canvasCourseOfChange). */
 export function subjectForChange<T extends { name: string; canvasCourseId?: number; archived?: boolean }>(
   subjects: T[], c: SnapshotChange, snapshots = getLocalSnapshots(),
 ): T | undefined {
-  const id = c.site === 'canvas'
-    ? canvasSnapshots(snapshots).flatMap(s => s.courses).find(x => x.name === c.course)?.id ?? 0
-    : 0;
-  return subjectForCourse(subjects, id, c.course);
+  const course = canvasCourseOfChange(c, snapshots);
+  return subjectForCourse(subjects, course?.id ?? 0, course?.name ?? c.course);
 }
 
 const workName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
