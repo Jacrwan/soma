@@ -9,6 +9,51 @@ still needed.
 
 ---
 
+## 2026-10-28 (Landing page: one place, a plan that adapts)
+
+### The landing page tells the new story
+- **Why:** the owner asked to update the landing page for everything that
+  shipped since it was written, leading with two points: Soma brings
+  everything together in one place, and it builds a plan that adapts to you.
+- **What:**
+  - Hero: "Your whole semester, in one plan"; the subline names Canvas,
+    syllabi, course websites, grades and calendar. The app mock's sidebar
+    gains Grades. Nav: One place, Adapts to you, Features, Pricing, FAQ.
+  - New "Every class, wherever it lives" section (replaces "Planning the
+    week takes longer than the work"): six sources (Canvas, syllabi, course
+    websites, Gradescope scores, Google Calendar, your own to-dos) wired by
+    lines that draw in on scroll into one "This week" list with each row's
+    source. Gradescope is described as pasted or imported, never synced:
+    the store extension reads Canvas only (2026-10-26).
+  - New "A plan that adapts to you" section: a looping demo of a day where a
+    "What changed" notice (Problem set 5 due a day earlier) arrives and Soma
+    suggests swapping two blocks, with Accept/Dismiss; beside it, five ways
+    it adapts (notices changes, learns your pace from logged sessions, works
+    around your week and the times you set, weighs what counts more, picks
+    up yesterday's unchecked blocks in the morning brief). Plays only while
+    on screen; reduced motion shows the final state.
+  - Features now: morning brief, Plan it, Grades (syllabus-weighted, Canvas
+    plus pasted Gradescope plus typed scores), focus timer, insights. The
+    "Every assignment, synced" and "Classes, commitments and course files"
+    rows moved into the one-place section. How it works copy updated (Plan
+    it, the plan learns from sessions). Section eyebrow labels dropped.
+  - FAQ: Gradescope and non-Canvas classes in one answer; new "How does the
+    plan adapt?" and "Will Soma do my homework?" (no: organizer only);
+    privacy answer says Canvas through the extension, not a feed. CTA and
+    footer copy follow the new message. No em dashes.
+  - Not changed: the page `<title>` and `index.html` meta (SEO wording, the
+    owner's call), the trust strip, pricing numbers (still from `pricing.ts`).
+- **Where:** `src/components/Landing/LandingPage.tsx` only (`SOURCES`,
+  `ONE_LIST`, `AdaptDemo`, new CSS under "One place" and "Adapts").
+- **Guard:** none for landing copy. Checked in the browser at desktop and
+  375px (no sideways scroll; the demo plays and shows its suggestion).
+  `npm run build` passes. Full suite: 625 passed, 7 skipped, 1 failed:
+  `ai-proposal-reliability.spec.ts:77` expects 7 days of free slots and gets
+  6 late in the evening; it fails the same with this change stashed.
+- **Setup:** none.
+
+---
+
 ## 2026-10-28 (Blog: planner apps comparison)
 
 ### Post: the best student planner apps in 2026
