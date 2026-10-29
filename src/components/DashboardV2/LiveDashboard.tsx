@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AgentBrief from './AgentBrief';
+import CatchUp from './CatchUp';
 import { CANVAS_CHANGED } from '../../lib/canvasExtension';
 import { useLocation, useNavigate } from 'react-router-dom';
 import DashboardV2 from './DashboardV2';
@@ -256,6 +257,11 @@ export default function LiveDashboard({userId}:{userId:string}) {
   const retimed=c && (c.time!==b.time || c.day!==b.day);
   return c ? {...withTime,note:c.changeKind==='remove' ? 'Soma suggests deleting this' : c.changeKind==='complete' ? 'Soma suggests marking this done' : c.changeKind==='progress' ? `Soma suggests: ${c.note}` : [c.title!==b.title ? `Soma suggests renaming this to "${c.title}"` : '',retimed ? `${c.title!==b.title ? 'and' : 'Soma suggests'} moving this to ${formatClockRange(c.time)}${c.day!==b.day ? ` ${weekdayName(c.day)}` : ''}` : ''].filter(Boolean).join(' ')} : withTime;
  });
+ /** Catch-Up's plan or the yesterday card's: added as Soma's suggestions and accepted together, as Accept all does. */
+ async function applyBatch(batch:PlanBlock[]){
+  updateProposals(userId,items=>[...items,...batch]);
+  return applyAll(userId,origin,batch.map(b=>b.id),(b,o)=>save(b,true,o));
+ }
  async function acceptAll(){
   const total=proposals.length;
   const failed=await applyAll(userId,origin,undefined,(b,o)=>save(b,true,o));
@@ -264,7 +270,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   else setError('');
  }
  const pulseDays=Array.from({length:7},(_,i)=>snapshot.history.filter(h=>h.date===localDate(dateAt(origin,i-6))).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0));
- return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<AgentBrief/>,due:due.map(x=>{
+ return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<><CatchUp key={localDate(origin)} userId={userId} origin={origin} onApply={applyBatch}/><AgentBrief/></>,due:due.map(x=>{
   // Plan it's sittings for this assignment, and the time logged on them (or on the assignment itself).
   const mine=snapshot.todos.filter(t=>t.subjectId===x.subjectId && isSittingOf(t.text,x.title));
   const seconds=snapshot.history.filter(h=>h.subject_id===x.subjectId && isSittingOf(h.task_text??'',x.title)).reduce((n,h)=>n+(h.duration_seconds||0),0);

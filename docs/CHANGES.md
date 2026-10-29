@@ -9,6 +9,52 @@ still needed.
 
 ---
 
+## 2026-10-29 (Catch-Up and the yesterday card; branch catch-up-preview, not on master)
+
+- **Why:** the owner wants a forgiving way back for a student who fell
+  behind. Store reviews and forum posts show people stop opening a planner once
+  it becomes a pile of overdue work. Two mockup rounds settled the shape:
+  Soma decides and the student accepts in one tap, with plain reasons and no
+  labels like "shrink" or "park". The owner chose never to check work off
+  automatically.
+- **What:**
+  - **Catch-Up** (in the morning brief's place): when 3+ things are behind
+    (overdue, or planned in the last week and didn't happen with under 5 min
+    logged) and the student was away 2+ days, or 6+ things are behind, a card
+    says Soma made a plan to catch them up by a day. "See the plan" shows it by
+    day with one reason per item; "Add to my plan" accepts it all. Rules,
+    with no AI call: overdue first, then by due day, and the bigger grade
+    weight wins a tie. At most 3 things a day; never placed after the due day;
+    long work that won't fit gets a first hour. A block that didn't happen is
+    *moved* forward, not copied; Canvas work with no task gets a new block (as
+    Plan it does). Not worth catching up on: Canvas work over a week late with
+    no late window, and the student's own undated task from 3+ days ago; "Do it
+    anyway" brings either back. "Skip" on any item, plus "Move one thing to
+    tomorrow". `/dashboard?catchup` shows it whenever there's anything to plan
+    (for testing).
+  - **Yesterday card:** yesterday's blocks with 5+ min logged and not checked
+    off. Soma suggests the rest (planned minus logged, or 20 min to wrap up)
+    today, or tomorrow if today is full. "Not right?" offers I finished it, do
+    the rest today/tomorrow, or Leave it. Nothing is saved until "Looks
+    right", and only "I finished it" checks anything off.
+  - Both save through the existing Accept all path (`applyAll`), so validation
+    and the same-named-block rules are unchanged.
+- **Where:** `src/lib/catchUp.ts` (new), `src/components/DashboardV2/CatchUp.tsx`
+  and `CatchUp.module.css` (new), `LiveDashboard.tsx` (`applyBatch`, and the
+  card goes above `AgentBrief`).
+- **Guard:** `tests/catch-up.spec.ts` (the rules) and
+  `tests/catch-up-dashboard.spec.ts` (nothing saved before accepting; a
+  missed block moves rather than being copied; the yesterday card checks nothing
+  off). `npm run build` passes. Full suite: 639 passed, 7 skipped.
+- **Setup / not done:** skips, "Leave it", and "last opened" are kept in
+  this browser's localStorage, not the database (no migration), so a phone and
+  a laptop each have their own. "Away 2+ days" counts from the last time this
+  browser opened the dashboard, so a first visit on a new domain (such as the
+  preview) never counts as away; use `?catchup`. Not checked in dark mode or
+  at phone width in a real browser yet.
+
+---
+
 ## 2026-10-29 (Deadlines: tasks with no kind get a "Not sorted" group)
 
 - **Why:** the owner saw "49 tasks are not sorted… Re-import the course site
