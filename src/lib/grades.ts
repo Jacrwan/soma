@@ -1,30 +1,69 @@
 import { storage } from './storage';
 import { canvasSnapshots, getLocalSnapshots, sameCourse, sameWork, subjectForCourse, GRADESCOPE_HOST, type SourceSnapshot, type GradescopeSnapshot } from './canvasDeepSync';
+import { cachedGradeBooks, guessCategory, NOT_COUNTED, type GradeBook, type GradeCategory } from './gradeBooks';
+import type { Subject } from '../types';
 
 /**
- * The Grades page: one row per course, from what the extension synced.
- * Canvas gives the course grade and each score; Gradescope adds scores for
- * work Canvas doesn't track, under the Canvas course of the same department
- * and number when there is one. No AI, no server: it reads the local copy.
+ * The Grades page: one row per course. Canvas gives the course grade and each
+ * score; Gradescope (unpacked extension builds only) adds scores for work
+ * Canvas doesn't track; the student types in the rest (gradeBooks.ts). All
+ * of a course's scores land on one course: the student's Soma course when
+ * there is one, so Canvas, Gradescope and typed-in scores make one grade.
+ * When the course has a grade book with categories, that grade is weighted
+ * the way its syllabus says. No AI here: the AI only reads the syllabus once.
  */
 
 export type GradeItem = {
+  /** "canvas:123", "gradescope:7001", "manual:<entry id>": what a category pick is saved under. */
+  key: string;
   name: string;
   score: number;
   max: number | null;
   /** score / max in percent, when there is a max. */
   percent: number | null;
-  source: 'canvas' | 'gradescope';
+  source: 'canvas' | 'gradescope' | 'manual';
   /** Canvas's own letter for this score, when it gives one. */
   grade: string | null;
   late: boolean;
   dueAt: string | null;
   url: string;
+  /** The Canvas assignment group it is in. */
+  group: string | null;
+  /** The category it counts in, when the course has categories. */
+  categoryId: string | null;
+  /** Whether the student chose that category, rather than Soma guessing it. */
+  picked: boolean;
+};
+
+export type CategoryResult = {
+  category: GradeCategory;
+  /** The average in this category after drops; null with nothing graded yet. */
+  percent: number | null;
+  count: number;
+  dropped: number;
+};
+
+export type WeightedGrade = {
+  /** Weighted over the categories that have scores; null when none do. */
+  percent: number | null;
+  /** From the syllabus's scale, when it gives one. */
+  letter: string | null;
+  categories: CategoryResult[];
+  /** Scores in no category: not counted until the student picks one. */
+  uncategorized: number;
+  /** The weight of the categories with scores, out of their total. */
+  counted: number;
+  total: number;
 };
 
 export type GradeCourse = {
+  /** What a new grade book is saved under: "subject:<id>", else the synced course. */
   key: string;
+  /** Every key this course is known by, so a book saved under any of them is found. */
+  aliases: string[];
   name: string;
+  subjectId: string | null;
+  archived: boolean;
   /** The course grade as Canvas reports it. Gradescope has none. */
   percent: number | null;
   letter: string | null;
@@ -33,9 +72,14 @@ export type GradeCourse = {
   items: GradeItem[];
   /** Points earned and possible over the scores that have a maximum; the grade when Canvas gives none. */
   points: { earned: number; possible: number; percent: number } | null;
+  /** Canvas's assignment groups, when the course weights them. */
+  canvasGroups: { name: string; weight: number }[];
+  book: GradeBook | null;
+  weighted: WeightedGrade | null;
 };
 
-const percentOf = (score: number, max: number | null) => max && max > 0 ? Math.round((score / max) * 1000) / 10 : null;
+const round1 = (n: number) => Math.round(n * 10) / 10;
+const percentOf = (score: number, max: number | null) => max && max > 0 ? round1((score / max) * 100) : null;
 const byDueDesc = (a: GradeItem, b: GradeItem) => (b.dueAt ?? '').localeCompare(a.dueAt ?? '') || a.name.localeCompare(b.name);
 
 function pointsOf(items: GradeItem[]): GradeCourse['points'] {
@@ -46,49 +90,150 @@ function pointsOf(items: GradeItem[]): GradeCourse['points'] {
   return { earned, possible, percent: percentOf(earned, possible) as number };
 }
 
-/** A course's colour is the one on the student's subject for it (subjectForCourse). */
-function colorOf(canvasId: number, name: string): string | null {
-  const subject = subjectForCourse(storage.getSubjects(), canvasId, name);
-  return subject && !subject.archived ? subject.color : null;
+/** The letter for a percent on a syllabus's scale (highest cutoff first). */
+export function letterFor(percent: number, scale: { letter: string; min: number }[] | null): string | null {
+  return scale?.find(s => percent >= s.min)?.letter ?? null;
 }
 
-export function buildGrades(snapshots: Record<string, SourceSnapshot> = getLocalSnapshots()): GradeCourse[] {
+/**
+ * The grade the syllabus's weights give. Inside a category scores count by
+ * points (earned over possible), after dropping its lowest; across categories
+ * each counts its weight, over the categories that have a score so far, the
+ * way a running course grade is worked out.
+ */
+export function weigh(items: GradeItem[], book: GradeBook): WeightedGrade {
+  const results: CategoryResult[] = book.categories.map(category => {
+    const mine = items.filter(i => i.categoryId === category.id);
+    const scored = mine.filter(i => i.max && i.max > 0).sort((a, b) => (a.percent ?? 0) - (b.percent ?? 0));
+    const dropped = scored.length > category.drop ? category.drop : 0;
+    const lowest = new Set(scored.slice(0, dropped));
+    const counted = mine.filter(i => !lowest.has(i));
+    const possible = counted.reduce((n, i) => n + (i.max ?? 0), 0);
+    const earned = counted.reduce((n, i) => n + i.score, 0);
+    return { category, percent: possible > 0 ? round1((earned / possible) * 100) : null, count: mine.length, dropped };
+  });
+  const live = results.filter(r => r.percent !== null && r.category.weight > 0);
+  const counted = live.reduce((n, r) => n + r.category.weight, 0);
+  const total = book.categories.reduce((n, c) => n + c.weight, 0);
+  const percent = counted > 0 ? round1(live.reduce((n, r) => n + r.category.weight * (r.percent as number), 0) / counted) : null;
+  return {
+    percent, letter: percent !== null ? letterFor(percent, book.scale) : null, categories: results,
+    uncategorized: items.filter(i => !i.categoryId).length, counted, total,
+  };
+}
+
+/** A course's colour is the one on the student's subject for it (subjectForCourse). */
+const colorOf = (subject: Subject | undefined) => subject && !subject.archived ? subject.color : null;
+
+export function buildGrades(
+  snapshots: Record<string, SourceSnapshot> = getLocalSnapshots(),
+  books: GradeBook[] = cachedGradeBooks(),
+  subjects: Subject[] = storage.getSubjects(),
+): GradeCourse[] {
   const courses: GradeCourse[] = [];
-  const canvasIds = new Map<string, number>();
+  /** Names a Gradescope course is matched against: the Canvas name and the student's own. */
+  const names = new Map<GradeCourse, string[]>();
+  const blank = (key: string, name: string, subject?: Subject): GradeCourse => ({
+    key, aliases: [key], name, subjectId: subject?.id ?? null, archived: !!subject?.archived,
+    percent: null, letter: null, color: colorOf(subject), items: [], points: null, canvasGroups: [], book: null, weighted: null,
+  });
 
   for (const snap of canvasSnapshots(snapshots)) {
     for (const c of snap.courses) {
-      const items: GradeItem[] = snap.assignments
-        .filter(a => a.courseId === c.id && a.score !== null && !a.excused)
-        .map(a => ({
-          name: a.name, score: a.score as number, max: a.pointsPossible, percent: percentOf(a.score as number, a.pointsPossible),
-          source: 'canvas' as const, grade: a.grade, late: a.late, dueAt: a.dueAt, url: a.htmlUrl,
-        }));
-      const course: GradeCourse = { key: `${snap.host}:${c.id}`, name: c.name, percent: c.currentScore ?? null, letter: c.currentGrade ?? null, color: colorOf(c.id, c.name), items, points: null };
-      canvasIds.set(course.key, courses.push(course) - 1);
+      const subject = subjectForCourse(subjects, c.id, c.name);
+      const canvasKey = `${snap.host}:${c.id}`;
+      const key = subject && !subject.archived ? `subject:${subject.id}` : canvasKey;
+      let course = courses.find(x => x.key === key);
+      if (!course) {
+        course = blank(key, c.name, subject);
+        courses.push(course);
+        names.set(course, [c.name, ...(subject ? [subject.name] : [])]);
+      }
+      if (!course.aliases.includes(canvasKey)) course.aliases.push(canvasKey);
+      course.percent ??= c.currentScore ?? null;
+      course.letter ??= c.currentGrade ?? null;
+      const groups = snap.groups.filter(g => g.courseId === c.id);
+      if (c.weighted) course.canvasGroups.push(...groups.map(g => ({ name: g.name, weight: g.weight })));
+      for (const a of snap.assignments) {
+        if (a.courseId !== c.id || a.score === null || a.excused) continue;
+        course.items.push({
+          key: `canvas:${a.id}`, name: a.name, score: a.score, max: a.pointsPossible, percent: percentOf(a.score, a.pointsPossible),
+          source: 'canvas', grade: a.grade, late: a.late, dueAt: a.dueAt, url: a.htmlUrl,
+          group: groups.find(g => g.id === a.groupId)?.name ?? null, categoryId: null, picked: false,
+        });
+      }
     }
+  }
+
+  // Every course the student keeps in Soma can take scores, synced or not.
+  for (const s of subjects) {
+    if (s.archived || courses.some(c => c.key === `subject:${s.id}`)) continue;
+    const course = blank(`subject:${s.id}`, s.name, s);
+    courses.push(course);
+    names.set(course, [s.name]);
   }
 
   const gradescope = Object.values(snapshots).find((s): s is GradescopeSnapshot => s.kind === 'gradescope' && s.host === GRADESCOPE_HOST);
   for (const gc of gradescope?.courses ?? []) {
     const label = gc.name || gc.shortName;
-    const home = courses.find(c => sameCourse(c.name, label) || sameCourse(c.name, gc.shortName));
-    const target = home ?? courses[courses.push({ key: `${GRADESCOPE_HOST}:${gc.id}`, name: label, percent: null, letter: null, color: null, items: [], points: null }) - 1];
+    const home = courses.find(c => (names.get(c) ?? [c.name]).some(n => sameCourse(n, label) || sameCourse(n, gc.shortName)));
+    const target = home ?? courses[courses.push(blank(`${GRADESCOPE_HOST}:${gc.id}`, label)) - 1];
+    if (home) home.aliases.push(`${GRADESCOPE_HOST}:${gc.id}`);
     for (const a of gradescope!.assignments) {
       if (a.courseId !== gc.id || a.score === null) continue;
       // A Canvas entry linked to this Gradescope work already carries the score.
       if (target.items.some(i => i.source === 'canvas' && sameWork(i.name, a.name))) continue;
       target.items.push({
-        name: a.name, score: a.score, max: a.maxScore, percent: percentOf(a.score, a.maxScore),
-        source: 'gradescope', grade: null, late: false, dueAt: a.dueAt, url: a.htmlUrl,
+        key: `gradescope:${a.id}`, name: a.name, score: a.score, max: a.maxScore, percent: percentOf(a.score, a.maxScore),
+        source: 'gradescope', grade: null, late: false, dueAt: a.dueAt, url: a.htmlUrl, group: null, categoryId: null, picked: false,
+      });
+    }
+  }
+
+  for (const book of books) {
+    const course = courses.find(c => c.aliases.includes(book.courseKey));
+    if (!course || course.book) continue;
+    course.book = book;
+    for (const e of book.entries) {
+      course.items.push({
+        key: `manual:${e.id}`, name: e.name, score: e.score, max: e.max, percent: percentOf(e.score, e.max),
+        source: 'manual', grade: null, late: false, dueAt: e.date ? `${e.date}T12:00:00` : null, url: '', group: null, categoryId: null, picked: false,
       });
     }
   }
 
   return courses
-    .filter(c => c.percent !== null || c.letter !== null || c.items.length > 0)
-    .map(c => ({ ...c, items: [...c.items].sort(byDueDesc), points: pointsOf(c.items) }))
+    .filter(c => (c.subjectId && !c.archived) || c.percent !== null || c.letter !== null || c.items.length > 0 || c.book)
+    .map(c => {
+      const book = c.book;
+      const ids = new Set(book?.categories.map(x => x.id) ?? []);
+      const items = c.items.map(i => {
+        if (!book?.categories.length) return i;
+        const entryPick = i.source === 'manual' ? book.entries.find(e => `manual:${e.id}` === i.key)?.categoryId : undefined;
+        const chosen = book.picks[i.key] ?? entryPick ?? null;
+        if (chosen === NOT_COUNTED) return { ...i, categoryId: null, picked: true };
+        if (chosen && ids.has(chosen)) return { ...i, categoryId: chosen, picked: true };
+        return { ...i, categoryId: guessCategory(book.categories, i.name, i.group)?.id ?? null };
+      }).sort(byDueDesc);
+      return { ...c, items, points: pointsOf(items), weighted: book?.categories.length ? weigh(items, book) : null };
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export type Headline = { big: string | null; small: string | null; kind: 'weighted' | 'canvas' | 'average' | 'none' };
+
+/**
+ * The course's one grade. Weighted by the syllabus when the student has set
+ * that up and something is graded; else Canvas's course grade; else the
+ * points earned over the points possible.
+ */
+export function headline(c: GradeCourse): Headline {
+  const w = c.weighted;
+  if (w && w.percent !== null) return w.letter ? { big: w.letter, small: showPercent(w.percent), kind: 'weighted' } : { big: showPercent(w.percent), small: null, kind: 'weighted' };
+  if (c.letter) return { big: c.letter, small: c.percent !== null ? showPercent(c.percent) : null, kind: 'canvas' };
+  if (c.percent !== null) return { big: showPercent(c.percent), small: null, kind: 'canvas' };
+  if (c.points) return { big: showPercent(c.points.percent), small: 'average', kind: 'average' };
+  return { big: null, small: null, kind: 'none' };
 }
 
 /** "95.7%" without a trailing .0. */

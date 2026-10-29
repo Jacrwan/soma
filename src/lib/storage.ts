@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { Subject, TimeBlock, TimerSession, CanvasAssignment, CanvasCourse, Todo, TodoSession, GoogleCalendarEvent, ChatMessage, ChatSession, asTodoKind } from '../types';
 import { mergeDeepSync, clearLocalSnapshots, subjectForCourse } from './canvasDeepSync';
+import { clearCachedGradeBooks } from './gradeBooks';
 
 const SOMA_TODOS_KEY = 'soma_todos';
 const SOMA_BLOCKS_KEY = 'soma_blocks';
@@ -1054,6 +1055,7 @@ export const storage = {
     localStorage.removeItem(KEYS.assignmentStatus);
     localStorage.removeItem(KEYS.clearedAssignments);
     clearLocalSnapshots();
+    clearCachedGradeBooks();
     // Remove Canvas-sourced subjects — write-through syncs deletion to Supabase
     const manualOnly = _subjects.filter(s => s.source !== 'canvas');
     storage.setSubjects(manualOnly);

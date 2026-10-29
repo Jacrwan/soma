@@ -12,7 +12,9 @@ const BIO = { id: 'bio', name: 'Biology 101', color: '#66bb6a', archived: false,
 
 const FEED = { id: 123, name: 'Reading response', courseId: 456, courseName: 'Biology 101', dueAt: '2099-01-01T18:00:00Z', htmlUrl: 'https://school.instructure.com/courses/456/assignments/123', status: 'not_started' };
 
-async function setup(page: Page) {
+type Opts = { subjects?: unknown[]; books?: unknown[]; documents?: unknown[]; saved?: Record<string, unknown>[] };
+
+async function setup(page: Page, opts: Opts = {}) {
   await page.addInitScript(a => {
     localStorage.setItem('sb-soma-regression-auth-token', JSON.stringify({ access_token: 't', refresh_token: 'r', token_type: 'bearer', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, user: a }));
   }, account);
@@ -20,7 +22,12 @@ async function setup(page: Page) {
     const req = route.request(), url = new URL(req.url()), table = url.pathname.split('/').pop()!;
     if (url.pathname.includes('/auth/v1/')) return route.fulfill({ json: account });
     if (table === 'settings') return route.fulfill({ json: { data: { onboardingCompleted: true, theme: 'light', canvasIcalUrl: 'https://school.instructure.com/feed.ics' } } });
-    if (table === 'subjects') return route.fulfill({ json: [BIO] });
+    if (table === 'subjects') return route.fulfill({ json: opts.subjects ?? [BIO] });
+    if (table === 'documents') return route.fulfill({ json: opts.documents ?? [] });
+    if (table === 'grade_books') {
+      if (req.method() === 'POST') { opts.saved?.push(req.postDataJSON()); return route.fulfill({ status: 201, body: '' }); }
+      return route.fulfill({ json: opts.books ?? [] });
+    }
     return route.fulfill({ json: req.headers().accept?.includes('vnd.pgrst.object') ? null : [] });
   });
   await page.route('**/api/stripe', r => r.fulfill({ json: { status: 'active' } }));
@@ -99,8 +106,131 @@ test('Grades: a card per course with its grade and each score, Canvas and Grades
   await expect(astro.getByLabel('Average 75%')).toBeVisible();
 });
 
-test('Grades: says how to get grades before anything has synced', async ({ page }) => {
-  await setup(page);
+test('Grades: says how to get grades before there are any courses', async ({ page }) => {
+  await setup(page, { subjects: [] });
   await page.goto('/grades');
   await expect(page.getByText(/No grades yet/)).toBeVisible();
+});
+
+test('Grades: a course with nothing synced still has a row, to add scores to', async ({ page }) => {
+  await setup(page);
+  await page.goto('/grades');
+  await expect(page.getByRole('button', { name: /^Biology 101, no scores yet/ })).toBeVisible();
+});
+
+// ── Grade books (2026-10-28): syllabus weights, typed-in scores, stars ────────
+
+const CS = { id: 'cs', name: 'CS 61A Fall 2026', color: '#42a5f5', archived: false, source: 'manual' };
+const HW = { id: 'cat-hw', name: 'Homework', weight: 40, covers: 'Weekly homework', drop: 0, match: ['homework', 'hw'] };
+const EXAMS = { id: 'cat-ex', name: 'Exams', weight: 60, covers: 'Midterm and final', drop: 0, match: ['midterm', 'final'] };
+const bioBook = {
+  id: '22222222-2222-4222-8222-222222222222', course_key: 'subject:bio', starred: false, picks: {},
+  categories: [HW, EXAMS], scale: [{ letter: 'A', min: 93 }, { letter: 'B', min: 83 }, { letter: 'C', min: 73 }, { letter: 'D', min: 63 }],
+  // Typed in from Gradescope; no category chosen, so its name puts it in Exams.
+  entries: [{ id: 'e1', name: 'Midterm 1', score: 40, max: 50, categoryId: null, date: '2026-10-15' }],
+};
+
+async function openGrades(page: Page) {
+  await page.goto('/deadlines');
+  await expect(page.getByRole('link', { name: 'Add to Chrome' })).toBeVisible();
+  await send(page, canvas);
+  await page.getByRole('button', { name: 'Grades' }).click();
+  await expect(page).toHaveURL(/\/grades$/);
+}
+
+test('Grades: Canvas and typed-in scores make one grade, weighted the way the syllabus says', async ({ page }) => {
+  const saved: Record<string, unknown>[] = [];
+  await setup(page, { subjects: [BIO, CS], books: [bioBook], saved });
+  await openGrades(page);
+
+  // Homework 9/10 = 90% (Canvas) at 40%, Exams 40/50 = 80% (typed in) at 60%: 84%, a B.
+  const bio = page.getByRole('button', { name: /^Biology 101, 2 graded/ });
+  await expect(bio.getByLabel('Weighted grade B, 84%')).toBeVisible();
+  // A course the student keeps in Soma shows even with nothing synced, so scores can be added.
+  await expect(page.getByRole('button', { name: /^CS 61A Fall 2026, no scores yet/ })).toBeVisible();
+
+  await bio.click();
+  const grading = page.getByRole('region', { name: 'Grading' });
+  await expect(grading.getByRole('listitem').filter({ hasText: 'Homework' })).toContainText('40%');
+  await expect(grading.getByRole('listitem').filter({ hasText: 'Homework' })).toContainText('90%');
+  await expect(grading.getByRole('listitem').filter({ hasText: 'Exams' })).toContainText('80%');
+  await expect(grading).toContainText('Letter grades: A 93+');
+  await expect(page.getByText('Canvas shows 88.5%, from its own scores only.')).toBeVisible();
+  const scores = page.getByRole('region', { name: 'Scores' });
+  await expect(scores.getByRole('listitem').filter({ hasText: 'Midterm 1' })).toContainText('Added by you');
+  await expect(scores.getByLabel('Category for Midterm 1')).toHaveValue('cat-ex');
+
+  // Typing in a Gradescope score, in a category picked from the syllabus's.
+  await scores.getByRole('button', { name: '+ Add a score' }).click();
+  const form = page.getByRole('form', { name: 'Add a score' });
+  await form.getByLabel('Assignment').fill('HW 2');
+  await form.getByLabel('Score', { exact: true }).fill('5');
+  await form.getByLabel('Out of').fill('10');
+  await expect(form.getByLabel('Category').locator('option')).toHaveText(['Soma picks', 'Homework', 'Exams', 'Not counted']);
+  await form.getByLabel('Category').selectOption('Homework');
+  await form.getByRole('button', { name: 'Add' }).click();
+  await expect(form).toHaveCount(0);
+  const added = saved.at(-1) as { course_key: string; entries: { name: string; categoryId: string }[] };
+  expect(added.course_key).toBe('subject:bio');
+  expect(added.entries.map(e => [e.name, e.categoryId])).toEqual([['Midterm 1', null], ['HW 2', 'cat-hw']]);
+  // Homework is now 14/20 = 70%: 0.4 × 70 + 0.6 × 80 = 76%, a C.
+  await expect(page.getByLabel('Weighted grade C, 76%')).toBeVisible();
+
+  // A Canvas score taken out of the grade: Homework 5/10 = 50%, so 68%, a D.
+  await scores.getByLabel('Category for Cell structure homework').selectOption('Not counted');
+  await expect(page.getByLabel('Weighted grade D, 68%')).toBeVisible();
+  expect((saved.at(-1) as { picks: Record<string, string> }).picks).toEqual({ 'canvas:1': 'none' });
+  expect((saved.at(-1) as { entries: unknown[] }).entries).toHaveLength(2);
+});
+
+test('Grades: starred courses are the only ones shown, the rest one click away', async ({ page }) => {
+  const saved: Record<string, unknown>[] = [];
+  await setup(page, { subjects: [BIO, CS], saved });
+  await openGrades(page);
+  await expect(page.getByText('Star the courses you want to see')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Star CS 61A Fall 2026' }).click();
+  await expect(page.getByRole('button', { name: 'Unstar CS 61A Fall 2026' })).toHaveAttribute('aria-pressed', 'true');
+  expect(saved.at(-1)).toMatchObject({ course_key: 'subject:cs', starred: true });
+  await expect(page.getByRole('button', { name: /^Biology 101/ })).toHaveCount(0);
+
+  await page.getByRole('button', { name: '1 other course' }).click();
+  await expect(page.getByRole('button', { name: /^Biology 101, 1 graded/ })).toBeVisible();
+});
+
+test('Grades: the AI reads the categories from the syllabus, and the student checks them before they count', async ({ page }) => {
+  const saved: Record<string, unknown>[] = [];
+  const syllabus = { id: 'doc1', subject_id: 'cs', file_name: 'CS 61A syllabus.pdf', storage_path: 'x', file_type: 'application/pdf', size_bytes: 1, doc_type: 'syllabus', created_at: '2026-08-20T00:00:00Z', extraction_status: 'done', extracted_text: 'Grading: Homework 20% (lowest 2 dropped), Projects 30%, Midterm 20%, Final 30%. A 93, B 83.' };
+  await setup(page, { subjects: [BIO, CS], documents: [syllabus], saved });
+  let prompt = '';
+  await page.route('**/api/chat', route => {
+    prompt = JSON.stringify(route.request().postDataJSON());
+    return route.fulfill({ json: { content: [{ type: 'text', text: JSON.stringify({ categories: [
+      { name: 'Homework', weight: 20, covers: 'Weekly homework; lowest 2 dropped', drop: 2, match: ['hw'] },
+      { name: 'Projects', weight: 30, covers: 'Hog, Cats, Ants, Scheme', drop: 0, match: ['proj'] },
+      { name: 'Midterm', weight: 20, covers: '', drop: 0, match: [] },
+      { name: 'Final', weight: 30, covers: '', drop: 0, match: [] },
+    ], scale: [{ letter: 'A', min: 93 }, { letter: 'B', min: 83 }] }) }] } });
+  });
+  await openGrades(page);
+  await page.getByRole('button', { name: /^CS 61A Fall 2026/ }).click();
+
+  await page.getByRole('button', { name: 'Read grading from CS 61A syllabus.pdf' }).click();
+  // Nothing is saved until the student has looked at it.
+  await expect(page.getByLabel('Category 2 name')).toHaveValue('Projects');
+  expect(prompt).toContain('lowest 2 dropped');
+  expect(saved).toHaveLength(0);
+  await expect(page.getByText('Weights add up to 100%')).toBeVisible();
+  await page.getByLabel('Category 4 weight in percent').fill('25');
+  await expect(page.getByText('Weights add up to 95%')).toBeVisible();
+  await page.getByLabel('Category 4 weight in percent').fill('30');
+  await page.getByRole('button', { name: 'Save grading' }).click();
+  const grading = page.getByRole('region', { name: 'Grading' });
+  await expect(grading.getByRole('listitem')).toHaveCount(4);
+
+  const book = saved.at(-1) as { course_key: string; categories: { name: string; weight: number; drop: number }[]; scale: unknown };
+  expect(book.course_key).toBe('subject:cs');
+  expect(book.categories.map(c => [c.name, c.weight, c.drop])).toEqual([['Homework', 20, 2], ['Projects', 30, 0], ['Midterm', 20, 0], ['Final', 30, 0]]);
+  expect(book.scale).toEqual([{ letter: 'A', min: 93 }, { letter: 'B', min: 83 }]);
+  await expect(grading.getByRole('listitem').filter({ hasText: 'Homework' })).toContainText('Weekly homework; lowest 2 dropped');
 });

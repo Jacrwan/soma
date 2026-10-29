@@ -9,6 +9,69 @@ still needed.
 
 ---
 
+## 2026-10-28 (Grades: syllabus weights, typed-in scores, stars)
+
+### One grade per course from Canvas, Gradescope and scores the student types in
+- **Why:** Gradescope's terms bar reading it, so the store extension can't;
+  students need to type those scores in. A course's scores come from several
+  places and must add up to one grade, weighted the way its syllabus says.
+  The owner also asked for stars to pick which courses show, the dot beside
+  the name instead of above it, and less empty space at the sides.
+- **What:**
+  - **Grade books** (`grade_books`, one row per course): categories (name,
+    weight, what counts, lowest N dropped, words that put an assignment in
+    it), letter scale, typed-in scores, the category picked for each synced
+    score, starred.
+  - **Reading the syllabus:** on a course with no categories, "Read grading
+    from <syllabus>" (the course's documents Soma has read, syllabus first),
+    "Paste the grading section", "Use Canvas's weights" (when Canvas weights
+    its groups; no AI) or "Add them yourself". One Haiku call through
+    `/api/chat` (`readGrading`); a long syllabus is cut to the lines about
+    grading (`gradingPart`). The result opens in an editor (weights total
+    shown) and nothing is saved until "Save grading". Edit reopens it.
+  - **One course, one grade:** courses are keyed by the Soma course
+    (`subject:<id>`), else the synced one; every key a course is known by is
+    an alias, so a book is found however it was saved. Every active Soma
+    course has a row, synced or not, so scores can be typed in for any of
+    them. With categories, the headline is weighted (`weigh`): points within
+    a category after drops, categories by weight over those graded so far.
+    A score goes in its picked category, else the Canvas group of that name,
+    else the category whose words its name holds (`guessCategory`); "Not
+    counted" keeps it out. Without categories the headline is Canvas's grade
+    as before, and the course says how many outside scores it leaves out.
+  - **Course page:** Grading (each category: weight, what counts, average,
+    count; notes for weights not adding to 100, how much is graded so far,
+    scores in no category, the scale) and Scores ("+ Add a score": name,
+    score / out of, category from the syllabus's, date; Edit/Remove on typed
+    ones; a category picker on every score). "Canvas shows 88.5%" when its
+    own grade differs.
+  - **Stars:** when any course is starred only those show, with "N other
+    courses" to reveal the rest. Saves run one at a time, each on the last
+    saved book.
+  - **Layout:** dot in its own column left of the name; max width 1080px,
+    side padding 16–28px; bar column next to the grade.
+  - **Views agree:** the AI's CURRENT COURSE GRADES now come from the Grades
+    page (`buildGrades`/`headline`), marked when weighted. It reads the books
+    cached on this device (`soma_grade_books`, per account), refreshed when
+    Grades opens; "Clear local Soma data" clears it.
+  - Direct visits to /grades load the courses themselves (loading them
+    announces nothing, so the page stayed on "No grades yet").
+  - Account deletion clears `grade_books`; the privacy policy (both copies)
+    and Data Deletion page list entered grades; both dated October 28, 2026.
+- **Where:** `src/lib/gradeBooks.ts` (new), `src/lib/grades.ts`,
+  `src/components/Grades/CourseGrades.tsx` (new), `GradesTab.tsx` and its
+  CSS, `src/lib/aiContext.ts`, `src/lib/storage.ts`, `api/_deleteUserData.ts`,
+  `public/privacy.html`, `src/components/Legal/LegalPage.tsx`.
+- **Guard:** `tests/grades.spec.ts` (weighted grade from Canvas plus a typed-in
+  score; adding a score in a picked category; Not counted; stars and "1 other
+  course"; syllabus read → editor → save, nothing saved before; a course with
+  nothing synced has a row; empty state). Full suite: 611 passed, 7 skipped.
+  Checked in screenshots at 1280px and 375px.
+- **Setup:** run `grade_books_migration.sql` in Supabase. Until then synced
+  grades show as before, and starring or saving says it needs it.
+
+---
+
 ## 2026-10-28 (Plan it)
 
 ### Plan it: spread a due assignment into sittings before it's due

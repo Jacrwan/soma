@@ -15,7 +15,7 @@ export type LegalType =
 
 // Per page, so an edit to one policy doesn't restamp the others. The static
 // /privacy.html and /terms.html carry the same dates.
-const UPDATED: Partial<Record<LegalType, string>> = { privacy: 'October 26, 2026', 'data-deletion': 'September 27, 2026', ai: 'September 27, 2026' };
+const UPDATED: Partial<Record<LegalType, string>> = { privacy: 'October 28, 2026', 'data-deletion': 'October 28, 2026', ai: 'September 27, 2026' };
 const UPDATED_DEFAULT = 'September 24, 2026';
 
 function Privacy() {
@@ -53,7 +53,7 @@ function Privacy() {
           </li>
           <li>
             <strong>App data stored on our servers</strong> — your courses, reading lists and
-            progress, tasks, planned study sessions, timed study sessions, app settings, saved AI chats, and AI memory. These are
+            progress, grades you enter and how each course is graded, tasks, planned study sessions, timed study sessions, app settings, saved AI chats, and AI memory. These are
             linked to your account and stored in Supabase.
           </li>
           <li>
@@ -875,7 +875,7 @@ function DataDeletion() {
         </p>
         <ul>
           <li>Your Soma account (email, authentication credentials) and profile details</li>
-          <li>Your courses, reading lists and progress, tasks, planned sessions, and study time records</li>
+          <li>Your courses, reading lists and progress, grades you entered, tasks, planned sessions, and study time records</li>
           <li>Saved AI chats, AI memory, and AI usage records</li>
           <li>Documents you uploaded, including the files themselves</li>
           <li>Google Calendar connections and their stored tokens</li>
