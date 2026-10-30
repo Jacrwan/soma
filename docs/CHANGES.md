@@ -9,6 +9,30 @@ still needed.
 
 ---
 
+## 2026-10-30 (education level and university readable in Supabase)
+
+- **Why:** the owner wants to look up, in the Supabase dashboard, who is in
+  high school, college or grad school and which university, as a lookup for
+  themselves rather than a feature. The answers sit inside the `settings`
+  table's JSON `data` column (`educationLevel`, `university {name,
+  country}`, since 2026-09-24), which the Table Editor can't filter.
+- **What:** `user_education_view.sql` creates a read-only view,
+  `admin.user_education`: user id, email, sign-up date, education level (as
+  the app's label), university and its country (null unless the level is
+  college or grad; students who never answered show null). It joins
+  `auth.users`, so it lives in its own `admin` schema that the API doesn't
+  expose, with no access for `anon` or `authenticated`; only the dashboard
+  and the service role can read it. Nothing is copied or changed: the app
+  keeps saving to `settings.data` and the view always shows the current
+  answers. No app code changed.
+- **Where:** `user_education_view.sql`.
+- **Guard:** none; no app code changed.
+- **Setup:** run `user_education_view.sql` in the SQL editor, then Table
+  Editor → schema dropdown → `admin` → `user_education`. Never add `admin`
+  to the API's exposed schemas. Remove with `DROP SCHEMA admin CASCADE;`.
+
+---
+
 ## 2026-10-30 (Brain dump: + asks course, length and time)
 
 - **Why:** the owner wanted + to show the open times rather than pick one
@@ -70,7 +94,6 @@ still needed.
   placement test covers the height range, a size change resetting the height,
   and bad stored heights.
 - **Setup:** none.
-
 ---
 
 ## 2026-10-30 (Dashboard widgets go anywhere on the grid)
