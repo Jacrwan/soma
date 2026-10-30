@@ -9,6 +9,57 @@ still needed.
 
 ---
 
+## 2026-10-30 (Dashboard widgets and Customize; branch dashboard-widgets, preview only)
+
+- **Why:** the owner wants the dashboard turned into widgets the student
+  chooses from, each in preset sizes, plus a few new useful widgets. Preview
+  only first.
+- **What:**
+  - The live dashboard is a grid of widgets: 3 columns on desktop, 2 under
+    1100px, 1 on phones, where widgets take their natural height. Sizes are
+    columns × rows: Small 1×1, Wide 2×1, Tall 1×2, Large 2×2, Extra large 2×3,
+    Full width 3×2. A widget never grows with its content; it scrolls inside.
+  - Widgets: **Today's plan** (the old plan column: subject progress, week
+    strip, agenda), **This week** (a small week calendar of the seven days on
+    screen; picking a day opens it in Today's plan), **Focus timer**, **Ask
+    Soma**, **Brain dump**, and three new ones: **Up next** (the block on now,
+    or the next one today, with Focus), **Due soon** (Canvas work due in the
+    days on screen, with Plan it), and **Study this week** (focus minutes for
+    each of the last seven days).
+  - Default layout (new students, or anyone without a saved one): Today's
+    plan Extra large beside Ask Soma Tall and Focus Small, then Brain dump, Up
+    next and Due soon. That's the old two-column dashboard, plus two widgets.
+  - **Customize** (header): each widget gets a bar with its name, a size menu
+    (only that widget's sizes), move earlier/later, and Hide. Widgets can also
+    be dragged. "Add widgets" lists the hidden ones. Widgets can't be used
+    while customizing (`inert`). Done saves, Cancel discards, Reset brings the
+    default back. A failed save says so and stays open.
+  - The block editor and Plan it open as a panel right after Today's plan,
+    beside it on desktop, where they used to replace the right column.
+  - The layout is saved in the student's settings (`dashboardLayout`, through
+    the merging `saveSettings`) and read back through `readLayout`, which
+    drops unknown widgets, sizes it doesn't offer, and repeats. No migration.
+  - The standalone `/dashboard-v2` preview keeps its fixed two columns.
+- **Where:** `src/lib/dashboardLayout.ts`, `src/components/DashboardV2/WidgetGrid.tsx`
+  and `Widgets.tsx` (new); `DashboardV2.tsx` (the render split into parts,
+  Customize state, `layout`/`onLayout` in the runtime); `DashboardV2.module.css`
+  (widget styles); `LiveDashboard.tsx` (loads and saves the layout);
+  `src/lib/storage.ts` (`dashboardLayout` on SomaSettings).
+- **Guard:** `tests/dashboard-widgets.spec.ts`. Default widgets, with the
+  plan beside Ask Soma. Hide, add, resize and move save nothing until Done,
+  then save with every other setting kept and survive a reload. Cancel and
+  Reset work. A failed save stays open. This week opens a day. Study this
+  week totals. The editor opens beside the plan. `readLayout` drops bad
+  entries. Changed on purpose: `tests/dashboard-ai-context.spec.ts` (the
+  chat's panel is now its widget, not the old right column) and
+  `tests/ai-past-work.spec.ts` (its load check takes the first match, since
+  Up next names the block too). Full suite: 654 passed, 7 skipped.
+- **Setup / not done:** preview only, not merged to master. A layout saved on
+  the preview is written to the real account's settings (previews use
+  production Supabase). Master ignores the extra key, so it's harmless.
+
+---
+
 ## 2026-10-30 (Brain dump syncs across devices)
 
 - **Why:** the owner wants the brain dump list to be the same on every device.

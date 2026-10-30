@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import AgentBrief from './AgentBrief';
 import CatchUp from './CatchUp';
 import BrainDump from './BrainDump';
+import { readLayout, type DashboardLayout } from '../../lib/dashboardLayout';
 import { CANVAS_CHANGED } from '../../lib/canvasExtension';
 import { useLocation, useNavigate } from 'react-router-dom';
 import DashboardV2 from './DashboardV2';
@@ -131,6 +132,9 @@ export default function LiveDashboard({userId}:{userId:string}) {
  const today=useCallback(()=>{const now=dateAt(new Date(),0);setOrigin(o=>+o===+now ? o : now);return now;},[]);
  useEffect(()=>{const id=window.setInterval(today,60_000);window.addEventListener('focus',today);document.addEventListener('visibilitychange',today);return()=>{window.clearInterval(id);window.removeEventListener('focus',today);document.removeEventListener('visibilitychange',today);};},[today]);
  const [snapshot,setSnapshot]=useState<Snapshot|null>(null);
+ // The widgets: this browser's copy at once, then the account's (another device may have changed them).
+ const [layout,setLayout]=useState<DashboardLayout>(()=>readLayout(storage.getSomaSettings().dashboardLayout));
+ useEffect(()=>{let gone=false;storage.getSettings().then(s=>{if(!gone && s.dashboardLayout!==undefined)setLayout(readLayout(s.dashboardLayout));}).catch(()=>{});return()=>{gone=true;};},[userId]);
  const [error,setError]=useState('');
  const [busy,setBusy]=useState(false);
  // Shared with the AI page, so a proposal made there shows up here too.
@@ -289,6 +293,12 @@ export default function LiveDashboard({userId}:{userId:string}) {
   const when=day===0 ? 'today' : day===1 ? 'tomorrow' : dateAt(origin,day).toLocaleDateString(undefined,{weekday:'long'});
   return `for ${when}, ${formatClockRange(time)}`;
  }
+ /** Customize's Done: saved with the rest of the settings (merged, never replacing them), then kept in this browser's copy. */
+ async function saveLayout(next:DashboardLayout){
+  await storage.saveSettings({dashboardLayout:next});
+  storage.setSomaSettings({...storage.getSomaSettings(),dashboardLayout:next});
+  setLayout(next);
+ }
  async function acceptAll(){
   const total=proposals.length;
   const failed=await applyAll(userId,origin,undefined,(b,o)=>save(b,true,o));
@@ -297,7 +307,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   else setError('');
  }
  const pulseDays=Array.from({length:7},(_,i)=>snapshot.history.filter(h=>h.date===localDate(dateAt(origin,i-6))).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0));
- return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<CatchUp key={localDate(origin)} userId={userId} origin={origin} onApply={applyBatch}>{catchUp=><AgentBrief catchUp={catchUp}/>}</CatchUp>,dump:<BrainDump userId={userId} onAdd={addFromDump}/>,due:due.map(x=>{
+ return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<CatchUp key={localDate(origin)} userId={userId} origin={origin} onApply={applyBatch}>{catchUp=><AgentBrief catchUp={catchUp}/>}</CatchUp>,dump:<BrainDump userId={userId} onAdd={addFromDump}/>,layout,onLayout:saveLayout,due:due.map(x=>{
   // Plan it's sittings for this assignment, and the time logged on them (or on the assignment itself).
   const mine=snapshot.todos.filter(t=>t.subjectId===x.subjectId && isSittingOf(t.text,x.title));
   const seconds=snapshot.history.filter(h=>h.subject_id===x.subjectId && isSittingOf(h.task_text??'',x.title)).reduce((n,h)=>n+(h.duration_seconds||0),0);

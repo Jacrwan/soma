@@ -193,6 +193,7 @@ test('the dashboard conversation is cleared by a reload', async ({ page }) => {
   await expect(page.getByRole('log')).not.toContainText('remember this message');
 });
 
+// Since 2026-10-30 the chat is a widget: its panel is the widget, not the old right column.
 test('a long conversation scrolls inside the chat instead of stretching the page', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await setup(page);
@@ -201,7 +202,7 @@ test('a long conversation scrolls inside the chat instead of stretching the page
   await expect(log).toBeVisible();
   const size = () => page.evaluate(() => {
     const el = document.querySelector('[role="log"]') as HTMLElement;
-    return { panel: Math.round((el.closest('aside') as HTMLElement).getBoundingClientRect().height), page: document.documentElement.scrollHeight, visible: el.clientHeight, content: el.scrollHeight, atBottom: Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop) < 4 };
+    return { panel: Math.round((el.closest('[data-widget]') ?? el.closest('aside') as HTMLElement).getBoundingClientRect().height), page: document.documentElement.scrollHeight, visible: el.clientHeight, content: el.scrollHeight, atBottom: Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop) < 4 };
   });
   const before = await size();
 

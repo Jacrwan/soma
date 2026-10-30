@@ -332,3 +332,108 @@
 .dueProgress{color:var(--tone,var(--text-secondary))}
 .dueUnplanned{color:var(--text-secondary);font-style:normal}
 @media (max-width:600px){.planItResult li{grid-template-columns:1fr auto}.planItResult li strong{grid-column:1/-1}.planItLogRow{grid-template-columns:1fr 1fr}}
+
+/* ── Widgets (WidgetGrid.tsx, Widgets.tsx): the live dashboard as a grid of
+   preset sizes. Columns × rows come from lib/dashboardLayout.ts; a widget
+   never grows with its content, it scrolls inside. */
+.headerTools{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.headerTools .clock{margin-left:6px}
+.customize{display:inline-flex;align-items:center;gap:6px;font-size:12px}
+.layoutDone{background:var(--accent)!important;border-color:var(--accent)!important;color:#fff!important;font-weight:500}
+.layoutError{margin-top:10px;font-size:12px;color:var(--danger)}
+.layoutHint{margin-top:10px;font-size:12px;color:var(--text-secondary)}
+.widgetGrid{--row:178px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:var(--row);grid-auto-flow:row dense;gap:16px;margin-top:20px}
+.c1{grid-column:span 1}.c2{grid-column:span 2}.c3{grid-column:span 3}
+.r1{grid-row:span 1}.r2{grid-row:span 2}.r3{grid-row:span 3}
+.widget{position:relative;display:flex;flex-direction:column;min-width:0;min-height:0}
+.widgetBody{flex:1;min-height:0;display:flex;flex-direction:column}
+.widgetBody>*,.widget[data-widget=panel]>*{flex:1;min-height:0;margin:0!important;overflow:auto}
+.widgetEmpty{grid-column:1/-1;font-size:13px;color:var(--text-secondary);padding:24px 0}
+.widgetCard,.planCard{border:1px solid var(--border);border-radius:10px;background:var(--bg);padding:16px 18px}
+.widgetCard .sectionHeading h2,.planCard .sectionHeading h2{font-size:15px}
+.widgetCard .sectionHeading a{font-size:12px;color:var(--text-secondary)}
+.widgetCard .description{margin:6px 0 0}
+/* Today's plan in a widget: the column it was, made to fit a card. */
+.planCard .progress{margin-top:0}
+.planCard .week{margin:12px 0 14px}
+.planCard .week button{padding:6px 2px;gap:1px}
+.planCard .section{margin-bottom:0}
+.planCard .description{margin:4px 0 10px}
+/* Ask Soma and Focus fill their widget; the conversation scrolls inside. */
+.widget .chat{display:flex;flex-direction:column;overflow:hidden;min-height:0;padding:14px 16px}
+.widget .conversation{flex:1 1 0;height:0;min-height:60px;overflow-y:auto}
+.widget .chat textarea{height:58px;min-height:58px}
+.widget .focus{padding:14px 16px}
+.widget .focus .timer{font-size:34px;margin:6px 0}
+.widget .focus small{margin-top:8px}
+.r2 .focus .timer,.r3 .focus .timer{font-size:48px;margin:18px 0}
+/* Customizing: the widgets can't be used, only arranged. */
+.customizing .widget{cursor:grab}
+.customizing .widgetBody{opacity:.55;pointer-events:none;user-select:none}
+.customizing .widget::after{content:"";position:absolute;inset:0;border:1.5px dashed var(--text-secondary);border-radius:10px;pointer-events:none}
+.widgetBar{position:absolute;z-index:2;top:8px;left:8px;right:8px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--bg);box-shadow:0 2px 8px oklch(0% 0 0 / .08);font-size:12px}
+.widgetBar strong{font-weight:600;margin-right:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.widgetBar select{font:inherit;font-size:12px;min-height:28px;padding:2px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary)}
+.widgetBar button{display:inline-grid;place-items:center;width:28px;height:28px;min-height:0;padding:0}
+.widgetGrip{color:var(--text-secondary);flex:none}
+.widgetTray{margin-top:22px;border:1px solid var(--border);border-radius:10px;background:var(--bg);padding:16px 18px}
+.widgetTray h2{font-size:15px;font-weight:600}
+.widgetTray ul{list-style:none;padding:0;margin:10px 0 0;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
+.widgetTray li{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px}
+.widgetTray li div{display:grid;gap:3px;min-width:0}
+.widgetTray li strong{font-size:13px;font-weight:550}
+.widgetTray li span{font-size:11px;line-height:1.5;color:var(--text-secondary)}
+.widgetTray li button{display:inline-flex;align-items:center;gap:4px;flex:none;font-size:12px}
+/* Up next */
+.nextBlock{display:grid;gap:2px;margin-top:10px;padding:8px 10px;border-left:3px solid var(--tone,var(--border));border-radius:6px;background:color-mix(in oklch,var(--tint,var(--bg-secondary)),var(--bg) 50%)}
+.nextWhen{font-size:11px;font-weight:600;color:var(--tone,var(--text-secondary))}
+.nextBlock strong{font-size:14px;font-weight:550;overflow-wrap:anywhere}
+.nextBlock small{font-size:11px;color:var(--text-secondary)}
+.widgetAction{display:inline-flex;align-items:center;gap:5px;margin-top:10px;font-size:12px}
+.widgetList{list-style:none;padding:0;margin:10px 0 0;display:grid;gap:4px;font-size:12px}
+.widgetList li{display:flex;gap:8px;min-width:0}
+.widgetList li span{flex:none;min-width:58px;color:var(--text-secondary);font-variant-numeric:tabular-nums}
+/* Due soon */
+.dueList{list-style:none;padding:0;margin:8px 0 0;display:grid;gap:2px}
+.dueList li{display:flex;align-items:center;gap:8px;padding:6px 0 6px 8px;border-left:3px solid var(--tone,var(--border))}
+.dueList li+li{border-top:1px solid var(--border)}
+.dueList li>span{flex:1;min-width:0;display:grid;gap:1px}
+.dueList strong{font-size:12px;font-weight:550;overflow-wrap:anywhere}
+.dueList small{font-size:11px;color:var(--text-secondary)}
+.dueList button{display:inline-grid;place-items:center;width:28px;height:28px;min-height:0;padding:0;flex:none}
+/* Study this week */
+.studyBars{flex:1;min-height:70px;display:grid;grid-template-columns:repeat(7,1fr);gap:6px;align-items:end;margin-top:10px;height:calc(100% - 64px)}
+.studyBars div{height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px}
+.studyBars span{display:block;width:100%;max-width:26px;min-height:2px;border-radius:4px 4px 2px 2px;background:color-mix(in oklch,var(--accent),var(--bg) 55%)}
+.studyToday span{background:var(--accent)}
+.studyBars small{font-size:10px;color:var(--text-secondary)}
+.widgetFoot{margin-top:6px;font-size:11px;color:var(--text-secondary)}
+.widgetCard:has(.studyBars){display:flex;flex-direction:column}
+/* This week */
+.glance{display:flex;flex-direction:column}
+.glanceGrid{flex:1;min-height:0;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin-top:10px}
+.glanceDay{display:flex;flex-direction:column;min-height:0;min-width:0}
+.glanceDay button{display:flex;flex-direction:column;align-items:center;gap:0;padding:3px 0;min-height:0;background:transparent;border-color:transparent}
+.glanceDay button[aria-pressed=true]{border-color:var(--text-secondary);background:var(--bg-secondary)}
+.glanceDay button span{font-size:10px;color:var(--text-secondary)}
+.glanceDay button strong{font-size:14px;font-weight:550}
+.glanceTrack{position:relative;flex:1;min-height:40px;margin-top:4px;border-radius:6px;background:var(--bg-secondary)}
+.glanceTrack i{position:absolute;left:3px;right:3px;min-height:3px;border-radius:3px;background:var(--tone)}
+.glanceTrack i.glanceEvent{background:color-mix(in oklch,var(--text-secondary),var(--bg) 55%)}
+.glanceTrack i.glanceProposal{background:transparent;border:1px dashed var(--tone)}
+.glanceNow{position:absolute;left:0;right:0;height:2px;background:var(--danger);border-radius:1px}
+.glanceDue{position:absolute;left:2px;right:2px;bottom:3px;font-size:9px;font-style:normal;text-align:center;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media(min-height:860px){.widgetGrid{--row:196px}}
+@media(max-width:1100px){.widgetGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.c3{grid-column:span 2}}
+@media(max-width:780px){
+  .widgetGrid{grid-template-columns:minmax(0,1fr);grid-auto-rows:auto}
+  .c1,.c2,.c3{grid-column:span 1}.r1,.r2,.r3{grid-row:auto}
+  .widgetBody>*,.widget[data-widget=panel]>*{overflow:visible}
+  .widget .conversation{height:200px;flex:none}
+  .studyBars{height:110px}
+  .glanceTrack{min-height:120px}
+  .headerTools{justify-content:flex-start}
+}
+@media(prefers-reduced-motion:no-preference){.customizing .widget{transition:transform .15s ease-out}}
+:global([data-theme=dark]) .live .nextBlock{background:color-mix(in oklch,var(--tone,var(--text-secondary)),var(--bg) 88%)}
+.r1 .focus small{display:none}

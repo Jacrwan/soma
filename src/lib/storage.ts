@@ -35,6 +35,8 @@ export interface SomaSettings {
   university?: { name: string; country: string };
   birthYear?: number;
   bossState?: unknown; // Bosses feature state blob (synced as-is)
+  /** The dashboard's widgets; read through readLayout (lib/dashboardLayout.ts), never trusted as-is. */
+  dashboardLayout?: unknown;
 }
 
 

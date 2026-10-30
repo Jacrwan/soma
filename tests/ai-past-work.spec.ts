@@ -71,7 +71,8 @@ const contextOf = (body: { context: string }) => JSON.parse(body.context.match(/
 test('a chat carried past midnight reads yesterday as yesterday', async ({ page }) => {
   const bodies = await setup(page);
   await page.goto('/dashboard');
-  await expect(page.getByText('Math 53 Practice Midterm')).toBeVisible();
+  // .first(): since 2026-10-30 the Up next widget names the block too.
+  await expect(page.getByText('Math 53 Practice Midterm').first()).toBeVisible();
   await ask(page, "for the rest of today like 8:50 to 10 i'll do the math practice midterm", 1);
 
   // Past midnight, with the page left open and nothing done on the midterm.
@@ -104,7 +105,7 @@ test('a chat carried past midnight reads yesterday as yesterday', async ({ page 
 test('Canvas work checked off as a task is not listed as due, and past dates say so', async ({ page }) => {
   const bodies = await setup(page);
   await page.goto('/dashboard');
-  await expect(page.getByText('Math 53 Practice Midterm')).toBeVisible();
+  await expect(page.getByText('Math 53 Practice Midterm').first()).toBeVisible();
   await page.evaluate(async a => {
     // @ts-expect-error Vite serves this browser-only module at runtime.
     const { setLocalSnapshot } = await import('/src/lib/canvasDeepSync.ts');
