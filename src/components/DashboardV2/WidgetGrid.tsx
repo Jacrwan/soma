@@ -1,14 +1,17 @@
-import { useRef, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, GripVertical, Plus, X } from 'lucide-react';
-import { SIZES, WIDGETS, widgetInfo, type DashboardLayout, type WidgetId, type WidgetSize } from '../../lib/dashboardLayout';
+import { useRef, type CSSProperties, type DragEvent, type ReactNode } from 'react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, GripVertical, Plus, X } from 'lucide-react';
+import { COLUMNS, SIZES, WIDGETS, addWidget, boxOf, hideWidget, placeAt, sameLayout, settle, widgetInfo, type Box, type DashboardLayout, type WidgetId, type WidgetSize } from '../../lib/dashboardLayout';
 import styles from './DashboardV2.module.css';
 
 /**
  * The live dashboard's widgets on a grid (lib/dashboardLayout.ts). While
- * customizing, each widget gets a bar to resize, move or hide it, widgets can
- * be dragged into place, and hidden ones wait in "Add widgets"; the widgets
- * themselves can't be used until Done. `panel` (the block editor or Plan it)
- * sits right after Today's plan, as it sat beside the plan before.
+ * customizing, a widget can be dragged to any spot, or moved a step at a time
+ * with its arrows; it can also be resized or hidden, and hidden ones wait in
+ * "Add widgets". The widgets themselves can't be used until Done. `panel`
+ * (the block editor or Plan it) opens beside Today's plan.
+ *
+ * On the desktop grid each widget sits at its own column and row. Narrower
+ * screens have fewer columns, so there the widgets flow in reading order.
  */
 
 type Props = {
@@ -19,46 +22,88 @@ type Props = {
   panel?: ReactNode;
 };
 
-const sizeClass = (size: WidgetSize) => `${styles[`c${SIZES[size].cols}`]} ${styles[`r${SIZES[size].rows}`]}`;
+const sizeClass = (w: number, h: number) => `${styles[`c${w}`]} ${styles[`r${h}`]}`;
+const place = (b: Box) => ({ '--x': b.x + 1, '--y': b.y + 1, '--w': b.w, '--h': b.h }) as CSSProperties;
+
+/** Beside the plan, on the side with room; under it when the plan is full width. */
+function withPanel(layout: DashboardLayout): Box[] {
+  const boxes: Box[] = layout.map(boxOf);
+  const plan = boxes.find(b => b.id === 'plan');
+  const x = !plan ? 0 : plan.x + plan.w < COLUMNS ? plan.x + plan.w : plan.x > 0 ? plan.x - 1 : 0;
+  const y = !plan ? 0 : plan.w === COLUMNS ? plan.y + plan.h : plan.y;
+  return settle([...boxes, { id: 'panel', x, y, w: 1, h: 3 }], 'panel');
+}
 
 export default function WidgetGrid({ layout, customizing, onChange, render, panel }: Props) {
-  const dragging = useRef<WidgetId | null>(null);
-  const move = (id: WidgetId, to: number) => {
-    const from = layout.findIndex(w => w.id === id);
-    if (from < 0 || to < 0 || to >= layout.length || from === to) return;
-    const next = [...layout]; const [w] = next.splice(from, 1); next.splice(to, 0, w); onChange(next);
+  const grid = useRef<HTMLDivElement>(null);
+  // While dragging: which widget, the layout it started from, and which cell of the widget was grabbed.
+  const drag = useRef<{ id: WidgetId; from: DashboardLayout; grab: { x: number; y: number }; at: string } | null>(null);
+
+  // The grid's cell under the pointer, or null when the grid isn't the desktop one.
+  const cellAt = (e: { clientX: number; clientY: number }, rect = grid.current?.getBoundingClientRect()) => {
+    const el = grid.current; if (!el || !rect) return null;
+    const css = getComputedStyle(el);
+    if (css.gridTemplateColumns.split(' ').length !== COLUMNS) return null;
+    const gapX = parseFloat(css.columnGap) || 0, gapY = parseFloat(css.rowGap) || 0;
+    const colW = (el.clientWidth - gapX * (COLUMNS - 1)) / COLUMNS, rowH = parseFloat(css.gridAutoRows) || 1;
+    return { x: Math.floor((e.clientX - rect.left + gapX / 2) / (colW + gapX)), y: Math.floor((e.clientY - rect.top + gapY / 2) / (rowH + gapY)) };
   };
+
+  function startDrag(e: DragEvent<HTMLDivElement>, id: WidgetId) {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', id);
+    const own = cellAt(e, e.currentTarget.getBoundingClientRect()) ?? { x: 0, y: 0 };
+    drag.current = { id, from: layout, grab: { x: Math.max(0, own.x), y: Math.max(0, own.y) }, at: '' };
+  }
+  function dragOver(e: DragEvent<HTMLDivElement>, over?: WidgetId) {
+    const d = drag.current; if (!customizing || !d) return;
+    e.preventDefault();
+    const cell = cellAt(e);
+    // Fewer columns than the desktop: the widget takes the spot of the one it's over.
+    const target = cell ? { x: cell.x - d.grab.x, y: cell.y - d.grab.y } : (() => { const o = d.from.find(p => p.id === over); return o && over !== d.id ? { x: o.x, y: o.y } : null; })();
+    if (!target) return;
+    const key = `${target.x},${target.y}`;
+    if (key === d.at) return;
+    d.at = key;
+    onChange(placeAt(d.from, d.id, target.x, target.y));
+  }
+
   const hidden = WIDGETS.filter(w => !layout.some(p => p.id === w.id));
-  const panelAt = panel && !customizing ? Math.max(0, layout.findIndex(w => w.id === 'plan')) : -1;
+  const boxes = panel && !customizing ? withPanel(layout) : layout.map(boxOf);
+  const moves = (id: WidgetId, x: number, y: number) => {
+    const next = placeAt(layout, id, x, y);
+    return sameLayout(next, layout) ? undefined : () => onChange(next);
+  };
 
   return <>
-    <div className={`${styles.widgetGrid}${customizing ? ` ${styles.customizing}` : ''}`}>
+    <div ref={grid} className={`${styles.widgetGrid}${customizing ? ` ${styles.customizing}` : ''}`} onDragOver={e => dragOver(e)} onDrop={e => e.preventDefault()}>
       {layout.length === 0 && !customizing && <p className={styles.widgetEmpty}>Your dashboard is empty. Press Customize to add widgets.</p>}
-      {panelAt >= 0 && layout[panelAt]?.id !== 'plan' && <div className={`${styles.widget} ${styles.c1} ${styles.r3}`} data-widget="panel">{panel}</div>}
-      {layout.map((w, i) => {
+      {boxes.map(b => {
+        if (b.id === 'panel') return <div key="panel" className={`${styles.widget} ${styles.placed} ${sizeClass(1, 3)}`} style={place(b)} data-widget="panel">{panel}</div>;
+        const w = layout.find(p => p.id === b.id)!;
         const info = widgetInfo(w.id);
-        return [
-          <div key={w.id} data-widget={w.id} className={`${styles.widget} ${sizeClass(w.size)}`}
-            draggable={customizing}
-            onDragStart={e => { dragging.current = w.id; e.dataTransfer.effectAllowed = 'move'; }}
-            onDragOver={e => { if (!customizing || !dragging.current) return; e.preventDefault(); if (dragging.current !== w.id) move(dragging.current, i); }}
-            onDragEnd={() => { dragging.current = null; }}
-            onDrop={e => e.preventDefault()}>
-            {customizing && <div className={styles.widgetBar} role="group" aria-label={`${info.name} widget`}>
-              <GripVertical size={14} aria-hidden="true" className={styles.widgetGrip}/>
-              <strong>{info.name}</strong>
-              <select aria-label={`Size of ${info.name}`} value={w.size} disabled={info.sizes.length < 2}
-                onChange={e => onChange(layout.map(p => p.id === w.id ? { ...p, size: e.target.value as WidgetSize } : p))}>
-                {info.sizes.map(s => <option key={s} value={s}>{SIZES[s].label}</option>)}
-              </select>
-              <button type="button" aria-label={`Move ${info.name} earlier`} title="Move earlier" disabled={i === 0} onClick={() => move(w.id, i - 1)}><ArrowUp size={14}/></button>
-              <button type="button" aria-label={`Move ${info.name} later`} title="Move later" disabled={i === layout.length - 1} onClick={() => move(w.id, i + 1)}><ArrowDown size={14}/></button>
-              <button type="button" aria-label={`Hide ${info.name}`} title="Hide" onClick={() => onChange(layout.filter(p => p.id !== w.id))}><X size={14}/></button>
-            </div>}
-            <div className={styles.widgetBody} inert={customizing || undefined}>{render(w.id, w.size)}</div>
-          </div>,
-          i === panelAt && w.id === 'plan' ? <div key="panel" className={`${styles.widget} ${styles.c1} ${styles.r3}`} data-widget="panel">{panel}</div> : null,
+        const step = (dx: number, dy: number) => moves(w.id, w.x + dx, w.y + dy);
+        const arrows: [string, (() => void) | undefined, ReactNode][] = [
+          ['left', step(-1, 0), <ArrowLeft size={14}/>], ['up', step(0, -1), <ArrowUp size={14}/>],
+          ['down', step(0, 1), <ArrowDown size={14}/>], ['right', step(1, 0), <ArrowRight size={14}/>],
         ];
+        return <div key={w.id} data-widget={w.id} className={`${styles.widget} ${styles.placed} ${sizeClass(b.w, b.h)}`} style={place(b)}
+          draggable={customizing}
+          onDragStart={e => startDrag(e, w.id)}
+          onDragOver={e => dragOver(e, w.id)}
+          onDragEnd={() => { drag.current = null; }}>
+          {customizing && <div className={styles.widgetBar} role="group" aria-label={`${info.name} widget`}>
+            <GripVertical size={14} aria-hidden="true" className={styles.widgetGrip}/>
+            <strong>{info.name}</strong>
+            <select aria-label={`Size of ${info.name}`} value={w.size} disabled={info.sizes.length < 2}
+              onChange={e => onChange(placeAt(layout, w.id, w.x, w.y, e.target.value as WidgetSize))}>
+              {info.sizes.map(s => <option key={s} value={s}>{SIZES[s].label}</option>)}
+            </select>
+            {arrows.map(([way, go, icon]) => <button key={way} type="button" aria-label={`Move ${info.name} ${way}`} title={`Move ${way}`} disabled={!go} onClick={go}>{icon}</button>)}
+            <button type="button" aria-label={`Hide ${info.name}`} title="Hide" onClick={() => onChange(hideWidget(layout, w.id))}><X size={14}/></button>
+          </div>}
+          <div className={styles.widgetBody} inert={customizing || undefined}>{render(w.id, w.size)}</div>
+        </div>;
       })}
     </div>
     {customizing && <section className={styles.widgetTray} aria-labelledby="widget-tray-title">
@@ -66,7 +111,7 @@ export default function WidgetGrid({ layout, customizing, onChange, render, pane
       {hidden.length === 0 ? <p className={styles.description}>Every widget is on your dashboard.</p> : <ul>
         {hidden.map(info => <li key={info.id}>
           <div><strong>{info.name}</strong><span>{info.description}</span></div>
-          <button type="button" aria-label={`Add ${info.name}`} onClick={() => onChange([...layout, { id: info.id, size: info.size }])}><Plus size={14}/> Add</button>
+          <button type="button" aria-label={`Add ${info.name}`} onClick={() => onChange(addWidget(layout, info.id))}><Plus size={14}/> Add</button>
         </li>)}
       </ul>}
     </section>}

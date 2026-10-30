@@ -9,6 +9,38 @@ still needed.
 
 ---
 
+## 2026-10-30 (Dashboard widgets go anywhere on the grid)
+
+- **Why:** the owner wanted to put Focus right under Ask Soma, and couldn't.
+  Widgets only had an order, and the grid filled spots in that order.
+- **What:**
+  - Each widget now has its own column and row (`x`, `y` in
+    `dashboardLayout`). Customize lets a widget be dragged to any spot.
+  - Each widget's bar has four arrows (left, up, down, right). An arrow is
+    disabled when that move would change nothing.
+  - Placing works like a phone home screen:
+    - Dropping a widget on one of the same size swaps the two.
+    - Moving down onto widgets below goes under them.
+    - Anything else the widget lands on moves down.
+    - Then every widget rises into the space above it, so there are no holes.
+  - Hiding a widget lets the ones below rise. Adding one puts it in the first
+    free spot.
+  - The block editor opens beside the plan, and whatever it lands on moves
+    down.
+  - Narrower screens (1100px and under) have fewer columns, so widgets flow
+    in reading order there.
+  - Saved layouts with no positions take the spots the old grid gave them.
+- **Where:** `src/lib/dashboardLayout.ts` (`placeAt`, `settle`, `addWidget`,
+  `hideWidget`, `readLayout`), `WidgetGrid.tsx`, `DashboardV2.module.css`
+  (`.placed`), and the Customize hint in `DashboardV2.tsx`.
+- **Guarded by:** `tests/dashboard-widgets.spec.ts`. It covers dragging Focus
+  under Ask Soma, plus Customize with hide, add, resize, the right arrow and a
+  reload. Placement tests cover swaps, moving down and up, staying on the grid,
+  and stored layouts with overlaps or bad spots.
+- **Setup:** none; the layout still lives in settings.
+
+---
+
 ## 2026-10-30 (Dashboard widgets and Customize; live)
 
 - **Why:** the owner wants the dashboard turned into widgets the student

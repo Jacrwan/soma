@@ -1,11 +1,12 @@
 import { test, expect, type Page } from '@playwright/test';
-import { DEFAULT_LAYOUT, readLayout } from '../src/lib/dashboardLayout';
+import { DEFAULT_LAYOUT, placeAt, readLayout } from '../src/lib/dashboardLayout';
 
 /**
  * The dashboard as widgets (2026-10-30): Today's plan, This week, Focus, Ask
  * Soma, Brain dump, Up next, Due soon and Study this week, each at a preset
- * size. Customize adds, hides, resizes and moves them; Done saves the layout
- * in the student's settings, so it follows them to every device.
+ * size. Customize adds, hides, resizes and moves them, to any spot on the
+ * grid; Done saves the layout in the student's settings, so it follows them
+ * to every device.
  */
 
 const account = { id: '11111111-1111-4111-8111-111111111111', email: 'student@example.com', aud: 'authenticated', role: 'authenticated', created_at: '2025-01-01T00:00:00Z', app_metadata: {}, user_metadata: {} };
@@ -77,19 +78,21 @@ test('Customize: hide, add, resize and move widgets; nothing is saved until Done
   // The widgets can't be used while arranging them.
   await expect(page.locator('[data-widget=plan] > [inert]')).toHaveCount(1);
   expect(await page.locator('[data-widget] > [inert]').count()).toBe(DEFAULT_LAYOUT.length);
+  await expect(page.getByRole('button', { name: 'Move Today’s plan left' })).toBeDisabled();
 
+  // Without Ask Soma, the widgets under it rise into its space.
   await page.getByRole('button', { name: 'Hide Ask Soma' }).click();
-  await page.getByRole('button', { name: 'Add This week' }).click();
   await page.getByRole('button', { name: 'Add Study this week' }).click();
-  await page.getByRole('combobox', { name: 'Size of Brain dump' }).selectOption({ label: 'Tall' });
-  await page.getByRole('button', { name: 'Move Up next earlier' }).click();
+  // Brain dump made wide pushes Up next down; moved right, Up next rises into the free spot.
+  await page.getByRole('combobox', { name: 'Size of Brain dump' }).selectOption({ label: 'Wide' });
+  await page.getByRole('button', { name: 'Move Up next right' }).click();
   expect(state.saves).toHaveLength(0);
 
   await page.getByRole('button', { name: 'Done' }).click();
   await expect(page.getByRole('button', { name: 'Customize' })).toBeVisible();
   const saved = [
-    { id: 'plan', size: 'xl' }, { id: 'focus', size: 'small' }, { id: 'next', size: 'small' }, { id: 'dump', size: 'tall' },
-    { id: 'due', size: 'small' }, { id: 'calendar', size: 'large' }, { id: 'stats', size: 'small' },
+    { id: 'plan', size: 'xl', x: 0, y: 0 }, { id: 'focus', size: 'small', x: 2, y: 0 }, { id: 'due', size: 'small', x: 2, y: 1 },
+    { id: 'stats', size: 'small', x: 2, y: 2 }, { id: 'dump', size: 'wide', x: 0, y: 3 }, { id: 'next', size: 'small', x: 2, y: 3 },
   ];
   expect(state.saves.at(-1)?.dashboardLayout).toEqual(saved);
   // Saving the layout keeps every other setting.
@@ -98,8 +101,32 @@ test('Customize: hide, add, resize and move widgets; nothing is saved until Done
   await expect(page.getByRole('heading', { name: 'Ask Soma' })).toHaveCount(0);
 
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'This week', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Study this week' })).toBeVisible();
   expect(await widgetIds(page)).toEqual(saved.map(w => w.id));
+  const next = (await page.locator('[data-widget=next]').boundingBox())!, stats = (await page.locator('[data-widget=stats]').boundingBox())!;
+  expect(Math.abs(next.x - stats.x)).toBeLessThan(2);
+  expect(next.y).toBeGreaterThan(stats.y + stats.height - 1);
+});
+
+test('a widget can be dragged to any spot: Focus goes right under Ask Soma', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  // Saved before widgets had a spot: Focus took the first free one, under the plan.
+  const state = await setup(page, { layout: [{ id: 'plan', size: 'large' }, { id: 'ask', size: 'tall' }, { id: 'focus', size: 'small' }] });
+  await page.goto('/dashboard');
+  const box = (id: string) => page.locator(`[data-widget=${id}]`).boundingBox().then(b => b!);
+  expect(Math.abs((await box('focus')).x - (await box('plan')).x)).toBeLessThan(2);
+
+  await page.getByRole('button', { name: 'Customize' }).click();
+  const grid = page.locator('[data-widget=plan]').locator('..');
+  const gridBox = (await grid.boundingBox())!, ask = await box('ask');
+  await page.locator('[data-widget=focus]').dragTo(grid, { sourcePosition: { x: 40, y: 120 }, targetPosition: { x: ask.x - gridBox.x + ask.width / 2, y: ask.y - gridBox.y + ask.height + 60 } });
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect.poll(() => state.saves.at(-1)?.dashboardLayout).toEqual([
+    { id: 'plan', size: 'large', x: 0, y: 0 }, { id: 'ask', size: 'tall', x: 2, y: 0 }, { id: 'focus', size: 'small', x: 2, y: 2 },
+  ]);
+  const focus = await box('focus'), after = await box('ask');
+  expect(Math.abs(focus.x - after.x)).toBeLessThan(2);
+  expect(focus.y).toBeGreaterThan(after.y + after.height - 1);
 });
 
 test('Cancel puts the dashboard back; Reset brings the default layout', async ({ page }) => {
@@ -149,9 +176,26 @@ test('the block editor opens beside Today’s plan', async ({ page }) => {
   expect(panel.x).toBeGreaterThan(plan.x + plan.width - 1);
 });
 
-test('a stored layout is checked: unknown widgets, bad sizes and repeats are dropped', () => {
-  expect(readLayout([{ id: 'plan', size: 'tiny' }, { id: 'evil', size: 'small' }, { id: 'focus', size: 'tall' }, { id: 'focus', size: 'small' }, 'x', null])).toEqual([{ id: 'plan', size: 'xl' }, { id: 'focus', size: 'tall' }]);
+test('a stored layout is checked: unknown widgets, bad sizes, bad spots, overlaps and repeats are fixed', () => {
+  expect(readLayout([{ id: 'plan', size: 'tiny' }, { id: 'evil', size: 'small' }, { id: 'focus', size: 'tall' }, { id: 'focus', size: 'small' }, 'x', null]))
+    .toEqual([{ id: 'plan', size: 'xl', x: 0, y: 0 }, { id: 'focus', size: 'tall', x: 2, y: 0 }]);
   expect(readLayout('nope')).toEqual(DEFAULT_LAYOUT);
   expect(readLayout(undefined)).toEqual(DEFAULT_LAYOUT);
   expect(readLayout([])).toEqual([]);
+  // Overlapping widgets are pushed apart; a spot off the grid is replaced by the first free one.
+  expect(readLayout([{ id: 'plan', size: 'xl', x: 0, y: 0 }, { id: 'focus', size: 'small', x: 1, y: 1 }, { id: 'calendar', size: 'large', x: 2, y: 0 }]))
+    .toEqual([{ id: 'plan', size: 'xl', x: 0, y: 0 }, { id: 'focus', size: 'small', x: 1, y: 3 }, { id: 'calendar', size: 'large', x: 0, y: 4 }]);
+  // Widgets left with a gap above them rise into it.
+  expect(readLayout([{ id: 'focus', size: 'small', x: 1, y: 5 }])).toEqual([{ id: 'focus', size: 'small', x: 1, y: 0 }]);
+});
+
+test('placing a widget: same-size widgets swap, moving down goes under, anything else moves out of the way', () => {
+  expect(placeAt(DEFAULT_LAYOUT, 'dump', 1, 3).filter(w => ['dump', 'next'].includes(w.id)))
+    .toEqual([{ id: 'next', size: 'small', x: 0, y: 3 }, { id: 'dump', size: 'small', x: 1, y: 3 }]);
+  const column = readLayout([{ id: 'focus', size: 'small', x: 2, y: 0 }, { id: 'ask', size: 'tall', x: 2, y: 1 }]);
+  expect(placeAt(column, 'focus', 2, 1)).toEqual([{ id: 'ask', size: 'tall', x: 2, y: 0 }, { id: 'focus', size: 'small', x: 2, y: 2 }]);
+  expect(placeAt(placeAt(column, 'focus', 2, 1), 'focus', 2, 1)).toEqual([{ id: 'focus', size: 'small', x: 2, y: 0 }, { id: 'ask', size: 'tall', x: 2, y: 1 }]);
+  // A widget can't hang off the grid, and with nothing under it, moving down changes nothing.
+  expect(placeAt(DEFAULT_LAYOUT, 'plan', 2, 0)).toEqual(placeAt(DEFAULT_LAYOUT, 'plan', 1, 0));
+  expect(placeAt(DEFAULT_LAYOUT, 'due', 2, 4)).toEqual(DEFAULT_LAYOUT);
 });
