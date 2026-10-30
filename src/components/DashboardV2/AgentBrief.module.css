@@ -96,6 +96,29 @@
   color: var(--text-secondary);
 }
 
+.barActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.show {
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  min-height: 0;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.show:hover {
+  color: var(--text-primary);
+}
+
+.show:focus-visible,
 .close:focus-visible,
 .primary:focus-visible {
   outline: 2px solid var(--accent);

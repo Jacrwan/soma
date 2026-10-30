@@ -9,6 +9,46 @@ still needed.
 
 ---
 
+## 2026-10-30 (Brain dump card; a hidden morning brief can come back)
+
+- **Why:** the owner found no way to bring the morning brief back after
+  pressing Hide. They also want a place to jot down everything they have to
+  do and put each thing on the schedule with a +, especially for students
+  without the AI.
+- **What:**
+  - **Hidden brief:** a hidden "Good morning" brief now leaves a slim line,
+    "Today's brief is hidden. Show today's brief". If Catch-Up has something,
+    the line keeps the Catch-Up text and button too. "Show" clears the hide for
+    today. Before, it stayed hidden until the next day.
+  - **Brain dump:** a card at the bottom of the dashboard's right column (under
+    Focus). Type a thing and press Enter. Pasting a list adds each line and
+    drops bullets and numbers. + puts that line on the plan with no AI: the
+    first open time this week that fits (the same `freeTime` slot finder Plan
+    it uses, with waiting suggestions counted as taken), saved as a block the
+    student made, like "+ Add block". Course is guessed from the words: the
+    course's name, or its first word such as "math" for MATH 221; otherwise
+    Personal. Length is Plan it's estimate for work it can name (homework,
+    reading, lab…) with a known course, capped at 2h; otherwise 30 min. With no
+    open time this week, it goes on today's list with no time. The line leaves
+    the dump once it's on the plan, and a status line says where it went. ×
+    removes a line. Shown to everyone, AI or not.
+- **Where:** `src/components/DashboardV2/BrainDump.tsx` and
+  `BrainDump.module.css` (new); `LiveDashboard.tsx` (`addFromDump`, the `dump`
+  slot); `DashboardV2.tsx` (`dump` in the runtime, after Focus);
+  `AgentBrief.tsx` and `AgentBrief.module.css` (the hidden line);
+  `src/lib/brief.ts` (`showBriefAgain`); `src/lib/planIt.ts` (`kindOf`
+  exported).
+- **Guard:** `tests/brain-dump.spec.ts`. Lines survive a reload. + saves one
+  block today after the taken 9–10 slot, 30 min. × removes. A pasted list
+  becomes separate lines, and "math pset 4" lands in MATH 221. A hidden brief
+  comes back with "Show today's brief" and stays back after a reload.
+- **Setup / not done:** the brain dump list is kept in this browser's
+  localStorage (`soma_brain_dump:<user>`), not the database, so a phone and a
+  laptop each have their own list. Syncing it would need a new table or
+  column (a migration), so ask first.
+
+---
+
 ## 2026-10-30 (Catch-Up's button moves into the morning brief)
 
 - **Why:** the owner meant the "Good morning. Here's your day." card, not the

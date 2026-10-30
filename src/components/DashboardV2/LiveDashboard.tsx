@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AgentBrief from './AgentBrief';
 import CatchUp from './CatchUp';
+import BrainDump from './BrainDump';
 import { CANVAS_CHANGED } from '../../lib/canvasExtension';
 import { useLocation, useNavigate } from 'react-router-dom';
 import DashboardV2 from './DashboardV2';
@@ -13,7 +14,9 @@ import { listDocuments } from '../../lib/documents';
 import { askSoma, applyProposal, applyAll, dismissProposal, type ApplyOptions } from '../../lib/assistant';
 import { pinBlock, pinKey } from '../../lib/pinnedBlocks';
 import { useProposals, updateProposals, getProposals } from '../../lib/proposalStore';
-import { estimate as planEstimate, isSittingOf, placeSittings, type PlanTarget } from '../../lib/planIt';
+import { estimate as planEstimate, isSittingOf, kindOf, placeSittings, type PlanTarget } from '../../lib/planIt';
+import { freeTime } from '../../lib/aiPlanning';
+import { clockOf, rangeOf } from '../../lib/clockRange';
 import { dashboardDayFor } from '../../lib/calendarView';
 import { coveredBy, finishThrough, rangeLabel, renameLoggedTime, retitle } from '../../lib/courseItems';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
@@ -262,6 +265,30 @@ export default function LiveDashboard({userId}:{userId:string}) {
   updateProposals(userId,items=>[...items,...batch]);
   return applyAll(userId,origin,batch.map(b=>b.id),(b,o)=>save(b,true,o));
  }
+ /**
+  * The brain dump's +: the line goes on the plan in the first open time this
+  * week that fits, as a block the student made, with no AI. Its course is
+  * guessed from the words ("math pset" → MATH 221), else Personal; its length
+  * is Plan it's estimate for work it can name (homework, reading…), else 30 min.
+  * With no open time it goes on today's list without one.
+  */
+ async function addFromDump(text:string):Promise<string>{
+  if(!snapshot)throw new Error('Your plan is still loading.');
+  const words=text.toLowerCase(), live=snapshot.subjects.filter(s=>!s.archived);
+  const subject=live.find(s=>words.includes(s.name.toLowerCase())) ?? live.find(s=>{const w=s.name.split(/\s+/)[0].toLowerCase();return w.length>=3 && /^[a-z]+$/.test(w) && new RegExp(`\\b${w}\\b`).test(words);});
+  const minutes=kindOf(text) && subject ? Math.min(120,planEstimate({key:text,title:text,subject:subject.name,subjectId:subject.id,color:'',due:''},snapshot.history).minutes) : 30;
+  // Suggestions already waiting count as taken, as Plan it counts them.
+  const plan=await readPlan(userId,origin,0,7);
+  const waiting=getProposals(userId).filter(p=>p.time && p.replaces===undefined);
+  const open=freeTime({...plan,blocks:[...plan.blocks,...waiting as unknown as Snapshot['blocks']]},origin,storage.getSomaSettings(),new Date(),7,minutes);
+  const day=open.findIndex(d=>d.free.some(f=>{const [a,z]=rangeOf(f);return z-a>=minutes;}));
+  const start=day<0 ? 0 : rangeOf(open[day].free.find(f=>{const [a,z]=rangeOf(f);return z-a>=minutes;})!)[0];
+  const time=day<0 ? '' : `${clockOf(start)}–${clockOf(start+minutes)}`;
+  await save({id:Date.now(),title:text,subject:subject?.name ?? 'Personal',time,minutes:time ? minutes : 0,color:subject ? toneOf(subject.color) : 'blue',state:'Planned',day:Math.max(0,day),manual:true,...(time ? {} : {estimatedMinutes:minutes})});
+  if(!time)return 'to today’s list, with no time: there’s no open time this week';
+  const when=day===0 ? 'today' : day===1 ? 'tomorrow' : dateAt(origin,day).toLocaleDateString(undefined,{weekday:'long'});
+  return `for ${when}, ${formatClockRange(time)}`;
+ }
  async function acceptAll(){
   const total=proposals.length;
   const failed=await applyAll(userId,origin,undefined,(b,o)=>save(b,true,o));
@@ -270,7 +297,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   else setError('');
  }
  const pulseDays=Array.from({length:7},(_,i)=>snapshot.history.filter(h=>h.date===localDate(dateAt(origin,i-6))).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0));
- return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<CatchUp key={localDate(origin)} userId={userId} origin={origin} onApply={applyBatch}>{catchUp=><AgentBrief catchUp={catchUp}/>}</CatchUp>,due:due.map(x=>{
+ return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<CatchUp key={localDate(origin)} userId={userId} origin={origin} onApply={applyBatch}>{catchUp=><AgentBrief catchUp={catchUp}/>}</CatchUp>,dump:<BrainDump userId={userId} onAdd={addFromDump}/>,due:due.map(x=>{
   // Plan it's sittings for this assignment, and the time logged on them (or on the assignment itself).
   const mine=snapshot.todos.filter(t=>t.subjectId===x.subjectId && isSittingOf(t.text,x.title));
   const seconds=snapshot.history.filter(h=>h.subject_id===x.subjectId && isSittingOf(h.task_text??'',x.title)).reduce((n,h)=>n+(h.duration_seconds||0),0);

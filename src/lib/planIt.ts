@@ -35,7 +35,7 @@ const KINDS: [string, RegExp][] = [
   ['project', /\bproject\b/i], ['essay', /\b(essay|paper|draft)\b/i],
   ['homework', /\b(homework|hw|problem set|pset|worksheet)\b/i], ['reading', /\b(reading|chapter|ch\.)/i],
 ];
-const kindOf = (title: string) => KINDS.find(([, re]) => re.test(title))?.[0];
+export const kindOf = (title: string) => KINDS.find(([, re]) => re.test(title))?.[0];
 
 /**
  * How long it will take, from the student's own history: past work of the

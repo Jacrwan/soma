@@ -75,3 +75,5 @@ export function planMyDayPrompt(b: Brief): string {
 const DISMISSED = 'soma_brief_dismissed';
 export const briefDismissedToday = () => { try { return localStorage.getItem(DISMISSED) === key(new Date()); } catch { return false; } };
 export const dismissBriefToday = () => { try { localStorage.setItem(DISMISSED, key(new Date())); } catch { /* shows again next load */ } };
+/** "Show today's brief": undoes Hide. */
+export const showBriefAgain = () => { try { localStorage.removeItem(DISMISSED); } catch { /* stays hidden until tomorrow */ } };

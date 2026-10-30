@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { buildBrief, briefIsEmpty, briefDismissedToday, dismissBriefToday, planMyDayPrompt, type Brief, type BriefItem } from '../../lib/brief';
+import { buildBrief, briefIsEmpty, briefDismissedToday, dismissBriefToday, showBriefAgain, planMyDayPrompt, type Brief, type BriefItem } from '../../lib/brief';
 import { CANVAS_CHANGED } from '../../lib/canvasExtension';
 import styles from './AgentBrief.module.css';
 
@@ -10,7 +10,8 @@ import styles from './AgentBrief.module.css';
  * to the AI page, where Soma proposes the day and any emails or events to
  * send or add, each for the student to accept. `catchUp` is Catch-Up's
  * button (CatchUp.tsx), shown beside "Plan my day", or on a line of its own
- * when the brief is hidden or has nothing in it.
+ * when the brief is hidden or has nothing in it. A hidden brief leaves a line
+ * with "Show today's brief" so it can come back.
  */
 export default function AgentBrief({ catchUp }: { catchUp?: ReactNode }) {
   const navigate = useNavigate();
@@ -25,7 +26,17 @@ export default function AgentBrief({ catchUp }: { catchUp?: ReactNode }) {
     return () => { clearTimeout(t); for (const e of ['soma_todos_changed', 'soma_subjects_changed', CANVAS_CHANGED]) window.removeEventListener(e, refresh); };
   }, []);
 
-  if (hidden || briefIsEmpty(brief)) return catchUp ? <div className={styles.bar}><span>Some of your work slipped. Soma can plan a way to catch up.</span>{catchUp}</div> : null;
+  const slipped = 'Some of your work slipped. Soma can plan a way to catch up.';
+  if (briefIsEmpty(brief)) return catchUp ? <div className={styles.bar}><span>{slipped}</span>{catchUp}</div> : null;
+  if (hidden) return (
+    <div className={styles.bar}>
+      <span>{catchUp ? slipped : 'Today’s brief is hidden.'}</span>
+      <span className={styles.barActions}>
+        <button type="button" className={styles.show} onClick={() => { showBriefAgain(); setHidden(false); }}>Show today’s brief</button>
+        {catchUp}
+      </span>
+    </div>
+  );
   const hour = new Date().getHours();
   const greeting = hour < 5 ? 'Still up' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const time = (i: BriefItem) => i.source === 'task' ? '' : ` · ${new Date(i.due).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
