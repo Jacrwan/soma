@@ -13,6 +13,7 @@ export const USER_TABLES = [
   'documents',
   'course_items',
   'grade_books',
+  'brain_dump_items',
   'canvas_snapshots',
   'todo_sessions',
   'timer_sessions',

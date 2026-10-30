@@ -9,6 +9,37 @@ still needed.
 
 ---
 
+## 2026-10-30 (Brain dump syncs across devices)
+
+- **Why:** the owner wants the brain dump list to be the same on every device.
+  It was kept in each browser.
+- **What:** the list is saved to the account in a new `brain_dump_items`
+  table, one row per line. The dashboard reads it on load and again whenever
+  the tab comes back into view. Adding, removing (×) and scheduling (+) save
+  right away. A save that fails puts the list back and says so. Lines aren't
+  left on one device that the account doesn't have. This browser keeps a copy
+  to show at once. The first time a browser reaches the table, the lines it
+  kept on its own (from before this change) are added to the account's list.
+  Until the table exists, the brain dump keeps working in the browser as
+  before, with no error. Deleting an account deletes its rows (cascade, and
+  the table is in the account-deletion list).
+- **Where:** `brain_dump_migration.sql` (new), `src/lib/brainDump.ts` (new),
+  `src/components/DashboardV2/BrainDump.tsx`, `api/_deleteUserData.ts`
+  (`USER_TABLES`).
+- **Guard:** `tests/brain-dump.spec.ts`. Lines added in one browser show in
+  another, and a removal there shows here after coming back to the tab. A
+  browser's own lines are uploaded once. With no table, the list stays in the
+  browser with no error. A failed save takes the line off and says so.
+  `tests/delete-account.spec.ts` now checks `brain_dump_items` too.
+- **Setup / not done:** **run `brain_dump_migration.sql` in the Supabase SQL
+  editor.** It's a new table only, with RLS so each student reads and writes
+  only their own rows, and lines are capped at 200 characters in the database.
+  Until it runs, nothing syncs. There's no live push: an open tab picks up
+  another device's change when it comes back into view. The 100-line cap is
+  in the app, not the database.
+
+---
+
 ## 2026-10-30 (Brain dump card; a hidden morning brief can come back)
 
 - **Why:** the owner found no way to bring the morning brief back after
