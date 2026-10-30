@@ -3,7 +3,8 @@ import { test, expect, type Page } from '@playwright/test';
 /**
  * Catch-Up and the yesterday card on the live dashboard (2026-10-29): the plan
  * is shown, nothing is saved until the student accepts it, and accepting moves
- * the blocks that didn't happen instead of copying them.
+ * the blocks that didn't happen instead of copying them. Since 2026-10-30
+ * Catch-Up is a button beside the yesterday card, never a card on its own.
  */
 
 const account = { id: '11111111-1111-4111-8111-111111111111', email: 'student@example.com', aud: 'authenticated', role: 'authenticated', created_at: '2025-01-01T00:00:00Z', app_metadata: {}, user_metadata: {} };
@@ -41,14 +42,18 @@ const slipped = (id: string, text: string, offset: number) => ({
   session: { id: `${id}-slot`, user_id: account.id, todo_id: id, date: dateOf(offset), start_time: at(offset, '15:00'), end_time: at(offset, '16:00') },
 });
 
-test('Catch-Up shows a ready plan, saves nothing until "Add to my plan", then moves the missed blocks forward', async ({ page }) => {
+test('Catch-Up opens a ready plan from its button, saves nothing until "Add to my plan", then moves the missed blocks forward', async ({ page }) => {
   const work = [slipped('ps5', 'Problem set 5', -3), slipped('lab', 'Lab 7 report', -2), slipped('read', 'Reading 4.4', -1)];
   const state = await setup(page, { todos: work.map(w => w.todo), todo_sessions: work.map(w => w.session) });
-  await page.goto('/dashboard?catchup');
+  await page.goto('/dashboard');
 
   const card = page.getByRole('region', { name: 'A few things slipped.' });
+  // Three slipped, but Problem set 5 isn't worth catching up on: the count is what the plan adds.
+  await expect(page.getByRole('button', { name: 'Catch up on 2 things' })).toBeVisible();
+  await expect(card).toHaveCount(0);
+  await page.getByRole('button', { name: 'Catch up on 2 things' }).click();
   await expect(card).toContainText('Soma made a plan to get you caught up today.');
-  await card.getByRole('button', { name: 'See the plan' }).click();
+  await expect(page.getByRole('button', { name: 'Catch up on 2 things' })).toHaveCount(0);
   await expect(card.getByText('Planned for Tuesday and didn’t happen.')).toBeVisible();
   // Their own undated task from three days ago is left out, and can come back.
   await expect(card.getByText('Your own task from Monday, with no due date.')).toBeVisible();
@@ -60,6 +65,7 @@ test('Catch-Up shows a ready plan, saves nothing until "Add to my plan", then mo
 
   await card.getByRole('button', { name: 'Add to my plan' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'You’re on track to be caught up today.' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Catch up on/ })).toHaveCount(0);
   const sessions = state.tables.todo_sessions;
   // Moved, not copied: the same row, now today; skipped ones stay where they were.
   expect(state.tables.todos).toHaveLength(3);
@@ -69,12 +75,34 @@ test('Catch-Up shows a ready plan, saves nothing until "Add to my plan", then mo
   expect(sessions.find(s => s.id === 'ps5-slot')?.date).toBe(dateOf(-3));
 });
 
-test('Catch-Up waits until enough has slipped; one missed block shows nothing', async ({ page }) => {
+test('Catch-Up never opens by itself: one missed block shows only the button, and "Not now" closes the plan', async ({ page }) => {
   const one = slipped('ps5', 'Problem set 5', -1);
   await setup(page, { todos: [one.todo], todo_sessions: [one.session] });
   await page.goto('/dashboard');
   await expect(page.getByLabel('Day progress')).toBeVisible();
+  const button = page.getByRole('button', { name: 'Catch up on 1 thing' });
+  await expect(button).toBeVisible();
   await expect(page.getByRole('region', { name: /Welcome back|A few things slipped/ })).toHaveCount(0);
+  await button.click();
+  await page.getByRole('button', { name: 'Not now' }).click();
+  await expect(page.getByRole('region', { name: /Welcome back|A few things slipped/ })).toHaveCount(0);
+  await expect(button).toBeVisible();
+});
+
+test('with a yesterday card, the Catch-Up button sits in it beside "Looks right", and the card stays when the plan opens', async ({ page }) => {
+  const missed = slipped('lab', 'Lab 7 report', -2);
+  const hw = { id: 'hw4', user_id: account.id, text: 'HW 4', subject_id: 'math', status: 'nothing', date: dateOf(-1), estimated_minutes: 60 };
+  await setup(page, {
+    todos: [missed.todo, hw],
+    todo_sessions: [missed.session, { id: 'hw4-slot', user_id: account.id, todo_id: 'hw4', date: dateOf(-1), start_time: at(-1, '15:00'), end_time: at(-1, '16:00') }],
+    timer_sessions: [{ id: 'log1', user_id: account.id, subject_id: 'math', task_text: 'HW 4', duration_seconds: 40 * 60, date: dateOf(-1), start_time: at(-1, '15:00'), end_time: at(-1, '15:40') }],
+  });
+  await page.goto('/dashboard');
+  const card = page.getByRole('region', { name: 'From yesterday' });
+  await expect(card.getByRole('button', { name: 'Looks right' })).toBeVisible();
+  await card.getByRole('button', { name: 'Catch up on 1 thing' }).click();
+  await expect(page.getByRole('region', { name: 'A few things slipped.' })).toContainText('Lab 7 report');
+  await expect(card).toBeVisible();
 });
 
 test('the yesterday card suggests the rest for today, checks nothing off, and "I finished it" is the student’s tap', async ({ page }) => {

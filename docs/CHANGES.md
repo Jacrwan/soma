@@ -9,6 +9,35 @@ still needed.
 
 ---
 
+## 2026-10-30 (Catch-Up becomes a button beside the yesterday card)
+
+- **Why:** the owner asked for Catch-Up to show as a button with the day
+  review block (the yesterday card), not as a card that opens by itself.
+- **What:** Catch-Up no longer appears on its own. A "Catch up on N things"
+  button (N = what the plan would add; plain "Catch up" if it adds nothing,
+  only lists things left out) sits in the
+  yesterday card next to "Looks right". With no yesterday card, it gets a slim
+  line of its own ("Some of your work slipped. Soma can plan a way to catch
+  up."). The button opens the plan right away; "See the plan" and "Later" are
+  gone, and "Not now" closes the plan with the button still there. It shows
+  whenever at least one thing is behind (overdue, or planned and didn't
+  happen), since a button costs nothing to
+  ignore (the old 3+/6+ and "away 2+ days" thresholds only decided when the card
+  opened by itself). After "Add to my plan" the button goes away; after "Looks
+  right" on the yesterday card it stays. The plan's rules are unchanged.
+  `/dashboard?catchup` still opens the plan straight away.
+- **Where:** `src/components/DashboardV2/CatchUp.tsx`, `CatchUp.module.css`
+  (`.bar`).
+- **Guard:** `tests/catch-up-dashboard.spec.ts`. The plan opens only from the
+  button, and its count leaves out what isn't worth catching up on. One missed block shows just the button, and "Not now" closes the
+  plan. With a yesterday card, the button is inside it and the card stays when
+  the plan opens. The "nothing saved until accepting" and "moved, not copied"
+  checks are unchanged.
+- **Setup / not done:** none. The old `soma_catchup_hidden` localStorage key
+  is no longer read.
+
+---
+
 ## 2026-10-29 (Catch-Up and the yesterday card; branch catch-up-preview, not on master)
 
 - **Why:** the owner wants a forgiving way back for a student who fell
