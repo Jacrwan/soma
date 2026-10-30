@@ -9,6 +9,37 @@ still needed.
 
 ---
 
+## 2026-10-30 (Widget heights set row by row)
+
+- **Why:** the owner wanted the plan to reach down to the Focus card. The preset
+  sizes only allowed a few fixed heights.
+- **What:**
+  - In Customize, each widget has a handle on its bottom edge. Dragging it
+    makes the widget taller or shorter in whole rows (one small card's
+    height), never part of one, at any point in the drag; with the handle
+    focused, the up and down arrow keys do the same.
+  - Each widget has its own height range: plan and Ask Soma 2–6 rows,
+    Brain dump and Due soon 1–5, This week 1–4, Focus 1–3, Up next and
+    Study this week 1–2.
+  - Widgets below a widget that grows move down, and they rise again when it
+    shrinks.
+  - Choosing a new size from the menu starts at that size's height.
+  - The height is saved as `rows` in `dashboardLayout`, only when it differs
+    from the size's own height. A stored height outside the range is clamped,
+    and one that isn't a number is dropped.
+  - Phones stack widgets at their natural height, so the handle is hidden
+    there.
+- **Where:** `src/lib/dashboardLayout.ts` (`rows` in `WIDGETS`, `rowsFor`,
+  `placeAt`'s change argument), `WidgetGrid.tsx` (the handle), and
+  `DashboardV2.module.css` (`.widgetHeight`, plus `.r4`–`.r6`).
+- **Guarded by:** `tests/dashboard-widgets.spec.ts`. One test drags the plan
+  to 3 rows so it ends level with Focus, and uses the keyboard on Focus. A
+  placement test covers the height range, a size change resetting the height,
+  and bad stored heights.
+- **Setup:** none.
+
+---
+
 ## 2026-10-30 (Dashboard widgets go anywhere on the grid)
 
 - **Why:** the owner wanted to put Focus right under Ask Soma, and couldn't.

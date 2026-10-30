@@ -1,4 +1,4 @@
-import { useRef, type CSSProperties, type DragEvent, type ReactNode } from 'react';
+import { useRef, type CSSProperties, type DragEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, GripVertical, Plus, X } from 'lucide-react';
 import { COLUMNS, SIZES, WIDGETS, addWidget, boxOf, hideWidget, placeAt, sameLayout, settle, widgetInfo, type Box, type DashboardLayout, type WidgetId, type WidgetSize } from '../../lib/dashboardLayout';
 import styles from './DashboardV2.module.css';
@@ -7,7 +7,8 @@ import styles from './DashboardV2.module.css';
  * The live dashboard's widgets on a grid (lib/dashboardLayout.ts). While
  * customizing, a widget can be dragged to any spot, or moved a step at a time
  * with its arrows; it can also be resized or hidden, and hidden ones wait in
- * "Add widgets". The widgets themselves can't be used until Done. `panel`
+ * "Add widgets". The handle along a widget's bottom edge makes it taller or
+ * shorter, a row at a time. The widgets themselves can't be used until Done. `panel`
  * (the block editor or Plan it) opens beside Today's plan.
  *
  * On the desktop grid each widget sits at its own column and row. Narrower
@@ -39,17 +40,50 @@ export default function WidgetGrid({ layout, customizing, onChange, render, pane
   // While dragging: which widget, the layout it started from, and which cell of the widget was grabbed.
   const drag = useRef<{ id: WidgetId; from: DashboardLayout; grab: { x: number; y: number }; at: string } | null>(null);
 
+  // While changing a widget's height: which widget, the layout it started from, and the widget's top edge.
+  const sizing = useRef<{ id: WidgetId; from: DashboardLayout; top: number; at: number } | null>(null);
+
+  const metrics = () => {
+    const el = grid.current; if (!el) return null;
+    const css = getComputedStyle(el);
+    const gapX = parseFloat(css.columnGap) || 0, gapY = parseFloat(css.rowGap) || 0;
+    return { el, css, gapX, gapY, rowH: parseFloat(css.gridAutoRows) || 1 };
+  };
   // The grid's cell under the pointer, or null when the grid isn't the desktop one.
   const cellAt = (e: { clientX: number; clientY: number }, rect = grid.current?.getBoundingClientRect()) => {
-    const el = grid.current; if (!el || !rect) return null;
-    const css = getComputedStyle(el);
-    if (css.gridTemplateColumns.split(' ').length !== COLUMNS) return null;
-    const gapX = parseFloat(css.columnGap) || 0, gapY = parseFloat(css.rowGap) || 0;
-    const colW = (el.clientWidth - gapX * (COLUMNS - 1)) / COLUMNS, rowH = parseFloat(css.gridAutoRows) || 1;
-    return { x: Math.floor((e.clientX - rect.left + gapX / 2) / (colW + gapX)), y: Math.floor((e.clientY - rect.top + gapY / 2) / (rowH + gapY)) };
+    const m = metrics(); if (!m || !rect) return null;
+    if (m.css.gridTemplateColumns.split(' ').length !== COLUMNS) return null;
+    const colW = (m.el.clientWidth - m.gapX * (COLUMNS - 1)) / COLUMNS;
+    return { x: Math.floor((e.clientX - rect.left + m.gapX / 2) / (colW + m.gapX)), y: Math.floor((e.clientY - rect.top + m.gapY / 2) / (m.rowH + m.gapY)) };
   };
 
+  const setRows = (from: DashboardLayout, id: WidgetId, rows: number) => {
+    const p = from.find(w => w.id === id)!;
+    return placeAt(from, id, p.x, p.y, { rows });
+  };
+  function startSizing(e: PointerEvent<HTMLButtonElement>, id: WidgetId) {
+    e.preventDefault(); e.stopPropagation();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    const top = e.currentTarget.closest('[data-widget]')!.getBoundingClientRect().top;
+    sizing.current = { id, from: layout, top, at: boxOf(layout.find(w => w.id === id)!).h };
+  }
+  function moveSizing(e: PointerEvent<HTMLButtonElement>) {
+    const r = sizing.current, m = metrics(); if (!r || !m) return;
+    const [min, max] = widgetInfo(r.id).rows;
+    const rows = Math.min(max, Math.max(min, Math.round((e.clientY - r.top + m.gapY) / (m.rowH + m.gapY))));
+    if (rows === r.at) return;
+    r.at = rows;
+    onChange(setRows(r.from, r.id, rows));
+  }
+  function keySizing(e: KeyboardEvent<HTMLButtonElement>, id: WidgetId, h: number) {
+    const by = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : 0;
+    if (!by) return;
+    e.preventDefault();
+    onChange(setRows(layout, id, h + by));
+  }
+
   function startDrag(e: DragEvent<HTMLDivElement>, id: WidgetId) {
+    if (sizing.current) { e.preventDefault(); return; }   // the height handle, not a move
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', id);
     const own = cellAt(e, e.currentTarget.getBoundingClientRect()) ?? { x: 0, y: 0 };
@@ -96,13 +130,17 @@ export default function WidgetGrid({ layout, customizing, onChange, render, pane
             <GripVertical size={14} aria-hidden="true" className={styles.widgetGrip}/>
             <strong>{info.name}</strong>
             <select aria-label={`Size of ${info.name}`} value={w.size} disabled={info.sizes.length < 2}
-              onChange={e => onChange(placeAt(layout, w.id, w.x, w.y, e.target.value as WidgetSize))}>
+              onChange={e => onChange(placeAt(layout, w.id, w.x, w.y, { size: e.target.value as WidgetSize }))}>
               {info.sizes.map(s => <option key={s} value={s}>{SIZES[s].label}</option>)}
             </select>
             {arrows.map(([way, go, icon]) => <button key={way} type="button" aria-label={`Move ${info.name} ${way}`} title={`Move ${way}`} disabled={!go} onClick={go}>{icon}</button>)}
             <button type="button" aria-label={`Hide ${info.name}`} title="Hide" onClick={() => onChange(hideWidget(layout, w.id))}><X size={14}/></button>
           </div>}
           <div className={styles.widgetBody} inert={customizing || undefined}>{render(w.id, w.size)}</div>
+          {customizing && info.rows[0] < info.rows[1] && <button type="button" className={styles.widgetHeight}
+            aria-label={`Height of ${info.name}: ${b.h} ${b.h === 1 ? 'row' : 'rows'}. Drag, or press the up and down arrow keys.`} title="Drag to make it taller or shorter"
+            onPointerDown={e => startSizing(e, w.id)} onPointerMove={moveSizing} onPointerUp={() => { sizing.current = null; }} onPointerCancel={() => { sizing.current = null; }}
+            onKeyDown={e => keySizing(e, w.id, b.h)}><span aria-hidden="true"/></button>}
         </div>;
       })}
     </div>

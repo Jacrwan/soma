@@ -129,6 +129,37 @@ test('a widget can be dragged to any spot: Focus goes right under Ask Soma', asy
   expect(focus.y).toBeGreaterThan(after.y + after.height - 1);
 });
 
+test('a widget can be made taller or shorter with the handle on its bottom edge', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  // The plan two rows tall beside Ask Soma, with Focus under Ask: the plan stops short of Focus's bottom.
+  const state = await setup(page, { layout: [{ id: 'plan', size: 'large', x: 0, y: 0 }, { id: 'ask', size: 'tall', x: 2, y: 0 }, { id: 'focus', size: 'small', x: 2, y: 2 }] });
+  await page.goto('/dashboard');
+  const box = (id: string) => page.locator(`[data-widget=${id}]`).boundingBox().then(b => b!);
+  expect((await box('plan')).y + (await box('plan')).height).toBeLessThan((await box('focus')).y);
+
+  await page.getByRole('button', { name: 'Customize' }).click();
+  const handle = page.getByRole('button', { name: /^Height of Today’s plan: 2 rows/ });
+  const h = (await handle.boundingBox())!, rowStep = (await box('focus')).y - (await box('ask')).y - (await box('ask')).height + (await box('focus')).height;
+  await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2 + rowStep * 0.6, { steps: 5 });
+  await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2 + rowStep, { steps: 5 });
+  await page.mouse.up();
+  await expect(page.getByRole('button', { name: /^Height of Today’s plan: 3 rows/ })).toBeVisible();
+  // The keyboard works too: Focus a row taller, then back.
+  const focusHandle = page.getByRole('button', { name: /^Height of Focus timer: 1 row/ });
+  await focusHandle.press('ArrowDown');
+  await expect(page.getByRole('button', { name: /^Height of Focus timer: 2 rows/ })).toBeFocused();
+  await page.keyboard.press('ArrowUp');
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect.poll(() => state.saves.at(-1)?.dashboardLayout).toEqual([
+    { id: 'plan', size: 'large', x: 0, y: 0, rows: 3 }, { id: 'ask', size: 'tall', x: 2, y: 0 }, { id: 'focus', size: 'small', x: 2, y: 2 },
+  ]);
+  // The plan now reaches the bottom of Focus.
+  const plan = await box('plan'), focus = await box('focus');
+  expect(Math.abs(plan.y + plan.height - (focus.y + focus.height))).toBeLessThan(2);
+});
+
 test('Cancel puts the dashboard back; Reset brings the default layout', async ({ page }) => {
   const state = await setup(page, { layout: [{ id: 'plan', size: 'full' }, { id: 'stats', size: 'wide' }] });
   await page.goto('/dashboard');
@@ -198,4 +229,15 @@ test('placing a widget: same-size widgets swap, moving down goes under, anything
   // A widget can't hang off the grid, and with nothing under it, moving down changes nothing.
   expect(placeAt(DEFAULT_LAYOUT, 'plan', 2, 0)).toEqual(placeAt(DEFAULT_LAYOUT, 'plan', 1, 0));
   expect(placeAt(DEFAULT_LAYOUT, 'due', 2, 4)).toEqual(DEFAULT_LAYOUT);
+});
+
+test('a widget’s height stays in its range, a new size starts at that size’s height, and bad stored heights are dropped', () => {
+  const taller = placeAt(DEFAULT_LAYOUT, 'ask', 2, 0, { rows: 4 });
+  expect(taller.find(w => w.id === 'ask')).toEqual({ id: 'ask', size: 'tall', x: 2, y: 0, rows: 4 });
+  expect(taller.find(w => w.id === 'focus')).toMatchObject({ x: 2, y: 4 });            // pushed down under it
+  expect(placeAt(DEFAULT_LAYOUT, 'ask', 2, 0, { rows: 99 }).find(w => w.id === 'ask')?.rows).toBe(6);
+  expect(placeAt(DEFAULT_LAYOUT, 'ask', 2, 0, { rows: 2 }).find(w => w.id === 'ask')).toEqual({ id: 'ask', size: 'tall', x: 2, y: 0 });
+  expect(placeAt(taller, 'ask', 1, 0, { size: 'large' }).find(w => w.id === 'ask')).toEqual({ id: 'ask', size: 'large', x: 1, y: 0 });
+  expect(readLayout([{ id: 'plan', size: 'xl', x: 0, y: 0, rows: 'tall' }, { id: 'next', size: 'small', x: 2, y: 0, rows: 9 }]))
+    .toEqual([{ id: 'plan', size: 'xl', x: 0, y: 0 }, { id: 'next', size: 'small', x: 2, y: 0, rows: 2 }]);
 });

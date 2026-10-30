@@ -5,6 +5,9 @@
  * from storage is checked here: unknown widgets and sizes are dropped, never
  * trusted, and overlaps are pushed apart.
  *
+ * A widget's height can also be set row by row (`rows`), within the range
+ * that widget allows; without it, the height is its size's.
+ *
  * Placing works like a phone's home screen: a widget goes where it's put,
  * whatever it lands on moves down out of the way, and then every widget
  * rises into any empty space above it, so the grid never has holes.
@@ -12,7 +15,7 @@
 
 export type WidgetId = 'plan' | 'calendar' | 'focus' | 'ask' | 'dump' | 'due' | 'next' | 'stats';
 export type WidgetSize = 'small' | 'wide' | 'tall' | 'large' | 'xl' | 'full';
-export type WidgetPlacement = { id: WidgetId; size: WidgetSize; x: number; y: number };
+export type WidgetPlacement = { id: WidgetId; size: WidgetSize; x: number; y: number; rows?: number };
 export type DashboardLayout = WidgetPlacement[];
 
 /** Columns × rows on the desktop grid. */
@@ -26,18 +29,19 @@ export const SIZES: Record<WidgetSize, { cols: number; rows: number; label: stri
   full: { cols: 3, rows: 2, label: 'Full width' },
 };
 
-export type WidgetInfo = { id: WidgetId; name: string; description: string; sizes: WidgetSize[]; size: WidgetSize };
+/** `rows`: the fewest and most rows the widget can be made tall. */
+export type WidgetInfo = { id: WidgetId; name: string; description: string; sizes: WidgetSize[]; size: WidgetSize; rows: [number, number] };
 
 /** Every widget, in the order the "Add widgets" tray lists them. */
 export const WIDGETS: WidgetInfo[] = [
-  { id: 'plan', name: 'Today’s plan', description: 'Your schedule for the day, with the week strip and subject progress.', sizes: ['large', 'xl', 'full'], size: 'xl' },
-  { id: 'calendar', name: 'This week', description: 'A small calendar of the seven days on screen. Pick a day to open it.', sizes: ['wide', 'large', 'full'], size: 'large' },
-  { id: 'focus', name: 'Focus timer', description: 'Start, pause and stop focus on a block.', sizes: ['small', 'tall'], size: 'small' },
-  { id: 'ask', name: 'Ask Soma', description: 'Tell Soma what you need to do; it suggests a plan for you to accept.', sizes: ['tall', 'large'], size: 'tall' },
-  { id: 'dump', name: 'Brain dump', description: 'Jot everything down, then press + to put it on your plan.', sizes: ['small', 'tall', 'wide'], size: 'small' },
-  { id: 'next', name: 'Up next', description: 'Your next block today, with a button to start focus.', sizes: ['small', 'wide'], size: 'small' },
-  { id: 'due', name: 'Due soon', description: 'Canvas work due in the days on screen, with Plan it.', sizes: ['small', 'tall', 'wide'], size: 'small' },
-  { id: 'stats', name: 'Study this week', description: 'Minutes of focus each day for the last seven days.', sizes: ['small', 'wide'], size: 'small' },
+  { id: 'plan', name: 'Today’s plan', description: 'Your schedule for the day, with the week strip and subject progress.', sizes: ['large', 'xl', 'full'], size: 'xl', rows: [2, 6] },
+  { id: 'calendar', name: 'This week', description: 'A small calendar of the seven days on screen. Pick a day to open it.', sizes: ['wide', 'large', 'full'], size: 'large', rows: [1, 4] },
+  { id: 'focus', name: 'Focus timer', description: 'Start, pause and stop focus on a block.', sizes: ['small', 'tall'], size: 'small', rows: [1, 3] },
+  { id: 'ask', name: 'Ask Soma', description: 'Tell Soma what you need to do; it suggests a plan for you to accept.', sizes: ['tall', 'large'], size: 'tall', rows: [2, 6] },
+  { id: 'dump', name: 'Brain dump', description: 'Jot everything down, then press + to put it on your plan.', sizes: ['small', 'tall', 'wide'], size: 'small', rows: [1, 5] },
+  { id: 'next', name: 'Up next', description: 'Your next block today, with a button to start focus.', sizes: ['small', 'wide'], size: 'small', rows: [1, 2] },
+  { id: 'due', name: 'Due soon', description: 'Canvas work due in the days on screen, with Plan it.', sizes: ['small', 'tall', 'wide'], size: 'small', rows: [1, 5] },
+  { id: 'stats', name: 'Study this week', description: 'Minutes of focus each day for the last seven days.', sizes: ['small', 'wide'], size: 'small', rows: [1, 2] },
 ];
 
 export const widgetInfo = (id: WidgetId) => WIDGETS.find(w => w.id === id)!;
@@ -85,22 +89,33 @@ export function firstFree(boxes: Box[], w: number, h: number): { x: number; y: n
     if (!boxes.some(b => hits({ id: '', x, y, w, h }, b))) return { x, y };
 }
 
-export const boxOf = (p: WidgetPlacement): Box & WidgetPlacement => ({ ...p, w: SIZES[p.size].cols, h: SIZES[p.size].rows });
-const fromBoxes = (boxes: (Box & WidgetPlacement)[]): DashboardLayout => boxes.map(({ id, size, x, y }) => ({ id, size, x, y }));
+export const boxOf = (p: WidgetPlacement): Box & WidgetPlacement => ({ ...p, w: SIZES[p.size].cols, h: p.rows ?? SIZES[p.size].rows });
+const fromBoxes = (boxes: (Box & WidgetPlacement)[]): DashboardLayout =>
+  boxes.map(({ id, size, x, y, rows }) => rows === undefined ? { id, size, x, y } : { id, size, x, y, rows });
+
+/** A height the widget allows, or undefined when it's its size's own (or not a height at all). */
+function rowsFor(id: WidgetId, size: WidgetSize, rows: unknown): number | undefined {
+  const [min, max] = widgetInfo(id).rows;
+  if (!Number.isInteger(rows)) return undefined;
+  const n = Math.min(Math.max(rows as number, min), max);
+  return n === SIZES[size].rows ? undefined : n;
+}
 
 /**
- * Puts a widget at column x, row y (and at `size`, if given). Dropped on a
- * widget of the same size, the two swap places; moved down onto widgets
- * below it, it goes under them; anything else it lands on moves down.
+ * Puts a widget at column x, row y, and at a new size or height if given (a
+ * new size starts at that size's height). Dropped on a widget of the same
+ * size, the two swap places; moved down onto widgets below it, it goes under
+ * them; anything else it lands on moves down.
  */
-export function placeAt(layout: DashboardLayout, id: WidgetId, x: number, y: number, size?: WidgetSize): DashboardLayout {
+export function placeAt(layout: DashboardLayout, id: WidgetId, x: number, y: number, change?: { size?: WidgetSize; rows?: number }): DashboardLayout {
   const was = layout.find(p => p.id === id);
   if (!was) return layout;
-  const me = boxOf({ ...was, size: size ?? was.size });
+  const size = change?.size ?? was.size;
+  const me = boxOf({ id, size, x, y, rows: rowsFor(id, size, change?.size && change.size !== was.size ? change.rows : change?.rows ?? was.rows) });
   me.x = Math.min(Math.max(0, x), COLUMNS - me.w); me.y = Math.max(0, y);
   const others = layout.filter(p => p.id !== id).map(boxOf);
   const under = others.filter(b => hits(me, b));
-  if (me.size === was.size && under.length === 1 && under[0].w === me.w && under[0].h === me.h) {
+  if (!change && under.length === 1 && under[0].w === me.w && under[0].h === me.h) {
     const swap = under[0];
     return fromBoxes(settle([...others.map(b => b === swap ? { ...b, x: was.x, y: was.y } : b), { ...me, x: swap.x, y: swap.y }], id));
   }
@@ -134,16 +149,17 @@ export function readLayout(stored: unknown): DashboardLayout {
     const info = WIDGETS.find(w => w.id === id);
     if (!info || seen.has(info.id)) continue;
     seen.add(info.id);
-    const p = { id: info.id, size: info.sizes.includes(size as WidgetSize) ? size as WidgetSize : info.size, x: 0, y: 0 };
+    const fit = info.sizes.includes(size as WidgetSize) ? size as WidgetSize : info.size;
+    const p: WidgetPlacement = { id: info.id, size: fit, x: 0, y: 0, rows: rowsFor(info.id, fit, (entry as { rows?: unknown })?.rows) };
     const spot = (n: unknown, max: number) => Number.isInteger(n) && (n as number) >= 0 && (n as number) <= max;
     if (spot(x, COLUMNS - SIZES[p.size].cols) && spot(y, 200)) kept.push(boxOf({ ...p, x: x as number, y: y as number }));
     else unplaced.push(p);
   }
   if (!unplaced.length) return fromBoxes(settle(kept));
   const boxes = settle(kept);
-  for (const p of unplaced) boxes.push(boxOf({ ...p, ...firstFree(boxes, SIZES[p.size].cols, SIZES[p.size].rows) }));
+  for (const p of unplaced) boxes.push(boxOf({ ...p, ...firstFree(boxes, SIZES[p.size].cols, boxOf(p).h) }));
   return fromBoxes(settle(boxes));
 }
 
 export const sameLayout = (a: DashboardLayout, b: DashboardLayout) =>
-  a.length === b.length && a.every((w, i) => w.id === b[i].id && w.size === b[i].size && w.x === b[i].x && w.y === b[i].y);
+  a.length === b.length && a.every((w, i) => w.id === b[i].id && w.size === b[i].size && w.x === b[i].x && w.y === b[i].y && w.rows === b[i].rows);

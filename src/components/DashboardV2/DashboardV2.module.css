@@ -346,7 +346,7 @@
 /* Desktop: each widget at its own column and row (lib/dashboardLayout.ts). Narrower grids flow in reading order. */
 @media(min-width:1101px){.widgetGrid .placed{grid-column:var(--x)/span var(--w);grid-row:var(--y)/span var(--h)}.customizing{padding-bottom:calc(var(--row) + 16px)}}
 .c1{grid-column:span 1}.c2{grid-column:span 2}.c3{grid-column:span 3}
-.r1{grid-row:span 1}.r2{grid-row:span 2}.r3{grid-row:span 3}
+.r1{grid-row:span 1}.r2{grid-row:span 2}.r3{grid-row:span 3}.r4{grid-row:span 4}.r5{grid-row:span 5}.r6{grid-row:span 6}
 .widget{position:relative;display:flex;flex-direction:column;min-width:0;min-height:0}
 .widgetBody{flex:1;min-height:0;display:flex;flex-direction:column}
 .widgetBody>*,.widget[data-widget=panel]>*{flex:1;min-height:0;margin:0!important;overflow:auto}
@@ -378,6 +378,10 @@
 .widgetBar select{font:inherit;font-size:12px;min-height:28px;padding:2px 6px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary)}
 .widgetBar button{display:inline-grid;place-items:center;width:26px;height:26px;min-height:0;padding:0}
 .widgetGrip{color:var(--text-secondary);flex:none}
+/* The height handle: a pill on the bottom edge, dragged up or down a row at a time. */
+.page .widgetHeight{position:absolute;z-index:2;left:50%;bottom:-9px;transform:translateX(-50%);width:64px;height:18px;min-height:0;padding:0;border-radius:9px;cursor:ns-resize;touch-action:none;background:var(--bg);border:1px solid var(--border);box-shadow:0 1px 4px oklch(0% 0 0 / .08)}
+.widgetHeight span{display:block;width:26px;height:3px;margin:auto;border-radius:2px;background:var(--text-secondary)}
+.page .widgetHeight:hover{background:var(--bg-tertiary)}
 .widgetTray{margin-top:22px;border:1px solid var(--border);border-radius:10px;background:var(--bg);padding:16px 18px}
 .widgetTray h2{font-size:15px;font-weight:600}
 .widgetTray ul{list-style:none;padding:0;margin:10px 0 0;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
@@ -429,7 +433,8 @@
 @media(max-width:1100px){.widgetGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.c3{grid-column:span 2}}
 @media(max-width:780px){
   .widgetGrid{grid-template-columns:minmax(0,1fr);grid-auto-rows:auto}
-  .c1,.c2,.c3{grid-column:span 1}.r1,.r2,.r3{grid-row:auto}
+  .c1,.c2,.c3{grid-column:span 1}.r1,.r2,.r3,.r4,.r5,.r6{grid-row:auto}
+  .widgetHeight{display:none!important}
   .widgetBody>*,.widget[data-widget=panel]>*{overflow:visible}
   .widget .conversation{height:200px;flex:none}
   .studyBars{height:110px}
