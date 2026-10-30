@@ -9,7 +9,7 @@ still needed.
 
 ---
 
-## 2026-10-30 (Dashboard widgets and Customize; branch dashboard-widgets, preview only)
+## 2026-10-30 (Dashboard widgets and Customize; live)
 
 - **Why:** the owner wants the dashboard turned into widgets the student
   chooses from, each in preset sizes, plus a few new useful widgets. Preview
@@ -54,9 +54,10 @@ still needed.
   chat's panel is now its widget, not the old right column) and
   `tests/ai-past-work.spec.ts` (its load check takes the first match, since
   Up next names the block too). Full suite: 654 passed, 7 skipped.
-- **Setup / not done:** preview only, not merged to master. A layout saved on
-  the preview is written to the real account's settings (previews use
-  production Supabase). Master ignores the extra key, so it's harmless.
+- **Setup:** tried on the preview first, then merged to master on the
+  owner's go-ahead. The layout lives in settings (`dashboardLayout`), so no
+  migration. Layouts saved on the preview were written to real settings and
+  now take effect live.
 
 ---
 
