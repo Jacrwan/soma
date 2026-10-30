@@ -4,7 +4,8 @@ import { test, expect, type Page } from '@playwright/test';
  * Catch-Up and the yesterday card on the live dashboard (2026-10-29): the plan
  * is shown, nothing is saved until the student accepts it, and accepting moves
  * the blocks that didn't happen instead of copying them. Since 2026-10-30
- * Catch-Up is a button beside the yesterday card, never a card on its own.
+ * Catch-Up is a button in the morning brief, next to "Plan my day", and never
+ * opens by itself.
  */
 
 const account = { id: '11111111-1111-4111-8111-111111111111', email: 'student@example.com', aud: 'authenticated', role: 'authenticated', created_at: '2025-01-01T00:00:00Z', app_metadata: {}, user_metadata: {} };
@@ -89,7 +90,7 @@ test('Catch-Up never opens by itself: one missed block shows only the button, an
   await expect(button).toBeVisible();
 });
 
-test('with a yesterday card, the Catch-Up button sits in it beside "Looks right", and the card stays when the plan opens', async ({ page }) => {
+test('the Catch-Up button sits in the morning brief beside "Plan my day", not in the yesterday card', async ({ page }) => {
   const missed = slipped('lab', 'Lab 7 report', -2);
   const hw = { id: 'hw4', user_id: account.id, text: 'HW 4', subject_id: 'math', status: 'nothing', date: dateOf(-1), estimated_minutes: 60 };
   await setup(page, {
@@ -99,10 +100,14 @@ test('with a yesterday card, the Catch-Up button sits in it beside "Looks right"
   });
   await page.goto('/dashboard');
   const card = page.getByRole('region', { name: 'From yesterday' });
+  const brief = page.getByRole('region', { name: 'Good morning. Here’s your day.' });
   await expect(card.getByRole('button', { name: 'Looks right' })).toBeVisible();
-  await card.getByRole('button', { name: 'Catch up on 1 thing' }).click();
+  await expect(brief.getByRole('button', { name: 'Plan my day' })).toBeVisible();
+  await expect(card.getByRole('button', { name: /Catch up/ })).toHaveCount(0);
+  await brief.getByRole('button', { name: 'Catch up on 1 thing' }).click();
   await expect(page.getByRole('region', { name: 'A few things slipped.' })).toContainText('Lab 7 report');
   await expect(card).toBeVisible();
+  await expect(brief).toBeVisible();
 });
 
 test('the yesterday card suggests the rest for today, checks nothing off, and "I finished it" is the student’s tap', async ({ page }) => {

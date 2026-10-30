@@ -81,6 +81,21 @@
   color: var(--text-secondary);
 }
 
+/* Catch-Up's button on its own, when the brief is hidden or empty. */
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  margin: 22px 0 6px;
+  padding: 10px 12px 10px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
 .close:focus-visible,
 .primary:focus-visible {
   outline: 2px solid var(--accent);

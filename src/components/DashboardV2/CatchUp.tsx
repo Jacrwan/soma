@@ -9,15 +9,15 @@ import dash from './DashboardV2.module.css';
 import styles from './CatchUp.module.css';
 
 /**
- * The yesterday card and Catch-Up (lib/catchUp.ts), in the morning brief's
- * place. Catch-Up is a button beside the yesterday card (or on its own line
- * when there's no card) that opens Soma's plan; the student accepts it in one
- * tap, and it is saved the way Accept all saves Soma's suggestions. What the
- * student skipped is remembered in this browser only.
+ * The yesterday card and Catch-Up (lib/catchUp.ts), above and below the
+ * morning brief. Catch-Up is a button handed to the brief (`children`), next
+ * to "Plan my day"; it opens Soma's plan under the brief, the student accepts
+ * it in one tap, and it is saved the way Accept all saves Soma's suggestions.
+ * What the student skipped is remembered in this browser only.
  */
 
 type Failed = { title: string; reason: string }[];
-type Props = { userId: string; origin: Date; onApply: (blocks: PlanBlock[]) => Promise<Failed> };
+type Props = { userId: string; origin: Date; onApply: (blocks: PlanBlock[]) => Promise<Failed>; children: (catchUp: ReactNode) => ReactNode };
 
 const read = <T,>(key: string, fallback: T): T => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) as T : fallback; } catch { return fallback; } };
 const write = (key: string, value: unknown) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* remembered for this visit only */ } };
@@ -35,7 +35,7 @@ function assignments(): CatchUpAssignment[] {
   });
 }
 
-export default function CatchUp({ userId, origin, onApply }: Props) {
+export default function CatchUp({ userId, origin, onApply, children }: Props) {
   const today = localDate(origin);
   const keys = { seen: `soma_catchup_seen:${userId}`, skips: `soma_catchup_skips:${userId}`, handled: `soma_yesterday_handled:${userId}` };
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -66,10 +66,11 @@ export default function CatchUp({ userId, origin, onApply }: Props) {
 
   const saveSkips = (next: typeof skips) => { setSkips(next); write(keys.skips, next); };
 
-  if (!plan) return null;
+  if (!plan) return <>{children(null)}</>;
 
-  // The button shows whenever something fell behind, counting what the plan would add; ?catchup opens the plan whenever there's anything in it.
-  const canCatchUp = !caughtUp && plan.planned.length + plan.skipped.length > 0 && (forced || plan.behind > 0);
+  // The button shows when something fell behind and the plan has something to say about it (a slot, or no room
+  // before it's due), counting what it would add; ?catchup opens the plan whenever there's anything in it.
+  const canCatchUp = !caughtUp && (forced ? plan.planned.length + plan.skipped.length > 0 : plan.behind > 0 && plan.planned.length + plan.unplaced.length > 0);
   const catchUpButton = canCatchUp && !open
     ? <button type="button" onClick={() => setOpen(true)}>{plan.planned.length ? `Catch up on ${plan.planned.length} ${plan.planned.length === 1 ? 'thing' : 'things'}` : 'Catch up'}</button>
     : null;
@@ -144,7 +145,7 @@ export default function CatchUp({ userId, origin, onApply }: Props) {
   }
 
   const yesterday = done ? <p className={styles.done} role="status">{done}</p>
-    : rows.length ? <Yesterday catchUp={catchUpButton} rows={rows} choices={choices} setChoices={setChoices} changing={changing} setChanging={setChanging} saving={saving} error={error} onConfirm={async () => {
+    : rows.length ? <Yesterday rows={rows} choices={choices} setChoices={setChoices} changing={changing} setChanging={setChanging} saving={saving} error={error} onConfirm={async () => {
     setSaving(true); setError('');
     const blocks = rows.flatMap((r): PlanBlock[] => {
       const how = choices[r.key] ?? guess(r);
@@ -164,7 +165,7 @@ export default function CatchUp({ userId, origin, onApply }: Props) {
   }} /> : null;
   return <>
     {yesterday}
-    {catchUpButton && (done || !rows.length) && <div className={styles.bar}><span>Some of your work slipped. Soma can plan a way to catch up.</span>{catchUpButton}</div>}
+    {children(catchUpButton)}
     {caughtUp ? <p className={styles.done} role="status">{caughtUp}</p> : catchUpPlan()}
   </>;
 }
@@ -172,8 +173,8 @@ export default function CatchUp({ userId, origin, onApply }: Props) {
 type Choice = 'today' | 'tomorrow' | 'done' | 'leave';
 const guess = (r: YesterdayRow): Choice => r.today ? 'today' : r.tomorrow ? 'tomorrow' : 'leave';
 
-function Yesterday({ catchUp, rows, choices, setChoices, changing, setChanging, saving, error, onConfirm }: {
-  catchUp: ReactNode; rows: YesterdayRow[]; choices: Record<string, Choice>; setChoices: (c: Record<string, Choice>) => void;
+function Yesterday({ rows, choices, setChoices, changing, setChanging, saving, error, onConfirm }: {
+  rows: YesterdayRow[]; choices: Record<string, Choice>; setChoices: (c: Record<string, Choice>) => void;
   changing: string | null; setChanging: (k: string | null) => void; saving: boolean; error: string; onConfirm: () => Promise<void>;
 }) {
   const say = (r: YesterdayRow, how: Choice) => how === 'today' ? `You put in ${r.did} min. The last ${r.rest} min go on today at ${formatClockRange(r.today!)}.`
@@ -202,7 +203,6 @@ function Yesterday({ catchUp, rows, choices, setChoices, changing, setChanging, 
       {error && <p role="alert" className={styles.error}>{error}</p>}
       <div className={styles.actions}>
         <button type="button" className={styles.primary} disabled={saving} onClick={() => void onConfirm()}>{saving ? 'Saving…' : 'Looks right'}</button>
-        {catchUp}
       </div>
     </section>
   );

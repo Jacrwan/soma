@@ -1,4 +1,4 @@
-/* The yesterday card and Catch-Up (CatchUp.tsx), in the morning brief’s place. */
+/* The yesterday card and Catch-Up’s plan (CatchUp.tsx), around the morning brief. */
 .card {
   margin: 22px 0 6px;
   padding: 18px 20px;
@@ -167,19 +167,4 @@
   border-radius: 10px;
   background: color-mix(in oklch, var(--success), var(--bg) 88%);
   font-size: 13px;
-}
-
-/* Catch-Up's button when there's no yesterday card to sit beside. */
-.bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px 14px;
-  margin: 22px 0 6px;
-  padding: 10px 12px 10px 16px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  font-size: 13px;
-  color: var(--text-secondary);
 }

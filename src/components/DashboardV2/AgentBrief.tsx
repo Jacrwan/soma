@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { buildBrief, briefIsEmpty, briefDismissedToday, dismissBriefToday, planMyDayPrompt, type Brief, type BriefItem } from '../../lib/brief';
 import { CANVAS_CHANGED } from '../../lib/canvasExtension';
@@ -8,9 +8,11 @@ import styles from './AgentBrief.module.css';
  * The morning brief (lib/brief.ts): what's due, what changed overnight and
  * what slipped yesterday, worked out without the AI. "Plan my day" takes it
  * to the AI page, where Soma proposes the day and any emails or events to
- * send or add, each for the student to accept.
+ * send or add, each for the student to accept. `catchUp` is Catch-Up's
+ * button (CatchUp.tsx), shown beside "Plan my day", or on a line of its own
+ * when the brief is hidden or has nothing in it.
  */
-export default function AgentBrief() {
+export default function AgentBrief({ catchUp }: { catchUp?: ReactNode }) {
   const navigate = useNavigate();
   const [brief, setBrief] = useState<Brief>(() => buildBrief());
   const [hidden, setHidden] = useState(briefDismissedToday);
@@ -23,7 +25,7 @@ export default function AgentBrief() {
     return () => { clearTimeout(t); for (const e of ['soma_todos_changed', 'soma_subjects_changed', CANVAS_CHANGED]) window.removeEventListener(e, refresh); };
   }, []);
 
-  if (hidden || briefIsEmpty(brief)) return null;
+  if (hidden || briefIsEmpty(brief)) return catchUp ? <div className={styles.bar}><span>Some of your work slipped. Soma can plan a way to catch up.</span>{catchUp}</div> : null;
   const hour = new Date().getHours();
   const greeting = hour < 5 ? 'Still up' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const time = (i: BriefItem) => i.source === 'task' ? '' : ` · ${new Date(i.due).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
@@ -44,6 +46,7 @@ export default function AgentBrief() {
       </div>
       <div className={styles.actions}>
         <button type="button" className={styles.primary} onClick={() => navigate('/ai', { state: { ask: planMyDayPrompt(brief) } })}>Plan my day</button>
+        {catchUp}
         <span className={styles.note}>Soma proposes the day, and any emails or calendar events, for you to accept.</span>
       </div>
     </section>

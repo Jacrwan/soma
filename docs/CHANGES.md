@@ -9,6 +9,29 @@ still needed.
 
 ---
 
+## 2026-10-30 (Catch-Up's button moves into the morning brief)
+
+- **Why:** the owner meant the "Good morning. Here's your day." card, not the
+  yesterday card: Catch-Up should be a button inside that card, not something
+  separate.
+- **What:** "Catch up on N things" now sits in the morning brief next to "Plan
+  my day". The yesterday card no longer has it. When the brief is hidden or has
+  nothing in it, the button gets the slim line of its own instead. The plan
+  still opens under the brief when pressed. The button now also needs the plan
+  to have something to offer (a slot, or "no room before it's due"), so it no
+  longer appears as a bare "Catch up" that opens to only the "not worth
+  catching up on" list (the owner's screenshot showed that case).
+  `?catchup` is unchanged.
+- **Where:** `CatchUp.tsx` (hands the button to its child via a render
+  function), `AgentBrief.tsx` (`catchUp` prop), `LiveDashboard.tsx` (the brief
+  slot), `AgentBrief.module.css` (`.bar`, moved from `CatchUp.module.css`).
+- **Guard:** `tests/catch-up-dashboard.spec.ts`: the button is in the morning
+  brief beside "Plan my day" and not in the yesterday card. The other
+  Catch-Up checks are unchanged.
+- **Setup / not done:** none.
+
+---
+
 ## 2026-10-30 (Catch-Up becomes a button beside the yesterday card)
 
 - **Why:** the owner asked for Catch-Up to show as a button with the day
