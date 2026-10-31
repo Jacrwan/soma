@@ -9,6 +9,23 @@ still needed.
 
 ---
 
+## 2026-10-30 (widget ideas: jacrwan@gmail.com is a developer account)
+
+- **Why:** the owner asked for jacrwan@gmail.com to be the developer account
+  that reviews widget ideas.
+- **What:** `is_soma_owner()` is true for jacrwan@gmail.com as well as
+  jacrwan1k@gmail.com (kept so the account already set up doesn't lose
+  access); either needs a confirmed email. No app code changed: the Widget
+  ideas button follows whatever the function says.
+- **Where:** `widget_requests_migration.sql` (the function only).
+- **Test:** none; the function lives in the database. Signed in as
+  jacrwan@gmail.com, the dashboard shows Widget ideas beside Customize.
+- **Setup:** run the function part of `widget_requests_migration.sql`
+  (CREATE OR REPLACE FUNCTION through the GRANT line) in the Supabase SQL
+  editor. The table is already there and isn't touched.
+
+---
+
 ## 2026-10-30 (widget ideas: a card in Add widgets)
 
 - **Why:** the owner wanted suggesting a widget to be obvious. The small text

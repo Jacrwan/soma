@@ -7,7 +7,7 @@
 -- Who can do what:
 --   * a student adds ideas and sees only their own, with the decision and any
 --     note; they can't change an idea once sent, or decide anything;
---   * the owner (the Soma account below, email confirmed) sees every idea and
+--   * the owner (the Soma accounts below, email confirmed) sees every idea and
 --     sets its status and note. The app asks is_soma_owner() to know whether
 --     to show the review list; the policies are what actually enforce it.
 --
@@ -17,7 +17,8 @@
 -- New table and function only; no existing row is touched. Until this runs
 -- the app says widget ideas aren't set up yet.
 --
--- To change the owner, edit the email in is_soma_owner() and run that part again.
+-- To change the owner, edit the emails in is_soma_owner() and run that part
+-- again (CREATE OR REPLACE FUNCTION … through the GRANT line).
 
 CREATE OR REPLACE FUNCTION public.is_soma_owner()
 RETURNS boolean
@@ -29,7 +30,7 @@ AS $$
   SELECT EXISTS (
     SELECT 1 FROM auth.users
     WHERE id = auth.uid()
-      AND lower(email) = 'jacrwan1k@gmail.com'
+      AND lower(email) IN ('jacrwan@gmail.com', 'jacrwan1k@gmail.com')
       AND email_confirmed_at IS NOT NULL
   );
 $$;
