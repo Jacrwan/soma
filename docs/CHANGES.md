@@ -9,6 +9,39 @@ still needed.
 
 ---
 
+## 2026-10-30 (Brain dump: pick the time on a calendar)
+
+- **Why:** the owner wanted to see the calendar rather than a list of times.
+  They also asked whether the time suggestion uses AI. It doesn't, and it
+  never did: `freeTime` works out the open time from the plan, the calendar
+  and the student's study hours.
+- **What:** "When" in "Add to your plan" is now the day's calendar.
+  - **Choosing a day:** buttons for the next seven days; a day with no room
+    for the length is disabled. "No set time" is a button too.
+  - **The calendar:** a scrolling day view with hours down the side. What's
+    already on the day is shown in grey: plan blocks, calendar events, and
+    waiting suggestions (dashed). Open time is shaded.
+  - **The marker:** a blue block for the line, labelled with its time.
+    Tapping or dragging the calendar moves it to the nearest open start, in
+    15-minute steps; its middle goes where you tap. Earlier and Later move it
+    one step from the keyboard, and the time is read out above.
+  - **Starting point:** the week's first open time, as before. A new length
+    keeps the day and stays as near the same time as fits, unless "No set
+    time" was chosen.
+- **Where:** `BrainDump.tsx` (`DumpDay`, `startsOf`, `pick`, the calendar),
+  `BrainDump.module.css` (`.calendar`, `.track`, `.open`, `.busy`, `.marker`),
+  and `planDump` in `LiveDashboard.tsx`, which now returns `days(minutes)` and
+  `clock` instead of a slot list.
+- **Guarded by:** `tests/brain-dump.spec.ts`. One test checks that the day's
+  calendar shows the block already on it, that Today is selected, and that
+  the first time is read out. Another taps just under 10 AM, then uses Later
+  and Earlier, and checks the saved time. A third covers No set time hiding the
+  calendar. The first test now also waits for the three lines to be saved
+  before reloading; under load, a reload could cut a save off.
+- **Setup:** none.
+
+---
+
 ## 2026-10-30 (Brain dump: + asks course, length and time)
 
 - **Why:** the owner wanted + to show the open times rather than pick one
