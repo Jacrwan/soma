@@ -9,6 +9,22 @@ still needed.
 
 ---
 
+## 2026-10-30 (widget ideas: green to build, red to turn down)
+
+- **Why:** the owner wanted the decisions told apart at a glance.
+- **What:** in the owner's Widget ideas list, **Build it** and **Mark built**
+  are filled with the app's green (`--success`) and **Not planned** with its
+  red (`--danger`), white text. In the dark theme, where both colours are
+  light, the text is dark. The student's form is unchanged.
+- **Where:** `WidgetIdeas.tsx` (`.build`, `.reject`), `WidgetIdeas.module.css`
+  (the two classes; the unused `.secondary` removed).
+- **Test:** `tests/widget-ideas.spec.ts`, "the owner sees how many ideas are
+  waiting and decides them, with a note", now checks Build it is
+  `--success` and Not planned is `--danger`.
+- **Setup:** none.
+
+---
+
 ## 2026-10-30 (widget ideas: jacrwan@gmail.com is a developer account)
 
 - **Why:** the owner asked for jacrwan@gmail.com to be the developer account

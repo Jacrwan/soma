@@ -94,6 +94,11 @@ test('the owner sees how many ideas are waiting and decides them, with a note', 
   await expect(dialog.getByText('2 waiting for your decision.')).toBeVisible();
   const countdown = dialog.getByRole('listitem').filter({ hasText: 'Exam countdown' });
   await expect(countdown).toContainText('Days left until each exam.');
+  // Build it is the app's green and Not planned its red.
+  const colour = (token: string) => page.evaluate(t => { const d = document.createElement('i'); d.style.color = `var(${t})`; document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; }, token);
+  const bg = (name: string) => countdown.getByRole('button', { name }).evaluate(e => getComputedStyle(e).backgroundColor);
+  expect(await bg('Build it')).toBe(await colour('--success'));
+  expect(await bg('Not planned')).toBe(await colour('--danger'));
   await countdown.getByPlaceholder('Note to the student (optional)').fill('Coming next week.');
   await countdown.getByRole('button', { name: 'Build it' }).click();
   await expect(countdown).toContainText('Will be built');

@@ -111,7 +111,8 @@
 }
 
 .primary,
-.secondary {
+.build,
+.reject {
   padding: 8px 16px;
   font: inherit;
   font-size: 13px;
@@ -126,15 +127,26 @@
   border: 1px solid var(--accent);
 }
 
-.secondary {
-  color: var(--text-secondary);
-  background: none;
-  border: 1px solid var(--border);
-  font-weight: 500;
+/* The owner's decisions: green to build, red to turn down. */
+.build,
+.reject {
+  color: #fff;
+  font-weight: 600;
 }
 
+.build  { background: var(--success); border: 1px solid var(--success); }
+.reject { background: var(--danger);  border: 1px solid var(--danger); }
+
+.build:hover:not(:disabled),
+.reject:hover:not(:disabled) { opacity: 0.9; }
+
+/* Dark theme's green and red are light, so white text would wash out. */
+:global([data-theme=dark]) .build,
+:global([data-theme=dark]) .reject { color: oklch(15% 0.01 265); }
+
 .primary:disabled,
-.secondary:disabled { opacity: 0.5; cursor: default; }
+.build:disabled,
+.reject:disabled { opacity: 0.5; cursor: default; }
 
 .link {
   padding: 4px 0;

@@ -163,9 +163,9 @@ export function ReviewWidgetIdeas({ onClose, onChange }: { onClose: () => void; 
           onChange={e => setNotes(n => ({ ...n, [r.id]: e.target.value }))} placeholder="Note to the student (optional)"/>
         <div className={styles.actions}>
           {r.status === 'new'
-            ? <button type="button" className={styles.primary} disabled={busy === r.id} onClick={() => void decide(r, 'planned')}>Build it</button>
-            : <button type="button" className={styles.primary} disabled={busy === r.id} onClick={() => void decide(r, 'built')}>Mark built</button>}
-          <button type="button" className={styles.secondary} disabled={busy === r.id} onClick={() => void decide(r, 'declined')}>Not planned</button>
+            ? <button type="button" className={styles.build} disabled={busy === r.id} onClick={() => void decide(r, 'planned')}>Build it</button>
+            : <button type="button" className={styles.build} disabled={busy === r.id} onClick={() => void decide(r, 'built')}>Mark built</button>}
+          <button type="button" className={styles.reject} disabled={busy === r.id} onClick={() => void decide(r, 'declined')}>Not planned</button>
         </div>
       </> : <>
         {r.ownerNote && <p className={styles.note}>{r.ownerNote}</p>}
