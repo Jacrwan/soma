@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AgentBrief from './AgentBrief';
 import CatchUp from './CatchUp';
-import BrainDump from './BrainDump';
+import BrainDump, { type DumpPlanner, type DumpSlot } from './BrainDump';
 import { readLayout, type DashboardLayout } from '../../lib/dashboardLayout';
 import { CANVAS_CHANGED } from '../../lib/canvasExtension';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -276,22 +276,46 @@ export default function LiveDashboard({userId}:{userId:string}) {
   * is Plan it's estimate for work it can name (homework, reading…), else 30 min.
   * With no open time it goes on today's list without one.
   */
- async function addFromDump(text:string):Promise<string>{
+ /**
+  * The brain dump's + (BrainDump.tsx): no AI. The course is guessed from the
+  * words; the length from the student's past work of that kind in the course
+  * (Plan it's estimate), else 30 minutes; the open times are the gaps in this
+  * week's plan and calendar inside their study hours, as Plan it finds them.
+  * The student confirms or changes each before it's added.
+  */
+ async function planDump(text:string):Promise<DumpPlanner>{
   if(!snapshot)throw new Error('Your plan is still loading.');
-  const words=text.toLowerCase(), live=snapshot.subjects.filter(s=>!s.archived);
-  const subject=live.find(s=>words.includes(s.name.toLowerCase())) ?? live.find(s=>{const w=s.name.split(/\s+/)[0].toLowerCase();return w.length>=3 && /^[a-z]+$/.test(w) && new RegExp(`\\b${w}\\b`).test(words);});
-  const minutes=kindOf(text) && subject ? Math.min(120,planEstimate({key:text,title:text,subject:subject.name,subjectId:subject.id,color:'',due:''},snapshot.history).minutes) : 30;
+  const words=text.toLowerCase(), live=snapshot.subjects.filter(s=>!s.archived), history=snapshot.history;
+  const guess=live.find(s=>words.includes(s.name.toLowerCase())) ?? live.find(s=>{const w=s.name.split(/\s+/)[0].toLowerCase();return w.length>=3 && /^[a-z]+$/.test(w) && new RegExp(`\\b${w}\\b`).test(words);});
   // Suggestions already waiting count as taken, as Plan it counts them.
   const plan=await readPlan(userId,origin,0,7);
   const waiting=getProposals(userId).filter(p=>p.time && p.replaces===undefined);
-  const open=freeTime({...plan,blocks:[...plan.blocks,...waiting as unknown as Snapshot['blocks']]},origin,storage.getSomaSettings(),new Date(),7,minutes);
-  const day=open.findIndex(d=>d.free.some(f=>{const [a,z]=rangeOf(f);return z-a>=minutes;}));
-  const start=day<0 ? 0 : rangeOf(open[day].free.find(f=>{const [a,z]=rangeOf(f);return z-a>=minutes;})!)[0];
-  const time=day<0 ? '' : `${clockOf(start)}–${clockOf(start+minutes)}`;
-  await save({id:Date.now(),title:text,subject:subject?.name ?? 'Personal',time,minutes:time ? minutes : 0,color:subject ? toneOf(subject.color) : 'blue',state:'Planned',day:Math.max(0,day),manual:true,...(time ? {} : {estimatedMinutes:minutes})});
-  if(!time)return 'to today’s list, with no time: there’s no open time this week';
-  const when=day===0 ? 'today' : day===1 ? 'tomorrow' : dateAt(origin,day).toLocaleDateString(undefined,{weekday:'long'});
-  return `for ${when}, ${formatClockRange(time)}`;
+  const taken={...plan,blocks:[...plan.blocks,...waiting as unknown as Snapshot['blocks']]}, settings=storage.getSomaSettings(), at=new Date();
+  const dayName=(day:number)=>day===0 ? 'Today' : day===1 ? 'Tomorrow' : dateAt(origin,day).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
+  return {
+   courses:live.map(s=>({id:s.id,name:s.name})),
+   guess:guess?.id ?? null,
+   estimate:courseId=>{
+    const s=live.find(x=>x.id===courseId);
+    if(!s || !kindOf(text))return {minutes:30,basis:'a guess for a quick task'};
+    const e=planEstimate({key:text,title:text,subject:s.name,subjectId:s.id,color:'',due:''},history);
+    return e.minutes>120 ? {minutes:120,basis:`${e.basis}; one sitting is up to 2 hours`} : e;
+   },
+   // Each open stretch that fits offers its start, then the next hours in it (up to three).
+   slots:minutes=>{
+    const out:DumpSlot[]=[];
+    freeTime(taken,origin,settings,at,7,minutes).forEach((d,day)=>d.free.forEach(f=>{
+     const [a,z]=rangeOf(f);
+     for(let start=a,n=0;start+minutes<=z && n<3;n++,start=Math.floor(start/60)*60+60){const time=`${clockOf(start)}–${clockOf(start+minutes)}`;out.push({day,time,label:`${dayName(day)}, ${formatClockRange(time)}`});}
+    }));
+    return out.slice(0,8);
+   },
+   add:async({courseId,minutes,slot})=>{
+    const s=live.find(x=>x.id===courseId);
+    await save({id:Date.now(),title:text,subject:s?.name ?? 'Personal',time:slot?.time ?? '',minutes:slot ? minutes : 0,color:s ? toneOf(s.color) : 'blue',state:'Planned',day:slot?.day ?? 0,manual:true,...(slot ? {} : {estimatedMinutes:minutes})});
+    return slot ? `for ${slot.label.replace(/^Today/,'today').replace(/^Tomorrow/,'tomorrow')}` : 'to today’s list, with no set time';
+   },
+  };
  }
  /** Customize's Done: saved with the rest of the settings (merged, never replacing them), then kept in this browser's copy. */
  async function saveLayout(next:DashboardLayout){
@@ -307,7 +331,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   else setError('');
  }
  const pulseDays=Array.from({length:7},(_,i)=>snapshot.history.filter(h=>h.date===localDate(dateAt(origin,i-6))).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0));
- return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<CatchUp key={localDate(origin)} userId={userId} origin={origin} onApply={applyBatch}>{catchUp=><AgentBrief catchUp={catchUp}/>}</CatchUp>,dump:<BrainDump userId={userId} onAdd={addFromDump}/>,layout,onLayout:saveLayout,due:due.map(x=>{
+ return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<CatchUp key={localDate(origin)} userId={userId} origin={origin} onApply={applyBatch}>{catchUp=><AgentBrief catchUp={catchUp}/>}</CatchUp>,dump:<BrainDump userId={userId} onPlan={planDump}/>,layout,onLayout:saveLayout,due:due.map(x=>{
   // Plan it's sittings for this assignment, and the time logged on them (or on the assignment itself).
   const mine=snapshot.todos.filter(t=>t.subjectId===x.subjectId && isSittingOf(t.text,x.title));
   const seconds=snapshot.history.filter(h=>h.subject_id===x.subjectId && isSittingOf(h.task_text??'',x.title)).reduce((n,h)=>n+(h.duration_seconds||0),0);

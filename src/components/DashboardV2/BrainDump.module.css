@@ -24,7 +24,7 @@
 }
 
 /* As the block editor's fields. */
-.dump input {
+.dump input[type=text] {
   width: 100%;
   min-width: 0;
   min-height: 34px;
@@ -37,11 +37,11 @@
   font-size: 13px;
 }
 
-.dump input::placeholder {
+.dump input[type=text]::placeholder {
   color: var(--text-secondary);
 }
 
-.dump input:focus-visible {
+.dump input[type=text]:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -111,4 +111,163 @@
   margin-top: 8px;
   font-size: 12px;
   color: var(--danger);
+}
+
+/* "Add to your plan": what +, opens. Soma's guesses are filled in; each can be changed. */
+.dialog {
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  margin: auto;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text-primary);
+  box-shadow: 0 12px 40px oklch(0% 0 0 / .18);
+}
+
+.dialog::backdrop {
+  background: oklch(0% 0 0 / .3);
+}
+
+.dialog h3 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.what {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  margin: 16px 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.field > span,
+.field legend {
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.field legend {
+  margin-bottom: 6px;
+}
+
+.dialog .field select {
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+}
+
+.hint {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.dialog .chips button {
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+}
+
+.dialog .chips button[aria-pressed=true] {
+  border-color: var(--accent);
+  background: color-mix(in oklch, var(--accent), var(--bg) 88%);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.times {
+  display: grid;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.times label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.times label:hover {
+  background: var(--bg-secondary);
+}
+
+.times input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.dialog .dialogActions button {
+  min-height: 34px;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+}
+
+.dialog .dialogActions .confirm {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-weight: 500;
+}
+
+.dialog .dialogActions button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+/* The dashboard's own button hover would grey these out. */
+.dialog .dialogActions .confirm:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--accent), #000 10%);
+}
+
+.dialog .chips button[aria-pressed=true]:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--accent), var(--bg) 82%);
 }

@@ -9,6 +9,39 @@ still needed.
 
 ---
 
+## 2026-10-30 (Brain dump: + asks course, length and time)
+
+- **Why:** the owner wanted + to show the open times rather than pick one
+  silently. They also wanted it to suggest a length and to ask which course
+  the item is for, instead of defaulting to Personal. This matters most for
+  students without AI.
+- **What:** + now opens "Add to your plan", which needs no AI. Soma's guesses
+  are filled in, so Add is still one tap, and each guess can be changed:
+  - **Course:** guessed from the words, as before. When the words don't name
+    a course, the field is empty and Add stays disabled until one is picked.
+    "Personal (not for a course)" is one of the choices.
+  - **How long:** chips from 15 min to 2 hr. The suggestion uses Plan it's
+    estimate for recognised kinds of work in a course (the student's past
+    work of that kind, else their course average, else a guess). Anything else
+    gets 30 min. The window says why ("Suggested: 45 min, your last 3 readings
+    in … took about that"). Changing the course re-suggests the length, unless
+    the student already picked one.
+  - **When:** up to 8 open times this week that fit the length. Each open
+    stretch offers its start time, then the next full hours inside it (up to
+    3). Gaps come from `freeTime`, the same as Plan it: the plan, calendar
+    events and waiting suggestions count as taken, inside the student's study
+    hours. The first time is selected. "No set time: add it to today's list"
+    is always offered.
+- **Where:** `BrainDump.tsx` (the window, `DumpPlanner`), `BrainDump.module.css`,
+  and `planDump` in `LiveDashboard.tsx`, which replaced `addFromDump`.
+- **Guarded by:** `tests/brain-dump.spec.ts`. One test picks a course before
+  Add and checks the 30 min suggestion and first time. Another checks the
+  guessed course with a 1 hr suggestion, then a changed length and time saved
+  as chosen. A third covers Cancel and no set time.
+- **Setup:** none.
+
+---
+
 ## 2026-10-30 (Widget heights set row by row)
 
 - **Why:** the owner wanted the plan to reach down to the Focus card. The preset

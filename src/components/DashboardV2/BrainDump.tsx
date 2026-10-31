@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { addDump, loadDump, removeDump } from '../../lib/brainDump';
 import styles from './BrainDump.module.css';
 
 /**
  * Brain dump: a list for getting everything out of your head, with no AI.
- * Enter adds a line (pasting several lines adds each); + puts that line on
- * the plan in the next open time, as LiveDashboard's `onAdd` decides. The list
+ * Enter adds a line (pasting several lines adds each). + opens "Add to your
+ * plan": the course, how long, and when, each filled in with Soma's guess
+ * (LiveDashboard's `onPlan`, no AI) so Add is one tap, and each can be
+ * changed. A course has to be picked when none is named in the words. The list
  * is saved to the student's account (lib/brainDump.ts) and read again when
  * the tab comes back into view, so every device shows the same one; this
  * browser keeps a copy to show at once. Until the table exists it lives in
@@ -15,7 +17,21 @@ import styles from './BrainDump.module.css';
  */
 
 type Item = { id: string; text: string };
-type Props = { userId: string; onAdd: (text: string) => Promise<string> };
+export type DumpSlot = { day: number; time: string; label: string };
+/** What + needs for one line: the courses and Soma's guesses, and saving the choice (it says where it went). */
+export type DumpPlanner = {
+  courses: { id: string; name: string }[];
+  guess: string | null;
+  estimate: (courseId: string | null) => { minutes: number; basis: string };
+  slots: (minutes: number) => DumpSlot[];
+  add: (choice: { courseId: string | null; minutes: number; slot: DumpSlot | null }) => Promise<string>;
+};
+type Props = { userId: string; onPlan: (text: string) => Promise<DumpPlanner> };
+type Adding = { item: Item; planner: DumpPlanner; course: string; minutes: number; picked: boolean; slot: number };
+
+const LENGTHS = [15, 30, 45, 60, 90, 120];
+const PERSONAL = 'personal';
+const hm = (m: number) => m < 60 ? `${m} min` : `${Math.floor(m / 60)} hr${m % 60 ? ` ${m % 60} min` : ''}`;
 
 const MAX_ITEMS = 100, MAX_LENGTH = 200;
 const read = (key: string): Item[] => { try { const v = JSON.parse(localStorage.getItem(key) ?? '[]'); return Array.isArray(v) ? v.filter(i => typeof i?.id === 'string' && typeof i?.text === 'string') : []; } catch { return []; } };
@@ -23,13 +39,16 @@ const write = (key: string, items: Item[]) => { try { localStorage.setItem(key, 
 const flagged = (key: string) => { try { return localStorage.getItem(key) === '1'; } catch { return false; } };
 const flag = (key: string) => { try { localStorage.setItem(key, '1'); } catch { /* uploads again next time; saving the same line twice is harmless */ } };
 
-export default function BrainDump({ userId, onAdd }: Props) {
+export default function BrainDump({ userId, onPlan }: Props) {
   const key = `soma_brain_dump:${userId}`;
   const [items, setItems] = useState(() => read(key));
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
+  const [adding, setAdding] = useState<Adding | null>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
   const current = useRef(items);
   // true: the account's list; false: no table yet, browser only; null: not known yet.
   const synced = useRef<boolean | null>(null);
@@ -90,10 +109,30 @@ export default function BrainDump({ userId, onAdd }: Props) {
     void persist(() => removeDump(userId, item.id), () => putBack(item, at));
   }
 
-  async function schedule(item: Item) {
+  useEffect(() => { if (adding && !dialog.current?.open) dialog.current?.showModal?.(); }, [adding]);
+  const close = () => { dialog.current?.close?.(); setAdding(null); };
+
+  /** + : finds the open times and opens "Add to your plan" with Soma's guesses filled in. */
+  async function open(item: Item) {
     setBusy(item.id); setError(''); setStatus('');
     try {
-      const where = await onAdd(item.text);
+      const planner = await onPlan(item.text);
+      const course = planner.guess ?? '';
+      setAdding({ item, planner, course, minutes: planner.estimate(planner.guess).minutes, picked: false, slot: 0 });
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not find open times. Please retry.'); }
+    finally { setBusy(null); }
+  }
+  // A new course re-suggests the length, unless the student chose one; a new length finds new times.
+  const pickCourse = (course: string) => setAdding(a => a && { ...a, course, ...(a.picked ? {} : { minutes: a.planner.estimate(course === PERSONAL ? null : course || null).minutes, slot: 0 }) });
+  const pickLength = (minutes: number) => setAdding(a => a && { ...a, minutes, picked: true, slot: 0 });
+
+  async function confirm() {
+    if (!adding || !adding.course) return;
+    const { item, planner, course, minutes } = adding, slots = planner.slots(minutes);
+    setBusy(item.id); setError('');
+    try {
+      const where = await planner.add({ courseId: course === PERSONAL ? null : course, minutes, slot: slots[adding.slot] ?? null });
+      close();
       const at = current.current.findIndex(i => i.id === item.id);
       keep(current.current.filter(i => i.id !== item.id));
       setStatus(`Added “${item.text}” ${where}.`);
@@ -101,6 +140,10 @@ export default function BrainDump({ userId, onAdd }: Props) {
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not add it. Please retry.'); }
     finally { setBusy(null); }
   }
+
+  const suggestion = adding && adding.planner.estimate(adding.course && adding.course !== PERSONAL ? adding.course : null);
+  const slots = adding ? adding.planner.slots(adding.minutes) : [];
+  const lengths = adding ? [...new Set([...LENGTHS, suggestion!.minutes, adding.minutes])].sort((a, b) => a - b) : [];
 
   return (
     <section className={styles.dump} aria-labelledby="brain-dump-title">
@@ -115,12 +158,46 @@ export default function BrainDump({ userId, onAdd }: Props) {
       </form>
       {items.length > 0 && <ul>{items.map(item => <li key={item.id}>
         <span>{item.text}</span>
-        <button type="button" className={styles.add} disabled={busy !== null} aria-label={`Add “${item.text}” to your plan`} title="Add to your plan" onClick={() => void schedule(item)}><Plus size={15} /></button>
+        <button type="button" className={styles.add} disabled={busy !== null} aria-label={`Add “${item.text}” to your plan`} title="Add to your plan" onClick={() => void open(item)}><Plus size={15} /></button>
         <button type="button" className={styles.remove} disabled={busy !== null} aria-label={`Remove “${item.text}”`} title="Remove" onClick={() => remove(item)}><X size={14} /></button>
       </li>)}</ul>}
-      {busy && <p className={styles.note}>Finding a time…</p>}
-      {error && <p role="alert" className={styles.error}>{error}</p>}
+      {busy && !adding && <p className={styles.note}>Finding open times…</p>}
+      {error && !adding && <p role="alert" className={styles.error}>{error}</p>}
       {status && !busy && <p role="status" className={styles.note}>{status}</p>}
+      {adding && <dialog ref={dialog} className={styles.dialog} aria-labelledby={titleId} onCancel={e => { e.preventDefault(); if (!busy) close(); }}>
+        <form method="dialog" onSubmit={e => { e.preventDefault(); void confirm(); }}>
+          <h3 id={titleId}>Add to your plan</h3>
+          <p className={styles.what}>{adding.item.text}</p>
+
+          <label className={styles.field}><span>Course</span>
+            <select value={adding.course} onChange={e => pickCourse(e.target.value)} required>
+              <option value="" disabled>Choose a course</option>
+              {adding.planner.courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              <option value={PERSONAL}>Personal (not for a course)</option>
+            </select>
+          </label>
+          {!adding.planner.guess && !adding.course && <p className={styles.hint}>Soma couldn’t tell which course this is for.</p>}
+
+          <fieldset className={styles.field}><legend>How long</legend>
+            <div className={styles.chips}>{lengths.map(m => <button key={m} type="button" aria-pressed={adding.minutes === m} onClick={() => pickLength(m)}>{hm(m)}</button>)}</div>
+            <p className={styles.hint}>Suggested: {hm(suggestion!.minutes)}, {suggestion!.basis}.</p>
+          </fieldset>
+
+          <fieldset className={styles.field}><legend>When</legend>
+            {slots.length === 0 && <p className={styles.hint}>No open time this week fits {hm(adding.minutes)}. Pick a shorter length, or add it with no set time.</p>}
+            <div className={styles.times}>
+              {slots.map((slot, i) => <label key={`${slot.day} ${slot.time}`}><input type="radio" name="when" checked={adding.slot === i} onChange={() => setAdding(a => a && { ...a, slot: i })} />{slot.label}</label>)}
+              <label><input type="radio" name="when" checked={adding.slot === -1 || (slots.length === 0)} onChange={() => setAdding(a => a && { ...a, slot: -1 })} />No set time: add it to today’s list</label>
+            </div>
+          </fieldset>
+
+          {error && <p role="alert" className={styles.error}>{error}</p>}
+          <div className={styles.dialogActions}>
+            <button type="button" onClick={close} disabled={busy !== null}>Cancel</button>
+            <button type="submit" className={styles.confirm} disabled={busy !== null || !adding.course}>{busy ? 'Adding…' : 'Add'}</button>
+          </div>
+        </form>
+      </dialog>}
     </section>
   );
 }

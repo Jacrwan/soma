@@ -2,8 +2,9 @@ import { test, expect, type Page } from '@playwright/test';
 
 /**
  * The brain dump (2026-10-30): a list on the dashboard for getting everything
- * out of your head, with no AI. + puts a line on the plan in the next open
- * time. The list is saved to the account (brain_dump_items), so every device
+ * out of your head, with no AI. + opens "Add to your plan": the course, how
+ * long and when, filled in with Soma's guesses and each changeable (a course
+ * has to be picked when the words don't name one). The list is saved to the account (brain_dump_items), so every device
  * shows the same one; before that table exists it stays in the browser. Also:
  * a hidden morning brief can be brought back.
  */
@@ -67,6 +68,19 @@ test('brain dump: lines are kept, + puts one on today’s plan in open time, and
   await expect(dump.getByRole('listitem')).toHaveCount(2);
 
   await dump.getByRole('button', { name: 'Add “Email TA about the lab grade” to your plan' }).click();
+  const add = page.getByRole('dialog', { name: 'Add to your plan' });
+  // No course in the words: one has to be picked before Add.
+  await expect(add.getByRole('combobox', { name: 'Course' })).toHaveValue('');
+  await expect(add.getByText('Soma couldn’t tell which course this is for.')).toBeVisible();
+  await expect(add.getByRole('button', { name: 'Add', exact: true })).toBeDisabled();
+  await add.getByRole('combobox', { name: 'Course' }).selectOption({ label: 'Personal (not for a course)' });
+  // A quick task: 30 minutes, at the first open time (after the 9–10 block).
+  await expect(add.getByRole('button', { name: '30 min', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(add.getByText('Suggested: 30 min, a guess for a quick task.')).toBeVisible();
+  await expect(add.getByRole('radio').first()).toBeChecked();
+  await expect(add.getByRole('radio').first()).toHaveAccessibleName(/^Today, 10:00/);
+  await add.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(add).toHaveCount(0);
   await expect(dump.getByRole('status')).toContainText('Added “Email TA about the lab grade” for today');
   await expect(dump.getByRole('listitem')).toHaveCount(1);
   const todo = state.tables.todos.find(t => t.text === 'Email TA about the lab grade');
@@ -89,9 +103,45 @@ test('brain dump: pasting a list adds each line, and a course named in the words
   await expect(dump.getByRole('listitem')).toHaveText(['math pset 4', 'return library books', 'ask about internship']);
 
   await dump.getByRole('button', { name: 'Add “math pset 4” to your plan' }).click();
-  await expect(dump.getByRole('status')).toContainText('Added “math pset 4”');
+  const add = page.getByRole('dialog', { name: 'Add to your plan' });
+  await expect(add.getByRole('combobox', { name: 'Course' })).toHaveValue('math');
+  // A problem set in a course with no history yet: an hour, said as a guess.
+  await expect(add.getByRole('button', { name: '1 hr', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(add.getByText(/^Suggested: 1 hr, a guess/)).toBeVisible();
+  // The student picks a shorter length and a later time.
+  await add.getByRole('button', { name: '45 min', exact: true }).click();
+  await add.getByRole('radio', { name: /^Today, 10:00/ }).check();
+  await add.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(dump.getByRole('status')).toContainText('Added “math pset 4” for today, 10:00');
   const todo = state.tables.todos.find(t => t.text === 'math pset 4')!;
   expect(todo.subject_id).toBe('math');
+  const session = state.tables.todo_sessions.find(x => x.todo_id === todo.id)!;
+  expect(new Date(String(session.start_time)).getTime()).toBe(new Date(at(0, '10:00')).getTime());
+  expect((new Date(String(session.end_time)).getTime() - new Date(String(session.start_time)).getTime()) / 60000).toBe(45);
+});
+
+test('brain dump: Add to your plan can be cancelled, and can add with no set time', async ({ page }) => {
+  const state = await setup(page);
+  await page.goto('/dashboard');
+  const dump = page.getByRole('region', { name: 'Brain dump' });
+  const input = dump.getByRole('textbox', { name: 'Add to your brain dump' });
+  await input.fill('Call home'); await input.press('Enter');
+  await dump.getByRole('button', { name: 'Add “Call home” to your plan' }).click();
+  const add = page.getByRole('dialog', { name: 'Add to your plan' });
+  await add.getByRole('button', { name: 'Cancel' }).click();
+  await expect(add).toHaveCount(0);
+  await expect(dump.getByRole('listitem')).toHaveText(['Call home']);
+  expect(state.tables.todos).toHaveLength(0);
+
+  await dump.getByRole('button', { name: 'Add “Call home” to your plan' }).click();
+  await add.getByRole('combobox', { name: 'Course' }).selectOption({ label: 'Personal (not for a course)' });
+  await add.getByRole('radio', { name: 'No set time: add it to today’s list' }).check();
+  await add.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(dump.getByRole('status')).toContainText('Added “Call home” to today’s list, with no set time');
+  const todo = state.tables.todos.find(t => t.text === 'Call home')!;
+  expect(todo.date).toBe(dateOf(0));
+  expect(state.tables.todo_sessions.filter(x => x.todo_id === todo.id)).toHaveLength(0);
+  await expect(dump.getByRole('listitem')).toHaveCount(0);
 });
 
 test('a hidden morning brief can be brought back with "Show today’s brief"', async ({ page }) => {
