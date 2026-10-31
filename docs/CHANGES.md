@@ -9,6 +9,34 @@ still needed.
 
 ---
 
+## 2026-10-30 (This week widget redrawn as a real mini calendar)
+
+- **Why:** the owner said the This week widget looked bad. It had grey bars
+  with no labels, no hours, saturated blocks, and back-to-back blocks that ran
+  together. Overlapping blocks were drawn on top of each other.
+- **What:**
+  - Hour labels down the side (every 2 or 3 hours) with faint gridlines.
+  - Blocks are tinted in their course's color with a colored left edge, as
+    in Today's plan, and titled on one line when there's room. Calendar events
+    are quieter grey, and waiting suggestions are dashed.
+  - A 1px gap separates back-to-back blocks.
+  - Overlapping blocks sit side by side in lanes (`lanes`).
+  - A block too thin to read shows color only (a container query on the
+    block).
+  - Today's date is in an accent circle. The picked day is shaded in its
+    header and column, and clicking a column picks that day too. Due counts
+    sit under the dates.
+  - The current-time line has a dot at its start.
+  - The day buttons keep their names ("Friday, Oct 30: 1 block").
+- **Where:** `WeekGlance` and `lanes` in `src/components/DashboardV2/Widgets.tsx`,
+  and the `.glance*` rules in `DashboardV2.module.css`.
+- **Guarded by:** `tests/dashboard-widgets.spec.ts` ("This week opens a day in
+  Today's plan"). Screenshots were checked at full width, in dark mode, and on
+  a phone.
+- **Setup:** none.
+
+---
+
 ## 2026-10-30 (Brain dump: pick the time on a calendar)
 
 - **Why:** the owner wanted to see the calendar rather than a list of times.

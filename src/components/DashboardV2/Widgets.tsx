@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import { CalendarPlus, Play } from 'lucide-react';
 import { clockLabel } from './progress';
-import { formatClock, formatClockRange, type TimeFormat } from '../../lib/timeFormat';
+import { formatClock, formatClockRange, formatHourLabel, type TimeFormat } from '../../lib/timeFormat';
 import type { PlanBlock } from './PlanEditor';
 import styles from './DashboardV2.module.css';
 
@@ -23,6 +23,23 @@ const span = (time: string): [number, number] | null => {
 };
 const hm = (m: number) => m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}` : `${m} min`;
 const dateAt = (origin: Date, day: number) => { const d = new Date(origin); d.setDate(d.getDate() + day); return d; };
+
+/** Side-by-side lanes for blocks that overlap: each block's lane, and how many lanes its overlapping group has. */
+function lanes<T extends { s: [number, number] }>(items: T[]): (T & { lane: number; of: number })[] {
+  const sorted = [...items].sort((a, b) => a.s[0] - b.s[0] || b.s[1] - a.s[1]);
+  const out: (T & { lane: number; of: number })[] = [];
+  let group: (T & { lane: number; of: number })[] = [], ends: number[] = [], groupEnd = -1;
+  const close = () => { for (const g of group) g.of = ends.length; group = []; ends = []; };
+  for (const x of sorted) {
+    if (x.s[0] >= groupEnd) { close(); groupEnd = -1; }
+    let lane = ends.findIndex(e => e <= x.s[0]);
+    if (lane < 0) { lane = ends.length; ends.push(0); }
+    ends[lane] = x.s[1]; groupEnd = Math.max(groupEnd, x.s[1]);
+    const placed = { ...x, lane, of: 1 }; group.push(placed); out.push(placed);
+  }
+  close();
+  return out;
+}
 
 /** The block on now, else the next one today. Focus is offered on study blocks. */
 export function UpNext({ blocks, now, timeFormat, canFocus, onFocus }: {
@@ -94,7 +111,12 @@ export function StudyWeek({ days, origin }: { days: number[]; origin: Date }) {
   );
 }
 
-/** A small week calendar of the seven days on screen; picking a day opens it in Today's plan. */
+/**
+ * A small week calendar of the seven days on screen: hours down the side,
+ * each block in its course's color (titled when there's room), calendar
+ * events quieter, and a line at the current time. Picking a day, by its date
+ * or its column, opens it in Today's plan.
+ */
 export function WeekGlance({ blocks, due, origin, rangeStart, day, now, onPick }: {
   blocks: PlanBlock[]; due: DueItem[]; origin: Date; rangeStart: number; day: number; now: Date; onPick: (day: number) => void;
 }) {
@@ -104,28 +126,36 @@ export function WeekGlance({ blocks, due, origin, rangeStart, day, now, onPick }
   const from = Math.min(8 * 60, ...timed.map(x => Math.floor(x.s[0] / 60) * 60));
   const to = Math.max(22 * 60, ...timed.map(x => Math.min(24 * 60, Math.ceil(x.s[1] / 60) * 60)));
   const pct = (m: number) => `${((Math.min(Math.max(m, from), to) - from) / (to - from)) * 100}%`;
+  const every = (to - from) / 60 > 12 ? 3 : 2;
+  const hours = Array.from({ length: Math.floor(to / 60) - Math.ceil(from / 60) + 1 }, (_, k) => Math.ceil(from / 60) + k).filter(h => h % every === 0 && h * 60 > from && h * 60 < to);
   const nowAt = now.getHours() * 60 + now.getMinutes();
   return (
     <section className={`${styles.widgetCard} ${styles.glance}`} aria-labelledby="w-week">
       <div className={styles.sectionHeading}><h2 id="w-week">This week</h2><a href="/calendar">Open calendar</a></div>
-      <div className={styles.glanceGrid}>
+      <div className={styles.glanceHead}>
+        <span aria-hidden="true"/>
         {days.map(i => {
           const d = dateAt(origin, i);
-          const mine = timed.filter(x => x.b.day === i);
-          const dueCount = due.filter(x => x.day === i).length;
-          return <div key={i} className={styles.glanceDay}>
-            <button type="button" aria-pressed={day === i} onClick={() => onPick(i)}
-              aria-label={`${d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}: ${mine.length} ${mine.length === 1 ? 'block' : 'blocks'}${dueCount ? `, ${dueCount} due` : ''}`}>
-              <span>{i === 0 ? 'Today' : d.toLocaleDateString(undefined, { weekday: 'short' })}</span><strong>{d.getDate()}</strong>
-            </button>
-            <div className={styles.glanceTrack} aria-hidden="true">
-              {mine.map(({ b, s }) => <i key={b.id} className={`${styles[b.color] ?? ''}${b.external ? ` ${styles.glanceEvent}` : ''}${b.state === 'Proposal' ? ` ${styles.glanceProposal}` : ''}`}
-                style={{ top: pct(s[0]), height: `calc(${pct(s[1])} - ${pct(s[0])})` } as CSSProperties} title={`${b.title} · ${b.time}`}/>)}
-              {i === 0 && nowAt >= from && nowAt <= to && <b className={styles.glanceNow} style={{ top: pct(nowAt) }}/>}
-              {dueCount > 0 && <em className={styles.glanceDue}>{dueCount} due</em>}
-            </div>
-          </div>;
+          const count = timed.filter(x => x.b.day === i).length, dueCount = due.filter(x => x.day === i).length;
+          return <button key={i} type="button" aria-pressed={day === i} onClick={() => onPick(i)}
+            aria-label={`${d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}: ${count} ${count === 1 ? 'block' : 'blocks'}${dueCount ? `, ${dueCount} due` : ''}`}>
+            <span>{i === 0 ? 'Today' : d.toLocaleDateString(undefined, { weekday: 'short' })}</span>
+            <strong className={i === 0 ? styles.glanceToday : undefined}>{d.getDate()}</strong>
+            <em>{dueCount > 0 ? `${dueCount} due` : ''}</em>
+          </button>;
         })}
+      </div>
+      <div className={styles.glanceBody}>
+        <div className={styles.glanceHours} aria-hidden="true">{hours.map(h => <span key={h} style={{ top: pct(h * 60) }}>{formatHourLabel(h % 24)}</span>)}</div>
+        <div className={styles.glanceLines} aria-hidden="true">{hours.map(h => <b key={h} style={{ top: pct(h * 60) }}/>)}</div>
+        {days.map(i => <div key={i} className={`${styles.glanceTrack}${day === i ? ` ${styles.glancePicked}` : ''}`} aria-hidden="true" onClick={() => onPick(i)}>
+          {lanes(timed.filter(x => x.b.day === i)).map(({ b, s, lane, of }) => <div key={b.id}
+            className={`${styles.glanceBlock} ${styles[b.color] ?? ''}${b.external ? ` ${styles.glanceEvent}` : ''}${b.state === 'Proposal' ? ` ${styles.glanceProposal}` : ''}`}
+            style={{ top: `calc(${pct(s[0])} + 1px)`, height: `max(4px, calc(${pct(s[1])} - ${pct(s[0])} - 2px))`, left: `calc(${(lane / of) * 100}% + 2px)`, width: `calc(${100 / of}% - 4px)` } as CSSProperties} title={`${b.title} · ${formatClockRange(b.time)}`}>
+            {s[1] - s[0] >= 45 && <span>{b.title}</span>}
+          </div>)}
+          {i === 0 && nowAt >= from && nowAt <= to && <b className={styles.glanceNow} style={{ top: pct(nowAt) }}/>}
+        </div>)}
       </div>
     </section>
   );

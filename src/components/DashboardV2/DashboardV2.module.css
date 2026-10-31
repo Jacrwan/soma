@@ -416,19 +416,32 @@
 .widgetFoot{margin-top:6px;font-size:11px;color:var(--text-secondary)}
 .widgetCard:has(.studyBars){display:flex;flex-direction:column}
 /* This week */
+/* This week: a small calendar. Hours down the side, blocks tinted in their course's color. */
 .glance{display:flex;flex-direction:column}
-.glanceGrid{flex:1;min-height:0;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;margin-top:10px}
-.glanceDay{display:flex;flex-direction:column;min-height:0;min-width:0}
-.glanceDay button{display:flex;flex-direction:column;align-items:center;gap:0;padding:3px 0;min-height:0;background:transparent;border-color:transparent}
-.glanceDay button[aria-pressed=true]{border-color:var(--text-secondary);background:var(--bg-secondary)}
-.glanceDay button span{font-size:10px;color:var(--text-secondary)}
-.glanceDay button strong{font-size:14px;font-weight:550}
-.glanceTrack{position:relative;flex:1;min-height:40px;margin-top:4px;border-radius:6px;background:var(--bg-secondary)}
-.glanceTrack i{position:absolute;left:3px;right:3px;min-height:3px;border-radius:3px;background:var(--tone)}
-.glanceTrack i.glanceEvent{background:color-mix(in oklch,var(--text-secondary),var(--bg) 55%)}
-.glanceTrack i.glanceProposal{background:transparent;border:1px dashed var(--tone)}
-.glanceNow{position:absolute;left:0;right:0;height:2px;background:var(--danger);border-radius:1px}
-.glanceDue{position:absolute;left:2px;right:2px;bottom:3px;font-size:9px;font-style:normal;text-align:center;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.glanceHead,.glanceBody{display:grid;grid-template-columns:34px repeat(7,minmax(0,1fr));column-gap:4px}
+.glanceHead{margin-top:10px}
+.page .glanceHead button{display:flex;flex-direction:column;align-items:center;gap:1px;padding:4px 0 3px;min-height:0;background:transparent;border:0;border-radius:8px}
+.page .glanceHead button[aria-pressed=true]{background:var(--bg-secondary)}
+.glanceHead button span{font-size:10px;color:var(--text-secondary)}
+.glanceHead button strong{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+.glanceHead button strong.glanceToday{background:var(--accent);color:#fff}
+.glanceHead button em{min-height:11px;font-size:9px;line-height:11px;font-style:normal;font-weight:600;color:var(--accent)}
+.glanceBody{position:relative;flex:1;min-height:90px;margin-top:6px}
+.glanceHours{position:relative}
+.glanceHours span{position:absolute;right:2px;transform:translateY(-50%);font-size:9px;line-height:1;white-space:nowrap;color:var(--text-secondary);font-variant-numeric:tabular-nums}
+.glanceLines{position:absolute;inset:0 0 0 38px;pointer-events:none}
+.glanceLines b{position:absolute;left:0;right:0;border-top:1px solid color-mix(in oklch,var(--border),transparent 30%)}
+.glanceTrack{position:relative;min-width:0;border-radius:6px;cursor:pointer}
+.glanceTrack:hover,.glancePicked{background:color-mix(in oklch,var(--bg-secondary),transparent 30%)}
+.glanceBlock{position:absolute;overflow:hidden;padding:1px 4px;border-left:3px solid var(--tone,var(--text-secondary));border-radius:4px;background:color-mix(in oklch,var(--tone,var(--text-secondary)),var(--bg) 76%);color:color-mix(in oklch,var(--tone,var(--text-secondary)),var(--text-primary) 45%);font-size:10px;line-height:12px}
+.glanceBlock{container-type:inline-size}
+.glanceBlock span{display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-weight:550}
+/* Too thin to read a title: color alone. */
+@container (max-width:44px){.glanceBlock span{display:none}}
+.glanceBlock.glanceEvent{--tone:var(--text-secondary);background:color-mix(in oklch,var(--text-secondary),var(--bg) 90%);color:var(--text-secondary)}
+.glanceBlock.glanceProposal{background:transparent;border:1px dashed var(--tone,var(--text-secondary));border-left-width:3px}
+.glanceNow{position:absolute;z-index:1;left:0;right:0;height:2px;margin-top:-1px;background:var(--danger);border-radius:1px}
+.glanceNow::before{content:"";position:absolute;left:-3px;top:-2px;width:6px;height:6px;border-radius:50%;background:var(--danger)}
 @media(min-height:860px){.widgetGrid{--row:196px}}
 @media(max-width:1100px){.widgetGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.c3{grid-column:span 2}}
 @media(max-width:780px){
@@ -438,7 +451,7 @@
   .widgetBody>*,.widget[data-widget=panel]>*{overflow:visible}
   .widget .conversation{height:200px;flex:none}
   .studyBars{height:110px}
-  .glanceTrack{min-height:120px}
+  .glanceBody{min-height:320px}
   .headerTools{justify-content:flex-start}
 }
 @media(prefers-reduced-motion:no-preference){.customizing .widget{transition:transform .15s ease-out}}
