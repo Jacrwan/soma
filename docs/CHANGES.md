@@ -51,6 +51,67 @@ still needed.
 
 ---
 
+## 2026-10-30 (This week widget redrawn as a real mini calendar)
+
+- **Why:** the owner said the This week widget looked bad. It had grey bars
+  with no labels, no hours, saturated blocks, and back-to-back blocks that ran
+  together. Overlapping blocks were drawn on top of each other.
+- **What:**
+  - Hour labels down the side (every 2 or 3 hours) with faint gridlines.
+  - Blocks are tinted in their course's color with a colored left edge, as
+    in Today's plan, and titled on one line when there's room. Calendar events
+    are quieter grey, and waiting suggestions are dashed.
+  - A 1px gap separates back-to-back blocks.
+  - Overlapping blocks sit side by side in lanes (`lanes`).
+  - A block too thin to read shows color only (a container query on the
+    block).
+  - Today's date is in an accent circle. The picked day is shaded in its
+    header and column, and clicking a column picks that day too. Due counts
+    sit under the dates.
+  - The current-time line has a dot at its start.
+  - The day buttons keep their names ("Friday, Oct 30: 1 block").
+- **Where:** `WeekGlance` and `lanes` in `src/components/DashboardV2/Widgets.tsx`,
+  and the `.glance*` rules in `DashboardV2.module.css`.
+- **Guarded by:** `tests/dashboard-widgets.spec.ts` ("This week opens a day in
+  Today's plan"). Screenshots were checked at full width, in dark mode, and on
+  a phone.
+- **Setup:** none.
+
+---
+
+## 2026-10-30 (Brain dump: pick the time on a calendar)
+
+- **Why:** the owner wanted to see the calendar rather than a list of times.
+  They also asked whether the time suggestion uses AI. It doesn't, and it
+  never did: `freeTime` works out the open time from the plan, the calendar
+  and the student's study hours.
+- **What:** "When" in "Add to your plan" is now the day's calendar.
+  - **Choosing a day:** buttons for the next seven days; a day with no room
+    for the length is disabled. "No set time" is a button too.
+  - **The calendar:** a scrolling day view with hours down the side. What's
+    already on the day is shown in grey: plan blocks, calendar events, and
+    waiting suggestions (dashed). Open time is shaded.
+  - **The marker:** a blue block for the line, labelled with its time.
+    Tapping or dragging the calendar moves it to the nearest open start, in
+    15-minute steps; its middle goes where you tap. Earlier and Later move it
+    one step from the keyboard, and the time is read out above.
+  - **Starting point:** the week's first open time, as before. A new length
+    keeps the day and stays as near the same time as fits, unless "No set
+    time" was chosen.
+- **Where:** `BrainDump.tsx` (`DumpDay`, `startsOf`, `pick`, the calendar),
+  `BrainDump.module.css` (`.calendar`, `.track`, `.open`, `.busy`, `.marker`),
+  and `planDump` in `LiveDashboard.tsx`, which now returns `days(minutes)` and
+  `clock` instead of a slot list.
+- **Guarded by:** `tests/brain-dump.spec.ts`. One test checks that the day's
+  calendar shows the block already on it, that Today is selected, and that
+  the first time is read out. Another taps just under 10 AM, then uses Later
+  and Earlier, and checks the saved time. A third covers No set time hiding the
+  calendar. The first test now also waits for the three lines to be saved
+  before reloading; under load, a reload could cut a save off.
+- **Setup:** none.
+
+---
+
 ## 2026-10-30 (sign-up: whole video, Canvas only with a yes, Google Calendar, trial)
 
 - **Why:** the owner wants most setup finished during sign-up, so students

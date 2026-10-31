@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AgentBrief from './AgentBrief';
 import CatchUp from './CatchUp';
-import BrainDump, { type DumpPlanner, type DumpSlot } from './BrainDump';
+import BrainDump, { type DumpPlanner } from './BrainDump';
 import { readLayout, type DashboardLayout } from '../../lib/dashboardLayout';
 import { CANVAS_CHANGED } from '../../lib/canvasExtension';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -10,7 +10,7 @@ import { dateAt, deletePlanBlock, dueItems, localDate, readPlan, savePlanBlock, 
 import type { PlanBlock, PlanState } from './PlanEditor';
 import { useTimerContext } from '../../contexts/TimerContext';
 import { storage } from '../../lib/storage';
-import { formatClockRange } from '../../lib/timeFormat';
+import { formatClock, formatClockRange } from '../../lib/timeFormat';
 import { listDocuments } from '../../lib/documents';
 import { askSoma, applyProposal, applyAll, dismissProposal, type ApplyOptions } from '../../lib/assistant';
 import { pinBlock, pinKey } from '../../lib/pinnedBlocks';
@@ -280,7 +280,8 @@ export default function LiveDashboard({userId}:{userId:string}) {
   * The brain dump's + (BrainDump.tsx): no AI. The course is guessed from the
   * words; the length from the student's past work of that kind in the course
   * (Plan it's estimate), else 30 minutes; the open times are the gaps in this
-  * week's plan and calendar inside their study hours, as Plan it finds them.
+  * week's plan and calendar inside their study hours, as Plan it finds them,
+  * shown with what's already on each day so the student can see the calendar.
   * The student confirms or changes each before it's added.
   */
  async function planDump(text:string):Promise<DumpPlanner>{
@@ -301,19 +302,19 @@ export default function LiveDashboard({userId}:{userId:string}) {
     const e=planEstimate({key:text,title:text,subject:s.name,subjectId:s.id,color:'',due:''},history);
     return e.minutes>120 ? {minutes:120,basis:`${e.basis}; one sitting is up to 2 hours`} : e;
    },
-   // Each open stretch that fits offers its start, then the next hours in it (up to three).
-   slots:minutes=>{
-    const out:DumpSlot[]=[];
-    freeTime(taken,origin,settings,at,7,minutes).forEach((d,day)=>d.free.forEach(f=>{
-     const [a,z]=rangeOf(f);
-     for(let start=a,n=0;start+minutes<=z && n<3;n++,start=Math.floor(start/60)*60+60){const time=`${clockOf(start)}–${clockOf(start+minutes)}`;out.push({day,time,label:`${dayName(day)}, ${formatClockRange(time)}`});}
-    }));
-    return out.slice(0,8);
+   // The week as a calendar: what's already on each day, and the open stretches that fit this length.
+   days:minutes=>{
+    const open=freeTime(taken,origin,settings,at,7,minutes);
+    return open.map((d,day)=>({day,name:dayName(day),
+     busy:taken.blocks.filter(b=>b.day===day && b.time && b.changeKind!=='remove').map(b=>{const [start,end]=rangeOf(b.time);return {title:b.title,start,end,external:!!b.external,suggested:b.state==='Proposal'};}).sort((a,b)=>a.start-b.start),
+     free:d.free.map(f=>rangeOf(f)).filter(([a,z])=>z-a>=minutes)}));
    },
+   clock:minutes=>formatClock(clockOf(minutes)),
    add:async({courseId,minutes,slot})=>{
     const s=live.find(x=>x.id===courseId);
-    await save({id:Date.now(),title:text,subject:s?.name ?? 'Personal',time:slot?.time ?? '',minutes:slot ? minutes : 0,color:s ? toneOf(s.color) : 'blue',state:'Planned',day:slot?.day ?? 0,manual:true,...(slot ? {} : {estimatedMinutes:minutes})});
-    return slot ? `for ${slot.label.replace(/^Today/,'today').replace(/^Tomorrow/,'tomorrow')}` : 'to today’s list, with no set time';
+    const time=slot ? `${clockOf(slot.start)}–${clockOf(slot.start+minutes)}` : '';
+    await save({id:Date.now(),title:text,subject:s?.name ?? 'Personal',time,minutes:slot ? minutes : 0,color:s ? toneOf(s.color) : 'blue',state:'Planned',day:slot?.day ?? 0,manual:true,...(slot ? {} : {estimatedMinutes:minutes})});
+    return slot ? `for ${dayName(slot.day).replace(/^Today/,'today').replace(/^Tomorrow/,'tomorrow')}, ${formatClockRange(time)}` : 'to today’s list, with no set time';
    },
   };
  }

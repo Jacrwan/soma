@@ -4,7 +4,8 @@ import { test, expect, type Page } from '@playwright/test';
  * The brain dump (2026-10-30): a list on the dashboard for getting everything
  * out of your head, with no AI. + opens "Add to your plan": the course, how
  * long and when, filled in with Soma's guesses and each changeable (a course
- * has to be picked when the words don't name one). The list is saved to the account (brain_dump_items), so every device
+ * has to be picked when the words don't name one). "When" is the day's
+ * calendar, with a marker for the line that can be tapped into open time. The list is saved to the account (brain_dump_items), so every device
  * shows the same one; before that table exists it stays in the browser. Also:
  * a hidden morning brief can be brought back.
  */
@@ -61,6 +62,8 @@ test('brain dump: lines are kept, + puts one on today’s plan in open time, and
   for (const line of ['Email TA about the lab grade', 'Buy a poster board', 'Call home']) { await input.fill(line); await input.press('Enter'); }
   await expect(dump.getByRole('listitem')).toHaveCount(3);
   expect(state.tables.todos).toHaveLength(1);
+  // Saved to the account before reloading (a reload mid-save would cut the request off).
+  await expect.poll(() => state.tables.brain_dump_items.length).toBe(3);
 
   await page.reload();
   await expect(dump.getByRole('listitem')).toHaveCount(3);
@@ -77,8 +80,11 @@ test('brain dump: lines are kept, + puts one on today’s plan in open time, and
   // A quick task: 30 minutes, at the first open time (after the 9–10 block).
   await expect(add.getByRole('button', { name: '30 min', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(add.getByText('Suggested: 30 min, a guess for a quick task.')).toBeVisible();
-  await expect(add.getByRole('radio').first()).toBeChecked();
-  await expect(add.getByRole('radio').first()).toHaveAccessibleName(/^Today, 10:00/);
+  await expect(add.getByRole('button', { name: 'Today', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(add.getByText('Today, 10:00 AM–10:30 AM', { exact: true })).toBeVisible();
+  // The day's calendar shows what's already on it.
+  await expect(add.locator('[data-day-track]')).toContainText('Lab 7 report');
+  await expect(add.getByRole('button', { name: 'Earlier' })).toBeDisabled();
   await add.getByRole('button', { name: 'Add', exact: true }).click();
   await expect(add).toHaveCount(0);
   await expect(dump.getByRole('status')).toContainText('Added “Email TA about the lab grade” for today');
@@ -110,7 +116,14 @@ test('brain dump: pasting a list adds each line, and a course named in the words
   await expect(add.getByText(/^Suggested: 1 hr, a guess/)).toBeVisible();
   // The student picks a shorter length and a later time.
   await add.getByRole('button', { name: '45 min', exact: true }).click();
-  await add.getByRole('radio', { name: /^Today, 10:00/ }).check();
+  // Tapping the calendar just under 10 AM moves the marker there (its middle goes where you tap).
+  const day = add.locator('[data-day-track]'), ten = add.locator('[data-day-track] span', { hasText: /^10 AM$/ });
+  const trackBox = (await day.boundingBox())!, tenBox = (await ten.boundingBox())!;
+  await day.click({ position: { x: trackBox.width - 40, y: tenBox.y + tenBox.height / 2 - trackBox.y + 16 } });
+  await expect(add.getByText('Today, 10:00 AM–10:45 AM', { exact: true })).toBeVisible();
+  await add.getByRole('button', { name: 'Later' }).click();
+  await expect(add.getByText('Today, 10:15 AM–11:00 AM', { exact: true })).toBeVisible();
+  await add.getByRole('button', { name: 'Earlier' }).click();
   await add.getByRole('button', { name: 'Add', exact: true }).click();
   await expect(dump.getByRole('status')).toContainText('Added “math pset 4” for today, 10:00');
   const todo = state.tables.todos.find(t => t.text === 'math pset 4')!;
@@ -135,7 +148,8 @@ test('brain dump: Add to your plan can be cancelled, and can add with no set tim
 
   await dump.getByRole('button', { name: 'Add “Call home” to your plan' }).click();
   await add.getByRole('combobox', { name: 'Course' }).selectOption({ label: 'Personal (not for a course)' });
-  await add.getByRole('radio', { name: 'No set time: add it to today’s list' }).check();
+  await add.getByRole('button', { name: 'No set time' }).click();
+  await expect(add.locator('[data-day-track]')).toHaveCount(0);
   await add.getByRole('button', { name: 'Add', exact: true }).click();
   await expect(dump.getByRole('status')).toContainText('Added “Call home” to today’s list, with no set time');
   const todo = state.tables.todos.find(t => t.text === 'Call home')!;
