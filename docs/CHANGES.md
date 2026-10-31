@@ -42,6 +42,120 @@ still needed.
 
 ---
 
+## 2026-10-30 (sign-up: whole video, Canvas only with a yes, Google Calendar, trial)
+
+- **Why:** the owner wants most setup finished during sign-up, so students
+  arrive at a working app. Four things: (1) the Canvas walkthrough video was
+  cut off at the top; (2) signing up for a new account in a browser that
+  already had the extension showed "You're connected" with another
+  account's Canvas, and undoing it meant the all-or-nothing "Remove synced
+  data"; (3) sign-up should ask for Google Calendar; (4) the free trial
+  should be offered once in sign-up, not as a popup on every visit.
+- **Why (2) happened:** the extension belongs to the browser, not to a Soma
+  account. Its bridge posts every snapshot it holds to any open Soma tab,
+  and `startCanvasBridge` saved each one under whoever was signed in, with
+  no check (the extension never knows the account; by design it holds no
+  Soma session). On top of that, the browser's copy
+  (`soma_canvas_deep_sync`) outlived sign-out, so a new account read the
+  last account's Canvas the moment it opened. Not a regression: both were
+  there since the extension shipped.
+- **What:**
+  - **Video:** the sign-up overlay centred its card with `align-items:
+    center`, which pushes a card taller than the window past the top edge,
+    out of scroll reach. The card now centres with `margin: auto 0`, so a
+    tall card starts at the top and scrolls.
+  - **Canvas needs a yes:** a site is saved to an account only when the
+    account already has its row in `canvas_snapshots`, or after the student
+    taps **Yes, use it** (sign-up) or **Connect** (Settings). Anything else
+    the extension offers waits in memory as pending and is never saved.
+    Existing students keep syncing untouched: their sites already have
+    rows. If the table is missing, everything is saved as before; any other
+    failed read holds everything as pending. Sign-up's Canvas step shows
+    "Soma for Canvas already has Canvas from … Is it yours?", with how to
+    sync their own Canvas instead.
+  - **Local cache per account:** `storage.claimLocalCache` records which
+    account the browser's Canvas and Google caches belong to; another
+    account signing in starts without them (its own come back from the
+    server). A browser with no owner recorded keeps its cache for the
+    first account that signs in, so nobody loses anything on deploy.
+  - **Settings → Integrations → Canvas extension:** each site is listed with
+    its counts and its own **Disconnect** (removes that site's row and this
+    browser's copy; the extension keeps it, since another account may use
+    it, so it shows again under **Connect**). "Remove synced data" is gone
+    from this row; Clear local data still removes everything everywhere.
+  - **Google Calendar step** (step 4) after Canvas: **Connect Google
+    Calendar**, or Skip. Google returns to Settings, where sign-up reopens
+    on this step. A new connection shows no calendars until some are
+    picked, so sign-up picks the account's primary calendar for them.
+  - **Free trial step** (step 5), only for an account that has never had a
+    trial (status free, no trial start): the same plan cards and Stripe
+    checkout as the modal (`TrialPlanForm`, split out of
+    `TrialSetupModal`), or **Not now**. Answers are saved before leaving
+    for Stripe; Stripe comes back to `/dashboard?walkthrough` (new
+    `from: 'onboarding'` on the checkout call; Pricing's return is
+    unchanged).
+  - **No trial popup on visits:** App no longer shows `TrialSetupModal` to
+    free users. The trial stays on Pricing, Settings → Subscription and the
+    AI tab.
+  - **Sign-up survives leaving the page:** App only shows sign-up to
+    accounts made in the last five minutes; a tab partway through sign-up
+    (`soma_ob_progress`) now gets it back regardless, since installing the
+    extension or connecting Google can take longer. Finishing sign-up from
+    Settings goes to the dashboard for the tour.
+- **Where:** `src/lib/canvasExtension.ts` (`receive`, `pendingCanvasSites`,
+  `connectPendingSites`, `disconnectCanvasSite`), `src/lib/canvasDeepSync.ts`
+  (`removeLocalSnapshot`), `src/lib/storage.ts` (`claimLocalCache`),
+  `src/App.tsx`, `src/components/Onboarding/OnboardingFlow.tsx` and
+  `.module.css`, `ExtensionSetup.tsx` and `.module.css`,
+  `src/components/Settings/CanvasDeepSyncRow.tsx`, `SettingsTab.module.css`
+  (`.siteRow`), `src/components/Trial/TrialSetupModal.tsx`,
+  `src/lib/subscription.ts`, `api/stripe.ts`, `src/demo/client.ts` (marks
+  the demo's caches as the demo account's).
+- **Guard:** new `tests/onboarding.spec.ts`: "a new account does not take
+  the Canvas the extension already has until the student says yes",
+  "another account's Canvas left in this browser does not show for a new
+  sign-in", "the walkthrough video is whole…", "Google Calendar and the
+  free trial come after Canvas…", "a connected Google account shows, and
+  its main calendar is picked…", "the trial step is skipped for an account
+  that already had a trial", "sign-up picks up after leaving for Google…",
+  "a free account is not asked to start a trial every time…", "Settings
+  disconnects one Canvas site…". Changed: `canvas-extension.spec.ts`
+  ("Settings shows the sync and removes it everywhere" becomes "…shows each
+  synced site and disconnects one from this account"; its mock account has
+  the test sites connected, as do `grades.spec.ts` and
+  `canvas-course-mapping.spec.ts`), `regressions.spec.ts` (the two
+  trial-popup tests now check there is no popup; the onboarding test walks
+  the Calendar step).
+- **Setup:** none. No schema change. Not checked on a phone or in dark mode
+  in a real browser. Accounts that already received another account's
+  Canvas keep it until the student taps Disconnect in Settings.
+
+---
+
+## 2026-10-30 (education level and university readable in Supabase)
+
+- **Why:** the owner wants to look up, in the Supabase dashboard, who is in
+  high school, college or grad school and which university, as a lookup for
+  themselves rather than a feature. The answers sit inside the `settings`
+  table's JSON `data` column (`educationLevel`, `university {name,
+  country}`, since 2026-09-24), which the Table Editor can't filter.
+- **What:** `user_education_view.sql` creates a read-only view,
+  `admin.user_education`: user id, email, sign-up date, education level (as
+  the app's label), university and its country (null unless the level is
+  college or grad; students who never answered show null). It joins
+  `auth.users`, so it lives in its own `admin` schema that the API doesn't
+  expose, with no access for `anon` or `authenticated`; only the dashboard
+  and the service role can read it. Nothing is copied or changed: the app
+  keeps saving to `settings.data` and the view always shows the current
+  answers. No app code changed.
+- **Where:** `user_education_view.sql`.
+- **Guard:** none; no app code changed.
+- **Setup:** run `user_education_view.sql` in the SQL editor, then Table
+  Editor → schema dropdown → `admin` → `user_education`. Never add `admin`
+  to the API's exposed schemas. Remove with `DROP SCHEMA admin CASCADE;`.
+
+---
+
 ## 2026-10-30 (Brain dump: + asks course, length and time)
 
 - **Why:** the owner wanted + to show the open times rather than pick one
@@ -103,7 +217,6 @@ still needed.
   placement test covers the height range, a size change resetting the height,
   and bad stored heights.
 - **Setup:** none.
-
 ---
 
 ## 2026-10-30 (Dashboard widgets go anywhere on the grid)

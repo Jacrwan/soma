@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 import { storage } from './storage';
 import {
-  normalizeSnapshot, getLocalSnapshots, setLocalSnapshot, clearLocalSnapshots,
+  normalizeSnapshot, getLocalSnapshots, setLocalSnapshot, clearLocalSnapshots, removeLocalSnapshot,
   type SourceSnapshot,
 } from './canvasDeepSync';
 
@@ -13,6 +13,14 @@ import {
  * result, and its bridge script on this page posts it here with
  * window.postMessage. This tab saves it under the student's own session
  * (canvas_snapshots, RLS), so it reaches their other devices and the AI.
+ *
+ * The extension belongs to the browser, not to a Soma account: it hands what
+ * it has to any Soma tab, whoever is signed in. So a site only joins an
+ * account the student has said yes to. A site is connected when the account
+ * already has its row in canvas_snapshots, or when the student taps Connect
+ * (connectPendingSites). Anything else waits, unsaved, as pending. Without
+ * this, signing up for a second account in the same browser filled it with
+ * the first account's Canvas.
  *
  * Messages carry `source` so the two sides ignore everything else posted on
  * the page:
@@ -32,6 +40,12 @@ export const EXTENSION_STORE_URL = 'https://chromewebstore.google.com/detail/som
 const TABLE = 'canvas_snapshots';
 
 let extensionVersion: string | null = null;
+/** Sites this account has said yes to; null until known, or when the table doesn't exist yet (everything is saved, as before). */
+let connected: Set<string> | null = null;
+let tableMissing = false;
+/** What the extension offered that this account hasn't connected, by host. Never saved. */
+const pending = new Map<string, SourceSnapshot>();
+let bridgeUser: string | null = null;
 /** Whether the extension has said hello on this page. */
 export const extensionPresent = () => extensionVersion;
 
@@ -66,8 +80,16 @@ async function save(userId: string, snapshot: SourceSnapshot) {
 
 /** What other devices synced, so this one has it without the extension. */
 async function loadRemote(userId: string) {
-  const { data, error } = await supabase.from(TABLE).select('payload').eq('user_id', userId);
-  if (error) { if (!missingTable(error)) console.error('[canvasExtension] load failed:', error.message); return; }
+  const { data, error } = await supabase.from(TABLE).select('host, payload').eq('user_id', userId);
+  if (error) {
+    if (missingTable(error)) tableMissing = true;
+    else console.error('[canvasExtension] load failed:', error.message);
+    // Can't tell which sites are this account's: hold everything as pending
+    // rather than save someone else's Canvas.
+    connected = new Set();
+    return;
+  }
+  connected = new Set((data ?? []).map(r => (r as { host?: unknown }).host).filter((h): h is string => typeof h === 'string'));
   let changed = false;
   const local = getLocalSnapshots();
   for (const row of data ?? []) {
@@ -79,7 +101,12 @@ async function loadRemote(userId: string) {
 
 /** Start listening for the extension on this page, for one signed-in student. */
 export function startCanvasBridge(userId: string): () => void {
-  let queue = Promise.resolve();
+  bridgeUser = userId;
+  connected = null;
+  tableMissing = false;
+  pending.clear();
+  // Which sites are connected must be known before anything is saved.
+  let queue = loadRemote(userId).catch(err => console.error('[canvasExtension]', err));
   const onMessage = (event: MessageEvent) => {
     if (event.source !== window || event.origin !== window.location.origin) return;
     const msg = event.data as { source?: unknown; type?: unknown; snapshot?: unknown; version?: unknown };
@@ -97,13 +124,59 @@ export function startCanvasBridge(userId: string): () => void {
     const snapshot = normalizeSnapshot(msg.snapshot);
     if (!snapshot) return;
     // One at a time: two sites syncing at once must not race on the local copy.
-    queue = queue.then(() => save(userId, snapshot)).catch(err => console.error('[canvasExtension]', err));
+    queue = queue.then(() => receive(userId, snapshot)).catch(err => console.error('[canvasExtension]', err));
   };
   window.addEventListener('message', onMessage);
-  void loadRemote(userId);
   // The extension's bridge may have loaded before this listener.
   post({ type: 'hello' });
-  return () => window.removeEventListener('message', onMessage);
+  return () => {
+    window.removeEventListener('message', onMessage);
+    if (bridgeUser === userId) { bridgeUser = null; connected = null; pending.clear(); }
+  };
+}
+
+/** Save a site the account has connected; hold any other until the student says yes. */
+async function receive(userId: string, snapshot: SourceSnapshot) {
+  if (tableMissing || connected?.has(snapshot.host)) return save(userId, snapshot);
+  const held = pending.get(snapshot.host);
+  if (held && held.syncedAt >= snapshot.syncedAt) return;
+  pending.set(snapshot.host, snapshot);
+  window.dispatchEvent(new Event(CANVAS_CHANGED));
+}
+
+/** Sites the extension has here that this account hasn't connected. */
+export function pendingCanvasSites(): { host: string; courses: number; assignments: number }[] {
+  return [...pending.values()]
+    .map(s => ({ host: s.host, courses: s.courses.length, assignments: s.assignments.length }))
+    .sort((a, b) => a.host.localeCompare(b.host));
+}
+
+/** The student said yes: save every pending site under this account. */
+export async function connectPendingSites(): Promise<void> {
+  const userId = bridgeUser;
+  if (!userId) return;
+  for (const snapshot of [...pending.values()]) {
+    connected?.add(snapshot.host);
+    pending.delete(snapshot.host);
+    await save(userId, snapshot);
+  }
+  window.dispatchEvent(new Event(CANVAS_CHANGED));
+}
+
+/**
+ * Take one site off this account, here and on the server. The extension keeps
+ * it, since another account in this browser may use it, so it comes back as
+ * pending and the student can connect it again.
+ */
+export async function disconnectCanvasSite(host: string): Promise<void> {
+  const userId = await storage.getUserId();
+  const { error } = await supabase.from(TABLE).delete().eq('user_id', userId).eq('host', host);
+  if (error && !missingTable(error)) throw new Error('Could not disconnect that site. Please retry.');
+  const local = getLocalSnapshots()[host];
+  removeLocalSnapshot(host);
+  connected?.delete(host);
+  if (local) pending.set(host, local);
+  window.dispatchEvent(new Event(CANVAS_CHANGED));
 }
 
 export type SyncResult = { host: string; ok: boolean; error: string | null };
@@ -144,6 +217,8 @@ export async function forgetDeepSync(): Promise<void> {
   const { error } = await supabase.from(TABLE).delete().eq('user_id', userId);
   if (error && !missingTable(error)) throw new Error('Could not remove synced Canvas data. Please retry.');
   clearLocalSnapshots();
+  connected = new Set();
+  pending.clear();
   post({ type: 'forget' });
   window.dispatchEvent(new Event(CANVAS_CHANGED));
 }

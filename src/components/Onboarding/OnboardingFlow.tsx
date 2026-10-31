@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { storage } from '../../lib/storage';
 import { CANVAS_CHANGED, deepSyncStatus } from '../../lib/canvasExtension';
+import { listCalendarsForConnection, listConnections, startConnectFlow, updateSelectedCalendars } from '../../lib/googleCalendarConnections';
+import { useSubscription } from '../../lib/subscription';
+import { TRIAL_DAYS } from '../../lib/pricing';
+import { TrialPlanForm } from '../Trial/TrialSetupModal';
 import ExtensionSetup from './ExtensionSetup';
 import type { University } from '../../lib/universities';
 import UniversityPicker from '../shared/UniversityPicker';
@@ -26,9 +30,20 @@ export const EDUCATION_LABELS: Record<EducationId, string> = {
 };
 
 const PROGRESS_KEY = 'soma_ob_progress';
-type Progress = { step?: 1 | 2 | 3 | 4; birthday?: string; education?: EducationId | ''; university?: University | null };
+type Step = 1 | 2 | 3 | 4 | 5 | 6;
+type Progress = { step?: Step; birthday?: string; education?: EducationId | ''; university?: University | null; calendarTried?: boolean };
 function readProgress(): Progress {
   try { return JSON.parse(sessionStorage.getItem(PROGRESS_KEY) ?? '{}') as Progress; } catch { return {}; }
+}
+
+/**
+ * Whether this tab is partway through sign-up. Adding the extension reloads
+ * the page and Google Calendar leaves for Google and back; either can take
+ * longer than the five minutes App gives a new account, and sign-up must
+ * pick up where it was, not end silently.
+ */
+export function onboardingInProgress(): boolean {
+  return !!readProgress().step;
 }
 
 interface Props {
@@ -40,7 +55,7 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
   // Adding the extension means reloading this page, so the answers so far
   // are kept for the tab's lifetime.
   const [saved] = useState(readProgress);
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(saved.step ?? 1);
+  const [step, setStep] = useState<Step>(saved.step ?? 1);
 
   // Step 1 — age
   const [birthday, setBirthday] = useState(saved.birthday ?? '');
@@ -58,9 +73,43 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
     window.addEventListener(CANVAS_CHANGED, refresh);
     return () => window.removeEventListener(CANVAS_CHANGED, refresh);
   }, []);
-  const keepProgress = () => {
-    try { sessionStorage.setItem(PROGRESS_KEY, JSON.stringify({ step, birthday, education, university })); } catch { /* blocked: they answer again */ }
+  const keepProgress = (extra: Partial<Progress> = {}) => {
+    try { sessionStorage.setItem(PROGRESS_KEY, JSON.stringify({ step, birthday, education, university, ...extra })); } catch { /* blocked: they answer again */ }
   };
+
+  // Step 4 — Google Calendar. Connecting leaves for Google and comes back to
+  // Settings, where this flow opens again on this step.
+  const [calendars, setCalendars] = useState<string[] | null>(null);
+  useEffect(() => {
+    if (step !== 4) return;
+    let live = true;
+    (async () => {
+      const connections = await listConnections();
+      if (live) setCalendars(connections.map(c => c.googleEmail));
+      // A new connection shows no calendars until some are picked. Soma picks
+      // the main one; Settings → Integrations changes it.
+      const unpicked = connections.filter(c => c.selectedCalendars.length === 0);
+      for (const c of unpicked) {
+        const primary = (await listCalendarsForConnection(c.id)).filter(cal => cal.primary);
+        if (primary.length) await updateSelectedCalendars(c.id, primary);
+      }
+      if (unpicked.length) window.dispatchEvent(new CustomEvent('soma_gcal_updated'));
+    })().catch(() => { if (live) setCalendars(c => c ?? []); });
+    return () => { live = false; };
+  }, [step]);
+  const calendarFailed = !!saved.calendarTried && calendars !== null && calendars.length === 0;
+  function connectCalendar() {
+    keepProgress({ step: 4, calendarTried: true });
+    void startConnectFlow();
+  }
+
+  // Step 5 — the free trial, only for an account that has never had one.
+  const subscription = useSubscription();
+  const offersTrial = subscription.status === 'free' && !subscription.trialStart && !subscription.error;
+  const trialUnknown = subscription.status === 'loading';
+  useEffect(() => {
+    if (step === 5 && !trialUnknown && !offersTrial) setStep(6);
+  }, [step, trialUnknown, offersTrial]);
 
   // Final save
   const [saving, setSaving] = useState(false);
@@ -82,8 +131,7 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
 
   // ── Completion ────────────────────────────────────────────────────────────
 
-  async function handleComplete() {
-    setSaving(true);
+  async function saveAnswers() {
     try {
       const birthYear = birthday ? new Date(birthday).getFullYear() : undefined;
       const remoteSettings = await storage.getSettings();
@@ -105,6 +153,11 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
     } catch { /* fail silently */ }
     localStorage.removeItem('soma_ob_edu');
     try { sessionStorage.removeItem(PROGRESS_KEY); } catch { /* nothing kept */ }
+  }
+
+  async function handleComplete() {
+    setSaving(true);
+    await saveAnswers();
     setSaving(false);
     onComplete();
   }
@@ -133,10 +186,10 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
           <span className={styles.logoName}>Soma</span>
         </div>
 
-        {/* Progress dots (steps 1–3 only) */}
-        {step <= 3 && (
-          <div className={styles.progress} aria-label={`Step ${step} of 3`}>
-            {[1, 2, 3].map(n => (
+        {/* Progress dots (every step but the welcome) */}
+        {step <= 5 && (
+          <div className={styles.progress} aria-label={`Step ${step} of 5`}>
+            {[1, 2, 3, 4, 5].map(n => (
               <div key={n} className={`${styles.dot}${step >= n ? ` ${styles.dotFilled}` : ''}`} />
             ))}
           </div>
@@ -236,7 +289,7 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
             <h1 className={styles.heading}>Bring in Canvas</h1>
             <p className={styles.sub}>Soma for Canvas reads your courses, due dates and grades in your own browser, and keeps Soma up to date on its own.</p>
 
-            <ExtensionSetup onBeforeReload={keepProgress} />
+            <ExtensionSetup onBeforeReload={() => keepProgress()} />
 
             <div className={styles.actions}>
               <button className={styles.backBtn} onClick={() => setStep(2)}>Back</button>
@@ -251,8 +304,70 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
           </div>
         )}
 
-        {/* ── STEP 4 — Welcome ──────────────────────────────────────────── */}
+        {/* ── STEP 4 — Google Calendar ─────────────────────────────────── */}
         {step === 4 && (
+          <div className={styles.step}>
+            <h1 className={styles.heading}>Add your Google Calendar</h1>
+            <p className={styles.sub}>Soma plans study time around your classes, work and plans, so nothing lands on top of them. It only reads your calendar and never changes it.</p>
+
+            {calendars === null ? (
+              <span className={styles.integDesc}>Checking…</span>
+            ) : calendars.length > 0 ? (
+              <div className={styles.integBlock}>
+                {calendars.map(email => (
+                  <div key={email} className={styles.integHeader}>
+                    <span className={styles.integTitle}>{email}</span>
+                    <span className={styles.integBadge}>Connected</span>
+                  </div>
+                ))}
+                <span className={styles.integDesc}>Your main calendar shows in Soma. Add others, or another account, in Settings → Integrations.</span>
+              </div>
+            ) : (
+              <div>
+                <button className={styles.primaryBtn} onClick={connectCalendar}>Connect Google Calendar</button>
+                {calendarFailed && (
+                  <p className={styles.integError}>Google didn’t connect. Try again, or skip and connect it later in Settings.</p>
+                )}
+              </div>
+            )}
+
+            <div className={styles.actions}>
+              <button className={styles.backBtn} onClick={() => setStep(3)}>Back</button>
+              <div className={styles.actionsRight}>
+                {calendars && calendars.length > 0
+                  ? <button className={styles.primaryBtn} onClick={() => setStep(5)}>Continue</button>
+                  : <button className={styles.skipBtn} onClick={() => setStep(5)}>Skip for now</button>}
+              </div>
+            </div>
+
+            {consent}
+          </div>
+        )}
+
+        {/* ── STEP 5 — Free trial ───────────────────────────────────────── */}
+        {step === 5 && (
+          <div className={styles.step}>
+            <h1 className={styles.heading}>Try everything free for {TRIAL_DAYS} days</h1>
+            <p className={styles.sub}>The trial adds the AI: it plans your week around what’s due, answers questions about your documents and courses, and reshuffles your day when plans change.</p>
+
+            {trialUnknown ? (
+              <span className={styles.integDesc}>Checking…</span>
+            ) : (
+              // Answers are saved first: Stripe comes back to the dashboard, not here.
+              <TrialPlanForm from="onboarding" onBeforeCheckout={saveAnswers} />
+            )}
+
+            <div className={styles.actions}>
+              <button className={styles.backBtn} onClick={() => setStep(4)}>Back</button>
+              <button className={styles.skipBtn} onClick={() => setStep(6)}>Not now</button>
+            </div>
+
+            {consent}
+          </div>
+        )}
+
+        {/* ── STEP 6 — Welcome ──────────────────────────────────────────── */}
+        {step === 6 && (
           <div className={`${styles.step} ${styles.welcome}`}>
             <div className={styles.welcomeCheck} aria-hidden="true">✓</div>
             <h1 className={styles.heading}>You're all set, {firstName}!</h1>

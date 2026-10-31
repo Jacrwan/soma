@@ -8,7 +8,15 @@ interface Props {
   onSkip?: () => void;
 }
 
-export default function TrialSetupModal({ onSkip }: Props) {
+interface FormProps {
+  /** Runs before the page leaves for Stripe; a rejection stops the checkout. */
+  onBeforeCheckout?: () => Promise<void>;
+  /** Where Stripe sends the student back; see createCheckoutSession. */
+  from?: 'onboarding';
+}
+
+/** The plan choice and the button to Stripe, shared by the modal and onboarding's trial step. */
+export function TrialPlanForm({ onBeforeCheckout, from }: FormProps) {
   const [plan, setPlan]     = useState<Plan>('monthly');
   const [loading, setLoading] = useState(false);
   const [error, setError]   = useState('');
@@ -18,13 +26,60 @@ export default function TrialSetupModal({ onSkip }: Props) {
     setLoading(true);
     setError('');
     try {
-      await startCheckout(plan); // redirects to Stripe — never returns on success
+      await onBeforeCheckout?.();
+      await startCheckout(plan, from); // redirects to Stripe — never returns on success
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.');
       setLoading(false);
     }
   }
 
+  return (
+    <form onSubmit={handleSubmit}>
+      <div className={styles.plans}>
+        <button
+          type="button"
+          className={`${styles.planCard}${plan === 'monthly' ? ` ${styles.planCardActive}` : ''}`}
+          onClick={() => setPlan('monthly')}
+        >
+          <span className={styles.planName}>Monthly</span>
+          <span className={styles.planPrice}>{MONTHLY_PRICE}</span>
+          <span className={styles.planPriceSub}>per month</span>
+        </button>
+        <button
+          type="button"
+          className={`${styles.planCard}${plan === 'semester' ? ` ${styles.planCardActive}` : ''}`}
+          onClick={() => setPlan('semester')}
+        >
+          <span className={styles.planBadge}>SAVE {SEMESTER_SAVINGS}</span>
+          <span className={styles.planName}>4 months</span>
+          <span className={styles.planPrice}>{SEMESTER_PER_MONTH}</span>
+          <span className={styles.planPriceSub}>per month · billed every 4 months</span>
+        </button>
+      </div>
+
+      <p className={styles.trialNotice}>
+        <strong>{TRIAL_DAYS}-day free trial.</strong> You'll enter payment details on Stripe's secure checkout page. No charge until the trial ends — cancel anytime before then.
+      </p>
+
+      {error && <p className={styles.error}>{error}</p>}
+
+      <button type="submit" className={styles.submitBtn} disabled={loading}>
+        {loading ? 'Redirecting to checkout…' : 'Start free trial'}
+      </button>
+
+      <div className={styles.secure}>
+        <svg width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+          <rect x="3" y="6.5" width="8" height="6" rx="1"/>
+          <path d="M4.5 6.5V4.5a2.5 2.5 0 0 1 5 0v2"/>
+        </svg>
+        Secured by Stripe · No charge until trial ends
+      </div>
+    </form>
+  );
+}
+
+export default function TrialSetupModal({ onSkip }: Props) {
   return (
     <div className={styles.overlay}>
       <div className={styles.sheet} role="dialog" aria-modal="true">
@@ -38,47 +93,7 @@ export default function TrialSetupModal({ onSkip }: Props) {
           Full access to all AI features for {TRIAL_DAYS} days. Pick a plan — you won't be charged until the trial ends.
         </p>
 
-        <form onSubmit={handleSubmit}>
-          <div className={styles.plans}>
-            <button
-              type="button"
-              className={`${styles.planCard}${plan === 'monthly' ? ` ${styles.planCardActive}` : ''}`}
-              onClick={() => setPlan('monthly')}
-            >
-              <span className={styles.planName}>Monthly</span>
-              <span className={styles.planPrice}>{MONTHLY_PRICE}</span>
-              <span className={styles.planPriceSub}>per month</span>
-            </button>
-            <button
-              type="button"
-              className={`${styles.planCard}${plan === 'semester' ? ` ${styles.planCardActive}` : ''}`}
-              onClick={() => setPlan('semester')}
-            >
-              <span className={styles.planBadge}>SAVE {SEMESTER_SAVINGS}</span>
-              <span className={styles.planName}>4 months</span>
-              <span className={styles.planPrice}>{SEMESTER_PER_MONTH}</span>
-              <span className={styles.planPriceSub}>per month · billed every 4 months</span>
-            </button>
-          </div>
-
-          <p className={styles.trialNotice}>
-            <strong>{TRIAL_DAYS}-day free trial.</strong> You'll enter payment details on Stripe's secure checkout page. No charge until the trial ends — cancel anytime before then.
-          </p>
-
-          {error && <p className={styles.error}>{error}</p>}
-
-          <button type="submit" className={styles.submitBtn} disabled={loading}>
-            {loading ? 'Redirecting to checkout…' : 'Start free trial'}
-          </button>
-
-          <div className={styles.secure}>
-            <svg width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-              <rect x="3" y="6.5" width="8" height="6" rx="1"/>
-              <path d="M4.5 6.5V4.5a2.5 2.5 0 0 1 5 0v2"/>
-            </svg>
-            Secured by Stripe · No charge until trial ends
-          </div>
-        </form>
+        <TrialPlanForm />
 
         {onSkip && (
           <button className={styles.skipLink} onClick={onSkip}>

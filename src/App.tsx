@@ -24,9 +24,8 @@ import LegalPage from './components/Legal/LegalPage';
 import ConnectApproval, { connectReturnPath } from './components/Connect/ConnectApproval';
 import PricingPage from './components/Pricing/PricingPage';
 import { SkeletonBlock } from './components/UI/Skeleton';
-import OnboardingFlow from './components/Onboarding/OnboardingFlow';
+import OnboardingFlow, { onboardingInProgress } from './components/Onboarding/OnboardingFlow';
 import Walkthrough from './components/Onboarding/Walkthrough';
-import TrialSetupModal from './components/Trial/TrialSetupModal';
 import PaywallScreen from './components/Paywall/PaywallScreen';
 import SemesterEndModal from './components/shared/SemesterEndModal';
 import styles from './App.module.css';
@@ -403,23 +402,13 @@ export default function App() {
   // true only when Supabase actually responded — false if the fallback timeout fired
   const [sessionResolved, setSessionResolved] = useState(false);
   const [showOnboarding, setShowOnboarding]   = useState(false);
-  const [showTrialModal, setShowTrialModal]   = useState(false);
   // `?walkthrough` replays the dashboard tour on demand (Settings links to it).
   const [showWalkthrough, setShowWalkthrough] = useState(false);
-  const subscription = useSubscription();
   const userId = user?.id;
   const location = useLocation();
   useEffect(() => {
     if (new URLSearchParams(location.search).has('walkthrough')) setShowWalkthrough(true);
   }, [location.search]);
-  const dismissedTrialUsers = useRef(new Set<string>());
-  function dismissTrial() {
-    if (userId) {
-      dismissedTrialUsers.current.add(userId);
-      try { sessionStorage.setItem(`soma_trial_dismissed:${userId}`, 'true'); } catch { /* memory fallback */ }
-    }
-    setShowTrialModal(false);
-  }
   const onboardingChecked = useRef(false);
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
     const d = new Date();
@@ -432,29 +421,8 @@ export default function App() {
     applyTheme(storage.getSomaSettings().theme ?? 'light');
   }, []);
 
-  // Show trial modal for logged-in users with no subscription once status resolves
-  useEffect(() => {
-    if (!userId || showOnboarding || showWalkthrough || subscription.error || subscription.status !== 'free') {
-      setShowTrialModal(false);
-      return;
-    }
-    let dismissed = dismissedTrialUsers.current.has(userId);
-    try { dismissed ||= sessionStorage.getItem(`soma_trial_dismissed:${userId}`) === 'true'; } catch { /* memory fallback */ }
-    if (dismissed) { setShowTrialModal(false); return; }
-    if (subscription.status === 'free') {
-      const publicPaths = ['/', '/login', '/signup', '/pricing'];
-      const isPublic = publicPaths.includes(window.location.pathname) ||
-        window.location.pathname.startsWith('/privacy') ||
-        window.location.pathname.startsWith('/terms') ||
-        window.location.pathname.startsWith('/billing') ||
-        window.location.pathname.startsWith('/refund') ||
-        window.location.pathname.startsWith('/data-deletion') ||
-        window.location.pathname.startsWith('/contact') ||
-        window.location.pathname.startsWith('/ai-disclaimer') ||
-        window.location.pathname.startsWith('/oauth/');
-      setShowTrialModal(!isPublic);
-    }
-  }, [userId, subscription.status, subscription.error, showOnboarding, showWalkthrough, location.pathname]);
+  // The free trial is offered once, during sign-up (OnboardingFlow), not on
+  // every visit; after that it lives on Pricing and Settings → Subscription.
 
   async function checkOnboarding(u: User) {
     try {
@@ -464,7 +432,7 @@ export default function App() {
       // Existing users who signed up before onboarding was added skip it silently.
       const createdAt = new Date(u.created_at).getTime();
       const fiveMinAgo = Date.now() - 5 * 60 * 1000;
-      if (createdAt < fiveMinAgo) {
+      if (createdAt < fiveMinAgo && !onboardingInProgress()) {
         // Existing account — mark onboarding as done silently
         storage.saveSettings({ ...s, onboardingCompleted: true }).catch(() => {});
         return;
@@ -486,6 +454,8 @@ export default function App() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       const u = session?.user ?? null;
+      // Before anything renders for this account: no other account's Canvas or Google cache.
+      if (u) storage.claimLocalCache(u.id);
       setUser(u);
 
       if (event === 'INITIAL_SESSION') {
@@ -628,21 +598,14 @@ export default function App() {
         }
         onComplete={() => {
           setShowOnboarding(false);
+          // Connecting Google Calendar comes back on Settings; the tour is on the dashboard.
+          if (location.pathname !== '/dashboard') navigate('/dashboard');
           setShowWalkthrough(true);
-          // The subscription effect decides whether a trial prompt is appropriate.
         }}
       />
     )}
     {showWalkthrough && user && !showOnboarding && (
       <Walkthrough onDone={finishWalkthrough} />
-    )}
-    {showTrialModal && user && !showOnboarding &&
-      !['/','/login','/signup','/pricing'].includes(window.location.pathname) &&
-      subscription.status === 'free' && !subscription.error && (
-      <TrialSetupModal
-        onComplete={() => { dismissTrial(); void refreshSubscription(); }}
-        onSkip={dismissTrial}
-      />
     )}
     </>
     </ErrorBoundary>

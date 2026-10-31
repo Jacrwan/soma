@@ -78,10 +78,12 @@ async function authRefresh(page: Page) {
   });
 }
 
-test('dismissed payment prompt stays closed after auth refresh and navigation', async ({ page }) => {
+// The trial is offered once, during sign-up (tests/onboarding.spec.ts), not on every visit.
+test('a free user is not prompted to pay on opening Soma, through auth refresh and navigation', async ({ page }) => {
   await setup(page, 'free');
   await page.goto('/day-view');
-  await page.getByRole('button', { name: /Skip for now/ }).click();
+  await expect(page.getByRole('button', { name: 'Dashboard', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Start your free trial' })).toHaveCount(0);
   await authRefresh(page);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Start your free trial' })).toHaveCount(0);
@@ -163,7 +165,7 @@ test('paying users keep access through a failed refresh and recover on retry', a
 test('subscription is refreshed after a free user completes checkout in another tab', async ({ page }) => {
   const state = await setup(page, 'free');
   await page.goto('/day-view');
-  await page.getByRole('button', { name: /Skip for now/ }).click();
+  await expect(page.getByRole('button', { name: 'Dashboard', exact: true })).toBeVisible();
   state.status = 'active';
   await authRefresh(page);
   await expect(page.getByRole('button', { name: 'AI', exact: true }).getByLabel('Premium')).toHaveCount(0);
@@ -182,6 +184,9 @@ test('onboarding explains the Canvas extension, then lands on the app', async ({
   await expect(page.getByRole('heading', { name: 'Bring in Canvas' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Add to Chrome' })).toHaveAttribute('href', /chromewebstore\.google\.com\/detail\/soma-for-canvas\/hfiggdemebihcchcinhdmenhdebioanm/);
   // Nothing synced yet, so the way on is to skip.
+  await page.getByRole('button', { name: 'Skip for now', exact: true }).click();
+  // Then Google Calendar; a subscriber is not offered the trial.
+  await expect(page.getByRole('heading', { name: 'Add your Google Calendar' })).toBeVisible();
   await page.getByRole('button', { name: 'Skip for now', exact: true }).click();
   await page.getByRole('button', { name: 'Start using Soma', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Start your free trial' })).toHaveCount(0);

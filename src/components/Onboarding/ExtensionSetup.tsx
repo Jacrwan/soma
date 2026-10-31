@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { storage } from '../../lib/storage';
-import { CANVAS_CHANGED, EXTENSION_STORE_URL, deepSyncStatus, extensionPresent } from '../../lib/canvasExtension';
+import { CANVAS_CHANGED, EXTENSION_STORE_URL, connectPendingSites, deepSyncStatus, extensionPresent, pendingCanvasSites } from '../../lib/canvasExtension';
 import { canvasSnapshots, getLocalSnapshots, subjectForCourse } from '../../lib/canvasDeepSync';
 import CanvasGuide from './CanvasGuide';
 import styles from './ExtensionSetup.module.css';
@@ -14,15 +14,20 @@ import styles from './ExtensionSetup.module.css';
  * Chrome adds an extension's scripts to pages opened after it is installed,
  * so this tab can't see a fresh install until it reloads. The parent keeps
  * the answers so far across that reload (see OnboardingFlow).
+ *
+ * The extension may already hold Canvas from another account in this browser
+ * (or from before this account existed). That waits as pending until the
+ * student says it's theirs; see canvasExtension.ts.
  */
 
 type Stage = 'install' | 'canvas' | 'done';
 
 function read() {
   const sites = deepSyncStatus();
+  const pending = pendingCanvasSites();
   const installed = !!extensionPresent();
   const stage: Stage = sites.length ? 'done' : installed ? 'canvas' : 'install';
-  return { installed, sites, stage };
+  return { installed, sites, pending, stage };
 }
 
 /** "https://bcourses.berkeley.edu/courses" or "school.instructure.com" → the origin to open. */
@@ -54,6 +59,7 @@ export default function ExtensionSetup({ onBeforeReload }: Props) {
   const [back, setBack] = useState(false);
   const [address, setAddress] = useState(() => localStorage.getItem('soma_ob_canvas') ?? '');
   const [openedCanvas, setOpenedCanvas] = useState(false);
+  const [connecting, setConnecting] = useState(false);
 
   useEffect(() => {
     const refresh = () => setLive(read());
@@ -70,7 +76,8 @@ export default function ExtensionSetup({ onBeforeReload }: Props) {
     return () => { document.removeEventListener('visibilitychange', onReturn); window.removeEventListener('focus', onReturn); };
   }, [openedStore]);
 
-  const { stage, sites } = live;
+  const { stage, sites, pending } = live;
+  const pendingCourses = pending.reduce((n, p) => n + p.courses, 0);
   const origin = canvasOrigin(address);
 
   function openCanvas() {
@@ -78,6 +85,11 @@ export default function ExtensionSetup({ onBeforeReload }: Props) {
     localStorage.setItem('soma_ob_canvas', address.trim());
     window.open(origin, '_blank', 'noopener,noreferrer');
     setOpenedCanvas(true);
+  }
+
+  async function connect() {
+    setConnecting(true);
+    try { await connectPendingSites(); } finally { setConnecting(false); }
   }
 
   function reload() {
@@ -152,6 +164,22 @@ export default function ExtensionSetup({ onBeforeReload }: Props) {
         <Mark state={state('canvas')} n={2} />
         <div className={styles.body}>
           <span className={styles.title}>Open Canvas and sign in</span>
+          {stage === 'canvas' && pending.length > 0 && (
+            <div className={styles.found}>
+              <p className={styles.text}>
+                Soma for Canvas already has Canvas from <strong>{pending.map(p => p.host).join(', ')}</strong> in this browser
+                {' '}({pendingCourses} {pendingCourses === 1 ? 'course' : 'courses'}). Is it yours?
+              </p>
+              <div className={styles.row}>
+                <button type="button" className={styles.primary} onClick={() => void connect()} disabled={connecting}>
+                  {connecting ? 'Connecting…' : 'Yes, use it'}
+                </button>
+              </div>
+              <p className={styles.hint}>
+                Not yours? Sign out of Canvas, sign in with your own account below, and it syncs yours instead. Nothing is added until you say yes.
+              </p>
+            </div>
+          )}
           {stage === 'canvas' && (
             <>
               <p className={styles.text}>

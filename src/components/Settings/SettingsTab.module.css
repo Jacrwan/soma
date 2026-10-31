@@ -640,6 +640,11 @@
   padding: 0;
 }
 
+/* A Canvas site in the extension's list: a name, not a button. */
+.siteRow {
+  cursor: default;
+}
+
 .gcalConnectionCaret {
   color: var(--text-muted);
   flex-shrink: 0;

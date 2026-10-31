@@ -80,6 +80,7 @@ const KEYS = {
   googleClientId: 'soma_google_client_id',
   googleEvents: 'soma_google_events',
   googleCacheTimestamp: 'soma_google_cache_timestamp',
+  localOwner: 'soma_local_owner',
   chatSessions: 'soma_chat_sessions',
   activeSessionId: 'soma_active_session_id',
 };
@@ -1044,6 +1045,30 @@ export const storage = {
     const stored = (row?.data ?? {}) as Record<string, unknown>;
     const { error } = await supabase.from('settings').upsert({ user_id: id, data: { ...stored, ...settings } });
     if (error) throw new Error(error.message);
+  },
+
+  /**
+   * Canvas and Google caches in this browser belong to whoever was signed in
+   * when they were written. Another account signing in here starts without
+   * them; its own copies come back from the server. Before this, a new
+   * account opened already showing the last account's courses and deadlines.
+   * A browser with no owner recorded yet (from before 2026-10-30) keeps its
+   * cache for whoever signs in first.
+   */
+  claimLocalCache(userId: string): void {
+    try {
+      const owner = localStorage.getItem(KEYS.localOwner);
+      if (owner === userId) return;
+      if (!owner) { localStorage.setItem(KEYS.localOwner, userId); return; }
+      localStorage.removeItem(KEYS.cachedAssignments);
+      localStorage.removeItem(KEYS.cachedIcalAssignments);
+      localStorage.removeItem(KEYS.cachedCourses);
+      localStorage.removeItem(KEYS.cacheTimestamp);
+      localStorage.removeItem(KEYS.googleEvents);
+      localStorage.removeItem(KEYS.googleCacheTimestamp);
+      clearLocalSnapshots();
+      localStorage.setItem(KEYS.localOwner, userId);
+    } catch { /* storage blocked: nothing cached to leak */ }
   },
 
   // ── Clear all local browser data ────────────────────────────────────

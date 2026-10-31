@@ -22,6 +22,8 @@ async function setup(page: Page, opts: Opts = {}) {
     const req = route.request(), url = new URL(req.url()), table = url.pathname.split('/').pop()!;
     if (url.pathname.includes('/auth/v1/')) return route.fulfill({ json: account });
     if (table === 'settings') return route.fulfill({ json: { data: { onboardingCompleted: true, theme: 'light', canvasIcalUrl: 'https://school.instructure.com/feed.ics' } } });
+    // The sites this account already connected (src/lib/canvasExtension.ts).
+    if (table === 'canvas_snapshots' && req.method() === 'GET') return route.fulfill({ json: ['school.instructure.com', 'www.gradescope.com'].map(host => ({ host, payload: null })) });
     if (table === 'subjects') return route.fulfill({ json: opts.subjects ?? [BIO] });
     if (table === 'documents') return route.fulfill({ json: opts.documents ?? [] });
     if (table === 'grade_books') {

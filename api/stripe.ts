@@ -226,8 +226,9 @@ export async function createCheckoutSession(user: any, admin: any, stripe: Strip
       ...(trialDays > 0 ? { trial_period_days: trialDays } : {}),
       metadata: { supabase_user_id: user.id, plan },
     },
-    success_url: `${org}/day-view?subscription=started`,
-    cancel_url: `${org}/pricing`,
+    // From sign-up, back to the dashboard tour whether or not they started it.
+    success_url: body.from === 'onboarding' ? `${org}/dashboard?walkthrough&subscription=started` : `${org}/day-view?subscription=started`,
+    cancel_url: body.from === 'onboarding' ? `${org}/dashboard?walkthrough` : `${org}/pricing`,
   });
 
   return res.json({ url: session.url });
