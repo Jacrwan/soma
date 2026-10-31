@@ -24,6 +24,8 @@ async function setup(page: Page, subjects: Row[]) {
     const req = route.request(), url = new URL(req.url()), table = url.pathname.split('/').pop()!;
     if (url.pathname.includes('/auth/v1/')) return route.fulfill({ json: account });
     if (table === 'settings') return route.fulfill({ json: { data: { onboardingCompleted: true, walkthroughCompleted: true, theme: 'light' } } });
+    // The sites this account already connected (src/lib/canvasExtension.ts).
+    if (table === 'canvas_snapshots' && req.method() === 'GET') return route.fulfill({ json: ['school.instructure.com', 'www.gradescope.com'].map(host => ({ host, payload: null })) });
     if (table === 'subjects') {
       if (req.method() === 'POST') { const b = req.postDataJSON(); for (const s of (Array.isArray(b) ? b : [b]) as Row[]) { state.inserted.push(s); state.subjects.push(s as typeof state.subjects[number]); } }
       if (req.method() === 'PATCH') {

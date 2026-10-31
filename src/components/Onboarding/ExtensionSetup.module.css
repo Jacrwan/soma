@@ -323,3 +323,15 @@
   .pulse, .courses > li { animation: none; }
   .mark { transition: none; }
 }
+
+/* Canvas the extension already had, waiting for the student's yes. */
+.found {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  margin-bottom: 4px;
+}

@@ -5,13 +5,16 @@
   z-index: 900;
   background: var(--bg);
   display: flex;
-  align-items: center;
   justify-content: center;
   padding: 24px;
   overflow-y: auto;
 }
 
+/* Centred by its own auto margins, not the overlay's align-items: a card
+   taller than the window then starts at the top and scrolls, instead of
+   being centred past the top edge where the walkthrough video was cut off. */
 .card {
+  margin: auto 0;
   width: 100%;
   max-width: 480px;
   display: flex;

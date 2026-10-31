@@ -209,6 +209,8 @@ function prepareLocalStorage() {
     localStorage.setItem('soma_canvas_cache_timestamp', JSON.stringify(Date.now()));
     localStorage.setItem('canvas_assignment_status', JSON.stringify(status));
     localStorage.setItem('canvas_cleared_assignments', JSON.stringify(cleared));
+    // These caches are the demo account's (storage.claimLocalCache).
+    localStorage.setItem('soma_local_owner', DEMO_USER_ID);
     // Canvas now comes only from the extension's sync (canvasDeepSync), so the
     // demo carries one: the same assignments, as the extension would read them.
     clearLocalSnapshots();

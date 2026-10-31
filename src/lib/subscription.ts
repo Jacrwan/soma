@@ -210,12 +210,13 @@ export async function createSubscription(
   return res.json() as Promise<{ trialEndsAt: string }>;
 }
 
-export async function startCheckout(plan: Plan = 'monthly'): Promise<void> {
+/** `from: 'onboarding'` brings the student back to the dashboard tour instead of the default page. */
+export async function startCheckout(plan: Plan = 'monthly', from?: 'onboarding'): Promise<void> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token;
   if (!token) throw new Error('Not authenticated');
 
-  const res = await stripePost('create-checkout-session', token, { plan });
+  const res = await stripePost('create-checkout-session', token, { plan, ...(from ? { from } : {}) });
   if (!res.ok) {
     const body = await res.json().catch(() => ({})) as { error?: string };
     throw new Error(body.error ?? 'Checkout failed');

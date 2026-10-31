@@ -33,6 +33,8 @@ const snapshot = (over: Row = {}) => ({
   ...over,
 });
 
+const CONNECTED = ['school.instructure.com', 'www.gradescope.com', 'www.webassign.net'];
+
 async function setup(page: Page) {
   const saved: Row[] = [];
   const deleted: string[] = [];
@@ -47,6 +49,9 @@ async function setup(page: Page) {
     if (table === 'canvas_snapshots') {
       if (req.method() === 'POST') saved.push(req.postDataJSON() as Row);
       if (req.method() === 'DELETE') deleted.push(url.search);
+      // This account already connected these sites; a new site would wait for
+      // the student's yes (tests/onboarding.spec.ts).
+      if (req.method() === 'GET') return route.fulfill({ json: CONNECTED.map(host => ({ host, payload: null })) });
       return route.fulfill({ json: [] });
     }
     return route.fulfill({ json: req.headers().accept?.includes('vnd.pgrst.object') ? null : [] });
@@ -103,7 +108,7 @@ test('an older snapshot does not replace a newer one', async ({ page }) => {
   await expect(page.getByText('Microscope lab report')).toBeVisible();
 });
 
-test('Settings shows the sync and removes it everywhere', async ({ page }) => {
+test('Settings shows each synced site and disconnects one from this account', async ({ page }) => {
   const { deleted } = await setup(page);
   await page.goto('/deadlines');
   // Signed in and listening, as when the extension answers the app's hello.
@@ -113,12 +118,14 @@ test('Settings shows the sync and removes it everywhere', async ({ page }) => {
 
   await page.goto('/settings');
   await page.getByRole('button', { name: 'Integrations' }).click();
-  await expect(page.getByText(/school\.instructure\.com: 1 courses, 2 assignments/)).toBeVisible();
+  await expect(page.getByText('school.instructure.com')).toBeVisible();
+  await expect(page.getByText('1 courses, 2 assignments')).toBeVisible();
 
   page.once('dialog', d => void d.accept());
-  await page.getByRole('button', { name: 'Remove synced data' }).click();
+  await page.getByRole('button', { name: 'Disconnect' }).first().click();
   await expect.poll(() => deleted.length).toBe(1);
   expect(deleted[0]).toContain(`user_id=eq.${account.id}`);
+  expect(deleted[0]).toContain('host=eq.school.instructure.com');
   await expect(page.getByText(/Brings in your courses/)).toBeVisible();
 });
 
@@ -190,7 +197,7 @@ test('Sync now in Settings asks the extension and reports how each site went', a
 
   await page.goto('/settings');
   await page.getByRole('button', { name: 'Integrations' }).click();
-  await expect(page.getByText(/school\.instructure\.com: 1 courses/)).toBeVisible();
+  await expect(page.getByText('school.instructure.com')).toBeVisible();
   // Stand in for the extension's bridge: it says it's here, then answers a sync request.
   await page.evaluate(() => {
     window.addEventListener('message', e => {

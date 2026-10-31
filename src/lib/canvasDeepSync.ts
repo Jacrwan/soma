@@ -302,6 +302,12 @@ export function setLocalSnapshot(snapshot: SourceSnapshot) {
   try { localStorage.setItem(LOCAL_KEY, JSON.stringify({ ...getLocalSnapshots(), [snapshot.host]: snapshot })); } catch { /* full or blocked: the server copy remains */ }
 }
 
+export function removeLocalSnapshot(host: string) {
+  const rest = getLocalSnapshots();
+  delete rest[host];
+  try { localStorage.setItem(LOCAL_KEY, JSON.stringify(rest)); } catch { /* blocked: nothing kept */ }
+}
+
 export function clearLocalSnapshots() {
   try { localStorage.removeItem(LOCAL_KEY); } catch { /* nothing to clear */ }
 }
