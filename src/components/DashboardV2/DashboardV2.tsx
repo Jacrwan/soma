@@ -10,6 +10,7 @@ import type { PlanChoice, PlanTarget } from '../../lib/planIt';
 import { formatClock, formatClockRange, formatClockWithSeconds, useTimeFormat } from '../../lib/timeFormat';
 import type { SubjectColor } from '../../types';
 import WidgetGrid from './WidgetGrid';
+import { SuggestWidget, WidgetIdeasButton } from './WidgetIdeas';
 import { DueSoon, StudyWeek, UpNext, WeekGlance } from './Widgets';
 import { DEFAULT_LAYOUT, sameLayout, type DashboardLayout, type WidgetId } from '../../lib/dashboardLayout';
 import styles from './DashboardV2.module.css';
@@ -122,6 +123,7 @@ export default function DashboardV2({runtime}:{runtime?:DashboardRuntime}) {
   const [editor,setEditor]=useState<EditorDraft | null>(null);
   // Customize: the layout being changed, kept apart from the saved one until Done.
   const [customizing,setCustomizing]=useState(false);
+  const [suggesting,setSuggesting]=useState(false);
   const [draftLayout,setDraftLayout]=useState<DashboardLayout>(DEFAULT_LAYOUT);
   const [savingLayout,setSavingLayout]=useState(false);
   const [layoutError,setLayoutError]=useState('');
@@ -266,7 +268,7 @@ export default function DashboardV2({runtime}:{runtime?:DashboardRuntime}) {
     {!runtime && <aside className={styles.sidebar}><a className={styles.brand} href="/dashboard">soma<span>study with intention</span></a><nav aria-label="Preview navigation"><span className={styles.selected}><CalendarDays size={17}/> Dashboard</span><a href="/calendar">Calendar <ArrowUpRight size={15}/></a><a href="/insights">Insights <ArrowUpRight size={15}/></a><a href="/ai">Ask Soma <ArrowUpRight size={15}/></a></nav><p className={styles.sideNote}>A little structure.<br/>Room to focus.</p></aside>}
     <main className={styles.main}>
       {!runtime && <div className={styles.preview}><span>Dashboard preview · Sample data · Resets on refresh</span></div>}
-      <header className={styles.header}><div><p className={styles.eyebrow}>YOUR DAY, AT A GLANCE</p><h1>{now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</h1></div><div className={styles.headerTools}>{runtime?.onLayout && (customizing ? <><button type="button" onClick={()=>setDraftLayout(DEFAULT_LAYOUT)} disabled={savingLayout}>Reset</button><button type="button" onClick={()=>{setCustomizing(false);setLayoutError('');}} disabled={savingLayout}>Cancel</button><button type="button" className={styles.layoutDone} onClick={()=>void finishCustomizing()} disabled={savingLayout}>{savingLayout ? 'Saving…' : 'Done'}</button></> : <button type="button" className={styles.customize} onClick={startCustomizing} data-tour="customize"><LayoutGrid size={14}/> Customize</button>)}<time className={styles.clock} dateTime={now.toISOString()}>{formatClockWithSeconds(now, timeFormat)}</time></div></header>{layoutError && <p role="alert" className={styles.layoutError}>{layoutError}</p>}{customizing && <p className={styles.layoutHint}>Drag a widget to any spot, or move it a step with its arrows. Pick a size, or hide what you don’t need. Press Done to save.</p>}
+      <header className={styles.header}><div><p className={styles.eyebrow}>YOUR DAY, AT A GLANCE</p><h1>{now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</h1></div><div className={styles.headerTools}>{runtime?.onLayout && (customizing ? <><button type="button" onClick={()=>setDraftLayout(DEFAULT_LAYOUT)} disabled={savingLayout}>Reset</button><button type="button" onClick={()=>{setCustomizing(false);setLayoutError('');}} disabled={savingLayout}>Cancel</button><button type="button" className={styles.layoutDone} onClick={()=>void finishCustomizing()} disabled={savingLayout}>{savingLayout ? 'Saving…' : 'Done'}</button></> : <><WidgetIdeasButton className={styles.customize}/><button type="button" className={styles.customize} onClick={startCustomizing} data-tour="customize"><LayoutGrid size={14}/> Customize</button></>)}<time className={styles.clock} dateTime={now.toISOString()}>{formatClockWithSeconds(now, timeFormat)}</time></div></header>{layoutError && <p role="alert" className={styles.layoutError}>{layoutError}</p>}{customizing && <p className={styles.layoutHint}>Drag a widget to any spot, or move it a step with its arrows. Pick a size, or hide what you don’t need. Press Done to save. <button type="button" className={styles.suggestWidget} onClick={()=>setSuggesting(true)}>Missing a widget? Suggest one</button></p>}{suggesting && <SuggestWidget onClose={()=>setSuggesting(false)}/>}
       {runtime?.brief}
       {runtime ? <WidgetGrid layout={customizing ? draftLayout : savedLayout} customizing={customizing} onChange={setDraftLayout} render={renderWidget} panel={sidePanel}/> : <div className={styles.columns}><div className={styles.planColumn}>
       {progressSection}{weekNav}{planSection}

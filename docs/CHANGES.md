@@ -9,6 +9,46 @@ still needed.
 
 ---
 
+## 2026-10-30 (widget ideas: students suggest, the owner decides)
+
+- **Why:** the owner wants students to be able to suggest a dashboard widget,
+  with each idea coming to them to decide whether to build it.
+- **What:**
+  - **Students:** Customize shows **Missing a widget? Suggest one**. It
+    opens a dialog: "What should it show?" (up to 80 characters), "How would
+    you use it?" (optional, up to 1000), **Send idea**. Below the form is
+    **Your ideas**, each with what was decided (Waiting for review, Will be
+    built, Built: add it in Customize, Not planned) and the owner's note, if
+    any. A student can have ten ideas waiting at once.
+  - **Owner:** a **Widget ideas** button beside Customize, shown only to the
+    owner's account, with a count of ideas waiting. It lists every idea,
+    waiting ones first: **Build it** or **Not planned**, then **Mark built**
+    once it ships, each with an optional note the student sees. Decided
+    ideas fold away; a declined one can be reconsidered.
+  - **Who the owner is** is decided in the database: `is_soma_owner()` is
+    true only for jacrwan1k@gmail.com with a confirmed email. The app asks
+    it to decide whether to show the button; the table's policies enforce
+    it (students insert and read only their own ideas, and only the owner
+    updates).
+  - The dialog is drawn on `document.body`, so the dashboard's button styles
+    don't reach it. `widgetRequests.ts` loads the database client on first
+    use, so the standalone dashboard preview still makes no backend request.
+  - No email is sent: new ideas show as the count on the button. Email
+    alerts would need a mail service; none is set up.
+- **Where:** `widget_requests_migration.sql` (new), `src/lib/widgetRequests.ts`
+  (new), `src/components/DashboardV2/WidgetIdeas.tsx` and `.module.css`
+  (new), `DashboardV2.tsx` (the link, the button, the dialog state),
+  `DashboardV2.module.css` (`.suggestWidget`).
+- **Test:** `tests/widget-ideas.spec.ts`: "a student suggests a widget from
+  Customize and sees it waiting, with past decisions and notes", "the owner
+  sees how many ideas are waiting and decides them, with a note", "before
+  the migration runs, the student is told widget ideas aren't set up yet".
+- **Setup:** run `widget_requests_migration.sql` in the Supabase SQL editor.
+  Until then the dialog says widget ideas aren't set up yet, and the owner
+  button stays hidden.
+
+---
+
 ## 2026-10-30 (the tour walks through every page)
 
 - **Why:** the owner said the tour gave too little guidance. It had five
