@@ -297,14 +297,14 @@ function AppShell({ user, sessionResolved, onLogout }: {
             <span className={styles.navLabel}>Deadlines</span>
           </button>
 
-          <button className={nav('/grades')} onClick={() => navigate('/grades')}>
+          <button className={nav('/grades')} onClick={() => navigate('/grades')} data-tour="nav-grades">
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
               <path d="M2 12V7M5.5 12V2.5M9 12V5M12.5 12V8.5"/>
             </svg>
             <span className={styles.navLabel}>Grades</span>
           </button>
 
-          <button className={nav('/documents')} onClick={() => navigate('/documents')}>
+          <button className={nav('/documents')} onClick={() => navigate('/documents')} data-tour="nav-documents">
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3.5 1.5h5L11 4v8.5a.5.5 0 0 1-.5.5h-6a.5.5 0 0 1-.5-.5v-10a.5.5 0 0 1 .5-.5Z"/>
               <path d="M8.5 1.5V4H11"/>
@@ -313,7 +313,7 @@ function AppShell({ user, sessionResolved, onLogout }: {
             <span className={styles.navLabel}>Documents</span>
           </button>
 
-          <button className={nav('/calendar')} onClick={() => navigate('/calendar')}>
+          <button className={nav('/calendar')} onClick={() => navigate('/calendar')} data-tour="nav-calendar">
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round">
               <rect x="1" y="2" width="12" height="11" rx="1.5"/>
               <path d="M1 5.5h12M5 5.5v7.5M9 5.5v7.5"/>
@@ -322,7 +322,7 @@ function AppShell({ user, sessionResolved, onLogout }: {
             <span className={styles.navLabel}>Calendar</span>
           </button>
 
-          <button className={nav('/ai')} onClick={() => navigate('/ai')}>
+          <button className={nav('/ai')} onClick={() => navigate('/ai')} data-tour="nav-ai">
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
               <path d="M7 1L8.1 5.9L13 7L8.1 8.1L7 13L5.9 8.1L1 7L5.9 5.9Z"/>
             </svg>
@@ -345,7 +345,7 @@ function AppShell({ user, sessionResolved, onLogout }: {
         </div>
 
         <div className={styles.sidebarBottom}>
-          <button className={nav('/settings')} onClick={() => navigate('/settings')}>
+          <button className={nav('/settings')} onClick={() => navigate('/settings')} data-tour="nav-settings">
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="7" cy="7" r="1.8"/>
               <path d="M7 1.5v1M7 11.5v1M1.5 7h1M11.5 7h1M3.2 3.2l.7.7M10.1 10.1l.7.7M10.1 3.2l-.7.7M3.2 10.1l.7.7"/>
@@ -402,7 +402,7 @@ export default function App() {
   // true only when Supabase actually responded — false if the fallback timeout fired
   const [sessionResolved, setSessionResolved] = useState(false);
   const [showOnboarding, setShowOnboarding]   = useState(false);
-  // `?walkthrough` replays the dashboard tour on demand (Settings links to it).
+  // `?walkthrough` replays the app tour on demand (Settings links to it).
   const [showWalkthrough, setShowWalkthrough] = useState(false);
   const userId = user?.id;
   const location = useLocation();
@@ -598,7 +598,7 @@ export default function App() {
         }
         onComplete={() => {
           setShowOnboarding(false);
-          // Connecting Google Calendar comes back on Settings; the tour is on the dashboard.
+          // Connecting Google Calendar comes back on Settings; the tour starts on the dashboard.
           if (location.pathname !== '/dashboard') navigate('/dashboard');
           setShowWalkthrough(true);
         }}

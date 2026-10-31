@@ -447,7 +447,7 @@ export default function SettingsTab() {
   return (
     <>
     <div className={styles.settingsLayout}>
-      <nav className={styles.settingsNav}>
+      <nav className={styles.settingsNav} data-tour="settings-nav">
         <span className={styles.settingsNavLabel}>Settings</span>
         {navItems.map(([key, label]) => (
           <button
@@ -861,7 +861,7 @@ export default function SettingsTab() {
               </div>
 
               <div className={styles.prefRow}>
-                <label className={styles.prefLabel}>Dashboard tour</label>
+                <label className={styles.prefLabel}>Tour of Soma</label>
                 <button className={styles.neutralBtn} onClick={() => navigate('/dashboard?walkthrough')}>
                   Replay tour
                 </button>

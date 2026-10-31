@@ -549,7 +549,7 @@ export default function DeadlinesTab() {
 
         {!loading && (
           <>
-            <div className={styles.filterBar}>
+            <div className={styles.filterBar} data-tour="deadlines">
               <select
                 className={styles.filterSelect}
                 value={statusFilter}

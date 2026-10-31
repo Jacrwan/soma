@@ -904,7 +904,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onOpenDay }: C
   return (
     <div className={styles.container}>
       {/* ── Header ── */}
-      <div className={styles.header}>
+      <div className={styles.header} data-tour="calendar">
         <div className={styles.headerLeft}>
           <button className={styles.navArrow} onClick={goToPrev} aria-label={viewMode === 'month' ? 'Previous month' : viewMode === 'week' ? 'Previous week' : 'Previous three days'}>‹</button>
           <button className={styles.navArrow} onClick={goToNext} aria-label={viewMode === 'month' ? 'Next month' : viewMode === 'week' ? 'Next week' : 'Next three days'}>›</button>
@@ -933,7 +933,7 @@ export default function CalendarTab({ selectedDate, onSelectDate, onOpenDay }: C
       </div>
 
       {/* ── Filter bar ── */}
-      <div className={styles.filterBar}>
+      <div className={styles.filterBar} data-tour="calendar">
         {isConnected ? (
           <button
             className={`${styles.filterPill}${filters.gcal ? ` ${styles.filterPillActive}` : ''}`}

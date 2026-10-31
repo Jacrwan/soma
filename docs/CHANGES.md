@@ -9,6 +9,48 @@ still needed.
 
 ---
 
+## 2026-10-30 (the tour walks through every page)
+
+- **Why:** the owner said the tour gave too little guidance. It had five
+  stops, all on the dashboard, and said nothing about Grades, Documents,
+  Calendar, the AI page, Settings, the brief, the brain dump or Customize.
+- **What:** `Walkthrough.tsx` is now a tour of the whole app, 17 stops in
+  sidebar order: a welcome; on the dashboard, Today's plan, Focus, the
+  timer, Ask Soma, the brief, Brain dump, Due soon and Customize; then one
+  stop each on Deadlines, Grades, Documents, Calendar, AI, Insights and
+  Settings; and a closing stop back on the dashboard. Each says what the
+  part is for and what to press. The tour moves to each page itself; the
+  card shows the page name, "n of 17" and a thin progress line.
+  - **Finding things:** each stop waits for its page to load. If its own
+    part hasn't shown after 1.2s it lights the page's sidebar item and keeps
+    looking for up to 4s, so a slow page still gets its own spotlight (the
+    AI page behind the Premium screen keeps the sidebar item). The card
+    stays hidden while a stop looks, so it doesn't flash in the centre.
+  - **Parts a student can hide** (the timer, Ask Soma, brief, brain dump,
+    Due soon and Customize stops) are passed over when they aren't on the
+    dashboard, in whichever direction the student was going, so Back
+    doesn't bounce forward again.
+  - **Calendar:** its header and filter row share `data-tour="calendar"`
+    and the spotlight covers both, so the card doesn't hide the Google
+    Calendar / Courses / Soma buttons.
+  - Skip tour, Escape and Start studying all end on the dashboard. The first
+    button reads "Show me around". Settings → Appearance now says "Tour of
+    Soma" (was "Dashboard tour"); same Replay tour button and `?walkthrough`.
+- **Where:** `src/components/Onboarding/Walkthrough.tsx` and `.module.css`.
+  `data-tour` attributes only, no behaviour change, on: the sidebar items
+  in `src/App.tsx`, Customize in `DashboardV2.tsx`, the filter bar in
+  `DeadlinesTab.tsx`, the course list and empty state in `GradesTab.tsx`,
+  the header in `DocumentsTab.tsx`, the header and filter bar in
+  `CalendarTab.tsx`, the composer in `AITab.tsx`, and the section list in
+  `SettingsTab.tsx` (plus its label).
+- **Test:** `tests/walkthrough.spec.ts`: "the tour walks through every page
+  and spotlights each one", "the tour passes over a widget the student has
+  hidden", "Back returns to the previous page, and Skip tour ends it on
+  the dashboard".
+- **Setup:** none.
+
+---
+
 ## 2026-10-30 (sign-up: whole video, Canvas only with a yes, Google Calendar, trial)
 
 - **Why:** the owner wants most setup finished during sign-up, so students

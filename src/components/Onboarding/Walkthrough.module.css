@@ -46,13 +46,43 @@
   to   { opacity: 1; translate: 0 0; }
 }
 
-.count {
-  margin: 0 0 6px;
+.cardWaiting {
+  visibility: hidden;
+}
+
+.meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 8px;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.section { color: var(--accent); }
+
+.count {
   color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* How far through the tour: a hairline, so a long tour doesn't feel endless. */
+.progress {
+  height: 2px;
+  margin: 0 0 14px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.progress span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .title {
@@ -126,4 +156,5 @@
 @media (prefers-reduced-motion: reduce) {
   .spotlight { transition: none; }
   .card { animation: none; }
+  .progress span { transition: none; }
 }

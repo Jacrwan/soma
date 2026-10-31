@@ -825,7 +825,7 @@ export default function AITab() {
           <div ref={messagesEndRef} />
         </div>
 
-        <div className={styles.inputAreaWrapper}>
+        <div className={styles.inputAreaWrapper} data-tour="ai">
           {historyError && <p role="alert">{historyError}</p>}
           {proposalError && <p role="alert">{proposalError}</p>}
           <div className={styles.inputRow}>

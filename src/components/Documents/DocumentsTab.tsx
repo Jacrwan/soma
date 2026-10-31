@@ -304,7 +304,7 @@ export default function DocumentsTab() {
 
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
+      <div className={styles.header} data-tour="documents">
         <h1 className={styles.title}>Documents</h1>
         <p className={styles.subtitle}>Syllabi, readings, and guides — Soma's AI reads these when you ask about a subject.</p>
       </div>

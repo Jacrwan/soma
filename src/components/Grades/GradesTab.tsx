@@ -100,7 +100,7 @@ export default function GradesTab() {
 
   if (!courses.length) {
     return (
-      <div className={styles.empty}>
+      <div className={styles.empty} data-tour="grades">
         <span>No grades yet. Add your courses, or install the Soma for Canvas extension and turn on “Include grades and scores” to bring in Canvas grades.</span>
       </div>
     );
@@ -125,7 +125,7 @@ export default function GradesTab() {
       </header>
       {!starred.length && courses.length > 1 && <p className={styles.hint}>Star the courses you want to see and only those stay here.</p>}
       {error && <p className={styles.error} role="alert">{error}</p>}
-      <ul className={styles.list}>{shown.map(row)}</ul>
+      <ul className={styles.list} data-tour="grades">{shown.map(row)}</ul>
       {others.length > 0 && (
         <>
           <button type="button" className={styles.more} onClick={() => setShowAll(v => !v)} aria-expanded={showAll}>
