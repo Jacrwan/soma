@@ -6,12 +6,18 @@
  *
  * Everything is generated from a fixed seed, so every run of `npm run demo`
  * shows the same student.
+ *
+ * `npm run promo` shows the same student with much less on screen, for promo
+ * videos: four courses, a few hours of study a day in longer blocks, the
+ * classes and a couple of personal events, and a handful of deadlines.
  */
 import type { CanvasAssignment, GoogleCalendarEvent, GoogleCalendarInfo, SubjectColor } from '../types';
 
 export const DEMO_USER_ID = '00000000-0000-4000-8000-00000000d3e0';
 export const DEMO_EMAIL = 'maya.chen@gmail.com';
 export const DEMO_NAME = 'Maya Chen';
+/** The lighter promo-video student (`npm run promo`). */
+export const PROMO = import.meta.env.MODE === 'promo';
 
 type Row = Record<string, unknown>;
 export type Tables = Record<string, Row[]>;
@@ -51,7 +57,7 @@ export const SUBJECTS: Record<SubjectKey, { id: string; name: string; color: Sub
   psych: { id: 'a1000000-0000-4000-8000-000000000005', name: 'Intro to Psychology', color: '#ffa726', courseId: 41560, weight: 9 },
   mcat:  { id: 'a1000000-0000-4000-8000-000000000006', name: 'MCAT Prep',           color: '#26c6da', weight: 13 },
 };
-const SUBJECT_KEYS = Object.keys(SUBJECTS) as SubjectKey[];
+const SUBJECT_KEYS = (PROMO ? ['orgo', 'calc', 'phys', 'psych'] : Object.keys(SUBJECTS)) as SubjectKey[];
 
 // ── calendars ─────────────────────────────────────────────────────────────
 export const CONNECTIONS = [
@@ -80,7 +86,7 @@ const CAL: Record<CalKey, { conn: number; cal: number }> = {
 
 type Recurring = { id: string; title: string; days: number[]; start: string; end: string; cal: CalKey };
 // 0 = Sunday … 6 = Saturday. A pre-med sophomore's fall schedule.
-const WEEKLY: Recurring[] = [
+const ALL_WEEKLY: Recurring[] = [
   { id: 'gym',       title: 'Gym — lift',                                   days: [1, 3, 5], start: '07:00', end: '08:00', cal: 'personal' },
   { id: 'chem-lec',  title: 'CHEM 2410 · Organic Chemistry I (Baker 200)',  days: [1, 3, 5], start: '09:05', end: '09:55', cal: 'classes' },
   { id: 'calc-lec',  title: 'MATH 2210 · Calculus III (Malott 251)',        days: [1, 3, 5], start: '11:15', end: '12:05', cal: 'classes' },
@@ -99,8 +105,10 @@ const WEEKLY: Recurring[] = [
   { id: 'call-mom',  title: 'Call Mom',                                     days: [0],       start: '20:30', end: '21:00', cal: 'personal' },
   { id: 'volunteer', title: 'Hospital volunteering — Cayuga Medical',       days: [6],       start: '15:00', end: '17:00', cal: 'clubs' },
 ];
+const PROMO_WEEKLY = ['chem-lec', 'calc-lec', 'phys-lec', 'psych-lec', 'dinner'];
+const WEEKLY = PROMO ? ALL_WEEKLY.filter(r => PROMO_WEEKLY.includes(r.id)) : ALL_WEEKLY;
 // One-off events, by day offset from today.
-const ONE_OFF: { offset: number; title: string; start: string; end: string; cal: CalKey }[] = [
+const ALL_ONE_OFF: { offset: number; title: string; start: string; end: string; cal: CalKey }[] = [
   { offset: -9, title: 'PHYS 2213 Prelim 1 (Olin 155)',         start: '19:30', end: '21:00', cal: 'classes' },
   { offset: -6, title: 'Coffee with Priya',                     start: '16:00', end: '16:45', cal: 'personal' },
   { offset: -2, title: 'Academic advising — Dr. Okafor',        start: '15:00', end: '15:30', cal: 'clubs' },
@@ -111,6 +119,7 @@ const ONE_OFF: { offset: number; title: string; start: string; end: string; cal:
   { offset: 11, title: 'PSYC 1101 Exam 1',                      start: '15:30', end: '16:45', cal: 'classes' },
   { offset: 13, title: 'Jess’s birthday dinner',                start: '19:00', end: '21:00', cal: 'personal' },
 ];
+const ONE_OFF = PROMO ? ALL_ONE_OFF.filter(e => [-6, 3, 8].includes(e.offset)) : ALL_ONE_OFF;
 
 const SEMESTER_START = -63; // days from today
 const SEMESTER_END = 80;
@@ -222,6 +231,20 @@ export function canvasAssignments(): { assignments: CanvasAssignment[]; status: 
     if (past) { status[a.id] = 'done'; cleared[a.id] = true; }
   };
   const at = (week: number, weekday: number, hhmm: string) => atMinute((() => { const d = monday(week); d.setDate(d.getDate() + weekday); return d; })(), mins(hhmm));
+  if (PROMO) {
+    // One or two things per course a week: enough to look real, not a wall.
+    for (let w = -2; w <= 1; w++) {
+      const n = semesterWeek + w;
+      add('orgo', `Problem Set ${n}`, at(w, 4, '23:59'), 50);
+      add('calc', `WebAssign ${n}.1`, at(w, 1, '23:59'), 20);
+      add('phys', `Mastering Physics HW ${n}`, at(w, 6, '23:59'), 25);
+      if (n % 2 === 0) add('psych', `Discussion Board: Week ${n}`, at(w, 2, '23:59'), 5);
+    }
+    add('orgo', 'Midterm 1', atMinute(dayAt(8), mins('19:30')), 150);
+    const next = out.filter(a => a.courseName === SUBJECTS.orgo.name && new Date(a.dueAt) > new Date()).sort((a, b) => a.dueAt.localeCompare(b.dueAt))[0];
+    if (next) status[next.id] = 'in_progress';
+    return { assignments: out.sort((a, b) => a.dueAt.localeCompare(b.dueAt)), status, cleared };
+  }
   for (let w = -3; w <= 2; w++) {
     const n = semesterWeek + w;
     add('orgo', `Problem Set ${n}`, at(w, 4, '23:59'), 50);
@@ -280,6 +303,8 @@ export function buildTables(): Tables {
   // Hand out time in proportion to each subject's weight, so the mix is
   // steady from week to week rather than whatever a dice roll gives.
   const spent: Record<SubjectKey, number> = { orgo: 0, calc: 0, phys: 0, bio: 0, psych: 0, mcat: 0 };
+  // Promo: the hours that are free stay visibly free, a block or two apart.
+  const promoGap = () => round5(between(30, 75));
   function pickSubject(prev: SubjectKey | null, day: number, len: number): SubjectKey {
     const weight = (k: SubjectKey) => SUBJECTS[k].weight * (k === 'orgo' && day >= -10 && day <= 8 ? 1.6 : 1);
     const sum = SUBJECT_KEYS.reduce((n, k) => n + weight(k), 0);
@@ -319,19 +344,19 @@ export function buildTables(): Tables {
     if (close > cursor) windows.push({ start: cursor, end: close });
 
     // Every day clears six hours; most clear seven or more.
-    const target = offset <= 0 ? between(420, 560) : between(390, 470);
+    const target = PROMO ? (offset < 0 ? between(150, 220) : between(120, 170)) : offset <= 0 ? between(420, 560) : between(390, 470);
     let total = 0;
     let prev: SubjectKey | null = null;
     for (const w of windows) {
       let c = Math.ceil(w.start / 5) * 5;
       while (w.end - c >= 35 && total < target) {
-        let len = round5(between(45, 110));
+        let len = round5(PROMO ? between(60, 100) : between(45, 110));
         const left = w.end - c;
         if (len > left || left - len < 30) len = Math.min(left, 120);
         len = Math.min(len, round5(target - total + 20));
         if (len < 30) break;
         const start = c, end = c + len;
-        c = end + round5(between(5, 15));
+        c = end + (PROMO ? promoGap() : round5(between(5, 15)));
         total += len;
         // Today: what has already happened is recorded; the block running
         // right now is left free for a live timer; the rest is still planned.
@@ -398,7 +423,8 @@ export function buildTables(): Tables {
     ['PSYC 1101 Exam 1 study guide.pdf', 'psych', 'guide', 'application/pdf', 512_098, -1, 'Exam 1: research methods, neuroscience, sensation and perception, learning.'],
     ['MCAT study schedule 2026–27.pdf', 'mcat', 'other', 'application/pdf', 120_774, -40, 'Content review through December, full-lengths from February.'],
   ];
-  const documents: Row[] = docs.map(([name, key, type, mime, size, offset, text]) => {
+  const PROMO_DOCS = ['CHEM 2410 Syllabus — Fall 2026.pdf', 'Midterm 1 practice exam (2025).pdf', 'MATH 2210 Syllabus.pdf', 'PHYS 2213 Reading guide.pdf', 'PSYC 1101 Exam 1 study guide.pdf'];
+  const documents: Row[] = docs.filter(([name]) => !PROMO || PROMO_DOCS.includes(name)).map(([name, key, type, mime, size, offset, text]) => {
     const id = uuid('e5000000');
     return {
       id, user_id: u, subject_id: key ? SUBJECTS[key].id : null, file_name: name,
@@ -422,7 +448,9 @@ export function buildTables(): Tables {
   const chatSessions: Row[] = [
     chat(-1, 'Plan my week around the orgo midterm', [
       ['My orgo midterm is next week and I still have calc and physics homework. Can you help me plan?',
-        'Here’s how I’d split the next 7 days:\n\n- Orgo: 2 hours a day, mostly practice exams and mechanism review. Start with Prof. Alvarez’s 2025 practice exam since it’s already in your documents.\n- Calc III: WebAssign Tue/Thu nights (about 1 hour each), plus the written set on Wednesday.\n- Physics II: Mastering HW on Friday afternoon after discussion.\n- Keep Wednesday evening light — you have Pre-Med Society at 7.\n\nYou’ve been averaging just over 7 hours a day, so this fits without cutting into sleep.'],
+        PROMO
+          ? 'Here’s how I’d split the next 7 days:\n\n- Orgo: about 90 minutes a day, mostly practice exams. Start with Prof. Alvarez’s 2025 practice exam since it’s already in your documents.\n- Calc III: WebAssign on Monday night (about 1 hour).\n- Physics II: Mastering HW over the weekend.\n\nThat’s around 3 hours a day, the same as you’ve been doing, so nothing has to give.'
+          : 'Here’s how I’d split the next 7 days:\n\n- Orgo: 2 hours a day, mostly practice exams and mechanism review. Start with Prof. Alvarez’s 2025 practice exam since it’s already in your documents.\n- Calc III: WebAssign Tue/Thu nights (about 1 hour each), plus the written set on Wednesday.\n- Physics II: Mastering HW on Friday afternoon after discussion.\n- Keep Wednesday evening light — you have Pre-Med Society at 7.\n\nYou’ve been averaging just over 7 hours a day, so this fits without cutting into sleep.'],
     ]),
     chat(-4, 'SN1 vs SN2 — quick explanation', [
       ['explain sn1 vs sn2 like I have an exam tomorrow',
@@ -434,12 +462,18 @@ export function buildTables(): Tables {
     ]),
   ];
 
+  if (PROMO) chatSessions.splice(2);
+  // A short brain dump, so the card isn't empty on camera.
+  const brainDump: Row[] = PROMO ? ['Email Prof. Alvarez about the lab makeup', 'Buy blue books for the midterm'].map((text, i) => ({
+    id: uuid('a8000000'), user_id: u, text, created_at: atMinute(dayAt(0), mins('08:30') + i).toISOString(),
+  })) : [];
+
   const courseItems = readingProgress(u, nowMinute, todos, todoSessions, timerSessions, documents);
 
   return {
     subjects, todos, todo_sessions: todoSessions, timer_sessions: timerSessions,
     settings, documents, chat_sessions: chatSessions, active_timer: [], elapsed_time: [],
-    course_items: courseItems,
+    course_items: courseItems, ...(PROMO ? { brain_dump_items: brainDump } : {}),
   };
 }
 
@@ -486,10 +520,13 @@ function readingProgress(u: string, nowMinute: number, todos: Row[], todoSession
     todoSessions.push({ id: uuid('c3000000'), user_id: u, todo_id: id, date, start_time: from.toISOString(), end_time: to.toISOString() });
     for (const label of sectionsOf(range)) { const item = items.find(x => x.label === label); if (item) item.todo_id = id; }
   };
-  plan('22.1–22.5', 'Gauss’s law', ended);
-  // Worked on for a while, never checked off: the bookmark shows, and Soma asks.
-  const from = atMinute(dayAt(ended.day), ended.start + 5);
-  timerSessions.push({ id: uuid('d4000000'), user_id: u, subject_id: phys, subject_name: SUBJECTS.phys.name, task_text: 'Physics reading: 22.1–22.5 Gauss’s law', start_time: from.toISOString(), end_time: new Date(+from + 40 * 60000).toISOString(), duration_seconds: 40 * 60, date: dateKey(dayAt(ended.day)) });
+  // Promo: just the one reading still ahead, so today's plan stays short.
+  if (!PROMO) {
+    plan('22.1–22.5', 'Gauss’s law', ended);
+    // Worked on for a while, never checked off: the bookmark shows, and Soma asks.
+    const from = atMinute(dayAt(ended.day), ended.start + 5);
+    timerSessions.push({ id: uuid('d4000000'), user_id: u, subject_id: phys, subject_name: SUBJECTS.phys.name, task_text: 'Physics reading: 22.1–22.5 Gauss’s law', start_time: from.toISOString(), end_time: new Date(+from + 40 * 60000).toISOString(), duration_seconds: 40 * 60, date: dateKey(dayAt(ended.day)) });
+  }
   plan('21.5–21.7', 'Electric field and field lines', ahead);
   return items;
 }

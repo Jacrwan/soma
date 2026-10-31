@@ -2,7 +2,7 @@
  * Answers the app's `/api/*` requests in demo mode, so Stripe, Google
  * Calendar, Canvas and the AI all respond without a server or real account.
  */
-import { calendarEvents, canvasAssignments, CONNECTIONS, SUBJECTS, dateKey, type Tables } from './seed';
+import { calendarEvents, canvasAssignments, CONNECTIONS, PROMO, SUBJECTS, dateKey, type Tables } from './seed';
 
 type Json = Record<string, unknown>;
 const json = (body: unknown, status = 200) =>
@@ -129,7 +129,9 @@ function when(iso: string) {
 const FOCUS: { subject: string; title: string; minutes: number }[] = [
   { subject: SUBJECTS.orgo.name, title: 'Orgo Midterm 1 — practice exam (timed)', minutes: 90 },
   { subject: SUBJECTS.calc.name, title: 'Calc III WebAssign', minutes: 60 },
-  { subject: SUBJECTS.bio.name, title: 'Paper summary 2: CRISPRi screens — draft', minutes: 75 },
+  PROMO
+    ? { subject: SUBJECTS.psych.name, title: 'Psych discussion post', minutes: 45 }
+    : { subject: SUBJECTS.bio.name, title: 'Paper summary 2: CRISPRi screens — draft', minutes: 75 },
   { subject: SUBJECTS.orgo.name, title: 'Orgo mechanism review — SN1/SN2/E1/E2', minutes: 60 },
   { subject: SUBJECTS.phys.name, title: 'Mastering Physics HW', minutes: 60 },
 ];
@@ -190,10 +192,10 @@ function chatReply(db: Tables, text: string): string {
     return `Here’s a 7-day plan for CHEM 2410 Midterm 1. It covers chapters 1–7, per your syllabus.\n\n- Today: redo Problem Set 6 mechanisms without notes (90 min)\n- Tomorrow: Klein Ch. 6–7 summary sheet, then flashcards (2 h)\n- Day 3: timed practice exam, the 2025 one in your documents (90 min), then go over what you missed\n- Day 4: office hours with Prof. Alvarez, and bring your 3 weakest topics\n- Day 5: second practice exam plus the review session at 6 PM\n- Day 6: light review only, SN1/SN2/E1/E2 decision chart\n- Exam day: 20-minute warm-up, no new material\n\nThis still leaves room for Calc WebAssign and Physics HW each night. Want me to put these into your plan?`;
   }
   if (/due|deadline|assignment|homework|what.*(next|coming)/.test(lower)) {
-    return `Coming up next:\n\n${upcoming(6).map(a => `- ${a.courseName}: ${a.name} (${when(a.dueAt)})`).join('\n')}\n\nThe CRISPRi paper summary is already in progress, so finishing it before the weekend frees up Sunday for orgo.`;
+    return `Coming up next:\n\n${upcoming(6).map(a => `- ${a.courseName}: ${a.name} (${when(a.dueAt)})`).join('\n')}\n\n${PROMO ? 'The orgo problem set is already in progress, so finishing it tonight frees up the weekend for midterm prep.' : 'The CRISPRi paper summary is already in progress, so finishing it before the weekend frees up Sunday for orgo.'}`;
   }
   if (/plan|schedule|today|tonight|tomorrow/.test(lower)) {
-    return `Here’s what I’d do with the rest of your day, around your classes:\n\n- Orgo Midterm 1 practice exam, timed (90 min)\n- Calc III WebAssign (60 min)\n- Paper summary 2 draft for Cell Bio (75 min)\n- 15-minute breaks in between, and stop by 11:30 PM\n\nThat puts you at about 7 hours for the day, in line with your average of ${(s.total / 7).toFixed(1)}.`;
+    return `Here’s what I’d do with the rest of your day, around your classes:\n\n- Orgo Midterm 1 practice exam, timed (90 min)\n- Calc III WebAssign (60 min)\n${PROMO ? '- Psych discussion post (45 min)\n- 15-minute breaks in between, and stop by 11 PM\n\nThat keeps you in line with your average of ' : '- Paper summary 2 draft for Cell Bio (75 min)\n- 15-minute breaks in between, and stop by 11:30 PM\n\nThat puts you at about 7 hours for the day, in line with your average of '}${(s.total / 7).toFixed(1)}${PROMO ? ' hours a day.' : '.'}`;
   }
   return `Here’s where things stand. You’ve logged ${s.total.toFixed(1)} hours this week and studied every day. Your next deadlines are:\n\n${upcoming(3).map(a => `- ${a.courseName}: ${a.name} (${when(a.dueAt)})`).join('\n')}\n\nI can plan your evening, make a midterm study schedule, or explain a concept. What would help most?`;
 }

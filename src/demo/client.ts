@@ -5,7 +5,7 @@
  * from the same seeded student, which is what a screen recording wants.
  */
 import type { SupabaseClient, Session, User } from '@supabase/supabase-js';
-import { buildTables, canvasAssignments, demoSettings, DEMO_EMAIL, DEMO_NAME, DEMO_USER_ID, type Tables } from './seed';
+import { buildTables, canvasAssignments, demoSettings, DEMO_EMAIL, DEMO_NAME, DEMO_USER_ID, PROMO, type Tables } from './seed';
 import { clearLocalSnapshots, setLocalSnapshot, SNAPSHOT_VERSION } from '../lib/canvasDeepSync';
 import { installDemoApi } from './api';
 
@@ -219,8 +219,10 @@ function prepareLocalStorage() {
       courses: courses.map(c => ({ ...c, currentScore: null, currentGrade: null, weighted: false })), groups: [], announcements: [], changes: [],
       assignments: assignments.map(a => {
         const done = a.status === 'done' || status[a.id] === 'done';
-        return { id: a.id, courseId: a.courseId, name: a.name, dueAt: a.dueAt, htmlUrl: a.htmlUrl, description: '', pointsPossible: null, groupId: null,
-          submittedAt: done ? a.dueAt : null, workflowState: done ? 'submitted' : 'unsubmitted', score: null, grade: null, missing: false, late: false, excused: false };
+        // The promo carries the scores too, so Grades has grades to show.
+        const graded = PROMO && done && a.score != null;
+        return { id: a.id, courseId: a.courseId, name: a.name, dueAt: a.dueAt, htmlUrl: a.htmlUrl, description: '', pointsPossible: PROMO ? a.pointsPossible ?? null : null, groupId: null,
+          submittedAt: done ? a.dueAt : null, workflowState: graded ? 'graded' : done ? 'submitted' : 'unsubmitted', score: graded ? a.score ?? null : null, grade: null, missing: false, late: false, excused: false };
       }),
     });
     for (const key of ['soma_blocks', 'soma_sessions', 'soma_google_events', 'soma_google_cache_timestamp', 'soma_active_session_id', 'soma_chat_sessions', 'soma_trial_banner_dismissed']) {

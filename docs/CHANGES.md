@@ -9,6 +9,39 @@ still needed.
 
 ---
 
+## 2026-10-30 (a lighter demo for promo videos: npm run promo)
+
+- **Why:** the owner is making a promo video, and the demo student
+  (`npm run demo`) has so much on screen that it looks messy.
+- **What:** `npm run promo` opens the same demo student at
+  http://localhost:5175 with much less on screen. `npm run demo` is
+  unchanged (store screenshots use it).
+  - **4 courses** (Organic Chemistry, Calculus III, Physics II, Intro to
+    Psychology), not 6.
+  - **Calendar:** the four lectures and Friday dinner, not 17 weekly events;
+    three one-offs (coffee, the orgo review, the midterm).
+  - **Study:** about 2.5–3.5 hours a day in the past and 2–3 hours ahead, in
+    60–100 minute blocks with open time between, so today's plan is about
+    seven items.
+  - **Deadlines:** a problem set, a WebAssign and a physics HW a week, a psych
+    post every other week, and Midterm 1: about six upcoming. The next orgo
+    problem set is in progress.
+  - **Grades** have scores (the regular demo's show "No scores yet").
+  - 5 documents, 2 saved AI chats (the week plan reworded to match about 3
+    hours a day), one physics reading block instead of two, and two brain
+    dump lines so that card isn't empty.
+  - The demo AI's suggestions use Psych instead of Cell Bio.
+- **Where:** `src/demo/seed.ts` (`PROMO` and the trimmed lists),
+  `src/demo/api.ts`, `src/demo/client.ts` (scores in the Canvas snapshot),
+  `src/lib/supabase.ts` (promo mode uses the demo client), `package.json`
+  (`promo` script).
+- **Test:** none new; demo data isn't under test. Checked every page in the
+  promo build, and that the regular demo's dashboard still shows its full
+  plan. Both `npm run build` and `vite build --mode promo` build.
+- **Setup:** none. Run `npm run promo` and open http://localhost:5175/dashboard.
+
+---
+
 ## 2026-10-30 (widget ideas: green to build, red to turn down)
 
 - **Why:** the owner wanted the decisions told apart at a glance.

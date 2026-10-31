@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "demo": "vite --mode demo --port 5174 --strictPort",
+    "promo": "vite --mode promo --port 5175 --strictPort",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
