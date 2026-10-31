@@ -58,7 +58,7 @@ test('a student suggests a widget from Customize and sees it waiting, with past 
   await expect(page.getByRole('button', { name: /Widget ideas/ })).toHaveCount(0);
 
   await page.getByRole('button', { name: 'Customize' }).click();
-  await page.getByRole('button', { name: 'Missing a widget? Suggest one' }).click();
+  await page.getByRole('button', { name: 'Suggest', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Suggest a widget' });
   await expect(dialog.getByText('Water tracker')).toBeVisible();
   await expect(dialog.getByText('Not planned')).toBeVisible();
@@ -122,7 +122,7 @@ test('before the migration runs, the student is told widget ideas aren’t set u
   await setup(page, { missing: true });
   await page.goto('/dashboard');
   await page.getByRole('button', { name: 'Customize' }).click();
-  await page.getByRole('button', { name: 'Missing a widget? Suggest one' }).click();
+  await page.getByRole('button', { name: 'Suggest', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Suggest a widget' });
   await expect(dialog.getByRole('alert')).toContainText('aren’t set up yet');
 });

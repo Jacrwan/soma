@@ -1,5 +1,5 @@
 import { useRef, type CSSProperties, type DragEvent, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, GripVertical, Plus, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, GripVertical, Lightbulb, Plus, X } from 'lucide-react';
 import { COLUMNS, SIZES, WIDGETS, addWidget, boxOf, hideWidget, placeAt, sameLayout, settle, widgetInfo, type Box, type DashboardLayout, type WidgetId, type WidgetSize } from '../../lib/dashboardLayout';
 import styles from './DashboardV2.module.css';
 
@@ -7,7 +7,7 @@ import styles from './DashboardV2.module.css';
  * The live dashboard's widgets on a grid (lib/dashboardLayout.ts). While
  * customizing, a widget can be dragged to any spot, or moved a step at a time
  * with its arrows; it can also be resized or hidden, and hidden ones wait in
- * "Add widgets". The handle along a widget's bottom edge makes it taller or
+ * "Add widgets", which ends with a card for suggesting a new one. The handle along a widget's bottom edge makes it taller or
  * shorter, a row at a time. The widgets themselves can't be used until Done. `panel`
  * (the block editor or Plan it) opens beside Today's plan.
  *
@@ -21,6 +21,8 @@ type Props = {
   onChange: (layout: DashboardLayout) => void;
   render: (id: WidgetId, size: WidgetSize) => ReactNode;
   panel?: ReactNode;
+  /** Opens "Suggest a widget" (WidgetIdeas.tsx), from the last card in Add widgets. */
+  onSuggest?: () => void;
 };
 
 const sizeClass = (w: number, h: number) => `${styles[`c${w}`]} ${styles[`r${h}`]}`;
@@ -35,7 +37,7 @@ function withPanel(layout: DashboardLayout): Box[] {
   return settle([...boxes, { id: 'panel', x, y, w: 1, h: 3 }], 'panel');
 }
 
-export default function WidgetGrid({ layout, customizing, onChange, render, panel }: Props) {
+export default function WidgetGrid({ layout, customizing, onChange, render, panel, onSuggest }: Props) {
   const grid = useRef<HTMLDivElement>(null);
   // While dragging: which widget, the layout it started from, and which cell of the widget was grabbed.
   const drag = useRef<{ id: WidgetId; from: DashboardLayout; grab: { x: number; y: number }; at: string } | null>(null);
@@ -146,11 +148,16 @@ export default function WidgetGrid({ layout, customizing, onChange, render, pane
     </div>
     {customizing && <section className={styles.widgetTray} aria-labelledby="widget-tray-title">
       <h2 id="widget-tray-title">Add widgets</h2>
-      {hidden.length === 0 ? <p className={styles.description}>Every widget is on your dashboard.</p> : <ul>
+      {hidden.length === 0 && <p className={styles.description}>Every widget is on your dashboard.</p>}
+      {(hidden.length > 0 || onSuggest) && <ul>
         {hidden.map(info => <li key={info.id}>
           <div><strong>{info.name}</strong><span>{info.description}</span></div>
           <button type="button" aria-label={`Add ${info.name}`} onClick={() => onChange(addWidget(layout, info.id))}><Plus size={14}/> Add</button>
         </li>)}
+        {onSuggest && <li className={styles.suggestCard}>
+          <div><strong>Missing a widget?</strong><span>Tell us what you’d want on your dashboard. You’ll see whether it gets built.</span></div>
+          <button type="button" onClick={onSuggest}><Lightbulb size={14}/> Suggest</button>
+        </li>}
       </ul>}
     </section>}
   </>;

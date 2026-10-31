@@ -9,6 +9,25 @@ still needed.
 
 ---
 
+## 2026-10-30 (widget ideas: a card in Add widgets)
+
+- **Why:** the owner wanted suggesting a widget to be obvious. The small text
+  link after the Customize hint was easy to miss.
+- **What:** Add widgets now ends with a **Missing a widget?** card ("Tell us
+  what you'd want on your dashboard. You'll see whether it gets built.") and
+  a **Suggest** button, laid out like the widget cards but with a dashed
+  accent outline, a light accent tint and a filled button. It shows even when
+  every widget is already on the dashboard, under "Every widget is on your
+  dashboard." The text link is gone; the dialog is unchanged.
+- **Where:** `WidgetGrid.tsx` (new `onSuggest` prop, the card),
+  `DashboardV2.tsx` (passes it; link removed), `DashboardV2.module.css`
+  (`.suggestCard`; `.suggestWidget` removed).
+- **Test:** `tests/widget-ideas.spec.ts` now opens the dialog from the
+  card's Suggest button.
+- **Setup:** none.
+
+---
+
 ## 2026-10-30 (widget ideas: students suggest, the owner decides)
 
 - **Why:** the owner wants students to be able to suggest a dashboard widget,
