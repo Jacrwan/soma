@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, type PointerEvent as ReactPoi
 import { useNavigate } from 'react-router-dom';
 import { Pause, Play, Square } from 'lucide-react';
 import { useTimerContext } from '../../contexts/TimerContext';
+import PausedFor from './PausedFor';
 import styles from './TimerOverlay.module.css';
 
 function fmtElapsed(secs: number) {
@@ -237,7 +238,10 @@ export default function TimerOverlay() {
           <span className={styles.pillTask}>{task || subject.name}</span>
           <span className={styles.pillSubject}>{task ? subject.name : 'Focus session'}</span>
         </span>
-        <span className={styles.pillTime}>{fmtElapsed(ctx.elapsed)}</span>
+        <span className={styles.pillClock}>
+          <span className={styles.pillTime}>{fmtElapsed(ctx.elapsed)}</span>
+          {ctx.pausedSince !== null && <PausedFor since={ctx.pausedSince} className={styles.pillPaused} />}
+        </span>
       </button>
 
       <div className={styles.pillActions}>

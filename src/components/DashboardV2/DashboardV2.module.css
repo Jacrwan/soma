@@ -140,6 +140,8 @@
 .right .focus{margin-bottom:0;padding:24px}
 .right .editor{margin-bottom:0}
 .right .timer{font-size:54px;margin:24px 0}
+/* Beside the digits, not under them: a new line would move the Resume button out from under the cursor. */
+.timer .pausedFor{display:inline-block;margin-left:10px;font-size:12px;font-weight:400;letter-spacing:0;white-space:nowrap;color:var(--text-secondary)}
 
 @media(max-width:1100px){
   .columns{grid-template-columns:minmax(0,1fr) 320px;gap:24px}

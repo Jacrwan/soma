@@ -19,6 +19,8 @@ interface TimerContextValue {
   elapsed: number;
   isRunning: boolean;
   isPaused: boolean;
+  /** When the current pause began (epoch ms); null when not in a recorded pause. */
+  pausedSince: number | null;
   activeSession: ActiveSession | null;
   pendingSession: { subject: Subject; initialTask: string } | null;
   openInputModal: (subject: Subject, initialTask?: string) => void;
@@ -436,9 +438,12 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
     return true;
   }, [stop,pause,mirror]);
 
+  const openPause = pausesRef.current[pausesRef.current.length - 1];
+  const pausedSince = isPaused && openPause && openPause[1] === null ? openPause[0] : null;
+
   return (
     <TimerContext.Provider value={{
-      elapsed, isRunning, isPaused, saving, error, savePending: !!pendingSaveRef.current,
+      elapsed, isRunning, isPaused, pausedSince, saving, error, savePending: !!pendingSaveRef.current,
       activeSession, pendingSession,
       openInputModal, closeInputModal,
       startSession, pauseSession, resumeSession, stopSession,

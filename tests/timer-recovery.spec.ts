@@ -320,6 +320,52 @@ test('pausing records when the pause was, and it survives a reload', async ({ pa
   expect(Math.abs(row.duration_seconds - 900)).toBeLessThan(10);
 });
 
+test('a pause shows how long it has lasted, through a reload, and starts over on the next pause', async ({ page }) => {
+  const state = await setup(page);
+  // This pause runs past an hour; setup's sign-in only lasts one.
+  await page.addInitScript(() => { const k = 'sb-soma-regression-auth-token', t = JSON.parse(localStorage.getItem(k)!); localStorage.setItem(k, JSON.stringify({ ...t, expires_at: t.expires_at + 86400 })); });
+  await page.clock.install();
+  await startFocus(page, state);
+  await page.clock.fastForward('10:00');
+  const timer = page.getByLabel('Focus timer');
+  await expect(timer).not.toContainText('Paused');
+
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  const frozen = await clock(page);
+  await page.clock.fastForward('02:05');
+  await expect(timer).toContainText(/Paused 2:0\d/);
+  expect(await clock(page)).toBe(frozen);
+
+  await page.clock.fastForward('20:00');
+  await page.reload();
+  await expect(timer).toContainText(/Paused 22:0\d/);
+
+  await page.clock.fastForward('40:00');
+  await expect(timer).toContainText(/Paused 1:02:\d\d/);
+
+  await page.getByRole('button', { name: 'Resume', exact: true }).click();
+  await expect(timer).not.toContainText('Paused');
+  await page.clock.fastForward('01:00');
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await expect(timer).toContainText(/Paused 0:0\d/);
+});
+
+test('the floating timer shows the pause count too', async ({ page }) => {
+  const state = await setup(page);
+  await page.clock.install();
+  await startFocus(page, state);
+  await page.clock.fastForward('05:00');
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await expect.poll(() => state.tables.active_timer[0].is_paused).toBe(true);
+  await page.goto('/calendar');
+  const pill = page.getByRole('complementary', { name: 'Focus timer' });
+  await expect(pill).toContainText(/Paused 0:\d\d/);
+  await page.clock.fastForward('03:00');
+  await expect(pill).toContainText(/Paused 3:\d\d/);
+  await pill.getByRole('button', { name: 'Resume focus' }).click();
+  await expect(pill).not.toContainText('Paused');
+});
+
 test('before the pauses column exists, the session still saves without them', async ({ page }) => {
   const state = await setup(page);
   await page.route('**/rest/v1/timer_sessions*', r => r.request().method() === 'POST' && 'pauses' in (r.request().postDataJSON() ?? {})

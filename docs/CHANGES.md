@@ -9,6 +9,27 @@ still needed.
 
 ---
 
+## 2026-11-02 (the focus timer shows how long it's been paused)
+
+- **Why:** the owner asked for a timer of how long the focus timer has been
+  paused. The clock freezes on pause, with nothing showing how long the break
+  has run.
+- **What:** while paused, "Paused 2:13" counts up beside the frozen clock, on
+  the dashboard's Focus card and the floating timer. It counts the current
+  pause only: Resume clears it and the next pause starts at 0:00. It carries
+  through a reload and to another window or device, using the pause start the
+  calendar's faint stretches already record. Nothing new is saved.
+- **Where:** `src/components/Timer/PausedFor.tsx` (new), `TimerContext.tsx`
+  (`pausedSince`), `TimerOverlay.tsx` + `.module.css`, `LiveDashboard.tsx`,
+  `DashboardV2.module.css`. On the Focus card it sits beside the digits, not
+  under them, so the Resume button doesn't move under the cursor.
+- **Guard:** `tests/timer-recovery.spec.ts` › "a pause shows how long it has
+  lasted, through a reload, and starts over on the next pause", "the floating
+  timer shows the pause count too".
+- **Setup:** none.
+
+---
+
 ## 2026-10-30 (a lighter demo for promo videos: npm run promo)
 
 - **Why:** the owner is making a promo video, and the demo student
