@@ -9,6 +9,32 @@ still needed.
 
 ---
 
+## 2026-11-02 (a pause that doesn't reach the account is no longer undone)
+
+- **Why:** an old bug, not a regression, found while testing the paused count
+  and fixed at the owner's request. If a Pause never reached `active_timer` (no
+  connection, or leaving the page right away), the 5-second sync saw the row
+  still saying "running", took that as a resume from another window, and counted
+  the break as studied. A lost Resume paused the timer again the same way.
+- **What:** a pause, resume or stop is marked unconfirmed in the local mirror
+  until its write succeeds, so the mark survives a reload. When the row is older
+  than that change, the sync sends the change again, with its original time and
+  clock value, and clears the "could not sync" warning once it lands. A row newer
+  than the change is a later change elsewhere, and is still followed.
+- **Where:** `src/contexts/TimerContext.tsx` (`unsyncedRef`, `sendChange`,
+  `settled`, the sync), `src/lib/activeTimerMirror.ts` (`unsynced`).
+- **Guard:** `tests/timer-recovery.spec.ts` › "a pause that never reached the
+  account stays a pause, and is sent again", "a pause that failed while the page
+  stayed open is sent again and clears its warning", "a resume that never reached
+  the account keeps running, and is sent again" (all three fail without the fix),
+  "a resume made elsewhere after the unsent pause still wins".
+- **Limits:** this compares device clocks, so with an unconfirmed change on a
+  device whose clock is well off, the wrong side can win. Sessions already saved
+  with a break counted as study are not corrected.
+- **Setup:** none.
+
+---
+
 ## 2026-11-02 (the focus timer shows how long it's been paused)
 
 - **Why:** the owner asked for a timer of how long the focus timer has been

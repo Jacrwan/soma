@@ -366,6 +366,88 @@ test('the floating timer shows the pause count too', async ({ page }) => {
   await expect(pill).not.toContainText('Paused');
 });
 
+/** Makes writes to the shared timer row fail until the returned function is called. */
+async function dropTimerWrites(page: Page) {
+  let dropping = true;
+  await page.route('**/rest/v1/active_timer*', r => dropping && r.request().method() === 'POST' ? r.abort() : r.fallback());
+  return () => { dropping = false; };
+}
+
+test('a pause that never reached the account stays a pause, and is sent again', async ({ page }) => {
+  const state = await setup(page);
+  await page.clock.install();
+  await startFocus(page, state);
+  await page.clock.fastForward('05:00');
+  const allow = await dropTimerWrites(page);
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await expect(page.getByText(/Pause could not sync/)).toBeVisible();
+  expect(state.tables.active_timer[0].is_paused).toBe(false);
+  const frozen = seconds(await clock(page));
+  allow();
+
+  await page.reload();
+  await expect(page.getByLabel('Focus timer')).toContainText('Paused');
+  await page.clock.fastForward('03:00');
+  await expect.poll(() => state.tables.active_timer[0].is_paused).toBe(true);
+  await page.clock.fastForward('00:10');
+  await expect(page.getByRole('button', { name: 'Resume', exact: true })).toBeVisible();
+  expect(seconds(await clock(page))).toBe(frozen);
+  expect(state.tables.active_timer[0].accumulated_seconds).toBe(frozen);
+  await expect(page.getByText(/Pause could not sync/)).toHaveCount(0);
+});
+
+test('a pause that failed while the page stayed open is sent again and clears its warning', async ({ page }) => {
+  const state = await setup(page);
+  await page.clock.install();
+  await startFocus(page, state);
+  await page.clock.fastForward('05:00');
+  const allow = await dropTimerWrites(page);
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await expect(page.getByText(/Pause could not sync/)).toBeVisible();
+  const frozen = seconds(await clock(page));
+  allow();
+  await page.clock.fastForward('03:00');
+  await expect.poll(() => state.tables.active_timer[0].is_paused).toBe(true);
+  await expect(page.getByText(/Pause could not sync/)).toHaveCount(0);
+  expect(seconds(await clock(page))).toBe(frozen);
+});
+
+test('a resume that never reached the account keeps running, and is sent again', async ({ page }) => {
+  const state = await setup(page);
+  await page.clock.install();
+  await startFocus(page, state);
+  await page.clock.fastForward('05:00');
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await expect.poll(() => state.tables.active_timer[0].is_paused).toBe(true);
+  await page.clock.fastForward('02:00');
+  const allow = await dropTimerWrites(page);
+  await page.getByRole('button', { name: 'Resume', exact: true }).click();
+  await expect(page.getByText(/Resume could not sync/)).toBeVisible();
+  allow();
+  await page.clock.fastForward('01:00');
+  await expect.poll(() => state.tables.active_timer[0].is_paused).toBe(false);
+  await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+  expect(Math.abs(seconds(await clock(page)) - 360)).toBeLessThan(15);
+});
+
+test('a resume made elsewhere after the unsent pause still wins', async ({ page }) => {
+  const state = await setup(page);
+  await page.clock.install();
+  await startFocus(page, state);
+  await page.clock.fastForward('05:00');
+  const allow = await dropTimerWrites(page);
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await expect(page.getByText(/Pause could not sync/)).toBeVisible();
+  allow();
+  // Another device resumed one minute after this pause, and the row says so.
+  const later = await page.evaluate(() => new Date(Date.now() + 60_000).toISOString());
+  await page.clock.fastForward('02:00');
+  state.tables.active_timer[0] = { ...state.tables.active_timer[0], start_time: later, accumulated_seconds: 300, is_paused: false };
+  await page.clock.fastForward('00:06');
+  await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+  expect(state.tables.active_timer[0].start_time).toBe(later);
+});
+
 test('before the pauses column exists, the session still saves without them', async ({ page }) => {
   const state = await setup(page);
   await page.route('**/rest/v1/timer_sessions*', r => r.request().method() === 'POST' && 'pauses' in (r.request().postDataJSON() ?? {})

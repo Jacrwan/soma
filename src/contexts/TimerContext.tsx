@@ -91,7 +91,13 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
   const pausesRef = useRef<[number, number | null][]>([]);
   const pauseAt = (ms: number) => { const last = pausesRef.current[pausesRef.current.length - 1]; if (!last || last[1] !== null) pausesRef.current = [...pausesRef.current, [ms, null]]; };
   const resumeAt = (ms: number) => { const last = pausesRef.current[pausesRef.current.length - 1]; if (last && last[1] === null) pausesRef.current = [...pausesRef.current.slice(0, -1), [last[0], Math.max(last[0], ms)]]; };
-  const mirror = useCallback((session: ActiveSession, accumulatedSeconds: number, isPaused: boolean) => {
+  // A pause or resume the shared row hasn't confirmed: the write failed, or the
+  // page closed before it landed. The row then still says the opposite, and
+  // following it undid the pause and counted the break as studied.
+  const unsyncedRef = useRef<{ at: number; accumulated: number; isPaused: boolean } | null>(null);
+  const mirror = useCallback((session: ActiveSession, accumulatedSeconds: number, isPaused: boolean, unsynced = false) => {
+    const markedAtMs = Date.now();
+    unsyncedRef.current = unsynced ? { at: markedAtMs, accumulated: accumulatedSeconds, isPaused } : null;
     writeMirror({
       userId: userIdRef.current,
       subjectId: session.subject.id,
@@ -99,10 +105,30 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
       subjectColor: session.subject.color,
       task: session.task,
       sessionStartTimeISO: session.sessionStartTimeISO,
-      accumulatedSeconds, isPaused, markedAtMs: Date.now(),
+      accumulatedSeconds, isPaused, markedAtMs,
       pauses: pausesRef.current,
+      unsynced,
     });
+    return markedAtMs;
   }, []);
+  /** The shared row now holds the change made at `at`. Keeps its markedAtMs: a running clock counts from it. */
+  const settled = (at: number) => {
+    if (unsyncedRef.current?.at === at) unsyncedRef.current = null;
+    const m = readMirror();
+    if (m?.markedAtMs === at) writeMirror({ ...m, unsynced: false });
+  };
+  const sendChange = (session: ActiveSession, at: number, accumulated: number, isPaused: boolean) => {
+    const failed = isPaused ? 'Pause could not sync. Keep this page open until the session is saved.' : 'Resume could not sync. Keep this page open until the session is saved.';
+    void shared(storage.upsertActiveTimer({
+      subject_id: session.subject.id,
+      subject_name: session.subject.name,
+      task_text: session.task || null,
+      session_start_time: session.sessionStartTimeISO,
+      start_time: toLocalISO(new Date(at)),
+      accumulated_seconds: accumulated,
+      is_paused: isPaused,
+    })).then(() => { settled(at); setError(e => e === failed ? '' : e); }).catch(() => setError(failed));
+  };
 
   useEffect(() => { elapsedRef.current = elapsed; }, [elapsed]);
   useEffect(() => { activeSessionRef.current = activeSession; }, [activeSession]);
@@ -122,6 +148,7 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
       activeSessionRef.current = session;
       setActiveSession(session);
       pausesRef.current = Array.isArray(local.pauses) ? local.pauses : [];
+      unsyncedRef.current = local.unsynced ? { at: local.markedAtMs, accumulated: local.accumulatedSeconds, isPaused: local.isPaused } : null;
       start(elapsedFromMirror(local));
       if (local.isPaused) pause();
     }
@@ -131,6 +158,7 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
       const stale = local && local.userId && userIdRef.current && local.userId !== userIdRef.current;
       if (stale) {
         clearMirror();
+        unsyncedRef.current = null;
         stop();
         activeSessionRef.current = null;
         setActiveSession(null);
@@ -232,13 +260,21 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
           return;
         }
 
+        // A row older than this window's unconfirmed change never received it:
+        // send it again. A newer one is a later change elsewhere, followed below.
+        const unsynced = unsyncedRef.current;
+        if (unsynced && startedMs < unsynced.at) {
+          sendChange(local, unsynced.at, unsynced.accumulated, unsynced.isPaused);
+          return;
+        }
+
         // Same session: follow a pause or resume made in the other window.
         if (row.is_paused !== isPausedRef.current) {
           // start_time is when the other window paused or resumed.
           const at = Number.isFinite(startedMs) ? startedMs : Date.now();
           if (row.is_paused) { pauseAt(at); pause(); } else { resumeAt(at); start(elapsedNow); }
           mirror(local, elapsedNow, row.is_paused);
-        }
+        } else if (unsynced) settled(unsynced.at);
         return;
       }
 
@@ -249,6 +285,7 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
       if (local && sameSession(seenSessionRef.current, local.sessionStartTimeISO)) {
         seenSessionRef.current = null;
         clearMirror();
+        unsyncedRef.current = null;
         stop();
         activeSessionRef.current = null;
         setActiveSession(null);
@@ -331,16 +368,7 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
     const acc = pause();
     elapsedRef.current=acc;
     pauseAt(Date.now());
-    mirror(session, acc, true);
-    void shared(storage.upsertActiveTimer({
-      subject_id: session.subject.id,
-      subject_name: session.subject.name,
-      task_text: session.task || null,
-      session_start_time: session.sessionStartTimeISO,
-      start_time: toLocalISO(new Date()),
-      accumulated_seconds: acc,
-      is_paused: true,
-    })).catch(() => setError('Pause could not sync. Keep this page open until the session is saved.'));
+    sendChange(session, mirror(session, acc, true, true), acc, true);
   }, [pause, mirror]);
 
   const resumeSession = useCallback(() => {
@@ -349,16 +377,7 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
     resume();
     const acc = elapsedRef.current;
     resumeAt(Date.now());
-    mirror(session, acc, false);
-    void shared(storage.upsertActiveTimer({
-      subject_id: session.subject.id,
-      subject_name: session.subject.name,
-      task_text: session.task || null,
-      session_start_time: session.sessionStartTimeISO,
-      start_time: toLocalISO(new Date()),
-      accumulated_seconds: acc,
-      is_paused: false,
-    })).catch(() => setError('Resume could not sync. Keep this page open until the session is saved.'));
+    sendChange(session, mirror(session, acc, false, true), acc, false);
   }, [resume, mirror]);
 
   const stopSession = useCallback(async (): Promise<boolean> => {
@@ -367,7 +386,7 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
     savingRef.current=true;setSaving(true);setError('');
     const durationSeconds = pause();
     elapsedRef.current=durationSeconds;
-    mirror(session, durationSeconds, true);
+    const stoppedAt = mirror(session, durationSeconds, true, true);
     const endTime = toLocalISO(new Date());
     // Pauses as seconds into the session; one still open ran until Stop.
     const startMs = new Date(session.sessionStartTimeISO).getTime(), endMs = new Date(endTime).getTime();
@@ -394,11 +413,12 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
     };
     pendingSaveRef.current=timerSession;
     try {
-      await storage.upsertActiveTimer({subject_id:session.subject.id,subject_name:session.subject.name,task_text:session.task,session_start_time:session.sessionStartTimeISO,start_time:toLocalISO(new Date()),accumulated_seconds:timerSession.durationSeconds,is_paused:true});
+      await storage.upsertActiveTimer({subject_id:session.subject.id,subject_name:session.subject.name,task_text:session.task,session_start_time:session.sessionStartTimeISO,start_time:toLocalISO(new Date(stoppedAt)),accumulated_seconds:timerSession.durationSeconds,is_paused:true});
       await storage.saveTimerSession(timerSession, session.subject.name);
       await storage.deleteActiveTimer();
     } catch {setError('Could not finish saving focus. Your timer is paused; press Stop to retry.');savingRef.current=false;setSaving(false);return false;}
     clearMirror();
+    unsyncedRef.current=null;
     stop();setActiveSession(null);activeSessionRef.current=null;pendingSaveRef.current=null;continuationBlockIdRef.current=null;pauseDurationRef.current=0;pausesRef.current=[];
     savingRef.current=false;setSaving(false);
     storage.setTimerSessions([...storage.getTimerSessions().filter(s=>s.id!==timerSession.id), timerSession]);
