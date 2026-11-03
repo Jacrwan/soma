@@ -28,10 +28,10 @@ export const DOCUMENT_EXCERPT_CHARS = 9000;
  * with every question, and they're a fraction of the whole documents that
  * used to be pasted in. Returns '' when nothing matches or nothing is extracted.
  */
-export function buildDocumentExcerpts(subjects: { id: string; name: string }[], query: string, focusSubjectIds: string[] = []): string {
+export function buildDocumentExcerpts(subjects: { id: string; name: string }[], query: string, focusSubjectIds: string[] = [], dates: string[] = []): string {
   const docs = getCachedDocuments().filter(d => d.extractionStatus === 'done' && d.extractedText);
   if (!docs.length) return '';
-  const found = search(docs, query, { budgetChars: DOCUMENT_EXCERPT_CHARS, subjectIds: focusSubjectIds });
+  const found = search(docs, query, { budgetChars: DOCUMENT_EXCERPT_CHARS, subjectIds: focusSubjectIds, dates });
   const subjectById = new Map(subjects.map(s => [s.id, s.name]));
   const names = docs.map(d => `"${d.fileName}" (${d.docType}, ${d.subjectId ? subjectById.get(d.subjectId) ?? 'Unknown subject' : 'Unassigned'})`).join('; ');
   if (!found.length) return `\nSTUDENT DOCUMENTS: ${names}. Nothing in them matched this message; if the answer needs them, say which part you need.\n`;

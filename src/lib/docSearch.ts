@@ -53,12 +53,48 @@ export function passages(doc: SearchDoc): Passage[] {
   return out;
 }
 
+const MONTH = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+/** The days a passage mentions, as "10-27": "Oct 27 & 29", "27 October", "10/27", "2026-10-27". */
+export function datesIn(text: string): Set<string> {
+  const out = new Set<string>();
+  const add = (month: number, day: number) => {
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) out.add(`${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`);
+  };
+  const monthOf = (name: string) => MONTHS.indexOf(name.slice(0, 3).toLowerCase()) + 1;
+  for (const m of text.matchAll(new RegExp(`\\b${MONTH}\\.?\\s+(\\d{1,2})(?!\\d|[.:/]\\d)((?:\\s*(?:&|,|and|-|–|—)\\s*\\d{1,2}(?!\\d|[.:/]\\d))*)`, 'gi'))) {
+    add(monthOf(m[1]), Number(m[2]));
+    for (const more of m[3].match(/\d{1,2}/g) ?? []) add(monthOf(m[1]), Number(more));
+  }
+  for (const m of text.matchAll(new RegExp(`\\b(\\d{1,2})\\s+${MONTH}\\b`, 'gi'))) add(monthOf(m[2]), Number(m[1]));
+  for (const m of text.matchAll(/(?<![\d/.])(\d{1,2})\/(\d{1,2})(?![\d])/g)) add(Number(m[1]), Number(m[2]));
+  for (const m of text.matchAll(/\b\d{4}-(\d{2})-(\d{2})\b/g)) add(Number(m[1]), Number(m[2]));
+  return out;
+}
+
+/** Every day of last week and this week (Monday to Sunday), as datesIn writes them. */
+export function daysAround(now: Date): string[] {
+  const d = new Date(now); d.setHours(12, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7) - 7);
+  return Array.from({ length: 14 }, (_, i) => {
+    const x = new Date(d); x.setDate(d.getDate() + i);
+    return `${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  });
+}
+
 /**
  * The passages that best answer `query`, best first, up to `budgetChars` in
  * all. Passages from the courses in `subjectIds` count a little more, and a
  * syllabus a little more for questions about grading, exams and policy.
+ *
+ * `dates` (from daysAround): a guide lists work by lecture date, and "last
+ * week" isn't a word in it, so no ranking of words can find it. The best
+ * matches keep the first half of the budget, then passages dated on these days
+ * come next: from a course in `subjectIds` whatever their words, otherwise only
+ * if they match at all.
  */
-export function search(docs: SearchDoc[], query: string, opts: { budgetChars?: number; subjectIds?: string[]; max?: number } = {}): Passage[] {
+export function search(docs: SearchDoc[], query: string, opts: { budgetChars?: number; subjectIds?: string[]; max?: number; dates?: string[] } = {}): Passage[] {
   const budget = opts.budgetChars ?? 9000;
   const all = docs.flatMap(passages);
   if (!all.length) return [];
@@ -87,15 +123,25 @@ export function search(docs: SearchDoc[], query: string, opts: { budgetChars?: n
     if (score > 0 && opts.subjectIds?.length && p.subjectId && opts.subjectIds.includes(p.subjectId)) score *= 1.25;
     if (score > 0 && policy && p.docType === 'syllabus') score *= 1.3;
     return { p, score };
-  }).filter(x => x.score > 0).sort((x, y) => y.score - x.score);
+  }).sort((x, y) => y.score - x.score);
+  const matched = scored.filter(x => x.score > 0);
 
-  const picked: Passage[] = [];
+  const picked = new Set<Passage>();
   let used = 0;
-  for (const { p } of scored) {
-    if (picked.length >= (opts.max ?? 12)) break;
-    if (used + p.text.length > budget) continue;
-    picked.push(p);
-    used += p.text.length;
+  const take = (rows: typeof scored, limit: number) => {
+    for (const { p } of rows) {
+      if (picked.size >= (opts.max ?? 12)) return;
+      if (picked.has(p) || used + p.text.length > limit) continue;
+      picked.add(p);
+      used += p.text.length;
+    }
+  };
+  if (opts.dates?.length) {
+    const wanted = new Set(opts.dates);
+    const focus = opts.subjectIds ?? [];
+    take(matched, budget / 2);
+    take(scored.filter(x => (x.score > 0 || (!!x.p.subjectId && focus.includes(x.p.subjectId))) && [...datesIn(x.p.text)].some(d => wanted.has(d))), budget);
   }
-  return picked;
+  take(matched, budget);
+  return [...picked];
 }

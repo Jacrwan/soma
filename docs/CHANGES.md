@@ -9,6 +9,47 @@ still needed.
 
 ---
 
+## 2026-11-03 (last week's homework comes from what has dates, not an old open task)
+
+- **Why:** an old gap, not a regression. Asked to "schedule me to do the math
+  homework from last week", Soma proposed "Math 53 homework: 14.3-14.6" when last
+  week's was 15.1-15.4. A task whose block is more than seven days old drops out
+  of `plan` and `lastWeek` and lands in `tasks` as if it were new, with nothing
+  saying how old it is, and the prompt says never to make a new block for work
+  already in `tasks`. The guide couldn't correct it: the search looks for the
+  words "last week", which a guide listing work by lecture date doesn't contain,
+  and "math" didn't count as naming the course "Math 53".
+- **What:**
+  - An open task's line says the day it was added or last planned for ("from Wed
+    10-21") when that's before today.
+  - A new prompt rule: work picked by its week or date is identified from what
+    carries dates (documents, Canvas, courses), not from a task's title, a note
+    or the chat. If those name different work it's a new block under its own
+    name, and the reply says the older task is still open. If nothing dated says,
+    Soma plans the likeliest and says which one, how old, and that it couldn't check.
+  - The first pass is told such a message needs the documents.
+  - Document search reads dates ("Oct 27 & 29", "27 October", "10/27",
+    "2026-10-27"). The best word matches keep the first half of the 9,000
+    characters, then passages dated last week or this week come next. From a
+    course the message names they count whatever their words; otherwise they
+    must match something. The first word of a course name now names it.
+- **Where:** `src/lib/assistant.ts` (prompt, first pass, `tasks`, `named`),
+  `src/lib/docSearch.ts` (`datesIn`, `daysAround`, `search`), `src/lib/aiContext.ts`.
+- **Guard:** `tests/ai-work-by-week.spec.ts` › "\"the math homework from last
+  week\" sends the part of the guide dated last week", "an open task says how old
+  it is, so an old one can't pass for last week's" (both fail without the fix),
+  "dates are read the ways a guide writes them", "work dated around now doesn't
+  push out the passages that best answer the question".
+  `tests/ai-real-model.spec.ts` › "last week's homework comes from the guide, not
+  an old open task" needs `ANTHROPIC_API_KEY`, and calls the real model.
+- **Limits:** the date preference covers last week and this week only; "two weeks
+  ago" or "next week" still rely on word matches. A guide with no dates in it
+  gets no help. The owner's stale "14.3-14.6" task and the wrong block stay until
+  they're changed or removed.
+- **Setup:** none.
+
+---
+
 ## 2026-11-02 (a pause that doesn't reach the account is no longer undone)
 
 - **Why:** an old bug, not a regression, found while testing the paused count
