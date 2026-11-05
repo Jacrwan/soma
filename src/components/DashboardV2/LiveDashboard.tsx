@@ -250,11 +250,8 @@ export default function LiveDashboard({userId}:{userId:string}) {
   const [asked,answered]=result.history.slice(-2);
   memory.display.push({role:'user',content:text,at:asked?.at},{role:'assistant',content:result.display,at:answered?.at,...(result.actions?.length ? {actions:result.actions} : {})});
   await mirrorToChatSession(memory).catch(()=>setError('Your reply is available here, but chat history could not be saved. Keep this page open.'));
-  // Bring the proposals on screen: this week, or the day they're all on when
-  // that's further out (a plan over weeks can reach a month ahead).
-  const landed=result.showDay===undefined ? undefined : result.showDay+shift;
-  const want=landed!==undefined && landed>6 ? landed : 0;
-  if(result.proposedCount && rangeRef.current!==want)setRangeStart(want);
+  // Proposals live in this week; bring it back on screen if another is showing.
+  if(result.proposedCount && rangeRef.current!==0)setRangeStart(0);
   // Drafts and events show as cards on the AI page, where this chat is kept too.
   // A weekly routine is saved right here, from its card under the reply.
   const elsewhere=(result.actions??[]).filter(a=>a.kind!=='routine');

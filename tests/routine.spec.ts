@@ -10,8 +10,8 @@ import { setup, ask, at, lineOf, lines, type Ctx } from './event-day';
 // 9-11 ill do work on ... soma and studymate") and it "pretty much just built
 // my life": Soma should do that with what it already knows. The routine (gym,
 // meals with the walk, evening projects) lives in settings and shows on every
-// day of the plan; study goes around it; a plan can reach up to 30 days when
-// asked; and the grade lines say what each course still needs.
+// day of the plan; study goes around it; and the grade lines say what each
+// course still needs. (A 30-day view shipped too and was taken out the same day.)
 
 const key = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const TODAY = key(new Date());
@@ -158,9 +158,11 @@ test('a routine Soma proposes comes as a card: study in the same reply already g
   await expect(page.getByRole('article').filter({ hasText: 'Gym' }).first()).toContainText('Routine');
 });
 
-test('asked for a month, Soma sees thirty days and can plan the last of them', async ({ page }) => {
+test('even "plan my month" sees seven days: the 30-day view is gone, and a long message still gets through', async ({ page }) => {
+  // A 30-day view made a month of vague blocks at once; the owner had it taken
+  // out (2026-11-05). A first pass that still says "month" changes nothing.
   let seen: (Ctx & { days: { d: string }[] }) | undefined;
-  await setup(page, ctx => { seen = ctx as typeof seen; return { reply: 'Finals prep.', blocks: [{ title: 'Review: Physics final', subject: 'Physics 5A', date: plus(29), minutes: 60 }] }; });
+  await setup(page, ctx => { seen = ctx as typeof seen; return { reply: 'Finals prep.', blocks: [{ title: 'Review: Physics final', subject: 'Physics 5A', date: plus(20), minutes: 60 }] }; });
   await page.route('**/api/chat', async route => {
     const body = route.request().postDataJSON();
     if (body.purpose === 'triage') return route.fulfill({ json: { content: [{ type: 'text', text: '{"route":"plan","docs":true,"month":true}' }] } });
@@ -169,10 +171,8 @@ test('asked for a month, Soma sees thirty days and can plan the last of them', a
   // Longer than the dashboard box used to take (1,000 characters), like the vent that started this.
   await ask(page, `plan my month until finals. ${'gym, classes, food, study by 9. '.repeat(40)}`);
   await expect(page.getByRole('log')).toContainText('Finals prep.');
-  expect(seen!.days).toHaveLength(30);
-  expect(seen!.days[29].d).toBe(plus(29));
-  await expect(page.getByRole('log')).not.toContainText('outside the next');
-  await expect(page.getByRole('button', { name: /^Accept/ }).first()).toBeVisible();
+  expect(seen!.days).toHaveLength(7);
+  await expect(page.getByRole('log')).toContainText('outside the next seven days');
 });
 
 test('without asking for longer, a plan stays to the next seven days', async ({ page }) => {
@@ -225,7 +225,7 @@ test('Settings → Study hours lists the routine; adding and removing saves at o
 
 // ── The first pass doesn't answer a vent ────────────────────────────────────
 
-test('a long message about classes, gym and grades reaches the full Soma, with weeks to plan, even when the first pass tries to answer it', async ({ page }) => {
+test('a long message about classes, gym and grades reaches the full Soma, even when the first pass tries to answer it', async ({ page }) => {
   // 2026-11-05: the first pass, which never sees the calendar, answered the
   // owner's vent itself and asked for "your exact class times and locations".
   let seen: (Ctx & { days: { d: string }[] }) | undefined;
@@ -237,7 +237,7 @@ test('a long message about classes, gym and grades reaches the full Soma, with w
   await ask(page, "you need to build a schedule for me for the next month to keep me busy. classes + gym + food + study all done by 9pm, then 9-11 projects. physics 5a is at 69%, math 53 85%, cs 61a 74%, midterm retake next tuesday.");
   await expect(page.getByRole('log')).toContainText('FULL SOMA');
   await expect(page.getByRole('log')).not.toContainText('class times and locations');
-  expect(seen!.days).toHaveLength(30);
+  expect(seen!.days).toHaveLength(7);
   // The class times it asked for were right there.
   expect(lines(seen!.plan).some(l => / CS 61A Lecture · calendar event$/.test(l))).toBe(true);
 });

@@ -9,6 +9,25 @@ still needed.
 
 ---
 
+## 2026-11-05 (the 30-day view is taken out)
+
+- **Why:** the owner's call, the same day it shipped: "this way of making so so
+  many vague blocks at once is bad". What they want instead is concrete study
+  lists per exam, scheduled week by week (still being designed).
+- **What:** Soma plans the next seven days again, always. The first pass no
+  longer marks messages `month`, and one that does is ignored. A long message
+  it tries to answer goes to the full Soma at seven days. The LONGER PLANS prompt
+  section, the 80-block cap and the far-ahead reads on Accept and on the
+  dashboard are gone. The routine, the use-what-you-know rule, the 160-character
+  first-pass limit and the "what a course still needs" grade lines stay.
+- **Where:** `src/lib/assistant.ts`, `src/components/DashboardV2/LiveDashboard.tsx`.
+- **Guard:** `tests/routine.spec.ts` › "even \"plan my month\" sees seven days…"
+  (replaces the test that checked thirty days; the long-message test now
+  expects seven). `tests/ai-proposal-dates.spec.ts` still guards the refusal.
+- **Setup:** none.
+
+---
+
 ## 2026-11-05 (a vent reaches the full Soma, which uses what it knows before asking)
 
 - **Why:** a bug, found on the first try of the routine feature. The owner
