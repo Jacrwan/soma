@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import RoutineSettings from './RoutineSettings';
 import { Link, useNavigate } from 'react-router-dom';
 import { storage, SomaSettings } from '../../lib/storage';
 import SemesterEndModal from '../shared/SemesterEndModal';
@@ -333,7 +334,9 @@ export default function SettingsTab() {
 
   function save(next: SomaSettings) {
     setSettings(next);
-    storage.setSomaSettings(next);
+    // The routine is saved on its own (RoutineSettings); this page's copy of
+    // settings can be older than it.
+    storage.setSomaSettings({ ...next, routine: storage.getSomaSettings().routine });
   }
 
   async function handleSaveEducation() {
@@ -949,6 +952,7 @@ export default function SettingsTab() {
                 {savedSection === 'hours' ? 'Saved ✓' : 'Save'}
               </button>
             </div>
+            <RoutineSettings />
           </section>
         )}
 

@@ -9,6 +9,64 @@ still needed.
 
 ---
 
+## 2026-11-05 (a weekly routine, and plans that reach a month ahead)
+
+- **Why:** a new feature. The owner vented a month to another AI ("classes +
+  gym + food + study all done by 9pm. then 9-11 ill do work on ... soma and
+  studymate") and it "pretty much just built my life", from nothing but the
+  vent. Soma couldn't: it only knew study blocks, planned seven days at most,
+  and its chat box cut messages at 1,000 characters. The owner chose week by
+  week, but able to "combine month ahead max".
+- **What:**
+  - **Weekly routine** (`settings.routine`): gym, cardio, meals with the walk,
+    evening projects. An item has a fixed start or a window, and it is placed
+    each day around that day's calendar events (never around study blocks, so
+    it doesn't move when study is added; all-day events don't count). Its
+    blocks come from `readPlan`, so the dashboard, Soma and placement all see
+    the same ones. They act like calendar events: neutral, labelled
+    "Routine", study goes around them, and Soma can skip one for a day. An item
+    with no room that day still shows, with no time. No migration: it's part of
+    the settings JSON.
+  - **Soma proposes a routine** as a card ("Weekly routine · saved in Soma")
+    on the AI page and in the dashboard chat. Save writes it (and new study
+    hours, if the student said "done by 9pm"). Study in the same reply is
+    already placed around the proposed routine and hours. Checked like any AI
+    output (`parseActions`): known days, 5 min–12 h, a window that can hold it,
+    12 items at most.
+  - **Settings → Study hours → Weekly routine**: list, add, remove, clear, each
+    saved at once. Saving study hours afterwards no longer drops the routine
+    from this browser. The dashboard copies a routine saved on another device.
+  - **Plans over weeks**: when the first pass marks a message `month` ("until
+    finals", "the next few weeks"), Soma sees 30 days (dates, free time, plan)
+    and may send up to 80 blocks. Otherwise it's seven days, as before. New
+    prompt sections ROUTINE and LONGER PLANS. Accepting a block far out reads
+    far enough ahead to check it. The dashboard jumps to the day far-out
+    proposals landed on.
+  - **What a course still needs**: a weighted grade line now says what's not
+    graded yet and the score needed on it for each letter from the current one
+    up ("Final 30% not graded yet: needs 90% on it for B"), worked out in code
+    (`gradeMath.ts`), not by the model.
+  - The dashboard's Ask Soma box takes 4,000 characters (was 1,000; the server
+    allows 10,000).
+- **Where:** `src/lib/routine.ts` (new), `src/lib/routineStore.ts` (new),
+  `src/lib/gradeMath.ts` (new), `src/components/Settings/RoutineSettings.tsx`
+  (new), `src/lib/assistant.ts`, `src/lib/agentActions.ts`,
+  `src/lib/aiContext.ts`, `src/components/AI/ActionCards.tsx`,
+  `src/components/DashboardV2/{liveData.ts,LiveDashboard.tsx,DashboardV2.tsx,PlanEditor.tsx}`,
+  `src/components/Settings/SettingsTab.tsx`, `src/lib/storage.ts`.
+- **Guard:** `tests/routine.spec.ts` (all of it): routine checks and
+  placement, the card and Save, study placed around a saved and a proposed
+  routine, 30 days only when asked, the grade sums, the Settings editor.
+  `tests/ai-proposal-dates.spec.ts` still guards the seven-day refusal.
+- **Limits:** the Claude connector (`api/_connector.ts`) doesn't know the
+  routine yet, so tasks Claude adds can land on gym or meal times. A routine
+  edit changes past days' routine blocks too (display only). Not checked
+  against the real model yet: the mocked tests check the wiring, not how well
+  Sonnet builds a month.
+- **Setup:** none.
+
+---
+
 ## 2026-11-03 (last week's homework comes from what has dates, not an old open task)
 
 - **Why:** an old gap, not a regression. Asked to "schedule me to do the math

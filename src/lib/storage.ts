@@ -37,6 +37,8 @@ export interface SomaSettings {
   bossState?: unknown; // Bosses feature state blob (synced as-is)
   /** The dashboard's widgets; read through readLayout (lib/dashboardLayout.ts), never trusted as-is. */
   dashboardLayout?: unknown;
+  /** The weekly routine (gym, meals, evening projects); read through readRoutine (lib/routine.ts), never trusted as-is. */
+  routine?: unknown;
 }
 
 

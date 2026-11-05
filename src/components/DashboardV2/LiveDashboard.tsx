@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ROUTINE_CHANGED } from '../../lib/routineStore';
 import AgentBrief from './AgentBrief';
 import CatchUp from './CatchUp';
 import BrainDump, { type DumpPlanner } from './BrainDump';
@@ -135,7 +136,9 @@ export default function LiveDashboard({userId}:{userId:string}) {
  const [snapshot,setSnapshot]=useState<Snapshot|null>(null);
  // The widgets: this browser's copy at once, then the account's (another device may have changed them).
  const [layout,setLayout]=useState<DashboardLayout>(()=>readLayout(storage.getSomaSettings().dashboardLayout));
- useEffect(()=>{let gone=false;storage.getSettings().then(s=>{if(!gone && s.dashboardLayout!==undefined)setLayout(readLayout(s.dashboardLayout));}).catch(()=>{});return()=>{gone=true;};},[userId]);
+ useEffect(()=>{let gone=false;storage.getSettings().then(s=>{if(gone)return;if(s.dashboardLayout!==undefined)setLayout(readLayout(s.dashboardLayout));
+  // A routine saved on another device: the server copy is always the newest, since it's saved first.
+  const local=storage.getSomaSettings();if(s.routine!==undefined && JSON.stringify(s.routine)!==JSON.stringify(local.routine ?? null)){storage.setSomaSettings({...local,routine:s.routine});window.dispatchEvent(new Event(ROUTINE_CHANGED));}}).catch(()=>{});return()=>{gone=true;};},[userId]);
  const [error,setError]=useState('');
  const [busy,setBusy]=useState(false);
  // Shared with the AI page, so a proposal made there shows up here too.
@@ -168,7 +171,9 @@ export default function LiveDashboard({userId}:{userId:string}) {
  useEffect(()=>{mounted.current=true;void reload().catch(e=>setError(e.message));const refresh=()=>{if(!writing.current)void reload().catch(e=>setError(e.message));};window.addEventListener('focus',refresh);window.addEventListener('soma_timer_stopped',refresh);
  // Recorded time added, corrected or deleted anywhere (e.g. the Calendar) shows here too.
  window.addEventListener('soma_insights_changed',refresh);
- return()=>{mounted.current=false;window.removeEventListener('focus',refresh);window.removeEventListener('soma_timer_stopped',refresh);window.removeEventListener('soma_insights_changed',refresh);};},[reload]);
+ // A routine saved from a chat card or Settings goes on the plan at once.
+ window.addEventListener(ROUTINE_CHANGED,refresh);
+ return()=>{mounted.current=false;window.removeEventListener(ROUTINE_CHANGED,refresh);window.removeEventListener('focus',refresh);window.removeEventListener('soma_timer_stopped',refresh);window.removeEventListener('soma_insights_changed',refresh);};},[reload]);
  async function save(block:PlanBlock,proposal=false,together?:ApplyOptions){
   if(writing.current)throw new Error('Please wait for the current save to finish.');
   writing.current=true;setBusy(true);setError('');
@@ -245,11 +250,17 @@ export default function LiveDashboard({userId}:{userId:string}) {
   const [asked,answered]=result.history.slice(-2);
   memory.display.push({role:'user',content:text,at:asked?.at},{role:'assistant',content:result.display,at:answered?.at,...(result.actions?.length ? {actions:result.actions} : {})});
   await mirrorToChatSession(memory).catch(()=>setError('Your reply is available here, but chat history could not be saved. Keep this page open.'));
-  // Proposals live in this week; bring it back on screen if another is showing.
-  if(result.proposedCount && rangeRef.current!==0)setRangeStart(0);
+  // Bring the proposals on screen: this week, or the day they're all on when
+  // that's further out (a plan over weeks can reach a month ahead).
+  const landed=result.showDay===undefined ? undefined : result.showDay+shift;
+  const want=landed!==undefined && landed>6 ? landed : 0;
+  if(result.proposedCount && rangeRef.current!==want)setRangeStart(want);
   // Drafts and events show as cards on the AI page, where this chat is kept too.
-  const ready=result.actions?.length ? `\n\n${result.actions.map(a=>a.kind==='email' ? `Drafted email: "${a.subject}"` : `Calendar event: ${a.title}`).join('\n')}\nOpen the AI page to send or add ${result.actions.length===1 ? 'it' : 'them'}.` : '';
-  return {reply:result.display+ready,day:result.showDay===undefined ? undefined : result.showDay+shift};
+  // A weekly routine is saved right here, from its card under the reply.
+  const elsewhere=(result.actions??[]).filter(a=>a.kind!=='routine');
+  const routine=result.actions?.find(a=>a.kind==='routine');
+  const ready=elsewhere.length ? `\n\n${elsewhere.map(a=>a.kind==='email' ? `Drafted email: "${a.subject}"` : `Calendar event: ${a.title}`).join('\n')}\nOpen the AI page to send or add ${elsewhere.length===1 ? 'it' : 'them'}.` : '';
+  return {reply:result.display+ready,day:result.showDay===undefined ? undefined : result.showDay+shift,...(routine?.kind==='routine' ? {routine} : {})};
  }
  if(!snapshot)return error
   ? <div className={styles.loading}><p role="alert">{error}</p><button onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Retry dashboard</button></div>

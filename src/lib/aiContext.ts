@@ -6,6 +6,7 @@ import { search } from './docSearch';
 import type { CanvasAssignment, Todo } from '../types';
 import { isPartSitting } from './planIt';
 import { buildGrades, headline } from './grades';
+import { stillNeeded } from './gradeMath';
 
 /**
  * Context shared by both AI surfaces — the AI page and the dashboard's Ask
@@ -159,7 +160,10 @@ export function buildCanvasCourseSection(now = new Date()): string {
     const h = headline(c);
     if (h.kind === 'none' || h.kind === 'average') return [];
     const name = c.subjectId ? subjects.find(s => s.id === c.subjectId)?.name ?? c.name : c.name;
-    return [`- ${name}: ${[h.big, h.small].filter(Boolean).join(' · ')}${h.kind === 'weighted' ? ' (graded the way the syllabus says, including scores the student entered)' : ''}`];
+    // For a plan over weeks: what the rest of the course has to go, worked out here.
+    const left = h.kind === 'weighted' ? stillNeeded(c.weighted, c.book?.scale ?? null) : null;
+    const rest = left ? `; ${left.ungraded.length ? left.ungraded.join(', ') : `${left.left}%`} not graded yet: ${left.needs.map(n => n.percent > 100 ? `${n.letter} is out of reach` : n.percent === 0 ? `${n.letter} is safe whatever happens` : `needs ${n.percent}% on it for ${n.letter}`).join(', ')}` : '';
+    return [`- ${name}: ${[h.big, h.small].filter(Boolean).join(' · ')}${h.kind === 'weighted' ? ' (graded the way the syllabus says, including scores the student entered)' : ''}${rest}`];
   });
   const names = new Map(courses.map(c => [c.id, label(c)]));
   const since = now.getTime() - 14 * 86_400_000;
