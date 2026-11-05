@@ -222,3 +222,49 @@ test('Settings → Study hours lists the routine; adding and removing saves at o
   await expect(page.getByText('Nothing yet. Tell Soma how your days go, or add things here.')).toBeVisible();
   expect(posts.at(-1)!.data.routine).toBeNull();
 });
+
+// ── The first pass doesn't answer a vent ────────────────────────────────────
+
+test('a long message about classes, gym and grades reaches the full Soma, with weeks to plan, even when the first pass tries to answer it', async ({ page }) => {
+  // 2026-11-05: the first pass, which never sees the calendar, answered the
+  // owner's vent itself and asked for "your exact class times and locations".
+  let seen: (Ctx & { days: { d: string }[] }) | undefined;
+  await setup(page, ctx => { seen = ctx as typeof seen; return { reply: 'FULL SOMA' }; });
+  await page.route('**/api/chat', async route => {
+    if (route.request().postDataJSON().purpose === 'triage') return route.fulfill({ json: { content: [{ type: 'text', text: '{"reply":"That\'s a great plan! What are your exact class times and locations?"}' }] } });
+    return route.fallback();
+  });
+  await ask(page, "you need to build a schedule for me for the next month to keep me busy. classes + gym + food + study all done by 9pm, then 9-11 projects. physics 5a is at 69%, math 53 85%, cs 61a 74%, midterm retake next tuesday.");
+  await expect(page.getByRole('log')).toContainText('FULL SOMA');
+  await expect(page.getByRole('log')).not.toContainText('class times and locations');
+  expect(seen!.days).toHaveLength(30);
+  // The class times it asked for were right there.
+  expect(lines(seen!.plan).some(l => / CS 61A Lecture · calendar event$/.test(l))).toBe(true);
+});
+
+test('a short hello is still answered by the first pass alone', async ({ page }) => {
+  let full = 0;
+  await setup(page, () => { full++; return { reply: 'FULL SOMA' }; });
+  await page.route('**/api/chat', async route => {
+    if (route.request().postDataJSON().purpose === 'triage') return route.fulfill({ json: { content: [{ type: 'text', text: '{"reply":"Hi! What are we working on?"}' }] } });
+    return route.fallback();
+  });
+  await ask(page, 'hey soma, how are you?');
+  await expect(page.getByRole('log')).toContainText('Hi! What are we working on?');
+  expect(full).toBe(0);
+});
+
+test('Soma is told to use what it already knows before asking, and never to ask for locations', async ({ page }) => {
+  let system = '';
+  await setup(page, () => ({ reply: 'ok' }));
+  await page.route('**/api/chat', async route => {
+    const body = route.request().postDataJSON();
+    if (body.purpose !== 'triage') system = JSON.stringify(body.systemPrompt);
+    return route.fallback();
+  });
+  await ask(page, 'plan my week');
+  await expect(page.getByRole('log')).toContainText('ok');
+  expect(system).toContain('USE WHAT YOU KNOW');
+  expect(system).toContain('never ask where things are');
+  expect(system).toContain('Never answer a request for a plan with only questions');
+});

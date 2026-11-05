@@ -9,6 +9,40 @@ still needed.
 
 ---
 
+## 2026-11-05 (a vent reaches the full Soma, which uses what it knows before asking)
+
+- **Why:** a bug, found on the first try of the routine feature. The owner
+  pasted their whole vent (classes, gym, food, grades, a retake next Tuesday,
+  finals) and got "That's a great plan! … What are your exact class times and
+  locations?" The cheap first pass (`triage`) took it for small talk and
+  answered it alone. It never sees the calendar, grades or plan, so it asked
+  for class times and gym times that were on the student's Google Calendar.
+- **What:**
+  - The first pass may answer only short messages (160 characters or fewer).
+    A longer one it tries to answer goes to the full Soma, with the 30-day view
+    so a plan over weeks is possible. Its prompt also says never to answer
+    messages about classes, the week, routine, grades or goals, and never to ask
+    the student a question.
+  - New prompt rule USE WHAT YOU KNOW: class times are the calendar events,
+    activities already on the calendar or in the routine are known, grades are
+    in CURRENT COURSE GRADES, goals are in the message. Never ask for those or
+    for locations. Plan everything possible first, then ask in one line only
+    for what's missing; never answer a plan request with only questions.
+  - The routine leaves out anything already on the calendar (a gym session
+    there isn't added twice). LONGER PLANS now plans past this week only when
+    asked, since the 30-day view can come from a long message alone.
+- **Where:** `src/lib/assistant.ts` (`triage`, `SMALL_TALK_MAX`, prompt).
+- **Guard:** `tests/routine.spec.ts` › "a long message about classes, gym and
+  grades reaches the full Soma…" (fails without the fix), "a short hello is
+  still answered by the first pass alone", "Soma is told to use what it already
+  knows…". `tests/ai-triage.spec.ts` unchanged and passing.
+- **Limits:** the prompt rule is checked only for being sent; how well Sonnet
+  follows it needs a try on the live site. A long message that's only chat
+  ("thanks so much, …" over 160 characters) now costs a full Soma reply.
+- **Setup:** none.
+
+---
+
 ## 2026-11-05 (a weekly routine, and plans that reach a month ahead)
 
 - **Why:** a new feature. The owner vented a month to another AI ("classes +
