@@ -13,7 +13,7 @@
  * rises into any empty space above it, so the grid never has holes.
  */
 
-export type WidgetId = 'plan' | 'calendar' | 'focus' | 'ask' | 'dump' | 'due' | 'next' | 'stats';
+export type WidgetId = 'plan' | 'calendar' | 'focus' | 'ask' | 'dump' | 'due' | 'next' | 'stats' | 'habits';
 export type WidgetSize = 'small' | 'wide' | 'tall' | 'large' | 'xl' | 'full';
 export type WidgetPlacement = { id: WidgetId; size: WidgetSize; x: number; y: number; rows?: number };
 export type DashboardLayout = WidgetPlacement[];
@@ -42,6 +42,7 @@ export const WIDGETS: WidgetInfo[] = [
   { id: 'next', name: 'Up next', description: 'Your next block today, with a button to start focus.', sizes: ['small', 'wide'], size: 'small', rows: [1, 2] },
   { id: 'due', name: 'Due soon', description: 'Canvas work due in the days on screen, with Plan it.', sizes: ['small', 'tall', 'wide'], size: 'small', rows: [1, 5] },
   { id: 'stats', name: 'Study this week', description: 'Minutes of focus each day for the last seven days.', sizes: ['small', 'wide'], size: 'small', rows: [1, 2] },
+  { id: 'habits', name: 'Habits', description: 'Habits you want to keep, like the gym or eating well: check off today and see your week.', sizes: ['small', 'tall', 'wide'], size: 'small', rows: [1, 4] },
 ];
 
 export const widgetInfo = (id: WidgetId) => WIDGETS.find(w => w.id === id)!;

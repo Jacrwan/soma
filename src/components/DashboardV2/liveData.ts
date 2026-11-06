@@ -7,7 +7,6 @@ import type { PlanBlock } from './PlanEditor';
 import { loadCourseItems, coveredBy, markDone, renameLoggedTime, type CourseItem } from '../../lib/courseItems';
 import { rangeOf, spanMinutes } from '../../lib/clockRange';
 import { sameWork, subjectForCourse } from '../../lib/canvasDeepSync';
-import { readRoutine, routineDay } from '../../lib/routine';
 
 export type LiveBlock = PlanBlock & { todoId?: string; sessionId?: string; subjectId?: string; legacyId?: string };
 export type History = { id:string; subject_id:string; task_text:string; duration_seconds:number; date:string; start_time?:string; end_time?:string };
@@ -46,9 +45,6 @@ export function dueItems(origin:Date):DueItem[] {
  });
 }
 
-/** A day's calendar events as minute ranges: what the routine is placed around. */
-export function eventRanges(blocks:PlanBlock[],day:number):[number,number][] { return blocks.filter(b=>b.day===day && b.external && !b.manual && !b.routine && b.time).map(b=>rangeOf(b.time)); }
-
 export async function readPlan(userId:string,origin:Date,startDay=0,days=7):Promise<Snapshot> {
  const calendar=fetchAggregatedEvents(dateAt(origin,startDay).toISOString(),dateAt(origin,startDay+days).toISOString(),true).then(events=>({events,error:''})).catch(()=>({events:[] as GoogleCalendarEvent[],error:'Calendar could not be fully loaded. Reconnect or retry before accepting AI schedules.'}));
  const [subjectRows,todoRows,sessionRows,historyRows,google,items]=await Promise.all([rows('subjects',userId),rows('todos',userId),rows('todo_sessions',userId),rows('timer_sessions',userId),calendar,loadCourseItems(userId)]);
@@ -57,7 +53,6 @@ export async function readPlan(userId:string,origin:Date,startDay=0,days=7):Prom
  const sessions:TodoSession[]=sessionRows.map(r=>({id:String(r.id),todoId:String(r.todo_id),date:String(r.date),startTime:r.start_time ? utc(String(r.start_time)) : undefined,endTime:r.end_time ? utc(String(r.end_time)) : undefined}));
  const history=historyRows as unknown as History[];
  const blocks:LiveBlock[]=[];
- const routine=readRoutine(storage.getSomaSettings().routine);
  const color=(subjectId?:string)=>toneOf(subjects.find(s=>s.id===subjectId)?.color);
  for(let day=startDay;day<startDay+days;day++){
   const date=localDate(dateAt(origin,day));
@@ -79,8 +74,6 @@ export async function readPlan(userId:string,origin:Date,startDay=0,days=7):Prom
    const from=start<dayStart ? '00:00' : timeLabel(start),to=end>=dayEnd ? '23:59' : timeLabel(end);
    blocks.push({id:`google:${event.source?.connectionId}:${event.source?.calendarId}:${event.id}:${day}`,title:event.summary??'Calendar commitment',subject:'Google Calendar · Read-only',time:`${from}–${to}`,minutes:Math.round((Math.min(+end,+dayEnd)-Math.max(+start,+dayStart))/60000),color:'neutral',state:'Planned',day,external:true});
   }
-  // The weekly routine, placed around this day's calendar events (lib/routine.ts).
-  blocks.push(...routineDay(routine,dateAt(origin,day),day,eventRanges(blocks,day)));
  }
  // Keep legacy Day View plans visible without counting timer-generated history as plans.
  for(const legacy of storage.getTimeBlocks().filter(b=>!b.timerSessionId)){

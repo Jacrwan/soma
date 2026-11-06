@@ -9,6 +9,47 @@ still needed.
 
 ---
 
+## 2026-11-05 (habits replace the weekly routine)
+
+- **Why:** the owner's call, the same day: "a habit thing ... as like a widget
+  thing for the gym and eat healthy type of stuff", and "Habits replace it" for
+  the routine. Their gym is on their Google Calendar already, so routine blocks
+  only repeated it.
+- **What:**
+  - **The weekly routine is removed:** its blocks, the routine card, the
+    Settings editor and Soma's ROUTINE prompt. `routine` is a retired setting
+    now, dropped when settings are read.
+  - **A Habits widget** (Customize → Add widgets): each habit has a weekly target
+    ("Gym, 6× a week"), today's checkbox, this week's days as dots (tap a past
+    day to fix it; future days can't be checked) and a count, highlighted when
+    the target is met. Edit adds (name, times a week) and removes, up to 8
+    habits. Weeks run Monday to Sunday.
+  - **Kept in settings** (`settings.habits`), no migration: the habits plus ten
+    weeks of check-off dates. Saved server-first with the merging save, then
+    this browser; a failed save puts the check back and says so. Saves run one
+    at a time. A check tapped while a habit was still saving otherwise raced it,
+    and the older save could land last and undo the check; the widget test
+    caught this. The widget reads the server copy on load, so another device's
+    checks show.
+  - **Soma knows habits:** `habits` in its context ("Gym · 6 a week · 3 so far
+    this week · not yet today") and a short HABITS rule: never blocks or tasks
+    for them, mention one only when it helps.
+- **Where:** `src/lib/habits.ts` (new), `src/lib/habitsStore.ts` (new),
+  `src/components/DashboardV2/Habits.tsx` + `.module.css` (new),
+  `src/lib/dashboardLayout.ts`, `src/components/DashboardV2/{DashboardV2,LiveDashboard}.tsx`,
+  `src/lib/assistant.ts`, `src/lib/storage.ts`. Removed: `src/lib/routine.ts`,
+  `src/lib/routineStore.ts`, `src/components/Settings/RoutineSettings.*`, and
+  the routine parts of `liveData.ts`, `agentActions.ts`, `ActionCards.tsx`,
+  `SettingsTab.tsx`, `PlanEditor.tsx` (those five match before 2026-11-05 again).
+- **Guard:** `tests/habits.spec.ts`. `tests/routine.spec.ts` is now
+  `tests/soma-context.spec.ts`, keeping the grade, first-pass and seven-day tests;
+  the routine tests went with the routine.
+- **Limits:** two devices checking at the same moment can still overwrite each
+  other (last save wins); the widget lives on the dashboard only.
+- **Setup:** none.
+
+---
+
 ## 2026-11-05 (the 30-day view is taken out)
 
 - **Why:** the owner's call, the same day it shipped: "this way of making so so

@@ -37,8 +37,8 @@ export interface SomaSettings {
   bossState?: unknown; // Bosses feature state blob (synced as-is)
   /** The dashboard's widgets; read through readLayout (lib/dashboardLayout.ts), never trusted as-is. */
   dashboardLayout?: unknown;
-  /** The weekly routine (gym, meals, evening projects); read through readRoutine (lib/routine.ts), never trusted as-is. */
-  routine?: unknown;
+  /** Habits and their check-offs; read through readHabits (lib/habits.ts), never trusted as-is. */
+  habits?: unknown;
 }
 
 
@@ -52,7 +52,7 @@ const DEFAULT_SETTINGS: SomaSettings = {
 // Replaced by studyWindow, and settings that never did anything (session
 // length, break length, AI verbosity). Dropped on read so a save doesn't
 // carry them forward.
-const RETIRED_SETTINGS = ['availability', 'schoolHours', 'workHours', 'personalHours', 'schoolHoursEnabled', 'workHoursEnabled', 'personalHoursEnabled', 'studyPrefs', 'aiPrefs'];
+const RETIRED_SETTINGS = ['availability', 'schoolHours', 'workHours', 'personalHours', 'schoolHoursEnabled', 'workHoursEnabled', 'personalHoursEnabled', 'studyPrefs', 'aiPrefs', 'routine'];
 function withDefaults(raw: Record<string, unknown>): SomaSettings {
   const kept = Object.fromEntries(Object.entries(raw).filter(([k]) => !RETIRED_SETTINGS.includes(k)));
   return { ...DEFAULT_SETTINGS, studyWindow: legacyWindow(raw) ?? DEFAULT_SETTINGS.studyWindow, ...kept } as SomaSettings;

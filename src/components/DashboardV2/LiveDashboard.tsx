@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ROUTINE_CHANGED } from '../../lib/routineStore';
 import AgentBrief from './AgentBrief';
 import CatchUp from './CatchUp';
 import BrainDump, { type DumpPlanner } from './BrainDump';
+import Habits from './Habits';
 import { readLayout, type DashboardLayout } from '../../lib/dashboardLayout';
 import { CANVAS_CHANGED } from '../../lib/canvasExtension';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -136,9 +136,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
  const [snapshot,setSnapshot]=useState<Snapshot|null>(null);
  // The widgets: this browser's copy at once, then the account's (another device may have changed them).
  const [layout,setLayout]=useState<DashboardLayout>(()=>readLayout(storage.getSomaSettings().dashboardLayout));
- useEffect(()=>{let gone=false;storage.getSettings().then(s=>{if(gone)return;if(s.dashboardLayout!==undefined)setLayout(readLayout(s.dashboardLayout));
-  // A routine saved on another device: the server copy is always the newest, since it's saved first.
-  const local=storage.getSomaSettings();if(s.routine!==undefined && JSON.stringify(s.routine)!==JSON.stringify(local.routine ?? null)){storage.setSomaSettings({...local,routine:s.routine});window.dispatchEvent(new Event(ROUTINE_CHANGED));}}).catch(()=>{});return()=>{gone=true;};},[userId]);
+ useEffect(()=>{let gone=false;storage.getSettings().then(s=>{if(!gone && s.dashboardLayout!==undefined)setLayout(readLayout(s.dashboardLayout));}).catch(()=>{});return()=>{gone=true;};},[userId]);
  const [error,setError]=useState('');
  const [busy,setBusy]=useState(false);
  // Shared with the AI page, so a proposal made there shows up here too.
@@ -171,9 +169,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
  useEffect(()=>{mounted.current=true;void reload().catch(e=>setError(e.message));const refresh=()=>{if(!writing.current)void reload().catch(e=>setError(e.message));};window.addEventListener('focus',refresh);window.addEventListener('soma_timer_stopped',refresh);
  // Recorded time added, corrected or deleted anywhere (e.g. the Calendar) shows here too.
  window.addEventListener('soma_insights_changed',refresh);
- // A routine saved from a chat card or Settings goes on the plan at once.
- window.addEventListener(ROUTINE_CHANGED,refresh);
- return()=>{mounted.current=false;window.removeEventListener(ROUTINE_CHANGED,refresh);window.removeEventListener('focus',refresh);window.removeEventListener('soma_timer_stopped',refresh);window.removeEventListener('soma_insights_changed',refresh);};},[reload]);
+ return()=>{mounted.current=false;window.removeEventListener('focus',refresh);window.removeEventListener('soma_timer_stopped',refresh);window.removeEventListener('soma_insights_changed',refresh);};},[reload]);
  async function save(block:PlanBlock,proposal=false,together?:ApplyOptions){
   if(writing.current)throw new Error('Please wait for the current save to finish.');
   writing.current=true;setBusy(true);setError('');
@@ -253,11 +249,8 @@ export default function LiveDashboard({userId}:{userId:string}) {
   // Proposals live in this week; bring it back on screen if another is showing.
   if(result.proposedCount && rangeRef.current!==0)setRangeStart(0);
   // Drafts and events show as cards on the AI page, where this chat is kept too.
-  // A weekly routine is saved right here, from its card under the reply.
-  const elsewhere=(result.actions??[]).filter(a=>a.kind!=='routine');
-  const routine=result.actions?.find(a=>a.kind==='routine');
-  const ready=elsewhere.length ? `\n\n${elsewhere.map(a=>a.kind==='email' ? `Drafted email: "${a.subject}"` : `Calendar event: ${a.title}`).join('\n')}\nOpen the AI page to send or add ${elsewhere.length===1 ? 'it' : 'them'}.` : '';
-  return {reply:result.display+ready,day:result.showDay===undefined ? undefined : result.showDay+shift,...(routine?.kind==='routine' ? {routine} : {})};
+  const ready=result.actions?.length ? `\n\n${result.actions.map(a=>a.kind==='email' ? `Drafted email: "${a.subject}"` : `Calendar event: ${a.title}`).join('\n')}\nOpen the AI page to send or add ${result.actions.length===1 ? 'it' : 'them'}.` : '';
+  return {reply:result.display+ready,day:result.showDay===undefined ? undefined : result.showDay+shift};
  }
  if(!snapshot)return error
   ? <div className={styles.loading}><p role="alert">{error}</p><button onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Retry dashboard</button></div>
@@ -341,7 +334,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   else setError('');
  }
  const pulseDays=Array.from({length:7},(_,i)=>snapshot.history.filter(h=>h.date===localDate(dateAt(origin,i-6))).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0));
- return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<CatchUp key={localDate(origin)} userId={userId} origin={origin} onApply={applyBatch}>{catchUp=><AgentBrief catchUp={catchUp}/>}</CatchUp>,dump:<BrainDump userId={userId} onPlan={planDump}/>,layout,onLayout:saveLayout,due:due.map(x=>{
+ return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<CatchUp key={localDate(origin)} userId={userId} origin={origin} onApply={applyBatch}>{catchUp=><AgentBrief catchUp={catchUp}/>}</CatchUp>,dump:<BrainDump userId={userId} onPlan={planDump}/>,habits:<Habits/>,layout,onLayout:saveLayout,due:due.map(x=>{
   // Plan it's sittings for this assignment, and the time logged on them (or on the assignment itself).
   const mine=snapshot.todos.filter(t=>t.subjectId===x.subjectId && isSittingOf(t.text,x.title));
   const seconds=snapshot.history.filter(h=>h.subject_id===x.subjectId && isSittingOf(h.task_text??'',x.title)).reduce((n,h)=>n+(h.duration_seconds||0),0);

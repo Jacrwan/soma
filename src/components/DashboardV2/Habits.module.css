@@ -1,0 +1,35 @@
+/* The Habits widget (Habits.tsx). Buttons are scoped under .habits so the
+   dashboard's own button style (.page button) doesn't size them. */
+.habits { display: flex; flex-direction: column; }
+.hint { margin: 8px 0 10px; font-size: 12px; color: var(--text-secondary); }
+.habits .edit { font: inherit; font-size: 12px; color: var(--text-secondary); background: none; border: 0; padding: 2px 4px; cursor: pointer; }
+.habits .edit:hover { color: var(--text-primary); }
+.list { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.habit { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.habits .today { flex: none; width: 22px; height: 22px; border-radius: 6px; border: 1.5px solid var(--border); background: var(--bg); color: #fff; display: grid; place-items: center; cursor: pointer; padding: 0; }
+.habits .today.on { background: var(--accent); border-color: var(--accent); }
+.name { flex: 1; min-width: 0; font-size: 13px; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dots { flex: none; display: flex; gap: 3px; }
+.habits .dot { width: 11px; height: 11px; border-radius: 50%; border: 1px solid color-mix(in oklch, var(--text-secondary), var(--bg) 50%); background: transparent; padding: 0; cursor: pointer; }
+.habits .dot.on { background: var(--accent); border-color: var(--accent); }
+.habits .dot.isToday { outline: 1.5px solid var(--accent); outline-offset: 1px; }
+.habits .dot:disabled { cursor: default; opacity: 0.4; }
+.count { flex: none; min-width: 28px; text-align: right; font-size: 11px; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.count.met { color: var(--accent); font-weight: 600; }
+.habits .remove { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border: 0; border-radius: 6px; background: none; color: var(--text-secondary); cursor: pointer; padding: 0; }
+.habits .remove:hover { color: var(--text-primary); background: var(--bg-secondary); }
+.add { display: flex; gap: 6px; margin-top: 10px; }
+.add input, .add select { font: inherit; font-size: 12px; min-width: 0; border: 1px solid var(--border); border-radius: 7px; padding: 5px 8px; background: var(--bg); color: var(--text-primary); }
+.add input { flex: 1; }
+.habits .add button { font: inherit; font-size: 12px; font-weight: 600; border: 0; border-radius: 7px; padding: 5px 10px; background: var(--accent); color: #fff; cursor: pointer; }
+.habits .today:focus-visible, .habits .dot:focus-visible, .habits .edit:focus-visible, .habits .remove:focus-visible, .habits .add button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: no-preference) { .today, .habits .dot { transition: background-color 120ms ease, border-color 120ms ease; } }
+
+.habits .today, .habits .dot, .habits .edit, .habits .remove { min-height: 0; gap: 0; }
+.habits .edit { border: 0; border-radius: 6px; }
+.habits .dot:hover:not(:disabled) { background: color-mix(in oklch, var(--accent), var(--bg) 70%); }
+.habits .dot.on:hover:not(:disabled) { background: var(--accent); }
+.habits .today:hover:not(:disabled) { background: var(--bg-tertiary); }
+.habits .today.on:hover:not(:disabled) { background: var(--accent); }
+.habits .add button { min-height: 0; border: 0; }
+.habits .add button:hover:not(:disabled) { background: var(--accent); opacity: .88; }

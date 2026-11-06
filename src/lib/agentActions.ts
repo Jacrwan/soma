@@ -9,21 +9,14 @@
  * work with read-only calendar access, and mailto: and Gmail's compose link
  * need none.
  *
- * A routine is the one action saved in Soma itself, to settings, and only
- * when the student taps Save on its card.
- *
  * Everything here comes from the model, so it's checked like anything
  * untrusted: known kinds only, real-looking addresses, lengths capped, dates
  * and times in their exact formats.
  */
 
-import { readRoutineItems, type RoutineItem } from './routine';
-
 export type EmailAction = { kind: 'email'; to: string; subject: string; body: string; why?: string };
 export type CalendarAction = { kind: 'calendar'; title: string; date: string; start?: string; end?: string; details?: string };
-/** The student's weekly routine (lib/routine.ts), saved to their settings when they tap Save. */
-export type RoutineAction = { kind: 'routine'; items: RoutineItem[]; studyHours?: { start: string; end: string }; why?: string };
-export type AgentAction = EmailAction | CalendarAction | RoutineAction;
+export type AgentAction = EmailAction | CalendarAction;
 
 const MAX_ACTIONS = 3;
 const str = (v: unknown, max: number) => typeof v === 'string' ? v.replace(/\r/g, '').trim().slice(0, max) : '';
@@ -51,13 +44,6 @@ export function parseActions(raw: unknown): AgentAction[] {
       const start = CLOCK.test(str(a.start, 5)) ? str(a.start, 5) : undefined;
       const end = start && CLOCK.test(str(a.end, 5)) ? str(a.end, 5) : undefined;
       out.push({ kind: 'calendar', title, date, ...(start ? { start } : {}), ...(end ? { end } : {}), ...(str(a.details, 1000) ? { details: str(a.details, 1000) } : {}) });
-    } else if (a.kind === 'routine' && !out.some(x => x.kind === 'routine')) {
-      const items = readRoutineItems(a.items);
-      if (!items.length) continue;
-      const hours = a.studyHours && typeof a.studyHours === 'object' ? a.studyHours as Record<string, unknown> : null;
-      const start = hours ? str(hours.start, 5) : '', end = hours ? str(hours.end, 5) : '';
-      const studyHours = CLOCK.test(start) && CLOCK.test(end) && start !== end ? { start, end } : undefined;
-      out.push({ kind: 'routine', items, ...(studyHours ? { studyHours } : {}), ...(str(a.why, 200) ? { why: str(a.why, 200) } : {}) });
     }
   }
   return out;

@@ -1,7 +1,5 @@
 import { useState } from 'react';
-import { gmailLink, googleCalendarLink, icsFile, mailtoLink, whenLabel, type AgentAction, type RoutineAction } from '../../lib/agentActions';
-import { daysLabel, lengthLabel, DAY_OPENS, DAY_CLOSES } from '../../lib/routine';
-import { formatClock } from '../../lib/timeFormat';
+import { gmailLink, googleCalendarLink, icsFile, mailtoLink, whenLabel, type AgentAction } from '../../lib/agentActions';
 import styles from './ActionCards.module.css';
 
 /**
@@ -12,7 +10,7 @@ import styles from './ActionCards.module.css';
 export default function ActionCards({ actions }: { actions: AgentAction[] }) {
   return (
     <div className={styles.cards} role="group" aria-label="Ready for you to send or add">
-      {actions.map((a, i) => a.kind === 'email' ? <EmailCard key={i} a={a} /> : a.kind === 'routine' ? <RoutineCard key={i} a={a} /> : <CalendarCard key={i} a={a} />)}
+      {actions.map((a, i) => a.kind === 'email' ? <EmailCard key={i} a={a} /> : <CalendarCard key={i} a={a} />)}
     </div>
   );
 }
@@ -54,40 +52,6 @@ function CalendarCard({ a }: { a: Extract<AgentAction, { kind: 'calendar' }> }) 
       <div className={styles.actions}>
         <a className={styles.primary} href={googleCalendarLink(a)} target="_blank" rel="noopener noreferrer">Add to Google Calendar</a>
         <button type="button" className={styles.button} onClick={download}>Download .ics</button>
-      </div>
-    </section>
-  );
-}
-
-/**
- * The weekly routine Soma suggested (lib/routine.ts). Unlike the other cards
- * this one saves in Soma: one tap puts it on every day of the plan, and study
- * goes around it. Settings → Study hours changes or clears it later.
- */
-export function RoutineCard({ a }: { a: RoutineAction }) {
-  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle');
-  async function save() {
-    setState('saving');
-    // Loaded on tap: the dashboard's demo mode shows this card and must not reach the database.
-    try { const { saveRoutine } = await import('../../lib/routineStore'); await saveRoutine(a.items, a.studyHours); setState('saved'); } catch { setState('failed'); }
-  }
-  return (
-    <section className={styles.card} aria-label="Weekly routine">
-      <div className={styles.kind}>Weekly routine · saved in Soma</div>
-      <div className={styles.title}>Your week around studying</div>
-      <ul className={styles.routineList}>
-        {a.items.map(i => (
-          <li key={i.id}><strong>{i.title}</strong> · {lengthLabel(i.minutes)} · {daysLabel(i.days)} · {i.start ? `at ${formatClock(i.start)}` : `between ${formatClock(i.after ?? DAY_OPENS)} and ${formatClock(i.before ?? DAY_CLOSES)}`}</li>
-        ))}
-      </ul>
-      {a.studyHours && <div className={styles.meta}>Study hours: {formatClock(a.studyHours.start)}–{formatClock(a.studyHours.end)}</div>}
-      {a.why && <div className={styles.meta}>{a.why}</div>}
-      <div className={styles.actions}>
-        <button type="button" className={styles.primary} disabled={state === 'saving' || state === 'saved'} onClick={() => void save()}>
-          {state === 'saved' ? 'Saved ✓' : state === 'saving' ? 'Saving…' : 'Save routine'}
-        </button>
-        {state === 'failed' && <span role="alert" className={styles.meta}>Couldn't save. Try again.</span>}
-        {state === 'saved' && <span className={styles.meta}>On your plan every week. Change it in Settings → Study hours.</span>}
       </div>
     </section>
   );
