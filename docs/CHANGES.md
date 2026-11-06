@@ -9,6 +9,68 @@ still needed.
 
 ---
 
+## 2026-11-06 (exam study plans)
+
+- **Why:** the owner's design (2026-11-05). Quizzes Monday to Wednesday make
+  Sunday to Tuesday busy, and Wednesday to Saturday get wasted for lack of a
+  plan. They want Soma to know exactly what to study for a midterm or final
+  ("concrete, not abstract … what study materials to use exactly"), list
+  first, then a day-by-day plan to the exam, scheduled a week at a time.
+- **What:**
+  - **Documents → Exam study plans → Plan an exam:** pick an exam or quiz from
+    your tasks (next 60 days), or type one, and tick the course's uploads to
+    use (the syllabus is unticked by default). Soma (Sonnet, low effort) makes
+    a concrete list from those files, the course's lowest scores and its
+    reading list: worksheets, textbook problems with numbers, practice exams,
+    each with what to do and minutes. Vague items are against its rules. You
+    edit, remove or add items, then **Approve list**.
+  - **Days, decided in code (no AI):** the list is spread over the days from
+    today to the day before the exam, in order, by each day's open study time
+    (half of it, at most 3 hours). A day with another exam or quiz due on it
+    or the next day keeps about a third of that. The plan says why in one line
+    ("Light on Sun, Mon and Tue, with Physics quiz Mon, Chem quiz Tue and Bio
+    quiz Wed. Most on Wed and Thu, your most open days."), and says when the
+    list is longer than the open time.
+  - **Add this week to my plan:** this week's items become suggestions on the
+    dashboard, one block per sitting of up to two hours on its day, titled
+    "Calc midterm: Worksheet 3, Textbook 3.4", in the first open slot. Accept
+    links the items to the block, and checking the block off marks them done,
+    the same way reading-list sections work. Items whose day passed undone
+    show as missed; **Re-plan from today** spreads what's left again. Items can
+    also be checked off in the panel. Rebuild list keeps what's done by name.
+  - **Soma knows the plan:** an `exams` context key (progress, missed, this
+    week's items by day, with short ids) and an EXAM STUDY PLANS rule: put a
+    day's items on that day with covers, missed ones first, nothing extra for
+    that exam unless asked. EXAM PREP defers to it.
+  - **Fix found on the way:** a new block named after an unscheduled exam task
+    ("Calc midterm: Worksheet 3" vs the task "Calc midterm") was read as that
+    task and moved it to the study slot. An exam or quiz task is no longer
+    matched by a longer-named block.
+- **Storage:** exam study items are rows in `course_items` with `exam_id`,
+  `study_day` and `minutes`; each exam is a row in the new `exam_plans` table.
+  Reading lists ignore exam items (`isReading`), and rebuilding a reading list
+  no longer touches them: `saveCourseList` used to delete every other row for
+  the course. Progress changes and covers stay inside one list (`sameList`).
+- **Where:** `src/lib/examPlan.ts` (new, pure: prompt, list check, days,
+  weekly blocks, Soma's lines), `src/lib/examPlansStore.ts` (new),
+  `src/components/Documents/ExamPlans.tsx` + `.module.css` (new),
+  `src/components/Documents/{DocumentsTab,ReadingLists}.tsx`,
+  `src/lib/courseItems.ts`, `src/lib/assistant.ts`, `exam_study_migration.sql`
+  (new).
+- **Guard:** `tests/exam-plans.spec.ts`. "rebuilding a course's reading list
+  leaves its exam study items alone" fails without the `isReading` filter;
+  "Soma sees the exam plan…" fails without the exam-task fix.
+- **Limits:** the list's quality depends on the uploads having readable text
+  and was checked with a mocked reply only; try it on the live site. Days
+  more than 60 out can't be planned. Suggestions live for the session, like
+  Soma's. The panel is on Documents only, not the dashboard.
+- **Setup:** run `exam_study_migration.sql` in the Supabase SQL editor (new
+  `exam_plans` table, three nullable columns on `course_items`; no existing row
+  changes). Until then, Approve says it needs the update and nothing else
+  changes.
+
+---
+
 ## 2026-11-05 (habits replace the weekly routine)
 
 - **Why:** the owner's call, the same day: "a habit thing ... as like a widget
