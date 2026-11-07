@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { loadCourseItems, saveCourseList, markDone, removeItems, extractItems, isReading, type CourseItem, type DraftItem } from '../../lib/courseItems';
+import { loadCourseItems, saveCourseList, markDone, removeItems, extractItems, type CourseItem, type DraftItem } from '../../lib/courseItems';
 import type { Subject, SomaDocument } from '../../types';
 import docStyles from './DocumentsTab.module.css';
 import styles from './ReadingLists.module.css';
@@ -31,8 +31,7 @@ export default function ReadingLists({ subjects, docs }: { subjects: Subject[]; 
   const [open, setOpen] = useState<string | null>(null);
   const [builder, setBuilder] = useState(false);
   const [error, setError] = useState('');
-  // Exam study items share the table; they have their own panel (ExamPlans).
-  const reload = useCallback(async (uid: string) => { if (uid) setItems((await loadCourseItems(uid)).filter(isReading)); }, []);
+  const reload = useCallback(async (uid: string) => { if (uid) setItems(await loadCourseItems(uid)); }, []);
   useEffect(() => {
     let live = true;
     void supabase.auth.getUser().then(({ data }) => { const uid = data.user?.id ?? ''; if (!live) return; setUserId(uid); void reload(uid); });

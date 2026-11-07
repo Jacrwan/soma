@@ -1,3 +1,8 @@
+-- NO LONGER USED. Exam study plans were taken out on 2026-11-06, the day
+-- this was run on production. Do not run it again. What it left behind is
+-- unused: the exam_plans table, and the exam_id / study_day / minutes columns
+-- on course_items. The app skips course_items rows that have an exam_id.
+--
 -- Run this in your Supabase SQL editor:
 -- Dashboard → SQL Editor → New query → paste → Run
 --

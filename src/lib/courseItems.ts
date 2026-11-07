@@ -22,11 +22,6 @@ export type CourseItem = {
   /** The task currently planned to cover this item. */
   todoId?: string;
   documentId?: string;
-  /** Set on an exam study item (lib/examPlan.ts): the exam it is for. Reading-list sections have none. */
-  examId?: string;
-  /** On an exam study item: the day the plan puts it on (YYYY-MM-DD), and how long it should take. */
-  studyDay?: string;
-  minutes?: number;
 };
 export type DraftItem = { label: string; title?: string; due?: string; done?: boolean };
 
@@ -41,24 +36,18 @@ function fromRow(r: Record<string, unknown>): CourseItem {
     ...(r.done_at ? { doneAt: String(r.done_at) } : {}),
     ...(r.todo_id ? { todoId: String(r.todo_id) } : {}),
     ...(r.document_id ? { documentId: String(r.document_id) } : {}),
-    ...(r.exam_id ? { examId: String(r.exam_id) } : {}),
-    ...(r.study_day ? { studyDay: String(r.study_day).slice(0, 10) } : {}),
-    ...(r.minutes ? { minutes: Number(r.minutes) } : {}),
   };
 }
 
-const byOrder = (a: CourseItem, b: CourseItem) => a.subjectId.localeCompare(b.subjectId) || (a.examId ?? '').localeCompare(b.examId ?? '') || a.position - b.position;
-/** A reading-list section, not an exam study item. */
-export const isReading = (i: Pick<CourseItem, 'examId'>) => !i.examId;
-/** Two items in the same list: one course's reading list, or one exam's study list. */
-export const sameList = (a: Pick<CourseItem, 'subjectId' | 'examId'>, b: Pick<CourseItem, 'subjectId' | 'examId'>) => a.subjectId === b.subjectId && (a.examId ?? '') === (b.examId ?? '');
+const byOrder = (a: CourseItem, b: CourseItem) => a.subjectId.localeCompare(b.subjectId) || a.position - b.position;
 
 /** Every item for this student. Before the table exists this is empty, so
  *  nothing else on the page breaks. */
 export async function loadCourseItems(userId: string): Promise<CourseItem[]> {
   const { data, error } = await supabase.from(TABLE).select('*').eq('user_id', userId).order('position');
   if (error) return [];
-  return ((data ?? []) as Record<string, unknown>[]).map(fromRow).sort(byOrder);
+  // Rows with an exam_id were exam study items (removed 2026-11-06): not reading.
+  return ((data ?? []) as Record<string, unknown>[]).filter(r => !r.exam_id).map(fromRow).sort(byOrder);
 }
 
 async function patch(userId: string, ids: string[], values: Record<string, unknown>) {
@@ -81,8 +70,7 @@ export const linkItems = (userId: string, ids: string[], todoId: string | null) 
  * doesn't forget what was done.
  */
 export async function saveCourseList(userId: string, subjectId: string, drafts: DraftItem[], documentId?: string) {
-  // Only the reading list: the course's exam study lists are kept as they are.
-  const previous = (await loadCourseItems(userId)).filter(i => i.subjectId === subjectId && isReading(i));
+  const previous = (await loadCourseItems(userId)).filter(i => i.subjectId === subjectId);
   const kept = new Map(previous.map(i => [i.label, i]));
   const rows = drafts.map((d, position) => {
     const old = kept.get(d.label);
@@ -159,7 +147,7 @@ export function courseProgress(items: CourseItem[], subjects: { id: string; name
   const ids = new Map<string, string>();
   const out = [];
   for (const subject of subjects) {
-    const list = items.filter(i => i.subjectId === subject.id && isReading(i)).sort(byOrder);
+    const list = items.filter(i => i.subjectId === subject.id).sort(byOrder);
     if (!list.length) continue;
     const open = list.filter(i => !i.doneAt);
     const lastDone = [...list].reverse().find(i => i.doneAt);
@@ -194,9 +182,8 @@ export function resolveRange(items: CourseItem[], ids: Map<string, string>, firs
   const b = items.find(i => i.id === ids.get(String(last ?? first)));
   if (!a || !b) return 'it named sections that aren\'t in the reading list';
   if (a.subjectId !== b.subjectId) return 'one block can only cover one course';
-  if ((a.examId ?? '') !== (b.examId ?? '')) return 'one block can only cover one list';
   const [lo, hi] = a.position <= b.position ? [a, b] : [b, a];
-  const run = items.filter(i => sameList(i, a) && i.position >= lo.position && i.position <= hi.position).sort(byOrder);
+  const run = items.filter(i => i.subjectId === a.subjectId && i.position >= lo.position && i.position <= hi.position).sort(byOrder);
   if (run.some(i => i.doneAt)) return `${rangeLabel(run)} includes sections already done`;
   return run;
 }

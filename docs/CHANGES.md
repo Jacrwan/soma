@@ -9,7 +9,33 @@ still needed.
 
 ---
 
+## 2026-11-06 (exam study plans taken out)
+
+- **Why:** the owner tried exam study plans the day they shipped and asked for
+  them to be reverted ("i dont like this.. can we revert ?").
+- **What:** the Documents panel, its list builder, the day planner, Soma's
+  `exams` context and its EXAM STUDY PLANS rules are gone; reading lists,
+  Soma's prompt and `courseItems.ts` are back to how they were before
+  (`src/lib/examPlan.ts`, `examPlansStore.ts`, `components/Documents/ExamPlans.*`
+  deleted). Two things stay:
+  - **The exam-task fix** (`assistant.ts`, `sameWork`): a Soma block named after
+    an unscheduled exam or quiz task ("Calc midterm: Worksheet 3") is new work,
+    never that task moved into the study slot. That bug came before exam plans.
+  - **Leftover rows are skipped:** `loadCourseItems` ignores `course_items` rows
+    with an `exam_id`, so anything saved with an exam plan doesn't show up as
+    reading, and rebuilding a reading list doesn't delete it.
+- **Guard:** `tests/exam-task-blocks.spec.ts` (both tests fail without their
+  fix). `tests/exam-plans.spec.ts` is deleted with the feature.
+- **Setup:** none. `exam_study_migration.sql` was run on production the same
+  day; its `exam_plans` table and the `exam_id` / `study_day` / `minutes`
+  columns on `course_items` stay, unused. The file now says not to run it again.
+  Dropping them is a separate schema change and needs the owner's yes.
+
+---
+
 ## 2026-11-06 (exam study plans)
+
+> Taken out the same day: see "exam study plans taken out" above.
 
 - **Why:** the owner's design (2026-11-05). Quizzes Monday to Wednesday make
   Sunday to Tuesday busy, and Wednesday to Saturday get wasted for lack of a
