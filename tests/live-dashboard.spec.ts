@@ -88,7 +88,7 @@ test('stale AI acceptance rechecks calendar and blocks conflicting saves',async(
 });
 
 test('focus save failure keeps paused timer for retry without duplicate history',async({page})=>{
- const state=await setup(page);await page.goto('/dashboard');await page.getByRole('button',{name:'Start focus: Cell review',exact:true}).click();await expect(page.getByLabel('Focus timer')).toContainText('Cell review');state.failTable='timer_sessions';await page.getByRole('button',{name:'Stop & save',exact:true}).click();await expect(page.getByLabel('Focus timer').getByRole('alert')).toContainText('press Stop to retry');expect(state.tables.timer_sessions).toHaveLength(0);
+ const state=await setup(page);await page.goto('/dashboard');await page.getByRole('button',{name:'Start focus: Cell review',exact:true}).first().click();await expect(page.getByLabel('Focus timer')).toContainText('Cell review');state.failTable='timer_sessions';await page.getByRole('button',{name:'Stop & save',exact:true}).click();await expect(page.getByLabel('Focus timer').getByRole('alert')).toContainText('press Stop to retry');expect(state.tables.timer_sessions).toHaveLength(0);
  state.failTable='';await page.getByRole('button',{name:'Stop & save',exact:true}).click();await expect(page.getByLabel('Focus timer')).toContainText('Ready when you are');expect(state.tables.timer_sessions).toHaveLength(1);expect(state.tables.todo_sessions[0].start_time).toBe(iso('09:00'));
 });
 
@@ -105,7 +105,7 @@ test('reopening an unscheduled task does not create a time slot',async({page})=>
 });
 
 test('recovered timer retries after history saved but active-record deletion failed',async({page})=>{
- const state=await setup(page);await page.goto('/dashboard');await page.getByRole('button',{name:'Start focus: Cell review',exact:true}).click();await expect(page.getByLabel('Focus timer')).toContainText('Cell review');
+ const state=await setup(page);await page.goto('/dashboard');await page.getByRole('button',{name:'Start focus: Cell review',exact:true}).first().click();await expect(page.getByLabel('Focus timer')).toContainText('Cell review');
  // Fail only cleanup after the history write, as with a lost network response.
  await page.route('**/rest/v1/active_timer?**',async route=>{if(route.request().method()==='DELETE')return route.fulfill({status:500,json:{message:'Cleanup unavailable'}});return route.fallback();});
  await page.getByRole('button',{name:'Stop & save',exact:true}).click();await expect(page.getByLabel('Focus timer').getByRole('alert')).toBeVisible();expect(state.tables.timer_sessions).toHaveLength(1);const id=state.tables.timer_sessions[0].id;

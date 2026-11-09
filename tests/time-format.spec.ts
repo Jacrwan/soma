@@ -41,14 +41,16 @@ async function setup(page: Page, timeFormat?: '12h' | '24h') {
 test('the dashboard shows 12-hour times by default', async ({ page }) => {
   await setup(page);
   await page.goto('/dashboard');
-  await expect(page.getByText('1:00 PM–1:45 PM')).toBeVisible();
+  // .first(): before the block's time, the Up next widget shows it too.
+  await expect(page.getByText('1:00 PM–1:45 PM').first()).toBeVisible();
   await expect(page.getByText('13:00–13:45')).toHaveCount(0);
 });
 
 test('a saved 24-hour preference is used across the app', async ({ page }) => {
   await setup(page, '24h');
   await page.goto('/dashboard');
-  await expect(page.getByText('13:00–13:45')).toBeVisible();
+  // .first(): before the block's time, the Up next widget shows it too.
+  await expect(page.getByText('13:00–13:45').first()).toBeVisible();
   await expect(page.getByText('1:00 PM–1:45 PM')).toHaveCount(0);
 });
 
@@ -64,10 +66,12 @@ test('changing the setting applies without a reload and survives one', async ({ 
 
   // Navigating in-app (no reload) must already use the new preference.
   await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
-  await expect(page.getByText('13:00–13:45')).toBeVisible();
+  // .first(): before the block's time, the Up next widget shows it too.
+  await expect(page.getByText('13:00–13:45').first()).toBeVisible();
 
   await page.reload();
-  await expect(page.getByText('13:00–13:45')).toBeVisible();
+  // .first(): before the block's time, the Up next widget shows it too.
+  await expect(page.getByText('13:00–13:45').first()).toBeVisible();
 });
 
 test('switching back to 12-hour takes effect', async ({ page }) => {
@@ -76,13 +80,15 @@ test('switching back to 12-hour takes effect', async ({ page }) => {
   await page.getByRole('button', { name: 'Appearance', exact: true }).click();
   await page.getByRole('button', { name: /^12-hour/ }).click();
   await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
-  await expect(page.getByText('1:00 PM–1:45 PM')).toBeVisible();
+  // .first(): before the block's time, the Up next widget shows it too.
+  await expect(page.getByText('1:00 PM–1:45 PM').first()).toBeVisible();
 });
 
 test('the preference never changes the stored session times', async ({ page }) => {
   await setup(page, '24h');
   await page.goto('/dashboard');
-  await expect(page.getByText('13:00–13:45')).toBeVisible();
+  // .first(): before the block's time, the Up next widget shows it too.
+  await expect(page.getByText('13:00–13:45').first()).toBeVisible();
   // Planned sessions are persisted as canonical 24-hour values; display is
   // formatting only, so the underlying record must be untouched.
   expect(tables.todo_sessions[0].start_time).toBe(iso('13:00'));

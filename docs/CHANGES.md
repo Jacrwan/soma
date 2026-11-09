@@ -9,6 +9,26 @@ still needed.
 
 ---
 
+## 2026-11-09 (tests that failed before a block's start time)
+
+- **Why:** the owner asked to fix the 23 tests that were failing on master.
+  None was an app bug. Since the Up next widget arrived (2026-10-30), the next
+  block today shows twice: in the plan and in Up next. These tests' blocks
+  start at 9:00 AM or 1:00 PM, so before that time of day each lookup found
+  two matches and Playwright refused to pick one. Run later in the day, they
+  passed, which is why the widget's own full-suite run was green.
+- **What:** those lookups take the first match, which is always the plan
+  (`.first()`, the same fix `ai-past-work.spec.ts` already used). Each one
+  has a comment saying why. No assertion was dropped or loosened: "not
+  shown" checks (`toHaveCount(0)`) are unchanged.
+- **Where:** `tests/block-editing.spec.ts`, `courses.spec.ts`,
+  `dashboard-ai-context.spec.ts`, `live-dashboard.spec.ts`,
+  `study-features.spec.ts`, `time-format.spec.ts`,
+  `timer-multi-window.spec.ts`. No app code changed.
+- **Setup:** none.
+
+---
+
 ## 2026-11-09 (a pause over 30 minutes stops and saves the focus timer)
 
 - **Why:** the owner asked: "when pausing exceeds 30 minutes, then just stop

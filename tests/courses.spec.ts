@@ -141,7 +141,7 @@ test('editing a task on an archived course keeps it on that course', async ({ pa
   }));
 
   await page.goto('/dashboard');
-  await expect(page.getByText('Old lab writeup')).toBeVisible();
+  await expect(page.getByText('Old lab writeup').first()).toBeVisible();  // Up next names it too, before it starts
   await page.getByRole('button', { name: 'Edit plan', exact: true }).click();
   await page.getByRole('button', { name: 'Edit: Old lab writeup' }).click();
 

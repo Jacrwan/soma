@@ -57,7 +57,7 @@ test('a session started in one window reaches the other without a reload', async
   await second.goto('/dashboard');
   await expect(focus(second)).toContainText('Ready when you are');
 
-  await first.getByRole('button', { name: 'Start focus: Cell review', exact: true }).click();
+  await first.getByRole('button', { name: 'Start focus: Cell review', exact: true }).first().click();  // Up next repeats it, before 9:00
   await expect.poll(() => state.tables.active_timer.length).toBe(1);
 
   // The other window is told by the shared record, not by being reloaded.
@@ -70,7 +70,7 @@ test('stopping in one window stops the other, and records one session', async ({
   const first = await context.newPage();
   const second = await context.newPage();
   await first.goto('/dashboard');
-  await first.getByRole('button', { name: 'Start focus: Cell review', exact: true }).click();
+  await first.getByRole('button', { name: 'Start focus: Cell review', exact: true }).first().click();  // Up next repeats it, before 9:00
   await expect.poll(() => state.tables.active_timer.length).toBe(1);
 
   // The second window picks the running session up, as it would on open.

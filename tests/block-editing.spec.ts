@@ -36,7 +36,7 @@ async function setup(page: Page, opts: { history?: boolean } = {}) {
 test('clicking a block opens its editor without entering edit mode', async ({ page }) => {
   await setup(page);
   await page.goto('/dashboard');
-  await expect(page.getByText('Cell review')).toBeVisible();
+  await expect(page.getByText('Cell review').first()).toBeVisible();  // Up next names it too, before 9:00
   // Edit mode is off — the gap "add" controls are not showing.
   await expect(page.getByRole('button', { name: /^Add block in gap/ })).toHaveCount(0);
 
@@ -48,14 +48,14 @@ test('clicking a block opens its editor without entering edit mode', async ({ pa
 test('an imported Google event is not clickable to edit', async ({ page }) => {
   await setup(page);
   await page.goto('/dashboard');
-  await expect(page.getByText('Physics 5A OH')).toBeVisible();
+  await expect(page.getByText('Physics 5A OH').first()).toBeVisible();  // Up next names it too, before it starts
   await expect(page.getByRole('button', { name: 'Edit: Physics 5A OH' })).toHaveCount(0);
 });
 
 test('a block being timed cannot be opened until focus stops', async ({ page }) => {
   await setup(page);
   await page.goto('/dashboard');
-  await page.getByRole('button', { name: 'Start focus: Cell review' }).click();
+  await page.getByRole('button', { name: 'Start focus: Cell review' }).first().click();  // Up next repeats it, before 9:00
   await expect(page.getByLabel('Focus timer')).toContainText('Cell review');
   await expect(page.getByRole('button', { name: 'Edit: Cell review' })).toHaveCount(0);
 });

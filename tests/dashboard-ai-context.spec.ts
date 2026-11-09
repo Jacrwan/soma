@@ -53,7 +53,8 @@ async function ask(page: Page, text: string) {
 test('the dashboard AI is given the uploaded documents', async ({ page }) => {
   const state = await setup(page);
   await page.goto('/dashboard');
-  await expect(page.getByText('Read chapter 4')).toBeVisible();
+  // .first(): before the block's time, the Up next widget names it too.
+  await expect(page.getByText('Read chapter 4').first()).toBeVisible();
   await ask(page, 'What is the late work policy?');
 
   expect(state.prompt).toContain('STUDENT DOCUMENTS');
@@ -86,7 +87,8 @@ test('the dashboard AI is given outstanding Canvas assignments', async ({ page }
 test('document content is framed as data, never as instructions', async ({ page }) => {
   const state = await setup(page);
   await page.goto('/dashboard');
-  await expect(page.getByText('Read chapter 4')).toBeVisible();
+  // .first(): before the block's time, the Up next widget names it too.
+  await expect(page.getByText('Read chapter 4').first()).toBeVisible();
   await ask(page, 'Plan my evening');
 
   // The prompt must keep its untrusted-data framing around user content.
@@ -98,7 +100,8 @@ test('the dashboard AI still works when there are no documents', async ({ page }
   const state = await setup(page);
   await page.route('https://soma-regression.supabase.co/rest/v1/documents*', r => r.fulfill({ json: [] }));
   await page.goto('/dashboard');
-  await expect(page.getByText('Read chapter 4')).toBeVisible();
+  // .first(): before the block's time, the Up next widget names it too.
+  await expect(page.getByText('Read chapter 4').first()).toBeVisible();
   await ask(page, 'Plan my evening');
 
   expect(state.prompt).not.toContain('STUDENT DOCUMENTS');
@@ -110,7 +113,8 @@ test('the dashboard AI still works when there are no documents', async ({ page }
 test('the AI is told the real date of every plan entry, not a bare offset', async ({ page }) => {
   const state = await setup(page);
   await page.goto('/dashboard');
-  await expect(page.getByText('Read chapter 4')).toBeVisible();
+  // .first(): before the block's time, the Up next widget names it too.
+  await expect(page.getByText('Read chapter 4').first()).toBeVisible();
   await ask(page, "what's my schedule for tomorrow");
 
   const ctx = JSON.parse(state.prompt.match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]);
@@ -133,7 +137,8 @@ test('the AI is told which clock format the user chose', async ({ page }) => {
   const state = await setup(page);
   await page.addInitScript(() => localStorage.setItem('soma_settings', JSON.stringify({ theme: 'light', timeFormat: '12h' })));
   await page.goto('/dashboard');
-  await expect(page.getByText('Read chapter 4')).toBeVisible();
+  // .first(): before the block's time, the Up next widget names it too.
+  await expect(page.getByText('Read chapter 4').first()).toBeVisible();
   await ask(page, 'plan my evening');
 
   expect(state.prompt).toContain('12-hour');
@@ -143,7 +148,8 @@ test('the AI is told which clock format the user chose', async ({ page }) => {
 test('the AI is told to reply in plain text, not markdown', async ({ page }) => {
   const state = await setup(page);
   await page.goto('/dashboard');
-  await expect(page.getByText('Read chapter 4')).toBeVisible();
+  // .first(): before the block's time, the Up next widget names it too.
+  await expect(page.getByText('Read chapter 4').first()).toBeVisible();
   await ask(page, 'plan my evening');
   expect(state.prompt).toContain('No markdown');
 });
@@ -160,7 +166,8 @@ test('a block Soma cannot place keeps the rest of the answer', async ({ page }) 
     }) }] } });
   });
   await page.goto('/dashboard');
-  await expect(page.getByText('Read chapter 4')).toBeVisible();
+  // .first(): before the block's time, the Up next widget names it too.
+  await expect(page.getByText('Read chapter 4').first()).toBeVisible();
 
   await page.getByLabel('What do you need to work on?').fill('plan tonight');
   await page.getByRole('button', { name: 'Send to Soma' }).click();
@@ -174,7 +181,8 @@ test('a block Soma cannot place keeps the rest of the answer', async ({ page }) 
 test('the dashboard conversation survives leaving the page', async ({ page }) => {
   await setup(page);
   await page.goto('/dashboard');
-  await expect(page.getByText('Read chapter 4')).toBeVisible();
+  // .first(): before the block's time, the Up next widget names it too.
+  await expect(page.getByText('Read chapter 4').first()).toBeVisible();
   await ask(page, 'remember this message');
 
   await page.getByRole('button', { name: 'Insights', exact: true }).click();
@@ -185,11 +193,13 @@ test('the dashboard conversation survives leaving the page', async ({ page }) =>
 test('the dashboard conversation is cleared by a reload', async ({ page }) => {
   await setup(page);
   await page.goto('/dashboard');
-  await expect(page.getByText('Read chapter 4')).toBeVisible();
+  // .first(): before the block's time, the Up next widget names it too.
+  await expect(page.getByText('Read chapter 4').first()).toBeVisible();
   await ask(page, 'remember this message');
 
   await page.reload();
-  await expect(page.getByText('Read chapter 4')).toBeVisible();
+  // .first(): before the block's time, the Up next widget names it too.
+  await expect(page.getByText('Read chapter 4').first()).toBeVisible();
   await expect(page.getByRole('log')).not.toContainText('remember this message');
 });
 

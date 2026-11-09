@@ -53,7 +53,7 @@ test('focus: a block in progress offers no AI-written practice and makes no AI c
   let calls = 0;
   await page.route('**/api/chat', route => { calls++; return route.fulfill({ json: { content: [{ type: 'text', text: '{}' }] } }); });
   await page.goto('/dashboard');
-  await page.getByRole('button', { name: 'Start focus: Cell review', exact: true }).click();
+  await page.getByRole('button', { name: 'Start focus: Cell review', exact: true }).first().click();  // Up next repeats it, before 9:00
   const focus = page.getByLabel('Focus timer');
   await expect(focus).toContainText('Cell review');
   await expect(page.getByRole('button', { name: /practice/i })).toHaveCount(0);
