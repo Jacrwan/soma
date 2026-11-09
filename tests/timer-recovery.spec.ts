@@ -37,7 +37,8 @@ const seconds = (clock: string) => clock.split(':').reduce((a, p) => a * 60 + Nu
 
 async function startFocus(page: Page, state: Awaited<ReturnType<typeof setup>>) {
   await page.goto('/dashboard');
-  await page.getByRole('button', { name: 'Start focus: Cell review', exact: true }).click();
+  // The Up next widget repeats the button; either starts the same session.
+  await page.getByRole('button', { name: 'Start focus: Cell review', exact: true }).first().click();
   await expect(page.getByLabel('Focus timer')).toContainText('Cell review');
   await expect.poll(() => state.tables.active_timer.length).toBe(1);
 }
@@ -322,8 +323,6 @@ test('pausing records when the pause was, and it survives a reload', async ({ pa
 
 test('a pause shows how long it has lasted, through a reload, and starts over on the next pause', async ({ page }) => {
   const state = await setup(page);
-  // This pause runs past an hour; setup's sign-in only lasts one.
-  await page.addInitScript(() => { const k = 'sb-soma-regression-auth-token', t = JSON.parse(localStorage.getItem(k)!); localStorage.setItem(k, JSON.stringify({ ...t, expires_at: t.expires_at + 86400 })); });
   await page.clock.install();
   await startFocus(page, state);
   await page.clock.fastForward('10:00');
@@ -340,8 +339,9 @@ test('a pause shows how long it has lasted, through a reload, and starts over on
   await page.reload();
   await expect(timer).toContainText(/Paused 22:0\d/);
 
-  await page.clock.fastForward('40:00');
-  await expect(timer).toContainText(/Paused 1:02:\d\d/);
+  // 30 minutes ends the session (see the auto-stop tests), so stay under it.
+  await page.clock.fastForward('06:00');
+  await expect(timer).toContainText(/Paused 28:0\d/);
 
   await page.getByRole('button', { name: 'Resume', exact: true }).click();
   await expect(timer).not.toContainText('Paused');
@@ -364,6 +364,73 @@ test('the floating timer shows the pause count too', async ({ page }) => {
   await expect(pill).toContainText(/Paused 3:\d\d/);
   await pill.getByRole('button', { name: 'Resume focus' }).click();
   await expect(pill).not.toContainText('Paused');
+});
+
+// A pause left for 30 minutes ends the session where the pause began: the
+// break is neither focus time nor drawn on the calendar.
+type Saved = { duration_seconds: number; pauses?: [number, number][]; start_time: string; end_time: string };
+const minutesBetween = (r: Saved) => (new Date(r.end_time).getTime() - new Date(r.start_time).getTime()) / 60_000;
+
+test('a pause of 30 minutes stops and saves the session, without the paused time', async ({ page }) => {
+  const state = await setup(page);
+  await page.clock.install();
+  await startFocus(page, state);
+  await page.clock.fastForward('10:00');
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await page.clock.fastForward('29:00');
+  await expect(page.getByRole('button', { name: 'Resume', exact: true })).toBeVisible();
+  expect(state.tables.timer_sessions).toHaveLength(0);
+
+  await page.clock.fastForward('01:10');
+  await expect.poll(() => state.tables.timer_sessions.length).toBe(1);
+  await expect.poll(() => state.tables.active_timer.length).toBe(0);
+  await expect(page.getByLabel('Focus timer')).toContainText('Ready when you are');
+  const row = state.tables.timer_sessions[0] as Saved;
+  expect(Math.abs(row.duration_seconds - 600)).toBeLessThan(10);
+  expect(Math.abs(minutesBetween(row) - 10)).toBeLessThan(0.2);
+  expect(row.pauses).toBeUndefined();
+});
+
+test('earlier pauses stay; only the abandoned one is cut off', async ({ page }) => {
+  const state = await setup(page);
+  await page.clock.install();
+  await startFocus(page, state);
+  await page.clock.fastForward('05:00');
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await page.clock.fastForward('10:00');
+  await page.getByRole('button', { name: 'Resume', exact: true }).click();
+  await page.clock.fastForward('05:00');
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await expect.poll(() => state.tables.active_timer[0].is_paused).toBe(true);
+  await page.clock.fastForward('30:00');
+  await page.clock.fastForward('00:10');
+  await expect.poll(() => state.tables.timer_sessions.length).toBe(1);
+  const row = state.tables.timer_sessions[0] as Saved;
+  expect(Math.abs(row.duration_seconds - 600)).toBeLessThan(10);
+  expect(Math.abs(minutesBetween(row) - 20)).toBeLessThan(0.2);
+  expect(row.pauses).toHaveLength(1);
+});
+
+test('coming back to a pause left over 30 minutes saves it on load', async ({ page }) => {
+  const state = await setup(page);
+  // This pause runs past an hour; setup's sign-in only lasts one.
+  await page.addInitScript(() => { const k = 'sb-soma-regression-auth-token', t = JSON.parse(localStorage.getItem(k)!); localStorage.setItem(k, JSON.stringify({ ...t, expires_at: t.expires_at + 86400 })); });
+  await page.clock.install();
+  await startFocus(page, state);
+  await page.clock.fastForward('12:00');
+  await page.getByRole('button', { name: 'Pause', exact: true }).click();
+  await expect.poll(() => state.tables.active_timer[0].is_paused).toBe(true);
+  await page.goto('about:blank');
+  await page.clock.fastForward('02:00:00');
+  await page.goto('/dashboard');
+  await expect.poll(() => state.tables.timer_sessions.length).toBe(1);
+  await expect(page.getByLabel('Focus timer')).toContainText('Ready when you are');
+  const row = state.tables.timer_sessions[0] as Saved;
+  expect(Math.abs(row.duration_seconds - 720)).toBeLessThan(10);
+  expect(Math.abs(minutesBetween(row) - 12)).toBeLessThan(0.2);
+  await page.reload();
+  await expect(page.getByLabel('Focus timer')).toContainText('Ready when you are');
+  expect(state.tables.timer_sessions).toHaveLength(1);
 });
 
 /** Makes writes to the shared timer row fail until the returned function is called. */
@@ -438,13 +505,17 @@ test('a resume made elsewhere after the unsent pause still wins', async ({ page 
   const allow = await dropTimerWrites(page);
   await page.getByRole('button', { name: 'Pause', exact: true }).click();
   await expect(page.getByText(/Pause could not sync/)).toBeVisible();
-  allow();
   // Another device resumed one minute after this pause, and the row says so.
   const later = await page.evaluate(() => new Date(Date.now() + 60_000).toISOString());
+  // The sync tries the pause again first; it must fail before the row changes,
+  // or it can land afterwards and overwrite the resume.
+  const resent = page.waitForEvent('requestfailed', r => r.url().includes('active_timer') && r.method() === 'POST');
   await page.clock.fastForward('02:00');
+  await resent;
   state.tables.active_timer[0] = { ...state.tables.active_timer[0], start_time: later, accumulated_seconds: 300, is_paused: false };
+  allow();
   await page.clock.fastForward('00:06');
-  await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeVisible({ timeout: 10_000 });
   expect(state.tables.active_timer[0].start_time).toBe(later);
 });
 

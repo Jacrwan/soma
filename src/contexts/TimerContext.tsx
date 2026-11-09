@@ -9,6 +9,9 @@ function toLocalISO(date: Date): string {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, -1);
 }
 
+/** A pause this long ends the session: it is saved as stopping when the pause began. */
+const AUTO_STOP_PAUSE_MS = 30 * 60_000;
+
 export interface ActiveSession {
   subject: Subject;
   task: string;
@@ -75,6 +78,9 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
   const continuationBlockIdRef = useRef<string | null>(null);
   const pauseDurationRef       = useRef<number>(0);
   const userIdRef              = useRef<string | null>(userId);
+  // The load-time read of active_timer has come back. Saving before then let
+  // that read bring the saved session back as a fresh pause.
+  const [loadChecked, setLoadChecked] = useState(false);
   useEffect(() => { userIdRef.current = userId; }, [userId]);
 
   // Snapshot the running session locally so a reload can restore it without
@@ -202,7 +208,7 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
       if (!activeSessionRef.current && local) {
         setError('Your timer is running on this device but could not be checked against your account.');
       }
-    });
+    }).finally(() => setLoadChecked(true));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Other windows, and other browsers ──────────────────────────────────
@@ -380,14 +386,15 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
     sendChange(session, mirror(session, acc, false, true), acc, false);
   }, [resume, mirror]);
 
-  const stopSession = useCallback(async (): Promise<boolean> => {
+  /** Saves the session. `endAtMs` ends it earlier than now: an abandoned pause ends it where the pause began. */
+  const finishSession = useCallback(async (endAtMs?: number): Promise<boolean> => {
     const session = activeSessionRef.current;
     if (!session || savingRef.current) return false;
     savingRef.current=true;setSaving(true);setError('');
     const durationSeconds = pause();
     elapsedRef.current=durationSeconds;
     const stoppedAt = mirror(session, durationSeconds, true, true);
-    const endTime = toLocalISO(new Date());
+    const endTime = toLocalISO(new Date(endAtMs ?? Date.now()));
     // Pauses as seconds into the session; one still open ran until Stop.
     const startMs = new Date(session.sessionStartTimeISO).getTime(), endMs = new Date(endTime).getTime();
     const pauses = pausesRef.current
@@ -457,9 +464,29 @@ export function TimerProvider({ children, userId = null }: { children: ReactNode
     window.dispatchEvent(new CustomEvent('soma_timer_stopped', { detail: { mergedBlockId, stopTime: endTime } }));
     return true;
   }, [stop,pause,mirror]);
+  const stopSession = useCallback(() => finishSession(), [finishSession]);
 
   const openPause = pausesRef.current[pausesRef.current.length - 1];
   const pausedSince = isPaused && openPause && openPause[1] === null ? openPause[0] : null;
+
+  // A pause left for 30 minutes ends the session, saved as stopping when the
+  // pause began, so the break counts neither as focus nor on the calendar.
+  // It waits for the load-time account check, which would otherwise restore
+  // the session it just saved. Only a window someone is looking at does it:
+  // a hidden one does it on return, with the same result, and two windows
+  // don't both save. A save that failed waits for Stop rather than retrying
+  // every few seconds.
+  useEffect(() => {
+    if (pausedSince === null || !loadChecked) return;
+    const check = () => {
+      if (document.hidden || savingRef.current || pendingSaveRef.current || writesRef.current) return;
+      if (Date.now() - pausedSince >= AUTO_STOP_PAUSE_MS) void finishSession(pausedSince);
+    };
+    check();
+    const id = window.setInterval(check, 5_000);
+    document.addEventListener('visibilitychange', check);
+    return () => { window.clearInterval(id); document.removeEventListener('visibilitychange', check); };
+  }, [pausedSince, loadChecked, finishSession]);
 
   return (
     <TimerContext.Provider value={{

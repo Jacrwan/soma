@@ -9,6 +9,47 @@ still needed.
 
 ---
 
+## 2026-11-09 (a pause over 30 minutes stops and saves the focus timer)
+
+- **Why:** the owner asked: "when pausing exceeds 30 minutes, then just stop
+  and save the focus timer (do not count the paused minutes)". A forgotten
+  pause left the timer open for hours, and the calendar block ran to whenever
+  Stop was finally pressed.
+- **What:** once the current pause reaches 30 minutes, the session is saved
+  as if Stop had been pressed **when the pause began**. Focus time is what
+  ran before the pause (paused time never counted). The saved session, its
+  calendar block and the `soma_timer_stopped` stop time all end at the pause
+  start, so that last pause isn't saved or drawn faint. Earlier pauses in
+  the same session stay as before. It also works when coming back to the
+  page after a long time away, or to a pause made on another device: the
+  session is saved on load.
+  - Only a visible window does it. A hidden tab does it when you come back,
+    with the same result, and two windows don't both save.
+  - It waits for the load-time `active_timer` read. Saving before that read
+    came back let it restore the saved session as a fresh pause (found by
+    the guard test below).
+  - If the save fails (offline), it doesn't retry every few seconds. The
+    existing "press Stop to retry" message shows, and Stop saves the same
+    session, still ending at the pause start.
+- **Where:** `src/contexts/TimerContext.tsx` (`AUTO_STOP_PAUSE_MS`,
+  `finishSession(endAtMs)`, which `stopSession` now calls, `loadChecked`, and
+  the auto-stop effect). No UI change: the Focus card just goes back to
+  "Ready when you are".
+- **Guard:** `tests/timer-recovery.spec.ts` › "a pause of 30 minutes stops
+  and saves the session, without the paused time", "earlier pauses stay;
+  only the abandoned one is cut off", "coming back to a pause left over 30
+  minutes saves it on load" (all three fail without the change).
+- **Tests changed:** "a pause shows how long it has lasted…" now checks
+  "Paused 28:0x" instead of an hour-long pause, which can't happen any more.
+  `startFocus` clicks the first "Start focus" button, because the Up next
+  widget repeats it. All 25 tests in this file failed on that click before
+  this change. "a resume made elsewhere after the unsent pause still wins"
+  now waits for the re-sent pause to fail before faking the other device's
+  resume. It had been passing on timing luck.
+- **Setup:** none.
+
+---
+
 ## 2026-11-06 (exam study plans taken out)
 
 - **Why:** the owner tried exam study plans the day they shipped and asked for
