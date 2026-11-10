@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { queryTerms, relevantNotes, notesContext, updateConversationNote, loadConversationNotes, spokenReply, type ConversationNote, type NotesStore } from '../api/_notes';
+import { queryTerms, relevantNotes, notesContext, openThreads, portraitContext, updateConversationNote, loadConversationNotes, spokenReply, type ConversationNote, type NotesStore } from '../api/_notes';
 import { createChatHandler } from '../api/chat';
 import { createMemoryHandler } from '../api/memory';
 import { emptyMemory, type MemoryStore, type MemoryState } from '../api/_memory';
@@ -35,6 +35,16 @@ test('only notes that clearly match the message come back, never the current cha
   expect(notesContext([prep])).toContain('- Wed 2026-10-07 · CS 61A Midterm 2 prep: Plans to finish Lists and Dictionaries');
 });
 
+test('every reply gets the newest open threads as a portrait, even without shared words', () => {
+  const older = note('n3', 'chat-c', 'Gym routine', 'Trying for three gym days a week.', '2026-10-01T03:00:00Z');
+  expect(openThreads([prep, math, older], undefined, 2).map(n => n.id)).toEqual(['n1', 'n2']);
+  expect(openThreads([prep, math], 'chat-a').map(n => n.id)).toEqual(['n2']);
+  const portrait = portraitContext([prep]);
+  expect(portrait).toContain('STUDENT PORTRAIT — open threads');
+  expect(portrait).toContain('CS 61A Midterm 2 prep');
+  expect(portraitContext([])).toBe('');
+});
+
 test('a conversation\'s note is written from what was said, and updated in place', async () => {
   const store = memStore(); let input = '';
   const reply = JSON.stringify({ reply: 'Lists and Dictionaries first, then Linked Lists.', blocks: [{ title: 'CS 61A: Lists and Dictionaries' }] });
@@ -64,8 +74,16 @@ test('small talk, commands and unusable output leave notes alone', async () => {
 test('recall is skipped when memory is paused, and a failure costs only the notes', async () => {
   const store = memStore(); store.rows.push(prep);
   expect(await loadConversationNotes('u', 'cs midterm prep', undefined, { store, enabled: async () => false })).toBe('');
-  expect(await loadConversationNotes('u', 'cs midterm prep', undefined, { store: { ...store, search: async () => { throw new Error('db down'); } }, enabled: async () => true })).toBe('');
-  expect(await loadConversationNotes('u', 'cs midterm prep', undefined, { store, enabled: async () => true })).toContain('CS 61A Midterm 2 prep');
+  // Search can fail while the portrait still loads from list.
+  const searchDown = await loadConversationNotes('u', 'cs midterm prep', undefined, { store: { ...store, search: async () => { throw new Error('db down'); } }, enabled: async () => true });
+  expect(searchDown).toContain('STUDENT PORTRAIT');
+  expect(searchDown).toContain('CS 61A Midterm 2 prep');
+  expect(searchDown).not.toContain('EARLIER CONVERSATIONS');
+  expect(await loadConversationNotes('u', 'hello there', undefined, { store: { ...store, list: async () => { throw new Error('db down'); }, search: async () => { throw new Error('db down'); } }, enabled: async () => true })).toBe('');
+  const both = await loadConversationNotes('u', 'cs midterm prep', undefined, { store, enabled: async () => true });
+  expect(both).toContain('STUDENT PORTRAIT');
+  expect(both).toContain('EARLIER CONVERSATIONS');
+  expect(both).toContain('CS 61A Midterm 2 prep');
 });
 
 const handlerDeps = { authorize: async () => ({ ok: true as const, userId: 'u' }), apiKey: () => 'k', limited: () => false, budget: async () => null, memory: async () => '', learn: async () => {} };

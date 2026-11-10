@@ -1,5 +1,5 @@
 import {test,expect} from '@playwright/test';
-import {applyMemoryAction,changeMemory,emptyMemory,memoryContext,parseMemoryAction,extractMemories,MemoryError,type MemoryStore,type MemoryState} from '../api/_memory';
+import {applyMemoryAction,changeMemory,emptyMemory,memoryContext,portraitMemories,parseMemoryAction,extractMemories,MemoryError,type MemoryStore,type MemoryState} from '../api/_memory';
 import {createMemoryHandler} from '../api/memory';
 import {createChatHandler,validateChatInput} from '../api/chat';
 import {parseMemoryCommand,runMemoryCommand} from '../src/lib/aiMemory';
@@ -22,7 +22,22 @@ test('disable stops recall and new writes, and re-enable restores existing facts
 test('expiry excludes old facts and frees capacity',()=>{const state=applyMemoryAction(emptyMemory(),{...remember(),expiresAt:new Date(1).toISOString()} as any,0);expect(memoryContext(state,'morning')).not.toContain('I prefer');expect(applyMemoryAction(state,remember('new')).entries).toHaveLength(1);});
 test('bounded store permits updates at capacity but rejects new keys',()=>{let state=emptyMemory();for(let i=0;i<100;i++)state=applyMemoryAction(state,remember(`k${i}`));expect(()=>applyMemoryAction(state,remember('overflow'))).toThrow('memory_full');expect(applyMemoryAction(state,remember('k1','changed')).entries).toHaveLength(100);});
 test('input rejects oversized, malformed, unknown and expired values',()=>{for(const input of [null,[],{action:'__proto__'},{action:'remember',key:'../bad',content:'x'},{action:'remember',key:'ok',content:'x'.repeat(601)},{action:'remember',key:'ok',content:'x',expiresAt:'yesterday'},{action:'set_enabled',enabled:'true'}])expect(()=>parseMemoryAction(input)).toThrow();});
-test('retrieval prioritizes matching facts and caps context at twelve',()=>{let state=emptyMemory();state=applyMemoryAction(state,remember('biology','Biology needs diagrams'),1);for(let i=0;i<20;i++)state=applyMemoryAction(state,remember(`other${i}`,'Unrelated'),i+2);const context=memoryContext(state,'biology');expect(context).toContain('Biology needs diagrams');expect(JSON.parse(context.split('\n').at(-1)!).length).toBe(12);expect(context).toContain('Current user instructions and the live task/calendar snapshot take precedence');});
+test('every reply gets a standing portrait; matching facts ride beside it',()=>{
+ let state=emptyMemory();
+ state=applyMemoryAction(state,remember('mornings','Prefers mornings'),1);
+ state=applyMemoryAction(state,parseMemoryAction({action:'remember',key:'a-in-cs',content:'Wants an A in CS 61A.',category:'goal'}),2);
+ state=applyMemoryAction(state,parseMemoryAction({action:'remember',key:'biology',content:'Biology needs diagrams.',category:'fact'}),3);
+ for(let i=0;i<20;i++)state=applyMemoryAction(state,parseMemoryAction({action:'remember',key:`other${i}`,content:'Unrelated fact.',category:'fact'}),i+4);
+ const context=memoryContext(state,'biology diagrams');
+ expect(context).toContain('STUDENT PORTRAIT');
+ expect(context).toContain('Prefers mornings');
+ expect(context).toContain('Wants an A in CS 61A');
+ expect(context).toContain('Biology needs diagrams');
+ expect(context).toContain('MATCHING MEMORIES');
+ expect(portraitMemories(state.entries).length).toBeLessThanOrEqual(8);
+ expect(JSON.parse(context.split('MATCHING MEMORIES:\n')[1]!).length).toBeLessThanOrEqual(6);
+ expect(context).toContain('Current user instructions and the live task/calendar snapshot take precedence');
+});
 test('database errors and conflict exhaustion never report success',async()=>{const db=store();db.read=async()=>{throw new Error('secret database details');};const failed=await call(db,remember());expect(failed).toEqual({status:503,body:{error:'memory_unavailable'}});const conflicting=store();conflicting.compareAndSet=async()=>false;expect((await call(conflicting,remember())).status).toBe(409);});
 test('feature switch blocks writes before accessing the store',async()=>{const db=store();expect((await call(db,remember(),'alice',false)).status).toBe(503);expect(db.rows.size).toBe(0);});
 test('chat retrieves memory for verified user, never a body userId',async()=>{const r=response();let savedUser='',system:any[]=[],last:any;await createChatHandler({authorize:async()=>({ok:true,userId:'alice'}),apiKey:()=> 'test',limited:()=>false,memory:async id=>{savedUser=id;return 'SAVED MEMORY TEST';},request:async(_url,init)=>{const sent=JSON.parse(init?.body as string);system=sent.system;last=sent.messages.at(-1);return Response.json({content:[{type:'text',text:'Hello'}]});}})({method:'POST',headers:{authorization:'Bearer t'},body:{userId:'bob',messages:[{role:'user',content:'Plan my day'}],systemPrompt:'Live data'}},r.res);expect(savedUser).toBe('alice');expect(r.result().status).toBe(200);

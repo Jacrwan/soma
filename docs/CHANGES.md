@@ -9,6 +9,37 @@ still needed.
 
 ---
 
+## 2026-11-10 (Soma remembers like a person)
+
+- **Why:** the owner wants Soma's AI to feel more like Meta's Muse: not more
+  things it can do, but memory and context that make every reply sound like it
+  already knows the student. Outbound messaging (Soma texting first) comes
+  later on the same brain.
+- **What:**
+  - **Student portrait** (`api/_memory.ts`, `api/_notes.ts`): every full reply
+    now gets a standing picture — up to 8 preferences/goals/recent facts, and
+    up to 3 newest conversation notes — whether or not the latest message
+    shares their words. Keyword search still adds matching memories and notes
+    beside it for "what did we decide about the midterm".
+  - **Permission to use one fact** (`src/lib/assistant.ts`): the writing rules
+    allow one short sentence from the portrait when it changes the answer or
+    plan; still no recap, no markdown essay.
+  - **Voice and personal ask** (`assistant.ts` triage): spoken messages skip
+    the empty first pass and go to the full assistant (which has the portrait).
+    Bare "hi"/"thanks" stay cheap; questions about how they're doing or what
+    Soma remembers route to the full pass. Voice replies may be a few natural
+    spoken sentences, not two clipped ones.
+- **Where:** `api/_memory.ts`, `api/_notes.ts`, `src/lib/assistant.ts`,
+  `tests/ai-memory.spec.ts`, `tests/conversation-notes.spec.ts`.
+- **Guard:** `tests/ai-memory.spec.ts` › standing portrait beside matching
+  facts; `tests/conversation-notes.spec.ts` › open threads always included,
+  search failure keeps the portrait, list+search failure costs only the notes.
+- **Not done (on purpose):** outbound messaging, sending email, writing the
+  calendar, background goal loops.
+- **Setup:** none (`SOMA_MEMORY_ENABLED=true` already required for memory).
+
+---
+
 ## 2026-11-09 (tests that failed before a block's start time)
 
 - **Why:** the owner asked to fix the 23 tests that were failing on master.
