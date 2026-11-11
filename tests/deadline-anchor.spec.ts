@@ -64,3 +64,14 @@ test('placeBlocks never lands on or after the exam day', () => {
   expect([...placed.values()].every(d => d === '2026-11-07')).toBe(true);
   expect([...placed.values()].every(d => d < exam.examDate)).toBe(true);
 });
+
+// Owner, 2026-11-10: a day the student names wins, flagged on the card; a day
+// Soma picks never lands past the due date. Exams and exam prep stay hard.
+test('a day the student asked for may pass an open assignment\'s due date, flagged', () => {
+  const lab = { dueDate: '2026-11-10', status: 'nothing', text: 'CS 61A Lab 5' };
+  expect(checkScheduleDay({ date: '2026-11-11', today: '2026-11-10', todo: lab })).toMatchObject({ ok: false });
+  expect(checkScheduleDay({ date: '2026-11-11', today: '2026-11-10', todo: lab, asked: true })).toEqual({ ok: true, lastDay: '2026-11-10', lateOk: true });
+  expect(checkScheduleDay({ date: '2026-11-11', today: '2026-11-10', todo: { ...lab, status: 'done' }, asked: true })).toMatchObject({ ok: false });
+  expect(checkScheduleDay({ date: '2026-11-11', today: '2026-11-10', todo: { dueDate: '2026-11-10', kind: 'quiz', text: 'Quiz 4' }, asked: true })).toMatchObject({ ok: false });
+  expect(checkScheduleDay({ date: '2026-11-14', today: '2026-11-10', examDate: '2026-11-14', asked: true })).toMatchObject({ ok: false });
+});

@@ -12,7 +12,7 @@ import { buildCanvasSection, buildDocumentExcerpts } from './aiContext';
 import { daysAround } from './docSearch';
 import { getTimeFormat, formatClock, formatClockRange } from './timeFormat';
 import { clockMinutes, clockOf, rangeOf, spanMinutes, windowOf } from './clockRange';
-import { statedRange, namesOtherDay } from './statedTime';
+import { statedRange, namesOtherDay, namesDate } from './statedTime';
 import { listDocuments, getCachedDocuments } from './documents';
 import { parseMemoryCommand } from './aiMemory';
 import { sendMessage } from './ai';
@@ -508,14 +508,16 @@ export async function askSoma(opts: {
       today,
       todo: todoId ? fresh.todos.find(t => t.id === todoId) : undefined,
       examDate: examDateForCovers(coverIds, fresh.items, examPlans),
+      asked: namesDate(text, dateOf(offset), today),
     });
-    // Late-but-allowed catch-up still notes it on the card.
+    // Late-but-allowed catch-up, or a day the student asked for past the due
+    // date, still notes it on the card.
     const pastDue = (todoId: string | undefined, offset: number, coverIds?: string[]) => {
       const gate = dayGate(offset, todoId, coverIds);
       if (!gate.ok) return undefined; // rejected elsewhere
       if (!gate.lateOk) return undefined;
       const due = fresh.todos.find(t => t.id === todoId)?.dueDate?.slice(0, 10);
-      return due && dateOf(offset) > due ? `After its due date (${withWeekday(due)}) — still open` : undefined;
+      return due && dateOf(offset) > due ? `After its due date (${withWeekday(due)}), still open` : undefined;
     };
     const lateNote = (b: PlanBlock) => { try { validateProposal(b, { ...fresh, blocks: [], sessions: [] }, origin, settings, true, true, true, STATED_MAX_MINUTES); return undefined; } catch { return 'Past your usual study hours'; } };
 

@@ -84,3 +84,32 @@ export function namesOtherDay(text: string): boolean {
     || /\b(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b/i.test(text)
     || /\bthe\s+\d{1,2}(st|nd|rd|th)\b/i.test(text);
 }
+
+const WEEKDAYS: [RegExp, number][] = [
+  [/\bsun(day)?\b/i, 0], [/\bmon(day)?\b/i, 1], [/\btues?(day)?\b/i, 2], [/\bwed(nes)?(day)?\b/i, 3],
+  [/\bthu(rs?)?(day)?\b/i, 4], [/\bfri(day)?\b/i, 5], [/\bsat(urday)?\b/i, 6],
+];
+const MONTH_NAMES = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+/**
+ * Whether the student's message names this exact day (YYYY-MM-DD), counted
+ * from `today`: "tomorrow", "the day after tomorrow", a weekday in the next
+ * seven days, "11/12", "Nov 12", "the 12th". Stricter than namesOtherDay:
+ * "some other day" names no day, so Soma's choice of day isn't the
+ * student's (2026-11-10: a day the student asked for may pass an
+ * assignment's due date, flagged; a day Soma picked may not).
+ */
+export function namesDate(text: string, date: string, today: string): boolean {
+  const at = (day: string) => new Date(`${day.slice(0, 10)}T12:00:00`);
+  const d = at(date), t = at(today);
+  const ahead = Math.round((+d - +t) / 86_400_000);
+  if (ahead === 1 && /\b(tomorrow|tmrw|tmr)\b/i.test(text) && !/\bday after (tomorrow|tmrw|tmr)\b/i.test(text)) return true;
+  if (ahead === 2 && /\bday after (tomorrow|tmrw|tmr)\b/i.test(text)) return true;
+  if (ahead >= 1 && ahead <= 7 && WEEKDAYS.some(([re, wd]) => wd === d.getDay() && re.test(text))) return true;
+  const month = d.getMonth() + 1, day = d.getDate();
+  for (const m of text.matchAll(/\b(\d{1,2})\/(\d{1,2})\b/g)) if (Number(m[1]) === month && Number(m[2]) === day) return true;
+  for (const m of text.matchAll(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})\b/gi))
+    if (MONTH_NAMES.indexOf(m[1].toLowerCase()) + 1 === month && Number(m[2]) === day) return true;
+  for (const m of text.matchAll(/\bthe\s+(\d{1,2})(st|nd|rd|th)\b/gi)) if (Number(m[1]) === day && ahead >= 0 && ahead < 31) return true;
+  return false;
+}

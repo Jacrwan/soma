@@ -136,6 +136,8 @@ test('"not today" and "some other day" count as naming another day; a skipped cl
     expect(namesOtherDay(t), t).toBe(false);
 });
 
+// A day the student named ("tomorrow") may pass an open assignment's due
+// date, flagged (owner, 2026-11-10). A day Soma picks itself may not.
 test('work moved past its due date says so on the card', async ({ page }) => {
   await setup(page, ctx => ({ reply: 'Lab tomorrow.', changes: [{ action: 'move', id: idOf(ctx, 'CS 61A Lab 5'), date: TOMORROW, minutes: 30, after: '09:00' }] }), d => {
     d.todos.push({ id: 't-lab', user_id: 'u', text: 'CS 61A Lab 5', subject_id: 'phys', status: 'nothing', date: '', due_date: TODAY });
@@ -202,4 +204,26 @@ test('a block Soma sizes on its own still stops at four hours', async ({ page })
   await setup(page, () => ({ reply: 'Long one.', blocks: [{ title: 'Marathon', subject: 'Physics 5A', date: TODAY, start: '19:00', end: '23:30' }] }), undefined, '12:28');
   await ask(page, 'plan some physics tonight');
   await expect(page.getByRole('log')).toContainText('give the times yourself for a longer one');
+});
+
+test('a day Soma picks itself never lands past the due date', async ({ page }) => {
+  await setup(page, ctx => ({ reply: 'Lab later.', changes: [{ action: 'move', id: idOf(ctx, 'CS 61A Lab 5'), date: TOMORROW, minutes: 30, after: '09:00' }] }), d => {
+    d.todos.push({ id: 't-lab', user_id: 'u', text: 'CS 61A Lab 5', subject_id: 'phys', status: 'nothing', date: '', due_date: TODAY });
+  });
+  await ask(page, 'move the lab to another day');
+  await expect(page.getByRole('log')).toContainText("can't schedule after its due date");
+});
+
+test('the day the student names is read exactly; "some other day" names none', async () => {
+  const { namesDate } = await import('../src/lib/statedTime');
+  const today = '2026-11-10'; // a Tuesday
+  expect(namesDate('do the lab tomorrow', '2026-11-11', today)).toBe(true);
+  expect(namesDate('do it the day after tomorrow', '2026-11-12', today)).toBe(true);
+  expect(namesDate('do it the day after tomorrow', '2026-11-11', today)).toBe(false);
+  expect(namesDate('move it to thursday', '2026-11-12', today)).toBe(true);
+  expect(namesDate('move it to thursday', '2026-11-13', today)).toBe(false);
+  expect(namesDate('put it on 11/14', '2026-11-14', today)).toBe(true);
+  expect(namesDate('put it on Nov 14', '2026-11-14', today)).toBe(true);
+  expect(namesDate('do it on the 14th', '2026-11-14', today)).toBe(true);
+  expect(namesDate('move it to some other day', '2026-11-11', today)).toBe(false);
 });

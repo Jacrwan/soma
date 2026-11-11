@@ -104,7 +104,10 @@ get less room. Nothing in this step calls the model.
 You didn’t want the model to guess. Exam prep must not land on or after
 the exam. Assignment work must not land after the due date unless it is
 already late and still not submitted. Quizzes and exams themselves may
-land on their day.
+land on their day. One exception, decided Nov 10: when you name the day
+yourself ("do the lab tomorrow"), an open assignment goes there anyway,
+with "After its due date (…), still open" on the card. What you say now
+wins; Soma never picks a day past the due date on its own.
 
 **How it works.** `deadlineAnchor.ts` is the rule, in code. It is checked
 when a horizon is placed, when Soma proposes a time, and again when you
@@ -255,7 +258,7 @@ Tests: `tests/exam-plans.spec.ts`, `tests/deadline-anchor.spec.ts`,
   Previews also have no Soma memory, so the student portrait only shows
   on production.
 
-Before merging, `tests/ai-whole-day.spec.ts` › “work moved past its due
-date says so on the card” fails on this branch. The deadline anchors
-changed when that note appears. That needs a decision. It is not part of
-the checklist or the within-day move.
+The deadline-card test (`tests/ai-whole-day.spec.ts` › “work moved past
+its due date says so on the card”) failed on this branch until Nov 10,
+when the owner chose: a day you name passes the due date with a warning.
+It passes now.

@@ -4,7 +4,8 @@
  * Exam prep (coverage-list items): last day is the day before the exam.
  * Exam/quiz tasks themselves: may land on the due day, never after.
  * Assignments / other dated work: may land on or before the due day; after
- * the due day only when the work is still open (not submitted / not done).
+ * the due day only when the work is still open (not submitted / not done),
+ * or when the student named that day themselves (flagged on the card).
  */
 
 export type AnchorTodo = {
@@ -63,6 +64,13 @@ export function checkScheduleDay(opts: {
   today: string;
   todo?: AnchorTodo | null;
   examDate?: string | null;
+  /**
+   * The student named this day themselves ("do the lab tomorrow"). An open
+   * assignment may then land after its due date, flagged on its card (owner,
+   * 2026-11-10: what the student asks now wins; Soma itself never picks a
+   * day past the due date). Exam prep and exams themselves stay hard.
+   */
+  asked?: boolean;
 }): ScheduleCheck {
   const date = opts.date.slice(0, 10);
   const today = opts.today.slice(0, 10);
@@ -85,6 +93,9 @@ export function checkScheduleDay(opts: {
   const last = todoLastDay(todo, today);
   const due = todo.dueDate?.slice(0, 10);
   const lateOk = !!(due && DAY.test(due) && due < today && todo.status !== 'done' && !isExamish(todo.kind, todo.text));
+  if (last && date > last && opts.asked && todo.status !== 'done' && !isExamish(todo.kind, todo.text)) {
+    return { ok: true, lastDay: last, lateOk: true };
+  }
   if (last && date > last) {
     return {
       ok: false,

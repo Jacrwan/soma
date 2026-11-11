@@ -32,9 +32,10 @@ Times are Pacific (America/Los_Angeles).
   live in this browser only (`soma_day_versions`).
 - A short note appears under the dashboard header when something moved.
 
-**Known, not from this step:** `tests/ai-whole-day.spec.ts` › “work moved past
-its due date says so on the card” fails on this branch. v1 deadline anchors
-changed when that note appears. Decide before merging to master.
+**Resolved Nov 10:** `tests/ai-whole-day.spec.ts` › “work moved past its due
+date says so on the card” failed after v1's deadline anchors. The owner chose:
+a day the student names passes an open assignment's due date, flagged on the
+card; a day Soma picks never does. It passes now.
 
 ---
 

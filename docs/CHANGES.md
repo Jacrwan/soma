@@ -9,6 +9,26 @@ still needed.
 
 ---
 
+## 2026-11-10 (a day you name passes the due date, with a warning)
+
+- **Why:** exam prep v1's deadline anchors refused "do the lab tomorrow" for a
+  lab due today ("can't schedule after its due date while it isn't late
+  yet"); before, Soma placed it with "After its due date" on the card. The
+  owner chose: what the student asks now wins, with a warning; a day Soma
+  picks itself never lands past the due date.
+- **What:** `checkScheduleDay` takes `asked`: when the student's message names
+  that exact day (`namesDate`: "tomorrow", "the day after tomorrow", a weekday
+  in the next 7 days, "11/12", "Nov 12", "the 12th"), an open assignment may
+  land after its due date, flagged "After its due date (…), still open".
+  "Some other day" names no day, so Soma's pick stays bound. Exam prep (never
+  on or after the exam), exams and quizzes, and finished work stay hard.
+- **Where:** `src/lib/{deadlineAnchor,statedTime,assistant}.ts`,
+  `docs/exam-prep-build.md`, `docs/exam-prep-log.md`.
+- **Guard:** `tests/ai-whole-day.spec.ts` › "work moved past its due date says
+  so on the card" (passes again), › "a day Soma picks itself never lands past
+  the due date", › "the day the student names is read exactly";
+  `tests/deadline-anchor.spec.ts` › "a day the student asked for…".
+
 ## 2026-11-10 (exam prep v2 UI review fixes)
 
 - **Why:** a design review of the new screens (23/40; snapshot in
@@ -158,11 +178,9 @@ still needed.
 - **Guard:** `tests/ai-load-limit.spec.ts`.
 - **Note:** previews have no Soma memory: `SOMA_MEMORY_ENABLED` is set for
   Production only in Vercel, so the portrait only shows on somastudy.app.
-- **Still failing on this branch (not from this change):**
+- **Was failing on this branch (not from this change):**
   `tests/ai-whole-day.spec.ts` › "work moved past its due date says so on the
-  card" fails with or without this change. Exam prep v1's deadline anchors
-  changed when that card note appears. Needs a decision before exam prep
-  merges to master.
+  card". Resolved the same day: see "a day you name passes the due date".
 
 ## 2026-11-10 (never send Sonnet 5.5 `thinking`)
 
