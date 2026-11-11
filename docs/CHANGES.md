@@ -9,6 +9,47 @@ still needed.
 
 ---
 
+## 2026-11-10 (exam prep v1: coverage list + priority bar)
+
+- **Why:** the Nov 6 exam study plans felt like random blocks on random days
+  with vague titles, and got reverted the same day. The owner wants long-term
+  exam prep that starts from a braindump and/or uploaded materials, names work
+  concretely, uses a 1–5 priority the AI defaults and they can change, and only
+  places ~today / ~this week onto the real plan (within-day reclaim + compare
+  view come later).
+- **What:**
+  - **Documents → Exam study plans** again: pick an exam, braindump and/or tick
+    files, Soma drafts a concrete list (braindump is source of truth; files
+    confirm) with a Low––––High priority bar per item; approve saves the **full**
+    outline (not trimmed to time left). **Add today** / **Add this week** only
+    schedules the horizon asked for, by priority, with detailed titles
+    (`Calc midterm: Worksheet 3 — do problems 1–12`). "Use braindump as-is"
+    skips the model.
+  - **Hard deadline anchors** (`deadlineAnchor.ts`, no AI): exam prep never on
+    or after the exam (code in `placeBlocks`, Soma propose, and Accept);
+    exam/quiz tasks may land on their due day; assignments may not land after
+    due unless already late and still open (unsubmitted). Bumps that make room
+    also stop at the same last day.
+  - **Soma context:** `exams` + EXAM STUDY PLANS — place by priority; the app
+    enforces the anchors. Prefer lighter loads on quiz-heavy days; cite
+    portrait rhythms; ask about odd calendar days. EXAM PREP defers when a list
+    exists. Exam-task vs study-block matching still stands.
+  - **Storage:** reuses `exam_plans` and `course_items.exam_id` / `study_day` /
+    `minutes`. New optional `priority` (1–5) via `exam_priority_migration.sql`
+    (anchors need no new columns). Reading lists ignore exam rows (`isReading`).
+- **Where:** `src/lib/{examPlan,examPlansStore,deadlineAnchor,courseItems}.ts`,
+  `components/Documents/{ExamPlans,PriorityBar,DocumentsTab}.*`, `assistant.ts`,
+  `exam_priority_migration.sql`.
+- **Guard:** `tests/exam-plans.spec.ts`, `tests/deadline-anchor.spec.ts`.
+  `tests/exam-task-blocks.spec.ts` still covers the exam-task and reading-list
+  leave-alone cases.
+- **Setup:** run `exam_priority_migration.sql` in Supabase once so priorities
+  persist (lists still save without it; priority stays at the app default).
+  `exam_study_migration.sql` must already have been run (it was, 2026-11-06).
+  Deadline anchors work without that SQL.
+
+---
+
 ## 2026-11-10 (Soma remembers like a person)
 
 - **Why:** the owner wants Soma's AI to feel more like Meta's Muse: not more

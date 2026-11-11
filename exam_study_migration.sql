@@ -1,9 +1,8 @@
--- NO LONGER USED. Exam study plans were taken out on 2026-11-06, the day
--- this was run on production. Do not run it again. What it left behind is
--- unused: the exam_plans table, and the exam_id / study_day / minutes columns
--- on course_items. The app skips course_items rows that have an exam_id.
+-- Already run on production (2026-11-06). Do not run it again.
+-- Exam prep v1 (2026-11-10) reuses exam_plans and course_items.exam_id /
+-- study_day / minutes. Add priority with exam_priority_migration.sql.
 --
--- Run this in your Supabase SQL editor:
+-- Original run instructions (historical):
 -- Dashboard → SQL Editor → New query → paste → Run
 --
 -- Exam study plans. One row in exam_plans per exam the student is studying
