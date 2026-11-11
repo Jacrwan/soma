@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
-import { loadCourseItems, saveCourseList, markDone, removeItems, extractItems, type CourseItem, type DraftItem } from '../../lib/courseItems';
+import { loadCourseItems, saveCourseList, markDone, removeItems, extractItems, isReading, type CourseItem, type DraftItem } from '../../lib/courseItems';
 import type { Subject, SomaDocument } from '../../types';
 import docStyles from './DocumentsTab.module.css';
 import styles from './ReadingLists.module.css';
@@ -42,7 +42,7 @@ export default function ReadingLists({ subjects, docs }: { subjects: Subject[]; 
   }, [reload]);
 
   const today = localToday();
-  const courses = subjects.map(s => ({ subject: s, list: items.filter(i => i.subjectId === s.id) })).filter(c => c.list.length);
+  const courses = subjects.map(s => ({ subject: s, list: items.filter(i => i.subjectId === s.id && isReading(i)) })).filter(c => c.list.length);
   const rank = { guide: 0, syllabus: 1, reading: 2 } as Record<string, number>;
   const sources = docs.filter(d => d.subjectId && d.extractedText && d.docType in rank).sort((a, b) => rank[a.docType] - rank[b.docType]);
 

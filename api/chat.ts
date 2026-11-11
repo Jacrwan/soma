@@ -180,9 +180,11 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
     if(i===messages.length-2){const b=blocks(m.content);return {role:m.role,content:b.map((x,j)=>j===b.length-1 ? {...x,cache_control:{type:'ephemeral'}} : x)};}
     return m;
    });
-   // Soma's replies use Sonnet 5.5, thinking at medium effort: Haiku answered
-   // "last week's homework" with the homework done last week. A declined
-   // request falls back to another model rather than failing (beta).
+   // Soma's replies use Sonnet 5.5. Do not send `thinking`: on 5.5,
+   // `between_tools` left the stream open until the 150s timeout (preview
+   // stalled; production, which never sent it, was fine). `disabled` is a 400.
+   // Adaptive thinking (omit the field) + low effort is what production uses.
+   // A declined request falls back rather than failing (beta).
    const sonnet=model==='sonnet';
    const response=await (deps.request??fetch)('https://api.anthropic.com/v1/messages',{
     method:'POST',signal:AbortSignal.timeout(140_000),headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json',...(sonnet ? {'anthropic-beta':'server-side-fallback-2026-07-01'} : {})},

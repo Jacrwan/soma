@@ -22,12 +22,20 @@ export type CourseItem = {
   /** The task currently planned to cover this item. */
   todoId?: string;
   documentId?: string;
+  /** Set when this row belongs to an exam study list (not reading). */
+  examId?: string;
+  /** YYYY-MM-DD the plan last placed this item on, when scheduled. */
+  studyDay?: string;
+  minutes?: number;
+  /** 1 = low … 5 = high. Exam study items only. */
+  priority?: number;
 };
 export type DraftItem = { label: string; title?: string; due?: string; done?: boolean };
 
 const TABLE = 'course_items';
 
 function fromRow(r: Record<string, unknown>): CourseItem {
+  const priority = Number(r.priority);
   return {
     id: String(r.id), subjectId: String(r.subject_id), label: String(r.label ?? ''),
     ...(r.title ? { title: String(r.title) } : {}),
@@ -36,18 +44,26 @@ function fromRow(r: Record<string, unknown>): CourseItem {
     ...(r.done_at ? { doneAt: String(r.done_at) } : {}),
     ...(r.todo_id ? { todoId: String(r.todo_id) } : {}),
     ...(r.document_id ? { documentId: String(r.document_id) } : {}),
+    ...(r.exam_id ? { examId: String(r.exam_id) } : {}),
+    ...(r.study_day ? { studyDay: String(r.study_day).slice(0, 10) } : {}),
+    ...(r.minutes != null && Number.isFinite(Number(r.minutes)) ? { minutes: Number(r.minutes) } : {}),
+    ...(Number.isFinite(priority) && priority >= 1 && priority <= 5 ? { priority } : {}),
   };
 }
 
-const byOrder = (a: CourseItem, b: CourseItem) => a.subjectId.localeCompare(b.subjectId) || a.position - b.position;
+const byOrder = (a: CourseItem, b: CourseItem) => a.subjectId.localeCompare(b.subjectId) || (a.examId ?? '').localeCompare(b.examId ?? '') || a.position - b.position;
 
-/** Every item for this student. Before the table exists this is empty, so
- *  nothing else on the page breaks. */
+/** Reading-list rows only. Exam study items share course_items but are a different list. */
+export const isReading = (i: Pick<CourseItem, 'examId'>) => !i.examId;
+
+export const sameList = (a: Pick<CourseItem, 'subjectId' | 'examId'>, b: Pick<CourseItem, 'subjectId' | 'examId'>) =>
+  a.subjectId === b.subjectId && (a.examId ?? '') === (b.examId ?? '');
+
+/** Every item for this student (reading + exam lists). Before the table exists this is empty. */
 export async function loadCourseItems(userId: string): Promise<CourseItem[]> {
   const { data, error } = await supabase.from(TABLE).select('*').eq('user_id', userId).order('position');
   if (error) return [];
-  // Rows with an exam_id were exam study items (removed 2026-11-06): not reading.
-  return ((data ?? []) as Record<string, unknown>[]).filter(r => !r.exam_id).map(fromRow).sort(byOrder);
+  return ((data ?? []) as Record<string, unknown>[]).map(fromRow).sort(byOrder);
 }
 
 async function patch(userId: string, ids: string[], values: Record<string, unknown>) {
@@ -70,7 +86,8 @@ export const linkItems = (userId: string, ids: string[], todoId: string | null) 
  * doesn't forget what was done.
  */
 export async function saveCourseList(userId: string, subjectId: string, drafts: DraftItem[], documentId?: string) {
-  const previous = (await loadCourseItems(userId)).filter(i => i.subjectId === subjectId);
+  // Only the reading list for this course — never touch exam study rows.
+  const previous = (await loadCourseItems(userId)).filter(i => i.subjectId === subjectId && isReading(i));
   const kept = new Map(previous.map(i => [i.label, i]));
   const rows = drafts.map((d, position) => {
     const old = kept.get(d.label);
@@ -147,7 +164,7 @@ export function courseProgress(items: CourseItem[], subjects: { id: string; name
   const ids = new Map<string, string>();
   const out = [];
   for (const subject of subjects) {
-    const list = items.filter(i => i.subjectId === subject.id).sort(byOrder);
+    const list = items.filter(i => i.subjectId === subject.id && isReading(i)).sort(byOrder);
     if (!list.length) continue;
     const open = list.filter(i => !i.doneAt);
     const lastDone = [...list].reverse().find(i => i.doneAt);
@@ -181,9 +198,9 @@ export function resolveRange(items: CourseItem[], ids: Map<string, string>, firs
   const a = items.find(i => i.id === ids.get(String(first)));
   const b = items.find(i => i.id === ids.get(String(last ?? first)));
   if (!a || !b) return 'it named sections that aren\'t in the reading list';
-  if (a.subjectId !== b.subjectId) return 'one block can only cover one course';
+  if (!sameList(a, b)) return a.examId || b.examId ? 'one block can only cover one list' : 'one block can only cover one course';
   const [lo, hi] = a.position <= b.position ? [a, b] : [b, a];
-  const run = items.filter(i => i.subjectId === a.subjectId && i.position >= lo.position && i.position <= hi.position).sort(byOrder);
+  const run = items.filter(i => sameList(i, a) && i.position >= lo.position && i.position <= hi.position).sort(byOrder);
   if (run.some(i => i.doneAt)) return `${rangeLabel(run)} includes sections already done`;
   return run;
 }

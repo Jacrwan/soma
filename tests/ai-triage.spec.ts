@@ -44,13 +44,13 @@ test('a question goes to Sonnet at low effort, without documents it doesn\'t nee
   expect(String(main.context)).not.toContain('STUDENT DOCUMENTS');
 });
 
-test('planning goes to Sonnet at medium effort, with documents when they matter', async ({ page }) => {
+test('planning goes to Sonnet at low effort, with documents when they matter', async ({ page }) => {
   await setup(page, () => ({ reply: 'Planned.' }), d => { d.documents = [doc]; });
   const calls = await withFirstPass(page, '{"route":"plan","docs":true}');
   await ask(page, "schedule last week's math homework tonight");
   await expect(page.getByRole('log')).toContainText('Planned.');
   const main = calls.find(c => c.purpose !== 'triage')!;
-  expect(main).toMatchObject({ model: 'sonnet', effort: 'medium' });
+  expect(main).toMatchObject({ model: 'sonnet', effort: 'low' });
   // Documents travel with the message, as the passages that match it
   // (docSearch.ts), not in the cached instructions: changed 2026-10-25.
   expect(String(main.context)).toContain('14.3, 14.4, 14.5');
@@ -63,7 +63,7 @@ test('a first pass that can\'t be read sends the message to the full Soma', asyn
   await ask(page, 'move my physics block');
   await expect(page.getByRole('log')).toContainText('Full answer.');
   const main = calls.find(c => c.purpose !== 'triage')!;
-  expect(main).toMatchObject({ effort: 'medium' });
+  expect(main).toMatchObject({ effort: 'low' });
   expect(String(main.context)).toContain('STUDENT DOCUMENTS');
 });
 

@@ -9,6 +9,98 @@ still needed.
 
 ---
 
+## 2026-11-10 (a stalled load before a reply now ends in a retry message)
+
+- **Why:** on the exam-prep preview, "im gonna do the math homework after ruf
+  large group today" got its first pass (logged) and then nothing: the full
+  Soma request never reached the server (Vercel logs show no reply request at
+  all, while the test runs afterwards on the same build were logged and
+  streamed in ~2s). After the first pass the app loads the plan, study
+  history, documents and exam lists; those loads have no time limit, so one
+  that never finished left the message waiting forever with no error. The
+  same loads exist on master, so live could hit it too. It was not the model
+  and not `thinking`: the build that sent `between_tools` answered fine once
+  it was reached.
+- **What:** each load in `askSoma` has a 20s limit (`LOAD_LIMIT_MS`). The plan
+  is required: past the limit the chat says "Soma couldn't load your plan …
+  Nothing was sent; please retry." Study history, documents, settings and exam
+  lists are extras: past the limit the reply goes without them and the console
+  says which one stalled. Exam lists that time out leave the day check to
+  Accept, which loads them again. The Muse-style memory (portrait, open
+  threads) is unchanged.
+- **Where:** `src/lib/assistant.ts`.
+- **Guard:** `tests/ai-load-limit.spec.ts`.
+- **Note:** previews have no Soma memory: `SOMA_MEMORY_ENABLED` is set for
+  Production only in Vercel, so the portrait only shows on somastudy.app.
+- **Still failing on this branch (not from this change):**
+  `tests/ai-whole-day.spec.ts` › "work moved past its due date says so on the
+  card" fails with or without this change. Exam prep v1's deadline anchors
+  changed when that card note appears. Needs a decision before exam prep
+  merges to master.
+
+## 2026-11-10 (never send Sonnet 5.5 `thinking`)
+
+- **Why:** `thinking: { type: 'between_tools' }` was added to make replies
+  start sooner, but the wait was never the model (see the entry above). With
+  thinking off, plans got worse (a reply said "until 11:30" and proposed
+  9:30–11:00). Production, which never sent it, was fine.
+- **What:** `/api/chat` omits `thinking` again (same as production). Dashboard
+  still sends `effort: 'low'`. Do not re-add `between_tools`.
+- **Where:** `api/chat.ts`.
+- **Guard:** `tests/ai-backend.spec.ts` (body has no `thinking` key).
+
+## 2026-11-10 (Soma plan replies: low effort, not medium)
+
+- **Why:** scheduling felt stuck for a minute+ and burned thinking tokens.
+  Plan turns used Sonnet medium effort; the API even allowed ~150s. Exam-prep
+  context made that worse; the real cost was the thinking budget.
+- **What:** dashboard `ask` and `plan` both send `effort: 'low'`. `/api/chat`
+  defaults to low unless the client asks for medium. Exam coverage lists still
+  load only when the message is about an exam.
+- **Where:** `src/lib/assistant.ts`, `api/chat.ts`.
+- **Guard:** `tests/ai-triage.spec.ts`, `tests/ai-backend.spec.ts`.
+
+## 2026-11-10 (exam prep v1: coverage list + priority bar)
+
+- **Why:** the Nov 6 exam study plans felt like random blocks on random days
+  with vague titles, and got reverted the same day. The owner wants long-term
+  exam prep that starts from a braindump and/or uploaded materials, names work
+  concretely, uses a 1–5 priority the AI defaults and they can change, and only
+  places ~today / ~this week onto the real plan (within-day reclaim + compare
+  view come later).
+- **What:**
+  - **Documents → Exam study plans** again: pick an exam, braindump and/or tick
+    files, Soma drafts a concrete list (braindump is source of truth; files
+    confirm) with a Low––––High priority bar per item; approve saves the **full**
+    outline (not trimmed to time left). **Add today** / **Add this week** only
+    schedules the horizon asked for, by priority, with detailed titles
+    (`Calc midterm: Worksheet 3 — do problems 1–12`). "Use braindump as-is"
+    skips the model.
+  - **Hard deadline anchors** (`deadlineAnchor.ts`, no AI): exam prep never on
+    or after the exam (code in `placeBlocks`, Soma propose, and Accept);
+    exam/quiz tasks may land on their due day; assignments may not land after
+    due unless already late and still open (unsubmitted). Bumps that make room
+    also stop at the same last day.
+  - **Soma context:** `exams` + EXAM STUDY PLANS — place by priority; the app
+    enforces the anchors. Prefer lighter loads on quiz-heavy days; cite
+    portrait rhythms; ask about odd calendar days. EXAM PREP defers when a list
+    exists. Exam-task vs study-block matching still stands.
+  - **Storage:** reuses `exam_plans` and `course_items.exam_id` / `study_day` /
+    `minutes`. New optional `priority` (1–5) via `exam_priority_migration.sql`
+    (anchors need no new columns). Reading lists ignore exam rows (`isReading`).
+- **Where:** `src/lib/{examPlan,examPlansStore,deadlineAnchor,courseItems}.ts`,
+  `components/Documents/{ExamPlans,PriorityBar,DocumentsTab}.*`, `assistant.ts`,
+  `exam_priority_migration.sql`.
+- **Guard:** `tests/exam-plans.spec.ts`, `tests/deadline-anchor.spec.ts`.
+  `tests/exam-task-blocks.spec.ts` still covers the exam-task and reading-list
+  leave-alone cases.
+- **Setup:** run `exam_priority_migration.sql` in Supabase once so priorities
+  persist (lists still save without it; priority stays at the app default).
+  `exam_study_migration.sql` must already have been run (it was, 2026-11-06).
+  Deadline anchors work without that SQL.
+
+---
+
 ## 2026-11-10 (Soma remembers like a person)
 
 - **Why:** the owner wants Soma's AI to feel more like Meta's Muse: not more
