@@ -1259,7 +1259,7 @@ export async function applyProposal(userId: string, origin: Date, block: PlanBlo
   if (block.time && block.changeKind !== 'remove' && block.changeKind !== 'complete' && block.changeKind !== 'progress' && !block.done) {
     const plans = await loadExamPlanList(userId);
     const target = block.replaces !== undefined ? fresh.blocks.find(b => b.id === block.replaces) : undefined;
-    const todoId = block.todoId ?? target?.todoId;
+    const todoId = (block as typeof fresh.blocks[number]).todoId ?? target?.todoId;
     const todo = todoId ? fresh.todos.find(t => t.id === todoId) : undefined;
     const coverIds = block.coverIds ?? block.covers?.map(c => c.id) ?? target?.coverIds ?? target?.covers?.map(c => c.id);
     const gate = checkScheduleDay({

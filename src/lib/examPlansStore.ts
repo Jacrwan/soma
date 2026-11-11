@@ -7,7 +7,7 @@ import { readPlan, toneOf, type Snapshot } from '../components/DashboardV2/liveD
 import { getProposals, updateProposals } from './proposalStore';
 import {
   addDays, busyDays, clampPriority, dayKey, placeBlocks, readStudyList, studyListPrompt, weekNote,
-  MAX_DAYS_AHEAD, type ExamPlan, type PlaceHorizon, type StudyDraft,
+  DEFAULT_PRIORITY, MAX_DAYS_AHEAD, type ExamPlan, type PlaceHorizon, type StudyDraft,
 } from './examPlan';
 import type { SomaDocument, Subject } from '../types';
 
