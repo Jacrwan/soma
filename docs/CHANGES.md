@@ -9,6 +9,29 @@ still needed.
 
 ---
 
+## 2026-11-10 (a stalled load before a reply now ends in a retry message)
+
+- **Why:** on the exam-prep preview (branch exam-prep-v1), "im gonna do the
+  math homework after ruf large group today" got its first pass (logged) and then nothing: the full
+  Soma request never reached the server (Vercel logs show no reply request at
+  all, while the test runs afterwards on the same build were logged and
+  streamed in ~2s). After the first pass the app loads the plan, study
+  history and documents; those loads have no time limit, so one
+  that never finished left the message waiting forever with no error. The
+  same loads exist on master, so live could hit it too.
+- **What:** each load in `askSoma` has a 20s limit (`LOAD_LIMIT_MS`). The plan
+  is required: past the limit the chat says "Soma couldn't load your plan …
+  Nothing was sent; please retry." Study history, documents and settings are
+  extras: past the limit the reply goes without them and the console
+  says which one stalled. The Muse-style memory (portrait, open
+  threads) is unchanged.
+- **Where:** `src/lib/assistant.ts`.
+- **Guard:** `tests/ai-load-limit.spec.ts`.
+- **Note:** previews have no Soma memory: `SOMA_MEMORY_ENABLED` is set for
+  Production only in Vercel, so the portrait only shows on somastudy.app.
+
+---
+
 ## 2026-11-10 (Soma remembers like a person)
 
 - **Why:** the owner wants Soma's AI to feel more like Meta's Muse: not more
