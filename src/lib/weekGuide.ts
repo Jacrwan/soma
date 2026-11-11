@@ -25,8 +25,6 @@ const MONTH = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
 /** "Nov 3, 5", "Sept 29, Oct 1", "Oct 13 & 15": a month and day, then more days or month-days. */
 const HEADER = new RegExp(`\\b${MONTH}\\.?\\s+\\d{1,2}(?![\\d.:/])(?:\\s*(?:,|&|and|-|–)\\s*(?:${MONTH}\\.?\\s+)?\\d{1,2}(?![\\d.:/]))*`, 'gi');
-/** A section number: "15.6", "14.3" — not a problem number, a page range or a time. */
-const SECTION = /(?<![\d.])(\d{1,2}\.\d{1,2})(?![\d.]|\s*(?:am|pm)\b)/gi;
 /** Fewer rows than this and it's a syllabus that mentions a few dates, not a guide. */
 const MIN_ROWS = 4;
 
@@ -53,7 +51,8 @@ export function guideRows(text: string, now = new Date()): GuideRow[] {
   const rows: GuideRow[] = [];
   headers.forEach((h, i) => {
     const body = text.slice(h.index! + h[0].length, i + 1 < headers.length ? headers[i + 1].index : text.length);
-    const sections = [...new Set([...body.matchAll(SECTION)].map(m => m[1]))];
+    // Ranges count in full: "11.1 - 11.3" is 11.1, 11.2 and 11.3.
+    const sections = sectionsIn(body.replace(/\s+[-–]\s+/g, '–'));
     const dates = datesOf(h[0], now);
     if (sections.length && dates.length) rows.push({ dates, label: h[0].replace(/\s+/g, ' ').trim(), sections });
   });
@@ -75,10 +74,16 @@ export function mondayOf(d: Date): Date {
   return m;
 }
 
-/** The row whose lectures fall in the week starting `monday`. */
+/**
+ * The week starting `monday`, as one row: a guide with a row per lecture
+ * (Physics: "Nov 3 … 11.1 - 11.3", "Nov 5 … 11.3 - 11.4") is merged, so the
+ * week is "Nov 3 & Nov 5: 11.1, 11.2, 11.3, 11.4", not just its first row.
+ */
 export function rowForWeek(guide: Guide, monday: Date): GuideRow | undefined {
   const end = new Date(monday); end.setDate(end.getDate() + 7);
-  return guide.rows.find(r => r.dates[0] >= monday && r.dates[0] < end);
+  const rows = guide.rows.filter(r => r.dates[0] >= monday && r.dates[0] < end);
+  if (rows.length <= 1) return rows[0];
+  return { dates: rows.flatMap(r => r.dates), label: rows.map(r => r.label).join(' & '), sections: [...new Set(rows.flatMap(r => r.sections))] };
 }
 
 /** The row that lists `section`, first match. */

@@ -9,6 +9,31 @@ still needed.
 
 ---
 
+## 2026-11-10 (routines: per-lecture guides and split habits)
+
+- **Why:** testing on the preview with the owner's account, Physics reading
+  said "always the previous week's set; that's 11.1, 11.3", where the same
+  code had said "same week" earlier. The Physics guide has a row per lecture
+  with ranges written "11.1 - 11.3": only the range ends were read, only a
+  week's first lecture counted, and each week kept one vote, whichever
+  sitting came last.
+- **What:** guide ranges expand ("11.1 - 11.3" is 11.1, 11.2, 11.3); a week
+  with several lecture rows merges them ("Nov 3 & Nov 5: 11.1–11.4"); each
+  week votes once for every gap it shows, and a steady gap must win outright
+  (3+ weeks, 60% of voting weeks, more than any other gap). A tie is no
+  pattern. On the owner's history: Physics reading is now "same week as the
+  lectures" (5 weeks against 3); Math 53 is unchanged (previous week's set,
+  15.6–15.9).
+- **Where:** `src/lib/{weekGuide,routines}.ts`.
+- **Guard:** `tests/routines.spec.ts` › "a guide with a row per lecture…",
+  › "a habit split evenly between two gaps is no week pattern" (both fail on
+  the code before).
+- **Preview check (owner's account):** "im gonna do the math homework after
+  ruf large group today" → Soma suggested renaming the 9:30 PM block to
+  15.6–15.9, "per your Math guide and your usual Tuesday-night routine";
+  "do lab 9 coding agents on thursday afternoon" (due Wednesday) → a Thursday
+  card flagged "After its due date (Wed 2026-11-11), still open".
+
 ## 2026-11-10 (a day you name passes the due date, with a warning)
 
 - **Why:** exam prep v1's deadline anchors refused "do the lab tomorrow" for a

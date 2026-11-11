@@ -129,17 +129,20 @@ export function findRoutines(input: RoutineInput, guides: Guide[], now = new Dat
       .sort((a, b) => a.day - b.day);
     const guide = guides.find(g => g.subjectId === subjectId);
     // Which week's set: the gap seen most, when most of the titled work agrees.
-    // One vote per week, so a set split over two sittings counts once.
-    const votes = new Map<number, number>();
+    // Each week votes once for each gap it showed (a set split over two
+    // sittings counts once). A steady gap wins clearly: in 3+ weeks, 60% of
+    // the weeks that voted, and more weeks than any other gap. The owner's
+    // Physics reading splits evenly between reading ahead and just after; a
+    // tie is no pattern, not whichever came last.
+    const votes = new Map<number, Set<number>>();
     for (const w of guide ? list : []) {
       const lag = lagOf(guide!, w.title, w.at);
-      if (lag !== undefined && lag >= 0 && lag <= 2) votes.set(weekKey(w.at), lag);
+      if (lag !== undefined && lag >= 0 && lag <= 2) votes.set(lag, (votes.get(lag) ?? new Set()).add(weekKey(w.at)));
     }
-    const counts = new Map<number, number>();
-    for (const lag of votes.values()) counts.set(lag, (counts.get(lag) ?? 0) + 1);
-    const [lag, seen] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0] ?? [undefined, 0];
-    const total = votes.size;
-    const steadyLag = lag !== undefined && seen >= MIN_WEEKS && seen * 10 >= total * 6 ? lag : undefined;
+    const ranked = [...votes.entries()].map(([gap, ws]) => ({ gap, n: ws.size })).sort((a, b) => b.n - a.n || a.gap - b.gap);
+    const voting = new Set([...votes.values()].flatMap(ws => [...ws])).size;
+    const [top, second] = ranked;
+    const steadyLag = top && top.n >= MIN_WEEKS && top.n * 10 >= voting * 6 && (!second || top.n > second.n) ? top.gap : undefined;
     if (!slots.length && steadyLag === undefined) continue;
     const next = guide && steadyLag !== undefined ? rowForWeek(guide, new Date(mondayOf(now).getTime() - steadyLag * 7 * DAY_MS)) : undefined;
     out.push({

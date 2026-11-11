@@ -104,3 +104,45 @@ test('a habit that straddles noon, or runs past midnight, is still one day', () 
   const [r] = findRoutines({ history, todos: [], sessions: [] }, [], NOW);
   expect(r.slots).toEqual(['Tue around 01:00', 'Wed around 12:00']);
 });
+
+// A guide with a row per lecture and ranges written "11.1 - 11.3", like the
+// owner's Physics reading guide: the week is both lectures, every section.
+const PER_LECTURE = `Reading Guide, Physics, Fall '26. Topic Book Homework
+Sep 29 Energy & Work 5.1 - 5.4 HW 4
+Oct 6 Potential energy Note 5.2 HW 5
+Oct 8 Angular momentum 7.1 - 7.5
+Oct 13 Midterm 1 - 7.5
+Oct 15 Rotational dynamics 7.6 - 7.9
+Oct 20 Non-inertial frames 8.1 - 8.3
+Oct 27 Central forces 10.1 - 10.4 HW 7
+Oct 29 Planetary motion 10.5
+Nov 3 Linear systems, damped SHM 11.1 - 11.3 HW 8
+Nov 5 Damped & driven SHM 11.3 - 11.4
+Nov 10 Coupled oscillators 6.2 - 6.4 HW 9`;
+
+test('a guide with a row per lecture: ranges expand, and a week merges its lectures', () => {
+  const [guide] = guidesOf([{ id: 'p', fileName: 'ReadingGuide.pdf', subjectId: 'phys', extractedText: PER_LECTURE }], NOW);
+  const lastMonday = new Date(mondayOf(NOW)); lastMonday.setDate(lastMonday.getDate() - 7);
+  const week = rowForWeek(guide, lastMonday)!;
+  expect(week.label).toBe('Nov 3 & Nov 5');
+  expect(week.sections).toEqual(['11.1', '11.2', '11.3', '11.4']);
+  expect(guide.rows.find(r => r.label === 'Oct 8')!.sections).toEqual(['7.1', '7.2', '7.3', '7.4', '7.5']);
+});
+
+test('a habit split evenly between two gaps is no week pattern', () => {
+  const guides = guidesOf([{ id: 'p', fileName: 'ReadingGuide.pdf', subjectId: 'phys', extractedText: PER_LECTURE }], NOW);
+  const done = (text: string, m: number, d: number) => ({ subject_id: 'phys', task_text: text, start_time: new Date(2026, m - 1, d, 13).toISOString(), duration_seconds: 3600 });
+  // Every week: Thursday reads this week's lectures, Friday catches up on
+  // last week's. On the owner's real Physics history the last sitting of a
+  // week used to decide, so the pattern flipped between runs.
+  const history = [
+    done('Physics reading: 7.1–7.2', 10, 8), done('Physics reading: 5.3', 10, 9),
+    done('Physics reading: 7.6–7.9', 10, 15), done('Physics reading: 7.3', 10, 16),
+    done('Physics reading: 10.5', 10, 29), done('Physics reading: 8.2', 10, 30),
+    done('Physics reading: 11.4', 11, 5), done('Physics reading: 10.2', 11, 6),
+  ];
+  const [r] = findRoutines({ history, todos: [], sessions: [] }, guides, NOW);
+  expect(r.slots).toEqual(['Thu around 13:00', 'Fri around 13:00']);
+  expect(r.lag).toBeUndefined();
+  expect(r.next).toBeUndefined();
+});
