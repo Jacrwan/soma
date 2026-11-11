@@ -177,6 +177,75 @@ async function setup(page: Page, reply: (body: Chat) => unknown) {
   return state;
 }
 
+test('manual exam fields align, fit the viewport, and keep actions reachable', async ({ page }, testInfo) => {
+  await setup(page, () => ({}));
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto('/documents');
+  await page.getByRole('button', { name: 'Plan an exam' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Plan an exam' });
+  await dialog.getByRole('combobox').first().selectOption('other');
+  await expect(dialog.getByRole('combobox', { name: /^Course/ })).toHaveValue('calc');
+  const controls = [dialog.getByLabel('Name', { exact: true }), dialog.getByRole('combobox', { name: /^Course/ }), dialog.getByLabel('Date', { exact: true }), dialog.getByLabel('Time (optional)', { exact: true })];
+  const boxes = await Promise.all(controls.map(control => control.boundingBox()));
+  expect(Math.max(...boxes.map(b => b!.y)) - Math.min(...boxes.map(b => b!.y))).toBeLessThan(2);
+  expect(Math.max(...boxes.map(b => b!.height)) - Math.min(...boxes.map(b => b!.height))).toBeLessThan(2);
+  await page.screenshot({ path: testInfo.outputPath('exam-desktop.png'), animations: 'disabled' });
+  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+  await page.screenshot({ path: testInfo.outputPath('exam-dark.png'), animations: 'disabled' });
+  await page.setViewportSize({ width: 390, height: 700 });
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).scrollIntoViewIfNeeded();
+  const modal = (await dialog.boundingBox())!;
+  expect(modal.x).toBeGreaterThanOrEqual(0);
+  expect(modal.x + modal.width).toBeLessThanOrEqual(390);
+  expect(modal.y).toBeGreaterThanOrEqual(0);
+  expect(modal.y + modal.height).toBeLessThanOrEqual(700);
+  expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await expect(dialog.getByRole('button', { name: 'Cancel', exact: true })).toBeInViewport();
+  await page.screenshot({ path: testInfo.outputPath('exam-phone.png'), animations: 'disabled' });
+});
+
+test('an empty course cache reloads from the account, with retry preserving exam details', async ({ page }) => {
+  const state = await setup(page, () => ({}));
+  let available = false;
+  await page.route('https://soma-regression.supabase.co/rest/v1/subjects**', route => route.fulfill(
+    available ? { json: state.db.subjects } : { status: 400, json: { message: 'Could not load courses' } },
+  ));
+  await page.goto('/documents');
+  await page.getByRole('button', { name: 'Plan an exam' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Plan an exam' });
+  await dialog.getByRole('combobox').first().selectOption('other');
+  await dialog.getByLabel('Name', { exact: true }).fill('Midterm 2');
+  await dialog.getByLabel('Date', { exact: true }).fill(dayOff(6));
+  await expect(dialog.getByText('Couldn’t load your courses.')).toBeVisible();
+  available = true;
+  await dialog.getByRole('button', { name: 'Retry courses' }).click();
+  await expect(dialog.getByRole('combobox', { name: /^Course/ })).toHaveValue('calc');
+  await expect(dialog.getByLabel('Name', { exact: true })).toHaveValue('Midterm 2');
+  await expect(dialog.getByLabel('Date', { exact: true })).toHaveValue(dayOff(6));
+  await expect(dialog.getByRole('button', { name: 'Make my study checklist' })).toBeEnabled();
+});
+
+test('course loading is distinct from an account with no active courses', async ({ page }) => {
+  const state = await setup(page, () => ({}));
+  state.db.subjects = [];
+  await page.goto('/documents');
+  await expect(page.getByRole('button', { name: 'Plan an exam' })).toBeEnabled();
+  const release: (() => Promise<void>)[] = [];
+  await page.route('https://soma-regression.supabase.co/rest/v1/subjects**', route => {
+    release.push(() => route.fulfill({ json: [] }));
+  });
+  await page.getByRole('button', { name: 'Plan an exam' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Plan an exam' });
+  await dialog.getByRole('combobox').first().selectOption('other');
+  await expect(dialog.getByRole('status')).toHaveText('Loading your courses…');
+  await expect(dialog.getByRole('combobox', { name: /^Course/ })).toBeDisabled();
+  await expect.poll(() => release.length).toBeGreaterThan(0);
+  await Promise.all(release.map(respond => respond()));
+  await expect(dialog.getByRole('status')).toContainText('No active courses.');
+  await expect(dialog.getByRole('link', { name: 'Settings → Courses' })).toHaveAttribute('href', '/settings');
+  await expect(dialog.getByRole('button', { name: 'Make my study checklist' })).toBeDisabled();
+});
+
 test('Documents: braindump + files → approve list with priorities → Add this week', async ({ page }) => {
   const state = await setup(page, () => ({
     note: 'Followed your braindump; confirmed Worksheet 3 from the PDF.',

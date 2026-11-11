@@ -9,6 +9,36 @@ still needed.
 
 ---
 
+## 2026-11-10 (exam planner form alignment and course recovery)
+
+- **Exam details:** Name, Course, Date and Time use equal-height inputs and
+  aligned captions; “Time (optional)” stays on one line. The form switches to
+  two columns on smaller screens, with full-width name/course fields on phones.
+  The modal scrolls within the viewport so its actions remain reachable.
+- **Less clutter:** shortened the explanation, grouped Cancel and checklist
+  actions in a footer, and removed inherited bold styling from the braindump.
+- **Courses:** an empty auth-time cache now triggers a scoped account reload
+  when the planner opens. Loading, a failed request (with Retry courses), and
+  an account with no active courses are separate states. Retry preserves the
+  exam details. A stalled request offers retry after ten seconds.
+- **Where:** `Documents/ExamPlans.tsx` and `ExamPlans.module.css`.
+- **Guard:** `tests/exam-plans.spec.ts`: field alignment/phone bounds,
+  failed course load and retry, loading versus an empty account. The original
+  alignment check failed with a 21.5px offset; the original cache-only picker
+  could not recover from a failed initial load.
+- **Visual check:** 1280×720 light/dark and 390px phone screenshots with
+  synthetic account data. No schema changes or setup required.
+- **Test stability:** `ai-proposal-reliability.spec.ts` now fixes its browser
+  clock to noon for the seven-day free-slot assertion. After study hours,
+  today correctly has no slots and only six dates appear. That existing failure
+  was reproduced on an isolated copy of `fd29247`; assertions remain unchanged.
+- **Verification:** production build passed. All 19 affected exam/checklist
+  checks passed. The full suite passed 762 checks with 8 skipped and the
+  clock-dependent failure above; `npm test -- --last-failed` passed that check
+  after fixing its clock (763 checks verified in total).
+
+---
+
 ## 2026-11-10 (finish the UI pass: priority dragging, phone alignment, and Rebuild sync)
 
 - **Priority slider:** one green-to-red track with a knob and visible priority

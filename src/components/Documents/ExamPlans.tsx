@@ -199,6 +199,8 @@ function Builder({ userId, subjects: subjectsProp, docs, items, preset, onClose,
     const fromProp = subjectsProp.filter(s => !s.archived);
     return fromProp.length ? fromProp : storage.getSubjects().filter(s => !s.archived);
   });
+  const [courseStatus, setCourseStatus] = useState<'loading' | 'ready' | 'error'>(courses.length ? 'ready' : 'loading');
+  const [courseAttempt, setCourseAttempt] = useState(0);
   useEffect(() => {
     const sync = () => setCourses(prev => {
       const next = storage.getSubjects().filter(s => !s.archived);
@@ -210,6 +212,22 @@ function Builder({ userId, subjects: subjectsProp, docs, items, preset, onClose,
     window.addEventListener('soma_subjects_changed', sync);
     return () => window.removeEventListener('soma_subjects_changed', sync);
   }, [subjectsProp]);
+  // The auth-time cache can be empty after a failed request. Opening the
+  // planner should recover without requiring a full-page refresh.
+  useEffect(() => {
+    if (courses.length) return;
+    let live = true;
+    setCourseStatus('loading');
+    const timeout = window.setTimeout(() => { if (live) setCourseStatus('error'); }, 10_000);
+    void storage.fetchSubjects().then(subjects => {
+      if (!live) return;
+      setCourses(subjects.filter(s => !s.archived));
+      setCourseStatus('ready');
+      window.dispatchEvent(new Event('soma_subjects_changed'));
+    }).catch(() => { if (live) setCourseStatus('error'); })
+      .finally(() => window.clearTimeout(timeout));
+    return () => { live = false; window.clearTimeout(timeout); };
+  }, [courses.length, courseAttempt]);
 
   const choices = examChoices(storage.getTodos(), today);
   const [choice, setChoice] = useState<string>(preset ? 'preset' : choices[0]?.id ?? 'other');
@@ -258,9 +276,9 @@ function Builder({ userId, subjects: subjectsProp, docs, items, preset, onClose,
   const tooFar = !!exam && exam.date > addDays(today, MAX_DAYS_AHEAD);
   const tooSoon = !!exam && exam.date <= today;
   const canMake = !!exam && !!course && !tooSoon && !tooFar && !busy;
-  const whyDisabled = !exam
+  const whyDisabled = !courses.length ? '' : !exam
     ? (choice === 'other'
-      ? (!other.title.trim() ? 'Add a name.' : !other.subjectId ? (courses.length ? 'Pick a course.' : 'No courses loaded yet — wait a moment or refresh.') : !other.date ? 'Pick a date.' : 'Finish the exam details.')
+      ? (!other.title.trim() ? 'Add an exam name to continue.' : !other.subjectId ? (courses.length ? 'Pick a course.' : '') : !other.date ? 'Pick an exam date to continue.' : 'Finish the exam details.')
       : 'Pick an exam.')
     : !course ? 'Pick which course this exam is for.'
     : tooSoon ? 'Pick an exam after today.'
@@ -376,6 +394,7 @@ function Builder({ userId, subjects: subjectsProp, docs, items, preset, onClose,
         <span id="exam-builder-title" className={docStyles.modalTitle}>{preset ? `Rebuild the list for ${preset.title}` : 'Plan an exam'}</span>
         {!rows ? (
           <>
+            <p className={styles.note}>Add what you need to study. Review your checklist before placing it on your plan.</p>
             {!preset && (
               <label className={docStyles.modalLabel}>
                 Exam
@@ -387,19 +406,24 @@ function Builder({ userId, subjects: subjectsProp, docs, items, preset, onClose,
             )}
             {!preset && choice === 'other' && (
               <div className={styles.otherExam}>
-                <label className={docStyles.modalLabel}>Name<input className={docStyles.modalTextInput} value={other.title} maxLength={120} placeholder="Midterm 2" onChange={e => setOther(o => ({ ...o, title: e.target.value }))} /></label>
-                <label className={docStyles.modalLabel}>Course
-                  <select className={docStyles.modalSelect} value={other.subjectId} onChange={e => { setOther(o => ({ ...o, subjectId: e.target.value })); setPicked(null); }}>
-                    {!courses.length && <option value="">No courses yet</option>}
+                <label className={docStyles.modalLabel}><span className={styles.fieldCaption}>Name</span><input className={docStyles.modalTextInput} value={other.title} maxLength={120} placeholder="Midterm 2" onChange={e => setOther(o => ({ ...o, title: e.target.value }))} /></label>
+                <label className={docStyles.modalLabel}><span className={styles.fieldCaption}>Course</span>
+                  <select className={docStyles.modalSelect} value={other.subjectId} disabled={!courses.length} onChange={e => { setOther(o => ({ ...o, subjectId: e.target.value })); setPicked(null); }}>
+                    {!courses.length && <option value="">{courseStatus === 'loading' ? 'Loading courses…' : courseStatus === 'error' ? 'Courses unavailable' : 'No active courses'}</option>}
                     {courses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </label>
-                <label className={docStyles.modalLabel}>Date<input className={docStyles.modalTextInput} type="date" min={addDays(today, 1)} max={addDays(today, MAX_DAYS_AHEAD)} value={other.date} onChange={e => setOther(o => ({ ...o, date: e.target.value }))} /></label>
-                <label className={docStyles.modalLabel}>Time <span className={styles.optional}>(optional)</span>
+                <label className={docStyles.modalLabel}><span className={styles.fieldCaption}>Date</span><input className={docStyles.modalTextInput} type="date" min={addDays(today, 1)} max={addDays(today, MAX_DAYS_AHEAD)} value={other.date} onChange={e => setOther(o => ({ ...o, date: e.target.value }))} /></label>
+                <label className={docStyles.modalLabel}><span className={styles.fieldCaption}>Time <span className={styles.optional}>(optional)</span></span>
                   <input className={docStyles.modalTextInput} type="time" value={other.time ?? ''} onChange={e => setOther(o => ({ ...o, time: e.target.value }))} />
                 </label>
               </div>
             )}
+            {!courses.length && <p className={styles.note} role="status">
+              {courseStatus === 'loading' ? 'Loading your courses…' : courseStatus === 'error'
+                ? <>Couldn’t load your courses. <button type="button" className={styles.linkish} onClick={() => setCourseAttempt(n => n + 1)}>Retry courses</button></>
+                : <>No active courses. Add one in <Link to="/settings">Settings → Courses</Link>, then return here.</>}
+            </p>}
             {needsCoursePick && (
               <label className={docStyles.modalLabel}>
                 Course for this exam
@@ -431,17 +455,16 @@ function Builder({ userId, subjects: subjectsProp, docs, items, preset, onClose,
                   ))}
                 </fieldset>
               </>
-            ) : choice === 'other' ? (
-              <p className={list.note}>Pick a course (and date) to add a braindump or drop files.</p>
             ) : null}
-            <p className={styles.hint}><strong>Make my study checklist</strong> turns your braindump and files into concrete items (what to do, how long, priority). You edit that checklist next, then place today or this week on your plan.</p>
             {tooSoon && <span className={docStyles.modalError}>Pick an exam after today.</span>}
             {tooFar && <span className={docStyles.modalError}>Pick an exam in the next {MAX_DAYS_AHEAD} days.</span>}
             {error && <span role="alert" className={docStyles.modalError}>{error}</span>}
             {!canMake && whyDisabled && !error && <span className={styles.hintMute}>{whyDisabled}</span>}
-            <button type="button" className={docStyles.modalUploadBtn} onClick={() => void make()} disabled={!canMake}>{busy === 'reading' ? 'Reading…' : 'Make my study checklist'}</button>
-            {!!braindump.trim() && <button type="button" className={styles.secondary} onClick={useBraindumpOnly} disabled={!!busy || tooSoon || tooFar || !exam || !course}>Use braindump as-is</button>}
-            <button type="button" className={docStyles.modalCancelBtn} onClick={onClose} disabled={!!busy}>Cancel</button>
+            <div className={styles.builderActions}>
+              <button type="button" className={styles.quiet} onClick={onClose} disabled={!!busy}>Cancel</button>
+              {!!braindump.trim() && <button type="button" className={styles.secondary} onClick={useBraindumpOnly} disabled={!!busy || tooSoon || tooFar || !exam || !course}>Use braindump as-is</button>}
+              <button type="button" className={styles.primary} onClick={() => void make()} disabled={!canMake}>{busy === 'reading' ? 'Reading…' : 'Make my study checklist'}</button>
+            </div>
           </>
         ) : (
           <>
