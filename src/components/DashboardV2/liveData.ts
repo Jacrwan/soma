@@ -108,6 +108,7 @@ export async function readPlan(userId:string,origin:Date,startDay=0,days=7):Prom
   const covered=coveredBy(items,block.todoId);
   if(covered.length)block.covers=covered.map(i=>({id:i.id,label:i.label,...(i.doneAt ? {done:true} : {})}));
   const examItems=covered.filter(i=>i.examId && !i.doneAt);
+  if(examItems.length)block.examPlanId=examItems[0].examId;
   if(examItems.length)block.priority=Math.max(...examItems.map(i=>i.priority??3));
   const endsAt=block.time ? dateAt(origin,block.day).getTime()+rangeOf(block.time)[1]*60000 : dateAt(origin,block.day+1).getTime();
   if(endsAt<=now)block.ended=true;

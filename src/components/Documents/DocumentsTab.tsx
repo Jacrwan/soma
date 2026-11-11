@@ -311,7 +311,7 @@ export default function DocumentsTab() {
       </div>
 
       <ReadingLists subjects={subjects} docs={docs} />
-      <ExamPlans subjects={subjects} docs={docs} onDocsChange={() => { void listDocuments().then(setDocs).catch(() => {}); }} />
+      <ExamPlans subjects={subjects} docs={docs} onDocsChange={async () => setDocs(await listDocuments())} />
 
       {reading && (
         <CourseSiteImport

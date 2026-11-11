@@ -1309,7 +1309,9 @@ export async function applyProposal(userId: string, origin: Date, block: PlanBlo
     const first = getProposals(userId).find(p => p.id === id);
     if (first) try { await applyProposal(userId, origin, { ...first, state: 'Planned' }, { seen }); } catch { /* reported below */ }
   }
-  const plan = await readPlan(userId, origin, -7, 14);
+  const startDay = block.examPlanId ? Math.min(-7, block.base?.day ?? -7) : -7;
+  const endDay = block.examPlanId ? Math.max(7, block.day+1) : 7;
+  const plan = await readPlan(userId, origin, startDay, endDay-startDay);
   // A change to a task with no block yet acts on that task (see taskBlocks).
   const fresh: Snapshot = { ...plan, blocks: [...plan.blocks, ...taskBlocks(plan)] };
   // Hard deadline anchors: reject Accept if the day is past the exam/due gate.

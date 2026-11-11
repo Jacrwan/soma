@@ -7,7 +7,7 @@ import { readPlan, toneOf, type Snapshot } from '../components/DashboardV2/liveD
 import { getProposals, updateProposals } from './proposalStore';
 import {
   addDays, busyDays, clampPriority, dayKey, placeBlocks, readStudyList, studyListPrompt, weekNote,
-  DEFAULT_PRIORITY, MAX_DAYS_AHEAD, type ExamPlan, type PlaceHorizon, type StudyDraft,
+  DEFAULT_PRIORITY, MAX_DAYS_AHEAD, MAX_ITEM_MINUTES, type ExamPlan, type PlaceHorizon, type StudyDraft,
 } from './examPlan';
 import type { SomaDocument, Subject } from '../types';
 
@@ -72,8 +72,8 @@ export async function saveExamPlan(userId: string, exam: ExamPlan, drafts: Study
       exam_id: exam.id,
       label: d.label.slice(0, 40),
       title: d.detail?.slice(0, 120) || null,
-      position,
-      minutes: Math.min(600, Math.max(5, Math.round(d.minutes))),
+      position, due_date: d.due ?? old?.due ?? null,
+      minutes: Math.min(MAX_ITEM_MINUTES, Math.max(5, Math.round(d.minutes))),
       priority: clampPriority(d.priority),
       study_day: old?.studyDay ?? null,
       done_at: old?.doneAt ?? null,
@@ -198,12 +198,13 @@ export async function scheduleHorizon(
   const origin = new Date();
   const { snapshot, busy } = await snapshotFor(userId, exam, days);
   const mine = (p: { examPlanId?: string; note?: string }) => fromExam(p, exam);
-  const waiting = getProposals(userId).filter(p => p.time && p.replaces === undefined && !mine(p)) as unknown as Snapshot['blocks'];
+  if (snapshot.calendarError) throw new Error(snapshot.calendarError);
+  const waiting = getProposals(userId).filter(p => p.time && p.replaces === undefined && (!mine(p) || p.pinned)) as unknown as Snapshot['blocks'];
   const { blocks, missing, placed } = placeBlocks(
-    exam, items, { ...snapshot, blocks: [...snapshot.blocks, ...waiting] }, origin,
+    exam, items.filter(i=>!waiting.some(p=>p.coverIds?.includes(i.id))), { ...snapshot, blocks: [...snapshot.blocks, ...waiting] }, origin,
     storage.getSomaSettings(), { name: subject.name, color: toneOf(subject.color) }, horizon, busy,
   );
-  updateProposals(userId, list => [...list.filter(p => !mine(p)), ...blocks]);
+  updateProposals(userId, list => [...list.filter(p => !mine(p) || p.pinned), ...blocks]);
   // Persist which day we placed each item on (best-effort; ignore if column missing).
   const byDay = new Map<string, string[]>();
   for (const [id, day] of placed) byDay.set(day, [...(byDay.get(day) ?? []), id]);
