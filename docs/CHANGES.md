@@ -9,6 +9,21 @@ still needed.
 
 ---
 
+## 2026-11-11 (exam suggestions saved before exam ids still match their exam)
+
+- **Why:** the six-bug pass matched pending exam suggestions only by
+  `examPlanId`. Suggestions already waiting in a browser from before that
+  change carry only the "Exam plan · <title>" note, so Rebuild/Add today would
+  duplicate them and removing the exam would leave them behind.
+- **What:** `fromExam` in `examPlansStore.ts`: a suggestion with an id matches
+  by id only (same-title exams stay separate); one without an id falls back
+  to the title note.
+- **Guard:** `tests/branch-regressions.spec.ts` › "suggestions saved before
+  exam ids still belong to their exam" (fails without the fallback). Full
+  suite: 772 passed, 8 skipped; build passes.
+
+---
+
 ## 2026-11-11 (fix six bugs found in the exam-prep branch review)
 
 - **Request:** review the branch additions, then fix the six reproduced bugs.

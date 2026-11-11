@@ -163,3 +163,24 @@ test('finishing during a calendar outage marks the task done without shifting ot
   expect(db.todo_sessions.find(s => s.id === 's-next')!.start_time).toBe(at('10:00'));
   expect(db.todo_sessions.find(s => s.id === 's-read')!.end_time).toBe(at('10:00'));
 });
+
+// Suggestions saved before exam ids (2026-11-11) only carry the title note:
+// removing the exam still clears them, and an id'd one from another exam with
+// the same title stays.
+test('suggestions saved before exam ids still belong to their exam', async ({ page }) => {
+  await setup(page, () => ({ reply: 'ok' }), d => { d.course_items = []; }, '08:00');
+  const left = await page.evaluate(async ({ user, tomorrow }) => {
+    const { storage } = await import('/src/lib/storage.ts');
+    const { deleteExamPlan } = await import('/src/lib/examPlansStore.ts');
+    const { getProposals, updateProposals } = await import('/src/lib/proposalStore.ts');
+    await storage.whenTokensLoaded();
+    const block = (id: string, extra: Record<string, unknown>) => ({ id, title: 'Practice exam', subject: 'Physics 5A', time: '09:00–10:00', minutes: 60, color: 'purple', state: 'Proposal', day: 0, ...extra });
+    updateProposals(user, () => [
+      block('old', { note: 'Exam plan · Physics final · Mon Dec 15 · p5' }) as never,
+      block('other', { note: 'Exam plan · Physics final · Mon Dec 15 · p5', examPlanId: 'e9' }) as never,
+    ]);
+    await deleteExamPlan(user, { id: 'e1', subjectId: 'phys', title: 'Physics final', examDate: tomorrow });
+    return getProposals(user).map(p => p.id);
+  }, { user, tomorrow });
+  expect(left).toEqual(['other']);
+});

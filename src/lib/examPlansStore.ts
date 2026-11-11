@@ -6,7 +6,7 @@ import { loadCourseItems, isReading, type CourseItem } from './courseItems';
 import { readPlan, toneOf, type Snapshot } from '../components/DashboardV2/liveData';
 import { getProposals, updateProposals } from './proposalStore';
 import {
-  addDays, busyDays, clampPriority, dayKey, placeBlocks, readStudyList, studyListPrompt,
+  addDays, busyDays, clampPriority, dayKey, placeBlocks, readStudyList, studyListPrompt, weekNote,
   DEFAULT_PRIORITY, MAX_DAYS_AHEAD, type ExamPlan, type PlaceHorizon, type StudyDraft,
 } from './examPlan';
 import type { SomaDocument, Subject } from '../types';
@@ -112,11 +112,21 @@ export async function setItemPriority(userId: string, id: string, priority: numb
   changed();
 }
 
+/**
+ * A suggestion made from this exam's checklist. Matched by exam id; titles
+ * aren't unique. Suggestions saved before ids were added (2026-11-11) have
+ * only the "Exam plan · <title>" note, so those still match by it, or a
+ * rebuild would duplicate them and removing the exam would leave them behind.
+ */
+function fromExam(p: { examPlanId?: string; note?: string }, exam: ExamPlan) {
+  return p.examPlanId ? p.examPlanId === exam.id : !!p.note?.startsWith(`${weekNote(exam)} · `);
+}
+
 export async function deleteExamPlan(userId: string, exam: ExamPlan): Promise<void> {
   const { error: itemsError } = await supabase.from('course_items').delete().eq('user_id', userId).eq('exam_id', exam.id);
   const { error } = await supabase.from('exam_plans').delete().eq('user_id', userId).eq('id', exam.id);
   if (error || itemsError) throw new Error('Could not remove this plan. Please retry.');
-  updateProposals(userId, items => items.filter(p => p.examPlanId !== exam.id));
+  updateProposals(userId, items => items.filter(p => !fromExam(p, exam)));
   changed();
 }
 
@@ -187,7 +197,7 @@ export async function scheduleHorizon(
   const days = horizon === 'today' ? 1 : 7;
   const origin = new Date();
   const { snapshot, busy } = await snapshotFor(userId, exam, days);
-  const mine = (p: { examPlanId?: string }) => p.examPlanId === exam.id;
+  const mine = (p: { examPlanId?: string; note?: string }) => fromExam(p, exam);
   const waiting = getProposals(userId).filter(p => p.time && p.replaces === undefined && !mine(p)) as unknown as Snapshot['blocks'];
   const { blocks, missing, placed } = placeBlocks(
     exam, items, { ...snapshot, blocks: [...snapshot.blocks, ...waiting] }, origin,
