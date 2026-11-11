@@ -255,13 +255,14 @@ export function examLines(
     const short = (i: CourseItem) => { const id = `i${ids.size + 1}`; ids.set(id, i.id); return id; };
     const line = (i: CourseItem) =>
       `${short(i)} ${i.label}${i.title ? ` (${i.title})` : ''} · ${i.minutes ?? 45}m · p${i.priority ?? DEFAULT_PRIORITY}${i.todoId && (!upcoming || upcoming.has(i.todoId)) ? ' · planned' : ''}`;
-    const open = list.filter(i => !i.doneAt).slice(0, 16).map(line);
+    // Top leftovers only — full lists live on Documents; don't blow the prompt.
+    const open = list.filter(i => !i.doneAt).slice(0, 8).map(line);
     return {
       exam: `${p.title} · ${subjects.find(s => s.id === p.subjectId)?.name ?? 'Course'} · ${weekdayOf(p.examDate)} ${p.examDate}${p.examTime ? ` ${p.examTime}` : ''}`,
       progress: `${done} of ${list.length} done`,
-      priority: '1 low … 5 high; student override sticks; place higher first',
       before: examPrepLastDay(p.examDate) ?? addDays(p.examDate, -1),
       ...(open.length ? { open } : {}),
+      ...(list.filter(i => !i.doneAt).length > 8 ? { more: list.filter(i => !i.doneAt).length - 8 } : {}),
     };
   });
 }

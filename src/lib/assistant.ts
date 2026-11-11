@@ -61,9 +61,7 @@ AGENT ACTIONS: you can get things ready for the student to do in their own apps,
 
 PRIORITIES: when the student asks what to do first, or there isn't time for everything, weigh what each piece is worth (worth flags; CANVAS ASSIGNMENTS give points and group weights; CURRENT COURSE GRADES give where they stand) against how soon it's due and how long it takes. Due soonest still goes first unless something worth far more would otherwise be late or rushed; work worth little can wait or shrink before work worth a lot. A course where their grade is lowest deserves the benefit of the doubt. Give the reason in a few words, e.g. "HW 6 first: homework is 20% of MATH 221; the check-in is 2%". Never invent a weight that isn't in the data.
 
-EXAM PREP: when the student asks to prepare for an exam, plan review across the days before it, never after it starts: several shorter sessions spread out rather than one long one (3–6, more for a bigger exam or more material, longer as the exam gets close), finishing the day before unless they say otherwise. Cover the course's open items up to the exam first (reading not done yet, from courses), then review and practice; title them "Review: …" and "Practice: …" with the sections or topics named. If the exam's date, time or coverage isn't in the data or the message, ask for it in "reply" instead of guessing. One block per session, each with its own date. An exam listed in exams already has a coverage list: follow EXAM STUDY PLANS instead.
-
-EXAM STUDY PLANS: exams lists each exam the student approved a coverage list for: progress, open items with short ids and priority p1–p5 (5 is highest; the student's override sticks), and before (the last day work may land — the day before the exam). When planning that exam or that course for ~today or ~this week, place open items by priority (highest first), one block per sitting of up to two hours, titled "<exam>: <label> — <detail>" when there is a detail (e.g. "Calc midterm: Worksheet 3 — do problems 1–12"), covers set to the first and last item ids of the run, minutes their total. Items marked planned are already in a block: don't plan them again. Never place, move or push any block for that exam onto the exam's date or after it — the app enforces this in code; if asked to push past it, say so and offer the latest day before. The same code refuses to schedule an assignment after its due date unless that assignment is already late and still open (not submitted). Prefer lighter loads on days that usually fill with other quizzes (STUDENT PORTRAIT rhythms, other exam/quiz tasks due that day or the next); don't make blunt assumptions — cite one fact when it changes the plan, and ask once about odd calendar days (holidays) rather than inventing catch-up or chill. Don't invent coverage that isn't in exams or their message. The list itself is edited on Documents → Exam study plans: say so if they want different items or priorities.
+EXAM PREP: when the student asks to prepare for an exam, plan review across the days before it, never after it starts: several shorter sessions (3–6), finishing the day before unless they say otherwise. Cover open course items first, then review/practice; title "Review: …" / "Practice: …" with topics named. Ask in "reply" if date or coverage is missing. If CONTEXT has exams, use that coverage list (priority p5 first; title "<exam>: <label> — <detail>"; covers = item ids) instead of inventing work. The app blocks placing exam prep on/after the exam and assignments after due unless already late and open — don't fight that.
 
 ESTIMATING: size new work from history. Prefer the real minutes of similar past tasks (same subject, same kind of work); otherwise the subject's avg session; then adjust by the subject's bias (positive means they usually run over their estimates). Say the basis in a few words, e.g. "~50 min, your last two problem sets took 45–55". With no history, make a normal estimate and say it's a guess.
 
@@ -275,10 +273,14 @@ export async function askSoma(opts: {
   // A reply plans the next seven days. A 30-day view (2026-11-05) made a
   // month of vague blocks at once; the owner had it taken out the same day.
   const horizon = 7, maxBlocks = MAX_BLOCKS;
+  // Exam coverage lists are only loaded when the message is about an exam /
+  // midterm / final / quiz prep — not on every "plan my afternoon" (tokens).
+  const wantsExamCtx = /\b(exam|midterm|final|quiz|test prep|study plan|coverage)\b/i.test(text)
+    || /\bplan (review|for )?(my |the )?(midterm|final|exam|quiz)\b/i.test(text);
   const [fresh, history, examPlans] = await Promise.all([
     readPlan(userId, origin, -7, 7 + horizon),
     readHistory(userId),
-    loadExamPlanList(userId),
+    wantsExamCtx ? loadExamPlanList(userId) : Promise.resolve([] as Awaited<ReturnType<typeof loadExamPlanList>>),
     storage.whenTokensLoaded(),
     listDocuments().catch(() => {}),
   ]);

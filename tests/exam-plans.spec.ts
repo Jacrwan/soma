@@ -205,14 +205,14 @@ test('Documents: braindump + files → approve list with priorities → Add this
   await expect(page.getByText(/waiting on your plan/i)).toBeVisible();
 });
 
-test('Soma sees exams in context and EXAM STUDY PLANS in the prompt', async ({ page }) => {
+test('Soma sees exams in context only when the message is about an exam', async ({ page }) => {
   const state = await setup(page, () => ({ reply: 'Planned from your list.', blocks: [] }));
   state.db.exam_plans.push({ id: 'exam-1', user_id: account.id, subject_id: 'calc', title: 'Calc midterm', exam_date: dayOff(6), todo_id: 't-exam' });
   state.db.course_items.push({ id: 'e1', user_id: account.id, subject_id: 'calc', exam_id: 'exam-1', label: 'Worksheet 3', title: 'do problems 1–12', position: 0, minutes: 45, priority: 5, done_at: null });
   await page.goto('/dashboard');
   await page.getByLabel('What do you need to work on?').fill('plan calc midterm study');
   await page.getByRole('button', { name: 'Send to Soma' }).click();
-  await expect.poll(() => state.chats.some(c => typeof c.systemPrompt === 'string' && c.systemPrompt.includes('EXAM STUDY PLANS'))).toBe(true);
-  const planChat = state.chats.find(c => typeof c.systemPrompt === 'string' && c.systemPrompt.includes('EXAM STUDY PLANS'));
+  await expect.poll(() => state.chats.some(c => typeof c.systemPrompt === 'string' && c.systemPrompt.includes('coverage list'))).toBe(true);
+  const planChat = state.chats.find(c => typeof c.systemPrompt === 'string' && /"exams"|Worksheet 3/.test(JSON.stringify(c)));
   expect(JSON.stringify(planChat)).toMatch(/Worksheet 3/);
 });
