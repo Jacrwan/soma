@@ -31,7 +31,7 @@ test('Soma\'s requests go to Sonnet 5.5 at low effort with a refusal fallback',a
  const {result,res}=response();
  await createChatHandler({...deps,memory:async()=>'',defer:()=>{},request:async(_url:string,init:{headers:Record<string,string>;body:string})=>{sent={headers:init.headers,body:JSON.parse(init.body)};return Response.json({content:[{type:'thinking',thinking:''},{type:'text',text:'{"reply":"ok"}'}],stop_reason:'end_turn'});}} as never)({method:'POST',headers:{authorization:'Bearer test'},body:{...body,model:'sonnet'}},res);
  expect(result.status).toBe(200);
- expect(sent!.body).toMatchObject({model:'claude-sonnet-5-5',max_tokens:16000,output_config:{effort:'low'},fallbacks:'default'});
+ expect(sent!.body).toMatchObject({model:'claude-sonnet-5-5',max_tokens:16000,thinking:{type:'between_tools'},output_config:{effort:'low'},fallbacks:'default'});
  expect(sent!.headers['anthropic-beta']).toBe('server-side-fallback-2026-07-01');
 });
 test('medium effort is still sent when the client asks for it',async()=>{
@@ -39,7 +39,7 @@ test('medium effort is still sent when the client asks for it',async()=>{
  const {result,res}=response();
  await createChatHandler({...deps,memory:async()=>'',defer:()=>{},request:async(_url:string,init:{body:string})=>{sent={body:JSON.parse(init.body)};return Response.json({content:[{type:'text',text:'{"reply":"ok"}'}],stop_reason:'end_turn'});}} as never)({method:'POST',headers:{authorization:'Bearer test'},body:{...body,model:'sonnet',effort:'medium'}},res);
  expect(result.status).toBe(200);
- expect(sent!.body).toMatchObject({output_config:{effort:'medium'}});
+ expect(sent!.body).toMatchObject({thinking:{type:'between_tools'},output_config:{effort:'medium'}});
 });
 
 // Real cost per student (2026-10-06): every billed reply is counted, numbers only.
