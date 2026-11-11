@@ -9,12 +9,41 @@ still needed.
 
 ---
 
-## 2026-11-10 (preview stall: never send Sonnet 5.5 `thinking`)
+## 2026-11-10 (a stalled load before a reply now ends in a retry message)
 
-- **Why:** production (no `thinking` field) answered "do the math homework
-  after ruf large group today" fine; the exam-prep preview hung on the same
-  message. `thinking: { type: 'between_tools' }` left the Anthropic stream
-  open until the 150s timeout — "Soma is thinking…" with no text.
+- **Why:** on the exam-prep preview, "im gonna do the math homework after ruf
+  large group today" got its first pass (logged) and then nothing: the full
+  Soma request never reached the server (Vercel logs show no reply request at
+  all, while the test runs afterwards on the same build were logged and
+  streamed in ~2s). After the first pass the app loads the plan, study
+  history, documents and exam lists; those loads have no time limit, so one
+  that never finished left the message waiting forever with no error. The
+  same loads exist on master, so live could hit it too. It was not the model
+  and not `thinking`: the build that sent `between_tools` answered fine once
+  it was reached.
+- **What:** each load in `askSoma` has a 20s limit (`LOAD_LIMIT_MS`). The plan
+  is required: past the limit the chat says "Soma couldn't load your plan …
+  Nothing was sent; please retry." Study history, documents, settings and exam
+  lists are extras: past the limit the reply goes without them and the console
+  says which one stalled. Exam lists that time out leave the day check to
+  Accept, which loads them again. The Muse-style memory (portrait, open
+  threads) is unchanged.
+- **Where:** `src/lib/assistant.ts`.
+- **Guard:** `tests/ai-load-limit.spec.ts`.
+- **Note:** previews have no Soma memory: `SOMA_MEMORY_ENABLED` is set for
+  Production only in Vercel, so the portrait only shows on somastudy.app.
+- **Still failing on this branch (not from this change):**
+  `tests/ai-whole-day.spec.ts` › "work moved past its due date says so on the
+  card" fails with or without this change. Exam prep v1's deadline anchors
+  changed when that card note appears. Needs a decision before exam prep
+  merges to master.
+
+## 2026-11-10 (never send Sonnet 5.5 `thinking`)
+
+- **Why:** `thinking: { type: 'between_tools' }` was added to make replies
+  start sooner, but the wait was never the model (see the entry above). With
+  thinking off, plans got worse (a reply said "until 11:30" and proposed
+  9:30–11:00). Production, which never sent it, was fine.
 - **What:** `/api/chat` omits `thinking` again (same as production). Dashboard
   still sends `effort: 'low'`. Do not re-add `between_tools`.
 - **Where:** `api/chat.ts`.

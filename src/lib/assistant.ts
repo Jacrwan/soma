@@ -175,6 +175,26 @@ export function namesEvent(said: string, title: string) {
 // The model sometimes names an action in the student's words.
 const ACTIONS: Record<string, string> = { delete: 'remove', cancel: 'remove', drop: 'remove', reschedule: 'move', retime: 'move', rename: 'update', edit: 'update', done: 'complete', finish: 'complete' };
 
+/**
+ * How long each load before a reply may take. On 2026-11-10 a message sat
+ * forever on the preview: the first pass answered, then one of these loads
+ * (they have no time limit of their own) never finished, so the full Soma
+ * request was never sent and no error showed. Now the plan fails with a
+ * retry message naming what stalled; the extras go without and say so in
+ * the console.
+ */
+export const LOAD_LIMIT_MS = 20_000;
+function within<T>(what: string, load: Promise<T>, without?: { value: T }): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<T>((resolve, reject) => {
+    timer = setTimeout(() => {
+      if (without) { console.warn(`[soma] ${what} took over ${LOAD_LIMIT_MS / 1000}s; replying without it`); resolve(without.value); }
+      else reject(new Error(`Soma couldn't load your ${what} (it took over ${LOAD_LIMIT_MS / 1000} seconds). Nothing was sent; please retry.`));
+    }, LOAD_LIMIT_MS);
+  });
+  return Promise.race([load, limit]).finally(() => clearTimeout(timer));
+}
+
 async function readHistory(userId: string) {
   // A failed history load only costs the estimates, never the answer.
   await loadInsights(userId).catch(() => {});
@@ -259,7 +279,7 @@ export async function askSoma(opts: {
   const day = opts.selectedDay ?? 0;
   // Sorted first, cheaply. Memory commands ("/remember …") skip it: sending
   // one runs it, and it must run once.
-  await listDocuments().catch(() => {});
+  await within('documents', listDocuments().catch(() => {}), { value: undefined });
   const route = parseMemoryCommand(text) ? PLAN_EVERYTHING : await triage(text, opts.history, new Date(), !!opts.voice);
   if (route.kind === 'chat') {
     window.dispatchEvent(new Event(BUDGET_CHANGED));
@@ -278,12 +298,15 @@ export async function askSoma(opts: {
   // midterm / final / quiz prep — not on every "plan my afternoon" (tokens).
   const wantsExamCtx = /\b(exam|midterm|final|quiz|test prep|study plan|coverage)\b/i.test(text)
     || /\bplan (review|for )?(my |the )?(midterm|final|exam|quiz)\b/i.test(text);
+  // Each load has a time limit (LOAD_LIMIT_MS): the plan is needed, the rest
+  // only improve the answer. Exam lists that time out leave the day check to
+  // Accept, which loads them again.
   const [fresh, history, examPlans] = await Promise.all([
-    readPlan(userId, origin, -7, 7 + horizon),
-    readHistory(userId),
-    wantsExamCtx ? loadExamPlanList(userId) : Promise.resolve([] as Awaited<ReturnType<typeof loadExamPlanList>>),
-    storage.whenTokensLoaded(),
-    listDocuments().catch(() => {}),
+    within('plan', readPlan(userId, origin, -7, 7 + horizon)),
+    within('study history', readHistory(userId), { value: null }),
+    wantsExamCtx ? within('exam lists', loadExamPlanList(userId), { value: [] }) : Promise.resolve([] as Awaited<ReturnType<typeof loadExamPlanList>>),
+    within('settings', storage.whenTokensLoaded(), { value: undefined }),
+    within('documents', listDocuments().catch(() => {}), { value: undefined }),
   ]);
   const settings = storage.getSomaSettings();
   const nowDate = new Date();
