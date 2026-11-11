@@ -161,7 +161,16 @@ The reproductions are preserved in `tests/branch-regressions.spec.ts`.
   check failed. Its failure was confirmed on `8f800a4`, its clock was made
   explicit, and `npm test -- --last-failed` passed it. Total: 771 checks verified.
 - No existing assertion was removed or weakened.
-- Commit and preview update: pending.
+- Fix commit: `8d1f5a42082adff86befc199bc23f686c27b37b4`.
+- Pushed to `origin/exam-prep-v1` on November 11, 2026.
+- Fix deployment: READY, confirmed with `vercel inspect --wait`:
+  <https://soma-kzez034w4-jacrwans-projects.vercel.app>.
+- Stable preview alias:
+  <https://soma-git-exam-prep-v1-jacrwans-projects.vercel.app>.
+- This release-status update is a follow-up documentation commit; it does not
+  change the tested application code. Use `git log -1 -- docs/BRANCH_FIX_HANDOFF.md`
+  to identify the latest handoff revision.
+- Production and `master` were not changed.
 
 The tests use synthetic rows and mocked auth, calendar, and model responses.
 They verify application behavior and persistence logic, not live model quality.
@@ -178,6 +187,10 @@ npm run build
 Longer-term learning work remains described in `docs/MUSE_PLAN.md`; this pass
 does not implement its next phase. Do not report it as completed.
 
-Before handing off, replace pending statuses with actual outcomes and record
-the final commit, preview URL, and any remaining limitations. Do not claim a
-check passed until its process completed successfully.
+## Continuing with another AI
+
+Read `docs/CLAUDE.md`, this file, `docs/CHANGES.md`, and `docs/MUSE_PLAN.md`
+before editing. The six fixes above are complete; use their regression tests
+when changing scheduling. Continue from the owner's next request rather than
+reimplementing these fixes or the earlier UI work. Keep new edits and their
+verification logged, and do not claim the remaining Muse learning phase shipped.

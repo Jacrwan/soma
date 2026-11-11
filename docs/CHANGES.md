@@ -46,6 +46,9 @@ still needed.
   8 skipped, and the existing midnight-dependent failure above. After fixing
   its clock, `npm test -- --last-failed` passed that check (771 verified total).
   No schema change or setup required.
+- **Release:** fix commit `8d1f5a4` pushed to `exam-prep-v1`; Vercel preview
+  `soma-kzez034w4-jacrwans-projects.vercel.app` reached READY. Handoff updated
+  with the verified release and continuation instructions. No production merge.
 
 ---
 
