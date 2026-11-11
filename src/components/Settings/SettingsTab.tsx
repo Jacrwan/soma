@@ -84,8 +84,8 @@ export default function SettingsTab() {
     try {
       // Only what this page edits: the browser's copy lacks server-only
       // settings (the Canvas feed link), and once overwrote them.
-      const { theme, timeFormat, studyWindow, chunks } = nextSettings ?? settings;
-      await storage.saveSettings({ theme, timeFormat, studyWindow, chunks });
+      const { theme, timeFormat, studyWindow, chunks, invadePersonalTime } = nextSettings ?? settings;
+      await storage.saveSettings({ theme, timeFormat, studyWindow, chunks, invadePersonalTime });
       setSavedSection(section);
       setTimeout(() => setSavedSection(s => s === section ? null : s), 2000);
     } catch { /* silent */ } finally {
@@ -935,6 +935,30 @@ export default function SettingsTab() {
                 />
               </div>
             </div>
+            {!settings.studyWindow.off && (
+              <div className={styles.prefRow}>
+                <span className={styles.prefLabel} id="invade-personal">If the day runs long</span>
+                <div className={styles.themeToggle} role="group" aria-labelledby="invade-personal">
+                  <button
+                    className={`${styles.themeBtn}${!settings.invadePersonalTime ? ` ${styles.themeBtnActive}` : ''}`}
+                    aria-pressed={!settings.invadePersonalTime}
+                    onClick={() => save({ ...settings, invadePersonalTime: false })}
+                  >Stop at study hours</button>
+                  <button
+                    className={`${styles.themeBtn}${settings.invadePersonalTime ? ` ${styles.themeBtnActive}` : ''}`}
+                    aria-pressed={!!settings.invadePersonalTime}
+                    onClick={() => save({ ...settings, invadePersonalTime: true })}
+                  >Use personal time</button>
+                </div>
+              </div>
+            )}
+            {!settings.studyWindow.off && (
+              <p className={styles.subsectionHint}>
+                {settings.invadePersonalTime
+                  ? 'A missed study block can move into the evening, past your latest end.'
+                  : 'A missed study block stays inside these hours. What does not fit waits for tomorrow’s catch-up.'}
+              </p>
+            )}
             {settings.studyWindow.off ? null : settings.studyWindow.end === settings.studyWindow.start ? (
               <p role="alert" className={styles.subsectionHint}>Earliest start and latest end can’t be the same time.</p>
             ) : settings.studyWindow.end < settings.studyWindow.start && (

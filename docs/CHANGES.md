@@ -9,6 +9,20 @@ still needed.
 
 ---
 
+## 2026-11-10 (exam prep v2: within-day reclaim, not on the dashboard yet)
+
+- **Why:** after v1, a missed study block should move inside the same day by
+  priority, without a model call, and must not spill into personal time
+  unless the student opts in. The compare peek comes after the planner.
+- **What:** `reclaimDay` repacks never-started missed work and later
+  never-started study into today's remaining gaps, highest priority first.
+  Started blocks, classes, and a Focus session still running past its end
+  stay put. `finishOverrun` sets the checked-off end and shifts the rest.
+  Settings → Study hours: "Stop at study hours" (default) or "Use personal
+  time". Not auto-applied on the dashboard yet. Story: `docs/exam-prep-log.md`.
+- **Where:** `src/lib/dayReclaim.ts`, `src/lib/storage.ts`, `SettingsTab.tsx`.
+- **Guard:** `tests/day-reclaim.spec.ts`.
+
 ## 2026-11-10 (a stalled load before a reply now ends in a retry message)
 
 - **Why:** on the exam-prep preview, "im gonna do the math homework after ruf
