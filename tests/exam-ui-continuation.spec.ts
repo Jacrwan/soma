@@ -23,8 +23,10 @@ async function checklist(page: Page) {
   });
   await page.goto('/documents');
   await page.getByRole('button', { name: /Mechanics final/ }).click();
+  await expect(page.getByText('No sitting scheduled for today.')).toBeVisible();
   const slider = page.getByRole('slider').first();
   await expect(slider).toHaveAttribute('aria-valuenow', '2');
+  await slider.scrollIntoViewIfNeeded();
   return { db, slider, writes: () => writes };
 }
 
@@ -79,6 +81,7 @@ test('Rebuild recovers the complete brain dump from the account after a fresh pa
   const dump = 'Practice final and review my mistakes. '.repeat(135) + 'Keep this last requirement too.';
   await dialog.getByRole('textbox', { name: /Braindump/ }).fill(dump);
   await dialog.getByRole('button', { name: 'Use braindump as-is' }).click();
+  await dialog.getByRole('button', { name: 'Continue to checklist' }).click();
   await dialog.getByRole('button', { name: 'Approve checklist' }).click();
   await expect(dialog).toHaveCount(0);
   const id = String((db.exam_plans as Row[])[0].id);
@@ -113,6 +116,7 @@ test('a brain dump sync failure stays visible and retry saves the same exam', as
   await dialog.getByRole('combobox', { name: 'Exam', exact: true }).selectOption('final');
   await dialog.getByRole('textbox', { name: /Braindump/ }).fill('Practice final, then review my mistakes.');
   await dialog.getByRole('button', { name: 'Use braindump as-is' }).click();
+  await dialog.getByRole('button', { name: 'Continue to checklist' }).click();
   await dialog.getByRole('button', { name: 'Approve checklist' }).click();
   await expect(dialog.getByRole('alert')).toContainText('brain dump could not sync');
   expect(db.exam_plans).toHaveLength(1);

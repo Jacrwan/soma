@@ -95,6 +95,10 @@
 .materials { border: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .materials legend { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; padding: 0; }
 .materials label { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--text-primary); cursor: pointer; overflow-wrap: anywhere; }
+.fileActions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 12px; }
+.fileActions button { min-height: 24px; }
+.uploadCount { margin: 0; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.uploadIssue { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; font-size: 12px; overflow-wrap: anywhere; }
 
 .braindump {
   width: 100%;
@@ -150,6 +154,8 @@
   .review th:nth-child(4), .review td:nth-child(4) { min-width: 120px; }
 }
 
+.estimateBasis { display: block; margin-top: 4px; color: var(--text-secondary); font-size: 11px; line-height: 1.4; }
+
 .thNote { margin-left: 4px; font-size: 10px; font-weight: 400; color: var(--text-muted); }
 
 /* Exam checklist rows: name and detail on the left, a fixed right column. */
@@ -174,4 +180,46 @@
   .examItems li { flex-wrap: wrap; }
   .examMeta { width: 100%; padding-left: 26px; grid-template-columns: 64px 92px minmax(0, 1fr); }
   .examTag { justify-content: flex-start; }
+}
+
+.step h2, .phase h3, .calibration h3, .agenda h3 { margin: 0; color: var(--text-primary); }
+.step h2 { font-size: 22px; line-height: 1.25; }
+.step small, .step p, .topic small, .capacity span, .phase header span, .agenda small { color: var(--text-secondary); }
+.step small, .phase header span, .agenda small { font-size: 12px; }
+.step p { margin: 5px 0 0; font-size: 13px; }
+.topicList, .phase, .capacity { border: 1px solid var(--border); border-radius: 10px; }
+.topic, .reviewRow, .agendaRow { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px; }
+.topic + .topic, .reviewRow + .reviewRow, .agendaRow + .agendaRow { border-top:1px solid var(--border); }
+.topic strong, .topic small, .reviewText small { display:block; overflow-wrap:anywhere; }
+.topic strong { font-size:14px; }
+.topic small, .reviewText small { font-size:12px; color:var(--text-secondary); }
+.pills { display:flex; flex-shrink:0; gap:2px; background:var(--bg-secondary); padding:3px; border-radius:8px; }
+.pills button, .removeSitting { background:transparent; border:0; color:var(--text-secondary); cursor:pointer; font:inherit; font-size:12px; padding:6px 8px; border-radius:6px; }
+.pills button[aria-pressed=true] { background:var(--bg); color:var(--accent); box-shadow:0 0 0 1px var(--border); }
+.calibration, .capacityActions { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; }
+.calibration h3 { width:100%; font-size:14px; }
+.calibration label,.capacityActions label,.reviewMinutes { display:flex; align-items:center; gap:5px; font-size:12px; }
+.calibration input,.capacityActions input,.reviewMinutes input,.reviewText input,.agenda select { border:1px solid var(--border); background:var(--bg); color:var(--text-primary); border-radius:6px; padding:5px; font:inherit; }
+.calibration input { width:98px; }
+.capacityActions input,.reviewMinutes input {width:55px;}
+.capacity { display:grid; gap:8px; padding:14px; font-size:13px; background:var(--bg-secondary); }
+.capacity progress { width:100%; height:7px; accent-color:var(--accent); }
+.phase header { display:flex; justify-content:space-between; gap:8px; align-items:baseline; padding:10px 12px; background:var(--bg-secondary); border-radius:10px 10px 0 0; }
+.phase header h3, .agenda h3 {font-size:15px;}
+.reviewText {flex:1; min-width:0;}
+.reviewText input {display:block; width:100%; box-sizing:border-box; border-color:transparent; font-size:13px; }
+.reviewText input:first-child {font-weight:600;}
+.reviewText input:focus,.reviewText input:hover {border-color:var(--border);}
+.reviewText small {padding:2px 5px;}
+.priorityControl {display:grid; gap:3px; justify-items:center;}
+.agenda {display:grid; gap:10px; }
+.agendaRow {padding:8px 0; font-size:13px; flex-wrap:wrap;}
+.agendaRow small {display:block;}
+.week {display:flex; flex-wrap:wrap; gap:6px;}
+.week span {flex:1; min-width:72px; padding:7px; background:var(--bg-secondary); border-radius:6px; font-size:12px;}
+.week small {display:block;}
+@media(max-width:640px) {
+ .topic,.reviewRow { flex-wrap:wrap; gap:6px 10px; }
+ .topic > div:first-child,.reviewText { flex:1 1 100%; }
+ .step h2 { font-size:19px; }
 }

@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import {
   blockTitle, busyDays, historyEstimates, byPriority, clampPriority, dayCapacity, draftsFromBraindump, examLines,
-  placeBlocks, readStudyList, sittings, type ExamPlan,
+  placeBlocks, readStudyList,  type ExamPlan,
 } from '../src/lib/examPlan';
 import type { CourseItem } from '../src/lib/courseItems';
 import type { Snapshot } from '../src/components/DashboardV2/liveData';
@@ -33,7 +33,7 @@ test('the model\'s list is checked: named, sized, prioritized, linked only to a 
   }) + '\n```', docs);
   expect(items).toEqual([
     { label: 'Worksheet 3', detail: 'do problems 1–12 on related rates', minutes: 45, priority: 5, documentId: 'd1' },
-    { label: 'Practice midterm A', minutes: 240, priority: 5 },
+    { label: 'Practice midterm A', minutes: 600, priority: 5 },
     { label: 'Kinematics redo', minutes: 45, priority: 1 },
   ]);
   expect(note).toMatch(/braindump/i);
@@ -84,9 +84,8 @@ test('today horizon never schedules past today, and sittings stay under two hour
   const origin = new Date(2026, 10, 7, 0, 0);
   const now = new Date(2026, 10, 7, 9, 0);
   const items = [item('i1', 50, { priority: 5 }), item('i2', 50, { priority: 5 }), item('i3', 60, { priority: 4 }), item('i4', 30, { priority: 3 })];
-  expect(sittings(items).map(g => g.map(i => i.id))).toEqual([['i1', 'i2'], ['i3', 'i4']]);
   const { blocks } = placeBlocks(exam, items, empty(), origin, settings, { name: 'Calc', color: 'blue' }, 'today', new Map(), now);
-  expect(blocks.every(b => b.day === 0)).toBe(true);
+  expect(blocks.every(b => b.day === 0 && b.coverIds?.length === 1)).toBe(true);
   expect(blockTitle('Calc midterm', [{ label: 'A' }, { label: 'B' }, { label: 'C' }, { label: 'D' }])).toBe('Calc midterm: A, B +2 more');
 });
 
@@ -146,7 +145,7 @@ async function setup(page: Page, reply: (body: Chat) => unknown) {
     if (req.method() === 'POST' && rows) {
       const b = req.postDataJSON();
       for (const r of (Array.isArray(b) ? b : [b]) as Row[]) { const i = rows.findIndex(x => x.id === r.id); if (i < 0) rows.push(r); else rows[i] = { ...rows[i], ...r }; }
-      return route.fulfill({ json: null });
+      return route.fulfill({ json: table === 'documents' ? b : null });
     }
     if (req.method() === 'PATCH' && rows) {
       for (const r of matching(rows, url.searchParams)) Object.assign(r, req.postDataJSON());
@@ -176,6 +175,110 @@ async function setup(page: Page, reply: (body: Chat) => unknown) {
   });
   return state;
 }
+
+test('a failed upload leaves the rest of the batch selected and retries only the missing file', async ({ page }) => {
+  const state = await setup(page, () => ({ items: [{ label: 'Review notes', minutes: 45, priority: 3 }] }));
+  let failUpload = true;
+  await page.route('**/storage/v1/object/documents/**', route => {
+    if (failUpload && route.request().url().endsWith('retry.txt')) {
+      return route.fulfill({ status: 400, json: { message: 'Upload interrupted' } });
+    }
+    return route.fulfill({ json: {} });
+  });
+  let releaseFirst!: () => void;
+  const firstRead = new Promise<void>(resolve => { releaseFirst = resolve; });
+  let failRead = true;
+  await page.route('**/api/extract-document', async route => {
+    const row = state.db.documents.find(d => d.id === route.request().postDataJSON().documentId)!;
+    if (row.file_name === 'first.txt') await firstRead;
+    if (row.file_name === 'later.txt' && failRead) return route.fulfill({ status: 429, json: {} });
+    Object.assign(row, { extraction_status: 'done', extracted_text: 'Course notes' });
+    return route.fulfill({ json: { status: 'done' } });
+  });
+  await page.goto('/documents');
+  await page.getByRole('button', { name: 'Plan an exam' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Plan an exam' });
+  await dialog.locator('input[type=file]').setInputFiles(['first.txt', 'retry.txt', 'last.txt'].map(name =>
+    ({ name, mimeType: 'text/plain', buffer: Buffer.from('Notes') })));
+  const count = dialog.getByRole('status');
+  await expect(count).toContainText('1 / 3 files uploaded');
+  await dialog.getByLabel('Worksheet 3.pdf').uncheck();
+  await dialog.getByRole('button', { name: 'browse' }).evaluate(button => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File(['More notes'], 'later.txt', { type: 'text/plain' }));
+    button.dispatchEvent(new DragEvent('drop', { dataTransfer, bubbles: true, cancelable: true }));
+  });
+  await expect(count).toContainText('1 / 4 files uploaded');
+  await expect(dialog.getByRole('button', { name: 'Make my study checklist' })).toBeDisabled();
+  releaseFirst();
+  await expect(count).toHaveText('3 / 4 files uploaded');
+  await expect(dialog.getByLabel('last.txt', { exact: true })).toBeChecked();
+  await expect(dialog.getByLabel('first.txt', { exact: true })).toBeChecked();
+  await expect(dialog.getByLabel('Worksheet 3.pdf')).not.toBeChecked();
+  failUpload = false;
+  await dialog.getByRole('button', { name: 'Retry upload of retry.txt' }).click();
+  await expect(count).toHaveText('4 / 4 files uploaded');
+  await expect(dialog.getByLabel('retry.txt', { exact: true })).toBeChecked();
+  failRead = false;
+  await dialog.getByRole('button', { name: 'Retry reading later.txt' }).click();
+  await expect(dialog.getByLabel('later.txt', { exact: true })).toBeChecked();
+  await expect(count).toHaveText('4 / 4 files uploaded');
+  expect(state.db.documents.filter(d => String(d.file_name).endsWith('.txt'))).toHaveLength(4);
+  await dialog.getByRole('button', { name: 'Make my study checklist' }).click();
+  await dialog.getByRole('button', { name: 'Continue to checklist' }).click();
+  await expect(dialog.getByRole('button', { name: 'Approve checklist' })).toBeVisible();
+  const request = JSON.stringify(state.chats);
+  for (const name of ['first.txt', 'retry.txt', 'last.txt', 'later.txt']) expect(request).toContain(name);
+});
+
+test('remove selected files updates the batch and checklist while preserving the document library', async ({ page }) => {
+  const state = await setup(page, () => ({ items: [{ label: 'Review worksheet', minutes: 45, priority: 3 }] }));
+  const started: string[] = [];
+  let finishUpload!: () => void;
+  const uploading = new Promise<void>(resolve => { finishUpload = resolve; });
+  await page.route('**/storage/v1/object/documents/**', async route => {
+    const url = route.request().url();
+    started.push(url);
+    if (url.endsWith('failed.txt')) return route.fulfill({ status: 400, json: { message: 'Upload interrupted' } });
+    if (url.endsWith('in-flight.txt')) await uploading;
+    return route.fulfill({ json: {} });
+  });
+  await page.route('**/api/extract-document', route => {
+    const row = state.db.documents.find(d => d.id === route.request().postDataJSON().documentId)!;
+    Object.assign(row, { extracted_text: 'Course notes', extraction_status: 'done' });
+    return route.fulfill({ json: { status: 'done' } });
+  });
+  await page.goto('/documents');
+  await page.getByRole('button', { name: 'Plan an exam' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Plan an exam' });
+  const removeFiles = dialog.getByRole('button', { name: 'Remove files', exact: true });
+  await removeFiles.click();
+  await dialog.getByLabel('Select Worksheet 3.pdf for removal').check();
+  await dialog.getByRole('button', { name: 'Cancel removal' }).click();
+  await expect(dialog.getByLabel('Worksheet 3.pdf', { exact: true })).toBeChecked();
+
+  const names = ['keep.txt', 'saved.txt', 'failed.txt', 'in-flight.txt', 'queued.txt'];
+  await dialog.locator('input[type=file]').setInputFiles(names.map(name => ({ name, mimeType: 'text/plain', buffer: Buffer.from(name) })));
+  await expect.poll(() => started.some(url => url.endsWith('in-flight.txt'))).toBe(true);
+  await removeFiles.click();
+  const removed = ['saved.txt', 'failed.txt', 'in-flight.txt', 'queued.txt', 'Practice Midterm A.pdf'];
+  for (const name of removed) await dialog.getByLabel(`Select ${name} for removal`, { exact: true }).check();
+  await dialog.getByRole('button', { name: 'Remove selected (5)', exact: true }).click();
+  await expect(dialog.getByRole('status')).toContainText('1 / 1');
+  finishUpload();
+  await expect(dialog.getByRole('button', { name: 'Make my study checklist' })).toBeEnabled();
+  await expect(dialog.getByLabel('keep.txt', { exact: true })).toBeChecked();
+  expect(started.some(url => url.endsWith('queued.txt'))).toBe(false);
+  expect(state.db.documents.map(d => d.file_name)).toEqual(expect.arrayContaining(['saved.txt', 'in-flight.txt', 'Practice Midterm A.pdf']));
+  for (const name of removed) await expect(dialog.getByText(name, { exact: true })).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Make my study checklist' }).click();
+  await dialog.getByRole('button', { name: 'Continue to checklist' }).click();
+  await expect(dialog.getByRole('button', { name: 'Approve checklist' })).toBeVisible();
+  const request = JSON.stringify(state.chats);
+  expect(request).toContain('keep.txt');
+  expect(request).toContain('Worksheet 3.pdf');
+  for (const name of removed) expect(request).not.toContain(name);
+});
 
 test('manual exam fields align, fit the viewport, and keep actions reachable', async ({ page }, testInfo) => {
   await setup(page, () => ({}));
@@ -259,6 +362,8 @@ test('Documents: braindump + files → approve list with priorities → Add this
   const dialog = page.getByRole('dialog', { name: 'Plan an exam' });
   await dialog.locator('textarea').fill('Worksheet 3 problems\nPractice midterm A timed');
   await dialog.getByRole('button', { name: 'Make my study checklist' }).click();
+  await dialog.getByRole('button', { name: 'Continue to checklist' }).click();
+  await dialog.getByText('How Soma built this checklist').click();
   await expect(dialog.getByText(/Followed your braindump/i)).toBeVisible();
   await expect(dialog.getByRole('row', { name: /Worksheet 3/ }).getByLabel('What')).toHaveValue('Worksheet 3');
   await dialog.getByRole('button', { name: 'Approve checklist' }).click();
@@ -269,7 +374,7 @@ test('Documents: braindump + files → approve list with priorities → Add this
   expect(state.db.course_items.map(r => r.priority).sort()).toEqual([4, 5]);
   // Approve opens the plan; if the row is collapsed, expand it.
   const addWeek = page.getByRole('button', { name: 'Add this week to my plan' });
-  if (!await addWeek.isVisible()) await page.getByRole('button', { name: /Calc midterm/ }).click();
+  await expect(page.getByRole('button', { name: /^Calc midterm/ })).toHaveAttribute('aria-expanded','true');
   await addWeek.click();
   await expect(page.getByText(/waiting on your plan/i)).toBeVisible();
 });
@@ -296,6 +401,7 @@ test('the priority control is one slider: one Tab stop, 24px tall, click or keys
   const dialog = page.getByRole('dialog', { name: 'Plan an exam' });
   await dialog.locator('textarea').fill('Worksheet 3');
   await dialog.getByRole('button', { name: 'Make my study checklist' }).click();
+  await dialog.getByRole('button', { name: 'Continue to checklist' }).click();
   const bar = dialog.getByRole('row', { name: /Worksheet 3/ }).getByRole('slider');
   await expect(bar).toHaveAttribute('aria-valuenow', '4');
   await expect(bar).toHaveAttribute('tabindex', '0');
@@ -340,6 +446,7 @@ test('Rebuild starts from the braindump saved with the exam', async ({ page }) =
   const dialog = page.getByRole('dialog', { name: 'Plan an exam' });
   await dialog.locator('textarea').fill('Worksheet 3 problems\nPractice midterm A timed');
   await dialog.getByRole('button', { name: 'Make my study checklist' }).click();
+  await dialog.getByRole('button', { name: 'Continue to checklist' }).click();
   await dialog.getByRole('button', { name: 'Approve checklist' }).click();
   await expect(dialog).toHaveCount(0);
   const rebuild = page.getByRole('button', { name: 'Rebuild list' });
@@ -372,7 +479,171 @@ test('lengths come from the student\'s timed practice exams, one item per exam',
     ['Reading pass 1: Ch 1–3', 120],
   ]);
   expect(drafts[0]).toMatchObject({ detail: 'timed, closed-book', priority: 5 });
-  expect(basis).toBe('Lengths from your history: practice exams at about 2h 12m each, from your PHYSICS 5A practice exams; weekly sets at about 16 min a week, from your earlier reviews. The other length is a guess (you haven\'t timed that kind of work yet); change any before approving.');
+  expect(basis).toContain('logged time');
+  expect(drafts[0].estimateBasis).toContain('practice exam');
+  expect(drafts[3].estimateBasis).toContain('7 × 16 min per week');
+  expect(drafts[4].estimateBasis).toContain('No comparable');
   // No timed work like it: the drafted lengths stand, and say so.
   expect(historyEstimates([{ label: 'Past finals 1–3', minutes: 180, priority: 5 }], [], 'phys').basis).toMatch(/^Lengths are guesses/);
+});
+
+test('reading ranges, assignments and worksheets use the amount of comparable work actually timed', () => {
+  const timed = (title: string, minutes: number, subject = 'phys') =>
+    ({ subject_id: subject, task_text: title, duration_seconds: minutes * 60 });
+  const sessions = [
+    timed('Physics reading: 4.1–4.3', 40), timed('Physics reading: 4.1–4.3', 20),
+    timed('Physics reading: 7.2', 20), timed('Reading Ch 4', 10, 'other'),
+    timed('HW 7', 80), timed('HW 8', 120), timed('Worksheet 2', 35),
+    timed('Physics discussion review, weeks 2–4', 90),
+  ];
+  const item = (label: string, detail = '') => ({ label, detail, minutes: 120, priority: 4 });
+  const sections = Array.from({ length: 5 }, (_, c) => Array.from({ length: 7 }, (_, i) => `${c + 1}.${i + 1}`)).flat();
+  const result = historyEstimates([
+    item('Reading Guide round 1', 'read KK Ch 1–5 sections in the reading guide (1.1–5.7)'),
+    item('Reading Guide round 2', 'read KK 7.1–7.9 and 9.1–9.4'),
+    item('Reading Guide round 3', 'read KK 10.1–10.5, 11.1–11.4 and 6.2–6.4'),
+    item('HW1–HW3', 'redo the problems on HW 1–3'),
+    item('Weeks 6–8 worksheets', 'redo Week 6–8 worksheets and Monday–Thursday quizzes'),
+    item('Worksheet 3'), item('Unlogged activity'),
+  ], sessions, 'phys', 'Physics', sections).drafts;
+  const round1 = result.filter(d => d.label.startsWith('Reading Guide round 1'));
+  expect(round1.reduce((n, d) => n + d.minutes, 0)).toEqual(700);
+  expect(round1[0].estimateBasis).toContain('35 × 20 min per section');
+  expect(result.slice(round1.length).map(d => d.minutes)).toEqual([260, 240, 300, 90, 35, 120]);
+  expect(result.at(-1)?.estimateBasis).toContain('No comparable');
+  const chapterLogs = [timed('Read Chapter 6', 75), timed('Read Ch. 7–8', 150)];
+  expect(historyEstimates([item('Read chapters 1–5')], chapterLogs, 'phys').drafts[0].minutes).toBe(375);
+});
+
+test('Plan Exam displays the logged reading pace and saves the full five-chapter estimate', async ({ page }) => {
+  const state = await setup(page, () => ({ items: [{ label: 'Reading Guide round 1', detail: 'read KK Ch 1–5', minutes: 120, priority: 4 }] }));
+  state.db.timer_sessions.push(...[40, 50].map((minutes, i) => ({
+    id: `timer-ch4-${i}`, user_id: account.id, subject_id: 'calc', task_text: 'Read chapter 4',
+    date: dayOff(-i-1), duration_seconds: minutes * 60,
+  })));
+  await page.goto('/documents');
+  await page.getByRole('button', { name: 'Plan an exam' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Plan an exam' });
+  await dialog.getByRole('button', { name: 'Make my study checklist' }).click();
+  await dialog.getByRole('button', { name: 'Continue to checklist' }).click();
+  const lengths = dialog.getByRole('spinbutton', {name:/Minutes for Reading Guide/});
+  await expect(lengths).toHaveCount(5);
+  expect(await lengths.evaluateAll(inputs=>inputs.map(el=>(el as HTMLInputElement).value))).toEqual(Array(5).fill('90'));
+  await expect(dialog.getByText(/1 × 90 min per chapter/).first()).toBeVisible();
+  await dialog.getByRole('button', { name: 'Approve checklist' }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(state.db.course_items.reduce((m,row)=>m+Number(row.minutes),0)).toBe(450);
+});
+
+test('braindump estimates use reading-list sections linked to the actual timed task', async ({ page }) => {
+  const state = await setup(page, () => ({}));
+  state.db.todos.push({ id: 'assigned', user_id: account.id, subject_id: 'calc', text: 'Calc 1A: Momentum' });
+  for (const [i, label] of ['4.1', '4.2'].entries()) {
+    state.db.course_items.push({ id: label, user_id: account.id, subject_id: 'calc', label, position: i, todo_id: 'assigned' });
+    state.db.timer_sessions.push({ id: `reading-${i}`, user_id: account.id, subject_id: 'calc', task_text: 'Calc 1A: Momentum',
+      date: dayOff(-i-1), duration_seconds: 40 * 60 });
+  }
+  await page.goto('/documents');
+  await page.getByRole('button', { name: 'Plan an exam' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Plan an exam' });
+  await dialog.getByRole('textbox', { name: /Braindump/ }).fill('Read KK 12.1–12.11');
+  await dialog.getByRole('button', { name: 'Use braindump as-is' }).click();
+  await dialog.getByRole('button', { name: 'Continue to checklist' }).click();
+  const lengths = dialog.getByRole('spinbutton',{name:/Minutes for Read KK/});
+  await expect(lengths).toHaveCount(11);
+  await expect(lengths.first()).toHaveValue('40');
+  await expect(dialog.getByText(/1 × 40 min per section/).first()).toBeVisible();
+});
+
+test('timing preserves the difference between the exact chapters under review', () => {
+  const logged = (title:string,minutes:number)=>({subject_id:'phys',task_text:title,duration_seconds:minutes*60});
+  const {drafts} = historyEstimates(['5.1–5.12','6.1–6.2'].map(range=>({label:'Textbook review',detail:`Read ${range}`,minutes:45,priority:3})),
+    [logged('Read 5.1–5.12',600),logged('Read 6.1–6.2',30)],'phys');
+  expect(drafts.map(d=>d.minutes)).toEqual([600,30]);
+});
+
+test('calibrated sections become separate sittings with confidence, capacity and milestones', async({page},info)=>{
+  const state=await setup(page,()=>({items:[{label:'KK reading',detail:'Read 5.1–5.15',minutes:120,priority:3}]}));
+  await page.goto('/documents');
+  await page.getByRole('button',{name:'Plan an exam'}).click();
+  const dialog=page.getByRole('dialog');
+  await dialog.getByRole('button',{name:'Make my study checklist'}).click();
+  await dialog.getByLabel('Minutes per section').fill('30');
+  await dialog.screenshot({path:info.outputPath('confidence.png')});
+  await dialog.getByRole('button',{name:'Continue to checklist'}).click();
+  await expect(dialog.getByText('7h 30m needed')).toBeVisible();
+  await expect(dialog.getByRole('row')).toHaveCount(8);
+  await dialog.getByRole('button',{name:'Back to confidence'}).click();
+  await dialog.getByRole('button',{name:'Shaky',exact:true}).click();
+  await dialog.getByRole('button',{name:'Continue to checklist'}).click();
+  await expect(dialog.getByText('9h needed')).toBeVisible();
+  await dialog.getByLabel('Daily study budget in minutes').fill('30');
+  await expect(dialog.getByText(/over capacity/)).toBeVisible();
+  await page.setViewportSize({width:390,height:760});
+  await page.evaluate(()=>document.documentElement.setAttribute('data-theme','dark'));
+  await dialog.screenshot({path:info.outputPath('review-phone-dark.png')});
+  expect(await dialog.evaluate(el=>el.scrollWidth<=el.clientWidth)).toBe(true);
+  await dialog.getByLabel('Planning horizon').selectOption('later');
+  await dialog.getByRole('button',{name:'Approve checklist'}).click();
+  await expect(dialog).toHaveCount(0);
+  expect(state.db.course_items).toHaveLength(15);
+  expect(state.db.course_items.every(i=>i.priority===4 && String(i.due_date)<dayOff(6))).toBe(true);
+  expect(state.db.course_items.reduce((sum,i)=>sum+Number(i.minutes),0)).toEqual(540);
+});
+
+test('missed sittings offer a move before the exam and wait for the student', async({page})=>{
+  const state=await setup(page,()=>({}));
+  state.db.exam_plans.push({id:'e',user_id:account.id,subject_id:'calc',title:'Calc midterm',exam_date:dayOff(6)});
+  const date=dayOff(-1);
+  state.db.todos.push({id:'read',user_id:account.id,text:'Read chapter 3',date,subject_id:'calc',status:'nothing'});
+  state.db.todo_sessions.push({id:'slot',user_id:account.id,todo_id:'read',date,start_time:new Date(date+'T10:00:00').toISOString(),end_time:new Date(date+'T11:00:00').toISOString()});
+  state.db.course_items.push({id:'item',user_id:account.id,subject_id:'calc',exam_id:'e',label:'Read chapter 3',todo_id:'read',position:0,minutes:60,priority:4});
+  await page.goto('/documents');
+  await page.getByRole('button',{name:/Calc midterm/}).click();
+  await expect(page.getByText('Missed · Read chapter 3')).toBeVisible();
+  const before=JSON.stringify(state.db.todo_sessions);
+  await page.getByRole('button',{name:'Pick another time'}).click();
+  const options=page.getByLabel('Choose time for Read chapter 3');
+  expect(await options.locator('option').count()).toBeGreaterThan(2);
+  expect(JSON.stringify(state.db.todo_sessions)).toBe(before);
+  await options.selectOption({index:2});
+  await expect(page.getByText(/Moved to/)).toBeVisible();
+  expect(state.db.todo_sessions).toHaveLength(1);
+  expect(state.db.todo_sessions[0].date).not.toBe(date);
+  expect(String(state.db.todo_sessions[0].date) < dayOff(6)).toBe(true);
+});
+
+test('the last timed paper has the protected day and exam sittings are independently scheduled', () => {
+  const start = '2026-11-07', origin = new Date(start+'T08:00:00');
+  const examDate='2026-11-13';
+  const plan={...exam,examDate};
+  const rows = [
+    item('a',60,{label:'Read 5.1–5.2',due:'2026-11-10',priority:5}),
+    item('b',60,{label:'Read 5.3–5.4',due:'2026-11-10',priority:3}),
+    item('c',60,{label:'HW 3',due:'2026-11-11',priority:4}),
+    item('d',120,{label:'Timed midterm',due:'2026-11-12',priority:2}),
+  ];
+  const result=placeBlocks(plan,rows,empty(),origin,{...settings,examPrep:{[plan.id]:{daily:180,start,confidence:{}}}},
+    {name:'Calc',color:'blue'},'week',new Map(),origin);
+  expect(result.missing).toBe(0);
+  expect(result.placed.get('d')).toBe('2026-11-12');
+  expect(result.placed.get('c')).toBe('2026-11-11');
+  expect(result.blocks.every(b=>b.coverIds?.length===1)).toBe(true);
+});
+
+test('an accepted sitting can start the real Focus timer from the exam agenda',async({page},info)=>{
+  const state=await setup(page,()=>({}));
+  const date=dayOff(0);
+  await page.clock.setFixedTime(new Date(date+'T09:00:00'));
+  state.db.exam_plans.push({id:'e',user_id:account.id,subject_id:'calc',title:'Calc midterm',exam_date:dayOff(5)});
+  state.db.todos.push({id:'read',user_id:account.id,text:'Read 5.1–5.2',date,subject_id:'calc',status:'nothing'});
+  state.db.todo_sessions.push({id:'slot',user_id:account.id,todo_id:'read',date,start_time:new Date(date+'T09:00:00').toISOString(),end_time:new Date(date+'T10:00:00').toISOString()});
+  state.db.course_items.push({id:'item',user_id:account.id,subject_id:'calc',exam_id:'e',label:'Read 5.1–5.2',todo_id:'read',position:0,minutes:60,priority:4});
+  await page.goto('/documents');
+  await page.getByRole('button',{name:/Calc midterm/}).click();
+  const agenda=page.getByRole('region',{name:'Exam agenda'});
+  await expect(agenda.getByRole('button',{name:'Start Focus'})).toBeVisible();
+  await agenda.screenshot({path:info.outputPath('today-agenda.png')});
+  await agenda.getByRole('button',{name:'Start Focus'}).click();
+  await expect(agenda.getByRole('button',{name:'Focus running'})).toBeDisabled();
 });

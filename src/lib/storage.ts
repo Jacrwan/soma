@@ -24,6 +24,7 @@ export interface SomaSettings {
   invadePersonalTime?: boolean;
   /** Each exam plan's braindump, by exam id, so Rebuild starts from it
    *  (2026-11-10: Rebuild opened empty). In the settings row: no new table. */
+  examPrep?: Record<string, import('./examSittings').ExamPreferences>;
   examBraindumps?: Record<string, string>;
   /** When Soma has to split work to fit it in, no piece is shorter than `min` minutes. */
   chunks?: { min: number };

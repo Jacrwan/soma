@@ -13,6 +13,7 @@ export type LiveDayBlock = {
   day: number;
   state: string;
   external?: boolean;
+  examPlanId?: string;
   actualSeconds?: number;
   focusedSeconds?: number;
   priority?: number;
@@ -51,7 +52,7 @@ export function asDayBlocks(blocks: LiveDayBlock[], opts: ReclaimOpts): DayBlock
       time: b.time,
       minutes: b.minutes || (b.time ? spanMinutes(...b.time.split('–') as [string, string]) : 0),
       priority: b.priority ?? priorityOf(b.note),
-      fixed: !!b.external || pinned || !!opts.stuck?.has(String(b.id)),
+      fixed: !!b.external || !!b.examPlanId || pinned || !!opts.stuck?.has(String(b.id)),
       started,
       done,
       running,
