@@ -14,6 +14,8 @@ export type LiveDayBlock = {
   state: string;
   external?: boolean;
   actualSeconds?: number;
+  focusedSeconds?: number;
+  priority?: number;
   note?: string;
   todoId?: string;
   subjectId?: string;
@@ -41,14 +43,14 @@ export function asDayBlocks(blocks: LiveDayBlock[], opts: ReclaimOpts): DayBlock
     const start = b.time.split('–')[0];
     const pinned = !!b.todoId && !!start && opts.pins.has(pinKey(b.todoId, opts.date, start));
     const done = b.state === 'Completed';
-    const started = done || b.state === 'Partially completed' || (b.actualSeconds ?? 0) > 0;
+    const started = done || b.state === 'Partially completed' || (b.focusedSeconds ?? b.actualSeconds ?? 0) > 0;
     const running = !done && opts.activeId != null && String(b.id) === String(opts.activeId);
     return {
       id: String(b.id),
       title: b.title,
       time: b.time,
       minutes: b.minutes || (b.time ? spanMinutes(...b.time.split('–') as [string, string]) : 0),
-      priority: priorityOf(b.note),
+      priority: b.priority ?? priorityOf(b.note),
       fixed: !!b.external || pinned || !!opts.stuck?.has(String(b.id)),
       started,
       done,

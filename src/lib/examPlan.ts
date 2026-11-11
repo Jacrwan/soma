@@ -225,6 +225,7 @@ export function placeBlocks(
         state: 'Proposal',
         day,
         coverIds: group.map(i => i.id),
+        examPlanId: exam.id,
         note: `${weekNote(exam)} · ${shortDay(exam.examDate)} · p${Math.max(...group.map(i => i.priority ?? DEFAULT_PRIORITY))}`,
       });
       landed = true;

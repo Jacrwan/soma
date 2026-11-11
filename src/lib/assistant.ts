@@ -1207,6 +1207,11 @@ export async function askSoma(opts: {
   // Skips this reply named are remembered for the rest of the day's chats.
   updateSkipped(userId, fresh.blocks.filter(b => read!.skip.includes(String(b.id)) && !remembered.has(keyOf(b))).map(keyOf), fresh.blocks.filter(b => read!.attending.has(String(b.id))).map(keyOf));
   const { result, newBlocks, allChanges, proposed, folded, rejected, questions, splitOffers, unlinked, editedProposals, proposalEdits, droppedProposals, autoPlaced } = read;
+  // The exception comes from the student's text, not a model-supplied flag.
+  // Keep the exact date so retiming the card cannot reuse it for another day.
+  for (const b of [...proposed, ...proposalEdits.values()]) {
+    if (namesDate(text, dateOf(b.day), today)) b.requestedDate = dateOf(b.day);
+  }
   const outcome = [
     ...editedProposals,
     ...folded,
@@ -1319,6 +1324,7 @@ export async function applyProposal(userId: string, origin: Date, block: PlanBlo
       today: localDate(new Date()),
       todo,
       examDate: examDateForCovers(coverIds, fresh.items, plans),
+      asked: block.requestedDate === localDate(dateAt(origin, block.day)),
     });
     if (!gate.ok) throw new Error(gate.why);
   }

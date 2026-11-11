@@ -9,6 +9,46 @@ still needed.
 
 ---
 
+## 2026-11-11 (fix six bugs found in the exam-prep branch review)
+
+- **Request:** review the branch additions, then fix the six reproduced bugs.
+  The owner also asked for a Markdown record of all edits, rationale, logic,
+  and their request for continuing with other AIs. Full handoff:
+  [BRANCH_FIX_HANDOFF.md](BRANCH_FIX_HANDOFF.md).
+- **Calendar:** automatic moves stop on a fresh calendar error. Completion
+  still saves during an outage, without shifting other blocks. Reclaim can
+  recover after a successful calendar reload.
+- **Requested dates:** Accept retains the exact date the student explicitly
+  named, as app-derived proposal metadata. It cannot authorize a different day
+  or bypass exam/prep deadlines.
+- **Priorities:** saved exam blocks resolve the highest priority among linked
+  open exam items. Reclaim uses that value instead of losing it with the
+  temporary proposal note.
+- **Pending plans:** regeneration excludes the suggestions being replaced
+  before calculating free time; other pending suggestions count once. Unique
+  exam IDs identify suggestions, so same-named exams cannot delete each other.
+- **Focus:** task-matched seconds are separate from distributed subject credit.
+  Progress still receives that credit; unrelated study no longer protects an
+  untouched missed block from reclaim.
+- **Where:** `DashboardV2/{PlanEditor,liveData,LiveDashboard}.tsx/.ts`,
+  `lib/{assistant,reclaimToday,examPlan,examPlansStore}.ts`.
+- **Guard:** `tests/branch-regressions.spec.ts`: six review reproductions plus
+  requested-date/exam boundary checks and completion during a calendar outage.
+  The original six failed on `8f800a4` before implementation. Existing Focus,
+  deadline, exam checklist, and reclaim tests remain intact.
+- **Test clock:** the run crossed midnight and exposed an existing assumption
+  in `dashboard-ai-context.spec.ts` > “a block Soma cannot place keeps the rest
+  of the answer.” Its 00:01 block was not yet safely in the past. The same
+  failure reproduced on `8f800a4`; the test now fixes its clock to noon, with
+  all assertions unchanged.
+- **Verification:** build passed; 50 targeted checks passed, then all 8 new
+  regression checks passed with deletion isolation. Full suite: 770 passed,
+  8 skipped, and the existing midnight-dependent failure above. After fixing
+  its clock, `npm test -- --last-failed` passed that check (771 verified total).
+  No schema change or setup required.
+
+---
+
 ## 2026-11-10 (exam planner form alignment and course recovery)
 
 - **Exam details:** Name, Course, Date and Time use equal-height inputs and

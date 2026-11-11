@@ -155,6 +155,10 @@ test('the AI is told to reply in plain text, not markdown', async ({ page }) => 
 });
 
 test('a block Soma cannot place keeps the rest of the answer', async ({ page }) => {
+  // 00:01 must really be in the past, even when this runs just after midnight.
+  const midday = new Date();
+  midday.setHours(12, 0, 0, 0);
+  await page.clock.setFixedTime(midday);
   const state = await setup(page);
   // One block in the past — it must be dropped, not blow away the reply.
   await page.unroute('**/api/chat');

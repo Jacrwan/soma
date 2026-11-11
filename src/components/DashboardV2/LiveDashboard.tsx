@@ -216,6 +216,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
  }
  const reclaimOpts=()=>{const date=localDate(origin);if(stuck.current.date!==date)stuck.current={date,ids:new Set()};for(const id of loadKept(userId,date))stuck.current.ids.add(id);return {activeId:focusId(),pins:pinnedKeys(userId),date,stuck:stuck.current.ids};};
  async function applyMoves(fresh:Snapshot,result:{moved:{id:string;to:string}[];blocks:{id:string;time:string}[]},reason:'reclaim'|'overrun',completedId?:string|number){
+  if(fresh.calendarError)throw new Error('Calendar could not be fully loaded. Retry before moving study blocks.');
   const moves:MovedBlock[]=[];
   for(const move of result.moved){
    const live=fresh.blocks.find(b=>String(b.id)===move.id);
@@ -278,6 +279,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   if(!planToday(snapshot.blocks.filter(b=>b.day===0),nowMinutes(),windowEnd,reclaimOpts()).moved.length)return;
   let fresh:Snapshot;
   try{fresh=await readPlan(userId,origin,rangeRef.current,7);}catch{return;}
+  if(fresh.calendarError)return;
   const result=planToday(fresh.blocks.filter(b=>b.day===0),nowMinutes(),windowEnd,reclaimOpts());
   if(result.held || !result.moved.length || editingPlan.current || writing.current)return;
   reclaimLock.current=true;writing.current=true;setBusy(true);setError('');
@@ -301,7 +303,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
    // did. A late checkmark with no Focus just marks it done.
    const live=fresh.blocks.find(b=>String(b.id)===String(block.id));
    const focusEnd=state==='Completed' && live ? focusEndMinutes(live,fresh.history,localDate(origin),String(focusId())===String(block.id)) : null;
-   const overrun=state==='Completed' ? overrunToday(fresh.blocks.filter(b=>b.day===0),block.id,focusEnd,reclaimWindowEnd(storage.getSomaSettings()),reclaimOpts()) : null;
+   const overrun=state==='Completed' && !fresh.calendarError ? overrunToday(fresh.blocks.filter(b=>b.day===0),block.id,focusEnd,reclaimWindowEnd(storage.getSomaSettings()),reclaimOpts()) : null;
    if(overrun?.moved.length)await applyMoves(fresh,overrun,'overrun',block.id);
    else await setTaskStatus(userId,fresh,todo,state==='Completed' ? 'done' : state==='Partially completed' ? 'in_progress' : 'nothing');
    await storage.fetchAllTodos();await reload();

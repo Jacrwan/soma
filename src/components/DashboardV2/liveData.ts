@@ -87,7 +87,9 @@ export async function readPlan(userId:string,origin:Date,startDay=0,days=7):Prom
   const peers=blocks.filter(b=>!b.external && b.day===block.day && b.title===block.title && b.subjectId===block.subjectId);
   const total=history.filter(h=>h.date===localDate(dateAt(origin,block.day)) && h.subject_id===block.subjectId && h.task_text===block.title).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0);
   const weight=peers.reduce((n,b)=>n+b.minutes,0);
-  block.actualSeconds=total*(weight ? block.minutes/weight : 1/peers.length);
+  // Keep task-matched Focus separate: subject-wide display credit below is
+  // not evidence that this particular block was started.
+  block.focusedSeconds=block.actualSeconds=total*(weight ? block.minutes/weight : 1/peers.length);
  }
  // Preserve subject-level time when a task was renamed or history has no task text.
  for(let day=startDay;day<startDay+days;day++)for(const subject of subjects){
@@ -105,6 +107,8 @@ export async function readPlan(userId:string,origin:Date,startDay=0,days=7):Prom
   if(block.external || !block.todoId)continue;
   const covered=coveredBy(items,block.todoId);
   if(covered.length)block.covers=covered.map(i=>({id:i.id,label:i.label,...(i.doneAt ? {done:true} : {})}));
+  const examItems=covered.filter(i=>i.examId && !i.doneAt);
+  if(examItems.length)block.priority=Math.max(...examItems.map(i=>i.priority??3));
   const endsAt=block.time ? dateAt(origin,block.day).getTime()+rangeOf(block.time)[1]*60000 : dateAt(origin,block.day+1).getTime();
   if(endsAt<=now)block.ended=true;
  }

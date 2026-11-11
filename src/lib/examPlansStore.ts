@@ -6,7 +6,7 @@ import { loadCourseItems, isReading, type CourseItem } from './courseItems';
 import { readPlan, toneOf, type Snapshot } from '../components/DashboardV2/liveData';
 import { getProposals, updateProposals } from './proposalStore';
 import {
-  addDays, busyDays, clampPriority, dayKey, placeBlocks, readStudyList, studyListPrompt, weekNote,
+  addDays, busyDays, clampPriority, dayKey, placeBlocks, readStudyList, studyListPrompt,
   DEFAULT_PRIORITY, MAX_DAYS_AHEAD, type ExamPlan, type PlaceHorizon, type StudyDraft,
 } from './examPlan';
 import type { SomaDocument, Subject } from '../types';
@@ -116,7 +116,7 @@ export async function deleteExamPlan(userId: string, exam: ExamPlan): Promise<vo
   const { error: itemsError } = await supabase.from('course_items').delete().eq('user_id', userId).eq('exam_id', exam.id);
   const { error } = await supabase.from('exam_plans').delete().eq('user_id', userId).eq('id', exam.id);
   if (error || itemsError) throw new Error('Could not remove this plan. Please retry.');
-  updateProposals(userId, items => items.filter(p => !p.note?.startsWith(`${weekNote(exam)} · `)));
+  updateProposals(userId, items => items.filter(p => p.examPlanId !== exam.id));
   changed();
 }
 
@@ -166,14 +166,12 @@ async function snapshotFor(userId: string, exam: ExamPlan, days: number): Promis
   const origin = new Date();
   const today = dayKey(origin);
   const snapshot = await readPlan(userId, origin, 0, Math.max(1, days));
-  const waiting = getProposals(userId).filter(p => p.time && p.replaces === undefined) as unknown as Snapshot['blocks'];
-  const board = { ...snapshot, blocks: [...snapshot.blocks, ...waiting] };
   const examTask = exam.todoId ? snapshot.todos.find(t => t.id === exam.todoId)?.text : undefined;
   const deadlines = snapshot.todos.filter(t => t.status !== 'done' && t.dueDate).map(t => ({ title: t.text, due: t.dueDate!, kind: t.kind }));
   const last = addDays(today, days - 1);
   const beforeExam = exam.examDate > today ? addDays(exam.examDate, -1) : today;
   return {
-    snapshot: board,
+    snapshot,
     busy: busyDays(deadlines, today, beforeExam < last ? beforeExam : last, examTask ?? exam.title),
   };
 }
@@ -189,7 +187,7 @@ export async function scheduleHorizon(
   const days = horizon === 'today' ? 1 : 7;
   const origin = new Date();
   const { snapshot, busy } = await snapshotFor(userId, exam, days);
-  const mine = (p: { note?: string }) => !!p.note?.startsWith(`${weekNote(exam)} · `);
+  const mine = (p: { examPlanId?: string }) => p.examPlanId === exam.id;
   const waiting = getProposals(userId).filter(p => p.time && p.replaces === undefined && !mine(p)) as unknown as Snapshot['blocks'];
   const { blocks, missing, placed } = placeBlocks(
     exam, items, { ...snapshot, blocks: [...snapshot.blocks, ...waiting] }, origin,
