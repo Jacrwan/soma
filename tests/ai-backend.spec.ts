@@ -23,16 +23,23 @@ test('chat memory persists within one account and is cleared on account change',
 
 test('long model replies can be included in a follow-up request',()=>{expect(validateChatInput({messages:[{role:'assistant',content:'a'.repeat(16000)},{role:'user',content:'Continue'}]})).toBeNull();});
 
-// Soma's replies run on Sonnet 5.5 with thinking at medium effort, and fall
-// back to another model when declined (2026-10-06: Haiku couldn't tell "last
-// week's homework" from homework done last week).
-test('Soma\'s requests go to Sonnet 5.5 at medium effort with a refusal fallback',async()=>{
+// Soma's replies run on Sonnet 5.5 at low effort by default (2026-11-10: medium
+// thinking made schedules take a minute+). Medium still works when asked.
+// Fallback on decline (2026-10-06: Haiku couldn't tell "last week's homework").
+test('Soma\'s requests go to Sonnet 5.5 at low effort with a refusal fallback',async()=>{
  let sent:{headers:Record<string,string>;body:Record<string,unknown>}|undefined;
  const {result,res}=response();
  await createChatHandler({...deps,memory:async()=>'',defer:()=>{},request:async(_url:string,init:{headers:Record<string,string>;body:string})=>{sent={headers:init.headers,body:JSON.parse(init.body)};return Response.json({content:[{type:'thinking',thinking:''},{type:'text',text:'{"reply":"ok"}'}],stop_reason:'end_turn'});}} as never)({method:'POST',headers:{authorization:'Bearer test'},body:{...body,model:'sonnet'}},res);
  expect(result.status).toBe(200);
- expect(sent!.body).toMatchObject({model:'claude-sonnet-5-5',max_tokens:16000,output_config:{effort:'medium'},fallbacks:'default'});
+ expect(sent!.body).toMatchObject({model:'claude-sonnet-5-5',max_tokens:16000,output_config:{effort:'low'},fallbacks:'default'});
  expect(sent!.headers['anthropic-beta']).toBe('server-side-fallback-2026-07-01');
+});
+test('medium effort is still sent when the client asks for it',async()=>{
+ let sent:{body:Record<string,unknown>}|undefined;
+ const {result,res}=response();
+ await createChatHandler({...deps,memory:async()=>'',defer:()=>{},request:async(_url:string,init:{body:string})=>{sent={body:JSON.parse(init.body)};return Response.json({content:[{type:'text',text:'{"reply":"ok"}'}],stop_reason:'end_turn'});}} as never)({method:'POST',headers:{authorization:'Bearer test'},body:{...body,model:'sonnet',effort:'medium'}},res);
+ expect(result.status).toBe(200);
+ expect(sent!.body).toMatchObject({output_config:{effort:'medium'}});
 });
 
 // Real cost per student (2026-10-06): every billed reply is counted, numbers only.

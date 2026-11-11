@@ -9,6 +9,17 @@ still needed.
 
 ---
 
+## 2026-11-10 (Soma plan replies: low effort, not medium)
+
+- **Why:** scheduling felt stuck for a minute+ and burned thinking tokens.
+  Plan turns used Sonnet medium effort; the API even allowed ~150s. Exam-prep
+  context made that worse; the real cost was the thinking budget.
+- **What:** dashboard `ask` and `plan` both send `effort: 'low'`. `/api/chat`
+  defaults to low unless the client asks for medium. Exam coverage lists still
+  load only when the message is about an exam.
+- **Where:** `src/lib/assistant.ts`, `api/chat.ts`.
+- **Guard:** `tests/ai-triage.spec.ts`, `tests/ai-backend.spec.ts`.
+
 ## 2026-11-10 (exam prep v1: coverage list + priority bar)
 
 - **Why:** the Nov 6 exam study plans felt like random blocks on random days
