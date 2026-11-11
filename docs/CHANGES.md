@@ -9,6 +9,38 @@ still needed.
 
 ---
 
+## 2026-11-10 (Soma learns routines, and reads guides by week)
+
+- **Why:** asked for "the math homework" or "all of last week's math
+  homework", Soma said it couldn't tell which sections, though the homework
+  guide was uploaded, and once titled the block with a month-old task's
+  sections ("14.3–14.6"). The owner has done Math 53's previous-week set on
+  Tuesday nights and Wednesday mornings for weeks; Soma should learn that
+  from what they did, for every course. Plan: `docs/MUSE_PLAN.md`.
+- **What:**
+  - `weekGuide.ts`: a dated guide (4+ rows of "Nov 3, 5 15.6 … 15.7 …")
+    becomes week rows. Replies get `guideWeeks`: each course guide's rows for
+    this week and last week. No search, so a typo can't drop the row.
+  - `routines.ts`: the last 8 weeks of Focus (10+ min) and checked-off blocks
+    by course and kind of work. A weekday held in 3+ weeks (and half the
+    weeks with that work) is a routine, reported with its usual start time
+    ("Tue around 20:00"); parts of the day split the owner's 11:30–12:40
+    Wednesday habit in two. Section numbers in titles,
+    matched to the guide, give which week's set and the set it points to now.
+    Replies get one line per routine. No model.
+  - ROUTINES rule: name the work from routines/guideWeeks instead of asking,
+    prefer the routine's days when no time is given, say so briefly; what the
+    student says now wins.
+  - "Same work" matching: a task over a week old whose name pins sections the
+    new title doesn't is no longer taken as the new block.
+- **Where:** `src/lib/{weekGuide,routines,assistant}.ts`, `docs/MUSE_PLAN.md`.
+- **Guard:** `tests/routines.spec.ts`, `tests/ai-routines.spec.ts` (the
+  stale-title case fails without the matching change).
+- **Checked on the owner's real history** (read-only, in the browser):
+  MATH 53 homework "Tue around 20:00, Wed around 12:00 (5 of the last 6
+  weeks); always the previous week's set; that's 15.6–15.9 now"; Physics
+  reading Sunday evenings, same week; CS 61A lab Wednesday evenings.
+
 ## 2026-11-10 (within-day reclaim: review fixes)
 
 - **Why:** a review of exam prep v2 against a real day found the reclaim
