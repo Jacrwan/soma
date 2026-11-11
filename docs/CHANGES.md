@@ -9,26 +9,405 @@ still needed.
 
 ---
 
+## 2026-11-11 (exam suggestions saved before exam ids still match their exam)
+
+- **Why:** the six-bug pass matched pending exam suggestions only by
+  `examPlanId`. Suggestions already waiting in a browser from before that
+  change carry only the "Exam plan · <title>" note, so Rebuild/Add today would
+  duplicate them and removing the exam would leave them behind.
+- **What:** `fromExam` in `examPlansStore.ts`: a suggestion with an id matches
+  by id only (same-title exams stay separate); one without an id falls back
+  to the title note.
+- **Guard:** `tests/branch-regressions.spec.ts` › "suggestions saved before
+  exam ids still belong to their exam" (fails without the fallback). Full
+  suite: 772 passed, 8 skipped; build passes.
+
+---
+
+## 2026-11-11 (fix six bugs found in the exam-prep branch review)
+
+- **Request:** review the branch additions, then fix the six reproduced bugs.
+  The owner also asked for a Markdown record of all edits, rationale, logic,
+  and their request for continuing with other AIs. Full handoff:
+  [BRANCH_FIX_HANDOFF.md](BRANCH_FIX_HANDOFF.md).
+- **Calendar:** automatic moves stop on a fresh calendar error. Completion
+  still saves during an outage, without shifting other blocks. Reclaim can
+  recover after a successful calendar reload.
+- **Requested dates:** Accept retains the exact date the student explicitly
+  named, as app-derived proposal metadata. It cannot authorize a different day
+  or bypass exam/prep deadlines.
+- **Priorities:** saved exam blocks resolve the highest priority among linked
+  open exam items. Reclaim uses that value instead of losing it with the
+  temporary proposal note.
+- **Pending plans:** regeneration excludes the suggestions being replaced
+  before calculating free time; other pending suggestions count once. Unique
+  exam IDs identify suggestions, so same-named exams cannot delete each other.
+- **Focus:** task-matched seconds are separate from distributed subject credit.
+  Progress still receives that credit; unrelated study no longer protects an
+  untouched missed block from reclaim.
+- **Where:** `DashboardV2/{PlanEditor,liveData,LiveDashboard}.tsx/.ts`,
+  `lib/{assistant,reclaimToday,examPlan,examPlansStore}.ts`.
+- **Guard:** `tests/branch-regressions.spec.ts`: six review reproductions plus
+  requested-date/exam boundary checks and completion during a calendar outage.
+  The original six failed on `8f800a4` before implementation. Existing Focus,
+  deadline, exam checklist, and reclaim tests remain intact.
+- **Test clock:** the run crossed midnight and exposed an existing assumption
+  in `dashboard-ai-context.spec.ts` > “a block Soma cannot place keeps the rest
+  of the answer.” Its 00:01 block was not yet safely in the past. The same
+  failure reproduced on `8f800a4`; the test now fixes its clock to noon, with
+  all assertions unchanged.
+- **Verification:** build passed; 50 targeted checks passed, then all 8 new
+  regression checks passed with deletion isolation. Full suite: 770 passed,
+  8 skipped, and the existing midnight-dependent failure above. After fixing
+  its clock, `npm test -- --last-failed` passed that check (771 verified total).
+  No schema change or setup required.
+- **Release:** fix commit `8d1f5a4` pushed to `exam-prep-v1`; Vercel preview
+  `soma-kzez034w4-jacrwans-projects.vercel.app` reached READY. Handoff updated
+  with the verified release and continuation instructions. No production merge.
+
+---
+
+## 2026-11-10 (exam planner form alignment and course recovery)
+
+- **Exam details:** Name, Course, Date and Time use equal-height inputs and
+  aligned captions; “Time (optional)” stays on one line. The form switches to
+  two columns on smaller screens, with full-width name/course fields on phones.
+  The modal scrolls within the viewport so its actions remain reachable.
+- **Less clutter:** shortened the explanation, grouped Cancel and checklist
+  actions in a footer, and removed inherited bold styling from the braindump.
+- **Courses:** an empty auth-time cache now triggers a scoped account reload
+  when the planner opens. Loading, a failed request (with Retry courses), and
+  an account with no active courses are separate states. Retry preserves the
+  exam details. A stalled request offers retry after ten seconds.
+- **Where:** `Documents/ExamPlans.tsx` and `ExamPlans.module.css`.
+- **Guard:** `tests/exam-plans.spec.ts`: field alignment/phone bounds,
+  failed course load and retry, loading versus an empty account. The original
+  alignment check failed with a 21.5px offset; the original cache-only picker
+  could not recover from a failed initial load.
+- **Visual check:** 1280×720 light/dark and 390px phone screenshots with
+  synthetic account data. No schema changes or setup required.
+- **Test stability:** `ai-proposal-reliability.spec.ts` now fixes its browser
+  clock to noon for the seven-day free-slot assertion. After study hours,
+  today correctly has no slots and only six dates appear. That existing failure
+  was reproduced on an isolated copy of `fd29247`; assertions remain unchanged.
+- **Verification:** production build passed. All 19 affected exam/checklist
+  checks passed. The full suite passed 762 checks with 8 skipped and the
+  clock-dependent failure above; `npm test -- --last-failed` passed that check
+  after fixing its clock (763 checks verified in total).
+
+---
+
+## 2026-11-10 (finish the UI pass: priority dragging, phone alignment, and Rebuild sync)
+
+- **Priority slider:** one green-to-red track with a knob and visible priority
+  labels. Dragging previews the value, then saves once on release. Canceling
+  leaves the saved priority alone. Previously each pointer move wrote to the
+  database, and the first write could disable the slider mid-drag.
+- **Phone rows:** fixed columns keep sliders aligned whether or not an item
+  has a Planned tag; the desktop column headings stay aligned too.
+- **Rebuild:** keeps the full brain dump (up to the generator's 8,000-character
+  limit, previously saved as only 4,000), loads the account copy on a fresh
+  device, and preserves edits made while that copy loads. A failed sync shows
+  an announced error and keeps the editor open; retry uses the same exam id.
+- **Compare:** explicit Now and Earlier labels on the split plan. Gaps under
+  15 minutes no longer clutter the read view; editing still shows them.
+- **Edit plan:** automatic moves wait while the student edits. Moving a Focus
+  session to yesterday could otherwise turn today's block into missed work
+  and move it while its editor was still open, making its session list vanish.
+- **Where:** `Documents/{ExamPlans,PriorityBar}.*`,
+  `DashboardV2/{DashboardV2,LiveDashboard}.tsx`, `DashboardV2.module.css`.
+- **Guard:** `tests/exam-ui-continuation.spec.ts` (drag, cancel, account copy
+  after clearing the device cache, save failure and retry). Drag, cancel and
+  long-text checks reproduced the previous failures before the fixes.
+  `tests/session-times-and-calendar.spec.ts` > "editing a session can move it
+  to another date, keeping or changing its times" failed on the baseline and
+  passes when automatic moves pause for editing; no test was weakened.
+- **Visual check:** desktop light/dark and 390px phone screenshots; no
+  horizontal overflow. No schema changes or setup required.
+- **Verification:** production build passed; full Playwright suite passed
+  (760 passed, 8 skipped). Temporary screenshot tests and server configs were
+  removed before that run.
+
+---
+
+## 2026-11-10 (owner's UI pass: slider, rows, lengths from history, Rebuild, Compare)
+
+- **Priority** is one slider (track fills to a knob; click, drag, arrows),
+  not five pills. **Checklist rows**: detail under the name, a fixed right
+  column so every slider and length lines up; Cursor's old `.body li` row
+  styles removed (they broke the phone layout and cut details short).
+- **Lengths from history** (`examPlan.ts` `historyEstimates`): past/practice
+  exams use the student's median time per exam and split "Past finals 1–3"
+  into one item per exam; weekly sets use their per-week pace; the rest stay
+  guesses, and the checklist note says which is which.
+- **Rebuild keeps the braindump**: saved per exam in the settings row
+  (`examBraindumps`, no schema change) and filled back in.
+- **Compare splits today's plan**: now on the left, the earlier version on
+  the right, moved blocks marked "Now 1:00 PM"; no separate section.
+- **Guard:** `tests/exam-plans.spec.ts` (slider, rows line up, Rebuild,
+  lengths), `tests/reclaim-ui.spec.ts` (split Compare).
+- **Not run:** the full suite (usage limit); the affected files pass (67).
+
+---
+
+## 2026-11-10 (routines: per-lecture guides and split habits)
+
+- **Why:** testing on the preview with the owner's account, Physics reading
+  said "always the previous week's set; that's 11.1, 11.3", where the same
+  code had said "same week" earlier. The Physics guide has a row per lecture
+  with ranges written "11.1 - 11.3": only the range ends were read, only a
+  week's first lecture counted, and each week kept one vote, whichever
+  sitting came last.
+- **What:** guide ranges expand ("11.1 - 11.3" is 11.1, 11.2, 11.3); a week
+  with several lecture rows merges them ("Nov 3 & Nov 5: 11.1–11.4"); each
+  week votes once for every gap it shows, and a steady gap must win outright
+  (3+ weeks, 60% of voting weeks, more than any other gap). A tie is no
+  pattern. On the owner's history: Physics reading is now "same week as the
+  lectures" (5 weeks against 3); Math 53 is unchanged (previous week's set,
+  15.6–15.9).
+- **Where:** `src/lib/{weekGuide,routines}.ts`.
+- **Guard:** `tests/routines.spec.ts` › "a guide with a row per lecture…",
+  › "a habit split evenly between two gaps is no week pattern" (both fail on
+  the code before).
+- **Preview check (owner's account):** "im gonna do the math homework after
+  ruf large group today" → Soma suggested renaming the 9:30 PM block to
+  15.6–15.9, "per your Math guide and your usual Tuesday-night routine";
+  "do lab 9 coding agents on thursday afternoon" (due Wednesday) → a Thursday
+  card flagged "After its due date (Wed 2026-11-11), still open".
+
+## 2026-11-10 (a day you name passes the due date, with a warning)
+
+- **Why:** exam prep v1's deadline anchors refused "do the lab tomorrow" for a
+  lab due today ("can't schedule after its due date while it isn't late
+  yet"); before, Soma placed it with "After its due date" on the card. The
+  owner chose: what the student asks now wins, with a warning; a day Soma
+  picks itself never lands past the due date.
+- **What:** `checkScheduleDay` takes `asked`: when the student's message names
+  that exact day (`namesDate`: "tomorrow", "the day after tomorrow", a weekday
+  in the next 7 days, "11/12", "Nov 12", "the 12th"), an open assignment may
+  land after its due date, flagged "After its due date (…), still open".
+  "Some other day" names no day, so Soma's pick stays bound. Exam prep (never
+  on or after the exam), exams and quizzes, and finished work stay hard.
+- **Where:** `src/lib/{deadlineAnchor,statedTime,assistant}.ts`,
+  `docs/exam-prep-build.md`, `docs/exam-prep-log.md`.
+- **Guard:** `tests/ai-whole-day.spec.ts` › "work moved past its due date says
+  so on the card" (passes again), › "a day Soma picks itself never lands past
+  the due date", › "the day the student names is read exactly";
+  `tests/deadline-anchor.spec.ts` › "a day the student asked for…".
+
+## 2026-11-10 (exam prep v2 UI review fixes)
+
+- **Why:** a design review of the new screens (23/40; snapshot in
+  `.impeccable/critique/`) found five issues; the owner asked for all five.
+- **What:**
+  - **Only missed blocks move** (`dayReclaim.ts`). A missed block takes the
+    next free time; later blocks stay where they were planned (an untouched
+    8 PM block was pulled to 2:59 PM). Only when a missed block fits nowhere
+    does later never-started study make room by priority; anything that then
+    fits nowhere comes off the clock (it used to keep its old time and
+    overlap).
+  - **Starts on the next 5 minutes.** Moved blocks started the minute a class
+    ended (12:59 PM) and left 1-minute gaps.
+  - **The note is on today's plan** (`MoveNote.tsx`): each block by name,
+    from and to, with Undo and Dismiss; it stays until dismissed. Undo puts
+    the blocks back and keeps them there for the rest of the day, reloads
+    included (`loadKept`/`saveKept` in `dayVersions.ts`). It was one line
+    above the page, gone after 8 seconds, with no way back.
+  - **Compare lists only what changed** ("Changes since Original · 12:28 PM":
+    each block, Moved / Off the clock / Added / Removed, from → to), opens at
+    the top of the plan, and starts from the original. It was two full lists
+    with moved rows a shade darker, below the whole day.
+  - **Priority bar** (`PriorityBar.*`): one calm color filled to the level
+    (was green to red), 24px hit areas (were 14×10px), one Tab stop with
+    arrows/Home/End (was six per row); "low to high" once in the column
+    header instead of LOW/HIGH on every row.
+- **Where:** `src/lib/{dayReclaim,dayVersions}.ts`,
+  `DashboardV2/{MoveNote,DayCompare,DashboardV2,LiveDashboard}.tsx`,
+  `DashboardV2.module.css`, `Documents/{PriorityBar,ExamPlans}.*`.
+- **Guard:** `tests/reclaim-ui.spec.ts` (note, Undo that sticks, Compare),
+  `tests/exam-plans.spec.ts` › priority bar, `tests/day-reclaim.spec.ts`
+  (later blocks stay, make room only when needed, 5-minute starts). All fail
+  on the code before this change.
+- **Intended test changes:** `day-reclaim.spec.ts` "a missed block takes the
+  next free time…" and `reclaim-today.spec.ts` now expect the missed block
+  after the later one instead of bumping it.
+- **Not done (minor review notes):** em dashes in exam copy, two primary
+  buttons side by side, the bare "−" collapse control, "If the day runs
+  long" wording, the Settings toggle saving instantly.
+
+## 2026-11-10 (Soma learns routines, and reads guides by week)
+
+- **Why:** asked for "the math homework" or "all of last week's math
+  homework", Soma said it couldn't tell which sections, though the homework
+  guide was uploaded, and once titled the block with a month-old task's
+  sections ("14.3–14.6"). The owner has done Math 53's previous-week set on
+  Tuesday nights and Wednesday mornings for weeks; Soma should learn that
+  from what they did, for every course. Plan: `docs/MUSE_PLAN.md`.
+- **What:**
+  - `weekGuide.ts`: a dated guide (4+ rows of "Nov 3, 5 15.6 … 15.7 …")
+    becomes week rows. Replies get `guideWeeks`: each course guide's rows for
+    this week and last week. No search, so a typo can't drop the row.
+  - `routines.ts`: the last 8 weeks of Focus (10+ min) and checked-off blocks
+    by course and kind of work. A weekday held in 3+ weeks (and half the
+    weeks with that work) is a routine, reported with its usual start time
+    ("Tue around 20:00"); parts of the day split the owner's 11:30–12:40
+    Wednesday habit in two. Section numbers in titles,
+    matched to the guide, give which week's set and the set it points to now.
+    Replies get one line per routine. No model.
+  - ROUTINES rule: name the work from routines/guideWeeks instead of asking,
+    prefer the routine's days when no time is given, say so briefly; what the
+    student says now wins.
+  - "Same work" matching: a task over a week old whose name pins sections the
+    new title doesn't is no longer taken as the new block.
+- **Where:** `src/lib/{weekGuide,routines,assistant}.ts`, `docs/MUSE_PLAN.md`.
+- **Guard:** `tests/routines.spec.ts`, `tests/ai-routines.spec.ts` (the
+  stale-title case fails without the matching change).
+- **Checked on the owner's real history** (read-only, in the browser):
+  MATH 53 homework "Tue around 20:00, Wed around 12:00 (5 of the last 6
+  weeks); always the previous week's set; that's 15.6–15.9 now"; Physics
+  reading Sunday evenings, same week; CS 61A lab Wednesday evenings.
+
+## 2026-11-10 (within-day reclaim: review fixes)
+
+- **Why:** a review of exam prep v2 against a real day found the reclaim
+  reshuffling and over-firing, and the full suite went from 1 failure to 15
+  (which ones changed with the time of day the tests ran).
+- **What:**
+  - **Order kept on ties.** Equal priorities were re-sorted by title, so one
+    missed block reordered the rest of the day. Ties now keep the planned
+    order, the missed block first (`dayReclaim.ts` `byPriority`).
+  - **15-minute wait** (`GRACE_MIN`). A block counts as missed 15 minutes
+    after it ends, then moves however long ago it ended (owner's choice: the
+    student often studies without Focus and checks off a little later).
+  - **Running long needs Focus.** A late checkmark with no Focus only marks
+    the block done. Stretch-and-shift happens only when Focus ran past the
+    end, and the block ends when Focus stopped (now if still running)
+    (`reclaimToday.ts` `focusEndMinutes`; owner's choice).
+  - **No reload every minute.** The check runs on the plan already on
+    screen; the plan (five database reads and a calendar fetch) is read again
+    only when something must move. It used to be read every minute per tab.
+  - **No retry loop.** A move that didn't stick (the plan read back still had
+    the old time) marked the block missed again on every reload, so the
+    dashboard saved forever and every chat message was refused ("Please wait
+    for your plan to finish saving"). Such blocks are now left alone for the
+    day (`ReclaimOpts.stuck`), and a message sent during a background move
+    waits for it (up to 10s) instead of being turned away.
+  - **Tests on the real clock.** `live-dashboard.spec.ts` now runs at 8 AM
+    (before its 9:00 and 16:00 blocks); the reading-progress "ended with no
+    Focus" test runs at 00:10, inside the wait, where that state still
+    exists; its title lookup takes the plan entry (`.first()`), since a moved
+    block also shows in Up next. No assertion was dropped.
+- **Where:** `src/lib/{dayReclaim,reclaimToday}.ts`, `LiveDashboard.tsx`.
+- **Guard:** `tests/day-reclaim.spec.ts` (order, wait),
+  `tests/reclaim-today.spec.ts` (late checkmark, Focus end),
+  `tests/reclaim-quiet.spec.ts` (no reload), `tests/dashboard-ai-context.spec.ts`
+  (the chat works while a move can't stick; it failed without the fix).
+- **Intended change to a test:** the study-hours test in `day-reclaim.spec.ts`
+  now checks at 21:15, not 21:00 (a block that just ended isn't missed yet).
+
+## 2026-11-10 (exam prep v2: within-day reclaim on the dashboard)
+
+- **Why:** a missed study block should move inside the same day by priority,
+  without a model call, and the student should still see the earlier plan.
+- **What:** the live dashboard applies `reclaimDay` about once a minute and
+  on each plan reload. Never-started missed work and later never-started
+  study are saved into today's gaps (not Accept cards). Pinned times, started
+  blocks, and classes stay. Focus running past the end holds the day;
+  checking the block off sets that end and shifts the overlap. Settings →
+  Study hours: "Stop at study hours" (default) or "Use personal time".
+  Today's plan has Compare: now on the left, an earlier version on the right.
+  Versions stay in this browser. Story: `docs/exam-prep-log.md`.
+- **Where:** `src/lib/{dayReclaim,reclaimToday,dayVersions}.ts`,
+  `LiveDashboard.tsx`, `DayCompare.tsx`, `DashboardV2.tsx`, `SettingsTab.tsx`.
+- **Guard:** `tests/day-reclaim.spec.ts`, `tests/reclaim-today.spec.ts`.
+
 ## 2026-11-10 (a stalled load before a reply now ends in a retry message)
 
-- **Why:** on the exam-prep preview (branch exam-prep-v1), "im gonna do the
-  math homework after ruf large group today" got its first pass (logged) and then nothing: the full
+- **Why:** on the exam-prep preview, "im gonna do the math homework after ruf
+  large group today" got its first pass (logged) and then nothing: the full
   Soma request never reached the server (Vercel logs show no reply request at
   all, while the test runs afterwards on the same build were logged and
   streamed in ~2s). After the first pass the app loads the plan, study
-  history and documents; those loads have no time limit, so one
+  history, documents and exam lists; those loads have no time limit, so one
   that never finished left the message waiting forever with no error. The
-  same loads exist on master, so live could hit it too.
+  same loads exist on master, so live could hit it too. It was not the model
+  and not `thinking`: the build that sent `between_tools` answered fine once
+  it was reached.
 - **What:** each load in `askSoma` has a 20s limit (`LOAD_LIMIT_MS`). The plan
   is required: past the limit the chat says "Soma couldn't load your plan …
-  Nothing was sent; please retry." Study history, documents and settings are
-  extras: past the limit the reply goes without them and the console
-  says which one stalled. The Muse-style memory (portrait, open
+  Nothing was sent; please retry." Study history, documents, settings and exam
+  lists are extras: past the limit the reply goes without them and the console
+  says which one stalled. Exam lists that time out leave the day check to
+  Accept, which loads them again. The Muse-style memory (portrait, open
   threads) is unchanged.
 - **Where:** `src/lib/assistant.ts`.
 - **Guard:** `tests/ai-load-limit.spec.ts`.
 - **Note:** previews have no Soma memory: `SOMA_MEMORY_ENABLED` is set for
   Production only in Vercel, so the portrait only shows on somastudy.app.
+- **Was failing on this branch (not from this change):**
+  `tests/ai-whole-day.spec.ts` › "work moved past its due date says so on the
+  card". Resolved the same day: see "a day you name passes the due date".
+
+## 2026-11-10 (never send Sonnet 5.5 `thinking`)
+
+- **Why:** `thinking: { type: 'between_tools' }` was added to make replies
+  start sooner, but the wait was never the model (see the entry above). With
+  thinking off, plans got worse (a reply said "until 11:30" and proposed
+  9:30–11:00). Production, which never sent it, was fine.
+- **What:** `/api/chat` omits `thinking` again (same as production). Dashboard
+  still sends `effort: 'low'`. Do not re-add `between_tools`.
+- **Where:** `api/chat.ts`.
+- **Guard:** `tests/ai-backend.spec.ts` (body has no `thinking` key).
+
+## 2026-11-10 (Soma plan replies: low effort, not medium)
+
+- **Why:** scheduling felt stuck for a minute+ and burned thinking tokens.
+  Plan turns used Sonnet medium effort; the API even allowed ~150s. Exam-prep
+  context made that worse; the real cost was the thinking budget.
+- **What:** dashboard `ask` and `plan` both send `effort: 'low'`. `/api/chat`
+  defaults to low unless the client asks for medium. Exam coverage lists still
+  load only when the message is about an exam.
+- **Where:** `src/lib/assistant.ts`, `api/chat.ts`.
+- **Guard:** `tests/ai-triage.spec.ts`, `tests/ai-backend.spec.ts`.
+
+## 2026-11-10 (exam prep v1: coverage list + priority bar)
+
+- **Why:** the Nov 6 exam study plans felt like random blocks on random days
+  with vague titles, and got reverted the same day. The owner wants long-term
+  exam prep that starts from a braindump and/or uploaded materials, names work
+  concretely, uses a 1–5 priority the AI defaults and they can change, and only
+  places ~today / ~this week onto the real plan (within-day reclaim + compare
+  view come later).
+- **What:**
+  - **Documents → Exam study plans** again: pick an exam, braindump and/or tick
+    files, Soma drafts a concrete list (braindump is source of truth; files
+    confirm) with a Low––––High priority bar per item; approve saves the **full**
+    outline (not trimmed to time left). **Add today** / **Add this week** only
+    schedules the horizon asked for, by priority, with detailed titles
+    (`Calc midterm: Worksheet 3 — do problems 1–12`). "Use braindump as-is"
+    skips the model.
+  - **Hard deadline anchors** (`deadlineAnchor.ts`, no AI): exam prep never on
+    or after the exam (code in `placeBlocks`, Soma propose, and Accept);
+    exam/quiz tasks may land on their due day; assignments may not land after
+    due unless already late and still open (unsubmitted). Bumps that make room
+    also stop at the same last day.
+  - **Soma context:** `exams` + EXAM STUDY PLANS — place by priority; the app
+    enforces the anchors. Prefer lighter loads on quiz-heavy days; cite
+    portrait rhythms; ask about odd calendar days. EXAM PREP defers when a list
+    exists. Exam-task vs study-block matching still stands.
+  - **Storage:** reuses `exam_plans` and `course_items.exam_id` / `study_day` /
+    `minutes`. New optional `priority` (1–5) via `exam_priority_migration.sql`
+    (anchors need no new columns). Reading lists ignore exam rows (`isReading`).
+- **Where:** `src/lib/{examPlan,examPlansStore,deadlineAnchor,courseItems}.ts`,
+  `components/Documents/{ExamPlans,PriorityBar,DocumentsTab}.*`, `assistant.ts`,
+  `exam_priority_migration.sql`.
+- **Guard:** `tests/exam-plans.spec.ts`, `tests/deadline-anchor.spec.ts`.
+  `tests/exam-task-blocks.spec.ts` still covers the exam-task and reading-list
+  leave-alone cases.
+- **Setup:** run `exam_priority_migration.sql` in Supabase once so priorities
+  persist (lists still save without it; priority stays at the app default).
+  `exam_study_migration.sql` must already have been run (it was, 2026-11-06).
+  Deadline anchors work without that SQL.
 
 ---
 

@@ -12,6 +12,10 @@ async function setup(page:Page){
   todo_sessions:[{id:'review-slot',user_id:account.id,todo_id:'review',date,start_time:iso('09:00'),end_time:iso('09:45')},{id:'lab-slot',user_id:account.id,todo_id:'lab',date,start_time:iso('16:00'),end_time:iso('16:30')}],
   timer_sessions:[] as Record<string,unknown>[],active_timer:[] as Record<string,unknown>[]
  } as Record<string,Record<string,unknown>[]>};
+ // 8 AM, before the 9:00 and 16:00 blocks: these tests are about saving and
+ // Focus, and ran on the real clock. In the evening the within-day reclaim
+ // (2026-11-10) moved those blocks, since they had ended unstarted.
+ await page.clock.install({time:new Date(`${date}T08:00:00`)});
  await page.addInitScript(account=>{localStorage.setItem('sb-soma-regression-auth-token',JSON.stringify({access_token:'test-token',refresh_token:'test-refresh',token_type:'bearer',expires_at:Math.floor(Date.now()/1000)+3600,expires_in:3600,user:account}));},account);
  await page.route('https://soma-regression.supabase.co/**',async route=>{
   const req=route.request(),url=new URL(req.url()),table=url.pathname.split('/').pop()!;

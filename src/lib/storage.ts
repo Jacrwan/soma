@@ -19,6 +19,12 @@ export interface SomaSettings {
    *  existing blocks inside the window still count as busy. `off` lifts the
    *  limit (any hour) and keeps start/end for when it's turned back on. */
   studyWindow: { start: string; end: string; off?: boolean };
+  /** Within-day reclaim may run past study hours when the day isn't done.
+   *  Off (default): personal time stays free; leftover work waits for catch-up. */
+  invadePersonalTime?: boolean;
+  /** Each exam plan's braindump, by exam id, so Rebuild starts from it
+   *  (2026-11-10: Rebuild opened empty). In the settings row: no new table. */
+  examBraindumps?: Record<string, string>;
   /** When Soma has to split work to fit it in, no piece is shorter than `min` minutes. */
   chunks?: { min: number };
   theme: 'dark' | 'light';

@@ -1,0 +1,177 @@
+/* Exam study plans: reuses ReadingLists.module.css for the panel chrome. */
+
+.body { border-top: 1px solid var(--border); padding: 10px 14px 12px; display: grid; gap: 10px; }
+
+.body ol {
+  border-top: none;
+  padding: 0;
+  max-height: none;
+  overflow: visible;
+}
+
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+.primary {
+  padding: 8px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--bg);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.primary:disabled { opacity: .5; cursor: not-allowed; }
+
+.secondary {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary, var(--bg));
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.secondary:disabled { opacity: .5; cursor: not-allowed; }
+
+.quiet {
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  margin-left: auto;
+}
+.quiet:hover:not(:disabled) { color: var(--text-primary); }
+
+.primary:focus-visible, .secondary:focus-visible, .quiet:focus-visible, .addRow:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.note { margin: 0; font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+.note a { color: var(--accent); }
+
+.confirm {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-primary);
+}
+
+.past { margin: 10px 0 0; font-size: 12px; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
+
+.otherExam { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.5fr) minmax(140px, 1fr) minmax(125px, .9fr); gap: 12px; }
+.otherExam > label { min-width: 0; }
+.otherExam input, .otherExam select { width: 100%; min-width: 0; height: 38px; box-sizing: border-box; }
+.fieldCaption { display: flex; align-items: baseline; gap: 4px; line-height: 18px; white-space: nowrap; }
+.optional { font-weight: 500; color: var(--text-muted); font-size: 11px; }
+
+.drop {
+  border: 1.5px dashed var(--border);
+  border-radius: 10px;
+  padding: 14px 12px;
+  text-align: center;
+  background: var(--bg-secondary, color-mix(in srgb, var(--border) 20%, transparent));
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.drop p { margin: 0 0 4px; font-size: 13px; color: var(--text-primary); }
+.drop small { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+.dropActive { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.linkish {
+  border: none; background: none; padding: 0; font: inherit; font-size: inherit;
+  color: var(--accent); font-weight: 600; cursor: pointer; text-decoration: underline;
+}
+.linkish:disabled { opacity: 0.5; cursor: default; }
+
+.hint { margin: 0; font-size: 12px; line-height: 1.45; color: var(--text-primary); }
+.hintMute { display: block; margin: 0 0 4px; font-size: 12px; color: var(--text-muted); }
+
+.materials { border: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.materials legend { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; padding: 0; }
+.materials label { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--text-primary); cursor: pointer; overflow-wrap: anywhere; }
+
+.braindump {
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 400;
+  resize: vertical;
+  min-height: 100px;
+}
+.braindump:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.builderWide { width: min(800px, calc(100vw - 32px)); max-width: 920px; box-sizing: border-box; overflow-y: auto; }
+.builderActions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.builderActions .quiet { margin-left: 0; margin-right: auto; }
+.builderActions .primary { color: oklch(99% .003 265); }
+
+@media (max-width: 760px) {
+  .otherExam { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* What · Detail · Min · Priority · remove */
+.review th:nth-child(1) { width: 140px; }
+.review th:nth-child(2) { width: auto; }
+.review th:nth-child(3) { width: 64px; }
+.review th:nth-child(4) { width: 160px; }
+.review th:nth-child(5) { width: 36px; }
+.review td:first-child, .review th:first-child { text-align: left; }
+.review td:nth-child(4) { vertical-align: middle; }
+
+.addRow {
+  justify-self: start;
+  align-self: start;
+  padding: 4px 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .otherExam > label:nth-child(-n+2) { grid-column: 1 / -1; }
+  .builderActions .primary { width: 100%; }
+  .quiet { margin-left: 0; }
+  .review th:nth-child(4), .review td:nth-child(4) { min-width: 120px; }
+}
+
+.thNote { margin-left: 4px; font-size: 10px; font-weight: 400; color: var(--text-muted); }
+
+/* Exam checklist rows: name and detail on the left, a fixed right column. */
+.examListHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text-secondary); font-size: 11px; }
+.examListHead .examMeta small { display: block; font-size: 10px; font-weight: 400; }
+.examItems { list-style: none; margin: 0; padding: 0; }
+.examItems li { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px 16px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.examItems li:last-child { border-bottom: 0; }
+.examText { display: flex; flex-wrap: nowrap; align-items: flex-start; gap: 10px; min-width: 0; flex: 1 1 260px; cursor: pointer; }
+.examText input { margin-top: 3px; flex-shrink: 0; }
+.examText > span { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.examText strong { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.examText strong + span { font-size: 12px; line-height: 1.45; color: var(--text-secondary); }
+.examMeta { display: grid; grid-template-columns: 64px 92px 56px; align-items: center; column-gap: 8px; flex-shrink: 0; }
+.examTag { display: flex; justify-content: flex-end; }
+.examPriority { display: flex; }
+.examMinutes { text-align: right; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.examDone .examText strong, .examDone .examText strong + span { color: var(--text-muted); text-decoration: line-through; }
+@media (max-width: 640px) {
+  .examListHead { flex-wrap: wrap; }
+  .examListHead .examMeta { padding-left: 26px; }
+  .examItems li { flex-wrap: wrap; }
+  .examMeta { width: 100%; padding-left: 26px; grid-template-columns: 64px 92px minmax(0, 1fr); }
+  .examTag { justify-content: flex-start; }
+}

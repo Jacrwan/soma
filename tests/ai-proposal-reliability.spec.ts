@@ -75,6 +75,11 @@ test("a block over the student's own planned session moves that session, never o
 });
 
 test('Soma is told which proposals were placed and which were not, and sees pending ones', async ({ page }) => {
+  // Keep today inside study hours: after the window ends there are correctly
+  // only six days with free slots, making this seven-day context check flaky.
+  const midday = new Date();
+  midday.setHours(12, 0, 0, 0);
+  await page.clock.setFixedTime(midday);
   const state = await setup(page, [
     { reply: 'Two blocks.', blocks: [
       { title: 'Gulliver reading', subject: 'Physics 5A', date: key(offset(0)), start: '00:00', end: '00:30' },
