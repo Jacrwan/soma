@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { pinKey } from '../src/lib/pinnedBlocks';
-import { asDayBlocks, overrunToday, planToday, reclaimWindowEnd, type LiveDayBlock } from '../src/lib/reclaimToday';
+import { asDayBlocks, focusEndMinutes, overrunToday, planToday, reclaimWindowEnd, type LiveDayBlock } from '../src/lib/reclaimToday';
 import { pushVersion, samePlan, type VersionBlock } from '../src/lib/dayVersions';
 
 /**
@@ -59,4 +59,31 @@ test('versions keep the original and skip an unchanged plan', () => {
   const next = pushVersion(first, { at: '2026-11-10T19:00:00.000Z', reason: 'reclaim', blocks: moved });
   expect(next.map(v => v.reason)).toEqual(['original', 'reclaim']);
   expect(samePlan(next[0].blocks, next[1].blocks)).toBe(false);
+});
+
+// Owner's choice 2026-11-10: only Focus running past the end counts as
+// running long. A late checkmark with no Focus just marks the block done.
+test('a late checkmark with no Focus does not stretch the block or shift the day', () => {
+  const blocks = [
+    block({ id: 'a', title: 'Math HW', time: '11:00–12:00', subjectId: 'math' }),
+    block({ id: 'b', title: 'Reading', time: '12:00–13:00', subjectId: 'math' }),
+  ];
+  const opts = { pins: new Set<string>(), date: '2026-11-10' };
+  expect(focusEndMinutes(blocks[0], [], '2026-11-10', false)).toBeNull();
+  expect(overrunToday(blocks, 'a', null, 21 * 60, opts)).toBeNull();
+});
+
+test('Focus that ran past the end: the block ends when Focus stopped', () => {
+  const local = (h: number, min: number) => new Date(2026, 10, 10, h, min);
+  // Stored like the database does: UTC, without a zone marker.
+  const history = [
+    { subject_id: 'math', task_text: 'Math HW', date: '2026-11-10', end_time: local(11, 50).toISOString().replace('Z', '') },
+    { subject_id: 'math', task_text: 'Math HW', date: '2026-11-10', end_time: local(12, 25).toISOString().replace('Z', '') },
+    { subject_id: 'cs', task_text: 'Math HW', date: '2026-11-10', end_time: local(18, 0).toISOString() },
+  ];
+  const a = block({ id: 'a', title: 'Math HW', time: '11:00–12:00', subjectId: 'math' });
+  expect(focusEndMinutes(a, history, '2026-11-10', false)).toBe(12 * 60 + 25);
+  expect(focusEndMinutes(a, history, '2026-11-10', true, local(12, 40))).toBe(12 * 60 + 40);
+  const late = overrunToday([a, block({ id: 'b', title: 'Reading', time: '12:00–13:00' })], 'a', 12 * 60 + 25, 21 * 60, { pins: new Set<string>(), date: '2026-11-10' });
+  expect(late!.blocks.find(b => b.id === 'a')!.time).toBe('11:00–12:25');
 });

@@ -92,7 +92,9 @@ async function setup(page: Page, reply: (ctx: Ctx) => unknown, edit?: (db: Recor
     return route.fulfill({ json: { content: [{ text: JSON.stringify(reply(ctx)) }] } });
   });
   await page.goto('/dashboard');
-  await expect(page.getByText('Physics reading: 4.1–4.6 Momentum')).toBeVisible();
+  // .first(): the plan entry. Once the within-day reclaim (2026-11-10) moves a
+  // missed block later today, the Up next widget names it too.
+  await expect(page.getByText('Physics reading: 4.1–4.6 Momentum').first()).toBeVisible();
   return state;
 }
 async function ask(page: Page, text: string) {
@@ -126,6 +128,10 @@ test('Soma sees what is actually read, not what the syllabus says should be', as
 });
 
 test('a block that ended with no Focus time counts as not started: no question, no bookmark', async ({ page }) => {
+  // 00:10, nine minutes after the block ended: inside the 15-minute wait
+  // before the within-day reclaim (2026-11-10) moves a missed block later
+  // today, after which its sections are simply planned again.
+  await page.clock.install({ time: new Date(`${TODAY}T00:10:00`) });
   const state = await setup(page, () => ({ reply: 'ok' }), db => { db.timer_sessions = []; });
   await expect(page.getByRole('button', { name: /Stopped part way/ })).toHaveCount(0);
   await ask(page, 'plan physics');

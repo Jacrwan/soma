@@ -17,7 +17,7 @@ import { listDocuments } from '../../lib/documents';
 import { askSoma, applyProposal, applyAll, dismissProposal, type ApplyOptions } from '../../lib/assistant';
 import { pinBlock, pinKey, pinnedKeys } from '../../lib/pinnedBlocks';
 import { loadDayVersions, pushVersion, saveDayVersions, type DayVersion } from '../../lib/dayVersions';
-import { nowMinutes, overrunToday, planToday, reclaimWindowEnd, toVersionBlocks } from '../../lib/reclaimToday';
+import { focusEndMinutes, nowMinutes, overrunToday, planToday, reclaimWindowEnd, toVersionBlocks } from '../../lib/reclaimToday';
 import { spanMinutes } from '../../lib/clockRange';
 import DayCompare from './DayCompare';
 import { useProposals, updateProposals, getProposals } from '../../lib/proposalStore';
@@ -150,6 +150,9 @@ export default function LiveDashboard({userId}:{userId:string}) {
  const [compareId,setCompareId]=useState('');
  const [notice,setNotice]=useState('');
  const reclaimLock=useRef(false);
+ // Blocks whose move didn't stick today: left alone after that, or every
+ // reload would save the same move again (and the chat would wait forever).
+ const stuck=useRef<{date:string;ids:Set<string>}>({date:'',ids:new Set()});
  const runRef=useRef<() => void>(() => {});
  // A day clicked on the calendar ("YYYY-MM-DD") opens on that day.
  const location=useLocation(),navigate=useNavigate();
@@ -207,7 +210,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   const match=snapshot.blocks.find(b=>!b.external && b.subjectId===timer.activeSession?.subject.id && b.title===timer.activeSession?.task && localDate(dateAt(origin,b.day))===localDate(new Date(timer.activeSession.sessionStartTimeISO)));
   return match?.id ?? null;
  }
- const reclaimOpts=()=>({activeId:focusId(),pins:pinnedKeys(userId),date:localDate(origin)});
+ const reclaimOpts=()=>{const date=localDate(origin);if(stuck.current.date!==date)stuck.current={date,ids:new Set()};return {activeId:focusId(),pins:pinnedKeys(userId),date,stuck:stuck.current.ids};};
  async function applyMoves(fresh:Snapshot,result:{moved:{id:string;to:string}[];blocks:{id:string;time:string}[]},reason:'reclaim'|'overrun',completedId?:string|number){
   for(const move of result.moved){
    const live=fresh.blocks.find(b=>String(b.id)===move.id);
@@ -219,6 +222,10 @@ export default function LiveDashboard({userId}:{userId:string}) {
   }
   const after=await readPlan(userId,origin,rangeRef.current,7);
   const date=localDate(origin);
+  for(const move of result.moved){
+   const now=after.blocks.find(b=>String(b.id)===move.id);
+   if(now && now.time!==move.to)reclaimOpts().stuck.add(move.id);
+  }
   const list=pushVersion(loadDayVersions(userId,date),{at:new Date().toISOString(),reason,blocks:toVersionBlocks(after.blocks)});
   saveDayVersions(userId,date,list);
   setVersions(list);
@@ -228,17 +235,21 @@ export default function LiveDashboard({userId}:{userId:string}) {
  }
  async function runReclaim(){
   if(!snapshot || writing.current || reclaimLock.current)return;
-  let fresh:Snapshot;
-  try{fresh=await readPlan(userId,origin,rangeRef.current,7);}catch{return;}
-  const today=fresh.blocks.filter(b=>b.day===0);
   const date=localDate(origin);
-  const snap=toVersionBlocks(today);
+  const snap=toVersionBlocks(snapshot.blocks.filter(b=>b.day===0));
   if(snap.length && !loadDayVersions(userId,date).length){
    const list=pushVersion([],{at:new Date().toISOString(),reason:'original',blocks:snap});
    saveDayVersions(userId,date,list);
    setVersions(list);
   }
-  const result=planToday(today,nowMinutes(),reclaimWindowEnd(storage.getSomaSettings()),reclaimOpts());
+  // Checked on the plan already on screen: the plan (five database reads and
+  // a calendar fetch) is read again only when something needs to move. It
+  // used to be read every minute in every open tab, moves or not.
+  const windowEnd=reclaimWindowEnd(storage.getSomaSettings());
+  if(!planToday(snapshot.blocks.filter(b=>b.day===0),nowMinutes(),windowEnd,reclaimOpts()).moved.length)return;
+  let fresh:Snapshot;
+  try{fresh=await readPlan(userId,origin,rangeRef.current,7);}catch{return;}
+  const result=planToday(fresh.blocks.filter(b=>b.day===0),nowMinutes(),windowEnd,reclaimOpts());
   if(result.held || !result.moved.length)return;
   reclaimLock.current=true;writing.current=true;setBusy(true);setError('');
   try{await applyMoves(fresh,result,'reclaim');await reload();}
@@ -257,7 +268,11 @@ export default function LiveDashboard({userId}:{userId:string}) {
    const fresh=await readPlan(userId,origin,rangeRef.current,7);
    const todo=fresh.todos.find(t=>t.id===block.todoId);
    if(!todo)throw new Error('This task no longer exists. Refresh your plan.');
-   const overrun=state==='Completed' ? overrunToday(fresh.blocks.filter(b=>b.day===0),block.id,nowMinutes(),reclaimWindowEnd(storage.getSomaSettings()),reclaimOpts()) : null;
+   // Ran long only if Focus ran past the end: the block then ends when Focus
+   // did. A late checkmark with no Focus just marks it done.
+   const live=fresh.blocks.find(b=>String(b.id)===String(block.id));
+   const focusEnd=state==='Completed' && live ? focusEndMinutes(live,fresh.history,localDate(origin),String(focusId())===String(block.id)) : null;
+   const overrun=state==='Completed' ? overrunToday(fresh.blocks.filter(b=>b.day===0),block.id,focusEnd,reclaimWindowEnd(storage.getSomaSettings()),reclaimOpts()) : null;
    if(overrun?.moved.length)await applyMoves(fresh,overrun,'overrun',block.id);
    else await setTaskStatus(userId,fresh,todo,state==='Completed' ? 'done' : state==='Partially completed' ? 'in_progress' : 'nothing');
    await storage.fetchAllTodos();await reload();
@@ -299,6 +314,9 @@ export default function LiveDashboard({userId}:{userId:string}) {
   finally{writing.current=false;setBusy(false);}
  }
  async function propose(text:string,day:number,onReply?:(soFar:string)=>void){
+  // A background move of today's plan takes a moment: wait for it rather
+  // than turn the message away.
+  for(let waited=0;reclaimLock.current && waited<10_000;waited+=200)await new Promise(r=>setTimeout(r,200));
   if(writing.current)throw new Error('Please wait for your plan to finish saving.');
   // Asked just after midnight, before the page has rolled over: Soma still
   // answers for today, and the day on screen keeps its date.

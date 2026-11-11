@@ -9,6 +9,44 @@ still needed.
 
 ---
 
+## 2026-11-10 (within-day reclaim: review fixes)
+
+- **Why:** a review of exam prep v2 against a real day found the reclaim
+  reshuffling and over-firing, and the full suite went from 1 failure to 15
+  (which ones changed with the time of day the tests ran).
+- **What:**
+  - **Order kept on ties.** Equal priorities were re-sorted by title, so one
+    missed block reordered the rest of the day. Ties now keep the planned
+    order, the missed block first (`dayReclaim.ts` `byPriority`).
+  - **15-minute wait** (`GRACE_MIN`). A block counts as missed 15 minutes
+    after it ends, then moves however long ago it ended (owner's choice: the
+    student often studies without Focus and checks off a little later).
+  - **Running long needs Focus.** A late checkmark with no Focus only marks
+    the block done. Stretch-and-shift happens only when Focus ran past the
+    end, and the block ends when Focus stopped (now if still running)
+    (`reclaimToday.ts` `focusEndMinutes`; owner's choice).
+  - **No reload every minute.** The check runs on the plan already on
+    screen; the plan (five database reads and a calendar fetch) is read again
+    only when something must move. It used to be read every minute per tab.
+  - **No retry loop.** A move that didn't stick (the plan read back still had
+    the old time) marked the block missed again on every reload, so the
+    dashboard saved forever and every chat message was refused ("Please wait
+    for your plan to finish saving"). Such blocks are now left alone for the
+    day (`ReclaimOpts.stuck`), and a message sent during a background move
+    waits for it (up to 10s) instead of being turned away.
+  - **Tests on the real clock.** `live-dashboard.spec.ts` now runs at 8 AM
+    (before its 9:00 and 16:00 blocks); the reading-progress "ended with no
+    Focus" test runs at 00:10, inside the wait, where that state still
+    exists; its title lookup takes the plan entry (`.first()`), since a moved
+    block also shows in Up next. No assertion was dropped.
+- **Where:** `src/lib/{dayReclaim,reclaimToday}.ts`, `LiveDashboard.tsx`.
+- **Guard:** `tests/day-reclaim.spec.ts` (order, wait),
+  `tests/reclaim-today.spec.ts` (late checkmark, Focus end),
+  `tests/reclaim-quiet.spec.ts` (no reload), `tests/dashboard-ai-context.spec.ts`
+  (the chat works while a move can't stick; it failed without the fix).
+- **Intended change to a test:** the study-hours test in `day-reclaim.spec.ts`
+  now checks at 21:15, not 21:00 (a block that just ended isn't missed yet).
+
 ## 2026-11-10 (exam prep v2: within-day reclaim on the dashboard)
 
 - **Why:** a missed study block should move inside the same day by priority,

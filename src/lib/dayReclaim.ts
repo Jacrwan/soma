@@ -3,8 +3,8 @@ import { clockOf, rangeOf, spanMinutes } from './clockRange';
 /**
  * Within-day reclaim (exam prep v2). No model.
  *
- * A study block whose time has ended, and that was never started (no Focus,
- * no check), is missed. Missed work and later never-started study on the
+ * A study block that ended at least GRACE_MIN minutes ago, and that was
+ * never started (no Focus, no check), is missed. Missed work and later never-started study on the
  * same day are repacked by priority into the gaps still left today.
  * Calendar events and anything already started stay where they are.
  * Nothing lands after `windowEnd` (study hours). Pass `null` when study
@@ -43,8 +43,19 @@ export type ReclaimResult = {
 };
 
 const MIN_GAP = 15;
+/**
+ * Minutes after a block ends before it counts as missed. Students often
+ * study without Focus and check the block off a little later; moving it the
+ * minute it ended took it away before they could (owner's choice,
+ * 2026-11-10: wait 15 minutes, then move it however long ago it ended).
+ */
+export const GRACE_MIN = 15;
 
 const pri = (b: DayBlock) => b.priority ?? 3;
+const startOf = (b: DayBlock) => (b.time ? rangeOf(b.time)[0] : 24 * 60);
+/** Highest priority first; ties keep the order the student planned them in
+ *  (they were sorted by title, which reshuffled the rest of the day). */
+const byPriority = (a: DayBlock, b: DayBlock) => pri(b) - pri(a) || startOf(a) - startOf(b) || a.id.localeCompare(b.id);
 const lenOf = (b: DayBlock) => b.minutes || (b.time ? spanMinutes(...b.time.split('–') as [string, string]) : 45);
 
 function movable(b: DayBlock) {
@@ -114,11 +125,11 @@ export function reclaimDay(blocks: DayBlock[], nowMin: number, windowEnd: number
     if (end <= nowMin) return { blocks, moved: [], unplaced: [], held: true };
   }
 
-  const missed = blocks.filter(b => movable(b) && rangeOf(b.time)[1] <= nowMin);
+  const missed = blocks.filter(b => movable(b) && rangeOf(b.time)[1] + GRACE_MIN <= nowMin);
   if (!missed.length) return { blocks, moved: [], unplaced: [], held: false };
 
   const later = blocks.filter(b => movable(b) && rangeOf(b.time)[0] >= nowMin);
-  const pool = [...missed, ...later].sort((a, b) => pri(b) - pri(a) || a.title.localeCompare(b.title));
+  const pool = [...missed, ...later].sort(byPriority);
   const poolIds = new Set(pool.map(b => b.id));
   const occupied = blocks.filter(b => !poolIds.has(b.id) && b.time).map(b => rangeOf(b.time));
   const limit = windowEnd == null ? 24 * 60 : Math.min(24 * 60, windowEnd);
@@ -149,7 +160,7 @@ export function finishOverrun(blocks: DayBlock[], id: string, endedAtMin: number
   const closed = blocks.map(b => b.id === id
     ? { ...b, time, minutes: spanMinutes(clockOf(start), clockOf(end)), done: true, running: false, started: true }
     : b);
-  const pool = closed.filter(b => movable(b) && rangeOf(b.time)[0] < end).sort((a, b) => pri(b) - pri(a) || a.title.localeCompare(b.title));
+  const pool = closed.filter(b => movable(b) && rangeOf(b.time)[0] < end).sort(byPriority);
   if (!pool.length) {
     const moved = time === block.time ? [] : [{ id, from: block.time, to: time }];
     return { blocks: closed, moved, unplaced: [], held: false };
