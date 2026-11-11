@@ -4,7 +4,8 @@ import { supabase } from '../../lib/supabase';
 import { storage } from '../../lib/storage';
 import { loadCourseItems, isReading, type CourseItem } from '../../lib/courseItems';
 import { ACCEPT_ATTR, uploadDocument, extractDocumentText, DocumentError } from '../../lib/documents';
-import { addDays, dayKey, draftsFromBraindump, shortDay, MAX_STUDY_ITEMS, MAX_ITEM_MINUTES, DEFAULT_PRIORITY, type ExamPlan, type StudyDraft } from '../../lib/examPlan';
+import { addDays, dayKey, draftsFromBraindump, historyEstimates, shortDay, MAX_STUDY_ITEMS, MAX_ITEM_MINUTES, DEFAULT_PRIORITY, type ExamPlan, type StudyDraft } from '../../lib/examPlan';
+import { loadInsights, getInsightsSnapshot } from '../../lib/insights';
 import { buildStudyList, deleteExamPlan, loadExamPlans, saveExamPlan, scheduleHorizon, setItemDone, setItemPriority, EXAM_PLANS_CHANGED, MAX_DAYS_AHEAD } from '../../lib/examPlansStore';
 import PriorityBar from './PriorityBar';
 import type { Subject, SomaDocument, Todo, DocumentType } from '../../types';
@@ -113,24 +114,33 @@ export default function ExamPlans({ subjects, docs, onDocsChange }: {
                 </button>
                 {expanded && (
                   <div className={styles.body}>
-                    <ol className={list.items}>
+                    {/* Name with the detail under it, and a fixed right column, so
+                        names don't break mid-phrase ("Ch 7, / 9") and every
+                        priority bar and length lines up (2026-11-10). */}
+                    <ol className={styles.examItems}>
                       {mine.map(item => (
-                        <li key={item.id} className={item.doneAt ? list.done : undefined}>
-                          <label>
+                        <li key={item.id} className={item.doneAt ? styles.examDone : undefined}>
+                          <label className={styles.examText}>
                             <input type="checkbox" aria-label={`Done: ${item.label}`} checked={!!item.doneAt} onChange={() => void run(`done:${item.id}`, async () => { await setItemDone(userId, item.id, !item.doneAt); await reload(userId); })} />
-                            <strong>{item.label}</strong>
-                            <span>{item.title}</span>
+                            <span>
+                              <strong>{item.label}</strong>
+                              {item.title && <span>{item.title}</span>}
+                            </span>
                           </label>
-                          {!item.doneAt && (
-                            <PriorityBar
-                              size="sm"
-                              value={item.priority ?? DEFAULT_PRIORITY}
-                              disabled={!!busy}
-                              onChange={n => void run(`prio:${item.id}`, async () => { await setItemPriority(userId, item.id, n); await reload(userId); })}
-                            />
-                          )}
-                          {item.todoId && !item.doneAt && <em className={list.tag}>Planned</em>}
-                          <small>{item.minutes ?? 45} min</small>
+                          <div className={styles.examMeta}>
+                            <span className={styles.examTag}>{item.todoId && !item.doneAt ? <em className={list.tag}>Planned</em> : null}</span>
+                            <span className={styles.examPriority}>
+                              {!item.doneAt && (
+                                <PriorityBar
+                                  size="sm"
+                                  value={item.priority ?? DEFAULT_PRIORITY}
+                                  disabled={!!busy}
+                                  onChange={n => void run(`prio:${item.id}`, async () => { await setItemPriority(userId, item.id, n); await reload(userId); })}
+                                />
+                              )}
+                            </span>
+                            <small className={styles.examMinutes}>{item.minutes ?? 45} min</small>
+                          </div>
                         </li>
                       ))}
                     </ol>
@@ -209,7 +219,8 @@ function Builder({ userId, subjects: subjectsProp, docs, items, preset, onClose,
   const materials = docs.filter(d => d.subjectId === exam?.subjectId && d.extractedText);
   const [picked, setPicked] = useState<Set<string> | null>(null);
   const chosen = materials.filter(d => picked ? picked.has(d.id) : d.docType !== 'syllabus' || materials.length === 1);
-  const [braindump, setBraindump] = useState('');
+  // Rebuild starts from the braindump saved with this exam.
+  const [braindump, setBraindump] = useState(() => (preset ? storage.getSomaSettings().examBraindumps?.[preset.id] : '') ?? '');
   const [rows, setRows] = useState<StudyDraft[] | null>(null);
   const [confirmNote, setConfirmNote] = useState('');
   const [busy, setBusy] = useState<'' | 'reading' | 'saving' | 'upload'>('');
@@ -252,6 +263,12 @@ function Builder({ userId, subjects: subjectsProp, docs, items, preset, onClose,
     } finally { setBusy(''); }
   }
 
+  /** Lengths from the student's own timed work where it's the same kind (examPlan.ts historyEstimates). */
+  async function fromHistory(drafted: StudyDraft[], subjectId: string, subjectName: string) {
+    await loadInsights(userId).catch(() => {});
+    return historyEstimates(drafted, getInsightsSnapshot(userId).data?.sessions ?? [], subjectId, subjectName);
+  }
+
   async function make() {
     if (!exam || !course) { setError(whyDisabled || 'Finish the exam details first.'); return; }
     if (!braindump.trim() && chosen.length === 0) {
@@ -267,18 +284,20 @@ function Builder({ userId, subjects: subjectsProp, docs, items, preset, onClose,
       );
       const previous = items.filter(i => i.examId === (preset?.id ?? ''));
       const kept = new Map(previous.map(i => [i.label.toLowerCase(), i.priority]));
-      setRows(drafted.map(d => ({ ...d, priority: kept.get(d.label.toLowerCase()) ?? d.priority })));
-      setConfirmNote(note);
+      const timed = await fromHistory(drafted, exam.subjectId, course.name);
+      setRows(timed.drafts.map(d => ({ ...d, priority: kept.get(d.label.toLowerCase()) ?? d.priority })));
+      setConfirmNote([note, timed.basis].filter(Boolean).join(' '));
     } catch (err) { setError(err instanceof Error ? err.message : 'Soma couldn’t make the list. Please try again.'); }
     finally { setBusy(''); }
   }
 
-  function useBraindumpOnly() {
+  async function useBraindumpOnly() {
     const drafted = draftsFromBraindump(braindump);
     if (!drafted.length) { setError('Add a few lines describing what you’ll study.'); return; }
     setError('');
-    setRows(drafted);
-    setConfirmNote('Structured from your braindump only — adjust priorities and details before approving.');
+    const timed = exam ? await fromHistory(drafted, exam.subjectId, course?.name ?? 'this course') : { drafts: drafted, basis: '' };
+    setRows(timed.drafts);
+    setConfirmNote(['Structured from your braindump only. Adjust priorities and details before approving.', timed.basis].filter(Boolean).join(' '));
   }
 
   async function approve() {
@@ -294,6 +313,11 @@ function Builder({ userId, subjects: subjectsProp, docs, items, preset, onClose,
       };
       const previous = items.filter(i => i.examId === plan.id);
       await saveExamPlan(userId, plan, clean, previous);
+      // The braindump stays with the exam for Rebuild. A failed save costs
+      // only that, never the list.
+      const dumps = { ...(storage.getSomaSettings().examBraindumps ?? {}), [plan.id]: braindump.slice(0, 4000) };
+      storage.setSomaSettings({ ...storage.getSomaSettings(), examBraindumps: dumps });
+      await storage.saveSettings({ examBraindumps: dumps }).catch(() => {});
       onSaved(plan);
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not save.'); setBusy(''); }
   }

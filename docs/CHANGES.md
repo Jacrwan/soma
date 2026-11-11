@@ -9,6 +9,26 @@ still needed.
 
 ---
 
+## 2026-11-10 (owner's UI pass: slider, rows, lengths from history, Rebuild, Compare)
+
+- **Priority** is one slider (track fills to a knob; click, drag, arrows),
+  not five pills. **Checklist rows**: detail under the name, a fixed right
+  column so every slider and length lines up; Cursor's old `.body li` row
+  styles removed (they broke the phone layout and cut details short).
+- **Lengths from history** (`examPlan.ts` `historyEstimates`): past/practice
+  exams use the student's median time per exam and split "Past finals 1–3"
+  into one item per exam; weekly sets use their per-week pace; the rest stay
+  guesses, and the checklist note says which is which.
+- **Rebuild keeps the braindump**: saved per exam in the settings row
+  (`examBraindumps`, no schema change) and filled back in.
+- **Compare splits today's plan**: now on the left, the earlier version on
+  the right, moved blocks marked "Now 1:00 PM"; no separate section.
+- **Guard:** `tests/exam-plans.spec.ts` (slider, rows line up, Rebuild,
+  lengths), `tests/reclaim-ui.spec.ts` (split Compare).
+- **Not run:** the full suite (usage limit); the affected files pass (67).
+
+---
+
 ## 2026-11-10 (routines: per-lecture guides and split habits)
 
 - **Why:** testing on the preview with the owner's account, Physics reading

@@ -266,3 +266,85 @@ export function examLines(
     };
   });
 }
+
+/**
+ * Lengths from the student's own history, where they've done the same kind
+ * of work (owner, 2026-11-10: "Past finals 1–3: 180 min" when one practice
+ * midterm takes them two to five hours). No model.
+ *
+ * - Past / practice exams: their median time per exam (same course when it
+ *   has two or more, else every course). An item covering several ("Past
+ *   finals 1–3") becomes one item per exam, each a sitting of its own.
+ * - Sets counted by week ("Weekly quizzes, weeks 1–7"): their pace per week
+ *   from earlier review titled by weeks.
+ * Anything else keeps the drafted length, and `basis` says which came from
+ * where. First-read reading pace isn't used for review passes: it isn't the
+ * same work.
+ */
+export type TimedSession = { subject_id?: string | null; task_text?: string | null; duration_seconds?: number | null };
+
+const EXAM_PRACTICE = /\b(past|practice|old|mock)\s+(midterm|final|exam)s?\b/i;
+const WEEKS = /\bweeks?\s+(\d{1,2})\s*[–-]\s*(\d{1,2})\b/i;
+/** "1–3" → 3, "instances 1 & 2" → 2, else 1. */
+function countIn(text: string): number {
+  const range = text.match(/\b(\d{1,2})\s*[–-]\s*(\d{1,2})\b/);
+  if (range) { const n = Number(range[2]) - Number(range[1]) + 1; if (n >= 1 && n <= 10) return n; }
+  if (/\b\d{1,2}\s*(&|and)\s*\d{1,2}\b/.test(text)) return 2;
+  return 1;
+}
+const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const hm = (m: number) => m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}` : `${m}m`;
+
+/** Minutes per titled task, summed over its sessions. */
+function perTask(sessions: TimedSession[]) {
+  const by = new Map<string, { subjectId: string; title: string; minutes: number }>();
+  for (const s of sessions) {
+    if (!s.subject_id || !s.task_text || !s.duration_seconds) continue;
+    const key = `${s.subject_id}|${s.task_text}`;
+    const cur = by.get(key) ?? { subjectId: s.subject_id, title: s.task_text, minutes: 0 };
+    cur.minutes += s.duration_seconds / 60;
+    by.set(key, cur);
+  }
+  return [...by.values()].filter(t => t.minutes >= 10);
+}
+
+export function historyEstimates(drafts: StudyDraft[], sessions: TimedSession[], subjectId: string, subjectName = 'this course'): { drafts: StudyDraft[]; basis: string } {
+  const tasks = perTask(sessions);
+  const exams = (mine: boolean) => tasks.filter(t => EXAM_PRACTICE.test(t.title) && (!mine || t.subjectId === subjectId) && !/\b(review|error log|cheat sheet|missed)\b/i.test(t.title))
+    .map(t => t.minutes / countIn(t.title));
+  const own = exams(true);
+  const perExam = own.length >= 2 ? median(own) : exams(false).length >= 2 ? median(exams(false)) : undefined;
+  const examFrom = own.length >= 2 ? `your ${subjectName} practice exams` : 'your practice exams';
+  const weekly = tasks.filter(t => t.subjectId === subjectId && WEEKS.test(t.title)).map(t => { const m = t.title.match(WEEKS)!; return t.minutes / (Number(m[2]) - Number(m[1]) + 1); });
+  const perWeek = weekly.length ? median(weekly) : undefined;
+  const round5 = (m: number) => Math.min(MAX_ITEM_MINUTES, Math.max(10, Math.round(m / 5) * 5));
+  let exam = false, week = false, guessed = 0;
+  const out: StudyDraft[] = [];
+  for (const d of drafts) {
+    const text = `${d.label} ${d.detail ?? ''}`;
+    if (perExam !== undefined && EXAM_PRACTICE.test(d.label)) {
+      exam = true;
+      const n = countIn(d.label);
+      const first = Number(d.label.match(/\b(\d{1,2})\s*[–-]\s*\d{1,2}\b/)?.[1] ?? 1);
+      const base = d.label.replace(/\s*\b\d{1,2}\s*[–-]\s*\d{1,2}\b\s*$/, '').replace(/(midterm|final|exam)s\b/i, '$1').trim();
+      for (let k = 0; k < n; k++) out.push({ ...d, label: n > 1 ? `${base} ${first + k}`.slice(0, 40) : d.label, minutes: round5(perExam) });
+      continue;
+    }
+    const weeks = text.match(WEEKS);
+    if (perWeek !== undefined && weeks && /\b(quiz|quizzes|worksheet|discussion)/i.test(text)) {
+      week = true;
+      out.push({ ...d, minutes: round5(perWeek * (Number(weeks[2]) - Number(weeks[1]) + 1)) });
+      continue;
+    }
+    guessed++;
+    out.push(d);
+  }
+  const parts = [
+    exam && perExam !== undefined ? `practice exams at about ${hm(Math.round(perExam))} each, from ${examFrom}` : '',
+    week && perWeek !== undefined ? `weekly sets at about ${Math.round(perWeek)} min a week, from your earlier reviews` : '',
+  ].filter(Boolean);
+  const basis = parts.length
+    ? `Lengths from your history: ${parts.join('; ')}.${guessed ? ` The other ${guessed === 1 ? 'length is a guess' : `${guessed} lengths are guesses`} (you haven't timed that kind of work yet); change any before approving.` : ''}`
+    : 'Lengths are guesses: you haven\'t timed this kind of work yet. Change any before approving.';
+  return { drafts: out.slice(0, MAX_STUDY_ITEMS), basis };
+}

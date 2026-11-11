@@ -8,15 +8,6 @@
   max-height: none;
   overflow: visible;
 }
-.body li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
-  gap: 8px 10px;
-  align-items: center;
-}
-.body li label { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
-.body li label strong { flex: 0 1 auto; }
-.body li label span { color: var(--text-muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
@@ -143,11 +134,28 @@
 
 @media (max-width: 640px) {
   .otherExam { grid-template-columns: 1fr; }
-  .body li { grid-template-columns: minmax(0, 1fr) auto; }
-  .body li label { flex-wrap: wrap; grid-column: 1 / -1; }
-  .body li label span { flex-basis: 100%; white-space: normal; padding-left: 23px; }
   .quiet { margin-left: 0; }
   .review th:nth-child(4), .review td:nth-child(4) { min-width: 120px; }
 }
 
 .thNote { margin-left: 4px; font-size: 10px; font-weight: 400; color: var(--text-muted); }
+
+/* Exam checklist rows: name and detail on the left, a fixed right column. */
+.examItems { list-style: none; margin: 0; padding: 0; }
+.examItems li { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px 16px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.examItems li:last-child { border-bottom: 0; }
+.examText { display: flex; flex-wrap: nowrap; align-items: flex-start; gap: 10px; min-width: 0; flex: 1 1 260px; cursor: pointer; }
+.examText input { margin-top: 3px; flex-shrink: 0; }
+.examText > span { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.examText strong { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.examText strong + span { font-size: 12px; line-height: 1.45; color: var(--text-secondary); }
+.examMeta { display: grid; grid-template-columns: 64px 92px 56px; align-items: center; column-gap: 8px; flex-shrink: 0; }
+.examTag { display: flex; justify-content: flex-end; }
+.examPriority { display: flex; }
+.examMinutes { text-align: right; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.examDone .examText strong, .examDone .examText strong + span { color: var(--text-muted); text-decoration: line-through; }
+@media (max-width: 640px) {
+  .examItems li { flex-wrap: wrap; }
+  .examMeta { width: 100%; padding-left: 26px; grid-template-columns: auto 92px 1fr; }
+  .examTag { justify-content: flex-start; }
+}

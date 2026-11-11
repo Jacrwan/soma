@@ -38,14 +38,21 @@ test('the move is named on today\'s plan, and Undo puts the block back for the r
   expect(sessionStart(db).getHours()).toBe(9);
 });
 
-test('Compare lists only what moved, from and to', async ({ page }) => {
+// Owner's sketch, 2026-11-10: Compare splits today's plan in two, the plan
+// as it is now on the left and an earlier version on the right, instead of
+// adding a section.
+test('Compare splits today\'s plan: now on the left, the earlier version beside it', async ({ page }) => {
   await setup(page, () => ({ reply: 'ok' }), missedReading);
   await expect(page.getByRole('status').filter({ hasText: 'you hadn’t started' })).toBeVisible();
   await page.getByRole('button', { name: 'Compare', exact: true }).click();
-  const panel = page.getByLabel('Compare today’s plan');
-  await expect(panel.getByLabel('Changes since')).toHaveValue(/^original:/);
-  await expect(panel.getByRole('listitem')).toHaveCount(1);
-  await expect(panel.getByRole('listitem')).toContainText('Physics reading: 6.2–6.4');
-  await expect(panel.getByRole('listitem')).toContainText('Moved');
-  await expect(panel).not.toContainText('CS 61A Lecture');
+  const earlier = page.getByLabel('Compare today’s plan');
+  await expect(earlier.getByLabel('Earlier')).toHaveValue(/^original:/);
+  const reading = earlier.getByRole('listitem').filter({ hasText: 'Physics reading: 6.2–6.4' });
+  await expect(reading).toContainText('9:00');
+  await expect(reading).toContainText('Now 1:00 PM');
+  await expect(earlier.getByRole('listitem').filter({ hasText: 'CS 61A Lecture' })).not.toContainText('Now');
+  // Side by side with the plan as it is now, not below it.
+  const plan = page.getByRole('heading', { name: 'Physics reading: 6.2–6.4' }).first();
+  const [left, right] = [await plan.boundingBox(), await earlier.boundingBox()];
+  expect(right!.x).toBeGreaterThan(left!.x + left!.width - 1);
 });

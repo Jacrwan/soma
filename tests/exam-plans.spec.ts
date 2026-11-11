@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import {
-  blockTitle, busyDays, byPriority, clampPriority, dayCapacity, draftsFromBraindump, examLines,
+  blockTitle, busyDays, historyEstimates, byPriority, clampPriority, dayCapacity, draftsFromBraindump, examLines,
   placeBlocks, readStudyList, sittings, type ExamPlan,
 } from '../src/lib/examPlan';
 import type { CourseItem } from '../src/lib/courseItems';
@@ -217,9 +217,10 @@ test('Soma sees exams in context only when the message is about an exam', async 
   expect(JSON.stringify(planChat)).toMatch(/Worksheet 3/);
 });
 
-// UI review 2026-11-10: each bar was a slider holding five buttons (six Tab
-// stops a row), the steps were 14×10px, and the colors ran green to red.
-test('the priority bar is one Tab stop with 24px steps, changed with the arrow keys', async ({ page }) => {
+// 2026-11-10: the priority control was five pills (and before that a slider
+// holding five buttons, six Tab stops a row). Now one slider: a track that
+// fills to a knob, one Tab stop, clicked or dragged anywhere, arrow keys.
+test('the priority control is one slider: one Tab stop, 24px tall, click or keys', async ({ page }) => {
   await setup(page, () => ({ note: 'From your braindump.', items: [{ label: 'Worksheet 3', detail: 'do problems 1–12', minutes: 45, priority: 4 }] }));
   await page.goto('/documents');
   await page.getByRole('button', { name: 'Plan an exam' }).click();
@@ -228,13 +229,81 @@ test('the priority bar is one Tab stop with 24px steps, changed with the arrow k
   await dialog.getByRole('button', { name: 'Make my study checklist' }).click();
   const bar = dialog.getByRole('row', { name: /Worksheet 3/ }).getByRole('slider');
   await expect(bar).toHaveAttribute('aria-valuenow', '4');
-  for (const step of await bar.getByRole('button').all()) {
-    await expect(step).toHaveAttribute('tabindex', '-1');
-    expect((await step.boundingBox())!.height).toBeGreaterThanOrEqual(24);
-  }
+  await expect(bar).toHaveAttribute('tabindex', '0');
+  await expect(bar.locator('button, [tabindex]:not([role=slider])')).toHaveCount(0);
+  const box = (await bar.boundingBox())!;
+  expect(box.height).toBeGreaterThanOrEqual(24);
   await bar.focus();
   await page.keyboard.press('ArrowLeft');
   await expect(bar).toHaveAttribute('aria-valuenow', '3');
-  await page.keyboard.press('End');
+  await page.mouse.click(box.x + box.width - 4, box.y + box.height / 2);
   await expect(bar).toHaveAttribute('aria-valuenow', '5');
+  await page.mouse.click(box.x + 4, box.y + box.height / 2);
+  await expect(bar).toHaveAttribute('aria-valuenow', '1');
+});
+
+// 2026-11-10: names broke mid-phrase ("Reading pass 1: Ch 7, / 9") and the
+// bars sat at different spots depending on the length beside them.
+test('checklist rows: the detail sits under the name, and every bar lines up', async ({ page }) => {
+  const state = await setup(page, () => ({ reply: 'ok' }));
+  state.db.exam_plans.push({ id: 'exam-1', user_id: account.id, subject_id: 'calc', title: 'Calc midterm', exam_date: dayOff(6) });
+  state.db.course_items.push(
+    { id: 'i1', user_id: account.id, subject_id: 'calc', exam_id: 'exam-1', label: 'Reading pass 1: Ch 7, 9', title: 'read Ch 7.1–7.9 and 9.1–9.4', position: 0, minutes: 100, priority: 4 },
+    { id: 'i2', user_id: account.id, subject_id: 'calc', exam_id: 'exam-1', label: 'Past final 1', title: 'timed', position: 1, minutes: 90, priority: 5 },
+  );
+  await page.goto('/documents');
+  const plan = page.getByRole('button', { name: /Calc midterm/ });
+  if (await plan.getAttribute('aria-expanded') !== 'true') await plan.click();
+  const name = page.getByText('Reading pass 1: Ch 7, 9', { exact: true });
+  const detail = page.getByText('read Ch 7.1–7.9 and 9.1–9.4');
+  const [n, d] = [(await name.boundingBox())!, (await detail.boundingBox())!];
+  expect(n.height).toBeLessThan(24);            // one line
+  expect(d.y).toBeGreaterThanOrEqual(n.y + n.height - 1); // under it
+  const xs = await page.getByRole('slider').evaluateAll(els => els.map(e => Math.round(e.getBoundingClientRect().x)));
+  expect(new Set(xs).size).toBe(1);
+});
+
+// 2026-11-10: Rebuild opened with an empty braindump.
+test('Rebuild starts from the braindump saved with the exam', async ({ page }) => {
+  await setup(page, () => ({ note: 'From your braindump.', items: [{ label: 'Worksheet 3', minutes: 45, priority: 4 }] }));
+  await page.goto('/documents');
+  await page.getByRole('button', { name: 'Plan an exam' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Plan an exam' });
+  await dialog.locator('textarea').fill('Worksheet 3 problems\nPractice midterm A timed');
+  await dialog.getByRole('button', { name: 'Make my study checklist' }).click();
+  await dialog.getByRole('button', { name: 'Approve checklist' }).click();
+  await expect(dialog).toHaveCount(0);
+  const rebuild = page.getByRole('button', { name: 'Rebuild list' });
+  if (!await rebuild.isVisible()) await page.getByRole('button', { name: /Calc midterm/ }).click();
+  await rebuild.click();
+  await expect(page.getByRole('dialog', { name: /Rebuild the list for Calc midterm/ }).getByRole('textbox', { name: /Braindump/ })).toHaveValue('Worksheet 3 problems\nPractice midterm A timed');
+});
+
+// 2026-11-10: "Past finals 1–3: 180 min", when one practice midterm takes the
+// student two to five hours. Lengths come from their own timed work where it
+// is the same kind; the rest stay guesses, and the note says which.
+test('lengths come from the student\'s timed practice exams, one item per exam', () => {
+  const s = (subject: string, task: string, minutes: number) => ({ subject_id: subject, task_text: task, duration_seconds: minutes * 60 });
+  const sessions = [
+    s('phys', 'Physics 5A: practice midterm 1', 200), s('phys', 'Physics 5A: practice midterm 1', 109), // 309 over two sittings
+    s('phys', 'Physics 5A: practice midterm 2', 132),
+    s('phys', 'Physics 5A: past midterms', 96),
+    s('phys', 'Review: Physics 5A midterm', 10),               // a review, not an exam
+    s('phys', 'Physics 5A: discussion section review, weeks 3-6', 64),
+    s('cs', 'CS 61A: past midterms 1–2', 346),                 // another course
+  ];
+  const { drafts, basis } = historyEstimates([
+    { label: 'Past finals 1–3', detail: 'timed, closed-book', minutes: 180, priority: 5 },
+    { label: 'Weekly quizzes, weeks 1-7', detail: 're-solve without notes', minutes: 105, priority: 4 },
+    { label: 'Reading pass 1: Ch 1–3', detail: 'read Ch 1.1–1.11', minutes: 120, priority: 4 },
+  ], sessions, 'phys', 'PHYSICS 5A');
+  expect(drafts.map(d => [d.label, d.minutes])).toEqual([
+    ['Past final 1', 130], ['Past final 2', 130], ['Past final 3', 130],
+    ['Weekly quizzes, weeks 1-7', 110],
+    ['Reading pass 1: Ch 1–3', 120],
+  ]);
+  expect(drafts[0]).toMatchObject({ detail: 'timed, closed-book', priority: 5 });
+  expect(basis).toBe('Lengths from your history: practice exams at about 2h 12m each, from your PHYSICS 5A practice exams; weekly sets at about 16 min a week, from your earlier reviews. The other length is a guess (you haven\'t timed that kind of work yet); change any before approving.');
+  // No timed work like it: the drafted lengths stand, and say so.
+  expect(historyEstimates([{ label: 'Past finals 1–3', minutes: 180, priority: 5 }], [], 'phys').basis).toMatch(/^Lengths are guesses/);
 });
