@@ -2,9 +2,11 @@
 
 Running notes for the exam-prep work on branch `exam-prep-v1`
 (PR [#16](https://github.com/Jacrwan/soma/pull/16)). Newest updates at the top
-of **Now**. The project changelog (`docs/CHANGES.md`) still records each
-shipped change and the test that guards it. This file is the longer story:
-what was decided, what shipped, what went wrong, and what v2 is doing.
+of **Now**. What you asked for, and how the build is structured, is
+`docs/exam-prep-build.md`. The project changelog (`docs/CHANGES.md`) still
+records each shipped change and the test that guards it. This file is the
+longer story: what was decided, what shipped, what went wrong, and what v2
+is doing.
 
 Times are Pacific (America/Los_Angeles).
 
