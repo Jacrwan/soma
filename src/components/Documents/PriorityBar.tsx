@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import styles from './PriorityBar.module.css';
 
 /**
@@ -21,16 +21,19 @@ export default function PriorityBar({
   size?: 'sm' | 'md';
   labelledBy?: string;
 }) {
-  const n = Math.min(5, Math.max(1, Math.round(value) || 3));
+  const saved = Math.min(5, Math.max(1, Math.round(value) || 3));
+  const [preview, setPreview] = useState<number | null>(null);
+  const n = preview ?? saved;
   const track = useRef<HTMLDivElement>(null);
-  const dragging = useRef(false);
+  const dragging = useRef<number | null>(null);
   const fill = ((n - 1) / 4) * 100;
   const stepAt = (clientX: number) => {
     const box = track.current?.getBoundingClientRect();
     if (!box || !box.width) return n;
     return Math.min(5, Math.max(1, Math.round(((clientX - box.left) / box.width) * 4) + 1));
   };
-  const set = (next: number) => { if (!disabled && next !== n) onChange(next); };
+  const set = (next: number) => { if (!disabled && next !== saved) onChange(next); };
+  const cancel = () => { dragging.current = null; setPreview(null); };
   return (
     <div
       className={`${styles.bar} ${size === 'sm' ? styles.sm : ''} ${disabled ? styles.off : ''}`}
@@ -51,14 +54,25 @@ export default function PriorityBar({
         if (e.key === 'End') { e.preventDefault(); set(5); }
       }}
       onPointerDown={e => {
-        if (disabled) return;
-        dragging.current = true;
+        if (disabled || e.button !== 0) return;
+        e.preventDefault();
+        e.currentTarget.focus();
         e.currentTarget.setPointerCapture?.(e.pointerId);
-        set(stepAt(e.clientX));
+        dragging.current = stepAt(e.clientX);
+        setPreview(dragging.current);
       }}
-      onPointerMove={e => { if (dragging.current) set(stepAt(e.clientX)); }}
-      onPointerUp={() => { dragging.current = false; }}
-      onPointerCancel={() => { dragging.current = false; }}
+      onPointerMove={e => {
+        if (dragging.current === null) return;
+        dragging.current = stepAt(e.clientX);
+        setPreview(dragging.current);
+      }}
+      onPointerUp={() => {
+        const next = dragging.current;
+        cancel();
+        if (next !== null) set(next);
+      }}
+      onPointerCancel={cancel}
+      onLostPointerCapture={cancel}
     >
       <div ref={track} className={styles.track}>
         <span className={styles.fill} style={{ width: `${fill}%` }} />

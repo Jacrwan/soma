@@ -9,6 +9,39 @@ still needed.
 
 ---
 
+## 2026-11-10 (finish the UI pass: priority dragging, phone alignment, and Rebuild sync)
+
+- **Priority slider:** one green-to-red track with a knob and visible priority
+  labels. Dragging previews the value, then saves once on release. Canceling
+  leaves the saved priority alone. Previously each pointer move wrote to the
+  database, and the first write could disable the slider mid-drag.
+- **Phone rows:** fixed columns keep sliders aligned whether or not an item
+  has a Planned tag; the desktop column headings stay aligned too.
+- **Rebuild:** keeps the full brain dump (up to the generator's 8,000-character
+  limit, previously saved as only 4,000), loads the account copy on a fresh
+  device, and preserves edits made while that copy loads. A failed sync shows
+  an announced error and keeps the editor open; retry uses the same exam id.
+- **Compare:** explicit Now and Earlier labels on the split plan. Gaps under
+  15 minutes no longer clutter the read view; editing still shows them.
+- **Edit plan:** automatic moves wait while the student edits. Moving a Focus
+  session to yesterday could otherwise turn today's block into missed work
+  and move it while its editor was still open, making its session list vanish.
+- **Where:** `Documents/{ExamPlans,PriorityBar}.*`,
+  `DashboardV2/{DashboardV2,LiveDashboard}.tsx`, `DashboardV2.module.css`.
+- **Guard:** `tests/exam-ui-continuation.spec.ts` (drag, cancel, account copy
+  after clearing the device cache, save failure and retry). Drag, cancel and
+  long-text checks reproduced the previous failures before the fixes.
+  `tests/session-times-and-calendar.spec.ts` > "editing a session can move it
+  to another date, keeping or changing its times" failed on the baseline and
+  passes when automatic moves pause for editing; no test was weakened.
+- **Visual check:** desktop light/dark and 390px phone screenshots; no
+  horizontal overflow. No schema changes or setup required.
+- **Verification:** production build passed; full Playwright suite passed
+  (760 passed, 8 skipped). Temporary screenshot tests and server configs were
+  removed before that run.
+
+---
+
 ## 2026-11-10 (owner's UI pass: slider, rows, lengths from history, Rebuild, Compare)
 
 - **Priority** is one slider (track fills to a knob; click, drag, arrows),

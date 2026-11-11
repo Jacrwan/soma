@@ -1,6 +1,7 @@
 /* One slider: a rail, a fill up to the level, a knob. The whole 24px-tall
    bar takes clicks and drags; the visible rail is thin. */
 .bar {
+  --priority-colors: linear-gradient(to right, oklch(62% .12 155), oklch(73% .12 85), oklch(60% .17 28));
   display: inline-flex;
   align-items: center;
   width: 112px;
@@ -19,15 +20,15 @@
   flex: 1;
   height: 8px;
   border-radius: 999px;
-  background: color-mix(in oklch, var(--border) 80%, var(--bg-secondary));
+  /* Green = lower priority, red = higher. The knob gives the exact level. */
+  background: var(--priority-colors);
 }
 .fill {
   position: absolute;
   inset: 0 auto 0 0;
   min-width: 8px;
   border-radius: 999px;
-  background: color-mix(in oklch, var(--accent) 78%, var(--bg));
-  transition: width 150ms ease-out;
+  background: color-mix(in oklch, var(--bg) 16%, transparent);
 }
 .knob {
   position: absolute;
@@ -37,13 +38,13 @@
   border-radius: 50%;
   transform: translate(-50%, -50%);
   background: var(--bg);
-  border: 1px solid color-mix(in oklch, var(--accent) 45%, var(--border));
+  border: 2px solid var(--text-primary);
   box-shadow: 0 1px 2px color-mix(in oklch, var(--text-primary) 18%, transparent);
-  transition: left 150ms ease-out;
 }
 .sm .knob { width: 12px; height: 12px; }
 
 .off { cursor: default; }
+.off .track { background: var(--border); }
 .off .fill { background: color-mix(in oklch, var(--text-secondary) 55%, var(--bg)); }
 
 @media (prefers-reduced-motion: reduce) {

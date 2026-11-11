@@ -472,6 +472,7 @@
 .splitPlan>.agenda{padding-right:18px;border-right:1px solid var(--border)}
 .splitPlan .block{flex-wrap:wrap;gap:6px 10px}.splitPlan .blockTime{min-width:0;width:100%;display:flex;gap:8px;align-items:baseline;padding-top:0}.splitPlan .blockTime span{display:inline;margin-top:0}.splitPlan .blockBody{min-width:140px}.splitPlan .actions{margin-left:auto;max-width:none}
 .earlier{min-width:0}
+.currentHead{display:flex;align-items:center;min-height:30px;margin:0;color:var(--text-secondary);font-size:12px;font-weight:600}
 .earlierHead{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;font-size:12px;font-weight:600;color:var(--text-secondary)}
 .earlier select{min-height:30px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font:inherit;font-size:12px;font-weight:400;max-width:100%}
 .earlierList{list-style:none;margin:0;padding:0;display:grid;gap:10px}

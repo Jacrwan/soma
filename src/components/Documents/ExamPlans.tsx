@@ -114,6 +114,14 @@ export default function ExamPlans({ subjects, docs, onDocsChange }: {
                 </button>
                 {expanded && (
                   <div className={styles.body}>
+                    <div className={styles.examListHead}>
+                      <span>Study checklist</span>
+                      <span className={styles.examMeta}>
+                        <span />
+                        <span id={`exam-priority-${exam.id}`}>Priority <small>low to high</small></span>
+                        <span className={styles.examMinutes}>Estimate</span>
+                      </span>
+                    </div>
                     {/* Name with the detail under it, and a fixed right column, so
                         names don't break mid-phrase ("Ch 7, / 9") and every
                         priority bar and length lines up (2026-11-10). */}
@@ -133,9 +141,16 @@ export default function ExamPlans({ subjects, docs, onDocsChange }: {
                               {!item.doneAt && (
                                 <PriorityBar
                                   size="sm"
+                                  labelledBy={`exam-priority-${exam.id}`}
                                   value={item.priority ?? DEFAULT_PRIORITY}
                                   disabled={!!busy}
-                                  onChange={n => void run(`prio:${item.id}`, async () => { await setItemPriority(userId, item.id, n); await reload(userId); })}
+                                  onChange={n => {
+                                    setItems(current => current.map(row => row.id === item.id ? { ...row, priority: n } : row));
+                                    void run(`prio:${item.id}`, async () => {
+                                      try { await setItemPriority(userId, item.id, n); }
+                                      finally { await reload(userId); }
+                                    });
+                                  }}
                                 />
                               )}
                             </span>
@@ -221,6 +236,19 @@ function Builder({ userId, subjects: subjectsProp, docs, items, preset, onClose,
   const chosen = materials.filter(d => picked ? picked.has(d.id) : d.docType !== 'syllabus' || materials.length === 1);
   // Rebuild starts from the braindump saved with this exam.
   const [braindump, setBraindump] = useState(() => (preset ? storage.getSomaSettings().examBraindumps?.[preset.id] : '') ?? '');
+  const braindumpEdited = useRef(false);
+  const [planId] = useState(() => preset?.id ?? crypto.randomUUID());
+  // A fresh browser may have no device cache. Load the account's saved text,
+  // but don't overwrite anything the student has already started typing.
+  useEffect(() => {
+    if (!preset?.id) return;
+    let live = true;
+    void storage.getSettings().then(settings => {
+      const saved = settings.examBraindumps?.[preset.id];
+      if (live && !braindumpEdited.current && typeof saved === 'string') setBraindump(saved);
+    }).catch(() => { /* The device copy remains available if the account is offline. */ });
+    return () => { live = false; };
+  }, [preset?.id]);
   const [rows, setRows] = useState<StudyDraft[] | null>(null);
   const [confirmNote, setConfirmNote] = useState('');
   const [busy, setBusy] = useState<'' | 'reading' | 'saving' | 'upload'>('');
@@ -307,17 +335,17 @@ function Builder({ userId, subjects: subjectsProp, docs, items, preset, onClose,
     setBusy('saving'); setError('');
     try {
       const plan: ExamPlan = {
-        id: preset?.id ?? crypto.randomUUID(), subjectId: exam.subjectId, title: exam.title.slice(0, 120), examDate: exam.date,
+        id: planId, subjectId: exam.subjectId, title: exam.title.slice(0, 120), examDate: exam.date,
         ...(exam.time && /^\d{2}:\d{2}$/.test(exam.time) ? { examTime: exam.time } : {}),
         ...(exam.todoId ? { todoId: exam.todoId } : {}),
       };
       const previous = items.filter(i => i.examId === plan.id);
       await saveExamPlan(userId, plan, clean, previous);
-      // The braindump stays with the exam for Rebuild. A failed save costs
-      // only that, never the list.
-      const dumps = { ...(storage.getSomaSettings().examBraindumps ?? {}), [plan.id]: braindump.slice(0, 4000) };
+      const account = await storage.getSettings();
+      const dumps = { ...(storage.getSomaSettings().examBraindumps ?? {}), ...(account.examBraindumps ?? {}), [plan.id]: braindump };
       storage.setSomaSettings({ ...storage.getSomaSettings(), examBraindumps: dumps });
-      await storage.saveSettings({ examBraindumps: dumps }).catch(() => {});
+      try { await storage.saveSettings({ examBraindumps: dumps }); }
+      catch { throw new Error('Your checklist was saved, but your brain dump could not sync. Please try saving again.'); }
       onSaved(plan);
     } catch (err) { setError(err instanceof Error ? err.message : 'Could not save.'); setBusy(''); }
   }
@@ -388,7 +416,8 @@ function Builder({ userId, subjects: subjectsProp, docs, items, preset, onClose,
                   <textarea
                     className={styles.braindump}
                     value={braindump}
-                    onChange={e => setBraindump(e.target.value)}
+                    onChange={e => { braindumpEdited.current = true; setBraindump(e.target.value); }}
+                    maxLength={8000}
                     rows={5}
                     placeholder={'e.g.\nRead Ch 4–5 on momentum\nDo Worksheet 3 problems 1–12\nTimed practice midterm A\nRedo missed quiz questions'}
                   />
@@ -408,7 +437,7 @@ function Builder({ userId, subjects: subjectsProp, docs, items, preset, onClose,
             <p className={styles.hint}><strong>Make my study checklist</strong> turns your braindump and files into concrete items (what to do, how long, priority). You edit that checklist next, then place today or this week on your plan.</p>
             {tooSoon && <span className={docStyles.modalError}>Pick an exam after today.</span>}
             {tooFar && <span className={docStyles.modalError}>Pick an exam in the next {MAX_DAYS_AHEAD} days.</span>}
-            {error && <span className={docStyles.modalError}>{error}</span>}
+            {error && <span role="alert" className={docStyles.modalError}>{error}</span>}
             {!canMake && whyDisabled && !error && <span className={styles.hintMute}>{whyDisabled}</span>}
             <button type="button" className={docStyles.modalUploadBtn} onClick={() => void make()} disabled={!canMake}>{busy === 'reading' ? 'Reading…' : 'Make my study checklist'}</button>
             {!!braindump.trim() && <button type="button" className={styles.secondary} onClick={useBraindumpOnly} disabled={!!busy || tooSoon || tooFar || !exam || !course}>Use braindump as-is</button>}
@@ -435,7 +464,7 @@ function Builder({ userId, subjects: subjectsProp, docs, items, preset, onClose,
               </table>
             </div>
             {rows.length < MAX_STUDY_ITEMS && <button type="button" className={styles.addRow} onClick={() => setRows(rs => rs && [...rs, { label: '', minutes: 45, priority: DEFAULT_PRIORITY }])}>Add an item</button>}
-            {error && <span className={docStyles.modalError}>{error}</span>}
+            {error && <span role="alert" className={docStyles.modalError}>{error}</span>}
             <button type="button" className={docStyles.modalUploadBtn} onClick={() => void approve()} disabled={!!busy || !rows.some(r => r.label.trim())}>{busy === 'saving' ? 'Saving…' : 'Approve checklist'}</button>
             <button type="button" className={docStyles.modalCancelBtn} onClick={() => { setRows(null); setConfirmNote(''); }} disabled={!!busy}>Back</button>
           </>

@@ -152,6 +152,8 @@ export default function LiveDashboard({userId}:{userId:string}) {
  // What the reclaim last moved, kept on today's plan until dismissed or undone.
  const [moveNote,setMoveNote]=useState<{reason:'reclaim'|'overrun';moves:MovedBlock[]}|null>(null);
  const reclaimLock=useRef(false);
+ const editingPlan=useRef(false);
+ const onEditingChange=useCallback((editing:boolean)=>{editingPlan.current=editing;},[]);
  // Blocks whose move didn't stick today: left alone after that, or every
  // reload would save the same move again (and the chat would wait forever).
  const stuck=useRef<{date:string;ids:Set<string>}>({date:'',ids:new Set()});
@@ -261,7 +263,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   finally{writing.current=false;setBusy(false);}
  }
  async function runReclaim(){
-  if(!snapshot || writing.current || reclaimLock.current)return;
+  if(!snapshot || writing.current || reclaimLock.current || editingPlan.current)return;
   const date=localDate(origin);
   const snap=toVersionBlocks(snapshot.blocks.filter(b=>b.day===0));
   if(snap.length && !loadDayVersions(userId,date).length){
@@ -277,7 +279,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   let fresh:Snapshot;
   try{fresh=await readPlan(userId,origin,rangeRef.current,7);}catch{return;}
   const result=planToday(fresh.blocks.filter(b=>b.day===0),nowMinutes(),windowEnd,reclaimOpts());
-  if(result.held || !result.moved.length)return;
+  if(result.held || !result.moved.length || editingPlan.current || writing.current)return;
   reclaimLock.current=true;writing.current=true;setBusy(true);setError('');
   try{await applyMoves(fresh,result,'reclaim');await reload();}
   catch(e){setError(e instanceof Error ? e.message : 'Could not update today’s plan.');}
@@ -443,7 +445,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   else setError('');
  }
  const pulseDays=Array.from({length:7},(_,i)=>snapshot.history.filter(h=>h.date===localDate(dateAt(origin,i-6))).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0));
- return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,planNotice:moveNote ? <MoveNote reason={moveNote.reason} moves={moveNote.moves} busy={busy} onUndo={()=>void undoMoves()} onDismiss={()=>setMoveNote(null)}/> : null,compare:{shown:compareOn,toggle:()=>setCompareOn(v=>!v),panel:<DayCompare current={toVersionBlocks(snapshot.blocks)} versions={versions} selectedId={compareId || versions[0]?.id || ''} onSelect={setCompareId}/>},rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<CatchUp key={localDate(origin)} userId={userId} origin={origin} onApply={applyBatch}>{catchUp=><AgentBrief catchUp={catchUp}/>}</CatchUp>,dump:<BrainDump userId={userId} onPlan={planDump}/>,habits:<Habits/>,layout,onLayout:saveLayout,due:due.map(x=>{
+ return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{onEditingChange,initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,planNotice:moveNote ? <MoveNote reason={moveNote.reason} moves={moveNote.moves} busy={busy} onUndo={()=>void undoMoves()} onDismiss={()=>setMoveNote(null)}/> : null,compare:{shown:compareOn,toggle:()=>setCompareOn(v=>!v),panel:<DayCompare current={toVersionBlocks(snapshot.blocks)} versions={versions} selectedId={compareId || versions[0]?.id || ''} onSelect={setCompareId}/>},rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<CatchUp key={localDate(origin)} userId={userId} origin={origin} onApply={applyBatch}>{catchUp=><AgentBrief catchUp={catchUp}/>}</CatchUp>,dump:<BrainDump userId={userId} onPlan={planDump}/>,habits:<Habits/>,layout,onLayout:saveLayout,due:due.map(x=>{
   // Plan it's sittings for this assignment, and the time logged on them (or on the assignment itself).
   const mine=snapshot.todos.filter(t=>t.subjectId===x.subjectId && isSittingOf(t.text,x.title));
   const seconds=snapshot.history.filter(h=>h.subject_id===x.subjectId && isSittingOf(h.task_text??'',x.title)).reduce((n,h)=>n+(h.duration_seconds||0),0);
