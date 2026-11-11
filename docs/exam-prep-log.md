@@ -12,24 +12,23 @@ Times are Pacific (America/Los_Angeles).
 
 ## Now (Tue Nov 10, 2026, evening)
 
-**Doing:** v2 within-day reclaim, in code, no extra model calls.
+**Wired on the live dashboard.** Still no model calls.
 
-- Pure planner in `src/lib/dayReclaim.ts`:
-  - A study block that ends with no Focus press and no checkmark is missed.
-  - Missed work and later never-started study on that same day are repacked
-    by priority (5 first) into the gaps still left today.
-  - Classes and calendar events stay put. A block that was started stays put.
-  - Nothing is placed after study-hours end unless **Use personal time if the
-    day runs long** is on (Settings → Study hours). Default is off: personal
-    time stays personal. Work that does not fit is left unscheduled for the
-    existing catch-up flow the next day.
-  - If Focus is still running past the block’s end, the day is held. When the
-    block is checked off, `finishOverrun` sets the end to that moment and
-    shifts the rest of the day.
-- The setting is saved with the other study-hour settings.
-- **Not wired to the live dashboard yet.** Moves are not auto-applied, and the
-  split-screen compare peek is not on screen. Those are the next steps, so a
-  day cannot silently rearrange before there is a version to compare.
+- About once a minute, and whenever the plan reloads, today is checked. A
+  study block whose time has ended and that was never started (no Focus time,
+  no check) is missed. It and later never-started study are saved into the
+  gaps left today, highest priority first. The move is applied directly, not
+  as an Accept card.
+- A time the student set (pinned) is left alone, and so is anything already
+  started. Classes stay put.
+- Study hours are the wall unless Settings → Study hours is **Use personal
+  time**. What does not fit is taken off the clock and waits for catch-up.
+- Focus still running past the planned end holds the day. Checking the block
+  off writes that clock time as the end and shifts whatever it now overlaps.
+- **Compare** on today’s plan opens a split peek. Left is the day now. Right
+  is an earlier version from the dropdown (original, then each move). Versions
+  live in this browser only (`soma_day_versions`).
+- A short note appears under the dashboard header when something moved.
 
 **Known, not from this step:** `tests/ai-whole-day.spec.ts` › “work moved past
 its due date says so on the card” fails on this branch. v1 deadline anchors
@@ -49,14 +48,13 @@ Scoped after v1, still no model unless a feature actually needs one.
    that clock time is the new end, then shift the rest of today.
 3. **Personal time** is a settings toggle. Study hours stay the default wall.
    Invading past them is opt-in.
-4. **Auto-apply** the within-day moves (not Accept cards).
+4. **Auto-apply** the within-day moves (not Accept cards). Wired.
 5. **Compare peek on the dashboard, not Insights.** Split screen: left is the
    latest version of the day, right is an older version chosen from a
-   dropdown (original, then each iteration). Shows scheduled vs what actually
-   happened.
+   dropdown (original, then each iteration). Wired. This browser only.
 
 Out of v2: multi-day auto-replan, putting the peek in Insights, using Sonnet
-to decide the moves.
+to decide the moves. Versions do not sync across devices.
 
 ---
 

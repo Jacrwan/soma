@@ -15,7 +15,11 @@ import { storage } from '../../lib/storage';
 import { formatClock, formatClockRange } from '../../lib/timeFormat';
 import { listDocuments } from '../../lib/documents';
 import { askSoma, applyProposal, applyAll, dismissProposal, type ApplyOptions } from '../../lib/assistant';
-import { pinBlock, pinKey } from '../../lib/pinnedBlocks';
+import { pinBlock, pinKey, pinnedKeys } from '../../lib/pinnedBlocks';
+import { loadDayVersions, pushVersion, saveDayVersions, type DayVersion } from '../../lib/dayVersions';
+import { nowMinutes, overrunToday, planToday, reclaimWindowEnd, toVersionBlocks } from '../../lib/reclaimToday';
+import { spanMinutes } from '../../lib/clockRange';
+import DayCompare from './DayCompare';
 import { useProposals, updateProposals, getProposals } from '../../lib/proposalStore';
 import { estimate as planEstimate, isSittingOf, kindOf, placeSittings, type PlanTarget } from '../../lib/planIt';
 import { freeTime } from '../../lib/aiPlanning';
@@ -141,6 +145,12 @@ export default function LiveDashboard({userId}:{userId:string}) {
  const [busy,setBusy]=useState(false);
  // Shared with the AI page, so a proposal made there shows up here too.
  const proposals=useProposals(userId);
+ const [versions,setVersions]=useState<DayVersion[]>([]);
+ const [compareOn,setCompareOn]=useState(false);
+ const [compareId,setCompareId]=useState('');
+ const [notice,setNotice]=useState('');
+ const reclaimLock=useRef(false);
+ const runRef=useRef<() => void>(() => {});
  // A day clicked on the calendar ("YYYY-MM-DD") opens on that day.
  const location=useLocation(),navigate=useNavigate();
  const [picked]=useState(()=>{const day=(location.state as {day?:string}|null)?.day;if(!day)return null;const [y,m,d]=day.split('-').map(Number);return dashboardDayFor(new Date(y,m-1,d),new Date());});
@@ -166,6 +176,9 @@ export default function LiveDashboard({userId}:{userId:string}) {
  // Warm the documents cache so Ask Soma can answer from uploaded files even if
  // the user never opens the Documents page this session.
  useEffect(()=>{void listDocuments().catch(()=>{});},[]);
+ useEffect(()=>{setVersions(loadDayVersions(userId,localDate(origin)));setCompareId('');},[userId,origin]);
+ useEffect(()=>{const tick=()=>runRef.current();const id=window.setInterval(tick,60_000);return()=>window.clearInterval(id);},[userId,origin]);
+ useEffect(()=>{if(snapshot)runRef.current();},[snapshot]);
  useEffect(()=>{mounted.current=true;void reload().catch(e=>setError(e.message));const refresh=()=>{if(!writing.current)void reload().catch(e=>setError(e.message));};window.addEventListener('focus',refresh);window.addEventListener('soma_timer_stopped',refresh);
  // Recorded time added, corrected or deleted anywhere (e.g. the Calendar) shows here too.
  window.addEventListener('soma_insights_changed',refresh);
@@ -189,16 +202,66 @@ export default function LiveDashboard({userId}:{userId:string}) {
   }catch(e){setError(e instanceof Error ? e.message : 'Could not save. Please retry.');throw e;}
   finally{writing.current=false;setBusy(false);}
  }
+ function focusId(){
+  if(!timer.activeSession || !snapshot)return null;
+  const match=snapshot.blocks.find(b=>!b.external && b.subjectId===timer.activeSession?.subject.id && b.title===timer.activeSession?.task && localDate(dateAt(origin,b.day))===localDate(new Date(timer.activeSession.sessionStartTimeISO)));
+  return match?.id ?? null;
+ }
+ const reclaimOpts=()=>({activeId:focusId(),pins:pinnedKeys(userId),date:localDate(origin)});
+ async function applyMoves(fresh:Snapshot,result:{moved:{id:string;to:string}[];blocks:{id:string;time:string}[]},reason:'reclaim'|'overrun',completedId?:string|number){
+  for(const move of result.moved){
+   const live=fresh.blocks.find(b=>String(b.id)===move.id);
+   const next=result.blocks.find(b=>b.id===move.id);
+   if(!live || !next)continue;
+   const minutes=next.time ? spanMinutes(...next.time.split('–') as [string,string]) : 0;
+   const completing=completedId!=null && String(live.id)===String(completedId);
+   await savePlanBlock(userId,origin,{...live,time:next.time,minutes,state:completing ? 'Completed' : live.state},fresh);
+  }
+  const after=await readPlan(userId,origin,rangeRef.current,7);
+  const date=localDate(origin);
+  const list=pushVersion(loadDayVersions(userId,date),{at:new Date().toISOString(),reason,blocks:toVersionBlocks(after.blocks)});
+  saveDayVersions(userId,date,list);
+  setVersions(list);
+  const text=reason==='overrun' ? 'Updated the rest of today from when you finished.' : `Moved ${result.moved.length} ${result.moved.length===1 ? 'block' : 'blocks'} that hadn’t been started.`;
+  setNotice(text);
+  window.setTimeout(()=>setNotice(current=>current===text ? '' : current),8000);
+ }
+ async function runReclaim(){
+  if(!snapshot || writing.current || reclaimLock.current)return;
+  let fresh:Snapshot;
+  try{fresh=await readPlan(userId,origin,rangeRef.current,7);}catch{return;}
+  const today=fresh.blocks.filter(b=>b.day===0);
+  const date=localDate(origin);
+  const snap=toVersionBlocks(today);
+  if(snap.length && !loadDayVersions(userId,date).length){
+   const list=pushVersion([],{at:new Date().toISOString(),reason:'original',blocks:snap});
+   saveDayVersions(userId,date,list);
+   setVersions(list);
+  }
+  const result=planToday(today,nowMinutes(),reclaimWindowEnd(storage.getSomaSettings()),reclaimOpts());
+  if(result.held || !result.moved.length)return;
+  reclaimLock.current=true;writing.current=true;setBusy(true);setError('');
+  try{await applyMoves(fresh,result,'reclaim');await reload();}
+  catch(e){setError(e instanceof Error ? e.message : 'Could not update today’s plan.');}
+  finally{reclaimLock.current=false;writing.current=false;setBusy(false);}
+ }
  async function change(id:string|number,state:PlanState,opts?:{deleteLoggedTime?:boolean}){
   const proposal=proposals.find(b=>b.id===id);
   if(proposal){await save({...proposal,state,...opts},true);return;}
   const block=snapshot?.blocks.find(b=>b.id===id);
   if(!block)throw new Error('Refresh to load this block.');
   if(!block.todoId){await save({...block,state});return;}
-  if(writing.current)throw new Error('Please wait for the current save to finish.');
+  if(writing.current||reclaimLock.current)throw new Error('Please wait for the current save to finish.');
   writing.current=true;setBusy(true);setError('');
-  try{const fresh=await readPlan(userId,origin,rangeRef.current,7);const todo=fresh.todos.find(t=>t.id===block.todoId);if(!todo)throw new Error('This task no longer exists. Refresh your plan.');await setTaskStatus(userId,fresh,todo,state==='Completed' ? 'done' : state==='Partially completed' ? 'in_progress' : 'nothing');
-  await storage.fetchAllTodos();await reload();}
+  try{
+   const fresh=await readPlan(userId,origin,rangeRef.current,7);
+   const todo=fresh.todos.find(t=>t.id===block.todoId);
+   if(!todo)throw new Error('This task no longer exists. Refresh your plan.');
+   const overrun=state==='Completed' ? overrunToday(fresh.blocks.filter(b=>b.day===0),block.id,nowMinutes(),reclaimWindowEnd(storage.getSomaSettings()),reclaimOpts()) : null;
+   if(overrun?.moved.length)await applyMoves(fresh,overrun,'overrun',block.id);
+   else await setTaskStatus(userId,fresh,todo,state==='Completed' ? 'done' : state==='Partially completed' ? 'in_progress' : 'nothing');
+   await storage.fetchAllTodos();await reload();
+  }
   catch(e){setError(e instanceof Error ? e.message : 'Could not save completion.');throw e;}finally{writing.current=false;setBusy(false);}
  }
  /** Read part of a block: its sections through `itemId` are done and the block
@@ -252,6 +315,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   const ready=result.actions?.length ? `\n\n${result.actions.map(a=>a.kind==='email' ? `Drafted email: "${a.subject}"` : `Calendar event: ${a.title}`).join('\n')}\nOpen the AI page to send or add ${result.actions.length===1 ? 'it' : 'them'}.` : '';
   return {reply:result.display+ready,day:result.showDay===undefined ? undefined : result.showDay+shift};
  }
+ runRef.current=()=>{void runReclaim();};
  if(!snapshot)return error
   ? <div className={styles.loading}><p role="alert">{error}</p><button onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Retry dashboard</button></div>
   : <DashboardSkeleton/>;
@@ -334,7 +398,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   else setError('');
  }
  const pulseDays=Array.from({length:7},(_,i)=>snapshot.history.filter(h=>h.date===localDate(dateAt(origin,i-6))).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0));
- return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<CatchUp key={localDate(origin)} userId={userId} origin={origin} onApply={applyBatch}>{catchUp=><AgentBrief catchUp={catchUp}/>}</CatchUp>,dump:<BrainDump userId={userId} onPlan={planDump}/>,habits:<Habits/>,layout,onLayout:saveLayout,due:due.map(x=>{
+ return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}{notice && <span>{notice}</span>}</div><DashboardV2 key={localDate(origin)} runtime={{initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,compare:{shown:compareOn,toggle:()=>setCompareOn(v=>!v),panel:<DayCompare current={toVersionBlocks(snapshot.blocks)} versions={versions} selectedId={compareId || versions[Math.max(0,versions.length-2)]?.id || ''} onSelect={setCompareId}/>},rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<CatchUp key={localDate(origin)} userId={userId} origin={origin} onApply={applyBatch}>{catchUp=><AgentBrief catchUp={catchUp}/>}</CatchUp>,dump:<BrainDump userId={userId} onPlan={planDump}/>,habits:<Habits/>,layout,onLayout:saveLayout,due:due.map(x=>{
   // Plan it's sittings for this assignment, and the time logged on them (or on the assignment itself).
   const mine=snapshot.todos.filter(t=>t.subjectId===x.subjectId && isSittingOf(t.text,x.title));
   const seconds=snapshot.history.filter(h=>h.subject_id===x.subjectId && isSittingOf(h.task_text??'',x.title)).reduce((n,h)=>n+(h.duration_seconds||0),0);

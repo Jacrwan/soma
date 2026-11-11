@@ -1,0 +1,47 @@
+/**
+ * Versions of one day's plan, kept in this browser so the dashboard can
+ * compare the latest day with an earlier pass. No server, no model.
+ */
+
+export type VersionBlock = { id: string; title: string; subject: string; time: string; minutes: number };
+export type DayVersion = {
+  id: string;
+  at: string;
+  reason: 'original' | 'reclaim' | 'overrun';
+  blocks: VersionBlock[];
+};
+
+const MAX = 12;
+const keyOf = (userId: string, date: string) => `soma_day_versions:${userId}:${date}`;
+
+export function samePlan(a: VersionBlock[], b: VersionBlock[]) {
+  const sig = (xs: VersionBlock[]) => [...xs].map(x => `${x.id}|${x.time}`).sort().join('\n');
+  return sig(a) === sig(b);
+}
+
+export function versionLabel(v: DayVersion) {
+  const clock = new Date(v.at);
+  const time = Number.isNaN(+clock) ? '' : clock.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const name = v.reason === 'original' ? 'Original' : v.reason === 'overrun' ? 'After you finished a block' : 'After a missed block';
+  return time ? `${name} · ${time}` : name;
+}
+
+/** Append a version when the times actually changed. The original is kept. */
+export function pushVersion(list: DayVersion[], next: { at: string; reason: DayVersion['reason']; blocks: VersionBlock[] }): DayVersion[] {
+  if (list.length && samePlan(list[list.length - 1].blocks, next.blocks)) return list;
+  if (list.some(v => v.reason === 'original') && next.reason === 'original') return list;
+  const version: DayVersion = { id: `${next.reason}:${next.at}`, at: next.at, reason: next.reason, blocks: next.blocks };
+  return [...list, version].slice(-MAX);
+}
+
+export function loadDayVersions(userId: string, date: string): DayVersion[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(keyOf(userId, date)) ?? 'null') as DayVersion[] | null;
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(v => v && typeof v.id === 'string' && Array.isArray(v.blocks));
+  } catch { return []; }
+}
+
+export function saveDayVersions(userId: string, date: string, list: DayVersion[]) {
+  try { localStorage.setItem(keyOf(userId, date), JSON.stringify(list.slice(-MAX))); } catch { /* this browser won't remember the compare */ }
+}

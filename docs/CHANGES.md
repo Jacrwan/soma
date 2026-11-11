@@ -9,19 +9,21 @@ still needed.
 
 ---
 
-## 2026-11-10 (exam prep v2: within-day reclaim, not on the dashboard yet)
+## 2026-11-10 (exam prep v2: within-day reclaim on the dashboard)
 
-- **Why:** after v1, a missed study block should move inside the same day by
-  priority, without a model call, and must not spill into personal time
-  unless the student opts in. The compare peek comes after the planner.
-- **What:** `reclaimDay` repacks never-started missed work and later
-  never-started study into today's remaining gaps, highest priority first.
-  Started blocks, classes, and a Focus session still running past its end
-  stay put. `finishOverrun` sets the checked-off end and shifts the rest.
-  Settings → Study hours: "Stop at study hours" (default) or "Use personal
-  time". Not auto-applied on the dashboard yet. Story: `docs/exam-prep-log.md`.
-- **Where:** `src/lib/dayReclaim.ts`, `src/lib/storage.ts`, `SettingsTab.tsx`.
-- **Guard:** `tests/day-reclaim.spec.ts`.
+- **Why:** a missed study block should move inside the same day by priority,
+  without a model call, and the student should still see the earlier plan.
+- **What:** the live dashboard applies `reclaimDay` about once a minute and
+  on each plan reload. Never-started missed work and later never-started
+  study are saved into today's gaps (not Accept cards). Pinned times, started
+  blocks, and classes stay. Focus running past the end holds the day;
+  checking the block off sets that end and shifts the overlap. Settings →
+  Study hours: "Stop at study hours" (default) or "Use personal time".
+  Today's plan has Compare: now on the left, an earlier version on the right.
+  Versions stay in this browser. Story: `docs/exam-prep-log.md`.
+- **Where:** `src/lib/{dayReclaim,reclaimToday,dayVersions}.ts`,
+  `LiveDashboard.tsx`, `DayCompare.tsx`, `DashboardV2.tsx`, `SettingsTab.tsx`.
+- **Guard:** `tests/day-reclaim.spec.ts`, `tests/reclaim-today.spec.ts`.
 
 ## 2026-11-10 (a stalled load before a reply now ends in a retry message)
 
