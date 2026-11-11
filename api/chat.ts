@@ -180,15 +180,15 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
     if(i===messages.length-2){const b=blocks(m.content);return {role:m.role,content:b.map((x,j)=>j===b.length-1 ? {...x,cache_control:{type:'ephemeral'}} : x)};}
     return m;
    });
-   // Soma uses Sonnet 5.5. On 5.5, thinking is on by default — even "low"
-   // effort still thinks before any text streams (felt like a minute). Turn
-   // off up-front thinking with between_tools (disabled is rejected on 5.5);
-   // without tools the reply is text-only. Effort stays low unless asked.
+   // Soma's replies use Sonnet 5.5. Do not send `thinking`: on 5.5,
+   // `between_tools` left the stream open until the 150s timeout (preview
+   // stalled; production, which never sent it, was fine). `disabled` is a 400.
+   // Adaptive thinking (omit the field) + low effort is what production uses.
    // A declined request falls back rather than failing (beta).
    const sonnet=model==='sonnet';
    const response=await (deps.request??fetch)('https://api.anthropic.com/v1/messages',{
     method:'POST',signal:AbortSignal.timeout(140_000),headers:{'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json',...(sonnet ? {'anthropic-beta':'server-side-fallback-2026-07-01'} : {})},
-    body:JSON.stringify({model:sonnet ? 'claude-sonnet-5-5' : 'claude-haiku-4-5-20251001',max_tokens:sonnet ? 16000 : 8192,...(sonnet ? {thinking:{type:'between_tools'},output_config:{effort:effort==='medium' ? 'medium' : 'low'},fallbacks:'default'} : {}),...(system.length ? {system} : {}),messages:sent,...(stream===true ? {stream:true} : {})}),
+    body:JSON.stringify({model:sonnet ? 'claude-sonnet-5-5' : 'claude-haiku-4-5-20251001',max_tokens:sonnet ? 16000 : 8192,...(sonnet ? {output_config:{effort:effort==='low' ? 'low' : 'medium'},fallbacks:'default'} : {}),...(system.length ? {system} : {}),messages:sent,...(stream===true ? {stream:true} : {})}),
    });
    if(response.status===429)return res.status(429).json({error:'rate_limit'});
    if(response.status===529)return res.status(529).json({error:'overloaded'});

@@ -9,15 +9,16 @@ still needed.
 
 ---
 
-## 2026-11-10 (Soma: no up-front thinking on Sonnet 5.5)
+## 2026-11-10 (preview stall: never send Sonnet 5.5 `thinking`)
 
-- **Why:** plan replies still felt stuck after switching to low effort. On
-  Sonnet 5.5, thinking is on by default — low still thinks before streaming.
-  `thinking: disabled` is rejected; the lowest setting is `between_tools`.
-- **What:** `/api/chat` sends `thinking: { type: 'between_tools' }` on Sonnet
-  (no tools → text-only, no pre-think). Dashboard still uses `effort: 'low'`.
+- **Why:** production (no `thinking` field) answered "do the math homework
+  after ruf large group today" fine; the exam-prep preview hung on the same
+  message. `thinking: { type: 'between_tools' }` left the Anthropic stream
+  open until the 150s timeout — "Soma is thinking…" with no text.
+- **What:** `/api/chat` omits `thinking` again (same as production). Dashboard
+  still sends `effort: 'low'`. Do not re-add `between_tools`.
 - **Where:** `api/chat.ts`.
-- **Guard:** `tests/ai-backend.spec.ts`.
+- **Guard:** `tests/ai-backend.spec.ts` (body has no `thinking` key).
 
 ## 2026-11-10 (Soma plan replies: low effort, not medium)
 
