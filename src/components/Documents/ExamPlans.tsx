@@ -396,7 +396,7 @@ function Builder({ userId, subjects: subjectsProp, docs, items, preset, onClose,
             {confirmNote && <p className={styles.confirm}>{confirmNote}</p>}
             <div className={list.reviewWrap}>
               <table className={`${list.review} ${styles.review}`}>
-                <thead><tr><th scope="col">What</th><th scope="col">Detail</th><th scope="col">Min</th><th scope="col">Priority</th><th scope="col"><span className={list.srOnly}>Remove</span></th></tr></thead>
+                <thead><tr><th scope="col">What</th><th scope="col">Detail</th><th scope="col">Min</th><th scope="col">Priority <span className={styles.thNote}>low to high</span></th><th scope="col"><span className={list.srOnly}>Remove</span></th></tr></thead>
                 <tbody>
                   {rows.map((r, i) => (
                     <tr key={i}>

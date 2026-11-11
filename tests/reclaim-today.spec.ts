@@ -40,8 +40,11 @@ test('a missed block is repacked and a late check-off shifts what it overlaps', 
     block({ id: 'b', title: 'Reading', time: '13:00–14:00', note: '· p2' }),
   ];
   const opts = { pins: new Set<string>(), date: '2026-11-10' };
+  // The missed block takes the next free time; Reading stays at 13:00
+  // (later blocks no longer make room when there is free time, 2026-11-10).
   const missed = planToday(blocks, 12 * 60 + 30, 21 * 60, opts);
-  expect(missed.blocks.find(b => b.id === 'a')!.time).toBe('13:00–14:00');
+  expect(missed.blocks.find(b => b.id === 'a')!.time).toBe('14:00–15:00');
+  expect(missed.blocks.find(b => b.id === 'b')!.time).toBe('13:00–14:00');
   expect(missed.blocks.find(b => b.id === 'class')!.time).toBe('12:00–13:00');
 
   const late = overrunToday(blocks, 'a', 12 * 60 + 20, 21 * 60, opts);

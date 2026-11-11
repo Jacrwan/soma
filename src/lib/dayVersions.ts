@@ -7,7 +7,7 @@ export type VersionBlock = { id: string; title: string; subject: string; time: s
 export type DayVersion = {
   id: string;
   at: string;
-  reason: 'original' | 'reclaim' | 'overrun';
+  reason: 'original' | 'reclaim' | 'overrun' | 'undo';
   blocks: VersionBlock[];
 };
 
@@ -22,7 +22,7 @@ export function samePlan(a: VersionBlock[], b: VersionBlock[]) {
 export function versionLabel(v: DayVersion) {
   const clock = new Date(v.at);
   const time = Number.isNaN(+clock) ? '' : clock.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  const name = v.reason === 'original' ? 'Original' : v.reason === 'overrun' ? 'After you finished a block' : 'After a missed block';
+  const name = v.reason === 'original' ? 'Original' : v.reason === 'overrun' ? 'After you finished a block' : v.reason === 'undo' ? 'After you undid a move' : 'After a missed block';
   return time ? `${name} · ${time}` : name;
 }
 
@@ -44,4 +44,20 @@ export function loadDayVersions(userId: string, date: string): DayVersion[] {
 
 export function saveDayVersions(userId: string, date: string, list: DayVersion[]) {
   try { localStorage.setItem(keyOf(userId, date), JSON.stringify(list.slice(-MAX))); } catch { /* this browser won't remember the compare */ }
+}
+
+/**
+ * Blocks the student put back with Undo today: the reclaim leaves them alone
+ * for the rest of the day, even after a reload, or it would move them again
+ * a minute later.
+ */
+const keptKey = (userId: string, date: string) => `soma_reclaim_kept:${userId}:${date}`;
+export function loadKept(userId: string, date: string): Set<string> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(keptKey(userId, date)) ?? '[]');
+    return new Set(Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : []);
+  } catch { return new Set(); }
+}
+export function saveKept(userId: string, date: string, ids: Set<string>) {
+  try { localStorage.setItem(keptKey(userId, date), JSON.stringify([...ids])); } catch { /* kept for this page only */ }
 }

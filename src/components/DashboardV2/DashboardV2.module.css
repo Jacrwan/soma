@@ -461,15 +461,17 @@
   .headerTools{justify-content:flex-start}
 }
 @media(prefers-reduced-motion:no-preference){.customizing .widget{transition:transform .15s ease-out}}
-.compare{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
-.compare h3{margin:0 0 8px;font-size:12px;font-weight:600}
-.compare label{font:inherit}
-.compare select{display:block;width:100%;max-width:280px;margin:0 0 8px;min-height:30px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font:inherit;font-size:12px}
-.compare ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
-.compare li{display:flex;justify-content:space-between;gap:10px;font-size:12px;line-height:1.4;color:var(--text-secondary)}
-.compare time{flex-shrink:0;font-variant-numeric:tabular-nums}
-.compareMoved{color:var(--text-primary)}
+.moveNote{margin:0 0 16px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
+.moveNoteHeading{margin:0 0 8px;font-size:12px;font-weight:600}
+.moveNote ul,.compare ul{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.moveNote li,.compare li{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px;font-size:12px;line-height:1.4}
+.moveNoteTitle{color:var(--text-primary);overflow-wrap:anywhere}
+.moveNoteTimes{color:var(--text-secondary);font-variant-numeric:tabular-nums}
+.moveNoteActions{display:flex;gap:6px;margin-top:10px}
+.compare{margin:0 0 16px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg)}
+.compareHead{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;font-size:12px;font-weight:600}
+.compare select{min-height:30px;padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-secondary);color:var(--text-primary);font:inherit;font-size:12px;font-weight:400;max-width:100%}
+.compareTag{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:999px;background:var(--bg-tertiary);color:var(--text-secondary);font-size:10px;font-weight:600}
 .compare p{margin:0;font-size:12px;color:var(--text-secondary)}
-@media(max-width:700px){.compare{grid-template-columns:1fr}}
 :global([data-theme=dark]) .live .nextBlock{background:color-mix(in oklch,var(--tone,var(--text-secondary)),var(--bg) 88%)}
 .r1 .focus small{display:none}

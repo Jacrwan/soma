@@ -1,17 +1,15 @@
 import styles from './PriorityBar.module.css';
 
-/** 1 = low … 5 = high. Color shifts cool → warm as priority rises. */
-const TINTS = ['#6b7c8a', '#5a8f7b', '#c4a035', '#d4783c', '#c44b4b'];
-
-export function priorityColor(value: number) {
-  const i = Math.min(5, Math.max(1, Math.round(value))) - 1;
-  return TINTS[i];
-}
-
 /**
- * Five-step priority control. Default comes from the AI; the student can drag
- * or click to override. Not a separate "system" — just the sort weight for
- * placing study blocks.
+ * Five-step priority control. Default comes from the AI; the student can
+ * click or use the arrow keys to override. Not a separate "system": just the
+ * sort weight for placing study blocks.
+ *
+ * One calm color, filled up to the level (2026-11-10 UI review: the
+ * red-to-green steps read as "red = problem" in a restrained palette, and
+ * priority already shows as how many steps are filled). Each step has a 24px
+ * hit area around a small mark, and the bar is one Tab stop: arrows, Home and
+ * End change it, as for any slider.
  */
 export default function PriorityBar({
   value,
@@ -27,7 +25,6 @@ export default function PriorityBar({
   labelledBy?: string;
 }) {
   const n = Math.min(5, Math.max(1, Math.round(value) || 3));
-  const color = priorityColor(n);
   return (
     <div
       className={`${styles.bar} ${size === 'sm' ? styles.sm : ''}`}
@@ -47,22 +44,19 @@ export default function PriorityBar({
         if (e.key === 'End') { e.preventDefault(); onChange(5); }
       }}
     >
-      <span className={styles.edge}>Low</span>
-      <div className={styles.track} style={{ ['--prio' as string]: color }}>
+      <div className={styles.track}>
         {[1, 2, 3, 4, 5].map(step => (
           <button
             key={step}
             type="button"
             className={`${styles.step} ${step <= n ? styles.on : ''}`}
-            style={step <= n ? { background: color, borderColor: color } : undefined}
             aria-label={`Priority ${step}`}
-            aria-pressed={step === n}
+            tabIndex={-1}
             disabled={disabled}
             onClick={() => onChange(step)}
           />
         ))}
       </div>
-      <span className={styles.edge}>High</span>
     </div>
   );
 }

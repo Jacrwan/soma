@@ -19,17 +19,41 @@ function day(): DayBlock[] {
   ];
 }
 
-test('a missed high-priority block takes the next gap ahead of lower work', () => {
+// Changed 2026-11-10 (owner, from the UI review): a missed block takes the
+// next free time, and what the student planned later stays where it is. It
+// used to bump lower-priority later work (Reading moved 13:00 → 16:00).
+test('a missed block takes the next free time; later blocks stay where they were planned', () => {
   const r = reclaimDay(day(), m('12:30'), m('21:00'));
   const at = (id: string) => r.blocks.find(b => b.id === id)!.time;
   expect(r.held).toBe(false);
   expect(at('eng')).toBe('10:00–11:00');
   expect(at('cs')).toBe('12:00–13:00');
   expect(at('disc')).toBe('14:00–15:00');
+  expect(at('b')).toBe('13:00–14:00');
+  expect(at('c')).toBe('15:00–16:00');
+  expect(at('a')).toBe('16:00–17:00');
+  expect(r.moved.map(x => x.id)).toEqual(['a']);
+});
+
+test('only when a missed block fits nowhere does later study make room, by priority', () => {
+  // Study hours end at 16:00: the only free hour left is taken by Worksheet 3.
+  const r = reclaimDay(day(), m('12:30'), m('16:00'));
+  const at = (id: string) => r.blocks.find(b => b.id === id)!.time;
   expect(at('a')).toBe('13:00–14:00');
   expect(at('c')).toBe('15:00–16:00');
-  expect(at('b')).toBe('16:00–17:00');
-  expect(r.moved.map(x => x.id)).toEqual(expect.arrayContaining(['a', 'b']));
+  // Reading (priority 2) gave up its hour and waits for catch-up, off the clock.
+  expect(at('b')).toBe('');
+  expect(r.unplaced).toEqual(['b']);
+});
+
+test('moved blocks start on the next 5 minutes, not the minute a class ends', () => {
+  const blocks: DayBlock[] = [
+    { id: 'read', title: 'Reading', time: '09:00–10:00', minutes: 60 },
+    { id: 'cs', title: 'CS lecture', time: '12:00–12:59', minutes: 59, fixed: true },
+    { id: 'math', title: 'Math discussion', time: '14:00–14:59', minutes: 59, fixed: true },
+  ];
+  const r = reclaimDay(blocks, m('12:30'), m('21:00'));
+  expect(r.blocks.find(b => b.id === 'read')!.time).toBe('13:00–14:00');
 });
 
 test('a block that was started is not moved, even after its window', () => {

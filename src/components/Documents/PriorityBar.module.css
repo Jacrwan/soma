@@ -1,48 +1,49 @@
 .bar {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
   min-width: 0;
+  border-radius: 6px;
 }
-.bar:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
-
-.edge {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  flex: 0 0 auto;
-}
-.sm .edge { display: none; }
+.bar:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .track {
   display: flex;
-  gap: 3px;
   align-items: center;
-  padding: 2px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--border) 70%, transparent);
 }
 
+/* A 24px hit area; the visible mark is the ::before. */
 .step {
-  width: 14px;
-  height: 10px;
+  position: relative;
+  width: 20px;
+  height: 24px;
   padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg-secondary, var(--bg));
+  border: 0;
+  background: transparent;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
 }
-.step:hover:not(:disabled) { transform: scaleY(1.25); }
-.step:disabled { cursor: default; opacity: 0.7; }
-.step.on { box-shadow: 0 0 0 1px color-mix(in srgb, var(--prio, var(--accent)) 25%, transparent); }
-.step:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.step::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  top: 7px;
+  bottom: 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary, var(--bg));
+  transition: background 150ms ease-out, border-color 150ms ease-out;
+}
+.step.on::before {
+  border-color: transparent;
+  background: color-mix(in oklch, var(--accent) 72%, var(--bg));
+}
+.step:hover:not(:disabled)::before { border-color: color-mix(in oklch, var(--accent) 60%, var(--border)); }
+.step:disabled { cursor: default; }
+.step:disabled.on::before { background: color-mix(in oklch, var(--text-secondary) 70%, var(--bg)); }
 
-.sm .step { width: 11px; height: 8px; }
-.sm .track { gap: 2px; }
+.sm .step { width: 16px; }
+.sm .step::before { top: 8px; bottom: 8px; left: 2px; right: 2px; }
 
 @media (prefers-reduced-motion: reduce) {
-  .step { transition: none; }
+  .step::before { transition: none; }
 }

@@ -9,6 +9,46 @@ still needed.
 
 ---
 
+## 2026-11-10 (exam prep v2 UI review fixes)
+
+- **Why:** a design review of the new screens (23/40; snapshot in
+  `.impeccable/critique/`) found five issues; the owner asked for all five.
+- **What:**
+  - **Only missed blocks move** (`dayReclaim.ts`). A missed block takes the
+    next free time; later blocks stay where they were planned (an untouched
+    8 PM block was pulled to 2:59 PM). Only when a missed block fits nowhere
+    does later never-started study make room by priority; anything that then
+    fits nowhere comes off the clock (it used to keep its old time and
+    overlap).
+  - **Starts on the next 5 minutes.** Moved blocks started the minute a class
+    ended (12:59 PM) and left 1-minute gaps.
+  - **The note is on today's plan** (`MoveNote.tsx`): each block by name,
+    from and to, with Undo and Dismiss; it stays until dismissed. Undo puts
+    the blocks back and keeps them there for the rest of the day, reloads
+    included (`loadKept`/`saveKept` in `dayVersions.ts`). It was one line
+    above the page, gone after 8 seconds, with no way back.
+  - **Compare lists only what changed** ("Changes since Original · 12:28 PM":
+    each block, Moved / Off the clock / Added / Removed, from → to), opens at
+    the top of the plan, and starts from the original. It was two full lists
+    with moved rows a shade darker, below the whole day.
+  - **Priority bar** (`PriorityBar.*`): one calm color filled to the level
+    (was green to red), 24px hit areas (were 14×10px), one Tab stop with
+    arrows/Home/End (was six per row); "low to high" once in the column
+    header instead of LOW/HIGH on every row.
+- **Where:** `src/lib/{dayReclaim,dayVersions}.ts`,
+  `DashboardV2/{MoveNote,DayCompare,DashboardV2,LiveDashboard}.tsx`,
+  `DashboardV2.module.css`, `Documents/{PriorityBar,ExamPlans}.*`.
+- **Guard:** `tests/reclaim-ui.spec.ts` (note, Undo that sticks, Compare),
+  `tests/exam-plans.spec.ts` › priority bar, `tests/day-reclaim.spec.ts`
+  (later blocks stay, make room only when needed, 5-minute starts). All fail
+  on the code before this change.
+- **Intended test changes:** `day-reclaim.spec.ts` "a missed block takes the
+  next free time…" and `reclaim-today.spec.ts` now expect the missed block
+  after the later one instead of bumping it.
+- **Not done (minor review notes):** em dashes in exam copy, two primary
+  buttons side by side, the bare "−" collapse control, "If the day runs
+  long" wording, the Settings toggle saving instantly.
+
 ## 2026-11-10 (Soma learns routines, and reads guides by week)
 
 - **Why:** asked for "the math homework" or "all of last week's math

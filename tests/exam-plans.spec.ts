@@ -216,3 +216,25 @@ test('Soma sees exams in context only when the message is about an exam', async 
   const planChat = state.chats.find(c => typeof c.systemPrompt === 'string' && /"exams"|Worksheet 3/.test(JSON.stringify(c)));
   expect(JSON.stringify(planChat)).toMatch(/Worksheet 3/);
 });
+
+// UI review 2026-11-10: each bar was a slider holding five buttons (six Tab
+// stops a row), the steps were 14×10px, and the colors ran green to red.
+test('the priority bar is one Tab stop with 24px steps, changed with the arrow keys', async ({ page }) => {
+  await setup(page, () => ({ note: 'From your braindump.', items: [{ label: 'Worksheet 3', detail: 'do problems 1–12', minutes: 45, priority: 4 }] }));
+  await page.goto('/documents');
+  await page.getByRole('button', { name: 'Plan an exam' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Plan an exam' });
+  await dialog.locator('textarea').fill('Worksheet 3');
+  await dialog.getByRole('button', { name: 'Make my study checklist' }).click();
+  const bar = dialog.getByRole('row', { name: /Worksheet 3/ }).getByRole('slider');
+  await expect(bar).toHaveAttribute('aria-valuenow', '4');
+  for (const step of await bar.getByRole('button').all()) {
+    await expect(step).toHaveAttribute('tabindex', '-1');
+    expect((await step.boundingBox())!.height).toBeGreaterThanOrEqual(24);
+  }
+  await bar.focus();
+  await page.keyboard.press('ArrowLeft');
+  await expect(bar).toHaveAttribute('aria-valuenow', '3');
+  await page.keyboard.press('End');
+  await expect(bar).toHaveAttribute('aria-valuenow', '5');
+});

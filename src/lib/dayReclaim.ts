@@ -4,8 +4,9 @@ import { clockOf, rangeOf, spanMinutes } from './clockRange';
  * Within-day reclaim (exam prep v2). No model.
  *
  * A study block that ended at least GRACE_MIN minutes ago, and that was
- * never started (no Focus, no check), is missed. Missed work and later never-started study on the
- * same day are repacked by priority into the gaps still left today.
+ * never started (no Focus, no check), is missed. Missed work moves into the
+ * gaps still left today, by priority; later study stays put unless a missed
+ * block fits nowhere else.
  * Calendar events and anything already started stay where they are.
  * Nothing lands after `windowEnd` (study hours). Pass `null` when study
  * hours are off or the student opted into personal time.
@@ -78,6 +79,8 @@ function gapsBetween(occupied: [number, number][], start: number, limit: number)
   return gaps;
 }
 
+const snap = (m: number) => Math.ceil(m / 5) * 5;
+
 /**
  * Place `pool` (already in priority order) into gaps. Returns the new time
  * per id that landed, and ids that did not fit.
@@ -88,11 +91,14 @@ function pack(pool: DayBlock[], gaps: [number, number][]): { times: Map<string, 
   const left = gaps.map(g => [...g] as [number, number]);
   for (const b of pool) {
     const len = lenOf(b);
-    const at = left.findIndex(([a, z]) => z - a >= len);
+    // Starts land on the next 5 minutes: a class ending at 12:59 put the
+    // moved block at 12:59–1:59 and left a 1-minute gap before 2:00.
+    const at = left.findIndex(([a, z]) => z - snap(a) >= len);
     if (at < 0) { unplaced.push(b.id); continue; }
     const [a, z] = left[at];
-    times.set(b.id, `${clockOf(a)}–${clockOf(a + len)}`);
-    const restStart = a + len;
+    const start = snap(a);
+    times.set(b.id, `${clockOf(start)}–${clockOf(start + len)}`);
+    const restStart = start + len;
     left.splice(at, 1, ...(z - restStart >= MIN_GAP ? [[restStart, z] as [number, number]] : []));
   }
   return { times, unplaced };
@@ -128,16 +134,25 @@ export function reclaimDay(blocks: DayBlock[], nowMin: number, windowEnd: number
   const missed = blocks.filter(b => movable(b) && rangeOf(b.time)[1] + GRACE_MIN <= nowMin);
   if (!missed.length) return { blocks, moved: [], unplaced: [], held: false };
 
-  const later = blocks.filter(b => movable(b) && rangeOf(b.time)[0] >= nowMin);
-  const pool = [...missed, ...later].sort(byPriority);
-  const poolIds = new Set(pool.map(b => b.id));
-  const occupied = blocks.filter(b => !poolIds.has(b.id) && b.time).map(b => rangeOf(b.time));
   const limit = windowEnd == null ? 24 * 60 : Math.min(24 * 60, windowEnd);
-  const { times, unplaced } = pack(pool, gapsBetween(occupied, nowMin, limit));
-  const clear = new Set(unplaced.filter(id => {
-    const b = blocks.find(x => x.id === id);
-    return !!b?.time && rangeOf(b.time)[1] <= nowMin;
-  }));
+  const placeAround = (pool: DayBlock[]) => {
+    const ids = new Set(pool.map(b => b.id));
+    const occupied = blocks.filter(b => !ids.has(b.id) && b.time).map(b => rangeOf(b.time));
+    return pack(pool, gapsBetween(occupied, nowMin, limit));
+  };
+  // Only the missed blocks move, into the free time left today; what the
+  // student planned later stays where it is (2026-11-10: an untouched 8 PM
+  // block was pulled to 2:59 PM). Only when a missed block fits nowhere does
+  // later never-started study make room, by priority.
+  let { times, unplaced } = placeAround([...missed].sort(byPriority));
+  if (unplaced.length) {
+    const later = blocks.filter(b => movable(b) && rangeOf(b.time)[0] >= nowMin);
+    ({ times, unplaced } = placeAround([...missed, ...later].sort(byPriority)));
+  }
+  // What fits nowhere comes off the clock and waits for catch-up: a missed
+  // block, or (when later study had to make room) a later one whose old time
+  // another block now has.
+  const clear = new Set(unplaced);
   const applied = applyTimes(blocks, times, clear);
   return { ...applied, unplaced, held: false };
 }
