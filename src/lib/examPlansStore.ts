@@ -20,11 +20,13 @@ const missing = (message: string) => /relation|does not exist|schema cache|could
 const changed = () => { window.dispatchEvent(new Event(EXAM_PLANS_CHANGED)); window.dispatchEvent(new Event('soma_course_items_changed')); };
 
 function fromRow(r: Record<string, unknown>): ExamPlan {
+  const time = typeof r.exam_time === 'string' && /^\d{2}:\d{2}$/.test(r.exam_time) ? r.exam_time : undefined;
   return {
     id: String(r.id),
     subjectId: String(r.subject_id),
     title: String(r.title ?? ''),
     examDate: String(r.exam_date ?? '').slice(0, 10),
+    ...(time ? { examTime: time } : {}),
     ...(r.todo_id ? { todoId: String(r.todo_id) } : {}),
   };
 }
@@ -49,10 +51,16 @@ export async function loadExamPlans(userId: string): Promise<{ plans: ExamPlan[]
  * keep done state and a student-set priority when rebuilding.
  */
 export async function saveExamPlan(userId: string, exam: ExamPlan, drafts: StudyDraft[], previous: CourseItem[] = []): Promise<void> {
-  const { error } = await supabase.from('exam_plans').upsert({
+  const planRow = {
     id: exam.id, user_id: userId, subject_id: exam.subjectId,
     title: exam.title.slice(0, 120), exam_date: exam.examDate, todo_id: exam.todoId ?? null,
-  });
+    exam_time: exam.examTime && /^\d{2}:\d{2}$/.test(exam.examTime) ? exam.examTime : null,
+  };
+  let { error } = await supabase.from('exam_plans').upsert(planRow);
+  if (error && /exam_time|schema cache|could not find/i.test(error.message)) {
+    const { exam_time: _t, ...withoutTime } = planRow;
+    ({ error } = await supabase.from('exam_plans').upsert(withoutTime));
+  }
   if (error) throw new Error(missing(error.message) ? NOT_SET_UP : 'Could not save the study list. Please retry.');
   const kept = new Map(previous.filter(i => i.examId === exam.id).map(i => [i.label.toLowerCase(), i]));
   const rows = drafts.map((d, position) => {

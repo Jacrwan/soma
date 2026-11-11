@@ -13,3 +13,8 @@
 ALTER TABLE course_items
   ADD COLUMN IF NOT EXISTS priority INTEGER
   CHECK (priority IS NULL OR (priority >= 1 AND priority <= 5));
+
+-- Optional clock time for the exam (HH:mm). Safe to run even if priority already exists.
+ALTER TABLE exam_plans
+  ADD COLUMN IF NOT EXISTS exam_time TEXT
+  CHECK (exam_time IS NULL OR exam_time ~ '^\d{2}:\d{2}$');

@@ -189,10 +189,10 @@ test('Documents: braindump + files → approve list with priorities → Add this
   await page.getByRole('button', { name: 'Plan an exam' }).click();
   const dialog = page.getByRole('dialog', { name: 'Plan an exam' });
   await dialog.locator('textarea').fill('Worksheet 3 problems\nPractice midterm A timed');
-  await dialog.getByRole('button', { name: 'Make my list' }).click();
+  await dialog.getByRole('button', { name: 'Make my study checklist' }).click();
   await expect(dialog.getByText(/Followed your braindump/i)).toBeVisible();
   await expect(dialog.getByRole('row', { name: /Worksheet 3/ }).getByLabel('What')).toHaveValue('Worksheet 3');
-  await dialog.getByRole('button', { name: 'Approve list' }).click();
+  await dialog.getByRole('button', { name: 'Approve checklist' }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Exam study plans' })).toBeVisible();
   await expect(page.getByText('Calc midterm').first()).toBeVisible();

@@ -1,18 +1,28 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { storage } from '../../lib/storage';
 import { loadCourseItems, isReading, type CourseItem } from '../../lib/courseItems';
+import { ACCEPT_ATTR, uploadDocument, extractDocumentText, DocumentError } from '../../lib/documents';
 import { addDays, dayKey, draftsFromBraindump, shortDay, MAX_STUDY_ITEMS, MAX_ITEM_MINUTES, DEFAULT_PRIORITY, type ExamPlan, type StudyDraft } from '../../lib/examPlan';
 import { buildStudyList, deleteExamPlan, loadExamPlans, saveExamPlan, scheduleHorizon, setItemDone, setItemPriority, EXAM_PLANS_CHANGED, MAX_DAYS_AHEAD } from '../../lib/examPlansStore';
 import PriorityBar from './PriorityBar';
-import type { Subject, SomaDocument, Todo } from '../../types';
+import type { Subject, SomaDocument, Todo, DocumentType } from '../../types';
 import docStyles from './DocumentsTab.module.css';
 import list from './ReadingLists.module.css';
 import styles from './ExamPlans.module.css';
 
 const hours = (m: number) => m < 60 ? `${m} min` : `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}`;
 const EXAMISH = /\b(exam|midterm|final|quiz|test)\b/i;
+const guessType = (name: string): DocumentType => {
+  const n = name.toLowerCase();
+  if (/syllabus/.test(n)) return 'syllabus';
+  if (/guide|practice|review/.test(n)) return 'guide';
+  if (/read|chapter|ch\.?\s*\d/.test(n)) return 'reading';
+  if (/worksheet|hw|homework|ps\d|assignment/.test(n)) return 'assignment';
+  if (/\.pdf$/i.test(n) && /slide|lecture/.test(n)) return 'slides';
+  return 'other';
+};
 
 /** Exams and quizzes coming up, from the student's tasks. */
 export function examChoices(todos: Todo[], today: string): Todo[] {
@@ -23,11 +33,12 @@ export function examChoices(todos: Todo[], today: string): Todo[] {
 }
 
 /**
- * Exam coverage lists: braindump and/or files → concrete items with a 1–5
- * priority bar → place ~today or ~this week onto the plan. No full multi-week
- * calendar is written up front.
+ * Exam coverage lists: braindump and/or files → concrete study checklist with
+ * a 1–5 priority bar → place ~today or ~this week onto the plan.
  */
-export default function ExamPlans({ subjects, docs }: { subjects: Subject[]; docs: SomaDocument[] }) {
+export default function ExamPlans({ subjects, docs, onDocsChange }: {
+  subjects: Subject[]; docs: SomaDocument[]; onDocsChange?: () => void;
+}) {
   const [userId, setUserId] = useState('');
   const [plans, setPlans] = useState<ExamPlan[]>([]);
   const [items, setItems] = useState<CourseItem[]>([]);
@@ -62,7 +73,7 @@ export default function ExamPlans({ subjects, docs }: { subjects: Subject[]; doc
   }
 
   const place = (exam: ExamPlan, horizon: 'today' | 'week') => run(`${horizon}:${exam.id}`, async () => {
-    const subject = subjects.find(s => s.id === exam.subjectId);
+    const subject = subjects.find(s => s.id === exam.subjectId) ?? storage.getSubjects().find(s => s.id === exam.subjectId);
     if (!subject) throw new Error('This exam’s course is no longer one of your subjects.');
     const { count, missing } = await scheduleHorizon(userId, exam, items, subject, horizon);
     const label = horizon === 'today' ? 'today' : 'this week';
@@ -77,17 +88,17 @@ export default function ExamPlans({ subjects, docs }: { subjects: Subject[]; doc
       <div className={list.head}>
         <div>
           <h2 id="exam-plans-heading">Exam study plans</h2>
-          <p>Drop what the exam covers — a braindump, files, or both. Soma builds a concrete list with priorities; you place today or this week onto your plan.</p>
+          <p>Drop what the exam covers — a braindump, files, or both. Soma builds a concrete study checklist with priorities; you place today or this week onto your plan.</p>
         </div>
         <button type="button" className={list.build} onClick={() => setBuilder({})} disabled={!userId}>Plan an exam</button>
       </div>
       {error && <p role="alert" className={list.error}>{error}</p>}
       {upcoming.length === 0 ? (
-        <p className={list.empty}>No exam plans yet. Braindump what you’ll do, or upload worksheets and practice exams, then plan an exam.</p>
+        <p className={list.empty}>No exam plans yet. Braindump what you’ll do, or drop worksheets and practice exams here, then plan an exam.</p>
       ) : (
         <ul className={list.courses}>
           {upcoming.map(exam => {
-            const subject = subjects.find(s => s.id === exam.subjectId);
+            const subject = subjects.find(s => s.id === exam.subjectId) ?? storage.getSubjects().find(s => s.id === exam.subjectId);
             const mine = items.filter(i => i.examId === exam.id).sort((a, b) => (b.priority ?? 3) - (a.priority ?? 3) || a.position - b.position);
             const done = mine.filter(i => i.doneAt).length;
             const openItems = mine.filter(i => !i.doneAt);
@@ -96,7 +107,7 @@ export default function ExamPlans({ subjects, docs }: { subjects: Subject[]; doc
               <li key={exam.id} className={list.course}>
                 <button type="button" className={list.courseRow} aria-expanded={expanded} onClick={() => setOpen(expanded ? null : exam.id)}>
                   <span className={list.courseName}><i style={{ background: subject?.color }} />{exam.title}</span>
-                  <span className={list.summary}>{subject?.name} · {shortDay(exam.examDate)} · {done} of {mine.length} done</span>
+                  <span className={list.summary}>{subject?.name ?? 'Course'} · {shortDay(exam.examDate)}{exam.examTime ? ` ${exam.examTime}` : ''} · {done} of {mine.length} done</span>
                   {openItems.length > 0 && <span className={list.behind}>{openItems.length} left</span>}
                   <span className={list.chevron} aria-hidden>{expanded ? '−' : '+'}</span>
                 </button>
@@ -144,6 +155,7 @@ export default function ExamPlans({ subjects, docs }: { subjects: Subject[]; doc
       )}
       {builder && (
         <Builder userId={userId} subjects={subjects} docs={docs} items={items} preset={builder.exam}
+          onDocsChange={onDocsChange}
           onClose={() => setBuilder(null)}
           onSaved={(exam) => { setBuilder(null); setOpen(exam.id); void reload(userId); }} />
       )}
@@ -151,46 +163,108 @@ export default function ExamPlans({ subjects, docs }: { subjects: Subject[]; doc
   );
 }
 
-type ExamPick = { todoId?: string; title: string; subjectId: string; date: string };
+type ExamPick = { todoId?: string; title: string; subjectId: string; date: string; time?: string };
 
-function Builder({ userId, subjects, docs, items, preset, onClose, onSaved }: {
+function Builder({ userId, subjects: subjectsProp, docs, items, preset, onClose, onSaved, onDocsChange }: {
   userId: string; subjects: Subject[]; docs: SomaDocument[]; items: CourseItem[]; preset?: ExamPlan;
-  onClose: () => void; onSaved: (exam: ExamPlan) => void;
+  onClose: () => void; onSaved: (exam: ExamPlan) => void; onDocsChange?: () => void;
 }) {
   const today = dayKey(new Date());
-  const active = subjects.filter(s => !s.archived);
+  const [courses, setCourses] = useState(() => {
+    const fromProp = subjectsProp.filter(s => !s.archived);
+    return fromProp.length ? fromProp : storage.getSubjects().filter(s => !s.archived);
+  });
+  useEffect(() => {
+    const sync = () => setCourses(prev => {
+      const next = storage.getSubjects().filter(s => !s.archived);
+      const merged = next.length ? next : subjectsProp.filter(s => !s.archived);
+      return merged.length ? merged : prev;
+    });
+    sync();
+    void storage.whenTokensLoaded().then(sync);
+    window.addEventListener('soma_subjects_changed', sync);
+    return () => window.removeEventListener('soma_subjects_changed', sync);
+  }, [subjectsProp]);
+
   const choices = examChoices(storage.getTodos(), today);
   const [choice, setChoice] = useState<string>(preset ? 'preset' : choices[0]?.id ?? 'other');
-  const [other, setOther] = useState<ExamPick>({ title: '', subjectId: active[0]?.id ?? '', date: '' });
-  const exam: ExamPick | null = preset ? { todoId: preset.todoId, title: preset.title, subjectId: preset.subjectId, date: preset.examDate }
-    : choice === 'other' ? (other.title.trim() && other.subjectId && other.date ? { ...other, title: other.title.trim() } : null)
-    : (t => t ? { todoId: t.id, title: t.text, subjectId: t.subjectId!, date: t.dueDate!.slice(0, 10) } : null)(choices.find(t => t.id === choice));
+  const [other, setOther] = useState<ExamPick>({ title: '', subjectId: '', date: '', time: '' });
+  // Fill course once subjects arrive (empty list on first paint was disabling the button).
+  useEffect(() => {
+    if (!other.subjectId && courses[0]?.id) setOther(o => ({ ...o, subjectId: courses[0].id }));
+  }, [courses, other.subjectId]);
+
+  const [subjectFix, setSubjectFix] = useState('');
+  const pickedTodo = choice !== 'other' && choice !== 'preset' ? choices.find(t => t.id === choice) : undefined;
+  const exam: ExamPick | null = preset
+    ? { todoId: preset.todoId, title: preset.title, subjectId: preset.subjectId, date: preset.examDate, time: preset.examTime }
+    : choice === 'other'
+      ? (other.title.trim() && other.subjectId && other.date ? { ...other, title: other.title.trim() } : null)
+      : pickedTodo
+        ? { todoId: pickedTodo.id, title: pickedTodo.text, subjectId: subjectFix || pickedTodo.subjectId!, date: pickedTodo.dueDate!.slice(0, 10) }
+        : null;
+
+  const course = courses.find(s => s.id === exam?.subjectId);
+  const needsCoursePick = !!exam && !course && choice !== 'other';
   const materials = docs.filter(d => d.subjectId === exam?.subjectId && d.extractedText);
   const [picked, setPicked] = useState<Set<string> | null>(null);
   const chosen = materials.filter(d => picked ? picked.has(d.id) : d.docType !== 'syllabus' || materials.length === 1);
   const [braindump, setBraindump] = useState('');
   const [rows, setRows] = useState<StudyDraft[] | null>(null);
   const [confirmNote, setConfirmNote] = useState('');
-  const [busy, setBusy] = useState<'' | 'reading' | 'saving'>('');
+  const [busy, setBusy] = useState<'' | 'reading' | 'saving' | 'upload'>('');
   const [error, setError] = useState('');
-  const course = subjects.find(s => s.id === exam?.subjectId);
+  const [dragOver, setDragOver] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const tooFar = !!exam && exam.date > addDays(today, MAX_DAYS_AHEAD);
   const tooSoon = !!exam && exam.date <= today;
+  const canMake = !!exam && !!course && !tooSoon && !tooFar && !busy;
+  const whyDisabled = !exam
+    ? (choice === 'other'
+      ? (!other.title.trim() ? 'Add a name.' : !other.subjectId ? (courses.length ? 'Pick a course.' : 'No courses loaded yet — wait a moment or refresh.') : !other.date ? 'Pick a date.' : 'Finish the exam details.')
+      : 'Pick an exam.')
+    : !course ? 'Pick which course this exam is for.'
+    : tooSoon ? 'Pick an exam after today.'
+    : tooFar ? `Pick an exam in the next ${MAX_DAYS_AHEAD} days.`
+    : busy ? 'Working…' : '';
+
+  async function ingestFiles(files: FileList | File[]) {
+    const subjectId = exam?.subjectId || other.subjectId;
+    if (!subjectId) { setError('Pick a course before dropping files.'); return; }
+    const listFiles = [...files];
+    if (!listFiles.length) return;
+    setBusy('upload'); setError('');
+    try {
+      const uploaded: SomaDocument[] = [];
+      for (const file of listFiles) {
+        const doc = await uploadDocument(file, subjectId, guessType(file.name));
+        await extractDocumentText(doc).catch(() => {});
+        uploaded.push(doc);
+      }
+      onDocsChange?.();
+      setPicked(prev => {
+        const base = prev ?? new Set(chosen.map(c => c.id));
+        for (const d of uploaded) base.add(d.id);
+        return new Set(base);
+      });
+    } catch (err) {
+      setError(err instanceof DocumentError ? err.message : err instanceof Error ? err.message : 'Could not upload.');
+    } finally { setBusy(''); }
+  }
 
   async function make() {
-    if (!exam || !course) return;
+    if (!exam || !course) { setError(whyDisabled || 'Finish the exam details first.'); return; }
     if (!braindump.trim() && chosen.length === 0) {
-      setError('Add a braindump of what you’ll study, pick files, or both.');
+      setError('Add a braindump of what you’ll study, drop files, or both — then Soma turns that into a checklist.');
       return;
     }
     setBusy('reading'); setError('');
     try {
       const reading = (await loadCourseItems(userId)).filter(i => isReading(i) && i.subjectId === exam.subjectId);
       const { items: drafted, note } = await buildStudyList(
-        { id: preset?.id ?? '', subjectId: exam.subjectId, title: exam.title, examDate: exam.date, todoId: exam.todoId },
+        { id: preset?.id ?? '', subjectId: exam.subjectId, title: exam.title, examDate: exam.date, examTime: exam.time, todoId: exam.todoId },
         course.name, chosen, reading, braindump,
       );
-      // Preserve priorities the student already set for matching labels on rebuild.
       const previous = items.filter(i => i.examId === (preset?.id ?? ''));
       const kept = new Map(previous.map(i => [i.label.toLowerCase(), i.priority]));
       setRows(drafted.map(d => ({ ...d, priority: kept.get(d.label.toLowerCase()) ?? d.priority })));
@@ -213,7 +287,11 @@ function Builder({ userId, subjects, docs, items, preset, onClose, onSaved }: {
     if (!clean.length) return;
     setBusy('saving'); setError('');
     try {
-      const plan: ExamPlan = { id: preset?.id ?? crypto.randomUUID(), subjectId: exam.subjectId, title: exam.title.slice(0, 120), examDate: exam.date, ...(exam.todoId ? { todoId: exam.todoId } : {}) };
+      const plan: ExamPlan = {
+        id: preset?.id ?? crypto.randomUUID(), subjectId: exam.subjectId, title: exam.title.slice(0, 120), examDate: exam.date,
+        ...(exam.time && /^\d{2}:\d{2}$/.test(exam.time) ? { examTime: exam.time } : {}),
+        ...(exam.todoId ? { todoId: exam.todoId } : {}),
+      };
       const previous = items.filter(i => i.examId === plan.id);
       await saveExamPlan(userId, plan, clean, previous);
       onSaved(plan);
@@ -221,6 +299,24 @@ function Builder({ userId, subjects, docs, items, preset, onClose, onSaved }: {
   }
   const edit = (i: number, patch: Partial<StudyDraft>) => setRows(rs => rs && rs.map((r, k) => k === i ? { ...r, ...patch } : r));
   const total = rows?.reduce((n, r) => n + (r.label.trim() ? r.minutes : 0), 0) ?? 0;
+
+  const dropZone = (subjectReady: boolean) => (
+    <div
+      className={`${styles.drop} ${dragOver ? styles.dropActive : ''}`}
+      onDragEnter={e => { e.preventDefault(); setDragOver(true); }}
+      onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={e => { e.preventDefault(); if (e.currentTarget === e.target) setDragOver(false); }}
+      onDrop={e => {
+        e.preventDefault(); setDragOver(false);
+        if (!subjectReady) { setError('Pick a course before dropping files.'); return; }
+        void ingestFiles(e.dataTransfer.files);
+      }}
+    >
+      <input ref={fileRef} type="file" multiple accept={ACCEPT_ATTR} hidden onChange={e => { if (e.target.files) void ingestFiles(e.target.files); e.target.value = ''; }} />
+      <p>Drag files here, or <button type="button" className={styles.linkish} onClick={() => fileRef.current?.click()} disabled={!subjectReady || !!busy}>browse</button></p>
+      <small>Worksheets, practice exams, notes — Soma reads them to confirm your checklist.</small>
+    </div>
+  );
 
   return (
     <div className={docStyles.modalOverlay} onClick={() => !busy && onClose()}>
@@ -231,8 +327,8 @@ function Builder({ userId, subjects, docs, items, preset, onClose, onSaved }: {
             {!preset && (
               <label className={docStyles.modalLabel}>
                 Exam
-                <select className={docStyles.modalSelect} value={choice} onChange={e => { setChoice(e.target.value); setPicked(null); }}>
-                  {choices.map(t => <option key={t.id} value={t.id}>{t.text} · {subjects.find(s => s.id === t.subjectId)?.name} · {shortDay(t.dueDate!.slice(0, 10))}</option>)}
+                <select className={docStyles.modalSelect} value={choice} onChange={e => { setChoice(e.target.value); setPicked(null); setSubjectFix(''); setError(''); }}>
+                  {choices.map(t => <option key={t.id} value={t.id}>{t.text} · {courses.find(s => s.id === t.subjectId)?.name ?? 'course'} · {shortDay(t.dueDate!.slice(0, 10))}</option>)}
                   <option value="other">Another exam…</option>
                 </select>
               </label>
@@ -242,13 +338,26 @@ function Builder({ userId, subjects, docs, items, preset, onClose, onSaved }: {
                 <label className={docStyles.modalLabel}>Name<input className={docStyles.modalTextInput} value={other.title} maxLength={120} placeholder="Midterm 2" onChange={e => setOther(o => ({ ...o, title: e.target.value }))} /></label>
                 <label className={docStyles.modalLabel}>Course
                   <select className={docStyles.modalSelect} value={other.subjectId} onChange={e => { setOther(o => ({ ...o, subjectId: e.target.value })); setPicked(null); }}>
-                    {active.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    {!courses.length && <option value="">No courses yet</option>}
+                    {courses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </label>
                 <label className={docStyles.modalLabel}>Date<input className={docStyles.modalTextInput} type="date" min={addDays(today, 1)} max={addDays(today, MAX_DAYS_AHEAD)} value={other.date} onChange={e => setOther(o => ({ ...o, date: e.target.value }))} /></label>
+                <label className={docStyles.modalLabel}>Time <span className={styles.optional}>(optional)</span>
+                  <input className={docStyles.modalTextInput} type="time" value={other.time ?? ''} onChange={e => setOther(o => ({ ...o, time: e.target.value }))} />
+                </label>
               </div>
             )}
-            {exam && (
+            {needsCoursePick && (
+              <label className={docStyles.modalLabel}>
+                Course for this exam
+                <select className={docStyles.modalSelect} value={subjectFix} onChange={e => { setSubjectFix(e.target.value); setPicked(null); }}>
+                  <option value="">Pick a course…</option>
+                  {courses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </label>
+            )}
+            {(exam && course) || (choice === 'other' && other.subjectId) ? (
               <>
                 <label className={docStyles.modalLabel}>
                   Braindump what you’ll study
@@ -261,25 +370,29 @@ function Builder({ userId, subjects, docs, items, preset, onClose, onSaved }: {
                   />
                 </label>
                 <fieldset className={styles.materials}>
-                  <legend>Materials for {course?.name ?? 'this course'} (optional — Soma uses these to confirm)</legend>
-                  {materials.length === 0 ? (
-                    <p className={list.note}>No readable files for this course yet. A braindump alone is enough; uploads help Soma name chapters and problem sets exactly.</p>
-                  ) : materials.map(d => (
+                  <legend>Materials{course ? ` for ${course.name}` : ''} (optional)</legend>
+                  {dropZone(!!(exam?.subjectId || other.subjectId))}
+                  {busy === 'upload' && <p className={list.note}>Uploading…</p>}
+                  {materials.length > 0 && materials.map(d => (
                     <label key={d.id}><input type="checkbox" checked={chosen.some(c => c.id === d.id)} onChange={e => setPicked(() => { const next = new Set(chosen.map(c => c.id)); if (e.target.checked) next.add(d.id); else next.delete(d.id); return next; })} />{d.fileName}</label>
                   ))}
                 </fieldset>
               </>
-            )}
+            ) : choice === 'other' ? (
+              <p className={list.note}>Pick a course (and date) to add a braindump or drop files.</p>
+            ) : null}
+            <p className={styles.hint}><strong>Make my study checklist</strong> turns your braindump and files into concrete items (what to do, how long, priority). You edit that checklist next, then place today or this week on your plan.</p>
             {tooSoon && <span className={docStyles.modalError}>Pick an exam after today.</span>}
             {tooFar && <span className={docStyles.modalError}>Pick an exam in the next {MAX_DAYS_AHEAD} days.</span>}
             {error && <span className={docStyles.modalError}>{error}</span>}
-            <button type="button" className={docStyles.modalUploadBtn} onClick={() => void make()} disabled={!exam || !course || tooSoon || tooFar || !!busy}>{busy === 'reading' ? 'Reading…' : 'Make my list'}</button>
-            {!!braindump.trim() && <button type="button" className={styles.secondary} onClick={useBraindumpOnly} disabled={!!busy || tooSoon || tooFar}>Use braindump as-is</button>}
+            {!canMake && whyDisabled && !error && <span className={styles.hintMute}>{whyDisabled}</span>}
+            <button type="button" className={docStyles.modalUploadBtn} onClick={() => void make()} disabled={!canMake}>{busy === 'reading' ? 'Reading…' : 'Make my study checklist'}</button>
+            {!!braindump.trim() && <button type="button" className={styles.secondary} onClick={useBraindumpOnly} disabled={!!busy || tooSoon || tooFar || !exam || !course}>Use braindump as-is</button>}
             <button type="button" className={docStyles.modalCancelBtn} onClick={onClose} disabled={!!busy}>Cancel</button>
           </>
         ) : (
           <>
-            <p className={list.note}><strong>{exam?.title}</strong> · {rows.length} items · about {hours(total)}. Adjust priorities and wording, then approve. Placement happens when you add today or this week.</p>
+            <p className={list.note}><strong>{exam?.title}</strong> · {rows.length} items · about {hours(total)}. This is your study checklist — adjust priorities and wording, then approve. Placement happens when you add today or this week.</p>
             {confirmNote && <p className={styles.confirm}>{confirmNote}</p>}
             <div className={list.reviewWrap}>
               <table className={`${list.review} ${styles.review}`}>
@@ -299,7 +412,7 @@ function Builder({ userId, subjects, docs, items, preset, onClose, onSaved }: {
             </div>
             {rows.length < MAX_STUDY_ITEMS && <button type="button" className={styles.addRow} onClick={() => setRows(rs => rs && [...rs, { label: '', minutes: 45, priority: DEFAULT_PRIORITY }])}>Add an item</button>}
             {error && <span className={docStyles.modalError}>{error}</span>}
-            <button type="button" className={docStyles.modalUploadBtn} onClick={() => void approve()} disabled={!!busy || !rows.some(r => r.label.trim())}>{busy === 'saving' ? 'Saving…' : 'Approve list'}</button>
+            <button type="button" className={docStyles.modalUploadBtn} onClick={() => void approve()} disabled={!!busy || !rows.some(r => r.label.trim())}>{busy === 'saving' ? 'Saving…' : 'Approve checklist'}</button>
             <button type="button" className={docStyles.modalCancelBtn} onClick={() => { setRows(null); setConfirmNote(''); }} disabled={!!busy}>Back</button>
           </>
         )}
