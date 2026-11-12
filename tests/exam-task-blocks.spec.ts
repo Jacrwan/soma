@@ -104,6 +104,8 @@ test('leftover exam study rows aren\'t reading sections, and a reading-list rebu
   });
   await page.goto('/documents');
   await expect(page.getByText('Limits').first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Plan an exam' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Exam study plans' })).toHaveCount(0);
   await expect(page.getByText('Worksheet 3', { exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Build from a document' }).click();
   const dialog = page.getByRole('dialog', { name: 'Build a reading list' });

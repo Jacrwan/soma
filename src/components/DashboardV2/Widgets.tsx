@@ -1,4 +1,4 @@
-import { examBlockLabel } from '../../lib/examSittings';
+import { examBlockLabel } from '../../lib/legacyExamBlocks';
 import type { CSSProperties } from 'react';
 import { CalendarPlus, Play } from 'lucide-react';
 import { clockLabel } from './progress';

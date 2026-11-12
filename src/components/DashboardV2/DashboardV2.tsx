@@ -1,4 +1,4 @@
-import { examBlockLabel } from '../../lib/examSittings';
+import { examBlockLabel } from '../../lib/legacyExamBlocks';
 import { Fragment, useEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react';
 import AiBudgetMeter from '../UI/AiBudgetMeter';
 import { useAiBudget, budgetUsedUp } from '../../lib/aiBudget';

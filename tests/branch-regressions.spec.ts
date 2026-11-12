@@ -51,51 +51,6 @@ test('linked exam priority survives readPlan and reaches reclaim', async ({ page
   expect(priority).toBe(5);
 });
 
-test('adding the same unaccepted exam horizon twice keeps its feasible suggestions', async ({ page }) => {
-  await setup(page, () => ({ reply: 'ok' }), d => {
-    d.course_items = [{ id: 'i-exam', user_id: user, subject_id: 'phys', label: 'Practice exam', exam_id: 'e1', priority: 5, position: 0, minutes: 60 }];
-  }, '08:00');
-  const result = await page.evaluate(async ({ user, tomorrow }) => {
-    const { storage } = await import('/src/lib/storage.ts');
-    const { scheduleHorizon } = await import('/src/lib/examPlansStore.ts');
-    const { getProposals } = await import('/src/lib/proposalStore.ts');
-    await storage.whenTokensLoaded();
-    storage.setSomaSettings({ ...storage.getSomaSettings(), studyWindow: { start: '09:00', end: '10:00' } });
-    const exam = { id: 'e1', subjectId: 'phys', title: 'Physics midterm', examDate: tomorrow };
-    const items = [{ id: 'i-exam', subjectId: 'phys', label: 'Practice exam', examId: 'e1', priority: 5, position: 0, minutes: 60 }];
-    const subject = { id: 'phys', name: 'Physics 5A', color: '#ab47bc', totalTimeToday: 0 };
-    const first = await scheduleHorizon(user, exam, items, subject, 'today');
-    const second = await scheduleHorizon(user, exam, items, subject, 'today');
-    return { first, second, waiting: getProposals(user).length };
-  }, { user, tomorrow });
-  expect(result.first.count).toBe(1);
-  expect(result.second.count).toBe(1);
-  expect(result.waiting).toBe(1);
-});
-
-test('exams with the same title keep separate suggestions', async ({ page }) => {
-  await setup(page, () => ({ reply: 'ok' }), d => {
-    d.course_items = [];
-  }, '08:00');
-  const result = await page.evaluate(async ({ user, tomorrow }) => {
-    const { storage } = await import('/src/lib/storage.ts');
-    const { scheduleHorizon, deleteExamPlan } = await import('/src/lib/examPlansStore.ts');
-    const { getProposals } = await import('/src/lib/proposalStore.ts');
-    await storage.whenTokensLoaded();
-    storage.setSomaSettings({ ...storage.getSomaSettings(), studyWindow: { start: '08:00', end: '23:00' } });
-    for (const [id, subjectId, name] of [['e1', 'phys', 'Physics 5A'], ['e2', 'calc', 'Calc 1A']]) {
-      await scheduleHorizon(user, { id, subjectId, title: 'Midterm 2', examDate: tomorrow },
-        [{ id: `i-${id}`, subjectId, label: 'Practice exam', examId: id, priority: 5, position: 0, minutes: 60 }],
-        { id: subjectId, name, color: '#ab47bc', totalTimeToday: 0 }, 'today');
-    }
-    const both = getProposals(user).map(p => p.subject);
-    await deleteExamPlan(user, { id: 'e1', subjectId: 'phys', title: 'Midterm 2', examDate: tomorrow });
-    return { both, afterDelete: getProposals(user).map(p => p.subject) };
-  }, { user, tomorrow });
-  expect(result.both).toEqual(expect.arrayContaining(['Physics 5A', 'Calc 1A']));
-  expect(result.afterDelete).toEqual(['Calc 1A']);
-});
-
 test('unrelated Focus history does not mark a planned block started', async ({ page }) => {
   const db = await setup(page, () => ({ reply: 'ok' }), d => {
     d.todos.push({ id: 't-read', user_id: user, text: 'Reading assignment', subject_id: 'phys', status: 'nothing', date: today });
@@ -167,20 +122,3 @@ test('finishing during a calendar outage marks the task done without shifting ot
 // Suggestions saved before exam ids (2026-11-11) only carry the title note:
 // removing the exam still clears them, and an id'd one from another exam with
 // the same title stays.
-test('suggestions saved before exam ids still belong to their exam', async ({ page }) => {
-  await setup(page, () => ({ reply: 'ok' }), d => { d.course_items = []; }, '08:00');
-  const left = await page.evaluate(async ({ user, tomorrow }) => {
-    const { storage } = await import('/src/lib/storage.ts');
-    const { deleteExamPlan } = await import('/src/lib/examPlansStore.ts');
-    const { getProposals, updateProposals } = await import('/src/lib/proposalStore.ts');
-    await storage.whenTokensLoaded();
-    const block = (id: string, extra: Record<string, unknown>) => ({ id, title: 'Practice exam', subject: 'Physics 5A', time: '09:00–10:00', minutes: 60, color: 'purple', state: 'Proposal', day: 0, ...extra });
-    updateProposals(user, () => [
-      block('old', { note: 'Exam plan · Physics final · Mon Dec 15 · p5' }) as never,
-      block('other', { note: 'Exam plan · Physics final · Mon Dec 15 · p5', examPlanId: 'e9' }) as never,
-    ]);
-    await deleteExamPlan(user, { id: 'e1', subjectId: 'phys', title: 'Physics final', examDate: tomorrow });
-    return getProposals(user).map(p => p.id);
-  }, { user, tomorrow });
-  expect(left).toEqual(['other']);
-});

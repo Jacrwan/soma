@@ -8,7 +8,6 @@ import {
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './DocumentsTab.module.css';
 import ReadingLists from './ReadingLists';
-import ExamPlans from './ExamPlans';
 import CourseSiteImport from '../Settings/CourseSiteImport';
 import { nextUnusedColor } from '../../lib/subjectColors';
 
@@ -311,7 +310,6 @@ export default function DocumentsTab() {
       </div>
 
       <ReadingLists subjects={subjects} docs={docs} />
-      <ExamPlans subjects={subjects} docs={docs} onDocsChange={async () => setDocs(await listDocuments())} />
 
       {reading && (
         <CourseSiteImport
