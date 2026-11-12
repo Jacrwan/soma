@@ -7,7 +7,7 @@ import { useProposals } from '../../lib/proposalStore';
 import { applyProposal } from '../../lib/assistant';
 import { formatClock, formatClockRange } from '../../lib/timeFormat';
 import { blockTitle, dayKey, addDays, shortDay, weekNote, type ExamPlan } from '../../lib/examPlan';
-import { daysBetween, milestoneDates, stageOf } from '../../lib/examSittings';
+import { daysBetween, milestoneDates, sittingLabel, stageOf } from '../../lib/examSittings';
 import { clockOf, spanMinutes } from '../../lib/clockRange';
 import { toneOf } from '../DashboardV2/liveData';
 import type { CourseItem } from '../../lib/courseItems';
@@ -45,6 +45,12 @@ export default function ExamAgenda({ exam, userId, items, subject, onChange }: {
     && snapshot?.sessions.some(s => s.todoId === i.todoId && s.endTime && Date.parse(s.endTime) <= Date.now())
     && !proposals.some(p => p.coverIds?.includes(i.id)));
   const todayBlocks = future.filter(b => b.day === 0).sort((a, b) => a.time.localeCompare(b.time));
+  function agendaTitle(title: string, linked: CourseItem[]) {
+    if (linked.length !== 1) return title;
+    const item = linked[0];
+    const compact = sittingLabel(item.label);
+    return title.startsWith(exam.title + ': ' + item.label) || title === item.label ? compact : title;
+  }
   function choices(item: CourseItem) {
     const minutes = Math.max(5, remaining(item));
     return free.flatMap(({ slots, date }, day) => {
@@ -97,7 +103,7 @@ export default function ExamAgenda({ exam, userId, items, subject, onChange }: {
     <h3>Today · {shortDay(today)}</h3>
     {todayBlocks.map(b => <div className={styles.agendaRow} key={b.id}>
       <div>
-        <strong>{b.title}</strong>
+        <strong>{agendaTitle(b.title, items.filter(i => i.todoId === b.todoId))}</strong>
         <small>{formatClockRange(b.time)} · {duration(b.minutes)}</small>
       </div>
       <button
@@ -109,7 +115,7 @@ export default function ExamAgenda({ exam, userId, items, subject, onChange }: {
     </div>)}
     {proposals.filter(p => p.day === 0).map(p => <div className={styles.agendaRow} key={p.id}>
       <span>
-        {p.title}
+        {agendaTitle(p.title, items.filter(i => p.coverIds?.includes(i.id)))}
         <small>{formatClockRange(p.time)} · Suggested</small>
       </span>
       <button
@@ -132,7 +138,7 @@ export default function ExamAgenda({ exam, userId, items, subject, onChange }: {
     {missed.map(i => {
       const options = choices(i), first = options[0];
       return <div className={styles.capacity} key={i.id}>
-        <strong>Missed · {i.label}</strong>
+        <strong>Missed · {sittingLabel(i.label)}</strong>
         <div className={styles.actions}>
           {first && !error && <button className={styles.secondary} disabled={accepting} onClick={() => void move(i, first)}>Move to {shortDay(first.date)} {formatClock(clockOf(first.start))}?</button>}
           {first && !error && <button className={styles.linkish} onClick={() => setChoosing(i.id)}>Pick another time</button>}

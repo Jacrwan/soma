@@ -3,6 +3,7 @@ import {
   blockTitle, busyDays, historyEstimates, byPriority, clampPriority, dayCapacity, draftsFromBraindump, examLines,
   placeBlocks, readStudyList,  type ExamPlan,
 } from '../src/lib/examPlan';
+import { orderedReadings, prepareSittings, readingGaps, sittingLabel } from '../src/lib/examSittings';
 import type { CourseItem } from '../src/lib/courseItems';
 import type { Snapshot } from '../src/components/DashboardV2/liveData';
 import type { SomaSettings } from '../src/lib/storage';
@@ -71,7 +72,7 @@ test('higher priority items place first; nothing lands on or after the exam', ()
   ];
   const ahead = { id: 'b1', title: 'Calc midterm: Redo quiz', subject: 'Calc', time: '20:00–20:40', minutes: 40, color: 'blue', state: 'Planned', day: 2, todoId: 'planned-todo' } as Snapshot['blocks'][number];
   const { blocks, placed } = placeBlocks(exam, items, empty([ahead]), origin, settings, { name: 'Calc', color: 'blue' }, 'week', new Map(), now);
-  expect(blocks[0].title).toBe('Calc midterm: Worksheet 3 — do problems 1–12');
+  expect(blocks[0].title).toBe('Worksheet 3');
   expect(blocks.some(b => b.title.includes('Stretch'))).toBe(true);
   expect(blocks.findIndex(b => b.title.includes('Worksheet 3'))).toBeLessThan(blocks.findIndex(b => b.title.includes('Stretch')));
   expect(blocks.every(b => b.day < 7)).toBe(true);
@@ -526,7 +527,7 @@ test('Plan Exam displays the logged reading pace and saves the full five-chapter
   const dialog = page.getByRole('dialog', { name: 'Plan an exam' });
   await dialog.getByRole('button', { name: 'Make my study checklist' }).click();
   await dialog.getByRole('button', { name: 'Continue to checklist' }).click();
-  const lengths = dialog.getByRole('spinbutton', {name:/Minutes for Reading Guide/});
+  const lengths = dialog.getByRole('spinbutton', {name:/Minutes for Read chapter/});
   await expect(lengths).toHaveCount(5);
   expect(await lengths.evaluateAll(inputs=>inputs.map(el=>(el as HTMLInputElement).value))).toEqual(Array(5).fill('90'));
   await expect(dialog.getByText(/1 × 90 min per chapter/).first()).toBeVisible();
@@ -549,7 +550,7 @@ test('braindump estimates use reading-list sections linked to the actual timed t
   await dialog.getByRole('textbox', { name: /Braindump/ }).fill('Read KK 12.1–12.11');
   await dialog.getByRole('button', { name: 'Use braindump as-is' }).click();
   await dialog.getByRole('button', { name: 'Continue to checklist' }).click();
-  const lengths = dialog.getByRole('spinbutton',{name:/Minutes for Read KK/});
+  const lengths = dialog.getByRole('spinbutton',{name:/Minutes for Read 12\./});
   await expect(lengths).toHaveCount(11);
   await expect(lengths.first()).toHaveValue('40');
   await expect(dialog.getByText(/1 × 40 min per section/).first()).toBeVisible();
@@ -646,4 +647,53 @@ test('an accepted sitting can start the real Focus timer from the exam agenda',a
   await agenda.screenshot({path:info.outputPath('today-agenda.png')});
   await agenda.getByRole('button',{name:'Start Focus'}).click();
   await expect(agenda.getByRole('button',{name:'Focus running'})).toBeDisabled();
+});
+
+
+test('reading blocks keep every assigned section in numeric order, including short nonconsecutive sets', () => {
+  const draft = {label:'Reading Guide: Ch 4–7 (1st pass)', detail:'Read 7.9–7.10, 6.2, 4.8–4.9', minutes:50, priority:3};
+  const rows = prepareSittings(draft, []);
+  expect(rows.map(r => r.label)).toEqual(['Read 4.8–4.9','Read 6.2','Read 7.9–7.10']);
+  expect(rows.reduce((n,r) => n+r.minutes,0)).toBe(50);
+  expect(readStudyList(JSON.stringify({items:[{label:'Reading Guide',detail:'Read 5.7'},{label:'Reading Guide',detail:'Read 6.2–6.4'}]}),[]).items).toHaveLength(2);
+  expect(draftsFromBraindump('5.1–5.7')[0].label).toBe('5.1–5.7');
+});
+
+test('saved reading labels, coverage gaps, and new suggestions agree on reading order', () => {
+  const rows = [
+    item('z',30,{label:'Reading Guide: Ch 7, 9 · section 7.10', priority:5}),
+    item('b',30,{label:'Reading Guide: Ch 4–5 (1st · section 5.1', priority:2}),
+    item('a',30,{label:'Reading Guide: Ch 7, 9 · section 7.9', priority:4})
+  ];
+  const sorted=orderedReadings(rows);
+  expect(sorted.map(r=>sittingLabel(r.label))).toEqual(['Read 5.1','Read 7.9','Read 7.10']);
+  expect(readingGaps(sorted).get(sorted[1])).toContain('chapter 6');
+  const origin = new Date(2026,10,7,8);
+  const place=(list:CourseItem[])=>placeBlocks(exam,list,empty(),origin,settings,{name:'Calc',color:'blue'},'week',new Map(),origin);
+  expect(place(rows).blocks.map(b=>b.title)).toEqual(['Read 5.1','Read 7.9','Read 7.10']);
+  expect(place([{...rows[1],minutes:1000},rows[0]]).blocks).toHaveLength(0);
+});
+
+test('opening an existing out-of-order exam shows short titles and only genuine chapter gaps', async ({page}) => {
+  const state = await setup(page, () => ({}));
+  state.db.exam_plans.push({id:'e',user_id:account.id,subject_id:'calc',title:'Calc midterm',exam_date:dayOff(6)});
+  const readings = [
+    ['Reading Guide: Ch 7, 9 · section 7.1–7.4','Study section 7.1–7.4'],
+    ['Reading Guide: Ch 4–5 (1st · section 5.1','Study section 5.1'],
+    ['Reading Guide: Ch 6 · section 6.2–6.4','Study section 6.2–6.4'],
+    ['Reading Guide: Ch 7, 9 · section 9.1–9.3','Study section 9.1–9.3'],
+  ];
+  readings.forEach(([label,title], i) => state.db.course_items.push({
+    id:'r'+i, user_id:account.id, exam_id:'e', subject_id:'calc', label,title, position:i,priority:5-i, minutes:45
+  }));
+  await page.goto('/documents');
+  await page.getByRole('button',{name:/Calc midterm/}).click();
+  const coverage = page.locator('ol').filter({has:page.getByRole('checkbox',{name:'Done: Read 5.1',exact:true})});
+  await expect(coverage.locator('strong')).toHaveText(['Read 5.1','Read 6.2–6.4','Read 7.1–7.4','Read 9.1–9.3']);
+  await expect(coverage.getByText('No reading listed for chapter 8 in this sequence.')).toBeVisible();
+  await expect(coverage.getByText(/Study section/)).toHaveCount(0);
+  const first = coverage.getByRole('checkbox',{name:'Done: Read 5.1',exact:true});
+  await first.click();
+  await expect(first).toBeChecked();
+  await expect.poll(() => !!state.db.course_items.find(r => r.id==='r1')?.done_at).toBe(true);
 });

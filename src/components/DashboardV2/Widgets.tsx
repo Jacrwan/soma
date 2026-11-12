@@ -1,3 +1,4 @@
+import { examBlockLabel } from '../../lib/examSittings';
 import type { CSSProperties } from 'react';
 import { CalendarPlus, Play } from 'lucide-react';
 import { clockLabel } from './progress';
@@ -63,7 +64,7 @@ export function UpNext({ blocks, now, timeFormat, canFocus, onFocus }: {
           <small>{next.b.subject} · {formatClockRange(next.b.time, timeFormat)}</small>
         </div>
         {!next.b.external && canFocus && <button type="button" className={styles.widgetAction} aria-label={`Start focus: ${next.b.title}`} onClick={() => onFocus(next.b.id)}><Play size={13}/> Focus</button>}
-        {later.length > 0 && <ul className={styles.widgetList}>{later.map(({ b }) => <li key={b.id}><span>{formatClockRange(b.time, timeFormat).split('–')[0]}</span>{b.title}</li>)}</ul>}
+        {later.length > 0 && <ul className={styles.widgetList}>{later.map(({ b }) => <li key={b.id}><span>{formatClockRange(b.time, timeFormat).split('–')[0]}</span>{examBlockLabel(b)}</li>)}</ul>}
       </>}
     </section>
   );
@@ -151,8 +152,8 @@ export function WeekGlance({ blocks, due, origin, rangeStart, day, now, onPick }
         {days.map(i => <div key={i} className={`${styles.glanceTrack}${day === i ? ` ${styles.glancePicked}` : ''}`} aria-hidden="true" onClick={() => onPick(i)}>
           {lanes(timed.filter(x => x.b.day === i)).map(({ b, s, lane, of }) => <div key={b.id}
             className={`${styles.glanceBlock} ${styles[b.color] ?? ''}${b.external ? ` ${styles.glanceEvent}` : ''}${b.state === 'Proposal' ? ` ${styles.glanceProposal}` : ''}`}
-            style={{ top: `calc(${pct(s[0])} + 1px)`, height: `max(4px, calc(${pct(s[1])} - ${pct(s[0])} - 2px))`, left: `calc(${(lane / of) * 100}% + 2px)`, width: `calc(${100 / of}% - 4px)` } as CSSProperties} title={`${b.title} · ${formatClockRange(b.time)}`}>
-            {s[1] - s[0] >= 45 && <span>{b.title}</span>}
+            style={{ top: `calc(${pct(s[0])} + 1px)`, height: `max(4px, calc(${pct(s[1])} - ${pct(s[0])} - 2px))`, left: `calc(${(lane / of) * 100}% + 2px)`, width: `calc(${100 / of}% - 4px)` } as CSSProperties} title={`${examBlockLabel(b)} · ${formatClockRange(b.time)}`}>
+            {s[1] - s[0] >= 45 && <span>{examBlockLabel(b)}</span>}
           </div>)}
           {i === 0 && nowAt >= from && nowAt <= to && <b className={styles.glanceNow} style={{ top: pct(nowAt) }}/>}
         </div>)}

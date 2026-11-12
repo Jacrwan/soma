@@ -32,6 +32,84 @@ export function sizing(d: StudyDraft, reading: string[]) {
   return { unit, count, ids: ids ?? [], rate: d.minutes / count };
 }
 
+type ReadingItem = { label: string; documentId?: string; detail?: string; title?: string };
+
+function readTitle(unit: string, range: string, part: string, original: string) {
+  const verb = /\breread|\b(?:second|2nd) pass|\b(?:pass|round) 2\b/i.test(original) ? 'Reread' : 'Read';
+  const prefix = unit === 'chapter' ? (range.includes('–') ? 'chapters ' : 'chapter ') : '';
+  return `${verb} ${prefix}${range}${part}`;
+}
+
+// Recognize the generated suffix even when the old 40-character label cut the topic mid-word.
+export function sittingLabel(label: string) {
+  const old = label.match(/ · (section|chapter) (\d+(?:\.\d+)?(?:–\d+(?:\.\d+)?)?)(?: \((\d+\/\d+)\))?$/i);
+  return old ? readTitle(old[1], old[2], old[3] ? ` (part ${old[3]})` : '', label) : label;
+}
+
+// The stored timer title is the join key for Focus history. Shorten it only for display.
+export function examBlockLabel(block: { title: string; examPlanId?: string }) {
+  if (!block.examPlanId) return block.title;
+  const [heading] = block.title.split(' — ');
+  const label = sittingLabel(heading);
+  return label === heading ? block.title : label;
+}
+
+function readingPosition(item: ReadingItem, byDocument: boolean) {
+  const label = sittingLabel(item.label);
+  if (!/^(?:re)?read(?:ing)?\b|^textbook\b|^ch(?:apter)?s?\.?\s*\d/i.test(label)) return;
+  const text = `${label} ${item.detail ?? item.title ?? ''}`;
+  const section = /\b(\d{1,2})\.(\d{1,2})\b/.exec(text);
+  const chapter = section ?? /\bch(?:apter)?s?\.?\s*(\d{1,3})/i.exec(text);
+  if (!chapter) return;
+  const part = Number(/\(part (\d+)\//.exec(label)?.[1] ?? 1);
+  const group = JSON.stringify([byDocument ? item.documentId ?? '' : '', /^reread|\b(?:second|2nd) pass|\b(?:pass|round) 2\b/i.test(label)]);
+  return { group, chapter: Number(chapter[1]), section: Number(section?.[2] ?? 0), part };
+}
+
+export function readingGroup(item: ReadingItem) { return readingPosition(item, true)?.group; }
+
+// Sort only reading slots. Other work keeps its place. The scheduler can consider each book independently.
+export function orderedReadings<T extends ReadingItem>(items: T[], byDocument = false): T[] {
+  const groups = new Map<string, { item: T; chapter: number; section: number; part: number }[]>();
+  const positions = items.map(item => readingPosition(item, byDocument));
+  items.forEach((item, i) => {
+    const pos = positions[i];
+    if (!pos) return;
+    if (!groups.has(pos.group)) groups.set(pos.group, []);
+    groups.get(pos.group)!.push({ item, ...pos });
+  });
+  for (const list of groups.values()) list.sort((a, b) => a.chapter - b.chapter || a.section - b.section || a.part - b.part).reverse();
+  return items.map((item, i) => positions[i] ? groups.get(positions[i]!.group)!.pop()!.item : item);
+}
+
+export function readingGaps<T extends ReadingItem>(items: T[]) {
+  const chapters = new Map<string, Set<number>>();
+  const gaps = new Map<T, string>();
+  for (const item of items) {
+    const pos = readingPosition(item, false);
+    if (!pos) continue;
+    let covered = chapters.get(pos.group);
+    if (!covered) { covered = new Set(); chapters.set(pos.group, covered); }
+    // A single row may cover multiple chapters, e.g. "Read chapters 1–5".
+    const label = sittingLabel(item.label);
+    const text = `${label} ${item.detail ?? item.title ?? ''}`;
+    const included = [...numberedIds(text, unitMarkers.chapter), ...(text.match(/\b\d+\.\d+\b/g) ?? []).map(id => Number(id.split('.')[0]))];
+    for (const ch of included) covered.add(ch);
+  }
+  const seen = new Map<string, number>();
+  for (const item of items) {
+    const pos = readingPosition(item, false);
+    if (!pos) continue;
+    const prev = seen.get(pos.group);
+    if (prev !== undefined && pos.chapter > prev + 1) {
+      const absent = Array.from({length: pos.chapter-prev-1}, (_, i) => prev+i+1).filter(ch => !chapters.get(pos.group)!.has(ch));
+      if (absent.length) gaps.set(item, `No reading listed for chapter${absent.length === 1 ? '' : 's'} ${absent.join(', ')} in this sequence.`);
+    }
+    seen.set(pos.group, pos.chapter);
+  }
+  return gaps;
+}
+
 export function prepareSittings(d: StudyDraft, reading: string[], confidence?: Confidence, calibrated?: number): StudyDraft[] {
   const { unit, count, ids, rate } = sizing(d, reading);
   const paper = isTimedPaper(d.label);
@@ -45,7 +123,8 @@ export function prepareSittings(d: StudyDraft, reading: string[], confidence?: C
   const explanation = factor === 1 ? basis : `${basis} · ${confidence} × ${factor}`;
   const phase = stageOf(`${d.label} ${d.detail ?? ''}`);
   const base = { ...d, priority, phase, topic: d.label, estimateBasis: explanation };
-  if (paper && total <= 600 || total <= 60) return [{ ...base, minutes: total }];
+  const namedReading = (unit === 'section' || unit === 'chapter') && ids.length === count;
+  if (paper && total <= 600 || total <= 60 && !namedReading) return [{ ...base, minutes: total }];
   const chunks: { start: number; end: number; weight: number }[] = [];
   let start = 0, weight = 0;
   for (let i = 0; i < count; i++) {
@@ -74,10 +153,10 @@ export function prepareSittings(d: StudyDraft, reading: string[], confidence?: C
     for (let i = 0; i < parts; i++) {
       const duration = 5 * (Math.round((i + 1) * minutes / (5 * parts)) - Math.round(i * minutes / (5 * parts)));
       const suffix = action && range ? ` · ${action}${parts > 1 ? ` (${i + 1}/${parts})` : ''}` : ` · sitting ${result.length + 1}`;
-      const stem = unit === 'section' ? d.label.replace(/\s*\d+\.\d+.*$/, '').trim() || 'Reading' : d.label;
+      const label = namedReading ? readTitle(unit, range, parts > 1 ? ` (part ${i + 1}/${parts})` : '', d.label) : d.label.slice(0, Math.max(1, 40 - suffix.length)) + suffix;
       result.push({
-        ...base, label: stem.slice(0, Math.max(1, 40 - suffix.length)) + suffix,
-        detail: action ? `${phase === 'Learn' ? 'Study' : 'Complete'} ${action}${parts > 1 ? `, part ${i + 1} of ${parts}` : ''}`.slice(0, 120) : d.detail,
+        ...base, label,
+        detail: namedReading ? (chunks.length === 1 && d.detail && !/^(?:re)?read\s+(?:ch(?:apter)?s?\.?\s*)?[\d.,–—\s-]+$/i.test(d.detail) ? d.detail : undefined) : action ? `${phase === 'Learn' ? 'Study' : 'Complete'} ${action}${parts > 1 ? `, part ${i + 1} of ${parts}` : ''}`.slice(0, 120) : d.detail,
         minutes: duration, estimateBasis: sittingBasis
       });
     }

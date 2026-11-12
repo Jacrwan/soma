@@ -1,3 +1,4 @@
+import { sittingLabel } from './examSittings';
 import { supabase } from './supabase';
 import { sendMessage } from './ai';
 import { storage } from './storage';
@@ -62,9 +63,15 @@ export async function saveExamPlan(userId: string, exam: ExamPlan, drafts: Study
     ({ error } = await supabase.from('exam_plans').upsert(withoutTime));
   }
   if (error) throw new Error(missing(error.message) ? NOT_SET_UP : 'Could not save the study list. Please retry.');
-  const kept = new Map(previous.filter(i => i.examId === exam.id).map(i => [i.label.toLowerCase(), i]));
+  const kept = new Map<string, CourseItem[]>();
+  const key = (label: string, doc?: string) => JSON.stringify([sittingLabel(label).toLowerCase(), doc ?? '']);
+  for (const item of previous.filter(i => i.examId === exam.id).sort((a,b) => a.position - b.position)) {
+    const id = key(item.label, item.documentId);
+    if (!kept.has(id)) kept.set(id, []);
+    kept.get(id)!.push(item);
+  }
   const rows = drafts.map((d, position) => {
-    const old = kept.get(d.label.toLowerCase());
+    const old = kept.get(key(d.label, d.documentId))?.shift();
     return {
       id: old?.id ?? crypto.randomUUID(),
       user_id: userId,
@@ -153,7 +160,7 @@ export async function buildStudyList(
   const each = Math.floor(100_000 / Math.max(1, docs.length || 1));
   const materials = docs.map(d => `FILE "${d.fileName}" (${d.docType}):\n${(d.extractedText ?? '').slice(0, each)}`).join('\n\n');
   const reading = readingList.length
-    ? `READING LIST (sections of the course, in order):\n${readingList.slice(0, 80).map(i => `- ${i.label}${i.title ? ` ${i.title}` : ''}`).join('\n')}`
+    ? `READING LIST (sections of the course, in order):\n${readingList.map((i, index) => `- ${i.label}${index < 80 && i.title ? ` ${i.title}` : ''}`).join('\n')}`
     : '';
   const raw = await sendMessage(
     [{ role: 'user', content: dump
@@ -201,7 +208,7 @@ export async function scheduleHorizon(
   if (snapshot.calendarError) throw new Error(snapshot.calendarError);
   const waiting = getProposals(userId).filter(p => p.time && p.replaces === undefined && (!mine(p) || p.pinned)) as unknown as Snapshot['blocks'];
   const { blocks, missing, placed } = placeBlocks(
-    exam, items.filter(i=>!waiting.some(p=>p.coverIds?.includes(i.id))), { ...snapshot, blocks: [...snapshot.blocks, ...waiting] }, origin,
+    exam, items, { ...snapshot, blocks: [...snapshot.blocks, ...waiting] }, origin,
     storage.getSomaSettings(), { name: subject.name, color: toneOf(subject.color) }, horizon, busy,
   );
   updateProposals(userId, list => [...list.filter(p => !mine(p) || p.pinned), ...blocks]);

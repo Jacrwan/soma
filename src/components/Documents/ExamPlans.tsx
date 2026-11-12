@@ -9,7 +9,7 @@ import { loadInsights, getInsightsSnapshot } from '../../lib/insights';
 import { buildStudyList, deleteExamPlan, loadExamPlans, saveExamPlan, scheduleHorizon, setItemDone, setItemPriority, EXAM_PLANS_CHANGED, MAX_DAYS_AHEAD } from '../../lib/examPlansStore';
 import ExamReview from './ExamReview';
 import ExamAgenda from './ExamAgenda';
-import type { Confidence } from '../../lib/examSittings';
+import { orderedReadings, readingGaps, sittingLabel, type Confidence } from '../../lib/examSittings';
 import PriorityBar from './PriorityBar';
 import type { Subject, SomaDocument, Todo, DocumentType } from '../../types';
 import docStyles from './DocumentsTab.module.css';
@@ -114,7 +114,8 @@ export default function ExamPlans({ subjects, docs, onDocsChange }: {
         <ul className={list.courses}>
           {upcoming.map(exam => {
             const subject = subjects.find(s => s.id === exam.subjectId) ?? storage.getSubjects().find(s => s.id === exam.subjectId);
-            const mine = items.filter(i => i.examId === exam.id).sort((a, b) => Number(!!a.doneAt)-Number(!!b.doneAt) || (b.priority ?? 3) - (a.priority ?? 3) || a.position - b.position);
+            const mine = orderedReadings(items.filter(i => i.examId === exam.id).sort((a, b) => a.position - b.position));
+            const gaps = readingGaps(mine);
             const done = mine.filter(i => i.doneAt).length;
             const openItems = mine.filter(i => !i.doneAt);
             const expanded = open === exam.id;
@@ -130,7 +131,7 @@ export default function ExamPlans({ subjects, docs, onDocsChange }: {
                   <div className={styles.body}>
                     <ExamAgenda userId={userId} exam={exam} items={mine} subject={subject} onChange={()=>reload(userId)}/>
                     <div className={styles.examListHead}>
-                      <span>Coverage · weakest first</span>
+                      <span>Coverage · reading order</span>
                       <span className={styles.examMeta}>
                         <span />
                         <span id={`exam-priority-${exam.id}`}>Priority <small>low to high</small></span>
@@ -144,10 +145,11 @@ export default function ExamPlans({ subjects, docs, onDocsChange }: {
                       {mine.map(item => (
                         <li key={item.id} className={item.doneAt ? styles.examDone : undefined}>
                           <label className={styles.examText}>
-                            <input type="checkbox" aria-label={`Done: ${item.label}`} checked={!!item.doneAt} onChange={() => void run(`done:${item.id}`, async () => { await setItemDone(userId, item.id, !item.doneAt); await reload(userId); })} />
+                            <input type="checkbox" aria-label={`Done: ${sittingLabel(item.label)}`} checked={!!item.doneAt} onChange={() => void run(`done:${item.id}`, async () => { await setItemDone(userId, item.id, !item.doneAt); await reload(userId); })} />
                             <span>
-                              <strong>{item.label}</strong>
-                              {item.title && <span>{item.title}</span>}
+                              {gaps.has(item) && <small>{gaps.get(item)}</small>}
+                              <strong>{sittingLabel(item.label)}</strong>
+                              {item.title && !(sittingLabel(item.label) !== item.label && /^Study (?:section|chapter) [\d.–]+(?:, part \d+ of \d+)?$/i.test(item.title)) && <span>{item.title}</span>}
                               {storage.getSomaSettings().examPrep?.[exam.id]?.confidence[item.label] && <small>{storage.getSomaSettings().examPrep?.[exam.id]?.confidence[item.label]}</small>}
                             </span>
                           </label>
