@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { type StudyDraft, dayKey, shortDay, placeBlocks } from '../../lib/examPlan';
-import { confidenceLevels, milestoneDates, prepareSittings, sizing, stages, type Confidence } from '../../lib/examSittings';
+import { confidenceLevels, milestoneDates, orderedReadings, prepareSittings, sizing, stages, type Confidence } from '../../lib/examSittings';
 import { Capacity, duration, useExamAvailability } from './ExamAvailability';
 import { storage } from '../../lib/storage';
 import type { SomaDocument } from '../../types';
@@ -38,7 +38,7 @@ export default function ExamReview({ userId, date, title, topics, reading, docs,
   }, [board, rows, calendarError, date, title, daily]);
   const edit = (index: number, patch: Partial<StudyDraft>) => setRows(prev => prev && prev.map((r, i) => i === index ? { ...r, ...patch } : r));
   function review() {
-    if (!rows) setRows(topics.flatMap((d, i) => prepareSittings(d, reading, confidence[d.label], rates[sizes[i].unit])));
+    if (!rows) setRows(orderedReadings(topics.flatMap((d, i) => prepareSittings(d, reading, confidence[d.label], rates[sizes[i].unit]))));
     else {
       const updated = topics.flatMap((d, i) => {
         const unit = sizes[i].unit;
@@ -47,7 +47,7 @@ export default function ExamReview({ userId, date, title, topics, reading, docs,
         }
         return prepareSittings(d, reading, confidence[d.label], rates[unit]);
       });
-      setRows([...updated, ...rows.filter(r => !r.topic)]);
+      setRows(orderedReadings([...updated, ...rows.filter(r => !r.topic)]));
     }
     setPreviousInputs({ confidence, rates });
     setShowConfidence(false);

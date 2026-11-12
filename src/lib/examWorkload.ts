@@ -61,12 +61,12 @@ export function sectionIds(text: string, catalog: Section[]): string[] | undefin
       for (const s of assigned) ids.add(`${s.chapter}.${s.section}`);
     }
   }
-  if (ids.size) return [...ids];
+  if (ids.size) return [...ids].sort((a,b) => a.localeCompare(b, 'en', { numeric: true }));
   const chapters = numberedIds(text, chapter);
   if (!chapters.size) return undefined;
   const assigned = catalog.filter(s => chapters.has(s.chapter));
   if (new Set(assigned.map(s => s.chapter)).size !== chapters.size) return undefined;
-  return [...new Set(assigned.map(s => `${s.chapter}.${s.section}`))];
+  return [...new Set(assigned.map(s => `${s.chapter}.${s.section}`))].sort((a,b) => a.localeCompare(b, 'en', { numeric: true }));
 }
 
 export function examWorkload(text: string, catalog: Section[]): Workload | undefined {
