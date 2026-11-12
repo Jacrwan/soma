@@ -138,3 +138,27 @@ test('a meta-refresh stub (as cs61a.org serves) is followed to the real page', a
   expect(fetched).toEqual(['https://cs61a.org/', 'https://cs61a.org/fa26/']);
   expect(r.body.source).toBe('https://cs61a.org/fa26/');
 });
+
+// ── Background re-checks of a saved course site (2026-11-12) ────────────────
+test('an unchanged page is answered from its fingerprint, without the model or the budget', async () => {
+  let modelCalls = 0;
+  const deps = {
+    model: async () => { modelCalls++; return { text: JSON.stringify({ course: 'CS 61A', items: [] }) }; },
+  };
+  const first = await call({ url: 'https://cs61a.org/', today: '2026-09-18' }, deps);
+  expect(first.body.pageHash).toMatch(/^[a-f0-9]{64}$/);
+  expect(modelCalls).toBe(1);
+
+  const again = await call({ url: 'https://cs61a.org/', today: '2026-09-18', known: first.body.pageHash }, {
+    ...deps, budget: async () => ({ used: 9, available: 4, resetsAt: '', trial: false }) as never,
+  });
+  expect(again).toMatchObject({ status: 200, body: { unchanged: true, pageHash: first.body.pageHash } });
+  expect(modelCalls).toBe(1);
+
+  // The page changed: read again with the model.
+  const changed = await call({ url: 'https://cs61a.org/', today: '2026-09-18', known: first.body.pageHash }, {
+    ...deps, fetchPage: async url => ({ url, contentType: 'text/html', body: cs61a + '<p>Lab 4 Due Wed 9/30</p>' }),
+  });
+  expect(changed.body.unchanged).toBeUndefined();
+  expect(modelCalls).toBe(2);
+});

@@ -42,6 +42,8 @@ export interface SomaSettings {
   dashboardLayout?: unknown;
   /** Habits and their check-offs; read through readHabits (lib/habits.ts), never trusted as-is. */
   habits?: unknown;
+  /** Course websites re-checked for new dates; read through readSites (lib/courseSites.ts), never trusted as-is. */
+  courseSites?: unknown;
 }
 
 
@@ -141,6 +143,8 @@ async function uid(): Promise<string> {
 // In-memory token cache — populated by loadTokens() at auth time.
 // Never written to localStorage; source of truth is Supabase settings.
 let _canvasIcalUrl = '';
+/** settings.courseSites as of sign-in or this tab's last change; undefined until loaded. */
+let _courseSites: unknown = undefined;
 let _googleToken = '';
 let _googleRefreshToken = '';
 
@@ -396,6 +400,9 @@ export const storage = {
 
   // ── Canvas (localStorage) ────────────────────────────────────────────
   getCanvasIcalUrl: (): string => _canvasIcalUrl,
+  /** The saved course websites without a request, so a timer can skip work when there are none. */
+  getCachedCourseSites: (): unknown => _courseSites,
+  setCachedCourseSites: (v: unknown) => { _courseSites = v; },
   setCanvasIcalUrl: (v: string): void => {
     _canvasIcalUrl = v;
     void (async () => {
@@ -473,6 +480,7 @@ export const storage = {
         s = await fetchWithTimeout(10000);
       }
       _canvasIcalUrl = s.canvasIcalUrl ?? '';
+      _courseSites = s.courseSites ?? [];
       _googleToken = s.googleToken ?? '';
       _googleRefreshToken = s.googleRefreshToken ?? '';
       // One-time migration: move plaintext Google token out of localStorage
@@ -1104,6 +1112,7 @@ export const storage = {
     localStorage.removeItem(SOMA_SETTINGS_KEY);
     // In-memory token cache
     _canvasIcalUrl = '';
+    _courseSites = undefined;
     _googleToken = '';
   },
 

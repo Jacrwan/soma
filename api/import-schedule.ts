@@ -5,6 +5,7 @@ import type { BudgetStatus } from './_budget';
 import { waitUntil } from '@vercel/functions';
 import { safeFetch, SafeFetchError } from './_safeFetch';
 import { createConnectorHandler } from './_mcp';
+import { createHash } from 'node:crypto';
 
 export const config = { api: { bodyParser: { sizeLimit: '256kb' } } };
 export const maxDuration = 60;
@@ -123,7 +124,10 @@ export function createImportHandler(deps: Deps = {}) {
     const token = typeof header === 'string' && header.startsWith('Bearer ') ? header.slice(7).trim() : '';
     if (!token) return res.status(401).json({ error: 'auth_required' });
 
-    const body = req.body as { url?: unknown; text?: unknown; today?: unknown } | undefined;
+    const body = req.body as { url?: unknown; text?: unknown; today?: unknown; known?: unknown } | undefined;
+    // A saved site's background re-check sends the fingerprint of the page it
+    // last read; an unchanged page is answered without the model.
+    const known = typeof body?.known === 'string' && /^[a-f0-9]{64}$/.test(body.known) ? body.known : null;
     const today = typeof body?.today === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.today) ? body.today : null;
     const url = typeof body?.url === 'string' ? body.url.trim() : '';
     const pasted = typeof body?.text === 'string' ? body.text : '';
@@ -133,15 +137,6 @@ export function createImportHandler(deps: Deps = {}) {
       const auth = await (deps.authorize ?? verifyUserAndSubscription)(token);
       if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
       if ((deps.limited ?? limited)(auth.userId)) { res.setHeader('Retry-After', '60'); return res.status(429).json({ error: 'rate_limit' }); }
-      // Reading a page or a syllabus is AI use like any other: it counts
-      // against the month's budget, and past it, it waits like Soma does.
-      if (!auth.unlimited) {
-        const budget = await (deps.budget ?? defaultBudget)(auth.userId);
-        if (budget && budget.used >= budget.available) return res.status(402).json({ error: 'ai_budget_used' });
-      }
-      const key = (deps.apiKey ?? (() => process.env.ANTHROPIC_API_KEY))();
-      if (!key) return res.status(503).json({ error: 'server_not_configured' });
-
       let pageText: string, source: string | null = null;
       if (url) {
         const fetchPage = deps.fetchPage ?? (u => safeFetch(u, { accept: /^text\/(html|plain)\b/ }));
@@ -161,6 +156,17 @@ export function createImportHandler(deps: Deps = {}) {
       if (pageText.length < 20) return res.status(422).json({ error: 'page_empty' });
       const truncated = pageText.length > MAX_PAGE_CHARS;
       const excerpt = pageText.slice(0, MAX_PAGE_CHARS);
+      const pageHash = createHash('sha256').update(excerpt).digest('hex');
+      if (known && known === pageHash) return res.status(200).json({ unchanged: true, source, pageHash });
+
+      // Reading a page or a syllabus is AI use like any other: it counts
+      // against the month's budget, and past it, it waits like Soma does.
+      if (!auth.unlimited) {
+        const budget = await (deps.budget ?? defaultBudget)(auth.userId);
+        if (budget && budget.used >= budget.available) return res.status(402).json({ error: 'ai_budget_used' });
+      }
+      const key = (deps.apiKey ?? (() => process.env.ANTHROPIC_API_KEY))();
+      if (!key) return res.status(503).json({ error: 'server_not_configured' });
 
       const model = deps.model ?? (async (system: string, user: string) => {
         const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -184,7 +190,7 @@ export function createImportHandler(deps: Deps = {}) {
 
       const items = validateItems(parsed.items, today, excerpt);
       const course = typeof parsed.course === 'string' && parsed.course.trim() ? parsed.course.trim().slice(0, 80) : null;
-      return res.status(200).json({ course, items, source, truncated });
+      return res.status(200).json({ course, items, source, truncated, pageHash });
     } catch (error) {
       if (error instanceof SafeFetchError) return res.status(error.status).json({ error: error.code });
       const message = error instanceof Error ? error.message : '';

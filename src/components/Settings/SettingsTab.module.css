@@ -1629,3 +1629,12 @@
 .noteText { font-size: 12px; line-height: 1.6; color: var(--text-secondary); margin: 0; white-space: pre-line; }
 .noteTitleInput, .noteTextInput { font: inherit; font-size: 13px; color: var(--text-primary); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; width: 100%; }
 .noteTextInput { resize: vertical; line-height: 1.5; }
+
+/* Course websites Soma rereads (CourseSiteImport). */
+.siteWatchList { list-style: none; margin: 8px 0 0; padding: 0; border: 1px solid var(--border); border-radius: 8px; }
+.siteWatchList li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "dot url stop" ". meta stop"; align-items: center; column-gap: 10px; row-gap: 2px; padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.siteWatchList li:last-child { border-bottom: none; }
+.siteWatchList li > i { grid-area: dot; }
+.siteWatchList li > span { grid-area: url; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.siteWatchList li > small { grid-area: meta; }
+.siteWatchList li > button { grid-area: stop; }

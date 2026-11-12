@@ -18,6 +18,7 @@ import { useSubscription, refreshSubscription, hasAIAccess } from './lib/subscri
 import { TimerProvider } from './contexts/TimerContext';
 import { clearMirror } from './lib/activeTimerMirror';
 import { startCanvasBridge } from './lib/canvasExtension';
+import { checkCourseSites } from './lib/courseSites';
 import TimerOverlay from './components/Timer/TimerOverlay';
 import LandingPage from './components/Landing/LandingPage';
 import LegalPage from './components/Legal/LegalPage';
@@ -494,6 +495,17 @@ export default function App() {
   useEffect(() => {
     if (!userId) return;
     return startCanvasBridge(userId);
+  }, [userId]);
+
+  // Course websites imported by address are reread every couple of hours
+  // while Soma is open, the way the Canvas feed stays current (courseSites.ts).
+  useEffect(() => {
+    if (!userId) return;
+    const check = () => { if (document.visibilityState === 'visible') void checkCourseSites().catch(err => console.error('[courseSites]', err)); };
+    const first = window.setTimeout(check, 60_000);
+    const id = window.setInterval(check, 10 * 60_000);
+    document.addEventListener('visibilitychange', check);
+    return () => { window.clearTimeout(first); window.clearInterval(id); document.removeEventListener('visibilitychange', check); };
   }, [userId]);
 
   // Signing in with Google from the Claude connector's approval page comes

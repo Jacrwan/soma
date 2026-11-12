@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type React from 'react';
 import { supabase } from '../../lib/supabase';
 import { storage } from '../../lib/storage';
-import { asTodoKind, type Subject, type Todo } from '../../types';
+import { asTodoKind, type Subject } from '../../types';
+import { COURSE_SITES_CHANGED, getCourseSites, sameDeadline, sameTitle, saveSiteItems, trackCourseSite, untrackCourseSite, type CourseSite, type SavedRow } from '../../lib/courseSites';
 import styles from './SettingsTab.module.css';
 
 /**
@@ -13,29 +14,8 @@ import styles from './SettingsTab.module.css';
  */
 
 type Item = { title: string; type: string; due: string; time: string | null; evidence: string; unverified?: boolean };
-type Result = { course: string | null; items: Item[]; source: string | null; truncated: boolean };
-/** What an import actually did, shown back so the student can see it landed. */
-/** Titles that differ only in case, spacing or punctuation are one task:
- *  "Project 3: Ants Vs. SomeBees - Checkpoint 1" and "…SomeBees checkpoint 1"
- *  were imported as two. */
-const titleWords = (x: string) => x.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-const sameTitle = (a: string, b: string) => titleWords(a) === titleWords(b);
-
-/**
- * The same deadline worded differently by another read of the page: due the
- * same day, the same kind, and every word of the shorter title in the longer
- * ("Project 4: Animator checkpoint" and "Project 4: Animator (TypeScript)
- * checkpoint"). A re-import added these as new tasks.
- */
-const sameDeadline = (a: { title: string; due?: string; kind?: string | null }, b: { title: string; due?: string; kind?: string | null }) => {
-  if (sameTitle(a.title, b.title)) return true;
-  if (!a.due || a.due !== b.due || (a.kind && b.kind && a.kind !== b.kind)) return false;
-  const [x, y] = [titleWords(a.title).split(' '), titleWords(b.title).split(' ')];
-  const [short, long] = x.length <= y.length ? [x, new Set(y)] : [y, new Set(x)];
-  return short.length >= 2 && short.every(w => long.has(w));
-};
-
-type Receipt = { course: { id: string; name: string; color: string }; rows: { title: string; due: string; time: string | null; change: 'added' | 'updated' | 'unchanged' }[] };
+type Result = { course: string | null; items: Item[]; source: string | null; truncated: boolean; pageHash?: string };
+type Receipt = { course: { id: string; name: string; color: string }; rows: SavedRow[]; tracking: boolean };
 
 const ERRORS: Record<string, string> = {
   https_required: 'Use a link that starts with https://.',
@@ -55,6 +35,10 @@ const ERRORS: Record<string, string> = {
 const explain = (code: string) => ERRORS[code] ?? (code.startsWith('upstream_') ? `The website answered with an error (${code.slice(9)}).` : 'Something went wrong. Please try again.');
 
 const localToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const ago = (iso: string) => {
+  const min = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
+  return min < 1 ? 'just now' : min < 60 ? `${min} min ago` : min < 48 * 60 ? `${Math.round(min / 60)} h ago` : `${Math.round(min / 1440)} days ago`;
+};
 const pretty = (due: string, time: string | null) => {
   const d = new Date(`${due}T${time ?? '00:00'}:00`);
   const date = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
@@ -81,6 +65,15 @@ export default function CourseSiteImport({ courses, createCourse, onImported, so
   const [chosen, setChosen] = useState<Set<number>>(new Set());
   const [done, setDone] = useState<Receipt | null>(null);
   const today = localToday();
+  const [sites, setSites] = useState<CourseSite[]>([]);
+  useEffect(() => {
+    if (source) return;
+    let live = true;
+    const load = () => { getCourseSites().then(s => { if (live) setSites(s); }).catch(() => {}); };
+    load();
+    window.addEventListener(COURSE_SITES_CHANGED, load);
+    return () => { live = false; window.removeEventListener(COURSE_SITES_CHANGED, load); };
+  }, [source]);
 
   const creating = courseId === '__new__';
   const canRead = (pasteMode ? text.trim().length > 20 : /^https:\/\/\S+$/.test(url.trim())) && !busy;
@@ -125,61 +118,57 @@ export default function CourseSiteImport({ courses, createCourse, onImported, so
     if (creating && !name) { setError('Name the new course.'); return; }
     if (!creating && !courseId) { setError('Choose which course these belong to.'); return; }
     setBusy(true); setError('');
-    let created = 0, updated = 0;
     const rows: Receipt['rows'] = [];
     try {
       const subject = creating ? createCourse(name) : courses.find(c => c.id === courseId)!;
-      // The course's tasks, kept up to date as this import saves: saving doesn't
-      // touch the cache, so two items of one import couldn't see each other.
-      const known = (await storage.fetchAllTodos()).filter(t => t.subjectId === subject.id);
-      const remember = (t: Todo) => { const at = known.findIndex(k => k.id === t.id); if (at < 0) known.push(t); else known[at] = t; };
-      for (const [i, item] of result.items.entries()) {
-        if (!chosen.has(i)) continue;
-        // Re-importing updates a date rather than adding the same task twice:
-        // the same title, or the same deadline worded differently.
-        const kind = asTodoKind(item.type);
-        const existing = known.find(t => sameTitle(t.text, item.title))
-          ?? known.find(t => sameDeadline({ title: t.text, due: t.dueDate, kind: t.kind }, { title: item.title, due: item.due, kind }));
-        // The receipt names the task as it is stored, which keeps its own wording.
-        if (existing) {
-          if (existing.dueDate === item.due) {
-            // Same date, but the row may predate the kind column: fill it in
-            // so re-importing is how older tasks get classified.
-            if (kind && existing.kind !== kind) { const next = { ...existing, kind }; await storage.saveTodo(next); remember(next); }
-            rows.push({ title: existing.text, due: item.due, time: item.time, change: 'unchanged' });
-            continue;
-          }
-          const next = { ...existing, dueDate: item.due, date: existing.date === existing.dueDate ? item.due : existing.date, kind: kind ?? existing.kind };
-          await storage.saveTodo(next);
-          remember(next);
-          updated++;
-          rows.push({ title: existing.text, due: item.due, time: item.time, change: 'updated' });
-        } else {
-          const next: Todo = { id: crypto.randomUUID(), text: item.title, status: 'nothing', subjectId: subject.id, dueDate: item.due, date: item.due, kind };
-          await storage.saveTodo(next);
-          remember(next);
-          created++;
-          rows.push({ title: item.title, due: item.due, time: item.time, change: 'added' });
-        }
-      }
+      await saveSiteItems(subject.id, result.items.filter((_, i) => chosen.has(i)), rows);
       await storage.fetchAllTodos();
       window.dispatchEvent(new Event('soma_todos_changed'));
       // Confirm against what is actually stored now, not just what was sent.
       const stored = storage.getTodos().filter(t => t.subjectId === subject.id);
       const confirmed = rows.filter(r => stored.some(t => sameTitle(t.text, r.title) && t.dueDate === r.due));
       if (confirmed.length !== rows.length) throw new Error(`only ${confirmed.length} of ${rows.length} could be confirmed after saving`);
-      setDone({ course: { id: subject.id, name: subject.name, color: subject.color }, rows });
+      // A web address keeps being checked; pasted text and documents can't be.
+      const tracking = !pasteMode && !source && !!url.trim();
+      if (tracking) await trackCourseSite(url.trim(), subject.id, result.items, result.pageHash).catch(err => console.error('[courseSites] save failed:', err));
+      setDone({ course: { id: subject.id, name: subject.name, color: subject.color }, rows, tracking });
       setResult(null);
       onImported?.(subject.id);
     } catch (e) {
-      setError(`Saved ${created + updated} before an error stopped the import: ${e instanceof Error ? e.message : 'unknown error'}. Import again to finish — nothing will be duplicated.`);
+      setError(`Saved ${rows.filter(r => r.change !== 'unchanged').length} before an error stopped the import: ${e instanceof Error ? e.message : 'unknown error'}. Import again to finish — nothing will be duplicated.`);
     } finally {
       setBusy(false);
     }
   }
 
+  const watched = sites.filter(s => courses.some(c => c.id === s.courseId));
+  const watchList = watched.length > 0 && (
+    <ul className={styles.siteWatchList} aria-label="Course websites Soma checks">
+      {watched.map(site => {
+        const course = courses.find(c => c.id === site.courseId)!;
+        const change = site.lastChange;
+        return (
+          <li key={`${site.url}|${site.courseId}`}>
+            <i className={styles.importCourseDot} aria-hidden="true" style={{ background: course.color }} />
+            <span className={styles.siteImportTitle}>{site.url.replace(/^https:\/\//, '').replace(/\/$/, '')}</span>
+            <small className={styles.courseSource}>
+              {course.name} · checked {ago(site.checkedAt)}
+              {change ? ` · last change ${ago(change.at)}: ${[change.added && `${change.added} added`, change.updated && `${change.updated} moved`].filter(Boolean).join(', ')}` : ''}
+            </small>
+            <button className={styles.linkBtn} aria-label={`Stop checking ${site.url}`} onClick={() => void untrackCourseSite(site.url, site.courseId)}>Stop</button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+
   if (!open) {
-    return <button className={styles.neutralBtn} onClick={() => setOpen(true)}>Import deadlines from a course website</button>;
+    return (
+      <>
+        <button className={styles.neutralBtn} onClick={() => setOpen(true)}>Import deadlines from a course website</button>
+        {watchList && <><p className={styles.archivedEmpty}>Soma rereads these every 2 hours while it's open and adds new deadlines or moved dates.</p>{watchList}</>}
+      </>
+    );
   }
 
   return (
@@ -216,7 +205,7 @@ export default function CourseSiteImport({ courses, createCourse, onImported, so
               <span className={styles.importReceiptTick} aria-hidden="true">✓</span>
               <span>
                 <strong>Added to <span className={styles.importReceiptCourse}><i style={{ background: done.course.color }} />{done.course.name}</span></strong>
-                <small>Imported {added} new {added === 1 ? 'deadline' : 'deadlines'}{updated ? `, updated ${updated}` : ''} into {done.course.name}. Each shows on your dashboard on its due date.</small>
+                <small>Imported {added} new {added === 1 ? 'deadline' : 'deadlines'}{updated ? `, updated ${updated}` : ''} into {done.course.name}. Each shows on your dashboard on its due date.{done.tracking ? ' Soma will reread the site every 2 hours for new or moved deadlines.' : ''}</small>
               </span>
             </div>
             <ul className={styles.importReceiptList}>

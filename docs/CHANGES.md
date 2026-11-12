@@ -9,6 +9,46 @@ still needed.
 
 ---
 
+## 2026-11-12 (course websites are reread every 2 hours)
+
+- **Why:** the owner asked for imported course websites (cs61a.org) to be
+  checked for updates the way Canvas is. An import was one-off and the
+  address wasn't saved, so moved dates and new homework never arrived.
+- **What:** importing from a web address saves `{url, courseId, pageHash,
+  seen}` in `settings.courseSites`, so all devices share it. While Soma is open and visible,
+  `checkCourseSites` (App.tsx: 60 s after sign-in, every 10 min, and when
+  the tab is shown) rereads any site last checked 2+ hours ago. The server
+  fingerprints the page text (sha256). An unchanged page returns
+  `{unchanged:true}` before the budget check or model call, so the AI only
+  runs when the page changed. On a change, Soma applies without asking:
+  date moves for tasks already in the course, and upcoming items whose dates
+  are quoted on the page and are new since the last read. Items left unticked
+  at import or deleted since are in `seen`, so they're never re-added.
+  Nothing is deleted. A site whose course is gone or archived stops being
+  checked. Pasted text and documents aren't saved. Settings › Courses lists
+  watched sites: last check, last change, and Stop.
+- **Where:** `src/lib/courseSites.ts` (check, saved list, `saveSiteItems`,
+  moved out of the import screen unchanged), `src/lib/courseSiteMatch.ts`
+  (pure matching rules), `Settings/CourseSiteImport.tsx`, `App.tsx`,
+  `lib/storage.ts` (`courseSites` setting), `api/import-schedule.ts`
+  (`known` → `unchanged`, `pageHash` in every reply).
+- **Guard:** `tests/course-site-recheck.spec.ts` (save on import, Stop, no
+  save for pasted text, date move + new item + no re-adding of unticked,
+  unchanged page writes nothing, gone course untracked, the apply rule) and
+  `tests/import-schedule.spec.ts` › "an unchanged page is answered from its
+  fingerprint…". Existing `course-site-import.spec.ts` passes unchanged.
+- **Timer cost:** the timer reads the site list cached at sign-in
+  (`storage.getCachedCourseSites`, filled by `loadTokens`) and makes no
+  request when nothing is due. The first check waits 60 s; at 15 s it fired
+  inside the 20 s plan-load window and broke `ai-load-limit.spec.ts` ›
+  "documents that never load…" under the fake clock. Full suite: 756 passed,
+  8 skipped; build passes.
+- **Not a server cron:** checks run only while a student has Soma open. A cron
+  would need a thirteenth function (the plan's limit is 12) and server-side
+  writes without the student's session. No migration needed.
+
+---
+
 ## 2026-11-11 (exam suggestions saved before exam ids still match their exam)
 
 - **Why:** the six-bug pass matched pending exam suggestions only by
