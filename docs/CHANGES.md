@@ -9,6 +9,24 @@ still needed.
 
 ---
 
+## 2026-11-12 (course-site import: "couldn't read that schedule")
+
+- **Why:** right after the renamed-work change shipped, importing cs61a.org
+  showed "Soma couldn't read that schedule" (`unreadable_response`). The
+  parser accepted only bare JSON or one code fence. With existing tasks in the
+  request, the reply most likely carried a sentence around the JSON (not seen
+  directly; the logs weren't reachable from here).
+- **What:** `replyJson` reads the object even when text surrounds it. The
+  existing-tasks rules end with the full reply shape, including `same_as` and
+  `gone`, and "nothing before or after it". The task list now comes before
+  the page, so the reply follows the page. An unreadable reply now logs its
+  first 300 characters and stop reason in the function logs.
+- **Where:** `api/import-schedule.ts`.
+- **Guard:** `import-schedule.spec.ts` › "a reply with a sentence or fence
+  around its JSON is still read". Full suite: 761 passed, 8 skipped; build passes.
+
+---
+
 ## 2026-11-12 (course-site import recognizes renamed and moved work)
 
 - **Why:** the owner's CS 61A list showed "Project 4: Animator (TypeScript)

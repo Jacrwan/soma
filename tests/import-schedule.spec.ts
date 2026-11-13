@@ -186,3 +186,16 @@ test('without existing tasks the prompt is unchanged', async () => {
   expect(system).not.toContain('same_as');
   expect(user).not.toContain('existing_tasks');
 });
+
+test('a reply with a sentence or fence around its JSON is still read', async () => {
+  const { replyJson } = await import('../api/import-schedule');
+  expect(replyJson('Here are the deadlines:\n```json\n{"course":"CS 61A","items":[],"gone":[]}\n```\nLet me know!')).toEqual({ course: 'CS 61A', items: [], gone: [] });
+  expect(replyJson('{"course":null,"items":[]}')).toEqual({ course: null, items: [] });
+  expect(replyJson('Sure! Here are the dates…')).toBeNull();
+  expect(replyJson('[1,2]')).toBeNull();
+  const r = await call({ url: 'https://cs61a.org/', today: '2026-09-18', existing: [{ title: 'Lab 3', due: '2026-09-23' }] }, {
+    model: async () => ({ text: 'I matched these to your existing tasks.\n{"course":"CS 61A","items":[{"title":"Lab 3","type":"lab","due":"2026-09-23","time":null,"evidence":"Due Wed 9/23","same_as":"Lab 3"}],"gone":[]}' }),
+  });
+  expect(r.status).toBe(200);
+  expect(r.body.items[0]).toMatchObject({ title: 'Lab 3', sameAs: 'Lab 3' });
+});
