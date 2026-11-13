@@ -27,9 +27,18 @@ export type { CourseSite, SavedRow, SiteItem } from './courseSiteMatch';
 export const CHECK_EVERY = 2 * 60 * 60 * 1000;
 export const COURSE_SITES_CHANGED = 'soma_course_sites_changed';
 
+/** Focus time is filed under a task's title; a task with any is never renamed here. */
+async function hasLoggedTime(title: string): Promise<boolean> {
+  const { data, error } = await supabase.from('timer_sessions').select('id').eq('task_text', title).limit(1);
+  return !!error || !!data?.length;   // can't tell → treat as used
+}
+
 /**
- * Save items into one course: a task already there (same title, or the same
- * deadline worded differently) gets its date updated; anything else is added.
+ * Save items into one course: a task already there (the one the AI named as
+ * the same assignment, the same title, or the same deadline worded
+ * differently) gets its date updated; anything else is added.
+ * A task the course renamed takes the page's name only while it is untouched
+ * (not started, no Focus time under its title); otherwise it keeps its own.
  * `rows` fills in as each one saves, so a failure part-way can say how far it got.
  */
 export async function saveSiteItems(subjectId: string, items: SiteItem[], rows: SavedRow[] = []): Promise<SavedRow[]> {
@@ -39,10 +48,20 @@ export async function saveSiteItems(subjectId: string, items: SiteItem[], rows: 
   const remember = (t: Todo) => { const at = known.findIndex(k => k.id === t.id); if (at < 0) known.push(t); else known[at] = t; };
   for (const item of items) {
     const kind = asTodoKind(item.type);
-    const existing = known.find(t => sameTitle(t.text, item.title))
+    const named = item.sameAs !== undefined ? known.find(t => t.text === item.sameAs) : undefined;
+    const existing = named ?? known.find(t => sameTitle(t.text, item.title))
       ?? known.find(t => sameDeadline({ title: t.text, due: t.dueDate, kind: t.kind }, { title: item.title, due: item.due, kind }));
     // The receipt names the task as it is stored, which keeps its own wording.
     if (existing) {
+      const rename = !!named && !sameTitle(existing.text, item.title)
+        && existing.status === 'nothing' && !(await hasLoggedTime(existing.text));
+      if (rename) {
+        const next = { ...existing, text: item.title, dueDate: item.due, date: existing.date === existing.dueDate ? item.due : existing.date, kind: kind ?? existing.kind };
+        await storage.saveTodo(next);
+        remember(next);
+        rows.push({ title: item.title, due: item.due, time: item.time, change: 'updated', was: existing.text });
+        continue;
+      }
       if (existing.dueDate === item.due) {
         // Same date, but the row may predate the kind column: fill it in
         // so re-importing is how older tasks get classified.
@@ -62,6 +81,27 @@ export async function saveSiteItems(subjectId: string, items: SiteItem[], rows: 
     }
   }
   return rows;
+}
+
+/** Remove tasks the page no longer lists, chosen by the student at import. Only ever called from the import screen. */
+export async function removeGoneTasks(ids: string[], rows: SavedRow[] = []): Promise<SavedRow[]> {
+  const todos = await storage.fetchAllTodos();
+  for (const id of ids) {
+    const t = todos.find(x => x.id === id);
+    if (!t) continue;
+    await storage.deleteTodo(id);
+    rows.push({ title: t.text, due: t.dueDate ?? t.date, time: null, change: 'removed' });
+  }
+  return rows;
+}
+
+/** What a re-read is told the student already has: the imported tasks (they carry a kind), at most 150. */
+export function existingForRead(todos: Todo[], subjectId?: string) {
+  return todos
+    .filter(t => t.kind && (!subjectId || t.subjectId === subjectId))
+    .sort((a, b) => (b.dueDate ?? '').localeCompare(a.dueDate ?? ''))
+    .slice(0, 150)
+    .map(t => ({ title: t.text, due: t.dueDate ?? null }));
 }
 
 const asSeen = (items: SiteItem[]): Seen[] => items.map(i => ({ title: i.title, due: i.due, kind: asTodoKind(i.type) ?? null }));
@@ -134,7 +174,7 @@ async function run(now: number) {
       const response = await fetch('/api/import-schedule', {
         method: 'POST',
         headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: site.url, today, ...(site.pageHash ? { known: site.pageHash } : {}) }),
+        body: JSON.stringify({ url: site.url, today, existing: existingForRead(await storage.fetchAllTodos(), site.courseId), ...(site.pageHash ? { known: site.pageHash } : {}) }),
         signal: AbortSignal.timeout(60_000),
       });
       const body = await response.json().catch(() => null) as { unchanged?: boolean; items?: SiteItem[]; pageHash?: string } | null;

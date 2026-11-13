@@ -29,6 +29,11 @@ async function setup(page: Page, subjects: Row[] = [], todos: Row[] = [], result
       const body = req.postDataJSON();
       for (const row of (Array.isArray(body) ? body : [body]) as Row[]) { const i = list.findIndex(r => r.id === row.id); if (i < 0) list.push(row); else list[i] = row; }
     }
+    if (list && req.method() === 'DELETE') {
+      const id = url.searchParams.get('id')?.replace(/^eq\./, '');
+      const at = list.findIndex(r => r.id === id);
+      return route.fulfill({ json: at < 0 ? [] : list.splice(at, 1) });
+    }
     if (list) return route.fulfill({ json: req.headers().accept?.includes('vnd.pgrst.object') ? list[0] ?? null : list });
     return route.fulfill({ json: req.headers().accept?.includes('vnd.pgrst.object') ? null : [] });
   });
@@ -237,4 +242,50 @@ test('different work stays apart: another kind, or another day', async ({ page }
   await page.getByRole('button', { name: /^Import 4 deadlines/ }).click();
   await expect(page.getByRole('status')).toContainText('Imported');
   expect(state.todos).toHaveLength(4);
+});
+
+// Reported 2026-11-12: cs61a.org renamed Animator and moved its dates after
+// the import. "Animator checkpoint 1 · 11/19" was added beside the stale
+// "(TypeScript) checkpoint · 11/13" instead of replacing it.
+test('a renamed and moved assignment replaces its old task, and old ones can be removed', async ({ page }) => {
+  const cs = { id: 'cs', user_id: account.id, name: 'CS 61A', color: '#26c6da', archived: false };
+  const task = (id: string, text: string, due: string, extra: Row = {}) => ({ id, user_id: account.id, text, status: 'nothing', subject_id: 'cs', due_date: due, date: due, kind: 'project', ...extra });
+  const result = { course: 'CS 61A', source: 'https://cs61a.org/fa26/', truncated: false, gone: ['Project 4: Animator - Checkpoint', 'Project 4: Animator (started)'], items: [
+    { title: 'Project 4: Animator checkpoint 1', type: 'project', due: offset(7), time: null, evidence: 'Due Thu 11/19', sameAs: 'Project 4: Animator (TypeScript) checkpoint' },
+    { title: 'Project 4: Animator checkpoint 2', type: 'project', due: offset(12), time: null, evidence: 'Due Tue 11/24', sameAs: 'Project 4: Animator' },
+    { title: 'Homework 9 SQL', type: 'homework', due: offset(17), time: null, evidence: 'due Sun 11/29', sameAs: 'Homework 9: SQL' },
+  ] };
+  const state = await setup(page, [cs], [
+    task('cp', 'Project 4: Animator (TypeScript) checkpoint', offset(1)),
+    task('anim', 'Project 4: Animator', offset(11)),
+    task('hw9', 'Homework 9: SQL', offset(13), { kind: 'homework', status: 'in_progress' }),
+    task('old', 'Project 4: Animator - Checkpoint', offset(1)),
+    task('started', 'Project 4: Animator (started)', offset(1), { status: 'in_progress' }),
+    { id: 'mine', user_id: account.id, text: 'Ask TA about Animator', status: 'nothing', subject_id: 'cs', due_date: offset(1), date: offset(1) },
+  ], result as never);
+  await page.getByLabel('Course website address').fill('https://cs61a.org');
+  await page.getByRole('button', { name: 'Find deadlines' }).click();
+
+  await expect(page.getByLabel('Deadlines found')).toBeVisible();
+  // The read was told what the student has: imported tasks only.
+  const sent = (state.requests[0].existing as Row[]).map(e => e.title);
+  expect(sent).toContain('Project 4: Animator (TypeScript) checkpoint');
+  expect(sent).not.toContain('Ask TA about Animator');
+
+  const found = page.getByLabel('Deadlines found');
+  await expect(found).toContainText('replaces “Project 4: Animator (TypeScript) checkpoint”');
+  const gone = page.getByLabel('No longer on the site');
+  await expect(gone.getByRole('checkbox', { name: 'Remove Project 4: Animator - Checkpoint' })).toBeChecked();
+  await expect(gone.getByRole('checkbox', { name: 'Remove Project 4: Animator (started)' })).not.toBeChecked();
+  await page.getByRole('button', { name: 'Import 3 deadlines' }).click();
+  await expect(page.getByRole('status')).toContainText('removed 1');
+
+  const byId = Object.fromEntries(state.todos.map(t => [t.id, t]));
+  // Untouched tasks take the page's name and date; no duplicate is added.
+  expect(byId.cp).toMatchObject({ text: 'Project 4: Animator checkpoint 1', due_date: offset(7) });
+  expect(byId.anim).toMatchObject({ text: 'Project 4: Animator checkpoint 2', due_date: offset(12) });
+  // Started work keeps its name; only the date moves.
+  expect(byId.hw9).toMatchObject({ text: 'Homework 9: SQL', due_date: offset(17) });
+  expect(state.todos.map(t => t.id).sort()).toEqual(['anim', 'cp', 'hw9', 'mine', 'started']);
+  await expect(page.getByRole('status').getByRole('listitem').filter({ hasText: 'checkpoint 1' })).toContainText('Renamed');
 });

@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type React from 'react';
 import { supabase } from '../../lib/supabase';
 import { storage } from '../../lib/storage';
-import { asTodoKind, type Subject } from '../../types';
-import { COURSE_SITES_CHANGED, getCourseSites, sameDeadline, sameTitle, saveSiteItems, trackCourseSite, untrackCourseSite, type CourseSite, type SavedRow } from '../../lib/courseSites';
+import { asTodoKind, type Subject, type Todo } from '../../types';
+import { COURSE_SITES_CHANGED, existingForRead, getCourseSites, removeGoneTasks, sameDeadline, sameTitle, saveSiteItems, trackCourseSite, untrackCourseSite, type CourseSite, type SavedRow } from '../../lib/courseSites';
 import styles from './SettingsTab.module.css';
 
 /**
@@ -13,8 +13,8 @@ import styles from './SettingsTab.module.css';
  * which ones to keep. Each imported item becomes a task on its due date.
  */
 
-type Item = { title: string; type: string; due: string; time: string | null; evidence: string; unverified?: boolean };
-type Result = { course: string | null; items: Item[]; source: string | null; truncated: boolean; pageHash?: string };
+type Item = { title: string; type: string; due: string; time: string | null; evidence: string; unverified?: boolean; sameAs?: string };
+type Result = { course: string | null; items: Item[]; gone?: string[]; source: string | null; truncated: boolean; pageHash?: string };
 type Receipt = { course: { id: string; name: string; color: string }; rows: SavedRow[]; tracking: boolean };
 
 const ERRORS: Record<string, string> = {
@@ -64,6 +64,10 @@ export default function CourseSiteImport({ courses, createCourse, onImported, so
   const [result, setResult] = useState<Result | null>(null);
   const [chosen, setChosen] = useState<Set<number>>(new Set());
   const [done, setDone] = useState<Receipt | null>(null);
+  /** The student's tasks as of the read, to show which ones the page no longer lists. */
+  const [known, setKnown] = useState<Todo[]>([]);
+  /** Remove-or-keep choices the student made; untouched tasks default to remove. */
+  const [goneChoice, setGoneChoice] = useState<Record<string, boolean>>({});
   const today = localToday();
   const [sites, setSites] = useState<CourseSite[]>([]);
   useEffect(() => {
@@ -78,17 +82,26 @@ export default function CourseSiteImport({ courses, createCourse, onImported, so
   const creating = courseId === '__new__';
   const canRead = (pasteMode ? text.trim().length > 20 : /^https:\/\/\S+$/.test(url.trim())) && !busy;
   const selectedCount = chosen.size;
+  // Tasks of the chosen course the page no longer lists. Only imported ones
+  // (they carry a kind); tasks written by hand are never offered for removal.
+  const goneTasks = useMemo(() => !result?.gone?.length || creating ? [] : known.filter(t => t.subjectId === courseId && t.kind && result.gone!.includes(t.text)), [result, known, courseId, creating]);
+  const removing = goneTasks.filter(t => goneChoice[t.id] ?? t.status === 'nothing');
   const pastCount = useMemo(() => result?.items.filter(i => i.due < today).length ?? 0, [result, today]);
 
   async function read() {
-    setBusy(true); setError(''); setResult(null); setDone(null);
+    setBusy(true); setError(''); setResult(null); setDone(null); setGoneChoice({});
     try {
+      // The imported tasks Soma already has, so the read can say which one a
+      // renamed or moved item is (the course chosen, or every course before one is).
+      const todos = await storage.fetchAllTodos().catch(() => [] as Todo[]);
+      setKnown(todos);
+      const existing = existingForRead(todos, courseId && courseId !== '__new__' ? courseId : undefined);
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Sign in again to import.');
       const response = await fetch('/api/import-schedule', {
         method: 'POST',
         headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(pasteMode ? { text, today } : { url: url.trim(), today }),
+        body: JSON.stringify({ ...(pasteMode ? { text } : { url: url.trim() }), today, ...(existing.length ? { existing } : {}) }),
         signal: AbortSignal.timeout(60_000),
       });
       const body = await response.json().catch(() => null);
@@ -122,11 +135,12 @@ export default function CourseSiteImport({ courses, createCourse, onImported, so
     try {
       const subject = creating ? createCourse(name) : courses.find(c => c.id === courseId)!;
       await saveSiteItems(subject.id, result.items.filter((_, i) => chosen.has(i)), rows);
+      await removeGoneTasks(removing.map(t => t.id), rows);
       await storage.fetchAllTodos();
       window.dispatchEvent(new Event('soma_todos_changed'));
       // Confirm against what is actually stored now, not just what was sent.
       const stored = storage.getTodos().filter(t => t.subjectId === subject.id);
-      const confirmed = rows.filter(r => stored.some(t => sameTitle(t.text, r.title) && t.dueDate === r.due));
+      const confirmed = rows.filter(r => r.change === 'removed' || stored.some(t => sameTitle(t.text, r.title) && t.dueDate === r.due));
       if (confirmed.length !== rows.length) throw new Error(`only ${confirmed.length} of ${rows.length} could be confirmed after saving`);
       // A web address keeps being checked; pasted text and documents can't be.
       const tracking = !pasteMode && !source && !!url.trim();
@@ -199,20 +213,21 @@ export default function CourseSiteImport({ courses, createCourse, onImported, so
       {done && (() => {
         const added = done.rows.filter(r => r.change === 'added').length;
         const updated = done.rows.filter(r => r.change === 'updated').length;
+        const removed = done.rows.filter(r => r.change === 'removed').length;
         return (
           <div className={styles.importReceipt} role="status" aria-label={`Imported into ${done.course.name}`} style={{ '--course': done.course.color } as React.CSSProperties}>
             <div className={styles.importReceiptHead}>
               <span className={styles.importReceiptTick} aria-hidden="true">✓</span>
               <span>
                 <strong>Added to <span className={styles.importReceiptCourse}><i style={{ background: done.course.color }} />{done.course.name}</span></strong>
-                <small>Imported {added} new {added === 1 ? 'deadline' : 'deadlines'}{updated ? `, updated ${updated}` : ''} into {done.course.name}. Each shows on your dashboard on its due date.{done.tracking ? ' Soma will reread the site every 2 hours for new or moved deadlines.' : ''}</small>
+                <small>Imported {added} new {added === 1 ? 'deadline' : 'deadlines'}{updated ? `, updated ${updated}` : ''}{removed ? `, removed ${removed}` : ''} into {done.course.name}. Each shows on your dashboard on its due date.{done.tracking ? ' Soma will reread the site every 2 hours for new or moved deadlines.' : ''}</small>
               </span>
             </div>
             <ul className={styles.importReceiptList}>
               {done.rows.map(r => (
                 <li key={`${r.title}-${r.due}`}>
-                  <span className={styles.importReceiptMark} data-change={r.change}>{r.change === 'added' ? 'Added' : r.change === 'updated' ? 'Date updated' : 'Already there'}</span>
-                  <span className={styles.siteImportTitle}>{r.title}</span>
+                  <span className={styles.importReceiptMark} data-change={r.change}>{r.change === 'added' ? 'Added' : r.change === 'updated' ? (r.was ? 'Renamed' : 'Date updated') : r.change === 'removed' ? 'Removed' : 'Already there'}</span>
+                  <span className={styles.siteImportTitle}>{r.title}{r.was && <small className={styles.courseSource}> was “{r.was}”</small>}</span>
                   <span className={styles.siteImportDue}>{pretty(r.due, r.time)}</span>
                 </li>
               ))}
@@ -246,7 +261,7 @@ export default function CourseSiteImport({ courses, createCourse, onImported, so
                 <li key={`${item.title}-${item.due}`}>
                   <label>
                     <input type="checkbox" checked={chosen.has(i)} onChange={e => setChosen(prev => { const next = new Set(prev); if (e.target.checked) next.add(i); else next.delete(i); return next; })} />
-                    <span className={styles.siteImportTitle}>{item.title}</span>
+                    <span className={styles.siteImportTitle}>{item.title}{item.sameAs && item.sameAs !== item.title && <small className={styles.courseSource}> replaces “{item.sameAs}”</small>}</span>
                     <span className={styles.courseSource}>{item.type}</span>
                     <span className={styles.siteImportDue}>{pretty(item.due, item.time)}</span>
                   </label>
@@ -255,9 +270,27 @@ export default function CourseSiteImport({ courses, createCourse, onImported, so
               ))}
             </ul>
 
+            {goneTasks.length > 0 && (
+              <>
+                <p className={styles.archivedEmpty}>No longer on the site. Ticked ones are removed when you import; started work is kept unless you tick it.</p>
+                <ul className={styles.siteImportList} aria-label="No longer on the site">
+                  {goneTasks.map(t => (
+                    <li key={t.id}>
+                      <label>
+                        <input type="checkbox" aria-label={`Remove ${t.text}`} checked={goneChoice[t.id] ?? t.status === 'nothing'} onChange={e => setGoneChoice(prev => ({ ...prev, [t.id]: e.target.checked }))} />
+                        <span className={styles.siteImportTitle}>{t.text}</span>
+                        <span className={styles.courseSource}>{t.status === 'nothing' ? 'not started' : t.status === 'done' ? 'done' : 'started'}</span>
+                        <span className={styles.siteImportDue}>{t.dueDate ? pretty(t.dueDate, null) : ''}</span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
             <div className={styles.courseActions}>
-              <button className={styles.restoreBtn} disabled={busy || selectedCount === 0} onClick={() => void importChosen()}>
-                {busy ? 'Importing…' : `Import ${selectedCount} ${selectedCount === 1 ? 'deadline' : 'deadlines'}`}
+              <button className={styles.restoreBtn} disabled={busy || (selectedCount === 0 && removing.length === 0)} onClick={() => void importChosen()}>
+                {busy ? 'Importing…' : selectedCount === 0 ? `Remove ${removing.length} old ${removing.length === 1 ? 'task' : 'tasks'}` : `Import ${selectedCount} ${selectedCount === 1 ? 'deadline' : 'deadlines'}`}
               </button>
               <button className={styles.linkBtn} onClick={() => setChosen(new Set(result.items.map((_, i) => i)))}>Select all</button>
               <button className={styles.linkBtn} onClick={() => setChosen(new Set())}>Select none</button>

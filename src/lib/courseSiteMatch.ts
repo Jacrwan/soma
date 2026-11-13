@@ -2,8 +2,9 @@ import { asTodoKind, type Todo } from '../types';
 
 /** The pure rules behind course-site imports and re-checks (courseSites.ts), kept free of storage so tests can run them directly. */
 
-export type SiteItem = { title: string; type: string; due: string; time: string | null; evidence?: string; unverified?: boolean };
-export type SavedRow = { title: string; due: string; time: string | null; change: 'added' | 'updated' | 'unchanged' };
+/** `sameAs`: the existing task (by its exact title) the AI says this item is, renamed or moved. */
+export type SiteItem = { title: string; type: string; due: string; time: string | null; evidence?: string; unverified?: boolean; sameAs?: string };
+export type SavedRow = { title: string; due: string; time: string | null; change: 'added' | 'updated' | 'unchanged' | 'removed'; was?: string };
 export type Seen = { title: string; due: string; kind?: string | null };
 export type CourseSite = {
   url: string;
@@ -40,7 +41,7 @@ export function itemsToApply(items: SiteItem[], seen: Seen[], courseTodos: Pick<
   return items.filter(item => {
     if (item.unverified) return false;
     const kind = asTodoKind(item.type) ?? null;
-    const hasTask = courseTodos.some(t => sameTitle(t.text, item.title) || sameDeadline({ title: t.text, due: t.dueDate, kind: t.kind }, { title: item.title, due: item.due, kind }));
+    const hasTask = courseTodos.some(t => (item.sameAs !== undefined && t.text === item.sameAs) || sameTitle(t.text, item.title) || sameDeadline({ title: t.text, due: t.dueDate, kind: t.kind }, { title: item.title, due: item.due, kind }));
     if (hasTask) return true;
     const wasSeen = seen.some(s => sameTitle(s.title, item.title) || sameDeadline(s, { title: item.title, due: item.due, kind }));
     return !wasSeen && item.due >= today;

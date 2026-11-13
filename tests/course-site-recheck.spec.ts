@@ -151,3 +151,29 @@ test('what a re-check applies, as a rule', () => {
   // HW 4 past; HW 5 unquoted; HW 6 seen under other spelling and date.
   expect(out.map(i => i.title)).toEqual(['HW 1', 'HW 3']);
 });
+
+test('a re-check sends the course’s imported tasks, applies a renamed item, and keeps the name of one with Focus time', async ({ page }) => {
+  const state = await setup(page, {
+    subjects: [cs],
+    todos: [
+      { id: 'cp', user_id: account.id, text: 'Animator (TypeScript) checkpoint', status: 'nothing', subject_id: 'cs', due_date: offset(1), date: offset(1), kind: 'project' },
+      { id: 'lab', user_id: account.id, text: 'Lab 9 (TypeScript)', status: 'nothing', subject_id: 'cs', due_date: offset(2), date: offset(2), kind: 'lab' },
+    ],
+    settings: { courseSites: [{ url: 'https://cs61a.org', courseId: 'cs', checkedAt: threeHoursAgo(), pageHash: HASH, seen: [{ title: 'Animator (TypeScript) checkpoint', due: offset(1) }, { title: 'Lab 9 (TypeScript)', due: offset(2) }] }] },
+    api: () => ({ course: 'CS 61A', truncated: false, pageHash: 'c'.repeat(64), items: [
+      { title: 'Animator checkpoint 1', type: 'project', due: offset(7), time: null, evidence: 'x', sameAs: 'Animator (TypeScript) checkpoint' },
+      { title: 'Lab 9 Web Applications', type: 'lab', due: offset(3), time: null, evidence: 'x', sameAs: 'Lab 9 (TypeScript)' },
+    ] }),
+  });
+  // Registered after setup's catch-all so it takes priority.
+  await page.route('https://soma-regression.supabase.co/rest/v1/timer_sessions*', route => {
+    const url = new URL(route.request().url());
+    return route.fulfill({ json: url.searchParams.get('task_text') === 'eq.Lab 9 (TypeScript)' ? [{ id: 's1' }] : [] });
+  });
+  await recheck(page);
+  await expect.poll(() => (sites(state)[0]?.lastChange as Row | undefined)?.updated).toBe(2);
+  expect((state.requests.at(-1)!.existing as Row[]).map(e => e.title).sort()).toEqual(['Animator (TypeScript) checkpoint', 'Lab 9 (TypeScript)']);
+  expect(state.todos.find(t => t.id === 'cp')).toMatchObject({ text: 'Animator checkpoint 1', due_date: offset(7) });
+  expect(state.todos.find(t => t.id === 'lab')).toMatchObject({ text: 'Lab 9 (TypeScript)', due_date: offset(3) });
+  expect(state.todos).toHaveLength(2);
+});

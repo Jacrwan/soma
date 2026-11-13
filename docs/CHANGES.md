@@ -9,6 +9,49 @@ still needed.
 
 ---
 
+## 2026-11-12 (course-site import recognizes renamed and moved work)
+
+- **Why:** the owner's CS 61A list showed "Project 4: Animator (TypeScript)
+  checkpoint · Nov 13", "Project 4: Animator · Nov 23" and "Homework 9 ·
+  Nov 25". cs61a.org now says checkpoint 1 Thu 11/19, checkpoint 2 Tue 11/24,
+  final Wed 12/2, and Homework 9 Sun 11/29. The page has no hidden text:
+  `htmlToText` of today's page is correct and contains no "TypeScript". These
+  tasks came from the 2026-10-28 import (see that entry), and the course
+  renamed and moved the work after it. Matching (exact title, or the same
+  title words on the same day) can't link a task that was renamed and moved
+  together. A re-import, and the new 2-hour re-check, added
+  "checkpoint 1 · 11/19" beside the stale Nov 13 task.
+- **What:** a read now sends the student's imported tasks (`existing`: the
+  ones with a kind, so hand-written tasks are never sent; at most 150; the
+  chosen course, or all courses before one is chosen). The model returns
+  `same_as` for an item that is an existing task renamed or moved, and `gone`
+  for tasks the page no longer lists. `matchExisting` keeps only titles that
+  were actually sent, uses one existing task per item, and doesn't list a
+  matched task as gone.
+  - **Saving:** a same_as item updates that task. It takes the page's name
+    only while untouched (not started and no `timer_sessions` under its
+    title, because Focus time is filed by title). Otherwise only the date moves.
+  - **Import screen:** shows "replaces “old title”" and a "No longer on the
+    site" list. Not-started tasks are ticked for removal; started ones are
+    unticked. The receipt shows Renamed / Removed.
+  - **Re-check:** applies same_as matches; it never deletes.
+- **Where:** `api/import-schedule.ts` (`readExisting`, `matchExisting`,
+  `EXISTING_RULES`), `lib/courseSites.ts` (`saveSiteItems` rename rule,
+  `removeGoneTasks`, `existingForRead`), `lib/courseSiteMatch.ts`,
+  `Settings/CourseSiteImport.tsx`.
+- **Guard:** `course-site-import.spec.ts` › "a renamed and moved assignment
+  replaces its old task…" (the owner's Animator case);
+  `import-schedule.spec.ts` › same_as/gone validation, and no change to the
+  prompt without existing tasks; `course-site-recheck.spec.ts` › "a
+  re-check sends the course's imported tasks…" (Focus time blocks a rename).
+- **Verification:** build passes; full suite 759 passed, 8 skipped, 1 failed:
+  `ai-plan-changes.spec.ts:254` (renaming one block of two). It is flaky
+  without this change too (1 of 9 runs failed on the previous commit).
+- **For the owner's stale tasks:** re-import cs61a.org once from Settings ›
+  Courses. That fixes these tasks and turns on the 2-hour re-check.
+
+---
+
 ## 2026-11-12 (course websites are reread every 2 hours)
 
 - **Why:** the owner asked for imported course websites (cs61a.org) to be

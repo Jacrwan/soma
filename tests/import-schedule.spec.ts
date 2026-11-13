@@ -162,3 +162,27 @@ test('an unchanged page is answered from its fingerprint, without the model or t
   expect(changed.body.unchanged).toBeUndefined();
   expect(modelCalls).toBe(2);
 });
+
+// ── Renamed and moved work (2026-11-12, cs61a.org Animator) ─────────────────
+test('the student’s tasks go to the model, and only real same_as / gone titles come back', async () => {
+  const existing = [{ title: 'Project 4: Animator (TypeScript) checkpoint', due: '2026-11-13' }, { title: 'Project 4: Animator', due: '2026-11-23' }];
+  let system = '';
+  const r = await call({ url: 'https://cs61a.org/', today: '2026-11-12', existing }, {
+    model: async (s, user) => { system = s; expect(user).toContain('<existing_tasks>'); expect(user).toContain('"Project 4: Animator (TypeScript) checkpoint" due 2026-11-13'); return { text: JSON.stringify({ course: 'CS 61A', items: [
+      { title: 'Lab 3', type: 'lab', due: '2026-11-19', time: null, evidence: 'Due Wed 9/23', same_as: 'Project 4: Animator (TypeScript) checkpoint' },
+      { title: 'Homework 3', type: 'homework', due: '2026-11-24', time: null, evidence: 'Due Thu 9/24', same_as: 'Made up title' },
+    ], gone: ['Project 4: Animator', 'Project 4: Animator (TypeScript) checkpoint', 'Not sent'] }) }; },
+  });
+  expect(system).toContain('same_as');
+  expect(r.body.items.find((i: { title: string }) => i.title === 'Lab 3').sameAs).toBe('Project 4: Animator (TypeScript) checkpoint');
+  expect(r.body.items.find((i: { title: string }) => i.title === 'Homework 3').sameAs).toBeUndefined();
+  // A task that was matched is not also gone; titles that weren't sent are dropped.
+  expect(r.body.gone).toEqual(['Project 4: Animator']);
+});
+
+test('without existing tasks the prompt is unchanged', async () => {
+  let system = '', user = '';
+  await call({ url: 'https://cs61a.org/', today: '2026-09-18' }, { model: async (s, u) => { system = s; user = u; return { text: '{"course":null,"items":[]}' }; } });
+  expect(system).not.toContain('same_as');
+  expect(user).not.toContain('existing_tasks');
+});
