@@ -30,11 +30,12 @@ export const REALMS = {
   },
   nova: {
     title: 'Kepler Reach', enemy: 'robot', names: ['Sentry', 'Warden'], boss: 'Core Guardian', seed: 913,
-    speed: 5.4, reach: 2.5, windup: 0.5, eliteTint: 0xff8a6a, bossTint: 0xff5a5a, bossScale: 2.6,
-    palette: [[58, 40, 96], [34, 96, 110], [96, 60, 120]], rock: [52, 44, 70],
+    speed: 5.4, reach: 2.5, windup: 0.5, tint: 0xa9adb6, eliteTint: 0xc9906a, bossTint: 0xc8604e, bossScale: 2.6,
+    // A dead, airless world: rust and ash regolith under a black sky and hard sunlight.
+    palette: [[104, 84, 70], [142, 116, 96], [78, 64, 56]], rock: [92, 84, 78], craters: 46,
     shrine: ['Signal Stones', 'Star Stones'], grass: false,
     levels: { camps: [14, 16, 18, 24, 20, 26], roam: [14, 17], boss: 30 },
-    look: { zenith: 0x0b0620, horizon: 0x7a3fa8, sun: 0xa8f0ff, cover: 0.16, hemi: 0xb49cff, ground: 0x2a2244, hemiPower: 0.6, sunPower: 2.8, env: 0.6, haze: 0.0085 },
+    look: { zenith: 0x010207, horizon: 0x120d10, sun: 0xfff1df, cover: 0, hemi: 0x7f8fb0, ground: 0x2a1f18, hemiPower: 0.1, sunPower: 4.4, env: 0.22, haze: 0.0016 },
   },
 };
 
@@ -49,6 +50,8 @@ function seeded(seed) {
 }
 
 const edgeHeight = (x, z, r) => (r < RADIUS + 2 ? 0 : Math.min(38, ((r - RADIUS - 2) / 9) ** 1.5 * 7 * (1 + 0.35 * Math.sin(x * 0.21) * Math.cos(z * 0.17))));
+// The far planet has low crater-rim hills instead of cliffs, so the sky stays open.
+const rimHeight = (x, z, r) => edgeHeight(x, z, r) * 0.3;
 
 export function createRealms(ctx) {
   const { world, fx, audio, ui, player } = ctx;
@@ -66,6 +69,11 @@ export function createRealms(ctx) {
     const c2d = canvas.getContext('2d');
     const img = c2d.createImageData(size, size);
     const [a, b, dirt] = cfg.palette;
+    const rc = seeded(cfg.seed + 3);
+    const craters = Array.from({ length: cfg.craters || 0 }, () => {
+      const p = polar(6 + rc() * (RADIUS + 30), rc() * 360);
+      return { x: p.x, z: p.z, r: 1.6 + rc() * rc() * 11 };
+    });
     for (let py = 0; py < size; py++) {
       for (let px = 0; px < size; px++) {
         const x = (px / size - 0.5) * span, z = (py / size - 0.5) * span;
@@ -79,7 +87,19 @@ export function createRealms(ctx) {
         }
         const rocky = Math.max(0, Math.min(1, (r - RADIUS + 1) / 7));
         const t = Math.max(0, Math.min(1, (n - 0.35) * 2.2));
-        const shade = 0.8 + fine * 0.4;
+        let shade = 0.8 + fine * 0.4;
+        // Impact craters: a dark bowl, a bright raised rim, and one wall in sunlight.
+        for (const c of craters) {
+          const dx = x - c.x, dz = z - c.z;
+          if (Math.abs(dx) > c.r * 1.5 || Math.abs(dz) > c.r * 1.5) continue;
+          const d = Math.hypot(dx, dz) / c.r;
+          if (d > 1.45) continue;
+          const side = Math.max(-1, Math.min(1, (dx * 0.7 + dz * 0.5) / (c.r * Math.max(0.25, d))));
+          const ss = (e0, e1, v) => { const t = Math.max(0, Math.min(1, (v - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
+          const bowl = 1 - ss(0.7, 1.0, d);
+          const rim = ss(0.82, 1.0, d) * (1 - ss(1.0, 1.4, d));
+          shade *= (1 - bowl * (0.2 - side * 0.2 * ss(0.15, 0.9, d))) * (1 + rim * (0.24 - side * 0.14));
+        }
         const i = (py * size + px) * 4;
         for (let k = 0; k < 3; k++) {
           let v = a[k] + (b[k] - a[k]) * t;
@@ -143,7 +163,7 @@ export function createRealms(ctx) {
     }
 
     const { map, span } = paint(cfg, taken.map((t) => ({ x: t.x, z: t.z, r: t.r * 0.9 })));
-    group.add(ground(span, 150, edgeHeight, groundMaterial(map, noiseTexture('dust', 256), 150, 1.6), span));
+    group.add(ground(span, 150, name === 'wilds' ? edgeHeight : rimHeight, groundMaterial(map, noiseTexture('dust', 256), 150, name === 'wilds' ? 1.6 : 3.2), span));
 
     // Trees and rocks you have to walk around.
     const solids = [];
@@ -163,49 +183,122 @@ export function createRealms(ctx) {
       const grass = createGrass(84000, RADIUS, (x, z) => free(x, z, -2.5), 33);
       group.add(grass);
     } else {
+      // Loose stones everywhere, too small to block the way.
       const dummy = new THREE.Object3D();
-      const kinds = [[0x58e6ff, 190], [0xff6ad5, 110]].map(([color, count]) => {
-        const mesh = new THREE.InstancedMesh(new THREE.ConeGeometry(0.42, 2.6, 5), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.9, roughness: 0.25, metalness: 0.2, flatShading: true }), count);
-        mesh.castShadow = true;
-        return { mesh, count, n: 0 };
-      });
-      for (let tries = 0; tries < 5000; tries++) {
-        const kind = kinds[tries % 2];
-        if (kind.n >= kind.count) continue;
-        const p = polar(Math.sqrt(r()) * (RADIUS + 8), r() * 360);
-        if (!free(p.x, p.z, 1) && Math.hypot(p.x, p.z) < RADIUS) continue;
-        const cluster = 2 + Math.floor(r() * 4);
-        for (let k = 0; k < cluster && kind.n < kind.count; k++) {
-          const s = 0.5 + r() * 1.5;
-          dummy.position.set(p.x + (r() - 0.5) * 1.6, 1.3 * s - 0.2, p.z + (r() - 0.5) * 1.6);
-          dummy.rotation.set((r() - 0.5) * 0.7, r() * 6.28, (r() - 0.5) * 0.7);
-          dummy.scale.set(s, s, s);
-          dummy.updateMatrix();
-          kind.mesh.setMatrixAt(kind.n++, dummy.matrix);
+      const pebbles = new THREE.InstancedMesh(rockGeometry(), A.mat(A.C.rockDark, { kind: 'rock' }), 700);
+      pebbles.castShadow = true;
+      pebbles.receiveShadow = true;
+      for (let i = 0; i < 700; i++) {
+        const p = polar(Math.sqrt(r()) * (RADIUS + 20), r() * 360);
+        const sc = 0.08 + r() * r() * 0.5;
+        dummy.position.set(p.x, -sc * 0.25, p.z);
+        dummy.rotation.set(r() * 3, r() * 6.28, r() * 3);
+        dummy.scale.set(sc, sc * (0.5 + r() * 0.6), sc * (0.7 + r() * 0.6));
+        dummy.updateMatrix();
+        pebbles.setMatrixAt(i, dummy.matrix);
+      }
+      group.add(pebbles);
+      // Wind-carved spires of dark basalt.
+      const spires = new THREE.InstancedMesh(rockGeometry(), A.mat(A.C.rockDark, { kind: 'rock' }), 60);
+      spires.castShadow = true;
+      spires.receiveShadow = true;
+      let ns = 0;
+      for (let tries = 0; ns < 60 && tries < 900; tries++) {
+        const p = polar(10 + r() * (RADIUS + 14), r() * 360);
+        if (!free(p.x, p.z, 2)) { if (Math.hypot(p.x, p.z) < RADIUS) continue; }
+        const sc = 0.9 + r() * 1.6;
+        dummy.position.set(p.x, -0.3, p.z);
+        dummy.rotation.set((r() - 0.5) * 0.3, r() * 6.28, (r() - 0.5) * 0.3);
+        dummy.scale.set(sc, sc * (2.4 + r() * 3.2), sc);
+        dummy.updateMatrix();
+        spires.setMatrixAt(ns++, dummy.matrix);
+        if (Math.hypot(p.x, p.z) < RADIUS) solids.push({ x: p.x, z: p.z, r: sc * 0.85 });
+      }
+      spires.count = ns;
+      group.add(spires);
+
+      // The sky: thousands of stars, the band of the galaxy, a banded gas giant with rings, and its moon.
+      const positions = [], colors = [];
+      const tints = [[1, 1, 1], [0.8, 0.88, 1], [1, 0.93, 0.8], [1, 0.8, 0.7]];
+      const pole = new THREE.Vector3(0.45, 0.6, -0.66).normalize();
+      const u = new THREE.Vector3(1, 0, 0).cross(pole).normalize(), v = pole.clone().cross(u);
+      for (let i = 0; i < 9000; i++) {
+        if (i < 3800) tmp.set(r() - 0.5, r() - 0.5, r() - 0.5);
+        else {
+          // Along the galaxy's plane, thinning out away from it.
+          const a = r() * 6.283, off = (r() + r() + r() - 1.5) * 0.22;
+          tmp.copy(u).multiplyScalar(Math.cos(a)).addScaledVector(v, Math.sin(a)).addScaledVector(pole, off);
         }
-        if (Math.hypot(p.x, p.z) < RADIUS) solids.push({ x: p.x, z: p.z, r: 0.9 });
-      }
-      for (const kind of kinds) {
-        kind.mesh.count = kind.n;
-        group.add(kind.mesh);
-      }
-      // A night sky with a ringed giant hanging in it.
-      const stars = [];
-      for (let i = 0; i < 1500; i++) {
-        tmp.set(r() - 0.5, r() * 0.85 + 0.03, r() - 0.5).normalize().multiplyScalar(330);
-        stars.push(tmp.x, tmp.y, tmp.z);
+        if (tmp.lengthSq() < 0.0001) continue;
+        tmp.normalize().multiplyScalar(560);
+        if (tmp.y < -20) continue;
+        positions.push(tmp.x, tmp.y, tmp.z);
+        const t = tints[Math.floor(r() * tints.length)];
+        const bright = 0.25 + r() ** 3 * 1.6;
+        colors.push(t[0] * bright, t[1] * bright, t[2] * bright);
       }
       const starGeo = new THREE.BufferGeometry();
-      starGeo.setAttribute('position', new THREE.Float32BufferAttribute(stars, 3));
-      group.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, fog: false })));
-      const giant = new THREE.Mesh(new THREE.SphereGeometry(42, 40, 24), new THREE.MeshStandardMaterial({ color: 0xd88a5a, emissive: 0x7a3a2a, emissiveIntensity: 0.55, roughness: 0.9, fog: false }));
-      const ring = new THREE.Mesh(new THREE.RingGeometry(54, 82, 64), new THREE.MeshBasicMaterial({ color: 0xf0c9a0, transparent: true, opacity: 0.5, side: THREE.DoubleSide, fog: false, depthWrite: false }));
-      ring.rotation.x = 1.25;
-      giant.add(ring);
-      giant.position.set(150, 120, -260);
+      starGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      starGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+      const starField = new THREE.Points(starGeo, new THREE.PointsMaterial({ vertexColors: true, size: 1.5, sizeAttenuation: false, fog: false, depthWrite: false }));
+      starField.frustumCulled = false;
+      group.add(starField);
+
+      const R = 96;
+      const bandCanvas = document.createElement('canvas');
+      bandCanvas.width = 1024;
+      bandCanvas.height = 512;
+      const b2d = bandCanvas.getContext('2d');
+      const bandImg = b2d.createImageData(1024, 512);
+      const stops = [[214, 178, 140], [176, 124, 86], [232, 208, 176], [150, 98, 70], [224, 190, 150], [120, 86, 70], [206, 160, 120]];
+      for (let py = 0; py < 512; py++) {
+        for (let px = 0; px < 1024; px++) {
+          const swirl = fbm(px / 1024, py / 512, 6, 4, 31) - 0.5;
+          const lat = py / 512 + swirl * 0.07 + (fbm(px / 1024, py / 512, 22, 3, 57) - 0.5) * 0.02;
+          const f = Math.max(0, Math.min(0.999, lat)) * (stops.length - 1) * 2.3 % (stops.length - 1);
+          const k = Math.floor(f), t = f - k;
+          const c0 = stops[k], c1 = stops[Math.min(stops.length - 1, k + 1)];
+          const grain = 0.9 + fbm(px / 1024, py / 512, 60, 2, 83) * 0.2;
+          const idx = (py * 1024 + px) * 4;
+          for (let q = 0; q < 3; q++) bandImg.data[idx + q] = (c0[q] + (c1[q] - c0[q]) * (t * t * (3 - 2 * t))) * grain;
+          bandImg.data[idx + 3] = 255;
+        }
+      }
+      b2d.putImageData(bandImg, 0, 0);
+      const bandMap = new THREE.CanvasTexture(bandCanvas);
+      bandMap.colorSpace = THREE.SRGBColorSpace;
+      bandMap.wrapS = THREE.RepeatWrapping;
+      const giant = new THREE.Mesh(new THREE.SphereGeometry(R, 64, 40), new THREE.MeshStandardMaterial({ map: bandMap, roughness: 1, metalness: 0, fog: false, envMapIntensity: 0 }));
+      giant.name = 'giant';
+      const air = new THREE.Mesh(new THREE.SphereGeometry(R * 1.035, 48, 32), new THREE.MeshBasicMaterial({ color: 0xffc9a0, transparent: true, opacity: 0.13, side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+      const ringCanvas = document.createElement('canvas');
+      ringCanvas.width = 512;
+      ringCanvas.height = 4;
+      const r2d = ringCanvas.getContext('2d');
+      for (let px = 0; px < 512; px++) {
+        const t = px / 512;
+        const gap = t > 0.56 && t < 0.62 ? 0.08 : 1;
+        const alpha = Math.max(0, Math.min(1, t * 12)) * Math.max(0, Math.min(1, (1 - t) * 9)) * (0.35 + 0.65 * fbm(t, 0.5, 40, 3, 7)) * gap;
+        const tone = 200 + fbm(t, 0.2, 18, 2, 19) * 50;
+        r2d.fillStyle = `rgba(${tone},${tone * 0.9},${tone * 0.76},${alpha * 0.85})`;
+        r2d.fillRect(px, 0, 1, 4);
+      }
+      const ringMap = new THREE.CanvasTexture(ringCanvas);
+      ringMap.colorSpace = THREE.SRGBColorSpace;
+      const ringGeo = new THREE.RingGeometry(R * 1.3, R * 2.35, 160, 1);
+      const rp = ringGeo.attributes.position, ruv = ringGeo.attributes.uv;
+      for (let i = 0; i < rp.count; i++) ruv.setXY(i, (Math.hypot(rp.getX(i), rp.getY(i)) - R * 1.3) / (R * 1.05), 0.5);
+      const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ map: ringMap, transparent: true, side: THREE.DoubleSide, fog: false, depthWrite: false }));
+      ring.rotation.x = 1.32;
+      giant.add(air, ring);
+      giant.rotation.z = 0.32;
+      giant.position.set(-230, 170, -330);
       group.add(giant);
+      const moonlet = new THREE.Mesh(new THREE.SphereGeometry(9, 32, 20), new THREE.MeshStandardMaterial({ color: 0xb6b0a8, map: noiseTexture('dust', 256), roughness: 1, fog: false, envMapIntensity: 0 }));
+      moonlet.position.set(120, 210, -300);
+      group.add(moonlet);
     }
-    const rockMesh = new THREE.InstancedMesh(rockGeometry(), A.mat(name === 'wilds' ? A.C.rock : A.C.plum, { kind: 'rock' }), 70);
+    const rockMesh = new THREE.InstancedMesh(rockGeometry(), A.mat(A.C.rock, { kind: 'rock' }), 70);
     rockMesh.castShadow = true;
     rockMesh.receiveShadow = true;
     const dummy = new THREE.Object3D();
@@ -257,14 +350,14 @@ export function createRealms(ctx) {
       }
       const stones = A.bake(g);
       stones.position.set(shrine.x, 0, shrine.z);
-      shrine.orb = A.ball(0.42, A.C.glow, 1, { emissive: name === 'wilds' ? 0x9dff9a : 0xff9df2, glow: 1.8 });
+      shrine.orb = A.ball(0.42, A.C.glow, 1, { emissive: name === 'wilds' ? 0x9dff9a : 0x9fe8ff, glow: 1.8 });
       shrine.orb.castShadow = false;
       shrine.orb.position.set(shrine.x, 1.9, shrine.z);
       group.add(stones, shrine.orb);
     }
     for (const t of treasures) {
       const g = new THREE.Group();
-      const mound = A.ball(0.7, name === 'wilds' ? A.C.dirt : A.C.plum, 0);
+      const mound = A.ball(0.7, name === 'wilds' ? A.C.dirt : A.C.rockDark, 0);
       mound.scale.y = 0.35;
       const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), new THREE.MeshBasicMaterial({ color: 0xffe9a0 }));
       gem.position.y = 1.1;
@@ -297,7 +390,7 @@ export function createRealms(ctx) {
   function spawn(x, z, tier, level, camp = null) {
     const cfg = now.cfg;
     const scale = tier === 2 ? cfg.bossScale : tier === 1 ? 1.35 : 1;
-    const m = createEnemy(cfg.enemy, { scale, tint: tier === 2 ? cfg.bossTint : tier === 1 ? cfg.eliteTint : null });
+    const m = createEnemy(cfg.enemy, { scale, tint: tier === 2 ? cfg.bossTint : tier === 1 ? cfg.eliteTint : cfg.tint ?? null });
     m.object.position.set(x, 0, z);
     now.group.add(m.object);
     const stats = S.enemyStats(level, tier);

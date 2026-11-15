@@ -130,10 +130,10 @@ function dressPlayer() {
   if (player.model) player.object.remove(player.model);
   const hat = state.scene === 'moon' ? 'hat:astro' : state.cosmetics.hat;
   if (hasAvatar()) {
-    // Furs and hides until the Medieval Age; the suit after that.
-    const stoneAge = state.era <= 1 && state.scene !== 'moon';
-    const tint = stoneAge || state.cosmetics.color === 'color:clay' ? null : A.SKIN_COLORS[state.cosmetics.color];
-    player.model = createAvatar({ tint, hat: stoneAge ? null : A.makeHat(hat), weapon: A.makeWeapon(state.hero.gear.weapon ? state.hero.gear.weapon.look : 0), stoneAge });
+    const tint = state.cosmetics.color === 'color:clay' ? null : A.SKIN_COLORS[state.cosmetics.color];
+    // The hero keeps the model's own axes until a blade from the later ages is equipped.
+    const look = state.hero.gear.weapon ? state.hero.gear.weapon.look : 0;
+    player.model = createAvatar({ tint, hat: hat === 'hat:none' ? null : A.makeHat(hat), weapon: look >= 3 ? A.makeWeapon(look) : null, weaponLook: look >= 2 ? 1 : 0 });
   } else player.model = A.makeCharacter(state.cosmetics.color, hat);
   player.object.add(player.model);
 }
@@ -1381,7 +1381,7 @@ function updatePlayer(dt, time) {
   if (avatar) {
     player.swing = Math.max(0, player.swing - dt * 3.2);
     const sprint = keys.has('shift');
-    avatar.update(dt, moving ? 'run' : 'idle', sprint ? 1.75 : 1.3, player.swing);
+    avatar.update(dt, moving ? 'run' : 'idle', sprint ? 1.75 : 1.3, player.swing, { dodge: player.dash > 0.1 && player.safe > 0.2, air: !player.grounded && Math.abs(player.vy) > 2, hurt: time - player.hurtAt < 0.05 });
     player.model.rotation.z = player.stun > 0 ? Math.sin(time * 40) * 0.08 : 0;
     return;
   }

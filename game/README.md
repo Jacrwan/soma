@@ -16,10 +16,11 @@ render loop stay out of Soma's.
 
 Files in `public/game/models`:
 
+- `Barbarian.glb`: the hero. KayKit Adventurers pack by Kay Lousberg
+  (kaylousberg.com), CC0.
 - `Fox.glb`: Khronos glTF Sample Assets. Model by PixelMannen (CC0), rigging
   and animation by tomkranis (CC-BY 4.0).
 - `Soldier.glb`, `RobotExpressive.glb`: three.js examples. RobotExpressive is by
   Tomás Laulhé (CC0). Soldier comes from Mixamo.
-- `readyplayer.me.glb`: three.js examples, a Ready Player Me avatar.
 
-Check the Soldier and Ready Player Me terms before this ships to students.
+Check the Soldier terms before this ships to students.
