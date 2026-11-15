@@ -25,6 +25,13 @@ import { windowOf } from './clockRange';
  *   (2026-11-15, "I don't want to work on something due three weeks later
  *   right now"): see startDayOf. Earlier days are used only when the window
  *   has no room, and a sitting placed before the window has to move.
+ * - Today is already planned (2026-11-15, after Lab 10 was pulled into time a
+ *   moved quiz left open): Soma never puts more task time on today than today
+ *   already had. Sittings can move around within today, but freed time stays
+ *   free. Two exceptions: missed work (that's being behind, not ahead, and
+ *   still goes ASAP) and work whose finish day is today. Getting ahead is the student's call:
+ *   `ahead` names the sitting that could move into today's open time, and the
+ *   dashboard asks.
  *
  * Times are absolute minutes from day 0's midnight (day * 1440 + minute).
  */
@@ -120,6 +127,13 @@ export type ScheduleResult = {
   atRisk: { taskId: string; short: number }[];
   /** When each task has to be finished by, absolute minutes. */
   finishBy: Record<string, number>;
+  /** Open study minutes left today after this schedule. */
+  todayOpen: number;
+  /**
+   * A later sitting that could move into today's open time, for the student
+   * to say yes to: the most important task's next sitting after today.
+   */
+  ahead?: { taskId: string; id?: string; from?: number; start: number; end: number };
 };
 
 type Seg = [number, number];
@@ -231,6 +245,14 @@ export function schedule(input: ScheduleInput): ScheduleResult {
     return { task, order, lastT, startT, remaining, covered: 0, movable: [], pool: [], days: new Set() };
   });
 
+  // Today's task time can only shrink: what was planned on today (missed bits
+  // included) is all the room today has for task sittings.
+  const today = dayOf(now);
+  let todayRoom = input.tasks.flatMap(t => t.sittings).filter(s => !s.done && dayOf(s.start) === today).reduce((n, s) => n + s.end - s.start, 0);
+  const forcedToday = (st: State) => dayOf(st.lastT - 1) <= today;
+  /** Minutes `st` may still put on day d. */
+  const roomOn = (st: State, d: number) => d !== today || forcedToday(st) ? Infinity : Math.max(0, todayRoom);
+
   // 1. Keep what can stay. Higher tasks claim first where two overlap.
   for (const st of states) {
     for (const s of st.task.sittings.map(x => ({ ...x })).sort((a, b) => a.start - b.start)) {
@@ -244,12 +266,14 @@ export function schedule(input: ScheduleInput): ScheduleResult {
       if (s.pinned || s.started || s.start < now) {
         // Fixed, or already under way: it holds its time.
         reserve(Math.max(s.start, now), s.end); use(s.start, len);
+        if (dayOf(s.start) === today) todayRoom -= len;
         st.covered += s.end - Math.max(s.start, now); st.days.add(dayOf(s.start));
         continue;
       }
       // Fine where it is: open, before the finish day, and not before the task's window.
       if (s.end <= st.lastT && s.start >= dayOf(st.startT) * DAY && isFree(s.start, s.end)) {
         reserve(s.start, s.end); use(s.start, len);
+        if (dayOf(s.start) === today) todayRoom -= len;
         st.covered += len; st.movable.push(s); st.days.add(dayOf(s.start));
       } else st.pool.push({ id: s.id, len, asap: false, removable: true });
     }
@@ -292,6 +316,7 @@ export function schedule(input: ScheduleInput): ScheduleResult {
   };
   const commit = (st: State, start: number, end: number, asap: boolean) => {
     reserve(start, end); use(start, end - start);
+    if (dayOf(start) === today) todayRoom -= end - start;
     st.covered += end - start; st.days.add(dayOf(start));
     const at = st.pool.findIndex(p => p.asap === asap);
     const reuse = at >= 0 ? at : st.pool.findIndex(() => true);
@@ -310,6 +335,7 @@ export function schedule(input: ScheduleInput): ScheduleResult {
     owner.movable = owner.movable.filter(x => x !== s);
     owner.covered -= s.end - s.start;
     use(s.start, -(s.end - s.start));
+    if (dayOf(s.start) === today) todayRoom += s.end - s.start;
     release(s.start, s.end + brk);
     owner.pool.push({ id: s.id, len: s.end - s.start, asap: false, removable: true });
   };
@@ -375,7 +401,7 @@ export function schedule(input: ScheduleInput): ScheduleResult {
       const ranked = [...inWindow.filter(d => !st.days.has(d)), ...inWindow.filter(d => st.days.has(d)), ...early.filter(d => !st.days.has(d)), ...early.filter(d => st.days.has(d))];
       const fit = (d: number, oneADay: boolean) => {
         if (oneADay && st.days.has(d)) return null;
-        if (!capOk(d * DAY, size)) return null;
+        if (!capOk(d * DAY, size) || size > roomOn(st, d)) return null;
         const seg = segsOn(d, lastT).find(([a, z]) => z - a >= size && safe(st, a, a + size));
         return seg ? seg[0] : null;
       };
@@ -395,7 +421,7 @@ export function schedule(input: ScheduleInput): ScheduleResult {
       for (const [a, z] of segsOn(d, lastT)) {
         if (short <= 0) break;
         const room = prefs.maxPerDay ? prefs.maxPerDay - (used.get(d) ?? 0) : Infinity;
-        const len = Math.min(short, prefs.longest, z - a, room);
+        const len = Math.min(short, prefs.longest, z - a, room, roomOn(st, d));
         if (len < Math.min(short, prefs.shortest) || len < 5 || !safe(st, a, a + len)) continue;
         commit(st, a, a + len, false); short -= len;
       }
@@ -405,11 +431,11 @@ export function schedule(input: ScheduleInput): ScheduleResult {
     const swaps = bumpable(st);
     for (const { owner, s } of [...swaps.filter(x => x.s.start >= st.startT), ...swaps.filter(x => x.s.start < st.startT).reverse()]) {
       if (short <= 0) break;
-      const len0 = Math.min(short, prefs.longest, s.end - s.start);
-      if (!capOk(s.start, 0) || !safe(st, s.start, s.start + len0, { owner, s })) continue;
+      const len0 = Math.min(short, prefs.longest, s.end - s.start, dayOf(s.start) === today ? roomOn(st, today) + (s.end - s.start) : Infinity);
+      if (len0 < Math.min(short, prefs.shortest) || !capOk(s.start, 0) || !safe(st, s.start, s.start + len0, { owner, s })) continue;
       bump(owner, s);
       const seg = segAt(s.start);
-      const len = Math.min(short, prefs.longest, (seg ? Math.min(seg[1], lastT) : s.end) - s.start);
+      const len = Math.min(short, prefs.longest, (seg ? Math.min(seg[1], lastT) : s.end) - s.start, roomOn(st, dayOf(s.start)));
       commit(st, s.start, s.start + len, false); short -= len;
     }
 
@@ -422,8 +448,33 @@ export function schedule(input: ScheduleInput): ScheduleResult {
   // A move back to the same time is no move.
   const original = new Map(input.tasks.flatMap(t => t.sittings.map(s => [s.id, s] as const)));
   const placed = place.filter(p => { const o = p.id ? original.get(p.id) : undefined; return !o || o.start !== p.start || o.end !== p.end; });
-  return { place: placed, remove, atRisk, finishBy };
+  // Today's open time, and the sitting that could fill it if the student wants.
+  const todayOpen = segsOnDay(free, today, now).reduce((n, [a, z]) => n + z - a, 0);
+  let ahead: ScheduleResult['ahead'];
+  const moved = new Map(place.filter(p => p.id).map(p => [p.id!, p]));
+  // A task that doesn't fit comes first: today's open time is where it could go.
+  for (const r of atRisk) {
+    const len = Math.min(r.short, prefs.longest);
+    const slot = segsOnDay(free, today, now).find(([a, z]) => z - a >= Math.min(len, prefs.shortest) && capOk(a, Math.min(len, z - a)));
+    if (slot) { ahead = { taskId: r.taskId, start: slot[0], end: slot[0] + Math.min(len, slot[1] - slot[0]) }; break; }
+  }
+  for (const st of ahead ? [] : states) {
+    const later = st.task.sittings
+      .filter(s => !s.done && !s.pinned && !s.started && !remove.some(r => r.id === s.id))
+      .map(s => ({ id: s.id, ...(moved.get(s.id) ?? s) }))
+      .filter(s => dayOf(s.start) > today)
+      .sort((a, b) => a.start - b.start)[0];
+    if (!later) continue;
+    const len = later.end - later.start;
+    const slot = segsOnDay(free, today, now).find(([a, z]) => z - a >= len && capOk(a, len));
+    if (slot) { ahead = { taskId: st.task.id, id: later.id, from: later.start, start: slot[0], end: slot[0] + len }; break; }
+  }
+  return { place: placed, remove, atRisk, finishBy, todayOpen, ...(ahead ? { ahead } : {}) };
 }
+
+const segsOnDay = (free: Seg[], d: number, now: number): Seg[] => free
+  .map(([a, z]) => [Math.max(a, now, d * DAY), Math.min(z, (d + 1) * DAY)] as Seg)
+  .filter(([a, z]) => z > a);
 
 // ── Priority ──────────────────────────────────────────────────────────────
 

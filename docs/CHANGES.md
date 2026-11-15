@@ -9,6 +9,42 @@ still needed.
 
 ---
 
+## 2026-11-15 (task scheduler: today stays as planned; due day shows scheduled tasks)
+
+- **Why:** the owner moved a quiz sitting off today to Tuesday (no prep needed
+  until hours before). The time it left open made Soma pull Lab 10 (due Wed)
+  into today. "It should not touch today's work sesh... I don't want to do
+  more work today just cuz I'm done earlier"; the student should be asked
+  whether to get later work done. Separately, Lab 10 vanished from Wednesday:
+  due cards came only from Canvas, and a course-site task showed on its due
+  day only while it had no sittings.
+- **What:**
+  - `schedule()` (src/lib/taskScheduler.ts) never puts more task time on
+    today than today already had (`todayRoom`: the minutes of task sittings
+    planned on today, missed ones included). Sittings can shift within today;
+    freed time stays free. Exceptions: missed work (behind, not ahead: still
+    ASAP) and work whose finish day is today. Work that would only fit with
+    today is reported at risk, not moved in.
+  - It also returns `todayOpen` and `ahead`: the most important at-risk task,
+    else the most important task's next sitting after today, that fits in
+    today's open time. The runner (src/lib/taskSchedule.ts) passes it on only
+    when today's open time grew since the last run (time opened up, not just
+    time passing) and the student hasn't said "Not today" today
+    (localStorage `soma_ahead_declined:<user>:<date>`).
+  - The dashboard shows "1h opened up today · Get ahead on Lab 10?" with
+    "Move it to today" (moves that sitting in, pinned; or adds one for an
+    at-risk task) and "Not today" (`AheadNote` in MoveNote.tsx).
+  - Due cards include managed course-site tasks with sittings, on their due
+    day: "Scheduled by Soma · Sitting planned", no Plan it; the check marks
+    the task done and clears its future sittings (LiveDashboard `taskDues`).
+  - Moves by hand were already pinned (pinnedBlocks), so the moved quiz stays.
+- **Tests:** tests/task-scheduler.spec.ts (freed time stays free and is
+  offered; forced-off sittings move within today; missed and due-tonight work
+  may use today; only-fits-with-today is offered, at risk), and
+  tests/tasks-page.spec.ts (due card on the due day; offer → Move it to today;
+  Not today). The add-a-task test now expects "Next: Tomorrow".
+- **Setup:** none beyond task_scheduler_migration.sql.
+
 ## 2026-11-15 (task scheduler: work starts near its due date; Tasks lists real tasks)
 
 - **Why:** on the preview, the dashboard had Project 4 checkpoint 2 and other

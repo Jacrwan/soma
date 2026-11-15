@@ -12,7 +12,8 @@ import styles from './DashboardV2.module.css';
  * none of them reads or saves anything itself.
  */
 
-export type DueItem = { id: number; day: number; subject: string; color: string; title: string; dueAt: string };
+/** `task`: a course-site task Soma is scheduling (id is its todo id), not a Canvas assignment. */
+export type DueItem = { id: number | string; day: number; subject: string; color: string; title: string; dueAt: string; task?: boolean };
 
 const minutesOf = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
 const span = (time: string): [number, number] | null => {
@@ -86,7 +87,7 @@ export function DueSoon({ items, origin, timeFormat, onPlan }: {
       {!soon.length ? <p className={styles.description}>Nothing from Canvas due in these days.</p> : <ul className={styles.dueList}>
         {soon.map(x => <li key={x.id} className={styles[x.color as PlanBlock['color']] ?? ''}>
           <span><strong>{x.title}</strong><small>{x.subject} · {when(x)}</small></span>
-          {onPlan && <button type="button" aria-label={`Plan it: ${x.title}`} title="Plan it" onClick={() => onPlan(x)}><CalendarPlus size={13}/></button>}
+          {onPlan && !x.task && <button type="button" aria-label={`Plan it: ${x.title}`} title="Plan it" onClick={() => onPlan(x)}><CalendarPlus size={13}/></button>}
         </li>)}
       </ul>}
     </section>

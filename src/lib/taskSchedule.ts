@@ -4,7 +4,7 @@ import { readPlan, dateAt, localDate, utcIso, type History, type Snapshot } from
 import { getProposals } from './proposalStore';
 import { estimate, kindOf } from './planIt';
 import { rangeOf } from './clockRange';
-import { pinKey, pinnedKeys } from './pinnedBlocks';
+import { pinBlock, pinKey, pinnedKeys } from './pinnedBlocks';
 import { subjectForCourse } from './canvasDeepSync';
 import { asTodoKind, type Todo, type TodoSession } from '../types';
 import { dueMoment, effectiveRank, isManaged, resolvePrefs, schedule, type SchedTask } from './taskScheduler';
@@ -43,7 +43,14 @@ export type RescheduleResult = {
   atRisk: Record<string, number>;
   finishBy: Record<string, Date>;
   skipped?: string;
+  /**
+   * Time opened up today (a block moved off it, say) and a later sitting could
+   * use it. Soma doesn't move it there itself; the dashboard asks.
+   */
+  ahead?: AheadOffer;
 };
+/** `sessionId` missing: a new sitting for a task that doesn't fit. */
+export type AheadOffer = { todoId: string; title: string; sessionId?: string; from?: Date; start: Date; end: Date; opened: number };
 
 const minutesOf = (seconds: number) => Math.round(seconds / 60);
 /** Focus logged on a task: its title in its course, the way Insights files it. */
@@ -144,6 +151,14 @@ async function readTodos(userId: string): Promise<Todo[]> {
 
 let running: Promise<RescheduleResult> | null = null;
 let last: RescheduleResult | null = null;
+/** Today's open minutes at the last run, to tell time opening up from time passing. */
+let openToday: { date: string; minutes: number } | null = null;
+const aheadKey = (userId: string, date: string) => `soma_ahead_declined:${userId}:${date}`;
+/** "Not today": no more work-ahead offers for the rest of the day. */
+export function declineAhead(userId: string) {
+  try { localStorage.setItem(aheadKey(userId, localDate(new Date())), '1'); } catch { /* the offer just comes back */ }
+}
+const aheadDeclined = (userId: string, date: string) => { try { return localStorage.getItem(aheadKey(userId, date)) === '1'; } catch { return false; } };
 /** What the last run decided (at-risk minutes and finish days), for the Tasks page. */
 export const lastSchedule = () => last;
 
@@ -212,8 +227,18 @@ async function run(userId: string): Promise<RescheduleResult> {
       created++;
     }
   }
+  // Offer the work-ahead only when today's open time grew since the last run.
+  const before = openToday?.date === today ? openToday.minutes : null;
+  openToday = { date: today, minutes: result.todayOpen };
+  const opened = before === null ? 0 : result.todayOpen - before;
+  const offer = result.ahead && opened >= prefs.shortest && !aheadDeclined(userId, today) ? result.ahead : undefined;
   const out: RescheduleResult = {
     moved, created, removed: result.remove.length,
+    ...(offer ? { ahead: {
+      todoId: offer.taskId, title: info.get(offer.taskId)!.todo.text, opened,
+      ...(offer.id ? { sessionId: offer.id, from: moment(offer.from!) } : {}),
+      start: moment(offer.start), end: moment(offer.end),
+    } } : {}),
     atRisk: Object.fromEntries(result.atRisk.map(r => [r.taskId, r.short])),
     finishBy: Object.fromEntries(Object.entries(result.finishBy).map(([id, m]) => [id, moment(m)])),
   };
@@ -244,6 +269,18 @@ export async function clearFutureSittings(userId: string, sessions: TodoSession[
     const { error } = await supabase.from('todo_sessions').delete().eq('id', s.id).eq('user_id', userId);
     if (error) throw new Error(error.message);
   }
+}
+
+/** Yes to a work-ahead offer: the sitting moves into today (or a new one goes there), pinned. */
+export async function acceptAhead(userId: string, offer: AheadOffer) {
+  const row = { date: localDate(offer.start), start_time: offer.start.toISOString(), end_time: offer.end.toISOString() };
+  const { error } = offer.sessionId
+    ? await supabase.from('todo_sessions').update(row).eq('id', offer.sessionId).eq('user_id', userId)
+    : await supabase.from('todo_sessions').insert({ id: crypto.randomUUID(), user_id: userId, todo_id: offer.todoId, ...row });
+  if (error) throw new Error(error.message);
+  const hhmm = `${String(offer.start.getHours()).padStart(2, '0')}:${String(offer.start.getMinutes()).padStart(2, '0')}`;
+  pinBlock(userId, pinKey(offer.todoId, row.date, hhmm));
+  openToday = null;
 }
 
 /** Pin or unpin a sitting: pinned ones never move. */

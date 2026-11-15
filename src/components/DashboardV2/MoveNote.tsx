@@ -53,3 +53,30 @@ export default function MoveNote({ reason, moves, busy, onUndo, onDismiss, atRis
     </div>
   );
 }
+
+/**
+ * Time opened up today and a later sitting could use it. Soma never fills
+ * freed time by itself (2026-11-15): getting ahead is the student's call.
+ */
+export function AheadNote({ title, opened, from, start, end, busy, onAccept, onDecline }: {
+  title: string; opened: number; from?: Date; start: Date; end: Date; busy: boolean;
+  onAccept: () => void; onDecline: () => void;
+}) {
+  const hm = (d: Date) => formatClock(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+  const len = Math.round((+end - +start) / 60000);
+  const span = opened >= 60 ? `${Math.floor(opened / 60)}h${opened % 60 ? ` ${opened % 60}m` : ''}` : `${opened} min`;
+  return (
+    <div className={styles.moveNote} role="status" aria-live="polite">
+      <p className={styles.moveNoteHeading}>{span} opened up today</p>
+      <p className={styles.moveNoteTimes}>
+        {from
+          ? <>Get ahead on <strong>{title}</strong>? Its {from.toLocaleDateString(undefined, { weekday: 'short' })} {hm(from)} sitting would move to {hm(start)} today.</>
+          : <><strong>{title}</strong> doesn’t fit before it’s due. Put {len} min on it at {hm(start)} today?</>}
+      </p>
+      <div className={styles.moveNoteActions}>
+        <button type="button" onClick={onAccept} disabled={busy}>{from ? 'Move it to today' : 'Add it today'}</button>
+        <button type="button" onClick={onDecline}>Not today</button>
+      </div>
+    </div>
+  );
+}

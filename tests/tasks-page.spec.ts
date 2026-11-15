@@ -58,7 +58,8 @@ test('Tasks: adding a task places its sittings right away, before it is due', as
 
   const row = page.getByRole('listitem').filter({ hasText: 'Essay draft' });
   await expect(row).toBeVisible();
-  await expect(row.getByText(/^Next: Today/)).toBeVisible();
+  // Today is already planned: new work starts tomorrow, not in today's open time.
+  await expect(row.getByText(/^Next: Tomorrow/)).toBeVisible();
   const todo = state.tables.todos.find(t => t.text === 'Essay draft')!;
   expect(todo).toMatchObject({ auto_schedule: true, estimated_minutes: 120, due_date: dateOf(4) });
   const sittings = state.tables.todo_sessions.filter(s => s.todo_id === todo.id);
@@ -66,7 +67,7 @@ test('Tasks: adding a task places its sittings right away, before it is due', as
   expect(sittings).toHaveLength(3);
   expect(sittings.every(s => +new Date(String(s.end_time)) - +new Date(String(s.start_time)) === 40 * 60000)).toBe(true);
   expect(new Set(sittings.map(s => s.date)).size).toBe(3);
-  expect(sittings.every(s => String(s.date) < dateOf(4))).toBe(true);
+  expect(sittings.every(s => String(s.date) < dateOf(4) && String(s.date) > dateOf(0))).toBe(true);
   await expect(row.getByText('2h left')).toBeVisible();
 });
 
@@ -121,4 +122,56 @@ test('Tasks: open to-dos long past their date are not listed; ones still ahead a
   await expect(ahead).toBeVisible();
   await expect(ahead.getByRole('button', { name: 'Schedule' })).toBeVisible();
   await expect(page.getByText('K&K Ch.2 — End-of-chapter problem set')).toHaveCount(0);
+});
+
+test('dashboard: a scheduled course-site task still shows on the day it is due', async ({ page }) => {
+  await setup(page, {
+    todos: [task('lab', 'Lab 10: SQL', dateOf(2), { kind: 'lab', auto_schedule: null, date: dateOf(2) })],
+    todo_sessions: [{ id: 'l1', user_id: account.id, todo_id: 'lab', date: dateOf(1), start_time: at(1, '15:00'), end_time: at(1, '16:00') }],
+  });
+  await page.goto('/dashboard');
+  await page.getByRole('button', { name: /Wed\s*18/ }).first().click();
+  const card = page.locator('article[data-kind="due"]').filter({ hasText: 'Lab 10: SQL' });
+  await expect(card).toBeVisible();
+  await expect(card.getByText(/Scheduled by Soma/)).toBeVisible();
+  await expect(card.getByText('Sitting planned')).toBeVisible();
+  await expect(card.getByRole('button', { name: /Plan it/ })).toHaveCount(0);
+});
+
+test('dashboard: time that opens up today is offered, never filled on its own', async ({ page }) => {
+  const state = await setup(page, {
+    todos: [task('quiz', 'Quiz 7 prep', dateOf(2)), task('lab', 'Lab 10', dateOf(2))],
+    todo_sessions: [
+      { id: 'q1', user_id: account.id, todo_id: 'quiz', date: dateOf(0), start_time: at(0, '10:00'), end_time: at(0, '11:00') },
+      { id: 'l1', user_id: account.id, todo_id: 'lab', date: dateOf(1), start_time: at(1, '15:00'), end_time: at(1, '16:00') },
+    ],
+  });
+  await page.goto('/dashboard');
+  await expect(page.locator('article').filter({ hasText: 'Quiz 7 prep' }).first()).toBeVisible();
+  // The quiz's sitting moves to tomorrow (pinned, as a move by hand is), opening today's 10–11.
+  state.tables.todo_sessions = state.tables.todo_sessions.map(s => s.id === 'q1' ? { ...s, date: dateOf(1), start_time: at(1, '10:00'), end_time: at(1, '11:00'), pinned: true } : s);
+  await page.evaluate(() => window.dispatchEvent(new Event('soma_todos_changed')));
+  await expect(page.getByText(/opened up today/)).toBeVisible();
+  // Nothing moved by itself.
+  expect(state.tables.todo_sessions.find(s => s.id === 'l1')!.date).toBe(dateOf(1));
+  await page.getByRole('button', { name: 'Move it to today' }).click();
+  await expect.poll(() => state.tables.todo_sessions.find(s => s.id === 'l1')!.date).toBe(dateOf(0));
+  await expect(page.getByText(/opened up today/)).toHaveCount(0);
+});
+
+test('dashboard: "Not today" keeps the open time free for the day', async ({ page }) => {
+  const state = await setup(page, {
+    todos: [task('quiz', 'Quiz 7 prep', dateOf(2)), task('lab', 'Lab 10', dateOf(2))],
+    todo_sessions: [
+      { id: 'q1', user_id: account.id, todo_id: 'quiz', date: dateOf(0), start_time: at(0, '10:00'), end_time: at(0, '11:00') },
+      { id: 'l1', user_id: account.id, todo_id: 'lab', date: dateOf(1), start_time: at(1, '15:00'), end_time: at(1, '16:00') },
+    ],
+  });
+  await page.goto('/dashboard');
+  await expect(page.locator('article').filter({ hasText: 'Quiz 7 prep' }).first()).toBeVisible();
+  state.tables.todo_sessions = state.tables.todo_sessions.map(s => s.id === 'q1' ? { ...s, date: dateOf(1), start_time: at(1, '10:00'), end_time: at(1, '11:00'), pinned: true } : s);
+  await page.evaluate(() => window.dispatchEvent(new Event('soma_todos_changed')));
+  await page.getByRole('button', { name: 'Not today' }).click();
+  await expect(page.getByText(/opened up today/)).toHaveCount(0);
+  expect(state.tables.todo_sessions.find(s => s.id === 'l1')!.date).toBe(dateOf(1));
 });

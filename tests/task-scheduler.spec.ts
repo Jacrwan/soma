@@ -17,7 +17,7 @@ test('a task spreads into ~50 minute sittings, one a day, finished the day befor
   const r = run({ tasks: [task('essay', { total: 150 })] });
   expect(r.place).toHaveLength(3);
   expect(r.place.every(p => p.end - p.start === 50 && !p.id)).toBe(true);
-  expect(days(r, 'essay')).toEqual([0, 2, 4]);          // due day 5, finish by day 4
+  expect(days(r, 'essay')).toEqual([1, 2, 4]);          // due day 5, finish by day 4; today had nothing planned, so it stays free
   expect(r.atRisk).toEqual([]);
 });
 
@@ -152,4 +152,40 @@ test('a sitting placed before its window has to move into it; earlier days only 
   const busy = [{ start: at(19, 0), end: at(20, 23, 59) }];
   const full = run({ days: 30, busy, tasks: [task('far', { total: 60, due: at(21, 23, 59) })] });
   expect(days(full, 'far')).toEqual([18]);
+});
+
+test('freed time today stays free: later work is offered, not moved in', () => {
+  // Lab due day 3 had a sitting on day 1; the quiz that was on today moved away (pinned to day 2).
+  const lab = task('lab', { total: 60, due: at(3, 23, 59), sittings: [{ id: 'l1', start: at(1, 15), end: at(1, 16) }] });
+  const quiz = task('quiz', { total: 60, due: at(3, 23, 59), sittings: [{ id: 'q1', start: at(2, 10), end: at(2, 11), pinned: true }] });
+  const r = run({ tasks: [lab, quiz] });
+  expect(r.place).toEqual([]);                              // nothing pulled into today
+  expect(r.ahead).toEqual({ taskId: 'lab', id: 'l1', from: at(1, 15), start: at(0, 9), end: at(0, 10) });
+  expect(r.todayOpen).toBe(14 * 60);
+});
+
+test('a sitting forced off today by a new event moves within today, never adding to it', () => {
+  const hw = task('hw', { total: 60, due: at(2, 23, 59), sittings: [{ id: 'h', start: at(0, 14), end: at(0, 15) }] });
+  const other = task('other', { rank: 1, total: 60, due: at(2, 23, 59) });
+  const r = run({ tasks: [hw, other], busy: [{ start: at(0, 13), end: at(0, 16) }] });
+  expect(r.place.find(p => p.id === 'h')!.start).toBe(at(0, 9));          // still today
+  expect(days(r, 'other').every(d => d > 0)).toBe(true);                  // the other task doesn't join it
+});
+
+test('missed work and work due tonight may still use today', () => {
+  // Missed yesterday: being behind, not ahead.
+  const missed = task('missed', { total: 60, due: at(2, 23, 59), sittings: [{ id: 'm', start: at(-1, 15), end: at(-1, 16) }] });
+  const r1 = run({ tasks: [missed] });
+  expect(r1.place).toEqual([{ taskId: 'missed', id: 'm', start: at(0, 9), end: at(0, 10) }]);
+  const r2 = run({ tasks: [task('tonight', { total: 60, due: at(1, 23, 59) })] });
+  expect(days(r2, 'tonight')).toEqual([0]);                               // finish day is today
+});
+
+test('a task that only fits with today is offered today, not crammed in', () => {
+  // Due day 2 (finish day 1), but day 1 is full.
+  const t = task('t', { total: 60, due: at(2, 23, 59) });
+  const r = run({ tasks: [t], busy: [{ start: at(1, 0), end: at(2, 0) }] });
+  expect(r.place).toEqual([]);
+  expect(r.atRisk).toEqual([{ taskId: 't', short: 60 }]);
+  expect(r.ahead).toEqual({ taskId: 't', start: at(0, 9), end: at(0, 10) });
 });

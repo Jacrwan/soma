@@ -43,9 +43,11 @@ export interface DashboardRuntime {
  /** The student's widgets, and saving a new arrangement (lib/dashboardLayout.ts). */
  layout?: DashboardLayout; onLayout?: (layout: DashboardLayout) => Promise<void>;
  /** Synced Canvas work not handed in yet, by day: fills the subject bar and week strip when nothing is planned. */
- due?: { id: number; day: number; subject: string; subjectId?: string; color: string; title: string; dueAt: string;
+ due?: { id: number | string; day: number; subject: string; subjectId?: string; color: string; title: string; dueAt: string;
   /** Plan it's sittings for it: how many, how many checked off, and the minutes logged on them. */
-  plan?: { total: number; done: number; minutes: number } }[];
+  plan?: { total: number; done: number; minutes: number };
+  /** A course-site task Soma schedules (id is the todo id), shown on its due day while its sittings sit earlier. */
+  task?: boolean }[];
  /** Schedule it: a due assignment becomes a task Soma schedules (src/lib/taskSchedule.ts). */
  planIt?: {
   estimate: (target: PlanTarget) => { minutes: number; basis: string };
@@ -55,7 +57,7 @@ export interface DashboardRuntime {
  /** Open Plan it on this, e.g. from Deadlines. */
  initialPlan?: PlanTarget;
  /** Start focus on a due assignment, and mark one handed in. */
- onFocusDue?: (id: number) => void; onDueDone?: (id: number) => void;
+ onFocusDue?: (id: number | string) => void; onDueDone?: (id: number | string) => void;
  onSave: (block: Block) => Promise<void>;
  onState: (id: string | number, state: State, opts?: { deleteLoggedTime?: boolean }) => Promise<void>;
  onDismiss: (id: string | number) => void;
@@ -200,7 +202,7 @@ export default function DashboardV2({runtime}:{runtime?:DashboardRuntime}) {
       ? <span className={styles.dueProgress}>{x.plan.total > 1 ? `${x.plan.done} of ${x.plan.total} sittings done` : x.plan.done ? 'Sitting done' : 'Sitting planned'}{logged ? ` · ${logged}` : ''}</span>
       : logged ? <span className={styles.dueProgress}>{logged}</span>
       : runtime?.planIt && x.day <= 3 ? <span className={styles.dueUnplanned}>Not planned yet</span> : null;
-    return <article key={`due-${x.id}`} data-kind="due" className={`${styles.block} ${styles[x.color as Block['color']] ?? ''}`}><div className={styles.blockTime}>Due<span>{formatClock(clock,timeFormat)}</span></div><div className={styles.blockBody}><span className={styles.subject}>{x.subject}</span><h3>{x.title}</h3><span className={styles.state}>From Canvas · not handed in{progress && <> · {progress}</>}</span></div><div className={styles.actions}>{runtime?.planIt && day>=0 && <button aria-label={`Plan it: ${x.title}`} onClick={()=>{setEditor(null);setPlanning(target);}}><CalendarPlus size={13}/> Plan it</button>}{runtime?.onFocusDue && day>=0 && <button disabled={runtime.timerActive} aria-label={`Start focus: ${x.title}`} onClick={()=>runtime.onFocusDue!(x.id)}><Play size={13}/> Focus</button>}{runtime?.onDueDone && <button aria-label={`Handed in: ${x.title}`} title="Handed in" onClick={()=>runtime.onDueDone!(x.id)}><Check size={14}/></button>}</div></article>;
+    return <article key={`due-${x.id}`} data-kind="due" className={`${styles.block} ${styles[x.color as Block['color']] ?? ''}`}><div className={styles.blockTime}>Due<span>{formatClock(clock,timeFormat)}</span></div><div className={styles.blockBody}><span className={styles.subject}>{x.subject}</span><h3>{x.title}</h3><span className={styles.state}>{x.task ? 'Scheduled by Soma' : 'From Canvas · not handed in'}{progress && <> · {progress}</>}</span></div><div className={styles.actions}>{runtime?.planIt && day>=0 && !x.task && <button aria-label={`Plan it: ${x.title}`} onClick={()=>{setEditor(null);setPlanning(target);}}><CalendarPlus size={13}/> Plan it</button>}{runtime?.onFocusDue && day>=0 && <button disabled={runtime.timerActive} aria-label={`Start focus: ${x.title}`} onClick={()=>runtime.onFocusDue!(x.id)}><Play size={13}/> Focus</button>}{runtime?.onDueDone && <button aria-label={`${x.task ? 'Done' : 'Handed in'}: ${x.title}`} title={x.task ? 'Done' : 'Handed in'} onClick={()=>runtime.onDueDone!(x.id)}><Check size={14}/></button>}</div></article>;
   }
   // One card for both the timed agenda and the unscheduled list.
   function blockCard(b: Block) {
