@@ -24,7 +24,7 @@ export const REALMS = {
   wilds: {
     title: 'The Wilds', enemy: 'fox', names: ['Wild fox', 'Dire fox'], boss: 'The Alpha', seed: 71,
     speed: 6.4, reach: 2.1, windup: 0.4, eliteTint: 0x6b6f86, bossTint: 0x8d4a4a, bossScale: 2.9,
-    palette: [[62, 104, 52], [98, 140, 66], [122, 104, 70]], rock: [112, 110, 104],
+    palette: [[120, 182, 78], [136, 196, 90], [206, 172, 118]], rock: [150, 154, 160],
     shrine: ['Moss Stones', 'Hunter Stones'], look: null, grass: true,
     levels: { camps: [1, 2, 3, 6, 4, 8], roam: [1, 3], boss: 10 },
   },
@@ -87,7 +87,7 @@ export function createRealms(ctx) {
         }
         const rocky = Math.max(0, Math.min(1, (r - RADIUS + 1) / 7));
         const t = Math.max(0, Math.min(1, (n - 0.35) * 2.2));
-        let shade = 0.8 + fine * 0.4;
+        let shade = cfg.craters ? 0.8 + fine * 0.4 : 0.95 + fine * 0.1;
         // Impact craters: a dark bowl, a bright raised rim, and one wall in sunlight.
         for (const c of craters) {
           const dx = x - c.x, dz = z - c.z;
@@ -163,12 +163,12 @@ export function createRealms(ctx) {
     }
 
     const { map, span } = paint(cfg, taken.map((t) => ({ x: t.x, z: t.z, r: t.r * 0.9 })));
-    group.add(ground(span, 150, name === 'wilds' ? edgeHeight : rimHeight, groundMaterial(map, noiseTexture('dust', 256), 150, name === 'wilds' ? 1.6 : 3.2), span));
+    group.add(ground(span, 150, name === 'wilds' ? edgeHeight : rimHeight, groundMaterial(map, noiseTexture('dust', 256), 150, name === 'wilds' ? 0.3 : 3.2, name === 'wilds' ? 0.2 : 1), span));
 
     // Trees and rocks you have to walk around.
     const solids = [];
     if (name === 'wilds') {
-      const forest = createForest(110);
+      const forest = createForest();
       const trees = [];
       for (let tries = 0; trees.length < 430 && tries < 6000; tries++) {
         const p = polar(Math.sqrt(r()) * (RADIUS + 9), r() * 360);
@@ -185,7 +185,7 @@ export function createRealms(ctx) {
     } else {
       // Loose stones everywhere, too small to block the way.
       const dummy = new THREE.Object3D();
-      const pebbles = new THREE.InstancedMesh(rockGeometry(), A.mat(A.C.rockDark, { kind: 'rock' }), 700);
+      const pebbles = new THREE.InstancedMesh(rockGeometry(true), A.mat(A.C.rockDark, { kind: 'rock' }), 700);
       pebbles.castShadow = true;
       pebbles.receiveShadow = true;
       for (let i = 0; i < 700; i++) {
@@ -199,7 +199,7 @@ export function createRealms(ctx) {
       }
       group.add(pebbles);
       // Wind-carved spires of dark basalt.
-      const spires = new THREE.InstancedMesh(rockGeometry(), A.mat(A.C.rockDark, { kind: 'rock' }), 60);
+      const spires = new THREE.InstancedMesh(rockGeometry(true), A.mat(A.C.rockDark, { kind: 'rock' }), 60);
       spires.castShadow = true;
       spires.receiveShadow = true;
       let ns = 0;
@@ -298,7 +298,7 @@ export function createRealms(ctx) {
       moonlet.position.set(120, 210, -300);
       group.add(moonlet);
     }
-    const rockMesh = new THREE.InstancedMesh(rockGeometry(), A.mat(A.C.rock, { kind: 'rock' }), 70);
+    const rockMesh = new THREE.InstancedMesh(rockGeometry(name !== 'wilds'), A.mat(A.C.rock, { kind: 'rock' }), 70);
     rockMesh.castShadow = true;
     rockMesh.receiveShadow = true;
     const dummy = new THREE.Object3D();
@@ -374,7 +374,7 @@ export function createRealms(ctx) {
     for (let i = 0; i < 12; i++) {
       const p = polar(12.5, i * 30);
       const s = 1.6 + (i % 3) * 0.5;
-      const rock = new THREE.Mesh(rockGeometry(), A.mat(name === 'wilds' ? A.C.rockDark : A.C.iron, { kind: 'rock' }));
+      const rock = new THREE.Mesh(rockGeometry(name !== 'wilds'), A.mat(name === 'wilds' ? A.C.rockDark : A.C.iron, { kind: 'rock' }));
       rock.scale.set(s, s * 1.7, s);
       rock.castShadow = true;
       lair.add(A.at(rock, p.x, 0, p.z, i));

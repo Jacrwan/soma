@@ -18,6 +18,8 @@ Files in `public/game/models`:
 
 - `Barbarian.glb`: the hero. KayKit Adventurers pack by Kay Lousberg
   (kaylousberg.com), CC0.
+- `nature/`: trees and clouds from the KayKit Medieval Hexagon pack by Kay
+  Lousberg, CC0.
 - `Fox.glb`: Khronos glTF Sample Assets. Model by PixelMannen (CC0), rigging
   and animation by tomkranis (CC-BY 4.0).
 - `Soldier.glb`, `RobotExpressive.glb`: three.js examples. RobotExpressive is by

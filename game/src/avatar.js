@@ -84,6 +84,22 @@ export const avatarReady = loader.loadAsync('/game/models/Barbarian.glb').then((
   const box = new THREE.Box3();
   gltf.scene.traverse((o) => { if (o.isSkinnedMesh && /Body|Head|Leg/.test(o.name)) box.expandByObject(o); });
   fit = HEIGHT / Math.max(0.5, box.max.y - Math.min(0, box.min.y));
+  // No beard: drop the head's triangles painted from the beard swatch (second
+  // swatch of the top row of the palette), leaving the face under it.
+  gltf.scene.traverse((o) => {
+    if (!o.isMesh || o.name !== 'Barbarian_Head' || !o.geometry.index) return;
+    const g = o.geometry;
+    const uv = g.attributes.uv;
+    const index = g.index.array;
+    const keep = [];
+    for (let t = 0; t < index.length; t += 3) {
+      const u = (uv.getX(index[t]) + uv.getX(index[t + 1]) + uv.getX(index[t + 2])) / 3;
+      const v = (uv.getY(index[t]) + uv.getY(index[t + 1]) + uv.getY(index[t + 2])) / 3;
+      if (u >= 0.125 && u < 0.25 && v < 0.25) continue;
+      keep.push(index[t], index[t + 1], index[t + 2]);
+    }
+    g.setIndex(keep);
+  });
   const repainted = new Map();
   const done = new Set();
   gltf.scene.traverse((o) => {

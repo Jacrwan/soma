@@ -2,6 +2,7 @@
 // whole forest draws in a handful of calls, and the leaves and grass sway.
 
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { surfaceTexture, noise3 } from './tex.js';
 
@@ -239,45 +240,144 @@ export function treeVariants() {
 }
 
 /** A forest that can be re-planted: place(list of { x, z, kind, scale, turn }). */
-export function createForest(capacity = 90) {
-  const { barkMat: bark, leafMat: leaf } = treeMaterials();
-  const object = new THREE.Group();
-  const slots = [];
-  treeVariants().forEach((kinds, kind) => kinds.forEach((v, variant) => {
-    const trunk = new THREE.InstancedMesh(v.trunk, bark, capacity);
-    const leaves = new THREE.InstancedMesh(v.leaf, leaf, capacity);
-    for (const m of [trunk, leaves]) {
-      m.castShadow = true;
-      m.receiveShadow = true;
-      m.frustumCulled = false;
-      m.count = 0;
-      object.add(m);
+// Trees and clouds from the KayKit Medieval Hexagon pack by Kay Lousberg (CC0,
+// public/models/nature). Same artist as the hero, so the world and the
+// character read as one cartoon style.
+const KIT_FILES = ['tree_single_A', 'tree_single_B', 'cloud_big', 'cloud_small'];
+export const kit = {};
+const kitLoader = new GLTFLoader();
+export const natureReady = Promise.all(KIT_FILES.map((name) => kitLoader.loadAsync(`/game/models/nature/${name}.gltf`).then((gltf) => {
+  gltf.scene.updateMatrixWorld(true);
+  gltf.scene.traverse((o) => {
+    if (!o.isMesh || kit[name]) return;
+    kit[name] = { geometry: o.geometry.clone().applyMatrix4(o.matrixWorld), material: o.material };
+  });
+}))).then(() => true).catch((error) => {
+  console.warn('Nature models did not load.', error);
+  return false;
+});
+
+const TREE_SIZE = 4.6; // the pack's trees are about 1.1 units tall
+
+/**
+ * A round, leafy tree in the same low-poly style as the pack's pines (which
+ * has no broadleaf trees): a tapered trunk and three faceted blobs of leaves,
+ * lighter on top. About 1 unit tall, coloured per vertex.
+ */
+function roundTreeGeometry() {
+  const parts = [];
+  const paint = (g, fn) => {
+    const p = g.attributes.position;
+    const colors = new Float32Array(p.count * 3);
+    const c = new THREE.Color();
+    for (let i = 0; i < p.count; i++) {
+      fn(c, p.getX(i), p.getY(i), p.getZ(i));
+      c.toArray(colors, i * 3);
     }
-    slots.push({ kind, variant, trunk, leaves });
-  }));
+    g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    return g;
+  };
+  const trunk = new THREE.CylinderGeometry(0.055, 0.085, 0.52, 6).toNonIndexed();
+  trunk.translate(0, 0.26, 0);
+  parts.push(paint(trunk, (c, x, y) => c.set(0x7a4f33).lerp(new THREE.Color(0x9a6a44), y / 0.52)));
+  const dark = new THREE.Color(0x4f9a38), light = new THREE.Color(0xa6d85c);
+  for (const [x, y, z, r] of [[0, 0.68, 0, 0.3], [0.17, 0.53, 0.07, 0.22], [-0.15, 0.55, -0.08, 0.21], [0.02, 0.5, -0.17, 0.19]]) {
+    const g = new THREE.IcosahedronGeometry(r, 1);
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const px = p.getX(i), py = p.getY(i), pz = p.getZ(i);
+      const k = 1 + (noise3(px * 9 + x * 5, py * 9, pz * 9) - 0.5) * 0.22;
+      p.setXYZ(i, px * k, py * k * 0.92, pz * k);
+    }
+    g.translate(x, y, z);
+    parts.push(paint(g, (c, _x, py) => c.copy(dark).lerp(light, Math.max(0, Math.min(1, (py - 0.3) / 0.65)))));
+  }
+  for (const g of parts) {
+    g.deleteAttribute('uv');
+    g.computeVertexNormals();
+  }
+  return mergeGeometries(parts);
+}
+let roundTree = null;
+const forests = new Set();
+natureReady.then((ok) => { if (ok) for (const f of forests) f.flush(); });
+
+/** Instanced cartoon trees. place(trees) takes { x, y?, z, kind, scale, turn }; kind 1 is a pine. */
+export function createForest() {
+  const object = new THREE.Group();
+  let pending = null;
+  let meshes = [];
   const dummy = new THREE.Object3D();
-  return {
-    object,
-    place(trees) {
-      for (const s of slots) s.trunk.count = s.leaves.count = 0;
-      trees.forEach((t, i) => {
-        const s = slots.find((slot) => slot.kind === t.kind && slot.variant === i % 3);
-        if (s.trunk.count >= capacity) return;
+  const tint = new THREE.Color();
+  function build(trees) {
+    for (const m of meshes) {
+      object.remove(m);
+      m.dispose();
+    }
+    meshes = [];
+    // kind 0: round leafy tree; kind 1: one of the pack's two pines.
+    const pine = (t) => (Math.abs(Math.sin(t.x * 3.1 + t.z * 1.7)) < 0.5 ? 1 : 2);
+    if (!roundTree) {
+      roundTree = {
+        geometry: roundTreeGeometry(),
+        material: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true }),
+      };
+    }
+    [roundTree, kit.tree_single_A, kit.tree_single_B].forEach((src, kind) => {
+      const list = trees.filter((t) => (t.kind === 1 ? pine(t) : 0) === kind);
+      if (!list.length) return;
+      const material = sway(src.material.clone(), 0.016, 0.35);
+      const mesh = new THREE.InstancedMesh(src.geometry, material, list.length);
+      list.forEach((t, i) => {
         dummy.position.set(t.x, t.y || 0, t.z);
         dummy.rotation.set(0, t.turn, 0);
-        dummy.scale.setScalar(t.scale);
+        dummy.scale.setScalar(TREE_SIZE * t.scale * (kind === 0 ? 1.15 : 1));
         dummy.updateMatrix();
-        s.trunk.setMatrixAt(s.trunk.count, dummy.matrix);
-        s.leaves.setMatrixAt(s.leaves.count, dummy.matrix);
-        s.trunk.count += 1;
-        s.leaves.count += 1;
+        mesh.setMatrixAt(i, dummy.matrix);
+        // A little variety: some trees a touch lighter, warmer or deeper.
+        const k = Math.sin(t.x * 12.9 + t.z * 78.2) * 0.5 + 0.5;
+        tint.setRGB(0.9 + k * 0.18, 0.94 + k * 0.1, 0.9 + (1 - k) * 0.12);
+        mesh.setColorAt(i, tint);
       });
-      for (const s of slots) {
-        s.trunk.instanceMatrix.needsUpdate = true;
-        s.leaves.instanceMatrix.needsUpdate = true;
-      }
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.frustumCulled = false;
+      object.add(mesh);
+      meshes.push(mesh);
+    });
+  }
+  const forest = {
+    object,
+    place(trees) {
+      pending = trees;
+      if (kit.tree_single_A) build(trees);
+    },
+    flush() {
+      if (pending) build(pending);
     },
   };
+  forests.add(forest);
+  return forest;
+}
+
+/** Cartoon clouds drifting in a ring around the middle of the map. */
+export function createClouds(count, seedN, inner, outer, low, high) {
+  const group = new THREE.Group();
+  natureReady.then((ok) => {
+    if (!ok) return;
+    const r = seeded(seedN);
+    for (let i = 0; i < count; i++) {
+      const src = kit[r() < 0.55 ? 'cloud_big' : 'cloud_small'];
+      const cloud = new THREE.Mesh(src.geometry, src.material);
+      const a = (i / count) * Math.PI * 2 + r() * 0.4;
+      const d = inner + r() * (outer - inner);
+      cloud.position.set(Math.cos(a) * d, low + r() * (high - low), Math.sin(a) * d);
+      cloud.rotation.y = r() * 6.28;
+      cloud.scale.setScalar(6 + r() * 6);
+      group.add(cloud);
+    }
+  });
+  return group;
 }
 
 /** One standalone tree (for previews). */
@@ -294,16 +394,17 @@ export function singleTree(kind, variant = 0) {
 }
 
 let rockSeed = 1;
-export function rockGeometry() {
+/** A rock. Faceted and low-poly to suit the cartoon world; smooth for the realistic far planet. */
+export function rockGeometry(smooth = false) {
   const seedN = rockSeed++ * 3.7;
-  const g = new THREE.SphereGeometry(0.75, 11, 8);
+  const g = smooth ? new THREE.SphereGeometry(0.75, 11, 8) : new THREE.IcosahedronGeometry(0.75, 1);
   const p = g.attributes.position;
   const v = new THREE.Vector3();
   for (let i = 0; i < p.count; i++) {
     v.fromBufferAttribute(p, i);
     const n = noise3(v.x * 1.5 + seedN, v.y * 1.5 - seedN, v.z * 1.5 + seedN * 0.5);
     const n2 = noise3(v.x * 4 + seedN, v.y * 4, v.z * 4);
-    v.multiplyScalar(0.72 + n * 0.6 + (n2 - 0.5) * 0.14);
+    v.multiplyScalar(0.72 + n * 0.6 + (smooth ? (n2 - 0.5) * 0.14 : 0));
     v.y = Math.max(v.y * 0.8, -0.22);
     p.setXYZ(i, v.x, v.y, v.z);
   }
@@ -311,26 +412,25 @@ export function rockGeometry() {
   return scaleUv(g, 3.5, 2);
 }
 
-/** Thousands of small grass tufts in one mesh. allowed(x, z) says where grass may grow. */
 export function createGrass(count, radius, allowed, seedN = 21) {
   const r = seeded(seedN);
   const pos = [];
   const col = [];
   const nor = [];
   const idx = [];
-  const blades = 6;
+  const blades = 5;
   for (let b = 0; b < blades; b++) {
     const a = r() * 6.28;
     const d = r() * 0.3;
     const x = Math.cos(a) * d, z = Math.sin(a) * d;
-    const h = 0.13 + r() * 0.17;
-    const w = 0.016 + r() * 0.012;
+    const h = 0.16 + r() * 0.16;
+    const w = 0.03 + r() * 0.018;
     const face = r() * 6.28;
     const lx = Math.cos(face) * w, lz = Math.sin(face) * w;
     const tipX = x + (r() - 0.5) * 0.14, tipZ = z + (r() - 0.5) * 0.14;
     const base = pos.length / 3;
     pos.push(x - lx, 0, z - lz, x + lx, 0, z + lz, tipX, h, tipZ);
-    col.push(0.72, 0.72, 0.72, 0.72, 0.72, 0.72, 1.25, 1.25, 1.25);
+    col.push(0.82, 0.82, 0.82, 0.82, 0.82, 0.82, 1.12, 1.12, 1.12);
     nor.push(0, 1, 0, 0, 1, 0, 0, 1, 0);
     idx.push(base, base + 1, base + 2, base, base + 2, base + 1);
   }
@@ -352,7 +452,7 @@ export function createGrass(count, radius, allowed, seedN = 21) {
   };
   const mesh = new THREE.InstancedMesh(g, material, count);
   const dummy = new THREE.Object3D();
-  const shades = [0x7aa24c, 0x86ab50, 0x6c9645, 0x93b058, 0xa3b25c].map((c) => new THREE.Color(c));
+  const shades = [0x86c255, 0x8fc95d, 0x7dba4e, 0x94cd62].map((c) => new THREE.Color(c));
   const c = new THREE.Color();
   let placed = 0;
   for (let tries = 0; tries < count * 3 && placed < count; tries++) {
@@ -369,7 +469,7 @@ export function createGrass(count, radius, allowed, seedN = 21) {
     dummy.scale.set(s, s * (0.8 + r() * 0.5), s);
     dummy.updateMatrix();
     mesh.setMatrixAt(placed, dummy.matrix);
-    c.copy(shades[Math.floor(r() * shades.length)]).multiplyScalar(0.85 + r() * 0.3);
+    c.copy(shades[Math.floor(r() * shades.length)]).multiplyScalar(0.95 + r() * 0.1);
     mesh.setColorAt(placed, c);
     placed += 1;
   }

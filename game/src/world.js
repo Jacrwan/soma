@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { C, mat, at, makeRock, makeTownCenter, makeGate, makeLander } from './art.js';
 import { noiseTexture, rippleNormals, fbm, noise3 } from './tex.js';
-import { createForest, createGrass, wind } from './nature.js';
+import { createForest, createGrass, createClouds, wind } from './nature.js';
 import { EARTH_PADS, MOON_PADS } from './sim.js';
 
 export const ISLAND_RADIUS = 43; // how far you can walk
@@ -96,7 +96,7 @@ export function ground(size, segments, heightAt, material, span) {
 }
 
 /** A ground material: one big painted map, with fine grain multiplied in up close. */
-export function groundMaterial(map, grain, grainRepeat, bumpScale) {
+export function groundMaterial(map, grain, grainRepeat, bumpScale, amount = 1) {
   const bump = grain.clone();
   bump.repeat.setScalar(grainRepeat);
   bump.needsUpdate = true;
@@ -106,7 +106,7 @@ export function groundMaterial(map, grain, grainRepeat, bumpScale) {
     shader.fragmentShader = `uniform sampler2D uGrain;\n${shader.fragmentShader}`.replace('#include <map_fragment>', `#include <map_fragment>
       float grainNear = texture2D(uGrain, vMapUv * ${grainRepeat.toFixed(1)}).r;
       float grainFar = texture2D(uGrain, vMapUv * ${(grainRepeat / 7).toFixed(1)}).r;
-      diffuseColor.rgb *= mix(0.7, 1.2, grainNear) * mix(0.85, 1.12, grainFar);`);
+      diffuseColor.rgb *= mix(${(1 - 0.3 * amount).toFixed(3)}, ${(1 + 0.2 * amount).toFixed(3)}, grainNear) * mix(${(1 - 0.15 * amount).toFixed(3)}, ${(1 + 0.12 * amount).toFixed(3)}, grainFar);`);
   };
   return material;
 }
@@ -130,22 +130,22 @@ function stamp(hex) {
 const MAP_SPAN = 104; // metres the painted ground map covers
 const MAP_SIZE = 2048;
 const ROADS = [
-  { base: 0x9a7b55, edge: 0x7f6a48, speck: [0x82663f, 0xb49a72, 0x6f5a3c], kind: 'dirt' },
-  { base: 0xcdb486, edge: 0xa8946a, speck: [0xb39a6c, 0xe0cba0, 0x9c8760], kind: 'dirt' },
+  { base: 0xd6b07a, edge: 0xc09862, speck: [0xcca673, 0xe0bf8c], kind: 'dirt' },
+  { base: 0xe2c591, edge: 0xc9aa72, speck: [0xd8b984, 0xecd3a4], kind: 'dirt' },
   { base: 0x9d978a, edge: 0x777a5c, speck: [0x8a8478, 0xb5afa2, 0x74706a, 0xa39a88], kind: 'cobble' },
   { base: 0x7f7a72, edge: 0x66664f, speck: [0x6c6861, 0x928d84, 0x5d5a55, 0x85807a], kind: 'cobble' },
   { base: 0x3f4249, edge: 0xb9b6ad, speck: [0x383b41, 0x4a4d55, 0x45484e], kind: 'asphalt' },
   { base: 0xcfd6de, edge: 0x8fd3e8, speck: [0xc2c9d2, 0xdde3ea, 0xb8c0ca], kind: 'asphalt' },
 ];
 const SKIES = [
-  { zenith: 0x2f76cf, horizon: 0xc6dff0, cover: 0.48, haze: 0.0062, sun: 0xfff1d6 },
-  { zenith: 0x2c7fdc, horizon: 0xecdcbb, cover: 0.34, haze: 0.0062, sun: 0xffe9bf },
-  { zenith: 0x3a80cc, horizon: 0xcbe0ee, cover: 0.52, haze: 0.0066, sun: 0xfff1d6 },
+  { zenith: 0x2f8cf0, horizon: 0xbfe4ff, cover: 0.14, haze: 0.0034, sun: 0xfff3dc },
+  { zenith: 0x2f8cf0, horizon: 0xd8ecff, cover: 0.12, haze: 0.0034, sun: 0xffefcf },
+  { zenith: 0x3a8ae6, horizon: 0xc6e4fb, cover: 0.2, haze: 0.0038, sun: 0xfff3dc },
   { zenith: 0x6f8aa3, horizon: 0xd6cdbd, cover: 0.68, haze: 0.0092, sun: 0xffe2b8 },
   { zenith: 0x2a79de, horizon: 0xc8e0f4, cover: 0.42, haze: 0.006, sun: 0xfff4e0 },
   { zenith: 0x2c48bd, horizon: 0xd3c8ee, cover: 0.36, haze: 0.006, sun: 0xffeedd },
 ];
-const TREES = [84, 70, 58, 38, 30, 36];
+const TREES = [58, 50, 42, 30, 24, 28];
 
 const SKY_VERT = `
   varying vec3 vDir;
@@ -278,7 +278,7 @@ export function createWorld(scene, renderer) {
   mapTexture.flipY = false;
   mapTexture.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 4;
   const grain = noiseTexture('dust', 256);
-  const island = ground(MAP_SPAN, 104, hillHeight, groundMaterial(mapTexture, grain, 70, 1.4), MAP_SPAN);
+  const island = ground(MAP_SPAN, 104, hillHeight, groundMaterial(mapTexture, grain, 70, 0.25, 0.18), MAP_SPAN);
   earth.add(island);
 
   // The hills and mountains around the valley, coloured by height.
@@ -289,23 +289,23 @@ export function createWorld(scene, renderer) {
     const p = g.attributes.position;
     const colors = new Float32Array(p.count * 3);
     const c = new THREE.Color();
-    const stops = [[0, 0x6f9647], [7, 0x557f3a], [22, 0x4a6b38], [34, 0x77786f], [50, 0x8b8c88], [60, 0xf1f4f8]];
+    const stops = [[0, 0x84bd52], [7, 0x72b048], [22, 0x5c9a40], [32, 0x8f949a], [48, 0xa9aeb4], [58, 0xf4f6f8]];
     for (let i = 0; i < p.count; i++) {
       const x = p.getX(i), z = p.getZ(i);
       const h = hillHeight(x, z);
       // Under the painted meadow this sheet sits just below it.
       p.setY(i, Math.abs(x) < half - 0.5 && Math.abs(z) < half - 0.5 ? h - 0.8 : h);
-      const t = h + noise2(x * 0.9, z * 0.9) * 4;
+      const t = h + noise2(x * 0.5, z * 0.5) * 2.5;
       let k = stops.length - 2;
       while (k > 0 && t < stops[k][0]) k -= 1;
       const [h0, a] = stops[k], [h1, b] = stops[k + 1];
       c.set(a).lerp(new THREE.Color(b), Math.max(0, Math.min(1, (t - h0) / (h1 - h0))));
-      c.multiplyScalar(0.88 + 0.2 * (noise2(x * 2.3, z * 2.3) * 0.5 + 0.5));
+      c.multiplyScalar(0.97 + 0.05 * (noise2(x * 2.3, z * 2.3) * 0.5 + 0.5));
       c.toArray(colors, i * 3);
     }
     g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     g.computeVertexNormals();
-    const hills = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
+    const hills = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true }));
     hills.receiveShadow = true;
     earth.add(hills);
   }
@@ -321,9 +321,11 @@ export function createWorld(scene, renderer) {
   water.renderOrder = 2;
   water.visible = false; // the valley has no sea
 
+  earth.add(createClouds(16, 404, 60, 190, 34, 62));
+
   // Far-off peaks, so the horizon isn't empty.
   const far = seeded(314);
-  const islandMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 });
+  const islandMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true });
   for (let i = 0; i < 15; i++) {
     const a = (i / 15) * 6.28 + far() * 0.3;
     const d = 300 + far() * 160;
@@ -339,8 +341,8 @@ export function createWorld(scene, renderer) {
       const ny = y * tall * (0.55 + n * 0.9);
       p.setXYZ(k, x * (0.8 + n * 0.4), ny - 1, z * (0.8 + n * 0.4));
       const t = ny / (size * tall);
-      c.set(0x4a6b38).lerp(new THREE.Color(0x7d7f78), Math.max(0, Math.min(1, t * 2.4 - 0.3 + (n - 0.5))));
-      if (t + (n - 0.5) * 0.3 > 0.62) c.set(0xf1f4f8);
+      c.set(0x5c9a40).lerp(new THREE.Color(0x9aa0a6), Math.max(0, Math.min(1, t * 2.4 - 0.3 + (n - 0.5))));
+      if (t + (n - 0.5) * 0.3 > 0.62) c.set(0xf4f6f8);
       c.toArray(colors, k * 3);
     }
     g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
@@ -353,7 +355,7 @@ export function createWorld(scene, renderer) {
   // Woods on the slopes around the valley. They never change, so they are placed once.
   {
     const r = seeded(77);
-    const slopes = createForest(300);
+    const slopes = createForest();
     const list = [];
     for (let tries = 0; tries < 6000 && list.length < 780; tries++) {
       const a = r() * 6.28, d = 46.5 + r() * r() * 95;
@@ -413,9 +415,9 @@ export function createWorld(scene, renderer) {
       ctx.drawImage(img, X(x) - radius * s, X(z) - radius * s, radius * 2 * s, radius * 2 * s);
     };
     ctx.globalAlpha = 1;
-    ctx.fillStyle = '#6f9647';
+    ctx.fillStyle = '#84bd52';
     ctx.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
-    const sands = [stamp(0x648d40), stamp(0x7ba24c), stamp(0x5a873b)];
+    const sands = [stamp(0x7db54c), stamp(0x8ac459), stamp(0x79b04a)];
     for (let i = 0; i < 900; i++) {
       const a = r() * 6.28, d = 39 + r() * 13;
       dab(sands[i % 3], Math.cos(a) * d, Math.sin(a) * d, 0.6 + r() * 2.2, 0.25);
@@ -423,30 +425,31 @@ export function createWorld(scene, renderer) {
     // Grass, fading into the beach.
     ctx.globalAlpha = 1;
     const fade = ctx.createRadialGradient(X(0), X(0), 39.6 * s, X(0), X(0), 42.6 * s);
-    fade.addColorStop(0, css(0x6b9545, 1));
-    fade.addColorStop(1, css(0x8a9a52, 0));
+    fade.addColorStop(0, css(0x84bd52, 1));
+    fade.addColorStop(1, css(0x84bd52, 0));
     ctx.fillStyle = fade;
     ctx.beginPath();
     ctx.arc(X(0), X(0), 43 * s, 0, 6.3);
     ctx.fill();
-    const greens = [0x5a873b, 0x7ba24c, 0x86a653, 0x648d40, 0x97a658, 0x4f7c38].map(stamp);
-    for (let i = 0; i < 5200; i++) {
+    // Cartoon grass: one clean green with a few big, soft patches.
+    const greens = [0x7db54c, 0x8ac459, 0x8fc95e, 0x79b04a].map(stamp);
+    for (let i = 0; i < 700; i++) {
       const a = r() * 6.28, d = Math.sqrt(r()) * 41;
-      dab(greens[Math.floor(r() * greens.length)], Math.cos(a) * d, Math.sin(a) * d, 0.5 + r() * r() * 4.5, 0.1 + r() * 0.14);
+      dab(greens[Math.floor(r() * greens.length)], Math.cos(a) * d, Math.sin(a) * d, 2 + r() * 5, 0.12 + r() * 0.12);
     }
     const tufts = [stamp(0x8fb257), stamp(0x4c7634)];
-    for (let i = 0; i < 9000; i++) {
+    for (let i = 0; i < 0; i++) {
       const a = r() * 6.28, d = Math.sqrt(r()) * 40.5;
       dab(tufts[i % 2], Math.cos(a) * d, Math.sin(a) * d, 0.12 + r() * 0.25, 0.3);
     }
     // Worn earth where things stand and where the fight happens.
-    const worn = stamp(0x8a7350);
+    const worn = stamp(0xc9a46e);
     for (const p of EARTH_PAD_POS) dab(worn, p.x, p.z, 4.6, 0.75);
     for (const p of WONDER_POS.slice(0, 6)) dab(worn, p.x, p.z, 6.6, 0.6);
     dab(worn, ARENA.x, ARENA.z, 10.5, 0.75);
     // Shade under the trees.
-    const shade = stamp(0x33441f);
-    for (const t of trees) dab(shade, t.x, t.z, 1.7 * t.scale, 0.42);
+    const shade = stamp(0x5f9640);
+    for (const t of trees) dab(shade, t.x, t.z, 1.6 * t.scale, 0.35);
 
     // Roads.
     const road = ROADS[e];
@@ -491,20 +494,20 @@ export function createWorld(scene, renderer) {
     lay(road.base, 1, 0);
     // Grain on the road surface: pebbles, cobbles or fine tar.
     const specks = road.speck.map(stamp);
-    const count = road.kind === 'cobble' ? 60000 : 26000;
+    const count = road.kind === 'cobble' ? 60000 : soft ? 5000 : 26000;
     for (let i = 0; i < count; i++) {
       const a = r() * 6.28, d = Math.sqrt(r()) * 45;
       const x = Math.cos(a) * d, z = Math.sin(a) * d;
       if (!onRoad(x, z, soft ? 0.25 : -0.12)) continue;
       const size = road.kind === 'cobble' ? 0.14 + r() * 0.07 : road.kind === 'asphalt' ? 0.05 + r() * 0.3 : 0.06 + r() * 0.45;
-      dab(specks[Math.floor(r() * specks.length)], x, z, size, road.kind === 'cobble' ? 0.85 : 0.35);
+      dab(specks[Math.floor(r() * specks.length)], x, z, size, road.kind === 'cobble' ? 0.85 : soft ? 0.22 : 0.35);
     }
     if (soft) {
       // Ragged edges: grass creeping back over the dirt.
       for (let i = 0; i < 16000; i++) {
         const a = r() * 6.28, d = Math.sqrt(r()) * 45;
         const x = Math.cos(a) * d, z = Math.sin(a) * d;
-        if (onRoad(x, z, 0.3) && !onRoad(x, z, -0.25) && r() < 0.5) dab(greens[Math.floor(r() * 4)], x, z, 0.15 + r() * 0.4, 0.5);
+        if (onRoad(x, z, 0.3) && !onRoad(x, z, -0.25) && r() < 0.18) dab(greens[Math.floor(r() * 4)], x, z, 0.3 + r() * 0.4, 0.6);
       }
     }
     if (road.kind === 'asphalt') {
@@ -687,10 +690,11 @@ export function createWorld(scene, renderer) {
     scene.background = null;
     scene.fog = new THREE.FogExp2(sky.horizon, sky.haze);
     scene.environmentIntensity = 0.85;
-    hemi.intensity = 0.35;
-    hemi.color.set(0xdcecff);
-    hemi.groundColor.set(0x6f7d54);
-    sun.intensity = Math.min(era, 5) === 3 ? 2.9 : 3.4;
+    // Cartoon light: a bright sky fill so shadows stay soft and colours stay clean.
+    hemi.intensity = 0.95;
+    hemi.color.set(0xd6ecff);
+    hemi.groundColor.set(0x7fa85a);
+    sun.intensity = Math.min(era, 5) === 3 ? 2.6 : 2.9;
     sun.color.set(sky.sun);
     bakeEnvironment();
   }
