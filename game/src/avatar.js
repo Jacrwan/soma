@@ -86,16 +86,61 @@ function furLump(r, color, sx = 1, sy = 1, sz = 1, seed = 1) {
   m.receiveShadow = true;
   return m;
 }
-const PELT = 0xcfa066, HIDE = 0x8f6846, DARK = 0x5c4435, WOLF = 0xaa9b86, HAIR = 0x2e2019;
+const PELT = 0xb98a52, DARK = 0x4a3528, HAIR = 0x2a1c14;
 
-/** Swap the suit for a fur coat, hide leggings and fur boots; add a pelt hood, a mantle, a beard and a tooth necklace. */
+const SKIN = new THREE.Color(0xd9976b);
+
+/**
+ * Clothing that is fur where `bare` says 0 and skin where it says 1. The suit
+ * the model wears is long-sleeved and long-legged; marking the sleeves, one
+ * shoulder and the lower legs as skin turns it into a one-shoulder pelt.
+ */
+function peltMaterial(color, repeat, skin) {
+  const material = furMaterial(color, repeat, true);
+  material.bumpMap = null;
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uSkin = { value: skin };
+    shader.vertexShader = `attribute float bare;\nvarying float vBare;\n${shader.vertexShader}`.replace('#include <begin_vertex>', '#include <begin_vertex>\n  vBare = bare;');
+    shader.fragmentShader = `uniform vec3 uSkin;\nvarying float vBare;\n${shader.fragmentShader}`
+      .replace('#include <map_fragment>', `#include <map_fragment>
+        float bareSkin = smoothstep(0.42, 0.58, vBare);
+        float hem = smoothstep(0.2, 0.42, vBare) * (1.0 - bareSkin);
+        diffuseColor.rgb = mix(diffuseColor.rgb * (1.0 - hem * 0.45), uSkin, bareSkin);`)
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n  roughnessFactor = mix(roughnessFactor, 0.62, bareSkin);');
+  };
+  return material;
+}
+
+/** Marks which parts of a garment are bare skin. test(x, y, z) returns 0 to 1, in the model's standing pose. */
+function markBare(mesh, test) {
+  const g = mesh.geometry;
+  if (g.attributes.bare) return;
+  const p = g.attributes.position;
+  const bare = new Float32Array(p.count);
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const ragged = (noise3(x * 26, y * 26, z * 26) - 0.5) * 0.05;
+    bare[i] = Math.max(0, Math.min(1, test(x, y + ragged, z)));
+  }
+  g.setAttribute('bare', new THREE.BufferAttribute(bare, 1));
+}
+const ramp = (v, from, to) => (v - from) / (to - from);
+
+/** Stone Age: bare arms and legs, a pelt over one shoulder, fur boots, long hair, a beard and a tooth necklace. */
 function dressStoneAge(model) {
+  const skin = SKIN;
   model.traverse((o) => {
     if (!o.isMesh) return;
     if (/Headwear/.test(o.name)) o.visible = false;
-    else if (/Outfit_Top/.test(o.name)) o.material = furMaterial(PELT, 9, true);
-    else if (/Outfit_Bottom/.test(o.name)) o.material = furMaterial(HIDE, 14, true);
-    else if (/Footwear/.test(o.name)) o.material = furMaterial(DARK, 7, true);
+    else if (/Outfit_Top/.test(o.name)) {
+      // Sleeves are skin; so is the right shoulder, above a line that runs from the left collar down to the right ribs.
+      markBare(o, (x, y) => Math.max(ramp(Math.abs(x), 0.165, 0.2), x < 0.1 ? ramp(y - (1.3 + (x + 0.18) * 0.72), -0.015, 0.02) : 0));
+      o.material = peltMaterial(PELT, 9, skin);
+    } else if (/Outfit_Bottom/.test(o.name)) {
+      // The pelt ends above the knee.
+      markBare(o, (x, y) => ramp(0.62 - y, -0.015, 0.02));
+      o.material = peltMaterial(PELT, 9, skin);
+    } else if (/Footwear/.test(o.name)) o.material = furMaterial(DARK, 7, true);
     else if (/Beard/.test(o.name)) o.material = new THREE.MeshStandardMaterial({ color: HAIR, roughness: 0.9 });
   });
   model.updateMatrixWorld(true);
@@ -108,27 +153,29 @@ function dressStoneAge(model) {
     piece.updateMatrixWorld(true);
     bone.attach(piece);
   };
-  // Pelt hood: crown, back of the head, flaps over the ears, two small ears of the animal it was.
-  wear('Head', furLump(0.118, WOLF, 1.02, 0.7, 1.12, 1), 0, 1.795, -0.012);
-  wear('Head', furLump(0.108, WOLF, 1.05, 1.15, 0.8, 2), 0, 1.72, -0.07);
-  for (const x of [-1, 1]) {
-    wear('Head', furLump(0.05, WOLF, 0.6, 1.5, 1, 3 + x), x * 0.098, 1.7, -0.005);
-    wear('Head', furLump(0.028, WOLF, 0.7, 1.5, 0.5, 6 + x), x * 0.06, 1.875, 0.0);
-  }
-  // Unkempt hair showing under the hood, and a proper beard.
+  // Long, unkempt hair: crown, back of the head, down the neck, and over the ears.
+  wear('Head', furLump(0.116, HAIR, 1.0, 0.66, 1.1, 1), 0, 1.795, -0.015);
+  wear('Head', furLump(0.108, HAIR, 1.03, 1.2, 0.78, 2), 0, 1.71, -0.072);
+  wear('Head', furLump(0.085, HAIR, 1.15, 1.25, 0.6, 5), 0, 1.6, -0.085);
+  for (const x of [-1, 1]) wear('Head', furLump(0.05, HAIR, 0.55, 1.7, 0.95, 3 + x), x * 0.098, 1.68, -0.01);
   for (const x of [-0.05, 0, 0.05]) wear('Head', furLump(0.03, HAIR, 1.1, 0.8, 0.6, 9 + x * 20), x, 1.79, 0.088);
+  // A full beard.
   wear('Head', furLump(0.05, HAIR, 1.25, 1.1, 0.62, 12), 0, 1.632, 0.082);
   for (const x of [-1, 1]) wear('Head', furLump(0.035, HAIR, 0.7, 1.35, 0.8, 14 + x), x * 0.07, 1.665, 0.05);
-  // Mantle of thick fur over the shoulders, hiding the collar.
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * Math.PI * 2;
-    wear('Spine2', furLump(0.075, i % 3 ? PELT : WOLF, 1.15, 0.8, 1.1, 20 + i), Math.sin(a) * 0.17, 1.5 + Math.cos(a) * 0.012, Math.cos(a) * 0.105 - 0.005);
+  // Thick fur where the pelt sits on the left shoulder, and a ragged hem at the thigh.
+  for (let i = 0; i < 5; i++) wear('Spine2', furLump(0.07, PELT, 1.2, 0.8, 1.1, 20 + i), 0.08 + i * 0.03, 1.5 - i * 0.012, (i % 2 ? -0.09 : 0.09) * (1 - i * 0.12));
+  for (const side of [-1, 1]) {
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      wear(side < 0 ? 'RightUpLeg' : 'LeftUpLeg', furLump(0.045, PELT, 1.2, 1.0, 1.1, 30 + i + side), side * 0.095 + Math.sin(a) * 0.095, 0.64, Math.cos(a) * 0.1 + 0.01);
+    }
   }
-  // A belt, and a necklace of teeth.
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2;
-    wear('Hips', furLump(0.04, DARK, 1.3, 0.7, 1, 40 + i), Math.sin(a) * 0.165, 1.03, Math.cos(a) * 0.115);
-  }
+  // A hide belt and a necklace of teeth.
+  const belt = new THREE.Mesh(new THREE.TorusGeometry(0.168, 0.022, 8, 28), new THREE.MeshStandardMaterial({ color: DARK, roughness: 0.9 }));
+  belt.rotation.x = Math.PI / 2;
+  belt.scale.set(1, 0.74, 1);
+  belt.castShadow = true;
+  wear('Hips', belt, 0, 1.04, 0.012);
   const ivory = new THREE.MeshStandardMaterial({ color: 0xefe6cf, roughness: 0.5 });
   for (let i = -3; i <= 3; i++) {
     const tooth = new THREE.Mesh(new THREE.ConeGeometry(0.011, 0.045, 8), ivory);
@@ -136,6 +183,63 @@ function dressStoneAge(model) {
     tooth.castShadow = true;
     wear('Spine2', tooth, i * 0.026, 1.435 - Math.abs(i) * 0.004 + (i * i) * 0.0045, 0.128 - Math.abs(i) * 0.006);
   }
+}
+
+/**
+ * Turns the lifelike model into a cartoon one, to sit with the stylised world:
+ * flat skin instead of a photo texture, big simple eyes and brows, a bigger
+ * head, hands and feet, and shorter legs. Returns how much the head and hands grew.
+ */
+const HEAD_SIZE = 1.36, HAND_SIZE = 1.32, LEG_SIZE = 0.9, FOOT_SIZE = 1.22;
+function cartoon(model) {
+  const skinMat = new THREE.MeshStandardMaterial({ color: SKIN, roughness: 0.78, metalness: 0 });
+  model.traverse((o) => {
+    if (!o.isMesh) return;
+    if (/Wolf3D_(Head|Body)$/.test(o.name)) o.material = skinMat;
+    else if (/^Eye(Left|Right)$/.test(o.name)) o.visible = false;
+    else if (o.material.map && /Outfit|Headwear|Hair/.test(o.name)) {
+      // Keep the clothes' colours but lose the photographic shine.
+      o.material.roughness = 0.9;
+      o.material.metalness = 0;
+      o.material.normalMap = null;
+      o.material.envMapIntensity = 0.3;
+    }
+  });
+  model.updateMatrixWorld(true);
+  const head = model.getObjectByName('Head');
+  if (head) {
+    const put = (piece, x, y, z) => {
+      piece.position.set(x, y, z);
+      model.add(piece);
+      piece.updateMatrixWorld(true);
+      head.attach(piece);
+    };
+    const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x1c1410, roughness: 0.6 });
+    for (const x of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.021, 16, 12), white);
+      eye.scale.set(1, 1.15, 0.55);
+      put(eye, x * 0.033, 1.732, 0.1);
+      const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.0115, 12, 10), dark);
+      pupil.scale.set(1, 1.1, 0.5);
+      put(pupil, x * 0.031, 1.731, 0.111);
+      const brow = new THREE.Mesh(new THREE.BoxGeometry(0.046, 0.013, 0.016), dark);
+      brow.rotation.z = x * -0.22;
+      put(brow, x * 0.034, 1.765, 0.102);
+    }
+  }
+  const foot = model.getObjectByName('LeftToeBase') || model.getObjectByName('LeftFoot');
+  const before = foot ? foot.getWorldPosition(new THREE.Vector3()).y : 0;
+  const grow = (name, k) => model.getObjectByName(name)?.scale.multiplyScalar(k);
+  grow('Head', HEAD_SIZE);
+  for (const side of ['Left', 'Right']) {
+    grow(`${side}Hand`, HAND_SIZE);
+    grow(`${side}UpLeg`, LEG_SIZE);
+    grow(`${side}Foot`, FOOT_SIZE / LEG_SIZE);
+  }
+  model.updateMatrixWorld(true);
+  // Shorter legs lift the feet; set them back on the ground.
+  if (foot) model.position.y -= foot.getWorldPosition(new THREE.Vector3()).y - before;
 }
 
 /**
@@ -158,6 +262,7 @@ export function createAvatar({ tint, hat, weapon, stoneAge = false }) {
     o.material.envMapIntensity = 0.9;
   });
   if (stoneAge) dressStoneAge(model);
+  cartoon(model);
   root.updateMatrixWorld(true);
   const bone = (name) => model.getObjectByName(name);
   const head = bone('Head');
@@ -177,8 +282,8 @@ export function createAvatar({ tint, hat, weapon, stoneAge = false }) {
     holder.add(object);
     to.add(holder);
   };
-  pin(head, hat, (o) => { o.position.set(0, 0.17, 0.02); o.scale.multiplyScalar(0.62); });
-  pin(hand, weapon, (o) => { o.position.set(0, 0.08, 0.02); o.rotation.set(0, 0, -Math.PI / 2); o.position.x = 0.12; o.scale.multiplyScalar(0.62); });
+  pin(head, hat, (o) => { o.position.set(0, 0.17 * HEAD_SIZE, 0.02 * HEAD_SIZE); o.scale.multiplyScalar(0.62 * HEAD_SIZE); });
+  pin(hand, weapon, (o) => { o.position.set(0, 0.09 * HAND_SIZE, 0.03 * HAND_SIZE); o.rotation.set(Math.PI / 2, 0, 0); o.scale.multiplyScalar(0.78); });
 
   const mixer = new THREE.AnimationMixer(model);
   const actions = { idle: mixer.clipAction(clips.idle), run: mixer.clipAction(clips.run) };
