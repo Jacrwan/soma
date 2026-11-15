@@ -367,6 +367,14 @@ window.addEventListener('message', (event) => {
   const msg = event.data;
   if (!msg || msg.source !== 'soma-extension') return;
   if (msg.type === 'present') somaPresent = true;
+  if (msg.type === 'sync_done') {
+    lastSyncDone = Date.now();
+    if (syncWanted) {
+      syncWanted = false;
+      const failed = (Array.isArray(msg.results) ? msg.results : []).filter((r) => r && !r.ok);
+      ui.toast(failed.length ? `Couldn't reach Canvas: ${failed[0].error || 'sign in to Canvas and try again'}.` : 'Canvas synced. Everything here is up to date.', failed.length ? 'bad' : 'good');
+    }
+  }
   if (msg.type === 'canvas_snapshot' && msg.snapshot && msg.snapshot.kind === 'canvas') {
     somaPresent = true;
     const have = somaSnapshots.get(msg.snapshot.host);
@@ -377,12 +385,29 @@ window.addEventListener('message', (event) => {
 });
 const askSoma = () => window.postMessage({ source: 'soma-app', type: 'hello' }, location.origin);
 
+// Coming back to this tab (say, after handing something in on Canvas) asks the
+// extension to re-read Canvas, so the hand-in shows up here by itself. At most
+// every three minutes, to go easy on Canvas.
+let lastSyncAsk = 0;
+let lastSyncDone = 0;
+let syncWanted = false;
+function askSync(force = false) {
+  const now = Date.now();
+  if (!force && now - lastSyncAsk < 180000) return;
+  lastSyncAsk = now;
+  window.postMessage({ source: 'soma-app', type: 'sync_request' }, location.origin);
+}
+window.addEventListener('focus', () => askSync());
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') askSync(); });
+const lastSynced = () => Math.max(0, ...[...somaSnapshots.values()].map((s) => Date.parse(s.syncedAt) || 0));
+
 // --- Interface -----------------------------------------------------------------------
 const ui = createUI({
   school: openSchool,
   wardrobe: openWardrobe,
   hero: () => openHero(),
   quests: () => openQuests(),
+  ignore: (id) => ignoreItem(id, true),
   study: (id) => openStudy(id),
   endStudy: () => endStudy(),
   help: () => ui.help({ first: false }),
@@ -519,7 +544,7 @@ function slam() {
 function refreshHud() {
   const now = Date.now();
   const wonder = S.nextWonder(state);
-  const overdue = Object.values(state.school.items).find((a) => !a.submitted && !a.excused && a.dueAt && a.dueAt < now);
+  const late = S.lateItems(state, now).sort((a, b) => a.dueAt - b.dueAt);
   ui.hud({
     coins: state.coins,
     income: S.totalIncome(state, now),
@@ -527,7 +552,7 @@ function refreshHud() {
     eraName: eraName(),
     goal: wonder ? `Build the ${wonder.name}: ${S.fmt(Math.min(state.coins, wonder.cost))} / ${S.fmt(wonder.cost)}${wonder.scene !== state.scene ? ` (on ${wonder.scene === 'moon' ? 'the Moon' : 'Earth'})` : ''}` : 'You reached the stars.',
     progress: wonder ? state.coins / wonder.cost : 1,
-    siege: overdue ? overdue.name : null,
+    siege: null,
     chests: state.school.chests.length,
     muted: state.settings.muted,
   });
@@ -535,10 +560,76 @@ function refreshHud() {
   ui.vitals({ hp: player.hp, max: hero.health, dodge: player.dashCd, slam: player.slamCd / hero.slamTime, level: hero.level, xp: state.hero.xp, need: S.xpToNext(hero.level), points: state.hero.points, capped: hero.level >= S.MAX_HERO_LEVEL });
   const story = S.storyStatus(state);
   ui.quest(realms.status() || (story ? { title: `Quest: ${story.title}`, parts: [story.text, `${story.have} / ${story.need}`], onOpen: openQuests } : null));
-  ui.threats(inRealm() ? [] : S.threats(state, now).map(({ item, overdue: late }) => ({
-    id: item.id, name: item.name, course: item.courseName, kind: item.kind, overdue: late, soon: item.dueAt - now < 86400000, time: timeLeft(item.dueAt - now),
+  ui.alert(deadlineAlert(late, now));
+  ui.threats(inRealm() ? [] : S.threats(state, now).map(({ item, overdue }) => ({
+    id: item.id, name: item.name, course: item.courseName, kind: item.kind, overdue, soon: item.dueAt - now < 86400000, time: timeLeft(item.dueAt - now),
+    level: S.deadlineLevel(state, item, now),
     studied: S.studyProgress(state, item), studying: state.study.active?.itemId === item.id,
   })), state.school.source, inRealm());
+}
+
+/** The bar under the coins: the most pressing deadline, or nothing. */
+function deadlineAlert(late, now) {
+  if (late.length) {
+    const item = late[0];
+    const cost = S.lateCost(state, item, now);
+    return {
+      level: 'late', id: item.id, name: item.name, more: late.length - 1, canIgnore: true,
+      text: cost.stopped ? `late ${timeLeft(now - item.dueAt)} · cost you ${S.fmt(cost.coins)} coins and ${cost.xp} XP` : `late ${timeLeft(now - item.dueAt)} · losing ${S.fmt(cost.perHour)} coins and ${cost.xpPerHour} XP an hour`,
+    };
+  }
+  const soon = Object.values(state.school.items)
+    .map((item) => ({ item, level: S.deadlineLevel(state, item, now) }))
+    .filter((d) => d.level === 'critical' || d.level === 'urgent')
+    .sort((a, b) => a.item.dueAt - b.item.dueAt);
+  if (!soon.length) return null;
+  const { item, level } = soon[0];
+  return { level, id: item.id, name: item.name, more: soon.length - 1, canIgnore: false, text: `due in ${timeLeft(item.dueAt - now)}` };
+}
+
+function ignoreItem(id, on) {
+  const item = state.school.items[id];
+  if (!item) return;
+  S.setIgnored(state, id, on);
+  if (on) ui.toast(`Ignoring ${item.name}: no warnings or losses for it. Undo it from the Canvas list.`, 'good');
+  else ui.toast(`${item.name} counts again.`, 'good');
+  syncInvaders(Date.now());
+  refreshHud();
+  save();
+}
+
+// --- Deadlines: warnings and what late work costs ------------------------------------
+let lateShown = { coins: 0, xp: 0, at: 0 };
+function checkDeadlines(startup = false) {
+  const now = Date.now();
+  const lost = S.chargeLate(state, now);
+  lateShown.coins += lost.coins;
+  lateShown.xp += lost.xp;
+  if (startup && (lost.coins >= 1 || lost.xp)) {
+    ui.toast(`Late work cost you ${S.fmt(lost.coins)} coins and ${lost.xp} XP while you were away. Hand it in to stop the losses.`, 'bad');
+    lateShown = { coins: 0, xp: 0, at: now };
+  } else if (now - lateShown.at > 12000 && (lateShown.coins >= 1 || lateShown.xp >= 1)) {
+    // Every so often, show the drain where the player can see it.
+    const bits = [lateShown.coins >= 1 ? `-${S.fmt(lateShown.coins)}` : null, lateShown.xp >= 1 ? `-${lateShown.xp} XP` : null].filter(Boolean);
+    fx.float(player.object.position.clone().add(new THREE.Vector3(0, 3, 0)), `${bits.join('  ')} late`, 'hurt');
+    lateShown = { coins: 0, xp: 0, at: now };
+  }
+  const warnings = S.newWarnings(state, now);
+  warnings.slice(0, 3).forEach((w, i) => setTimeout(() => {
+    const name = w.item.name;
+    if (w.level === 'late') {
+      audio.alarm();
+      ui.banner('Assignment late', name);
+      ui.toast(`${name} is late. Until it's handed in you lose 1% of your coins and ${S.LATE_XP_RATE} XP every hour. Nothing to submit? Press Ignore.`, 'bad');
+    } else if (w.level === 'critical') {
+      audio.alarm();
+      ui.toast(`Due in ${timeLeft(w.item.dueAt - now)}: ${name}. Hand it in on time to avoid losses.`, 'bad');
+    } else {
+      ui.toast(`Due within a day: ${name}`, 'gold');
+    }
+  }, i * 900));
+  if (warnings.length > 3) setTimeout(() => ui.toast(`${warnings.length - 3} more deadlines need you. Open Canvas to see them.`, 'gold'), 2800);
+  if (warnings.length || lost.coins || lost.xp) refreshHud();
 }
 
 function deny(text) {
@@ -652,8 +743,13 @@ function openSchool() {
     if (!byCourse.has(a.courseName)) byCourse.set(a.courseName, []);
     let status = a.dueAt ? (a.dueAt < now ? `Was due ${timeLeft(now - a.dueAt)} ago` : `Due in ${timeLeft(a.dueAt - now)}`) : 'No due date';
     if (a.submitted) status = typeof a.score === 'number' && a.pointsPossible ? `Graded: ${Math.round((a.score / a.pointsPossible) * 100)}%` : 'Handed in, waiting for a grade';
-    else if (a.dueAt && a.dueAt < now) status = `${timeLeft(a.dueAt - now)}: sieging your gate`;
-    byCourse.get(a.courseName).push({ ...a, status, studied: S.studyProgress(state, a) });
+    const ignored = !a.submitted && S.isIgnored(state, a);
+    if (ignored) status = state.school.ignored[a.id] === true ? 'Ignored: nothing to hand in' : 'Ignored: Canvas says on paper or no submission';
+    else if (!a.submitted && a.dueAt && a.dueAt < now) {
+      const cost = S.lateCost(state, a, now);
+      status = `Late ${timeLeft(now - a.dueAt)}${cost.coins >= 1 || cost.xp ? ` · has cost ${S.fmt(cost.coins)} coins and ${cost.xp} XP` : ''}`;
+    }
+    byCourse.get(a.courseName).push({ ...a, status, ignored, late: !ignored && !a.submitted && a.dueAt && a.dueAt < now, studied: S.studyProgress(state, a) });
   }
   const reopen = () => {
     ui.close();
@@ -662,6 +758,11 @@ function openSchool() {
   ui.school({
     source: state.school.source, connected: somaPresent, chests: state.school.chests.length,
     groups: [...byCourse].map(([course, items]) => ({ course, items })),
+    synced: lastSynced() ? timeLeft(Date.now() - lastSynced()) : null,
+    onIgnore: (id, on) => {
+      ignoreItem(id, on);
+      reopen();
+    },
     onStudy: (id) => {
       ui.close();
       openStudy(id);
@@ -672,8 +773,9 @@ function openSchool() {
       reopen();
     },
     onClear: () => {
-      askSoma();
-      ui.toast('Asked the extension for the latest from Canvas.', 'good');
+      syncWanted = true;
+      askSync(true);
+      ui.toast('Syncing with Canvas…', 'good');
     },
   });
 }
@@ -1539,6 +1641,7 @@ function frame(nowMs) {
   if (slowTimer <= 0) {
     slowTimer = 1;
     syncInvaders(Date.now());
+    checkDeadlines();
     checkStory();
   }
   saveTimer -= dt;
@@ -1583,6 +1686,7 @@ if (!state.settings.seenHelp) {
 }
 loadStoredSnapshots();
 askSoma();
+checkDeadlines(true);
 // No Canvas data after a moment: show a sample semester so the gate isn't empty.
 setTimeout(() => {
   if (state.school.source !== 'none') return;

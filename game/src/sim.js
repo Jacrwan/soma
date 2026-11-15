@@ -74,7 +74,7 @@ export function newState(now = Date.now()) {
     relics: [],
     tokens: 0,
     cosmetics: { owned: ['hat:none', 'color:clay'], hat: 'hat:none', color: 'color:clay' },
-    school: { source: 'none', items: {}, seen: {}, chests: [] },
+    school: { source: 'none', items: {}, seen: {}, chests: [], ignored: {}, penalty: {}, warned: {} },
     explore: { day: null, done: {}, shrines: {} },
     study: { active: null, minutes: {}, courses: {}, streak: 0, lastDay: null, chestDay: null, chestsToday: 0, total: 0 },
     hero: { level: 1, xp: 0, points: 0, skills: {}, gear: { weapon: null, armor: null, charm: null }, bag: [], nextId: 1 },
@@ -91,7 +91,105 @@ export function relicMult(state) {
 }
 
 export function isUnderSiege(state, now = Date.now()) {
-  return Object.values(state.school.items).some((a) => !a.submitted && !a.excused && a.dueAt && a.dueAt < now);
+  return lateItems(state, now).length > 0;
+}
+
+// --- Deadlines: warnings, late losses, and work with nothing to hand in --------------
+
+const HOUR = 3600000;
+export const URGENT_HOURS = 24; // due within a day: urgent
+export const CRITICAL_HOURS = 3; // due within three hours: critical
+export const LATE_COIN_RATE = 0.01; // share of coins lost every hour, for each late assignment
+export const LATE_XP_RATE = 3; // experience lost every hour, for each late assignment
+export const LATE_MAX_HOURS = 48; // after two days late, an assignment stops costing more
+
+/**
+ * Work the student said needs nothing handed in, or that Canvas marks as on
+ * paper or with no submission, is left alone: no warnings, no losses, no
+ * invader. The student's own choice wins over Canvas's.
+ */
+export function isIgnored(state, item) {
+  const choice = state.school.ignored?.[item.id];
+  return typeof choice === 'boolean' ? choice : Boolean(item.noSubmit);
+}
+
+export function setIgnored(state, id, on, now = Date.now()) {
+  state.school.ignored[id] = Boolean(on);
+  // Coming back from ignored starts the clock again now, not from the due date.
+  const p = state.school.penalty[id];
+  if (p) p.at = now;
+}
+
+/** Work that is past due, not handed in, and not ignored. */
+export function lateItems(state, now = Date.now()) {
+  return Object.values(state.school.items).filter((a) => !a.submitted && !a.excused && a.dueAt && a.dueAt < now && !isIgnored(state, a));
+}
+
+/** 'late', 'critical', 'urgent' or null. */
+export function deadlineLevel(state, item, now = Date.now()) {
+  if (item.submitted || item.excused || !item.dueAt || isIgnored(state, item)) return null;
+  const left = item.dueAt - now;
+  if (left < 0) return 'late';
+  if (left < CRITICAL_HOURS * HOUR) return 'critical';
+  if (left < URGENT_HOURS * HOUR) return 'urgent';
+  return null;
+}
+
+/**
+ * Takes what late work has cost since it was last charged: a share of coins
+ * every hour, and some experience (never below the start of the current
+ * level). The clock starts at the due date, or when the game first saw the
+ * work if that was later, so old missing work found on the first sync costs
+ * nothing. Returns what was lost.
+ */
+export function chargeLate(state, now = Date.now()) {
+  const school = state.school;
+  const out = { coins: 0, xp: 0 };
+  for (const item of lateItems(state, now)) {
+    const seenAt = school.seen[item.id]?.at || 0;
+    const p = school.penalty[item.id] || (school.penalty[item.id] = { at: 0, coins: 0, xp: 0, bank: 0 });
+    const from = Math.max(p.at, item.dueAt, seenAt);
+    const to = Math.min(now, item.dueAt + LATE_MAX_HOURS * HOUR);
+    p.at = Math.max(p.at, now);
+    if (to <= from) continue;
+    const hours = (to - from) / HOUR;
+    const coins = state.coins * (1 - (1 - LATE_COIN_RATE) ** hours);
+    state.coins -= coins;
+    p.coins += coins;
+    out.coins += coins;
+    p.bank += hours * LATE_XP_RATE;
+    const whole = Math.floor(p.bank);
+    p.bank -= whole;
+    const xp = Math.min(whole, state.hero.xp);
+    state.hero.xp -= xp;
+    p.xp += xp;
+    out.xp += xp;
+  }
+  return out;
+}
+
+/** What one late assignment is costing right now, per hour, and has cost so far. */
+export function lateCost(state, item, now = Date.now()) {
+  const p = state.school.penalty[item.id];
+  const stopped = item.dueAt && now > item.dueAt + LATE_MAX_HOURS * HOUR;
+  return { perHour: stopped ? 0 : state.coins * LATE_COIN_RATE, xpPerHour: stopped ? 0 : LATE_XP_RATE, coins: p?.coins || 0, xp: p?.xp || 0, stopped };
+}
+
+/**
+ * Deadlines that crossed into a more pressing level since the last check:
+ * urgent, critical, late. Each item is announced once per level.
+ */
+export function newWarnings(state, now = Date.now()) {
+  const rank = { urgent: 1, critical: 2, late: 3 };
+  const out = [];
+  for (const item of Object.values(state.school.items)) {
+    const level = deadlineLevel(state, item, now);
+    if (!level) continue;
+    if ((state.school.warned[item.id] || 0) >= rank[level]) continue;
+    state.school.warned[item.id] = rank[level];
+    out.push({ item, level });
+  }
+  return out.sort((a, b) => rank[b.level] - rank[a.level]);
 }
 
 export function buildingName(b) {
@@ -296,7 +394,7 @@ export function syncSchool(state, items, now = Date.now(), { source = state.scho
   for (const raw of items) {
     const item = { ...raw, ...classify(raw) };
     next[item.id] = item;
-    const seen = school.seen[item.id] || (school.seen[item.id] = { submitted: false, graded: false, boss: false });
+    const seen = school.seen[item.id] || (school.seen[item.id] = { submitted: false, graded: false, boss: false, at: now });
     const known = Boolean(school.items[item.id]);
     if (!known && !first && !item.submitted) events.push({ type: 'new', item });
 
@@ -417,7 +515,7 @@ export function finishStudy(state, now = Date.now()) {
 export function threats(state, now = Date.now()) {
   const out = [];
   for (const item of Object.values(state.school.items)) {
-    if (item.submitted || item.excused) continue;
+    if (item.submitted || item.excused || isIgnored(state, item)) continue;
     const t = approach(item, now);
     if (t === null) continue;
     out.push({ item, t, overdue: item.dueAt < now });
@@ -773,6 +871,8 @@ export function fromSomaSnapshot(snapshot) {
       submitted: Boolean(a.submittedAt) || done.has(a.workflowState) || (paper && typeof a.score === 'number'),
       score: typeof a.score === 'number' ? a.score : null,
       excused: Boolean(a.excused),
+      // Handed in on paper, or nothing to hand in: Canvas never shows these as submitted.
+      noSubmit: paper,
     };
   });
 }
@@ -816,6 +916,8 @@ export function deserialize(text, now = Date.now()) {
     state.pads.moon.length = MOON_PADS;
     for (const scene of ['earth', 'moon']) state.pads[scene] = Array.from(state.pads[scene], (b) => b || null);
     state.school = { ...fresh.school, ...(saved.school || {}) };
+    // Work seen before late losses existed starts its clock now, not at its due date.
+    for (const seen of Object.values(state.school.seen)) if (!seen.at) seen.at = now;
     state.study = { ...fresh.study, ...(saved.study || {}) };
     state.explore = { ...fresh.explore, ...(saved.explore || {}) };
     state.cosmetics = { ...fresh.cosmetics, ...(saved.cosmetics || {}) };

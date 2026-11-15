@@ -77,7 +77,7 @@ export function createUI(on) {
       el('div', { class: 'panel-head' },
         el('div', {}, el('h2', { text: title }), subtitle ? el('p', { text: subtitle }) : null),
         canClose ? el('button', { class: 'x', 'aria-label': 'Close', text: '✕', onclick: close }) : null),
-      ...body.flat(),
+      ...body.flat().filter((x) => x != null),
     );
     $('scrim').hidden = false;
     p.scrollTop = 0;
@@ -124,6 +124,24 @@ export function createUI(on) {
       $('skSlam').style.setProperty('--left', `${Math.round(slam * 100)}%`);
     },
 
+    /** The deadline bar under the coins. level: 'late' | 'critical' | 'urgent'. Pass null to hide it. */
+    alert(info) {
+      const node = $('alert');
+      node.hidden = !info;
+      if (!info) return;
+      const key = `${info.level}|${info.id}|${info.text}|${info.more}`;
+      if (node.dataset.key === key) return;
+      node.dataset.key = key;
+      node.className = info.level;
+      const label = { late: 'Late', critical: 'Due soon', urgent: 'Due today' }[info.level];
+      node.replaceChildren(...[
+        el('button', { class: 'alert-main', title: 'Open your Canvas list', onclick: () => on.school() },
+          el('b', { text: label }), el('span', { class: 'alert-name', text: info.name }), el('span', { class: 'alert-text', text: info.text }),
+          info.more > 0 ? el('em', { text: `+${info.more} more` }) : null),
+        info.canIgnore ? el('button', { class: 'alert-ignore', title: 'Nothing to hand in for this one? Stop the warnings and losses.', text: 'Ignore', onclick: () => on.ignore(info.id) }) : null,
+      ].filter(Boolean));
+    },
+
     /** A red flash at the edges when the player is hit. */
     hurt() {
       const node = $('hurt');
@@ -150,9 +168,9 @@ export function createUI(on) {
       $('threats').replaceChildren(
         el('button', { class: 'threats-head', onclick: () => on.school() }, el('b', { text: 'Canvas' }), el('span', { text: list.length ? `${list.length} due · ${from}` : from })),
         ...list.slice(0, 4).map((t) =>
-          el('button', { class: `threat ${t.kind === 'boss' ? 'boss' : ''} ${t.overdue ? 'overdue' : t.soon ? 'soon' : ''} ${t.studying ? 'studying' : ''}`, title: 'Study for this', onclick: () => on.study(t.id) },
+          el('button', { class: `threat ${t.kind === 'boss' ? 'boss' : ''} ${t.overdue ? 'overdue' : t.soon ? 'soon' : ''} ${t.level || ''} ${t.studying ? 'studying' : ''}`, title: 'Study for this', onclick: () => on.study(t.id) },
             el('i'), el('span', {}, t.name, el('small', { text: `${t.studying ? 'Studying now' : t.kind === 'boss' ? 'Test (boss)' : 'Assignment'} · ${t.course}${t.studied > 0 ? ` · ${Math.round(t.studied * 100)}% studied` : ''}` })), el('time', { text: t.time }))),
-        list.length > 4 ? el('div', { class: 'threat more', text: `+${list.length - 4} more marching in` }) : null,
+        ...(list.length > 4 ? [el('div', { class: 'threat more', text: `+${list.length - 4} more marching in` })] : []),
       );
     },
 
@@ -264,17 +282,19 @@ export function createUI(on) {
         el('h3', { text: 'Colour' }), section('color:', color), el('h3', { text: 'Hat' }), section('hat:', hat));
     },
 
-    school({ source, connected, groups, chests, onDemo, onClear, onStudy }) {
+    school({ source, connected, groups, chests, synced, onDemo, onClear, onStudy, onIgnore }) {
       const describe = { none: 'Not connected', demo: 'Sample semester', soma: 'Soma for Canvas', manual: 'Your own list' }[source];
       const rows = groups.flatMap((g) => [
         el('div', { class: 'course', text: g.course }),
-        ...g.items.map((a) => el('div', { class: `row ${a.submitted ? 'done' : ''}` },
+        ...g.items.map((a) => el('div', { class: `row ${a.submitted ? 'done' : ''} ${a.ignored ? 'ignored' : ''} ${a.late ? 'late' : ''}` },
           el('div', {}, a.name, a.kind === 'boss' ? el('span', { class: 'tag', text: 'Boss' }) : null,
             el('small', { text: a.status }),
             a.submitted ? null : el('div', { class: 'bar study', title: 'Studied' }, el('i', { style: `width:${Math.round(a.studied * 100)}%` }))),
-          a.submitted ? null : el('div', { class: 'do' }, el('button', { class: 'btn small', text: a.studied >= 1 ? 'Study more' : 'Study', onclick: () => onStudy(a.id) })))),
+          a.submitted ? null : el('div', { class: 'do' },
+            a.ignored ? null : el('button', { class: 'btn small', text: a.studied >= 1 ? 'Study more' : 'Study', onclick: () => onStudy(a.id) }),
+            el('button', { class: 'btn small', title: a.ignored ? 'Count this assignment again' : 'Nothing to hand in for this one? Stop its warnings and losses.', text: a.ignored ? 'Unignore' : 'Ignore', onclick: () => onIgnore(a.id, !a.ignored) })))),
       ]);
-      panel({ title: 'Canvas', subtitle: `${describe}${connected ? ' · extension found' : ''}. Every Canvas assignment is a walking book marching on your gate. Tests are bosses. Each posted grade drops a chest: 90%+ legendary, 80%+ epic, 70%+ rare.`, wide: true },
+      panel({ title: 'Canvas', subtitle: `${describe}${connected ? ' · extension found' : ''}. Every assignment is a walking book marching on your gate; hand it in on Canvas and it's gone. Late work costs 1% of your coins and some XP every hour until it's in. Ignore anything with nothing to submit. Tests are bosses, and each posted grade drops a chest.`, wide: true },
         el('p', { class: 'note sync', text: source === 'soma'
           ? 'This is the Canvas data Soma already has for your account. Hand-ins and grades show up here by themselves; there is nothing to type in.'
           : 'This is a sample semester. Connect Canvas in Soma (Deadlines, then Soma for Canvas) and your real due dates, hand-ins and grades replace it by themselves. Nothing to type in.' }),
@@ -282,7 +302,8 @@ export function createUI(on) {
         rows.length ? rows : el('p', { class: 'note', text: 'Nothing due right now.' }),
         el('div', { class: 'source', style: 'margin-top:14px' },
           source === 'soma' ? null : el('button', { class: 'btn small', text: 'Restart the sample semester', onclick: onDemo }),
-          source === 'soma' ? el('button', { class: 'btn small', text: 'Sync again', onclick: onClear }) : null),
+          source === 'soma' ? el('button', { class: 'btn small', text: 'Sync now', onclick: onClear }) : null,
+          source === 'soma' && synced ? el('span', { class: 'synced', text: `Last synced ${synced} ago` }) : null),
       );
     },
 

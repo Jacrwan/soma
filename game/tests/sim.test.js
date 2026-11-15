@@ -356,3 +356,40 @@ test('the story pays out one quest at a time and old saves keep their studied mi
   old.study.total = 100;
   assert.ok(S.deserialize(JSON.stringify(old), NOW).hero.level > 3);
 });
+
+test('late work costs coins and experience every hour, up to two days, and ignoring it stops that', () => {
+  const s = rich(0);
+  s.coins = 1000;
+  S.addXp(s, 50);
+  S.syncSchool(s, [item({ id: 'hw', dueAt: NOW + 2 * 3600_000 })], NOW, { source: 'soma' });
+  assert.strictEqual(S.deadlineLevel(s, s.school.items.hw, NOW), 'critical');
+  assert.deepStrictEqual(S.newWarnings(s, NOW).map((w) => w.level), ['critical']);
+  assert.deepStrictEqual(S.newWarnings(s, NOW), []);
+  const late = NOW + 5 * 3600_000; // three hours late
+  assert.strictEqual(S.deadlineLevel(s, s.school.items.hw, late), 'late');
+  assert.ok(S.isUnderSiege(s, late));
+  const lost = S.chargeLate(s, late);
+  assert.ok(Math.abs(lost.coins - 1000 * (1 - 0.99 ** 3)) < 0.01);
+  assert.strictEqual(lost.xp, 9);
+  assert.strictEqual(S.chargeLate(s, late).coins, 0);
+  // Stops after two days late.
+  S.chargeLate(s, NOW + 100 * 3600_000);
+  const total = S.lateCost(s, s.school.items.hw, NOW + 100 * 3600_000);
+  assert.ok(total.stopped && total.coins < 1000 * (1 - 0.99 ** 48) + 0.01);
+  // Ignored: no siege, no losses, no invader.
+  S.setIgnored(s, 'hw', true, NOW + 100 * 3600_000);
+  assert.ok(!S.isUnderSiege(s, NOW + 100 * 3600_000));
+  assert.deepStrictEqual(S.threats(s, NOW + 100 * 3600_000), []);
+});
+
+test('work found already late on the first sync costs nothing, and paper work is ignored by itself', () => {
+  const s = rich(0);
+  s.coins = 1000;
+  S.syncSchool(s, [item({ id: 'old', dueAt: NOW - 3600_000 }), item({ id: 'paper', dueAt: NOW - 3600_000, noSubmit: true })], NOW, { source: 'soma' });
+  assert.strictEqual(S.chargeLate(s, NOW).coins, 0);
+  assert.deepStrictEqual(S.lateItems(s, NOW).map((a) => a.id), ['old']);
+  assert.ok(S.chargeLate(s, NOW + 2 * 3600_000).coins > 0);
+  S.setIgnored(s, 'paper', false, NOW + 2 * 3600_000);
+  assert.deepStrictEqual(S.lateItems(s, NOW + 2 * 3600_000).map((a) => a.id).sort(), ['old', 'paper']);
+  assert.strictEqual(S.fromSomaSnapshot({ kind: 'canvas', host: 'h', courses: [], groups: [], assignments: [{ id: 1, courseId: 1, name: 'Lab', submissionTypes: ['on_paper'] }] })[0].noSubmit, true);
+});
