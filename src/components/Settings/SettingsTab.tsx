@@ -20,11 +20,12 @@ import {
   listConnections, listCalendarsForConnection, updateSelectedCalendars, disconnectConnection, startConnectFlow,
 } from '../../lib/googleCalendarConnections';
 import { SUBJECT_COLORS, nextUnusedColor } from '../../lib/subjectColors';
+import { DEFAULT_SCHEDULE, type SchedulePrefs } from '../../lib/taskScheduler';
 import type { GoogleCalendarConnection, GoogleCalendarInfo, Subject, SubjectColor } from '../../types';
 import styles from './SettingsTab.module.css';
 import { MONTHLY_PRICE, TRIAL_DAYS } from '../../lib/pricing';
 
-type Section = 'profile' | 'subscription' | 'appearance' | 'hours' | 'memory' | 'integrations' | 'courses' | 'legal';
+type Section = 'profile' | 'subscription' | 'appearance' | 'hours' | 'scheduling' | 'memory' | 'integrations' | 'courses' | 'legal';
 
 // Moved here from the app-wide footer (2026-10-29). The landing footer, the
 // sign-up consent line and the Pricing page still link these publicly.
@@ -84,8 +85,10 @@ export default function SettingsTab() {
     try {
       // Only what this page edits: the browser's copy lacks server-only
       // settings (the Canvas feed link), and once overwrote them.
-      const { theme, timeFormat, studyWindow, chunks, invadePersonalTime } = nextSettings ?? settings;
-      await storage.saveSettings({ theme, timeFormat, studyWindow, chunks, invadePersonalTime });
+      const { theme, timeFormat, studyWindow, chunks, invadePersonalTime, schedule } = nextSettings ?? settings;
+      await storage.saveSettings({ theme, timeFormat, studyWindow, chunks, invadePersonalTime, ...(schedule ? { schedule } : {}) });
+      // Open tasks get placed again with the new rules.
+      if (section === 'scheduling') window.dispatchEvent(new Event('soma_todos_changed'));
       setSavedSection(section);
       setTimeout(() => setSavedSection(s => s === section ? null : s), 2000);
     } catch { /* silent */ } finally {
@@ -438,6 +441,7 @@ export default function SettingsTab() {
     ['subscription',  'Subscription'],
     ['appearance',    'Appearance'],
     ['hours',         'Study hours'],
+    ['scheduling',    'Scheduling'],
     ['memory',        'Memory'],
     ['integrations',  'Integrations'],
     ['courses',       'Courses'],
@@ -975,6 +979,92 @@ export default function SettingsTab() {
             </div>
           </section>
         )}
+
+        {activeSection === 'scheduling' && (() => {
+          const sched = { ...DEFAULT_SCHEDULE, ...(settings.schedule ?? {}) };
+          const setSched = (patch: Partial<SchedulePrefs>) => save({ ...settings, schedule: { ...(settings.schedule ?? {}), ...patch } });
+          const setDay = (d: number, w: { start: string; end: string; off?: boolean } | undefined) => {
+            const days = { ...(sched.days ?? {}) };
+            if (w) days[String(d)] = w; else delete days[String(d)];
+            setSched({ days });
+          };
+          const seg = <T extends string | number | boolean>(label: string, id: string, value: T, options: [T, string][], on: (v: T) => void) => (
+            <div className={styles.prefRow}>
+              <span className={styles.prefLabel} id={id}>{label}</span>
+              <div className={styles.themeToggle} role="group" aria-labelledby={id}>
+                {options.map(([v, text]) => <button key={String(v)} className={`${styles.themeBtn}${value === v ? ` ${styles.themeBtnActive}` : ''}`} aria-pressed={value === v} onClick={() => on(v)}>{text}</button>)}
+              </div>
+            </div>
+          );
+          return (
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>Scheduling</h2>
+            <p className={styles.subsectionHint}>
+              How Soma places tasks with a due date (on Tasks, or from Plan it). It never moves calendar events, pinned sittings, or anything you've started.
+            </p>
+            <div className={styles.prefGrid}>
+              {seg('Finish', 'sched-finish', sched.finishEarly, [[0, 'On the due day'], [1, '1 day early'], [2, '2 days early']], v => setSched({ finishEarly: v }))}
+              {seg('Spread the work', 'sched-spread', sched.spread, [['even', 'Evenly'], ['early', 'Start early'], ['late', 'As late as safe']], v => setSched({ spread: v }))}
+              {seg('Schedule imported assignments', 'sched-imported', sched.autoImported, [[true, 'On'], [false, 'Off']], v => setSched({ autoImported: v }))}
+            </div>
+            <p className={styles.subsectionHint}>
+              {sched.autoImported ? 'Canvas and course-site work due in the next three weeks gets sittings without asking. Drag it down on Tasks if it matters less.' : 'Imported work waits on Tasks until you press Schedule.'}
+            </p>
+            <div className={styles.prefGrid}>
+              <div className={styles.prefRow}>
+                <label className={styles.prefLabel} htmlFor="sched-usual">Usual sitting (min)</label>
+                <input id="sched-usual" type="number" min={15} max={240} step={5} className={styles.timeInput} value={sched.usual} onChange={e => e.target.value && setSched({ usual: Number(e.target.value) })} />
+              </div>
+              <div className={styles.prefRow}>
+                <label className={styles.prefLabel} htmlFor="sched-longest">Longest sitting (min)</label>
+                <input id="sched-longest" type="number" min={30} max={240} step={15} className={styles.timeInput} value={sched.longest} onChange={e => e.target.value && setSched({ longest: Number(e.target.value) })} />
+              </div>
+              <div className={styles.prefRow}>
+                <label className={styles.prefLabel} htmlFor="sched-break">Break after a sitting</label>
+                <select id="sched-break" className={styles.timeInput} value={sched.breakMinutes} onChange={e => setSched({ breakMinutes: Number(e.target.value) })}>
+                  {[0, 5, 10, 15, 20, 30].map(m => <option key={m} value={m}>{m ? `${m} min` : 'None'}</option>)}
+                </select>
+              </div>
+              <div className={styles.prefRow}>
+                <label className={styles.prefLabel} htmlFor="sched-max">Most study in a day</label>
+                <select id="sched-max" className={styles.timeInput} value={sched.maxPerDay} onChange={e => setSched({ maxPerDay: Number(e.target.value) })}>
+                  {[0, 120, 180, 240, 300, 360, 480].map(m => <option key={m} value={m}>{m ? `${m / 60} hours` : 'No limit'}</option>)}
+                </select>
+              </div>
+            </div>
+            <p className={styles.subsectionHint}>The shortest piece is your Smallest piece under Study hours ({settings.chunks?.min ?? 30} min).</p>
+            {!settings.studyWindow.off && <>
+              <h3 className={styles.subsectionTitle}>Hours by day</h3>
+              <p className={styles.subsectionHint}>Days you don't change use your study hours ({formatClock(settings.studyWindow.start)}–{formatClock(settings.studyWindow.end)}).</p>
+              <div className={styles.prefGrid}>
+                {[1, 2, 3, 4, 5, 6, 0].map(d => {
+                  const w = sched.days?.[String(d)];
+                  const name = new Date(2026, 10, 15 + d).toLocaleDateString(undefined, { weekday: 'long' });
+                  const shown = w ?? settings.studyWindow;
+                  return (
+                    <div key={d} className={styles.prefRow}>
+                      <label className={styles.prefLabel}>
+                        <input type="checkbox" checked={!w?.off} onChange={e => setDay(d, e.target.checked ? (w && (w.start !== settings.studyWindow.start || w.end !== settings.studyWindow.end) ? { start: w.start, end: w.end } : undefined) : { start: shown.start, end: shown.end, off: true })} aria-label={`Study on ${name}`} /> {name}
+                      </label>
+                      {w?.off ? <span className={styles.subsectionHint}>No study</span> : <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                        <input type="time" className={styles.timeInput} aria-label={`${name} start`} value={shown.start} onChange={e => e.target.value && setDay(d, { start: e.target.value, end: shown.end })} />
+                        <span aria-hidden="true">–</span>
+                        <input type="time" className={styles.timeInput} aria-label={`${name} end`} value={shown.end} onChange={e => e.target.value && setDay(d, { start: shown.start, end: e.target.value })} />
+                        {w && <button type="button" className={styles.themeBtn} onClick={() => setDay(d, undefined)}>Reset</button>}
+                      </span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </>}
+            <div className={styles.saveRow}>
+              <button className={styles.saveBtn} disabled={supabaseSaving} onClick={() => void saveToSupabase('scheduling')}>
+                {savedSection === 'scheduling' ? 'Saved ✓' : 'Save'}
+              </button>
+            </div>
+          </section>
+          );
+        })()}
 
         {activeSection === 'integrations' && (
           <section className={styles.section}>

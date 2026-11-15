@@ -6,8 +6,8 @@ import { Check, Play, Pause, ArrowUpRight, CalendarDays, CalendarPlus, Mic, Squa
 import { useSpeechInput } from '../../lib/useSpeechInput';
 import { progressSegments, overlapGroups, clockLabel } from './progress';
 import PlanEditor, { type PlanState, type PlanBlock, type EditorDraft } from './PlanEditor';
-import PlanIt, { type Placed } from './PlanIt';
-import type { PlanChoice, PlanTarget } from '../../lib/planIt';
+import PlanIt, { type ScheduleOutcome } from './PlanIt';
+import type { PlanTarget } from '../../lib/planIt';
 import { formatClock, formatClockRange, formatClockWithSeconds, useTimeFormat } from '../../lib/timeFormat';
 import type { SubjectColor } from '../../types';
 import WidgetGrid from './WidgetGrid';
@@ -46,10 +46,10 @@ export interface DashboardRuntime {
  due?: { id: number; day: number; subject: string; subjectId?: string; color: string; title: string; dueAt: string;
   /** Plan it's sittings for it: how many, how many checked off, and the minutes logged on them. */
   plan?: { total: number; done: number; minutes: number } }[];
- /** Plan it: spread a due assignment into sittings before it's due (src/lib/planIt.ts). */
+ /** Schedule it: a due assignment becomes a task Soma schedules (src/lib/taskSchedule.ts). */
  planIt?: {
   estimate: (target: PlanTarget) => { minutes: number; basis: string };
-  place: (target: PlanTarget, choice: PlanChoice) => Promise<{ placed: Placed[]; missing: number; firstDay?: number }>;
+  place: (target: PlanTarget, choice: { minutes: number }) => Promise<ScheduleOutcome>;
   log: (target: PlanTarget, date: string, minutes: number, start?: string) => Promise<void>;
  };
  /** Open Plan it on this, e.g. from Deadlines. */

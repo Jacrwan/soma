@@ -1,0 +1,134 @@
+import { test, expect } from '@playwright/test';
+import { finishByOf, guessRank, isManaged, rankBetween, resolvePrefs, schedule, type SchedTask, type ScheduleInput } from '../src/lib/taskScheduler';
+
+/**
+ * The task scheduler (2026-11-15): tasks place and re-place their own
+ * sittings before they're due, with a silent priority order. No AI.
+ */
+
+const D = 1440;
+const at = (day: number, h: number, m = 0) => day * D + h * 60 + m;
+const prefs = resolvePrefs({ studyWindow: { start: '08:00', end: '23:00' }, chunks: { min: 30 } });
+const run = (p: Partial<ScheduleInput>) => schedule({ tasks: [], busy: [], prefs, now: at(0, 9), days: 14, weekday0: 3, ...p });
+const task = (id: string, o: Partial<SchedTask> = {}): SchedTask => ({ id, rank: 0, total: 60, logged: 0, due: at(5, 23, 59), sittings: [], ...o });
+const days = (r: ReturnType<typeof schedule>, id: string) => r.place.filter(p => p.taskId === id).map(p => Math.floor(p.start / D)).sort((a, b) => a - b);
+
+test('a task spreads into ~50 minute sittings, one a day, finished the day before it is due', () => {
+  const r = run({ tasks: [task('essay', { total: 150 })] });
+  expect(r.place).toHaveLength(3);
+  expect(r.place.every(p => p.end - p.start === 50 && !p.id)).toBe(true);
+  expect(days(r, 'essay')).toEqual([0, 2, 4]);          // due day 5, finish by day 4
+  expect(r.atRisk).toEqual([]);
+});
+
+test('an hour or less is one sitting, at the first open time that day, around other blocks', () => {
+  const r = run({ tasks: [task('hw', { total: 45 })], busy: [{ start: at(0, 9), end: at(0, 12), study: false }] });
+  expect(r.place).toEqual([{ taskId: 'hw', start: at(0, 12), end: at(0, 12, 45) }]);
+});
+
+test('a sitting that is fine stays where it is', () => {
+  const s = { id: 's1', start: at(2, 15), end: at(2, 16) };
+  const r = run({ tasks: [task('hw', { sittings: [s] })] });
+  expect(r.place).toEqual([]);
+  expect(r.remove).toEqual([]);
+});
+
+test('a missed sitting moves to the earliest open time, keeping its id', () => {
+  const missed = { id: 'm', start: at(0, 7), end: at(0, 8) };
+  const r = run({ now: at(0, 9), tasks: [task('hw', { sittings: [missed] })] });
+  expect(r.place).toEqual([{ taskId: 'hw', id: 'm', start: at(0, 9), end: at(0, 10) }]);
+});
+
+test('a missed high-priority sitting takes a lower task\'s slot, and the lower one moves instead', () => {
+  // Today: only 13:00–14:00 is open, held by the lower task. The high one was missed this morning.
+  const busy = [{ start: at(0, 9), end: at(0, 13) }, { start: at(0, 14), end: at(0, 23) }];
+  const high = task('high', { rank: 1, sittings: [{ id: 'h', start: at(0, 8), end: at(0, 9) }] });
+  const low = task('low', { rank: 2, sittings: [{ id: 'l', start: at(0, 13), end: at(0, 14) }] });
+  const r = run({ now: at(0, 9, 5), busy, tasks: [low, high] });
+  expect(r.place.find(p => p.id === 'h')).toEqual({ taskId: 'high', id: 'h', start: at(0, 13), end: at(0, 14) });
+  const moved = r.place.find(p => p.id === 'l')!;
+  expect(Math.floor(moved.start / D)).toBeGreaterThan(0);
+  expect(r.atRisk).toEqual([]);
+});
+
+test('a lower task is not bumped if that would make it miss its own finish day', () => {
+  // The low task is due tomorrow and today 13–14 is its only slot; the high one has until day 5.
+  const busy = [{ start: at(0, 9), end: at(0, 13) }, { start: at(0, 14), end: at(0, 23) }, { start: at(1, 0), end: at(1, 23, 59) }];
+  const high = task('high', { rank: 1, sittings: [{ id: 'h', start: at(0, 8), end: at(0, 9) }] });
+  const low = task('low', { rank: 2, due: at(1, 23, 59), sittings: [{ id: 'l', start: at(0, 13), end: at(0, 14) }] });
+  const r = run({ now: at(0, 9, 5), busy, tasks: [high, low] });
+  expect(r.place.find(p => p.id === 'l')).toBeUndefined();
+  expect(r.place.find(p => p.id === 'h')!.start).toBeGreaterThanOrEqual(at(2, 0));
+});
+
+test('higher priority gets the earlier open time', () => {
+  const busy = [{ start: at(0, 10), end: at(0, 23) }];
+  const r = run({ now: at(0, 9), busy, tasks: [task('low', { rank: 5, total: 60 }), task('high', { rank: 1, total: 60 })] });
+  expect(r.place.find(p => p.taskId === 'high')!.start).toBe(at(0, 9));
+  expect(r.place.find(p => p.taskId === 'low')!.start).toBeGreaterThan(at(0, 10));
+});
+
+test('a sitting a calendar event now covers moves; pinned and started sittings never do', () => {
+  const event = { start: at(2, 15), end: at(2, 17) };
+  const r = run({ busy: [event], tasks: [
+    task('a', { sittings: [{ id: 'clash', start: at(2, 15), end: at(2, 16) }] }),
+    task('b', { sittings: [{ id: 'pin', start: at(2, 16), end: at(2, 17), pinned: true }] }),
+  ] });
+  expect(r.place.find(p => p.id === 'clash')).toBeDefined();
+  expect(r.place.find(p => p.id === 'pin')).toBeUndefined();
+});
+
+test('logged time and checked sittings count: the rest shrinks or goes', () => {
+  const later = [{ id: 'x', start: at(2, 15), end: at(2, 16) }, { id: 'y', start: at(3, 15), end: at(3, 16) }];
+  // 120 needed, 70 logged: 50 left, so one sitting goes and the other is trimmed to 50.
+  const r = run({ tasks: [task('a', { total: 120, logged: 70, sittings: later })] });
+  expect(r.remove).toEqual([{ taskId: 'a', id: 'y' }]);
+  expect(r.place).toEqual([{ taskId: 'a', id: 'x', start: at(2, 15), end: at(2, 15, 50) }]);
+  const done = run({ tasks: [task('a', { total: 60, sittings: [{ id: 'd', start: at(0, 7), end: at(0, 8), done: true }, { id: 'z', start: at(2, 9), end: at(2, 10) }] })] });
+  expect(done.remove).toEqual([{ taskId: 'a', id: 'z' }]);
+});
+
+test('what does not fit is reported at risk, not crammed past the finish day', () => {
+  const busy = [{ start: at(0, 9), end: at(0, 22) }];
+  const r = run({ now: at(0, 9), busy, tasks: [task('a', { total: 180, due: at(1, 12) })] });
+  const placed = r.place.reduce((n, p) => n + p.end - p.start, 0);
+  expect(r.place.every(p => p.end <= at(1, 12))).toBe(true);
+  expect(r.atRisk[0]).toEqual({ taskId: 'a', short: 180 - placed });
+});
+
+test('settings: weekday hours, a daily limit, the break, and finishing on the due day', () => {
+  const p = resolvePrefs({ studyWindow: { start: '08:00', end: '23:00' }, chunks: { min: 30 }, schedule: { days: { '4': { start: '08:00', end: '23:00', off: true } }, maxPerDay: 60, breakMinutes: 15, finishEarly: 0 } });
+  // Day 0 is a Wednesday, so day 1 (Thursday) is off.
+  const r = schedule({ tasks: [task('a', { total: 150, due: at(3, 23, 59) })], busy: [], prefs: p, now: at(0, 9), days: 14, weekday0: 3 });
+  expect(days(r, 'a')).not.toContain(1);
+  expect(days(r, 'a')).toContain(3);                     // finish early off: the due day counts
+  const busy = run({ busy: [{ start: at(0, 9), end: at(0, 10), study: true }], tasks: [task('b', { total: 30 })] });
+  expect(busy.place[0].start).toBe(at(0, 10, 10));       // 10-minute break after study
+});
+
+test('finish-by: a day early, the deadline if that leaves no time, 12:30 AM counts as the night before', () => {
+  expect(finishByOf(at(5, 23, 59), at(0, 9), 1)).toBe(at(5, 0));
+  expect(finishByOf(at(0, 23, 59), at(0, 9), 1)).toBe(at(0, 23, 59));
+  expect(finishByOf(at(3, 0, 30), at(0, 9), 0)).toBe(at(3, 0));
+});
+
+test('priority guess: due date first, bigger work pulled earlier; dragging puts it between', () => {
+  const exam = guessRank({ dueDate: '2026-11-25', kind: 'exam', text: 'Midterm' });
+  const hw = guessRank({ dueDate: '2026-11-21', kind: 'homework', text: 'HW 9' });
+  const reading = guessRank({ dueDate: '2026-11-19', text: 'Reading ch. 4' });
+  expect(exam).toBeLessThan(hw);                         // due 4 days later, but an exam
+  expect(reading).toBeLessThan(hw);                      // due 2 days sooner, a day of slack for reading
+  expect(guessRank({ dueDate: '2026-11-20', text: 'Reading ch. 4' })).toBe(hw);
+  expect(rankBetween(1, 2)).toBe(1.5);
+  expect(rankBetween(undefined, 4)).toBe(3);
+});
+
+test('which tasks Soma schedules', () => {
+  const today = '2026-11-15';
+  expect(isManaged({ status: 'nothing', dueDate: '2026-11-20', kind: 'homework' }, true, today)).toBe(true);
+  expect(isManaged({ status: 'nothing', dueDate: '2026-11-20', kind: 'homework' }, false, today)).toBe(false);
+  expect(isManaged({ status: 'nothing', dueDate: '2026-11-01', kind: 'homework' }, true, today)).toBe(false);
+  expect(isManaged({ status: 'nothing', dueDate: '2026-11-20' }, true, today)).toBe(false);
+  expect(isManaged({ status: 'nothing', dueDate: '2026-11-20', autoSchedule: true }, false, today)).toBe(true);
+  expect(isManaged({ status: 'done', dueDate: '2026-11-20', autoSchedule: true }, true, today)).toBe(false);
+});

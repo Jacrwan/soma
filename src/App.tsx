@@ -6,6 +6,7 @@ import AuthScreen from './components/Auth/AuthScreen';
 import DayView from './components/DayView/DayView';
 import LiveDashboard from './components/DashboardV2/LiveDashboard';
 import DeadlinesTab from './components/Deadlines/DeadlinesTab';
+import TasksTab from './components/Tasks/TasksTab';
 import GradesTab from './components/Grades/GradesTab';
 import DocumentsTab from './components/Documents/DocumentsTab';
 import AITab from './components/AI/AITab';
@@ -210,6 +211,7 @@ function AppShell({ user, sessionResolved, onLogout }: {
       '/dashboard': 'Dashboard | Soma',
       '/day-view':  'Day View | Soma',
       '/deadlines': 'Deadlines | Soma',
+      '/tasks':     'Tasks | Soma',
       '/canvas':    'Deadlines | Soma',
       '/grades':    'Grades | Soma',
       '/documents': 'Documents | Soma',
@@ -296,6 +298,14 @@ function AppShell({ user, sessionResolved, onLogout }: {
               <path d="M4.5 5h5M4.5 7.5h5M4.5 10h3"/>
             </svg>
             <span className={styles.navLabel}>Deadlines</span>
+          </button>
+
+          <button className={nav('/tasks')} onClick={() => navigate('/tasks')} data-tour="nav-tasks">
+            <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M1.5 3.5l1 1 2-2M1.5 8l1 1 2-2"/>
+              <path d="M6.5 3.5h6M6.5 8h6M6.5 12h6"/>
+            </svg>
+            <span className={styles.navLabel}>Tasks</span>
           </button>
 
           <button className={nav('/grades')} onClick={() => navigate('/grades')} data-tour="nav-grades">
@@ -583,6 +593,7 @@ export default function App() {
         {/* Renamed to Deadlines once it covered more than Canvas; the old
             path still works so existing links and bookmarks do not break. */}
         <Route path="/deadlines" element={<DeadlinesTab />} />
+        <Route path="/tasks"     element={user ? <TasksTab key={user.id} userId={user.id}/> : <Navigate to="/login" replace/>} />
         <Route path="/canvas"    element={<DeadlinesTab />} />
         <Route path="/grades"    element={<GradesTab />} />
         <Route path="/documents" element={<DocumentsTab />} />
