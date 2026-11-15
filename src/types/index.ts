@@ -63,6 +63,10 @@ export interface TodoSession {
   endTime?: string;     // ISO timestamptz
   todoText?: string;    // joined from todos.text
   subjectId?: string;   // joined from todos.subject_id
+  /** One sitting of a scheduled task checked off (task_scheduler_migration.sql). */
+  doneAt?: string;
+  /** Placed or pinned by the student: the scheduler never moves it. */
+  pinned?: boolean;
 }
 
 export interface CanvasAssignment {
@@ -158,6 +162,10 @@ export interface Todo {
   estimatedMinutes?: number;
   notes?: string;
   order?: number;
+  /** Place in the priority list, lower first; unset = Soma's guess (lib/taskScheduler.ts). */
+  rank?: number;
+  /** true: Soma schedules its sittings; false: turned off; unset: the default for its kind. */
+  autoSchedule?: boolean;
 }
 
 export interface GoogleCalendarEvent {

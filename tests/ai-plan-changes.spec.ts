@@ -300,7 +300,8 @@ test('a deadline\'s study block renamed to other work becomes its own task; the 
 
 test('an unscheduled deadline Soma schedules under another name stays on Deadlines under its own', async ({ page }) => {
   const state = await setup(page, { reply: 'Scheduled.', blocks: [], changes: [{ action: 'update', id: 't-hw', title: 'Review: Lab 8 mistakes', date: TOMORROW, start: '21:00', end: '22:00' }] }, db => {
-    db.todos.push({ id: 't-hw', user_id: account.id, text: 'Lab 8: Gleam Types', subject_id: 'cs', status: 'nothing', date: DUE, due_date: DUE, kind: 'lab' });
+    // Not scheduled by the task scheduler (2026-11-15), so it stays unscheduled for Soma to place.
+    db.todos.push({ id: 't-hw', user_id: account.id, text: 'Lab 8: Gleam Types', subject_id: 'cs', status: 'nothing', date: DUE, due_date: DUE, kind: 'lab', auto_schedule: false });
   });
   await ask(page, 'put a lab 8 review tomorrow at 9pm');
   await page.getByRole('button', { name: /Accept all \(1\)/ }).click();

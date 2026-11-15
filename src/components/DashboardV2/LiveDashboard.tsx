@@ -22,11 +22,13 @@ import { focusEndMinutes, nowMinutes, overrunToday, planToday, reclaimWindowEnd,
 import { spanMinutes } from '../../lib/clockRange';
 import DayCompare from './DayCompare';
 import { useProposals, updateProposals, getProposals } from '../../lib/proposalStore';
-import { estimate as planEstimate, isSittingOf, kindOf, placeSittings, type PlanTarget } from '../../lib/planIt';
+import { estimate as planEstimate, isSittingOf, kindOf, type PlanTarget } from '../../lib/planIt';
 import { freeTime } from '../../lib/aiPlanning';
 import { clockOf, rangeOf } from '../../lib/clockRange';
 import { dashboardDayFor } from '../../lib/calendarView';
 import { coveredBy, finishThrough, rangeLabel, renameLoggedTime, retitle } from '../../lib/courseItems';
+import { rescheduleTasks, setSittingDone, type RescheduleResult } from '../../lib/taskSchedule';
+import { asTodoKind } from '../../types';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './DashboardV2.module.css';
 
@@ -151,6 +153,8 @@ export default function LiveDashboard({userId}:{userId:string}) {
  const [compareId,setCompareId]=useState('');
  // What the reclaim last moved, kept on today's plan until dismissed or undone.
  const [moveNote,setMoveNote]=useState<{reason:'reclaim'|'overrun';moves:MovedBlock[]}|null>(null);
+ // What the task scheduler last moved, and how many tasks don't fit before they're due.
+ const [taskNote,setTaskNote]=useState<{moves:MovedBlock[];atRisk:number}|null>(null);
  const reclaimLock=useRef(false);
  const editingPlan=useRef(false);
  const onEditingChange=useCallback((editing:boolean)=>{editingPlan.current=editing;},[]);
@@ -180,6 +184,45 @@ export default function LiveDashboard({userId}:{userId:string}) {
  const conversation=useRef(memory.history);
  const reload=useCallback(async()=>{const gen=++generation.current;const data=await readPlan(userId,origin,rangeRef.current,7);if(mounted.current && gen===generation.current)setSnapshot(data);return data;},[userId,origin]);
  useEffect(()=>{void reload().catch(e=>setError(e.message));},[rangeStart,reload]);
+ /**
+  * The task scheduler (lib/taskSchedule.ts): on load, after any change to the
+  * plan, and when a sitting is missed. It waits while a save or the editor is
+  * open, and runs again after; what it moved shows above today's plan.
+  */
+ const scheduleTimer=useRef<number|undefined>(undefined),scheduling=useRef(false),asking=useRef(false),askedPending=useRef(false);
+ const runSchedule=useCallback((delay=1500)=>{
+  window.clearTimeout(scheduleTimer.current);
+  const go=async()=>{
+   // Not while a message to Soma is under way: it runs once the reply is in.
+   if(asking.current){askedPending.current=true;return;}
+   // Not while a save or the editor is open: a little later.
+   if(writing.current || reclaimLock.current || editingPlan.current){runSchedule(5000);return;}
+   // Its own flag, not reclaimLock: a chat message waits on reclaimLock, and
+   // should never wait on (or hang behind) a scheduling run.
+   scheduling.current=true;
+   let result:RescheduleResult;
+   try{result=await rescheduleTasks(userId);}
+   catch(e){setError(e instanceof Error ? e.message : 'Could not schedule your tasks.');return;}
+   finally{scheduling.current=false;}
+   const day=(d:Date)=>d.toLocaleDateString(undefined,{weekday:'short'});
+   const clock=(d:Date)=>`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+   const moves:MovedBlock[]=result.moved.map((m,i)=>({id:`${m.todoId}-${i}`,todoId:m.todoId,title:m.title,from:m.from ? clock(m.from) : '',to:clock(m.to),fromLabel:m.from ? `${day(m.from)} ${formatClock(clock(m.from))}` : 'new',toLabel:`${day(m.to)} ${formatClock(clock(m.to))}`}));
+   const atRisk=Object.keys(result.atRisk).length;
+   if(moves.length || atRisk)setTaskNote({moves,atRisk});else setTaskNote(n=>n && null);
+   if(result.moved.length || result.created || result.removed)void reload().catch(()=>{});
+  };
+  // Right away when asked to (the first run, on load), else after a pause so a burst of changes runs once.
+  if(delay<=0)void go();else scheduleTimer.current=window.setTimeout(()=>void go(),delay);
+ },[userId,reload]);
+ useEffect(()=>{
+  runSchedule(0);
+  const later=()=>runSchedule();
+  const events=['soma_todos_changed','soma_timer_stopped',CANVAS_CHANGED,'soma_subjects_changed'];
+  for(const e of events)window.addEventListener(e,later);
+  return()=>{window.clearTimeout(scheduleTimer.current);for(const e of events)window.removeEventListener(e,later);};
+ },[runSchedule]);
+ // A sitting that just ended without Focus or a check is missed: schedule again.
+ const missedSeen=useRef(new Set<string>());
  // Warm the documents cache so Ask Soma can answer from uploaded files even if
  // the user never opens the Documents page this session.
  useEffect(()=>{void listDocuments().catch(()=>{});},[]);
@@ -264,7 +307,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   finally{writing.current=false;setBusy(false);}
  }
  async function runReclaim(){
-  if(!snapshot || writing.current || reclaimLock.current || editingPlan.current)return;
+  if(!snapshot || writing.current || reclaimLock.current || editingPlan.current || scheduling.current)return;
   const date=localDate(origin);
   const snap=toVersionBlocks(snapshot.blocks.filter(b=>b.day===0));
   if(snap.length && !loadDayVersions(userId,date).length){
@@ -276,11 +319,15 @@ export default function LiveDashboard({userId}:{userId:string}) {
   // a calendar fetch) is read again only when something needs to move. It
   // used to be read every minute in every open tab, moves or not.
   const windowEnd=reclaimWindowEnd(storage.getSomaSettings());
-  if(!planToday(snapshot.blocks.filter(b=>b.day===0),nowMinutes(),windowEnd,reclaimOpts()).moved.length)return;
+  // A scheduled task's sittings are moved by the task scheduler, not here.
+  const held=(bs:Snapshot['blocks'])=>bs.filter(b=>b.day===0).map(b=>b.sitting ? {...b,external:true} : b);
+  const missed=snapshot.blocks.filter(b=>b.sitting && b.day===0 && b.ended && b.state==='Planned' && !(b.focusedSeconds??0)).map(b=>String(b.id));
+  if(missed.some(id=>!missedSeen.current.has(id))){for(const id of missed)missedSeen.current.add(id);runSchedule(0);}
+  if(!planToday(held(snapshot.blocks),nowMinutes(),windowEnd,reclaimOpts()).moved.length)return;
   let fresh:Snapshot;
   try{fresh=await readPlan(userId,origin,rangeRef.current,7);}catch{return;}
   if(fresh.calendarError)return;
-  const result=planToday(fresh.blocks.filter(b=>b.day===0),nowMinutes(),windowEnd,reclaimOpts());
+  const result=planToday(held(fresh.blocks),nowMinutes(),windowEnd,reclaimOpts());
   if(result.held || !result.moved.length || editingPlan.current || writing.current)return;
   reclaimLock.current=true;writing.current=true;setBusy(true);setError('');
   try{await applyMoves(fresh,result,'reclaim');await reload();}
@@ -299,11 +346,18 @@ export default function LiveDashboard({userId}:{userId:string}) {
    const fresh=await readPlan(userId,origin,rangeRef.current,7);
    const todo=fresh.todos.find(t=>t.id===block.todoId);
    if(!todo)throw new Error('This task no longer exists. Refresh your plan.');
+   // One sitting of a scheduled task: checked off on its own; the task is done when nothing is left.
+   const liveSitting=fresh.blocks.find(b=>String(b.id)===String(block.id));
+   if(liveSitting?.sitting && liveSitting.sessionId){
+    await setSittingDone(userId,fresh,todo,liveSitting.sessionId,state==='Completed');
+    await storage.fetchAllTodos();await reload();runSchedule(300);
+    return;
+   }
    // Ran long only if Focus ran past the end: the block then ends when Focus
    // did. A late checkmark with no Focus just marks it done.
    const live=fresh.blocks.find(b=>String(b.id)===String(block.id));
    const focusEnd=state==='Completed' && live ? focusEndMinutes(live,fresh.history,localDate(origin),String(focusId())===String(block.id)) : null;
-   const overrun=state==='Completed' && !fresh.calendarError ? overrunToday(fresh.blocks.filter(b=>b.day===0),block.id,focusEnd,reclaimWindowEnd(storage.getSomaSettings()),reclaimOpts()) : null;
+   const overrun=state==='Completed' && !fresh.calendarError ? overrunToday(fresh.blocks.filter(b=>b.day===0).map(b=>b.sitting ? {...b,external:true} : b),block.id,focusEnd,reclaimWindowEnd(storage.getSomaSettings()),reclaimOpts()) : null;
    if(overrun?.moved.length)await applyMoves(fresh,overrun,'overrun',block.id);
    else await setTaskStatus(userId,fresh,todo,state==='Completed' ? 'done' : state==='Partially completed' ? 'in_progress' : 'nothing');
    await storage.fetchAllTodos();await reload();
@@ -352,7 +406,10 @@ export default function LiveDashboard({userId}:{userId:string}) {
   // Asked just after midnight, before the page has rolled over: Soma still
   // answers for today, and the day on screen keeps its date.
   const now=dateAt(new Date(),0),shift=Math.round((+now-+origin)/86_400_000);
-  const result=await askSoma({userId,origin:now,text,history:conversation.current,selectedDay:Math.max(0,day-shift),activeBlockId:active?.id,conversationId:memory.id,onReply});
+  asking.current=true;
+  let result:Awaited<ReturnType<typeof askSoma>>;
+  try{result=await askSoma({userId,origin:now,text,history:conversation.current,selectedDay:Math.max(0,day-shift),activeBlockId:active?.id,conversationId:memory.id,onReply});}
+  finally{asking.current=false;if(askedPending.current){askedPending.current=false;runSchedule();}}
   conversation.current=result.history;
   memory.history=result.history;
   const [asked,answered]=result.history.slice(-2);
@@ -447,23 +504,34 @@ export default function LiveDashboard({userId}:{userId:string}) {
   else setError('');
  }
  const pulseDays=Array.from({length:7},(_,i)=>snapshot.history.filter(h=>h.date===localDate(dateAt(origin,i-6))).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0));
- return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{onEditingChange,initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,planNotice:moveNote ? <MoveNote reason={moveNote.reason} moves={moveNote.moves} busy={busy} onUndo={()=>void undoMoves()} onDismiss={()=>setMoveNote(null)}/> : null,compare:{shown:compareOn,toggle:()=>setCompareOn(v=>!v),panel:<DayCompare current={toVersionBlocks(snapshot.blocks)} versions={versions} selectedId={compareId || versions[0]?.id || ''} onSelect={setCompareId}/>},rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<CatchUp key={localDate(origin)} userId={userId} origin={origin} onApply={applyBatch}>{catchUp=><AgentBrief catchUp={catchUp}/>}</CatchUp>,dump:<BrainDump userId={userId} onPlan={planDump}/>,habits:<Habits/>,layout,onLayout:saveLayout,due:due.map(x=>{
+ return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{onEditingChange,initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,planNotice:moveNote || taskNote ? <>{moveNote && <MoveNote reason={moveNote.reason} moves={moveNote.moves} busy={busy} onUndo={()=>void undoMoves()} onDismiss={()=>setMoveNote(null)}/>}{taskNote && <MoveNote reason="tasks" moves={taskNote.moves} atRisk={taskNote.atRisk} busy={busy} onTasks={()=>navigate('/tasks')} onDismiss={()=>setTaskNote(null)}/>}</> : null,compare:{shown:compareOn,toggle:()=>setCompareOn(v=>!v),panel:<DayCompare current={toVersionBlocks(snapshot.blocks)} versions={versions} selectedId={compareId || versions[0]?.id || ''} onSelect={setCompareId}/>},rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<CatchUp key={localDate(origin)} userId={userId} origin={origin} onApply={applyBatch}>{catchUp=><AgentBrief catchUp={catchUp}/>}</CatchUp>,dump:<BrainDump userId={userId} onPlan={planDump}/>,habits:<Habits/>,layout,onLayout:saveLayout,due:due.map(x=>{
   // Plan it's sittings for this assignment, and the time logged on them (or on the assignment itself).
   const mine=snapshot.todos.filter(t=>t.subjectId===x.subjectId && isSittingOf(t.text,x.title));
   const seconds=snapshot.history.filter(h=>h.subject_id===x.subjectId && isSittingOf(h.task_text??'',x.title)).reduce((n,h)=>n+(h.duration_seconds||0),0);
+  // A scheduled task's sittings are its sessions; older Plan it sittings were tasks named "· 1 of 3".
+  const task=snapshot.todos.find(t=>t.assignmentId===x.id && t.status!=='done');
+  const sittings=task ? snapshot.sessions.filter(sn=>sn.todoId===task.id && sn.startTime) : [];
+  if(sittings.length)return {...x,plan:{total:sittings.length,done:sittings.filter(sn=>sn.doneAt).length,minutes:Math.round(seconds/60)}};
   return {...x,plan:{total:mine.length,done:mine.filter(t=>t.status==='done').length,minutes:Math.round(seconds/60)}};
  }),initialPlan:planFromDeadlines ?? undefined,planIt:{
   estimate:(target)=>planEstimate(target,snapshot.history),
   place:async(target,choice)=>{
    const subject=snapshot.subjects.find(s=>s.id===target.subjectId);
    if(!subject)throw new Error('Add this course as a subject before planning it.');
-   // Today on, with suggestions already waiting counted as taken.
-   const plan=await readPlan(userId,origin,0,Math.min(60,Math.max(7,Math.ceil((new Date(`${choice.finishBy}T12:00:00`).getTime()-origin.getTime())/86_400_000)+2)));
-   const waiting=getProposals(userId).filter(p=>p.time && p.replaces===undefined && !(p.note?.startsWith('Plan it') && isSittingOf(p.title,target.title)));
-   const {blocks,missing}=placeSittings({...target,subject:subject.name,color:toneOf(subject.color)},choice,{...plan,blocks:[...plan.blocks,...waiting as unknown as Snapshot['blocks']]},origin,storage.getSomaSettings());
-   // Finding times again replaces the last suggestions for this assignment.
-   updateProposals(userId,items=>[...items.filter(p=>!(p.note?.startsWith('Plan it') && isSittingOf(p.title,target.title))),...blocks]);
-   return {placed:blocks.map(b=>({title:b.title,date:localDate(dateAt(origin,b.day)),time:b.time})),missing,firstDay:blocks[0]?.day};
+   // Schedule it: the assignment becomes (or already is) a task Soma schedules, with this length.
+   const todos=await storage.fetchAllTodos();
+   const assignmentId=target.key.startsWith('canvas-') ? Number(target.key.slice(7)) : undefined;
+   const existing=todos.find(t=>t.status!=='done' && (assignmentId ? t.assignmentId===assignmentId : t.subjectId===subject.id && t.text===target.title && !!t.dueDate));
+   const todo=existing ? {...existing,estimatedMinutes:choice.minutes,dueDate:existing.dueDate ?? target.due,autoSchedule:true}
+    : {id:crypto.randomUUID(),text:target.title,status:'nothing' as const,subjectId:subject.id,dueDate:target.due,estimatedMinutes:choice.minutes,autoSchedule:true,date:localDate(origin),kind:asTodoKind(kindOf(target.title)) ?? 'homework',...(assignmentId ? {assignmentId} : {})};
+   await storage.saveTodo(todo);
+   // Older Plan it suggestions for this assignment are replaced by the task's own sittings.
+   updateProposals(userId,items=>items.filter(p=>!(p.note?.startsWith('Plan it') && isSittingOf(p.title,target.title))));
+   const result=await rescheduleTasks(userId);
+   const fresh=await reload();
+   const placed=fresh.sessions.filter(sn=>sn.todoId===todo.id && sn.startTime && sn.endTime && !sn.doneAt && +new Date(sn.endTime)>Date.now()).sort((a,b)=>+new Date(a.startTime!)-+new Date(b.startTime!)).map(sn=>{const a=new Date(sn.startTime!),z=new Date(sn.endTime!);const hm=(d:Date)=>`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;return {title:todo.text,date:localDate(a),time:`${hm(a)}–${hm(z)}`};});
+   const firstDay=placed.length ? Math.round((new Date(`${placed[0].date}T12:00:00`).getTime()-dateAt(origin,0).getTime())/86_400_000) : undefined;
+   return {placed,short:result.atRisk[todo.id] ?? 0,finishBy:result.finishBy[todo.id],firstDay:firstDay!==undefined && firstDay<7 ? firstDay : undefined,error:result.skipped};
   },
   log:async(target,date,minutes,start)=>{
    const subject=snapshot.subjects.find(s=>s.id===target.subjectId);

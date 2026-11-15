@@ -14,6 +14,8 @@ function ensureUtcSuffix(ts: string): string {
   return ts.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(ts) ? ts : ts + 'Z';
 }
 
+import type { SchedulePrefs } from './taskScheduler';
+
 export interface SomaSettings {
   /** The hours Soma may schedule study in, 24-hour HH:MM. Calendar events and
    *  existing blocks inside the window still count as busy. `off` lifts the
@@ -24,6 +26,8 @@ export interface SomaSettings {
   invadePersonalTime?: boolean;
   /** When Soma has to split work to fit it in, no piece is shorter than `min` minutes. */
   chunks?: { min: number };
+  /** Settings → Scheduling: how the task scheduler places sittings (lib/taskScheduler.ts). */
+  schedule?: SchedulePrefs;
   theme: 'dark' | 'light';
   /** Clock display preference. Stored times stay canonical 24-hour `HH:MM`. */
   timeFormat?: '12h' | '24h';
@@ -190,6 +194,8 @@ function todoFromRow(r: Record<string, unknown>): Todo {
     kind: asTodoKind(r.kind),
     notes: (r.notes as string | null) ?? undefined,
     order: (r.order as number | null) ?? undefined,
+    rank: (r.rank as number | null) ?? undefined,
+    autoSchedule: (r.auto_schedule as boolean | null) ?? undefined,
   };
 }
 
@@ -618,7 +624,8 @@ export const storage = {
           const p = prevMap.get(t.id);
           if (!p || p.text !== t.text || p.status !== t.status || p.subjectId !== t.subjectId ||
               p.dueDate !== t.dueDate || p.notes !== t.notes || p.order !== t.order ||
-              p.estimatedMinutes !== t.estimatedMinutes || p.date !== t.date) {
+              p.estimatedMinutes !== t.estimatedMinutes || p.date !== t.date ||
+              p.rank !== t.rank || p.autoSchedule !== t.autoSchedule) {
             await storage.saveTodo(t);
           }
         }
@@ -713,8 +720,12 @@ export const storage = {
       kind: todo.kind ?? null,
       notes: todo.notes ?? null,
       order: todo.order ?? null,
+      // Sent only when set, so saving a task still works before
+      // task_scheduler_migration.sql has run.
+      ...(todo.rank !== undefined ? { rank: todo.rank } : {}),
+      ...(todo.autoSchedule !== undefined ? { auto_schedule: todo.autoSchedule } : {}),
     });
-    if (error) throw new Error(error.message);
+    if (error) throw new Error(/rank|auto_schedule/.test(error.message) ? 'Run task_scheduler_migration.sql in Supabase to save task priority and scheduling.' : error.message);
   },
 
   async deleteTodo(todoId: string): Promise<void> {

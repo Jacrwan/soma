@@ -7,8 +7,10 @@ import type { PlanBlock } from './PlanEditor';
 import { loadCourseItems, coveredBy, markDone, renameLoggedTime, type CourseItem } from '../../lib/courseItems';
 import { rangeOf, spanMinutes } from '../../lib/clockRange';
 import { sameWork, subjectForCourse } from '../../lib/canvasDeepSync';
+import { isManaged } from '../../lib/taskScheduler';
 
-export type LiveBlock = PlanBlock & { todoId?: string; sessionId?: string; subjectId?: string; legacyId?: string };
+/** `sitting`: one sitting of a task Soma schedules (lib/taskScheduler.ts); checked off on its own. */
+export type LiveBlock = PlanBlock & { todoId?: string; sessionId?: string; subjectId?: string; legacyId?: string; sitting?: boolean };
 export type History = { id:string; subject_id:string; task_text:string; duration_seconds:number; date:string; start_time?:string; end_time?:string };
 export type Snapshot = { blocks:LiveBlock[]; subjects:Subject[]; todos:Todo[]; sessions:TodoSession[]; history:History[]; calendarError:string; items:CourseItem[] };
 export const localDate = (date:Date) => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
@@ -23,7 +25,7 @@ async function rows(table:string,userId:string) {
  const all:Record<string,unknown>[]=[];
  for(let offset=0;;offset+=1000){const {data,error}=await supabase.from(table).select('*').eq('user_id',userId).order('id').range(offset,offset+999);if(error)throw new Error(`Could not load ${table.replace(/_/g,' ')}. Please retry.`);all.push(...(data??[]));if(!data || data.length<1000)return all;}
 }
-function todoRow(r:Record<string,unknown>):Todo {return {id:String(r.id),text:String(r.text??''),status:r.status as Todo['status'],subjectId:r.subject_id as string|undefined,date:String(r.date??''),estimatedMinutes:r.estimated_minutes as number|undefined,dueDate:r.due_date as string|undefined,kind:asTodoKind(r.kind),assignmentId:r.assignment_id as number|undefined,notes:r.notes as string|undefined,order:r.order as number|undefined};}
+function todoRow(r:Record<string,unknown>):Todo {return {id:String(r.id),text:String(r.text??''),status:r.status as Todo['status'],subjectId:r.subject_id as string|undefined,date:String(r.date??''),estimatedMinutes:r.estimated_minutes as number|undefined,dueDate:r.due_date as string|undefined,kind:asTodoKind(r.kind),assignmentId:r.assignment_id as number|undefined,notes:r.notes as string|undefined,order:r.order as number|undefined,rank:(r.rank as number|null)??undefined,autoSchedule:(r.auto_schedule as boolean|null)??undefined};}
 /** The plan for `days` days starting `startDay` days from origin (negative = the past). */
 const TONES:Record<string,string>={'#ef5350':'red','#42a5f5':'blue','#66bb6a':'green','#ab47bc':'purple','#ffa726':'orange','#26c6da':'cyan','#ec407a':'pink','#8d6e63':'brown'};
 /** A subject's colour as the dashboard's tone name. */
@@ -50,10 +52,12 @@ export async function readPlan(userId:string,origin:Date,startDay=0,days=7):Prom
  const [subjectRows,todoRows,sessionRows,historyRows,google,items]=await Promise.all([rows('subjects',userId),rows('todos',userId),rows('todo_sessions',userId),rows('timer_sessions',userId),calendar,loadCourseItems(userId)]);
  const subjects=subjectRows.map(r=>({id:String(r.id),name:String(r.name),color:r.color as Subject['color'],archived:!!r.archived,totalTimeToday:0}));
  const todos=todoRows.map(todoRow);
- const sessions:TodoSession[]=sessionRows.map(r=>({id:String(r.id),todoId:String(r.todo_id),date:String(r.date),startTime:r.start_time ? utc(String(r.start_time)) : undefined,endTime:r.end_time ? utc(String(r.end_time)) : undefined}));
+ const sessions:TodoSession[]=sessionRows.map(r=>({id:String(r.id),todoId:String(r.todo_id),date:String(r.date),startTime:r.start_time ? utc(String(r.start_time)) : undefined,endTime:r.end_time ? utc(String(r.end_time)) : undefined,...(r.done_at ? {doneAt:utc(String(r.done_at))} : {}),...(r.pinned ? {pinned:true} : {})}));
  const history=historyRows as unknown as History[];
  const blocks:LiveBlock[]=[];
  const color=(subjectId?:string)=>toneOf(subjects.find(s=>s.id===subjectId)?.color);
+ // A scheduled task's sittings are checked off one at a time, not with the task.
+ const autoImported=storage.getSomaSettings().schedule?.autoImported ?? true, today=localDate(new Date());
  for(let day=startDay;day<startDay+days;day++){
   const date=localDate(dateAt(origin,day));
   const scheduled=sessions.filter(s=>s.date===date);
@@ -63,7 +67,8 @@ export async function readPlan(userId:string,origin:Date,startDay=0,days=7):Prom
    const end=session?.endTime ? new Date(session.endTime) : null;
    const minutes=start && end ? Math.max(0,Math.round((end.getTime()-start.getTime())/60000)) : 0;
    const external=subject?.name===commitmentSubject;
-   blocks.push({id:session?.id??todo.id,todoId:todo.id,sessionId:session?.id,subjectId:todo.subjectId,title:todo.text,subject:external ? 'Personal commitment' : subject?.name??'Personal',time:start && end ? `${timeLabel(start)}–${localDate(end)!==date && end.getTime()-start.getTime()>=86400000 ? '23:59' : timeLabel(end)}` : '',minutes,color:external ? 'neutral' : color(todo.subjectId),state:todo.status==='done' ? 'Completed' : todo.status==='in_progress' ? 'Partially completed' : 'Planned',day,external,manual:external});
+   const sitting=!!session && isManaged(todo,autoImported,today);
+   blocks.push({id:session?.id??todo.id,todoId:todo.id,sessionId:session?.id,subjectId:todo.subjectId,title:todo.text,subject:external ? 'Personal commitment' : subject?.name??'Personal',time:start && end ? `${timeLabel(start)}–${localDate(end)!==date && end.getTime()-start.getTime()>=86400000 ? '23:59' : timeLabel(end)}` : '',minutes,color:external ? 'neutral' : color(todo.subjectId),state:todo.status==='done' || (sitting && session?.doneAt) ? 'Completed' : todo.status==='in_progress' && !sitting ? 'Partially completed' : 'Planned',day,external,manual:external,...(sitting ? {sitting:true} : {})});
   };
   for(const session of scheduled){const todo=todos.find(t=>t.id===session.todoId);if(todo)add(todo,session);}
   for(const todo of todos.filter(t=>t.date===date && !sessions.some(s=>s.todoId===t.id)))add(todo);

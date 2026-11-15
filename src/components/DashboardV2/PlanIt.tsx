@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import { formatClock, formatClockRange, useTimeFormat } from '../../lib/timeFormat';
-import { dayKey, defaultFinishBy, defaultSittings, dueAsDate, type PlanChoice, type PlanTarget } from '../../lib/planIt';
+import { dayKey, dueAsDate, type PlanTarget } from '../../lib/planIt';
 import styles from './DashboardV2.module.css';
 
 /**
- * Plan it (see src/lib/planIt.ts): how long, in how many sittings, done by
- * when. The sittings land on the plan as suggestions to accept; time already
- * spent can be logged here too.
+ * Plan it (2026-11-15): the assignment becomes a task Soma schedules
+ * (src/lib/taskSchedule.ts). The student says how long; Soma places the
+ * sittings before the finish day (Settings → Scheduling) and moves them
+ * again when one is missed or the plan changes. Time already spent can be
+ * logged here too.
  */
 
 const todayKey = () => dayKey(new Date());
@@ -15,34 +17,30 @@ const hours = (m: number) => m < 60 ? `${m} min` : `${Math.floor(m / 60)}h${m % 
 const CHOICES = [30, 60, 120, 180];
 
 export type Placed = { title: string; date: string; time: string };
+export type ScheduleOutcome = { placed: Placed[]; short: number; finishBy?: Date; firstDay?: number; error?: string };
 
 export default function PlanIt({ target, estimate, onPlace, onLog, onClose }: {
   target: PlanTarget;
   estimate: { minutes: number; basis: string };
-  onPlace: (choice: PlanChoice) => Promise<{ placed: Placed[]; missing: number }>;
+  onPlace: (choice: { minutes: number }) => Promise<ScheduleOutcome>;
   onLog: (date: string, minutes: number, start?: string) => Promise<void>;
   onClose: () => void;
 }) {
   const timeFormat = useTimeFormat();
   const [minutes, setMinutes] = useState(estimate.minutes);
-  const [sittings, setSittings] = useState(() => defaultSittings(estimate.minutes));
-  const [touchedSittings, setTouchedSittings] = useState(false);
   const due = dueAsDate(target.due);
   const dueDay = dayKey(due);
-  const lastDay = dueDay < todayKey() ? todayKey() : dueDay;
   const dueClock = target.due.length > 10 ? `, ${formatClock(`${String(due.getHours()).padStart(2, '0')}:${String(due.getMinutes()).padStart(2, '0')}`, timeFormat)}` : '';
-  const [finishBy, setFinishBy] = useState(() => defaultFinishBy(target.due));
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ placed: Placed[]; missing: number } | null>(null);
+  const [result, setResult] = useState<ScheduleOutcome | null>(null);
   const [error, setError] = useState('');
   const [logDate, setLogDate] = useState(todayKey);
   const [logMinutes, setLogMinutes] = useState('');
   const [logStart, setLogStart] = useState('');
   const [logged, setLogged] = useState('');
 
-  const setTotal = (m: number) => { setMinutes(m); if (!touchedSittings) setSittings(defaultSittings(m)); setResult(null); };
-  const each = Math.max(5, Math.round(minutes / sittings / 5) * 5);
-  const span = finishBy === todayKey() ? 'today' : `by ${dayLabel(finishBy)}`;
+  const setTotal = (m: number) => { setMinutes(m); setResult(null); };
+  const finish = result?.finishBy ? (dayKey(result.finishBy) === todayKey() ? 'today' : `by ${dayLabel(dayKey(result.finishBy))}`) : '';
 
   return (
     <section className={styles.editor} aria-label="Plan it">
@@ -51,8 +49,8 @@ export default function PlanIt({ target, estimate, onPlace, onLog, onClose }: {
       <form className={styles.planItForm} onSubmit={async e => {
         e.preventDefault(); if (busy) return;
         setBusy(true); setError(''); setResult(null);
-        try { setResult(await onPlace({ minutes, sittings, finishBy })); }
-        catch (err) { setError(err instanceof Error ? err.message : 'Could not find times. Try again.'); }
+        try { const r = await onPlace({ minutes }); if (r.error) setError(r.error); setResult(r); }
+        catch (err) { setError(err instanceof Error ? err.message : 'Could not schedule it. Try again.'); }
         finally { setBusy(false); }
       }}>
         <fieldset>
@@ -63,24 +61,17 @@ export default function PlanIt({ target, estimate, onPlace, onLog, onClose }: {
           </div>
           <small>Soma's guess: {hours(estimate.minutes)}, {estimate.basis}.</small>
         </fieldset>
-        <label>Sittings
-          <select aria-label="Sittings" value={sittings} onChange={e => { setSittings(Number(e.target.value)); setTouchedSittings(true); setResult(null); }}>
-            {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n === 1 ? '1 sitting' : `${n} sittings`}</option>)}
-          </select>
-        </label>
-        <label>Finish by
-          <input type="date" aria-label="Finish by" value={finishBy} min={todayKey()} max={lastDay} onChange={e => { setFinishBy(e.target.value || defaultFinishBy(target.due)); setResult(null); }} />
-        </label>
-        <p className={styles.editorNote}>{sittings === 1 ? `One ${hours(each)} sitting` : `${sittings} sittings of about ${hours(each)}`}, in your open study time {span}.</p>
+        <p className={styles.editorNote}>Soma splits it into sittings in your open study time and finishes before it's due. If you miss one, it moves. Change how in Settings → Scheduling.</p>
         {error && <p role="alert" className={styles.editorNote}>{error}</p>}
-        <div className={styles.editorButtons}><button type="submit" className={styles.planItGo} disabled={busy || minutes < 5}>{busy ? 'Finding times…' : result ? 'Find times again' : 'Find times'}</button></div>
+        <div className={styles.editorButtons}><button type="submit" className={styles.planItGo} disabled={busy || minutes < 5}>{busy ? 'Scheduling…' : result ? 'Update' : 'Schedule it'}</button></div>
       </form>
-      {result && <div className={styles.planItResult} role="status">
+      {result && !result.error && <div className={styles.planItResult} role="status">
         {result.placed.length > 0 && <>
-          <p>{result.placed.length === 1 ? 'Suggested on your plan' : `${result.placed.length} sittings suggested on your plan`}. Accept them there.</p>
-          <ul>{result.placed.map(p => <li key={p.title}><span>{dayLabel(p.date)}</span><span>{formatClockRange(p.time, timeFormat)}</span><strong>{p.title}</strong></li>)}</ul>
+          <p>{result.placed.length === 1 ? 'On your plan' : `${result.placed.length} sittings on your plan`}{finish ? `, done ${finish}` : ''}.</p>
+          <ul>{result.placed.map(p => <li key={`${p.date}-${p.time}`}><span>{dayLabel(p.date)}</span><span>{formatClockRange(p.time, timeFormat)}</span><strong>{p.title}</strong></li>)}</ul>
         </>}
-        {result.missing > 0 && <p className={styles.editorNote}>{result.missing === sittings ? 'No open study time fits' : `${result.missing} more ${result.missing === 1 ? 'sitting doesn’t' : 'sittings don’t'} fit`} {span}. Try fewer, shorter sittings, a later finish, or longer study hours in Settings.</p>}
+        {result.short > 0 && <p className={styles.editorNote}>{hours(result.short)} doesn’t fit {finish || 'before it’s due'}. Try a shorter total, longer study hours, or move it up on Tasks.</p>}
+        {!result.placed.length && !result.short && <p className={styles.editorNote}>Nothing left to schedule: the time you’ve logged covers it.</p>}
       </div>}
       <form className={styles.planItLog} onSubmit={async e => {
         e.preventDefault();

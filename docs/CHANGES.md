@@ -9,6 +9,118 @@ still needed.
 
 ---
 
+## 2026-11-15 (task scheduler: work starts near its due date; Tasks lists real tasks)
+
+- **Why:** on the preview, the dashboard had Project 4 checkpoint 2 and other
+  work due weeks out sitting on today ("I don't want to work on something due
+  three weeks later right now"). "Evenly" spread sittings from today to the
+  finish day, so the first one always landed today. Separately, Tasks listed
+  old open to-dos from June ("K&K Ch.2 — End-of-chapter problem set",
+  Personal, overdue Jun 28): every open to-do with a due date was listed,
+  including ones never checked off from Day View and earlier versions.
+- **What:**
+  - Each task has a start window (`startDayOf`): about two days per sitting
+    before the finish day, 2 to 14 days (an hour or less is one sitting). A
+    45-minute quiz starts 2 days out; six hours, two weeks out. Sittings go
+    in the window first; earlier days, closest first, only when the window
+    has no room. A missed sitting goes to the earliest time in its window. A
+    sitting already placed before its window has to move (that clears the
+    ones the first version put on today). "As late as safe" is one day per
+    sitting; "As soon as there's time" keeps the old start-today behaviour.
+    Settings → Scheduling calls it "Start working" and says what each does.
+  - Tasks lists what Soma schedules, plus unscheduled tasks not yet overdue.
+    The old to-dos are untouched (still on Deadlines and Day View).
+- **Where:** `lib/taskScheduler.ts`, `components/Tasks/TasksTab.tsx`,
+  `Settings/SettingsTab.tsx`.
+- **Guard:** `task-scheduler.spec.ts` › "work starts near its due date…",
+  "a sitting placed before its window has to move…"; `tasks-page.spec.ts` ›
+  "open to-dos long past their date are not listed…". Earlier scheduler tests
+  now give their tasks the near due dates they meant.
+
+---
+
+## 2026-11-15 (task scheduler: tasks place themselves, no AI)
+
+- **Why:** the owner wanted Soma usable without AI, on a Reclaim-style base:
+  write a task with a due date and it lands in a good spot, and keeps a good
+  spot as the week changes. Agreed with the owner before building:
+  auto-place (no Accept), done a day early, for everyone, Plan it becomes
+  this, sittings move only when they have to, no "· 1 of 3" names, a silent
+  priority order changed by dragging, more Scheduling settings, a Tasks page
+  alongside Deadlines (Deadlines stays).
+- **What:**
+  - **Scheduler** (`lib/taskScheduler.ts`, pure): a task is a todo with a due
+    date and a length; its sittings are its `todo_sessions`, all under the
+    task's own name and id. Each run keeps every sitting that is still fine,
+    and only moves one that was missed (ended with no Focus and no check, up
+    to 14 days back), clashes with something new, runs past the finish day,
+    or is no longer needed (logged Focus and checked sittings count; extra
+    sittings are dropped or shortened). New time is placed most important
+    task first: spread one sitting a day toward the finish day (evenly / early
+    / late), then two a day, then any open stretch, then a lower task's slot.
+    A missed sitting goes to the earliest open time, taking a lower-ranked
+    unstarted sitting's slot if that comes first. Nothing is placed or bumped
+    if it would leave a lower task without enough open time before its own
+    finish day. Pinned, started and done sittings, calendar events, other
+    blocks and waiting suggestions never move. What doesn't fit is "at risk".
+  - **Priority:** one list, no labels. Until dragged, a task's place is its
+    due date pulled earlier by kind (exam 5 days, project/essay 3, quiz 1,
+    reading/discussion a day later). Dragging sets `todos.rank` between its
+    neighbours on the same scale, so new tasks still slot in by due date.
+  - **Which tasks:** ones the student scheduled (Tasks, Plan it:
+    `auto_schedule = true`), and imported work with a due date still ahead
+    when "Schedule imported assignments" is on (default). Canvas assignments
+    due in the next 21 days, not handed in or marked done, get a linked task
+    (by `assignment_id`) so they can be scheduled.
+  - **Runner** (`lib/taskSchedule.ts`): reads todos, then the plan out to the
+    furthest due date (7–60 days); skips the run if the calendar didn't fully
+    load; writes removes, then moves, then new sittings.
+  - **Dashboard:** runs on load, after any plan change, Canvas sync or timer
+    stop, and when a sitting is missed; waits while a save or the editor is
+    open. A note above today's plan lists what moved (day and time) and how
+    many tasks don't fit, with "See tasks". Checking off a sitting checks off
+    only that sitting (`todo_sessions.done_at`); the task is in progress
+    until nothing is left, then done, and its future sittings come off.
+    Same-day reclaim leaves sittings alone (they count as fixed there).
+  - **Plan it:** asks only how long, then "Schedule it": the assignment
+    becomes (or already is) a scheduled task, and the panel lists where its
+    sittings went and what doesn't fit. Old waiting Plan it suggestions for
+    it are dropped. The due card counts the task's sittings.
+  - **Tasks page** (`/tasks`, nav after Deadlines): every open task with a
+    due date in priority order; drag (or arrow keys on the handle) to
+    reorder; add row (name, course, due, length with Soma's guess); ± 30 min;
+    next sitting; "doesn't fit"; check off; expand for sittings with Pin, and
+    Stop scheduling / Schedule.
+  - **Settings → Scheduling:** finish on the due day / 1 / 2 days early;
+    spread evenly / start early / as late as safe; schedule imported
+    assignments; usual and longest sitting; break after a sitting; most study
+    in a day; hours by weekday (a day off, or other hours). Saved in
+    `settings.schedule`; Save reschedules.
+- **Where:** `lib/taskScheduler.ts`, `lib/taskSchedule.ts` (new);
+  `components/Tasks/` (new); `DashboardV2/LiveDashboard.tsx`, `PlanIt.tsx`,
+  `MoveNote.tsx`, `DashboardV2.tsx`, `liveData.ts` (`sitting` blocks, rank,
+  `done_at`, `pinned`); `Settings/SettingsTab.tsx`; `lib/storage.ts`
+  (`schedule`, rank/auto_schedule sent only when set); `types/index.ts`;
+  `App.tsx`.
+- **Guard:** `tests/task-scheduler.spec.ts` (spread, stays put, missed moves,
+  priority bump and its deadline limit, clashes, pins, logged time, at risk,
+  settings, finish-by, rank guess, which tasks); `tests/tasks-page.spec.ts`
+  (adding places sittings, arrow-key reorder saves rank, a missed sitting
+  moves on the dashboard, checking off one sitting). `ai-plan-changes.spec.ts`
+  › "an unscheduled deadline…" now marks its lab `auto_schedule: false`:
+  imported work is scheduled on load, and that test is about one that isn't.
+  The dashboard's first run starts on load, not on a timer, and never runs
+  while a message to Soma is in flight (a timer firing then broke
+  `ai-load-limit.spec.ts`).
+- **Setup still needed:** run `task_scheduler_migration.sql` in Supabase
+  (adds `todos.rank`, `todos.auto_schedule`, `todo_sessions.done_at`,
+  `todo_sessions.pinned`). Until then tasks load and save as before, but
+  Schedule it, dragging, checking off one sitting and pinning say to run it.
+- **Not done:** the priority guess doesn't yet use syllabus weights from
+  Grades.
+
+---
+
 ## 2026-11-12 (course-site import: "couldn't read that schedule")
 
 - **Why:** right after the renamed-work change shipped, importing cs61a.org
