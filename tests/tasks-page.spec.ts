@@ -211,8 +211,9 @@ test('details: your own deadline moves the work earlier, and the due card says s
   });
   await page.goto('/dashboard');
   await page.getByRole('button', { name: /Fri\s*20/ }).first().click();
+  // The whole card opens its details in the side panel, as a block opens Edit block.
   await page.locator('article[data-kind="due"]').getByRole('button', { name: 'Details: Lab 10' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Task details' });
+  const dialog = page.getByRole('region', { name: 'Task details' });
   await expect(dialog.getByText(/As posted: Fri, Nov 20/)).toBeVisible();
   await dialog.getByLabel('Your deadline, day').fill(dateOf(2));
   await expect(dialog.getByText(/Posted as due Fri, Nov 20/)).toBeVisible();
@@ -255,4 +256,26 @@ test('brain dump: a line with a due date becomes a task with details, and leaves
   await expect.poll(() => state.tables.brain_dump_items.length).toBe(0);
   const id = state.tables.todos.find(t => t.text === 'Lab report')!.id;
   await expect.poll(() => state.tables.todo_sessions.filter(s => s.todo_id === id).length).toBeGreaterThan(0);
+});
+
+test('a Canvas due card shows under its task’s course and colour, like its sittings', async ({ page }) => {
+  await setup(page, {
+    todos: [task('hw', 'HW9.5', new Date(2026, 10, 18, 23, 59).toISOString(), { assignment_id: 95, kind: 'homework', auto_schedule: null })],
+    todo_sessions: [{ id: 'h1', user_id: account.id, todo_id: 'hw', date: dateOf(1), start_time: at(1, '11:00'), end_time: at(1, '11:40') }],
+  });
+  await page.goto('/dashboard');
+  // Canvas calls the course by its full name, which matches no course of the student's.
+  await page.evaluate(async due => {
+    // @ts-expect-error Vite serves this browser-only module at runtime.
+    const { setLocalSnapshot } = await import('/src/lib/canvasDeepSync.ts');
+    setLocalSnapshot({ v: 1, host: 'school.instructure.com', syncedAt: new Date().toISOString(), groups: [], announcements: [],
+      courses: [{ id: 7, name: 'Introductory Mechanics and Relativity (Fall 2026)', courseCode: 'Introductory Mechanics and Relativity (Fall 2026)', currentScore: null, currentGrade: null, weighted: false }],
+      assignments: [{ id: 95, courseId: 7, name: 'HW9.5', dueAt: due, htmlUrl: '', description: '', pointsPossible: null, groupId: null, workflowState: 'unsubmitted' }] });
+    window.dispatchEvent(new Event('soma_canvas_changed'));
+  }, new Date(2026, 10, 18, 23, 59).toISOString());
+  await page.getByRole('button', { name: /Wed\s*18/ }).first().click();
+  const card = page.locator('article[data-kind="due"]').filter({ hasText: 'HW9.5' });
+  await expect(card).toBeVisible();
+  await expect(card.getByText('HIST 10', { exact: true })).toBeVisible();
+  await expect(card.getByText(/Introductory Mechanics/)).toHaveCount(0);
 });

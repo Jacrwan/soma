@@ -100,3 +100,31 @@ test('a full morning runs on later that day, instead of asking', async ({ page }
   await expect.poll(() => db.todo_sessions.find(s => db.todos.find(t => t.id === s.todo_id)?.text === 'Lecture review')?.start_time).toBe(new Date(`${tomorrow}T09:00:00`).toISOString());
   expect(next).toBeTruthy();
 });
+
+// 2026-11-15: "anything the user says comes first; if i say to schedule
+// something at a particular time and there's already something in that time,
+// the ai should ask whether to move the preexisting task to make room."
+
+test('a stated time over a block offers the move, and "Keep both" leaves it where it is', async ({ page }) => {
+  const db = await setup(page, () => ({ reply: 'Essay at 7.', blocks: [{ title: 'Essay 1 body', subject: 'Physics 5A', date: TODAY, start: '19:00', end: '20:00' }] }), d => {
+    block(d, 'flex', 'Problem set review', TODAY, '19:00', '20:00');
+  });
+  await ask(page, 'essay 1 body at 7 to 8 tonight');
+  await expect(page.getByText(/to make room for "Essay 1 body"/)).toBeVisible();
+  await page.getByRole('button', { name: 'Keep both: Essay 1 body' }).click();
+  await expect.poll(() => db.todo_sessions.find(s => db.todos.find(t => t.id === s.todo_id)?.text === 'Essay 1 body')?.start_time).toBe(at('19:00'));
+  expect(startOf(db, 's-flex')).toBe(at('19:00'));
+  await expect(page.getByText(/to make room for "Essay 1 body"/)).toHaveCount(0);
+});
+
+test('a stated time over a block the student pinned still offers to move it', async ({ page }) => {
+  await pin(page, `t-flex@${TODAY}T19:00`);
+  const db = await setup(page, () => ({ reply: 'Essay at 7.', blocks: [{ title: 'Essay 1 body', subject: 'Physics 5A', date: TODAY, start: '19:00', end: '20:00' }] }), d => {
+    block(d, 'flex', 'Problem set review', TODAY, '19:00', '20:00');
+  });
+  await ask(page, 'essay 1 body at 7 to 8 tonight');
+  await expect(page.getByText(/to make room for "Essay 1 body"/)).toBeVisible();
+  await page.getByText('Essay 1 body', { exact: true }).locator('xpath=ancestor::*[.//button[normalize-space()="Accept"]][1]').getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => db.todo_sessions.find(s => db.todos.find(t => t.id === s.todo_id)?.text === 'Essay 1 body')?.start_time).toBe(at('19:00'));
+  await expect.poll(() => startOf(db, 's-flex')).not.toBe(at('19:00'));
+});

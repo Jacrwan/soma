@@ -7,6 +7,7 @@ import type { TaskStep } from '../../lib/taskDetails';
 import { kindOf } from '../../lib/planIt';
 import { asTodoKind, type Todo, type TodoSession } from '../../types';
 import styles from './TaskDetail.module.css';
+import panelStyles from '../DashboardV2/DashboardV2.module.css';
 
 /**
  * Task details (2026-11-15): open a task from its due card, the Tasks page,
@@ -30,6 +31,8 @@ type Props = {
   /** Soma's guess at the length, for a task with none set. */
   guess: (title: string, subjectId?: string) => number;
   onClose: (saved: boolean) => void;
+  /** 'panel': in the dashboard's side panel, like Edit block (a due card opens it). Default: a dialog. */
+  variant?: 'dialog' | 'panel';
 };
 
 const LENGTHS = [15, 30, 45, 60, 90, 120, 150, 180, 240, 300, 360, 480];
@@ -40,7 +43,7 @@ const dateOf = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d
 const timeOf = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 const longDate = (d: Date) => d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
 
-export default function TaskDetail({ userId, target, subjects, sessions, guess, onClose }: Props) {
+export default function TaskDetail({ userId, target, subjects, sessions, guess, onClose, variant = 'dialog' }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const todo = target.todo;
@@ -65,7 +68,7 @@ export default function TaskDetail({ userId, target, subjects, sessions, guess, 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => { if (!dialog.current?.open) dialog.current?.showModal?.(); }, []);
+  useEffect(() => { if (variant === 'dialog' && !dialog.current?.open) dialog.current?.showModal?.(); }, [variant]);
   const close = (saved: boolean) => { dialog.current?.close?.(); onClose(saved); };
 
   const today = dateOf(new Date());
@@ -121,14 +124,7 @@ export default function TaskDetail({ userId, target, subjects, sessions, guess, 
   const setStep = (id: string, patch: Partial<TaskStep>) => setSteps(list => list.map(s => s.id === id ? { ...s, ...patch } : s));
   const addStep = () => setSteps(list => [...list, { id: crypto.randomUUID().slice(0, 8), title: '', minutes: list.length ? list[list.length - 1].minutes : 30 }]);
 
-  return (
-    <dialog ref={dialog} className={styles.dialog} aria-labelledby={titleId} onCancel={e => { e.preventDefault(); if (!busy) close(false); }}>
-      <form onSubmit={e => { e.preventDefault(); void save(); }}>
-        <div className={styles.head}>
-          <h3 id={titleId}>{todo ? 'Task details' : 'Make it a task'}</h3>
-          <button type="button" className={styles.x} aria-label="Close" onClick={() => close(false)} disabled={busy}><X size={16} /></button>
-        </div>
-
+  const body = <>
         {imported
           ? <p className={styles.name}>{title}<span>{subjects.find(s => s.id === subjectId)?.name ?? 'Personal'}</span></p>
           : <>
@@ -193,6 +189,33 @@ export default function TaskDetail({ userId, target, subjects, sessions, guess, 
           </label>
         </div>}
 
+  </>;
+
+  const heading = todo ? 'Task details' : 'Make it a task';
+  if (variant === 'panel') return (
+    <section className={`${panelStyles.editor} ${styles.panel}`} aria-label={heading}>
+      <div className={panelStyles.sectionHeading}><h2>{heading}</h2><button type="button" onClick={() => close(false)} disabled={busy} aria-label="Close task details">Close</button></div>
+      <p className={panelStyles.description}>How Soma schedules this: your deadline, the days you’ll work on it, and its sittings or steps.</p>
+      <form onSubmit={e => { e.preventDefault(); void save(); }}>
+        {body}
+        {error && <p role="alert" className={styles.error}>{error}</p>}
+        <div className={panelStyles.editorButtons}>
+          <button type="button" onClick={() => close(false)} disabled={busy}>Cancel</button>
+          <button type="submit" disabled={busy}>{busy ? 'Saving…' : todo ? 'Save' : 'Schedule it'}</button>
+        </div>
+      </form>
+    </section>
+  );
+
+  return (
+    <dialog ref={dialog} className={styles.dialog} aria-labelledby={titleId} onCancel={e => { e.preventDefault(); if (!busy) close(false); }}>
+      <form onSubmit={e => { e.preventDefault(); void save(); }}>
+        <div className={styles.head}>
+          <h3 id={titleId}>{heading}</h3>
+          <button type="button" className={styles.x} aria-label="Close" onClick={() => close(false)} disabled={busy}><X size={16} /></button>
+        </div>
+
+        {body}
         {error && <p role="alert" className={styles.error}>{error}</p>}
         <div className={styles.actions}>
           <button type="button" onClick={() => close(false)} disabled={busy}>Cancel</button>

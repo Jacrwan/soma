@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { safeFetch, isPrivateIp } from '../api/_safeFetch';
-import { createImportHandler, htmlToText, validateItems } from '../api/import-schedule';
+import { createImportHandler, htmlToText, validateItems, statedDue } from '../api/import-schedule';
 
 // ── safeFetch: a user-supplied URL must never reach anything internal ───────
 const publicLookup = (async () => [{ address: '104.18.0.1', family: 4 }]) as never;
@@ -198,4 +198,21 @@ test('a reply with a sentence or fence around its JSON is still read', async () 
   });
   expect(r.status).toBe(200);
   expect(r.body.items[0]).toMatchObject({ title: 'Lab 3', sameAs: 'Lab 3' });
+});
+
+test('an item that states its own due date is due then, not on its schedule row', () => {
+  // cs61a.org lists Lab 10 in the Mon 11/16 row: "LAB 10 SQL (due Wed 11/18)".
+  const pageText = 'Mon, Nov 16 | Lecture 34 SQL | Quiz 7 Interpreters | Lab 10 SQL (due Wed 11/18)\nFri, Nov 20 | Homework 9 SQL (due Sun 11/29)';
+  const items = validateItems([
+    { title: 'Lab 10: SQL (due Wed 11/18)', type: 'lab', due: '2026-11-16', time: null, evidence: 'Lab 10 SQL (due Wed 11/18)' },
+    { title: 'Homework 9: SQL', type: 'homework', due: '2026-11-20', time: null, evidence: 'Homework 9 SQL (due Sun 11/29)' },
+    { title: 'Quiz 7: Interpreters', type: 'quiz', due: '2026-11-16', time: null, evidence: 'Quiz 7 Interpreters' },
+  ], '2026-11-15', pageText);
+  expect(items.map(i => [i.title, i.due])).toEqual([
+    ['Quiz 7: Interpreters', '2026-11-16'],
+    ['Lab 10: SQL', '2026-11-18'],
+    ['Homework 9: SQL', '2026-11-29'],
+  ]);
+  // Across New Year: "due 1/4" read in late December is next January.
+  expect(statedDue('Project (due Mon 1/4)', '2026-12-28')).toBe('2027-01-04');
 });

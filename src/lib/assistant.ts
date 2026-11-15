@@ -726,7 +726,9 @@ export async function askSoma(opts: {
     // `changing`: a block this reply also changes may be moved too. Only a time
     // the student stated does that; Soma's own picks leave those alone.
     const movable = (b: typeof fresh.blocks[number], changing = false) => !b.external && !!b.todoId && !!b.time && b.state === 'Planned' && !b.ended && !b.actualSeconds && b.day >= 0
-      && (b.day > 0 || rangeOf(b.time)[0] > nowMinute + 5) && b.id !== opts.activeBlockId && (changing || !changes.some(c => c.id === String(b.id))) && !pins.has(pinKey(b.todoId!, dateOf(b.day), b.time.split('–')[0]));
+      && (b.day > 0 || rangeOf(b.time)[0] > nowMinute + 5) && b.id !== opts.activeBlockId && (changing || !changes.some(c => c.id === String(b.id)))
+      // A time the student states comes first, even over a block they pinned: the card offers the move, and "Keep both" (2026-11-15).
+      && (changing || !pins.has(pinKey(b.todoId!, dateOf(b.day), b.time.split('–')[0])));
     type Placed = { spot: Spot; bumps: PlanBlock[]; note?: string; restore?: () => void };
     /** Lift `out` from the plan and find each a new time, with `holds` kept free. */
     const relocate = (out: typeof fresh.blocks, holds: { day: number; time: string }[], title: string): { bumps: PlanBlock[]; cleared: Snapshot } | undefined => {
@@ -1365,7 +1367,7 @@ export async function applyProposal(userId: string, origin: Date, block: PlanBlo
       const arriving = moving.flatMap(p => { const b = fresh.blocks.find(x => x.id === p.replaces); return b ? [{ ...b, time: p.time, day: p.day }] : []; });
       const board = { ...fresh, blocks: [...fresh.blocks.filter(b => !away.has(b.id)), ...arriving], sessions: fresh.sessions.filter(sn => !fresh.blocks.some(b => away.has(b.id) && b.sessionId === sn.id)) };
       // A rename leaves the time alone, so it works on blocks already underway or past.
-      try { if (edited.time && (edited.time !== target.time || edited.day !== target.day)) validateProposal(edited, board, origin, storage.getSomaSettings(), true, true, false, STATED_MAX_MINUTES); }
+      try { if (edited.time && (edited.time !== target.time || edited.day !== target.day)) validateProposal(edited, board, origin, storage.getSomaSettings(), true, true, false, STATED_MAX_MINUTES, !!block.keepBoth); }
       catch (err) {
         // Accepted alone, a move onto a block that is itself about to move is refused; say how to do both.
         const [from, to] = rangeOf(edited.time);
@@ -1394,7 +1396,7 @@ export async function applyProposal(userId: string, origin: Date, block: PlanBlo
     await linkItems(userId, read.map(i => i.id), todoId);
     await markDone(userId, read.map(i => i.id));
   } else {
-    if (block.time) validateProposal(block, fresh, origin, storage.getSomaSettings(), true, true, false, STATED_MAX_MINUTES);
+    if (block.time) validateProposal(block, fresh, origin, storage.getSomaSettings(), true, true, false, STATED_MAX_MINUTES, !!block.keepBoth);
     checkExtra(block, fresh, origin);
     const todoId = await savePlanBlock(userId, origin, { ...block, state: 'Planned' }, fresh);
     if (block.pinned && block.time) pinBlock(userId, pinKey(todoId, localDate(dateAt(origin, block.day)), block.time.split('–')[0]));

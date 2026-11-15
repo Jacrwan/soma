@@ -30,7 +30,7 @@ export function chunkSizes(settings:SomaSettings):{min:number}{
  */
 /** The longest block Soma may size on its own; a time the student states may run to the editor's 12 hours. */
 export const SOMA_MAX_MINUTES=240, STATED_MAX_MINUTES=720;
-export function validateProposal(block:PlanBlock,snapshot:Snapshot,origin:Date,settings:SomaSettings,allowCommitmentOverlap=false,allowPastStart=false,checkStudyHours=true,maxMinutes=SOMA_MAX_MINUTES):string[] {
+export function validateProposal(block:PlanBlock,snapshot:Snapshot,origin:Date,settings:SomaSettings,allowCommitmentOverlap=false,allowPastStart=false,checkStudyHours=true,maxMinutes=SOMA_MAX_MINUTES,allowOwnOverlap=false):string[] {
  if(snapshot.calendarError)throw new Error(snapshot.calendarError);
  const [start,end]=block.time.split('–');
  if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(start??'') || !/^([01]\d|2[0-3]):[0-5]\d$/.test(end??''))throw new Error('Soma returned an invalid time. Ask for another proposal.');
@@ -40,12 +40,13 @@ export function validateProposal(block:PlanBlock,snapshot:Snapshot,origin:Date,s
  if(span<1 || span>maxMinutes)throw new Error(maxMinutes>SOMA_MAX_MINUTES ? 'A study block can run up to 12 hours.' : 'Soma sizes a block at 4 hours at most; give the times yourself for a longer one.');
  if(!allowPastStart && new Date(`${localDate(date)}T${start}:00`).getTime()<Date.now()-START_GRACE_MS)throw new Error('That start time has passed. Ask Soma for a new time.');
  const starts=new Date(`${localDate(date)}T${start}:00`),ends=new Date(starts.getTime()+span*60000);
- if(snapshot.sessions.some(s=>s.startTime && s.endTime && new Date(s.startTime)<ends && new Date(s.endTime)>starts))throw new Error('That time overlaps a scheduled session. Ask Soma for another time.');
+ // allowOwnOverlap: the student chose "Keep both" on a card that offered to move what's there.
+ if(!allowOwnOverlap && snapshot.sessions.some(s=>s.startTime && s.endTime && new Date(s.startTime)<ends && new Date(s.endTime)>starts))throw new Error('That time overlaps a scheduled session. Ask Soma for another time.');
  // Compared across days, so a block running past midnight meets the next morning's.
  const at=block.day*1440,overlapping=snapshot.blocks.filter(b=>{if(!b.time || b.id===block.id)return false;const [f,t]=rangeOf(b.time);return b.day*1440+f<at+to && b.day*1440+t>at+from;});
  const commitments=overlapping.filter(b=>b.external && !b.manual);
  const own=overlapping.filter(b=>!(b.external && !b.manual));
- if(own.length)throw new Error(`That time overlaps ${own[0].title}. Ask Soma for another time.`);
+ if(own.length && !allowOwnOverlap)throw new Error(`That time overlaps ${own[0].title}. Ask Soma for another time.`);
  if(commitments.length && !allowCommitmentOverlap)throw new Error(`That time is during ${commitments[0].title} on your calendar. Ask Soma for another time, or say you're skipping it.`);
  // Inside today's study hours, or in the after-midnight tail of yesterday's.
  const [open,close]=windowOf(activeWindow(settings.studyWindow));

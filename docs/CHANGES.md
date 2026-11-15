@@ -9,6 +9,38 @@ still needed.
 
 ---
 
+## 2026-11-15 (due card opens like a block; stated times ask; course-site "(due …)" dates) · branch task-details, preview
+
+- **Why:** on the preview the owner found the due card's title a small boxed
+  button, its course shown by Canvas's long name in another colour than its
+  sittings ("Introductory Mechanics and Relativity" in blue vs PHYSICS 5A in
+  purple), and wanted the whole card to open like a block. They also set the
+  rule for the AI: what the student says comes first; a stated time over
+  something already there should ask whether to move it. And Lab 10 (cs61a,
+  "LAB 10 SQL (due Wed 11/18)" in the Mon 11/16 row) wasn't on Wednesday.
+- **What:**
+  - Due card: its whole body is a button ("Details: …", like a block's
+    "Edit: …") that opens task details in the side panel where Edit block
+    opens (TaskDetail `variant="panel"`, runtime `duePanel`). The brain dump
+    and Tasks page keep the dialog.
+  - A Canvas due card shows its task's course name and colour; the due list
+    is read again when the courses load (the course match ran before them).
+  - Keep both: a suggestion that moves blocks to make room gets a "Keep both"
+    button. It adds the block over them (`keepBoth` lets the accept check pass
+    the overlap), drops the moves, and pins what stayed so the task scheduler
+    leaves it too. A stated time may now offer to move a block the student
+    pinned (Soma's own picks still never move pinned blocks).
+  - Course-site import: the prompt says a schedule row's date is the lecture
+    day and an item's own "(due …)" date wins; `statedDue` in
+    api/import-schedule.ts applies it in code from the title or quoted
+    evidence (same_as matching uses the corrected date too), and drops the
+    "(due …)" from the title. Existing tasks move on the next reread (every
+    2 hours) through same_as; no reimport needed.
+- **Tests:** tests/tasks-page.spec.ts (panel from the due card; Canvas card
+  under the task's course), tests/ai-make-room.spec.ts (Keep both; stated time
+  over a pinned block), tests/import-schedule.spec.ts (stated due dates,
+  across New Year).
+
 ## 2026-11-15 (task details: your deadline, work days, sittings, steps) · branch task-details, preview
 
 - **Why:** the owner wanted to open a due assignment like a block and say how

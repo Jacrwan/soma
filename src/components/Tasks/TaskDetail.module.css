@@ -65,7 +65,11 @@
 .dialog input[type=text],
 .dialog input[type=date],
 .dialog input[type=time],
-.dialog select {
+.dialog select,
+.panel input[type=text],
+.panel input[type=date],
+.panel input[type=time],
+.panel select {
   min-height: 34px;
   min-width: 0;
   padding: 6px 8px;
@@ -79,7 +83,9 @@
 
 .dialog input:focus-visible,
 .dialog select:focus-visible,
-.dialog button:focus-visible {
+.dialog button:focus-visible,
+.panel input:focus-visible,
+.panel select:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -235,4 +241,60 @@
   .steps li select {
     grid-column: 2;
   }
+}
+
+/* In the dashboard's side panel (variant 'panel'): Edit block's frame, these fields. */
+.panel .field {
+  margin-top: 14px;
+}
+
+.panel .name {
+  margin-top: 4px;
+}
+
+/* Edit block's frame sets every label to a column and every input to full
+   width; these rows keep their own layout. */
+.panel label.inline {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.panel .row input[type=date],
+.panel .row input[type=time] {
+  width: auto;
+}
+
+.panel .steps input[type=checkbox] {
+  margin: 0;
+}
+
+.panel .steps select {
+  width: auto;
+}
+
+.panel .x {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.panel .addStep {
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px dashed var(--border);
+  background: var(--bg);
+}
+
+.panel .link {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
 }
