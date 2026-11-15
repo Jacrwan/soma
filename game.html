@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Epoch | Soma</title>
+    <meta name="robots" content="noindex" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/game/src/style.css" />
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <div id="labels"></div>
+
+    <div id="hud">
+      <div class="hud-left">
+        <div class="unit" id="vitals">
+          <button class="unit-badge" id="heroPlate" title="Hero: gear and skills (C)"><small>LV</small><b id="heroLevel">1</b></button>
+          <div class="unit-bars">
+            <div class="hp"><i id="hpBar"></i><span id="hpText"></span></div>
+            <div class="xp"><i id="xpBar"></i><em id="xpText"></em></div>
+          </div>
+        </div>
+        <div class="era-card">
+          <span class="era-badge" id="eraIndex">I</span>
+          <div class="era-body">
+            <div class="era-name" id="eraName">Stone Age</div>
+            <div class="era-goal" id="eraGoal">Build the Stone Circle</div>
+            <div class="bar"><i id="eraBar"></i></div>
+          </div>
+        </div>
+        <div id="siege" class="siege" hidden></div>
+      </div>
+
+      <div class="hud-center">
+        <div class="coins"><span class="coin"></span><b id="coins">0</b></div>
+        <div class="income" id="income">+0 / sec</div>
+        <div id="focus" hidden>
+          <small>Studying</small>
+          <b id="focusTime">25:00</b>
+          <span id="focusName"></span>
+          <div class="bar"><i id="focusBar"></i></div>
+          <button id="focusEnd">End early</button>
+        </div>
+      </div>
+
+      <div class="tracker">
+        <div id="quest" hidden></div>
+        <div id="threats" class="threats"></div>
+      </div>
+
+      <div class="hotbar skills">
+        <span class="slot" title="Swing (F or click)"><svg viewBox="0 0 24 24"><path d="M14.5 3H21v6.5L10.8 19.7l-2.1-2.1L6 20.3 3.7 18l2.7-2.7-2.1-2.1z" /><path d="M7.5 12.5l4 4" fill="none" stroke="#14111f" stroke-width="1.6"/></svg><kbd>F</kbd></span>
+        <span class="slot" id="skDodge" title="Dodge (Q)"><svg viewBox="0 0 24 24"><path d="M13 4l8 8-8 8v-5H9v-6h4z"/><rect x="5" y="9" width="2.6" height="6" rx="1"/><rect x="1.5" y="10" width="2" height="4" rx="1"/></svg><kbd>Q</kbd></span>
+        <span class="slot" id="skSlam" title="Ground slam (R)"><svg viewBox="0 0 24 24"><path d="M12 1.5l2.2 6.3 5.6-3.4-2.6 6 6.3 1.6-6.3 1.6 2.6 6-5.6-3.4L12 22.5l-2.2-6.3-5.6 3.4 2.6-6L.5 12l6.3-1.6-2.6-6 5.6 3.4z"/></svg><kbd>R</kbd></span>
+        <button class="slot study" id="btnStudy" title="Study session (T): the only way to level up"><svg viewBox="0 0 24 24"><path d="M3 4.5C6 3.5 9 3.8 11.2 5.3v14.4C9 18.3 6 18 3 19z"/><path d="M21 4.5c-3-1-6-.7-8.2.8v14.4C15 18.3 18 18 21 19z"/></svg><kbd>T</kbd><em>Study</em></button>
+      </div>
+
+      <div class="menu">
+        <a class="menu-btn" id="btnSoma" href="/dashboard" title="Back to Soma"><svg viewBox="0 0 24 24"><path d="M12 3l9 8h-2.5v9h-5v-6h-3v6h-5v-9H3z"/></svg><span>Soma</span></a>
+        <button class="menu-btn" id="btnHero" title="Hero: gear and skills (C)"><svg viewBox="0 0 24 24"><path d="M12 2l8 3v6.5c0 5-3.4 8.8-8 10.5-4.6-1.7-8-5.5-8-10.5V5z"/><path d="M12 6v12M7.5 10.5h9" fill="none" stroke="#14111f" stroke-width="1.8"/></svg><span>Hero</span><i class="badge" id="heroDot" hidden></i></button>
+        <button class="menu-btn" id="btnQuests" title="Quests (J)"><svg viewBox="0 0 24 24"><path d="M6 3h11a3 3 0 013 3v1h-3v11a3 3 0 01-3 3H5a2 2 0 01-2-2v-1h10V6a3 3 0 00-3-3z" transform="translate(0.5 0)"/><path d="M8.5 8.5h5M8.5 12h5" fill="none" stroke="#14111f" stroke-width="1.6" stroke-linecap="round"/></svg><span>Quests</span></button>
+        <button class="menu-btn" id="btnSchool" title="Canvas (G)"><svg viewBox="0 0 24 24"><path d="M12 3.5L1 9l11 5.5L23 9z"/><path d="M5.5 12.8V17c1.8 1.7 4 2.5 6.5 2.5s4.7-.8 6.5-2.5v-4.2L12 16z"/></svg><span>Canvas</span><i class="badge" id="schoolDot" hidden></i></button>
+        <button class="menu-btn" id="btnHelp" title="Help (H)"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 16.2a1.4 1.4 0 110-2.8 1.4 1.4 0 010 2.8zm1.100-5.100v.7h-2.3v-1.7c2-.4 2.8-1.100 2.8-2.2 0-.9-.7-1.5-1.7-1.5s-1.8.6-2.100 1.7L7.7 9.3C8.3 7.2 9.900 6 12 6c2.4 0 4 1.5 4 3.7 0 1.7-.9 2.8-2.900 3.4z"/></svg><span>Help</span></button>
+        <button class="menu-btn" id="btnSound" title="Sound (M)" aria-label="Sound"><svg viewBox="0 0 24 24"><path d="M3 9h4l5-4.5v15L7 15H3z"/><path class="waves" d="M15.5 8.5a5 5 0 010 7M18 6a8.5 8.5 0 010 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg><span>Sound</span></button>
+      </div>
+    </div>
+
+    <div id="bossHud" hidden>
+      <div class="boss-name" id="bossName"></div>
+      <div class="bar boss"><i id="bossBar"></i></div>
+      <div class="hearts" id="hearts"></div>
+    </div>
+
+    <div id="hurt"></div>
+    <div id="prompt" hidden><kbd id="promptKey">E</kbd><span id="promptText"></span></div>
+    <div id="toasts"></div>
+    <div id="banner" hidden><small id="bannerSmall"></small><strong id="bannerBig"></strong></div>
+    <div id="fade"></div>
+
+    <div id="scrim" hidden>
+      <div id="panel" role="dialog" aria-modal="true"></div>
+    </div>
+
+    <script type="module" src="/game/src/game.js"></script>
+  </body>
+</html>

@@ -11,6 +11,8 @@ export default defineConfig(({ mode }) => ({
     })),
   },
   plugins: [react(), blogPlugin()],
+  // The Epoch game is its own page (game.html), outside the React app.
+  build: { rollupOptions: { input: { main: 'index.html', game: 'game.html' } } },
   server: {
     host: true,
     proxy: {

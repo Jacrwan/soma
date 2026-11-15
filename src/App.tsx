@@ -305,6 +305,15 @@ function AppShell({ user, sessionResolved, onLogout }: {
             <span className={styles.navLabel}>Grades</span>
           </button>
 
+          {/* Epoch is its own page (game.html), not a route in this app. */}
+          <button className={nav('/game')} onClick={() => window.location.assign('/game.html')}>
+            <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 1.5h3.5V5L6 11.5 2.5 8Z"/>
+              <path d="M1.5 12.5 3.6 10.4M2 7.5l4.5 4.5"/>
+            </svg>
+            <span className={styles.navLabel}>Game</span>
+          </button>
+
           <button className={nav('/documents')} onClick={() => navigate('/documents')} data-tour="nav-documents">
             <svg width="15" height="15" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3.5 1.5h5L11 4v8.5a.5.5 0 0 1-.5.5h-6a.5.5 0 0 1-.5-.5v-10a.5.5 0 0 1 .5-.5Z"/>

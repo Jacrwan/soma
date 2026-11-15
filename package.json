@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "playwright test",
-    "build:extension": "node extension/build-release.mjs"
+    "build:extension": "node extension/build-release.mjs",
+    "test:game": "node --test game/tests/sim.test.js"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "^6.6.0",
@@ -31,7 +32,8 @@
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.15.1",
     "stripe": "^17.7.0",
-    "unpdf": "^1.8.1"
+    "unpdf": "^1.8.1",
+    "three": "^0.170.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",
