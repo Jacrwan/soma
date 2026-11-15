@@ -9,6 +9,36 @@ still needed.
 
 ---
 
+## 2026-11-15 (task scheduler: work starts near its due date; Tasks lists real tasks)
+
+- **Why:** on the preview, the dashboard had Project 4 checkpoint 2 and other
+  work due weeks out sitting on today ("I don't want to work on something due
+  three weeks later right now"). "Evenly" spread sittings from today to the
+  finish day, so the first one always landed today. Separately, Tasks listed
+  old open to-dos from June ("K&K Ch.2 — End-of-chapter problem set",
+  Personal, overdue Jun 28): every open to-do with a due date was listed,
+  including ones never checked off from Day View and earlier versions.
+- **What:**
+  - Each task has a start window (`startDayOf`): about two days per sitting
+    before the finish day, 2 to 14 days (an hour or less is one sitting). A
+    45-minute quiz starts 2 days out; six hours, two weeks out. Sittings go
+    in the window first; earlier days, closest first, only when the window
+    has no room. A missed sitting goes to the earliest time in its window. A
+    sitting already placed before its window has to move (that clears the
+    ones the first version put on today). "As late as safe" is one day per
+    sitting; "As soon as there's time" keeps the old start-today behaviour.
+    Settings → Scheduling calls it "Start working" and says what each does.
+  - Tasks lists what Soma schedules, plus unscheduled tasks not yet overdue.
+    The old to-dos are untouched (still on Deadlines and Day View).
+- **Where:** `lib/taskScheduler.ts`, `components/Tasks/TasksTab.tsx`,
+  `Settings/SettingsTab.tsx`.
+- **Guard:** `task-scheduler.spec.ts` › "work starts near its due date…",
+  "a sitting placed before its window has to move…"; `tasks-page.spec.ts` ›
+  "open to-dos long past their date are not listed…". Earlier scheduler tests
+  now give their tasks the near due dates they meant.
+
+---
+
 ## 2026-11-15 (task scheduler: tasks place themselves, no AI)
 
 - **Why:** the owner wanted Soma usable without AI, on a Reclaim-style base:

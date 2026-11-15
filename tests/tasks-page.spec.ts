@@ -84,7 +84,7 @@ test('Tasks: the order is the priority, and arrow keys on the handle change it',
 
 test('dashboard: a missed sitting moves to the next open time and says so', async ({ page }) => {
   const state = await setup(page, {
-    todos: [task('essay', 'Essay draft', dateOf(3))],
+    todos: [task('essay', 'Essay draft', dateOf(1))],
     todo_sessions: [{ id: 'missed', user_id: account.id, todo_id: 'essay', date: dateOf(0), start_time: at(0, '07:00'), end_time: at(0, '08:00') }],
   });
   await page.goto('/dashboard');
@@ -109,4 +109,16 @@ test('dashboard: checking off one sitting leaves the task in progress until noth
   await expect.poll(() => state.tables.todo_sessions.find(s => s.id === 's1')?.done_at).toBeTruthy();
   expect(state.tables.todo_sessions.find(s => s.id === 's2')?.done_at).toBeFalsy();
   await expect.poll(() => state.tables.todos.find(t => t.id === 'essay')!.status).toBe('in_progress');
+});
+
+test('Tasks: open to-dos long past their date are not listed; ones still ahead are, to schedule', async ({ page }) => {
+  await setup(page, { todos: [
+    { id: 'old', user_id: account.id, text: 'K&K Ch.2 — End-of-chapter problem set', status: 'nothing', date: '2026-06-20', due_date: '2026-06-28' },
+    { id: 'ahead', user_id: account.id, text: 'Read ch. 4 notes', status: 'nothing', date: dateOf(0), due_date: dateOf(5) },
+  ] });
+  await page.goto('/tasks');
+  const ahead = page.getByRole('listitem').filter({ hasText: 'Read ch. 4 notes' });
+  await expect(ahead).toBeVisible();
+  await expect(ahead.getByRole('button', { name: 'Schedule' })).toBeVisible();
+  await expect(page.getByText('K&K Ch.2 — End-of-chapter problem set')).toHaveCount(0);
 });

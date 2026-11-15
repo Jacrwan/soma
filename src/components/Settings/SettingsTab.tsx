@@ -1004,11 +1004,11 @@ export default function SettingsTab() {
             </p>
             <div className={styles.prefGrid}>
               {seg('Finish', 'sched-finish', sched.finishEarly, [[0, 'On the due day'], [1, '1 day early'], [2, '2 days early']], v => setSched({ finishEarly: v }))}
-              {seg('Spread the work', 'sched-spread', sched.spread, [['even', 'Evenly'], ['early', 'Start early'], ['late', 'As late as safe']], v => setSched({ spread: v }))}
+              {seg('Start working', 'sched-spread', sched.spread, [['even', 'A few days before'], ['early', 'As soon as there’s time'], ['late', 'As late as safe']], v => setSched({ spread: v }))}
               {seg('Schedule imported assignments', 'sched-imported', sched.autoImported, [[true, 'On'], [false, 'Off']], v => setSched({ autoImported: v }))}
             </div>
             <p className={styles.subsectionHint}>
-              {sched.autoImported ? 'Canvas and course-site work due in the next three weeks gets sittings without asking. Drag it down on Tasks if it matters less.' : 'Imported work waits on Tasks until you press Schedule.'}
+              {sched.spread === 'even' ? 'Work starts about two days per sitting before it’s due (2 to 14 days), so something due in three weeks doesn’t land on today. ' : sched.spread === 'early' ? 'Work starts on the first open time, however far off it’s due. ' : 'One sitting a day, ending on the finish day. '}{sched.autoImported ? 'Canvas and course-site work due in the next three weeks gets sittings without asking. Drag it down on Tasks if it matters less.' : 'Imported work waits on Tasks until you press Schedule.'}
             </p>
             <div className={styles.prefGrid}>
               <div className={styles.prefRow}>

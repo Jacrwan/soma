@@ -78,7 +78,10 @@ export default function TasksTab({ userId }: { userId: string }) {
     : <div className={styles.page}><SkeletonPage label="Loading your tasks…">{[0, 1, 2, 3].map(i => <div key={i} className={styles.skeletonRow}><SkeletonBlock width="60%" height={14} /></div>)}</SkeletonPage></div>;
 
   const subjects = snapshot.subjects.filter(s => !s.archived);
-  const tasks = tasksFrom(snapshot, userId);
+  // What Soma schedules, and what it could (not overdue yet). Old open to-dos
+  // long past their date (from Day View and earlier versions) aren't tasks to plan.
+  const today = localDate(new Date());
+  const tasks = tasksFrom(snapshot, userId).filter(t => t.managed || t.todo.dueDate!.slice(0, 10) >= today);
   const subjectOf = (t: TaskInfo) => snapshot.subjects.find(s => s.id === t.todo.subjectId);
   const guess = (() => {
     const s = subjects.find(x => x.id === course);
@@ -129,7 +132,7 @@ export default function TasksTab({ userId }: { userId: string }) {
       <header className={styles.header}>
         <div>
           <h1>Tasks</h1>
-          <p>Soma fits these into your open study time, done a day before they're due, and moves a sitting when you miss it. Top of the list goes first. Drag to change the order.</p>
+          <p>Soma fits these into your open study time in the days before they're due, finishing a day early, and moves a sitting when you miss it. Top of the list goes first. Drag to change the order.</p>
         </div>
       </header>
 

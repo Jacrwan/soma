@@ -21,6 +21,10 @@ import { windowOf } from './clockRange';
  *   own finish day: priority decides who gets the good slots, not who is dropped.
  * - Pinned, started and done sittings, calendar events and every other block
  *   never move. Work that doesn't fit is reported as at risk, not crammed.
+ * - Work starts close to when it's due, not as soon as there's time
+ *   (2026-11-15, "I don't want to work on something due three weeks later
+ *   right now"): see startDayOf. Earlier days are used only when the window
+ *   has no room, and a sitting placed before the window has to move.
  *
  * Times are absolute minutes from day 0's midnight (day * 1440 + minute).
  */
@@ -161,10 +165,27 @@ export function finishByOf(due: number, now: number, finishEarly: number, shorte
   return early - now >= shortest ? early : deadline;
 }
 
+/**
+ * The first day a task's sittings go on. Evenly: about two days per sitting
+ * before the finish day (2 to 14 days), so a 45-minute quiz starts two days
+ * out and a six-hour project two weeks out. As late as safe: one day per
+ * sitting. Start early: today.
+ */
+export function startDayOf(remaining: number, lastT: number, now: number, prefs: Pick<ResolvedPrefs, 'usual' | 'spread'>): number {
+  const today = dayOf(now), lastDay = dayOf(lastT - 1);
+  if (prefs.spread === 'early') return today;
+  // Counted the way they're cut: an hour or less is one sitting.
+  const sittings = remaining <= Math.max(60, prefs.usual) ? 1 : Math.ceil(remaining / prefs.usual);
+  const lead = prefs.spread === 'late' ? sittings : Math.min(14, Math.max(2, sittings * 2));
+  return Math.max(today, lastDay - lead + 1);
+}
+
 type State = {
   task: SchedTask;
   order: number;
   lastT: number;
+  /** The task's window opens here (absolute minutes; never before now). */
+  startT: number;
   remaining: number;
   covered: number;
   /** Future sittings that are fine where they are, and may still move for a higher task. */
@@ -205,7 +226,9 @@ export function schedule(input: ScheduleInput): ScheduleResult {
     const doneMin = task.sittings.filter(s => s.done).reduce((n, s) => n + s.end - s.start, 0);
     const lastT = finishByOf(task.due, now, prefs.finishEarly, prefs.shortest);
     finishBy[task.id] = lastT;
-    return { task, order, lastT, remaining: Math.max(0, task.total - Math.max(task.logged, doneMin)), covered: 0, movable: [], pool: [], days: new Set() };
+    const remaining = Math.max(0, task.total - Math.max(task.logged, doneMin));
+    const startT = Math.max(now, startDayOf(remaining, lastT, now, prefs) * DAY);
+    return { task, order, lastT, startT, remaining, covered: 0, movable: [], pool: [], days: new Set() };
   });
 
   // 1. Keep what can stay. Higher tasks claim first where two overlap.
@@ -224,7 +247,8 @@ export function schedule(input: ScheduleInput): ScheduleResult {
         st.covered += s.end - Math.max(s.start, now); st.days.add(dayOf(s.start));
         continue;
       }
-      if (s.end <= st.lastT && isFree(s.start, s.end)) {
+      // Fine where it is: open, before the finish day, and not before the task's window.
+      if (s.end <= st.lastT && s.start >= dayOf(st.startT) * DAY && isFree(s.start, s.end)) {
         reserve(s.start, s.end); use(s.start, len);
         st.covered += len; st.movable.push(s); st.days.add(dayOf(s.start));
       } else st.pool.push({ id: s.id, len, asap: false, removable: true });
@@ -304,9 +328,10 @@ export function schedule(input: ScheduleInput): ScheduleResult {
     while (asapLeft > 0) {
       const piece = Math.min(asapLeft, prefs.longest);
       const want = Math.min(piece, prefs.shortest);
-      const open = free.map(([a, z]) => [Math.max(a, now), Math.min(z, lastT)] as Seg)
+      const from = Math.max(now, st.startT);
+      const open = free.map(([a, z]) => [Math.max(a, from), Math.min(z, lastT)] as Seg)
         .find(([a, z]) => z - a >= want && capOk(a, Math.min(piece, z - a)) && safe(st, a, a + Math.min(piece, z - a)));
-      const swap = bumpable(st).find(({ owner, s }) => capOk(s.start, Math.min(piece, s.end - s.start)) && safe(st, s.start, s.start + Math.min(piece, s.end - s.start), { owner, s }));
+      const swap = bumpable(st).filter(({ s }) => s.start >= from).find(({ owner, s }) => capOk(s.start, Math.min(piece, s.end - s.start)) && safe(st, s.start, s.start + Math.min(piece, s.end - s.start), { owner, s }));
       if (!open && !swap) break;
       if (open && (!swap || open[0] <= swap.s.start)) {
         const len = Math.min(piece, open[1] - open[0]);
@@ -331,18 +356,23 @@ export function schedule(input: ScheduleInput): ScheduleResult {
       for (let i = 0; i < n; i++) pieces.push(i === n - 1 ? short - size * (n - 1) : size);
       if (pieces[n - 1] <= 0) { pieces.pop(); pieces[pieces.length - 1] += short - pieces.reduce((a, b) => a + b, 0); }
     }
-    const span = Math.max(0, lastDay - firstDay);
+    // The window first; days before it (closest first) only when the window is full.
+    const startDay = Math.max(firstDay, dayOf(st.startT));
+    const before = Array.from({ length: startDay - firstDay }, (_, k) => startDay - 1 - k);
+    const span = Math.max(0, lastDay - startDay);
     const dayOrder = (i: number, n: number): number[] => {
-      const all = Array.from({ length: span + 1 }, (_, k) => firstDay + k);
-      if (prefs.spread === 'early') return all;
-      if (prefs.spread === 'late') return [...all].reverse();
-      const want = firstDay + (n === 1 ? 0 : Math.round(i * span / (n - 1)));
-      return [...all.filter(d => d >= want), ...all.filter(d => d < want).reverse()];
+      const all = Array.from({ length: span + 1 }, (_, k) => startDay + k);
+      if (prefs.spread === 'early') return [...all, ...before];
+      if (prefs.spread === 'late') return [...all].reverse().concat(before);
+      const want = startDay + (n === 1 ? 0 : Math.round(i * span / (n - 1)));
+      return [...all.filter(d => d >= want), ...all.filter(d => d < want).reverse(), ...before];
     };
     const leftovers: number[] = [];
     pieces.forEach((size, i) => {
       const order = dayOrder(i, pieces.length);
-      const ranked = [...order.filter(d => !st.days.has(d)), ...order.filter(d => st.days.has(d))];
+      // Days in the window without a sitting yet, then window days with one; earlier days only after both.
+      const inWindow = order.filter(d => d >= startDay), early = order.filter(d => d < startDay);
+      const ranked = [...inWindow.filter(d => !st.days.has(d)), ...inWindow.filter(d => st.days.has(d)), ...early.filter(d => !st.days.has(d)), ...early.filter(d => st.days.has(d))];
       const fit = (d: number, oneADay: boolean) => {
         if (oneADay && st.days.has(d)) return null;
         if (!capOk(d * DAY, size)) return null;
@@ -360,7 +390,8 @@ export function schedule(input: ScheduleInput): ScheduleResult {
     short = leftovers.reduce((a, b) => a + b, 0);
 
     // Tight: whatever open time is left, in pieces from the shortest to the longest allowed.
-    for (let d = firstDay; short > 0 && d <= lastDay; d++) {
+    for (const d of [...Array.from({ length: span + 1 }, (_, k) => startDay + k), ...before]) {
+      if (short <= 0) break;
       for (const [a, z] of segsOn(d, lastT)) {
         if (short <= 0) break;
         const room = prefs.maxPerDay ? prefs.maxPerDay - (used.get(d) ?? 0) : Infinity;
@@ -371,7 +402,8 @@ export function schedule(input: ScheduleInput): ScheduleResult {
     }
 
     // Still short: a lower task's slot, if that task still fits before its own finish day.
-    for (const { owner, s } of bumpable(st)) {
+    const swaps = bumpable(st);
+    for (const { owner, s } of [...swaps.filter(x => x.s.start >= st.startT), ...swaps.filter(x => x.s.start < st.startT).reverse()]) {
       if (short <= 0) break;
       const len0 = Math.min(short, prefs.longest, s.end - s.start);
       if (!capOk(s.start, 0) || !safe(st, s.start, s.start + len0, { owner, s })) continue;
