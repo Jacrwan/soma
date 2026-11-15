@@ -11,12 +11,89 @@ const HEIGHT = 1.95; // metres, to the top of the head
 let source = null;
 let fit = 1;
 
+// The pack paints every part from one small palette image. Repainting a few of
+// its colours gives the hero natural materials: tanned hide instead of blue
+// cloth, dark leather straps, a brown beard and warm brown bear fur.
+function hsl(r, g, b) {
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+  if (!d) return [0, 0, l];
+  const s = d / (1 - Math.abs(2 * l - 1));
+  const h = max === r ? ((g - b) / d + 6) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h * 60, s, l];
+}
+function rgb(h, s, l) {
+  const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs(((h / 60) % 2) - 1)), m = l - c / 2;
+  const [r, g, b] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+  return [r + m, g + m, b + m];
+}
+function naturalColours(map) {
+  const image = map.image;
+  const canvas = document.createElement('canvas');
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(image, 0, 0);
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = img.data;
+  // The palette is a grid of swatches, each a soft gradient of one colour.
+  // A whole swatch is repainted together, so its gradient stays smooth.
+  const COLS = 8, ROWS = 4, cw = canvas.width / COLS, ch = canvas.height / ROWS;
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let y = Math.floor((row + 0.2) * ch); y < (row + 0.8) * ch; y += 6) {
+        for (let x = Math.floor((col + 0.15) * cw); x < (col + 0.7) * cw; x += 6) {
+          const i = (y * canvas.width + x) * 4;
+          r += d[i]; g += d[i + 1]; b += d[i + 2]; n += 1;
+        }
+      }
+      r /= n * 255; g /= n * 255; b /= n * 255;
+      const [h, s, l] = hsl(r, g, b);
+      const warm = r > b + 0.015;
+      let paint = null; // (lightness of a pixel) -> its new colour
+      if (h > 185 && h < 245 && s > 0.15) paint = (v) => rgb(31, 0.36, v * 0.92 + 0.07); // blue cloth -> tanned hide
+      else if (h > 4 && h < 27 && s > 0.3 && l < 0.62) paint = (v) => rgb(20, 0.45, v * 0.72); // orange straps -> dark leather
+      else if (warm && s < 0.14 && l > 0.5 && l < 0.74) paint = (v) => rgb(24, 0.44, v * 0.62); // grey beard -> brown
+      else if (warm && s < 0.24 && l > 0.24 && l <= 0.5) paint = (v) => rgb(25, 0.3, v * 0.96); // grey-brown fur -> warm bear brown
+      if (!paint) continue;
+      for (let y = Math.floor(row * ch); y < (row + 1) * ch; y++) {
+        for (let x = Math.floor(col * cw); x < (col + 1) * cw; x++) {
+          const i = (y * canvas.width + x) * 4;
+          const out = paint(hsl(d[i] / 255, d[i + 1] / 255, d[i + 2] / 255)[2]);
+          d[i] = out[0] * 255;
+          d[i + 1] = out[1] * 255;
+          d[i + 2] = out[2] * 255;
+        }
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const next = new THREE.CanvasTexture(canvas);
+  next.colorSpace = THREE.SRGBColorSpace;
+  next.flipY = map.flipY;
+  next.wrapS = map.wrapS;
+  next.wrapT = map.wrapT;
+  next.magFilter = map.magFilter;
+  next.minFilter = map.minFilter;
+  return next;
+}
+
 const loader = new GLTFLoader();
 export const avatarReady = loader.loadAsync('/game/models/Barbarian.glb').then((gltf) => {
   gltf.scene.updateMatrixWorld(true);
   const box = new THREE.Box3();
   gltf.scene.traverse((o) => { if (o.isSkinnedMesh && /Body|Head|Leg/.test(o.name)) box.expandByObject(o); });
   fit = HEIGHT / Math.max(0.5, box.max.y - Math.min(0, box.min.y));
+  const repainted = new Map();
+  const done = new Set();
+  gltf.scene.traverse((o) => {
+    if (!o.isMesh || !o.material.map?.image) return;
+    // Parts share one material; repaint its texture once, not once per part.
+    if (done.has(o.material.map)) return;
+    if (!repainted.has(o.material.map)) repainted.set(o.material.map, naturalColours(o.material.map));
+    o.material.map = repainted.get(o.material.map);
+    done.add(o.material.map);
+  });
   source = gltf;
   return true;
 }).catch((error) => {
