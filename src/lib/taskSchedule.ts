@@ -1,3 +1,4 @@
+import { deadlineOf, detailsFromRow } from './taskDetails';
 import { supabase } from './supabase';
 import { storage } from './storage';
 import { readPlan, dateAt, localDate, utcIso, type History, type Snapshot } from '../components/DashboardV2/liveData';
@@ -23,7 +24,7 @@ const MAX_DAYS = 60;
 /** Canvas assignments due within this many days get a task without asking (when the setting is on). */
 const ADOPT_DAYS = 21;
 
-export type TaskSitting = { id: string; date: string; start: Date; end: Date; done: boolean; pinned: boolean; started: boolean };
+export type TaskSitting = { id: string; date: string; start: Date; end: Date; done: boolean; pinned: boolean; started: boolean; stepId?: string };
 export type TaskInfo = {
   todo: Todo;
   /** Minutes the whole task takes: what the student set, else Soma's guess. */
@@ -79,13 +80,19 @@ function sittingsOf(todo: Todo, sessions: TodoSession[], history: History[], pin
     const start = new Date(s.startTime!), end = new Date(s.endTime!);
     const hhmm = `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`;
     return {
-      id: s.id, date: s.date, start, end, done: !!s.doneAt,
+      id: s.id, date: s.date, start, end, done: !!s.doneAt, ...(s.stepId ? { stepId: s.stepId } : {}),
       pinned: !!s.pinned || pins.has(pinKey(todo.id, s.date, hhmm)),
       // Focus ran during it.
       started: mine.some(h => +new Date(utcIso(h.start_time!)) < +end && +new Date(utcIso(h.end_time!)) > +start),
     };
   }).sort((a, b) => +a.start - +b.start);
 }
+
+/** Priority uses the student's own deadline when there is one. */
+const rankOf = (t: Todo) => effectiveRank({ ...t, dueDate: deadlineOf(t) ?? undefined });
+/** Steps not checked off, and not done through their sitting. */
+export const openSteps = (t: Todo, sittings: { stepId?: string; done: boolean }[]) =>
+  (t.steps ?? []).filter(x => !x.done && !sittings.some(s => s.stepId === x.id && s.done));
 
 /** Every open task with a due date, with its sittings and what's left, in priority order. */
 export function tasksFrom(snapshot: Pick<Snapshot, 'todos' | 'sessions' | 'subjects' | 'history'>, userId: string, now = new Date()): TaskInfo[] {
@@ -95,9 +102,14 @@ export function tasksFrom(snapshot: Pick<Snapshot, 'todos' | 'sessions' | 'subje
   return snapshot.todos.filter(t => t.status !== 'done' && t.dueDate).map(todo => {
     const sittings = sittingsOf(todo, snapshot.sessions, snapshot.history, pins);
     const logged = loggedOn(todo, snapshot.history);
+    const managed = isManaged(todo, auto, today), rank = rankOf(todo);
+    if (todo.steps?.length) {
+      const open = openSteps(todo, sittings);
+      return { todo, total: todo.steps.reduce((n, x) => n + x.minutes, 0), logged, left: open.reduce((n, x) => n + x.minutes, 0), sittings, managed, rank };
+    }
     const { minutes: total, basis } = totalFor(todo, snapshot, plannedOn(sittings, logged));
     const doneMin = sittings.filter(s => s.done).reduce((n, s) => n + Math.round((+s.end - +s.start) / 60000), 0);
-    return { todo, total, basis, logged, left: Math.max(0, total - Math.max(logged, doneMin)), sittings, managed: isManaged(todo, auto, today), rank: effectiveRank(todo) };
+    return { todo, total, basis, logged, left: Math.max(0, total - Math.max(logged, doneMin)), sittings, managed, rank };
   }).sort((a, b) => a.rank - b.rank);
 }
 
@@ -143,7 +155,7 @@ async function readTodos(userId: string): Promise<Todo[]> {
       subjectId: (r.subject_id as string | null) ?? undefined, dueDate: (r.due_date as string | null) ?? undefined,
       estimatedMinutes: (r.estimated_minutes as number | null) ?? undefined, kind: asTodoKind(r.kind),
       assignmentId: (r.assignment_id as number | null) ?? undefined, rank: (r.rank as number | null) ?? undefined,
-      autoSchedule: (r.auto_schedule as boolean | null) ?? undefined,
+      autoSchedule: (r.auto_schedule as boolean | null) ?? undefined, ...detailsFromRow(r),
     });
     if (!data || data.length < 1000) return out;
   }
@@ -180,7 +192,7 @@ async function run(userId: string): Promise<RescheduleResult> {
   const managed = todos.filter(t => isManaged(t, auto, today));
   if (!managed.length) { last = empty; return empty; }
 
-  const furthest = Math.max(...managed.map(t => Math.ceil((+dueMoment(t.dueDate!) - +origin) / DAY_MS) + 1));
+  const furthest = Math.max(...managed.map(t => Math.ceil((+dueMoment(deadlineOf(t)!) - +origin) / DAY_MS) + 1));
   const days = Math.min(MAX_DAYS, Math.max(7, furthest));
   const snapshot = await readPlan(userId, origin, 0, days);
   // Half a calendar would read as open time and put work over classes.
@@ -190,14 +202,23 @@ async function run(userId: string): Promise<RescheduleResult> {
   const abs = (d: Date) => Math.round((+d - +origin) / 60000);
   const pins = pinnedKeys(userId);
   const info = new Map(managed.map(t => [t.id, { todo: t, sittings: sittingsOf(t, snapshot.sessions, snapshot.history, pins) }]));
-  const tasks: SchedTask[] = managed.map(t => ({
-    id: t.id,
-    rank: effectiveRank(t),
-    total: totalFor(t, snapshot, plannedOn(info.get(t.id)!.sittings, loggedOn(t, snapshot.history))).minutes,
-    logged: loggedOn(t, snapshot.history),
-    due: abs(dueMoment(t.dueDate!)),
-    sittings: info.get(t.id)!.sittings.map(s => ({ id: s.id, start: abs(s.start), end: abs(s.end), done: s.done, pinned: s.pinned, started: s.started })),
-  }));
+  const dayStart = (date: string) => abs(new Date(`${date}T00:00:00`));
+  const tasks: SchedTask[] = managed.map(t => {
+    const sittings = info.get(t.id)!.sittings;
+    const steps = t.steps?.length ? openSteps(t, sittings).map(x => ({ id: x.id, minutes: x.minutes })) : undefined;
+    return {
+      id: t.id,
+      rank: rankOf(t),
+      total: steps ? steps.reduce((n, x) => n + x.minutes, 0) : totalFor(t, snapshot, plannedOn(sittings, loggedOn(t, snapshot.history))).minutes,
+      logged: loggedOn(t, snapshot.history),
+      due: abs(dueMoment(deadlineOf(t)!)),
+      sittings: sittings.map(s => ({ id: s.id, start: abs(s.start), end: abs(s.end), done: s.done, pinned: s.pinned, started: s.started, ...(s.stepId ? { stepId: s.stepId } : {}) })),
+      ...(steps ? { steps } : {}),
+      ...(t.sittingCount && !steps ? { count: t.sittingCount } : {}),
+      ...(t.workFrom ? { from: dayStart(t.workFrom) } : {}),
+      ...(t.workUntil ? { until: dayStart(t.workUntil) + 1440 } : {}),
+    };
+  });
   // Everything else on the plan holds its time, and so do Soma's suggestions still waiting.
   const waiting = getProposals(userId).filter(p => p.time && p.replaces === undefined);
   const busy = [...snapshot.blocks.filter(b => b.time && !(b.todoId && ids.has(b.todoId))), ...waiting]
@@ -206,7 +227,7 @@ async function run(userId: string): Promise<RescheduleResult> {
   const result = schedule({ tasks, busy, prefs, now: abs(now), days, weekday0: origin.getDay() });
   const moment = (minute: number) => new Date(origin.getFullYear(), origin.getMonth(), origin.getDate(), 0, minute);
 
-  const fail = (e: { message: string } | null) => { if (e) throw new Error(/done_at|pinned/.test(e.message) ? 'Run task_scheduler_migration.sql in Supabase to schedule tasks.' : e.message); };
+  const fail = (e: { message: string } | null) => { if (e) throw new Error(/step_id/.test(e.message) ? 'Run task_details_migration.sql in Supabase to schedule steps.' : /done_at|pinned/.test(e.message) ? 'Run task_scheduler_migration.sql in Supabase to schedule tasks.' : e.message); };
   for (const r of result.remove) {
     const { error } = await supabase.from('todo_sessions').delete().eq('id', r.id).eq('user_id', userId);
     fail(error);
@@ -215,7 +236,8 @@ async function run(userId: string): Promise<RescheduleResult> {
   let created = 0;
   for (const p of result.place) {
     const start = moment(p.start), end = moment(p.end);
-    const row = { date: localDate(start), start_time: start.toISOString(), end_time: end.toISOString() };
+    // step_id only for tasks with steps, so scheduling works before task_details_migration.sql.
+    const row = { date: localDate(start), start_time: start.toISOString(), end_time: end.toISOString(), ...(p.stepId ? { step_id: p.stepId } : {}) };
     if (p.id) {
       const { error } = await supabase.from('todo_sessions').update(row).eq('id', p.id).eq('user_id', userId);
       fail(error);

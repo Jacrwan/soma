@@ -32,7 +32,8 @@ export type DumpPlanner = {
   clock: (minutes: number) => string;
   add: (choice: { courseId: string | null; minutes: number; slot: DumpSlot | null }) => Promise<string>;
 };
-type Props = { userId: string; onPlan: (text: string) => Promise<DumpPlanner> };
+/** `onMakeTask`: open it as a task with a due date and details instead; true once it's saved. */
+type Props = { userId: string; onPlan: (text: string) => Promise<DumpPlanner>; onMakeTask?: (text: string, courseId: string | null) => Promise<boolean> };
 /** `day` null: no set time, because the student chose that (`untimed`) or nothing this week fits. */
 type Adding = { item: Item; planner: DumpPlanner; course: string; minutes: number; picked: boolean; untimed: boolean; day: number | null; start: number | null };
 
@@ -62,7 +63,7 @@ const write = (key: string, items: Item[]) => { try { localStorage.setItem(key, 
 const flagged = (key: string) => { try { return localStorage.getItem(key) === '1'; } catch { return false; } };
 const flag = (key: string) => { try { localStorage.setItem(key, '1'); } catch { /* uploads again next time; saving the same line twice is harmless */ } };
 
-export default function BrainDump({ userId, onPlan }: Props) {
+export default function BrainDump({ userId, onPlan, onMakeTask }: Props) {
   const key = `soma_brain_dump:${userId}`;
   const [items, setItems] = useState(() => read(key));
   const [draft, setDraft] = useState('');
@@ -169,6 +170,19 @@ export default function BrainDump({ userId, onPlan }: Props) {
     finally { setBusy(null); }
   }
 
+  /** "It has a due date": the line becomes a task Soma schedules, with details; it leaves this list once saved. */
+  async function makeTask() {
+    if (!adding || !onMakeTask) return;
+    const { item, course } = adding;
+    close();
+    const saved = await onMakeTask(item.text, course && course !== PERSONAL ? course : null);
+    if (!saved) return;
+    const at = current.current.findIndex(i => i.id === item.id);
+    keep(current.current.filter(i => i.id !== item.id));
+    setStatus(`“${item.text}” is a task now. Soma placed its sittings.`);
+    await persist(() => removeDump(userId, item.id), () => putBack(item, at), `“${item.text}” is a task now, but couldn’t be taken off this list. Remove it with ×.`);
+  }
+
   const suggestion = adding && adding.planner.estimate(adding.course && adding.course !== PERSONAL ? adding.course : null);
   const days = useMemo(() => adding ? adding.planner.days(adding.minutes) : [], [adding?.planner, adding?.minutes]); // eslint-disable-line react-hooks/exhaustive-deps
   const shown = adding?.day != null ? days[adding.day] : undefined;
@@ -209,6 +223,7 @@ export default function BrainDump({ userId, onPlan }: Props) {
         <form method="dialog" onSubmit={e => { e.preventDefault(); void confirm(); }}>
           <h3 id={titleId}>Add to your plan</h3>
           <p className={styles.what}>{adding.item.text}</p>
+          {onMakeTask && <p className={styles.hint}>Has a due date? <button type="button" className={styles.linkButton} onClick={() => void makeTask()}>Make it a task</button> and Soma schedules it, with your own steps if you like.</p>}
 
           <label className={styles.field}><span>Course</span>
             <select value={adding.course} onChange={e => pickCourse(e.target.value)} required>

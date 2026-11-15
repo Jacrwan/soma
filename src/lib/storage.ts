@@ -1,3 +1,4 @@
+import { DETAILS_MESSAGE, DETAILS_MISSING, detailsFromRow, detailsToRow } from './taskDetails';
 import { supabase } from './supabase';
 import { Subject, TimeBlock, TimerSession, CanvasAssignment, CanvasCourse, Todo, TodoSession, GoogleCalendarEvent, ChatMessage, ChatSession, asTodoKind } from '../types';
 import { mergeDeepSync, clearLocalSnapshots, subjectForCourse } from './canvasDeepSync';
@@ -196,6 +197,7 @@ function todoFromRow(r: Record<string, unknown>): Todo {
     order: (r.order as number | null) ?? undefined,
     rank: (r.rank as number | null) ?? undefined,
     autoSchedule: (r.auto_schedule as boolean | null) ?? undefined,
+    ...detailsFromRow(r),
   };
 }
 
@@ -625,7 +627,8 @@ export const storage = {
           if (!p || p.text !== t.text || p.status !== t.status || p.subjectId !== t.subjectId ||
               p.dueDate !== t.dueDate || p.notes !== t.notes || p.order !== t.order ||
               p.estimatedMinutes !== t.estimatedMinutes || p.date !== t.date ||
-              p.rank !== t.rank || p.autoSchedule !== t.autoSchedule) {
+              p.rank !== t.rank || p.autoSchedule !== t.autoSchedule ||
+              JSON.stringify(detailsToRow(p)) !== JSON.stringify(detailsToRow(t))) {
             await storage.saveTodo(t);
           }
         }
@@ -724,7 +727,9 @@ export const storage = {
       // task_scheduler_migration.sql has run.
       ...(todo.rank !== undefined ? { rank: todo.rank } : {}),
       ...(todo.autoSchedule !== undefined ? { auto_schedule: todo.autoSchedule } : {}),
+      ...detailsToRow(todo),
     });
+    if (error && DETAILS_MISSING.test(error.message)) throw new Error(DETAILS_MESSAGE);
     if (error) throw new Error(/rank|auto_schedule/.test(error.message) ? 'Run task_scheduler_migration.sql in Supabase to save task priority and scheduling.' : error.message);
   },
 

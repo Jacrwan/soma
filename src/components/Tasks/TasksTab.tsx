@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import TaskDetail from './TaskDetail';
+import { deadlineOf } from '../../lib/taskDetails';
 import { GripVertical, Pin, PinOff, ChevronDown, ChevronRight } from 'lucide-react';
 import { storage } from '../../lib/storage';
 import { dateAt, localDate, readPlan, setTaskStatus, type Snapshot } from '../DashboardV2/liveData';
@@ -6,7 +8,7 @@ import { clearFutureSittings, lastSchedule, rescheduleTasks, setSittingPinned, t
 import { estimate, kindOf } from '../../lib/planIt';
 import { rankBetween } from '../../lib/taskScheduler';
 import { formatClock, useTimeFormat } from '../../lib/timeFormat';
-import { asTodoKind } from '../../types';
+import { asTodoKind, type Todo } from '../../types';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './TasksTab.module.css';
 
@@ -43,6 +45,7 @@ export default function TasksTab({ userId }: { userId: string }) {
   const [dragId, setDragId] = useState<string | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
   const [status, setStatus] = useState('');
+  const [details, setDetails] = useState<Todo | null>(null);
   // The add row.
   const [title, setTitle] = useState('');
   const [course, setCourse] = useState('');
@@ -192,13 +195,13 @@ export default function TasksTab({ userId }: { userId: string }) {
                   <input type="checkbox" className={styles.check} aria-label={`Done: ${t.todo.text}`} disabled={busy} onChange={() => void finish(t)} />
                   <span className={styles.dot} style={{ background: subject?.color ?? 'var(--text-muted)' }} />
                   <div className={styles.info}>
-                    <span className={styles.title}>{t.todo.text}</span>
-                    <span className={styles.meta}>{subject?.name ?? 'Personal'} · Due {dueLabel(t.todo.dueDate!, timeFormat)}</span>
+                    <button type="button" className={styles.title} aria-label={`Details: ${t.todo.text}`} onClick={() => setDetails(t.todo)}>{t.todo.text}</button>
+                    <span className={styles.meta}>{subject?.name ?? 'Personal'} · {t.todo.myDue ? 'Due for you' : 'Due'} {dueLabel(deadlineOf(t.todo)!, timeFormat)}{t.todo.steps?.length ? ` · ${t.todo.steps.length} ${t.todo.steps.length === 1 ? 'step' : 'steps'}` : ''}</span>
                   </div>
                   <div className={styles.left} role="group" aria-label={`Time for ${t.todo.text}`}>
-                    <button type="button" disabled={busy || t.total <= 15} aria-label={`30 minutes less for ${t.todo.text}`} onClick={() => void setTotal(t, t.total - 30)}>−</button>
+                    <button type="button" disabled={busy || t.total <= 15 || !!t.todo.steps?.length} aria-label={`30 minutes less for ${t.todo.text}`} onClick={() => void setTotal(t, t.total - 30)}>−</button>
                     <span title={t.basis ? `Soma's guess: ${t.basis}` : `${hours(t.total)} in all`}>{t.left ? `${hours(t.left)} left` : 'Covered'}</span>
-                    <button type="button" disabled={busy} aria-label={`30 minutes more for ${t.todo.text}`} onClick={() => void setTotal(t, t.total + 30)}>+</button>
+                    <button type="button" disabled={busy || !!t.todo.steps?.length} aria-label={`30 minutes more for ${t.todo.text}`} onClick={() => void setTotal(t, t.total + 30)}>+</button>
                   </div>
                   <div className={styles.next}>
                     {!t.managed ? <button type="button" className={styles.link} disabled={busy} onClick={() => void setManaged(t, true)}>Schedule</button>
@@ -215,7 +218,7 @@ export default function TasksTab({ userId }: { userId: string }) {
                     {ahead.length ? <ul className={styles.sittings}>
                       {ahead.map(s => (
                         <li key={s.id}>
-                          <span>{whenLabel(s.start, timeFormat)} – {formatClock(hm(s.end), timeFormat)}</span>
+                          <span>{whenLabel(s.start, timeFormat)} – {formatClock(hm(s.end), timeFormat)}{s.stepId && t.todo.steps?.find(x => x.id === s.stepId) ? ` · ${t.todo.steps.find(x => x.id === s.stepId)!.title}` : ''}</span>
                           <span className={styles.muted}>{hours(Math.round((+s.end - +s.start) / 60000))}{s.started ? ' · started' : ''}</span>
                           <button type="button" className={styles.pin} disabled={busy} aria-pressed={s.pinned} aria-label={s.pinned ? 'Unpin this sitting' : 'Pin this sitting so it never moves'} title={s.pinned ? 'Pinned: Soma won’t move it' : 'Pin so Soma won’t move it'} onClick={() => void pin(s.id, !s.pinned)}>
                             {s.pinned ? <Pin size={13} /> : <PinOff size={13} />}{s.pinned ? 'Pinned' : 'Pin'}
@@ -237,6 +240,9 @@ export default function TasksTab({ userId }: { userId: string }) {
             onDrop={e => { e.preventDefault(); if (dragId) moveTo(dragId, tasks.length); setDragId(null); setOverIndex(null); }} />
         </ol>
       )}
+      {details && <TaskDetail userId={userId} target={{ todo: details }} subjects={subjects} sessions={snapshot.sessions}
+        guess={(text, subjectId) => { const sb = subjects.find(x => x.id === subjectId); return sb ? estimate({ key: 'detail', title: text, subject: sb.name, subjectId: sb.id, color: '', due: '' }, snapshot.history).minutes : 60; }}
+        onClose={saved => { setDetails(null); if (saved) void after('Saved. Soma placed it again.'); }} />}
     </div>
   );
 }

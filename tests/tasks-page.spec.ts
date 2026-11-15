@@ -75,7 +75,7 @@ test('Tasks: the order is the priority, and arrow keys on the handle change it',
   // Soma's guess: a project counts as due 3 days sooner, so it comes before homework due a day earlier.
   const state = await setup(page, { todos: [task('a', 'Homework 3', dateOf(2)), task('b', 'Project proposal', dateOf(3)), task('c', 'Reading ch. 5', dateOf(6))] });
   await page.goto('/tasks');
-  const titles = page.getByRole('list', { name: 'Tasks, most important first' }).locator('li span[class*="title"]');
+  const titles = page.getByRole('list', { name: 'Tasks, most important first' }).locator('li button[class*="title"]');
   await expect(titles).toHaveText(['Project proposal', 'Homework 3', 'Reading ch. 5']);
   await page.getByRole('button', { name: /Reorder Reading ch\. 5/ }).press('ArrowUp');
   await expect(titles).toHaveText(['Project proposal', 'Reading ch. 5', 'Homework 3']);
@@ -174,4 +174,85 @@ test('dashboard: "Not today" keeps the open time free for the day', async ({ pag
   await page.getByRole('button', { name: 'Not today' }).click();
   await expect(page.getByText(/opened up today/)).toHaveCount(0);
   expect(state.tables.todo_sessions.find(s => s.id === 'l1')!.date).toBe(dateOf(1));
+});
+
+// ── Task details (2026-11-15) ──
+
+test('details: steps replace generic sittings, each named on the plan, in order', async ({ page }) => {
+  const state = await setup(page, {
+    todos: [task('hw', 'HW 9.5', dateOf(4), { kind: 'homework', auto_schedule: null, date: dateOf(4) })],
+    todo_sessions: [{ id: 'g1', user_id: account.id, todo_id: 'hw', date: dateOf(2), start_time: at(2, '10:00'), end_time: at(2, '11:00') }],
+  });
+  await page.goto('/tasks');
+  await page.getByRole('button', { name: 'Details: HW 9.5' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Task details' });
+  await dialog.getByRole('button', { name: 'Add a step' }).click();
+  await dialog.getByRole('textbox', { name: 'Step 1', exact: true }).fill('Problems 1–3');
+  await dialog.getByRole('button', { name: 'Add a step' }).click();
+  await dialog.getByRole('textbox', { name: 'Step 2', exact: true }).fill('Problems 4–6');
+  await dialog.getByRole('combobox', { name: 'Step 2 length' }).selectOption({ label: '1h' });
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await expect(dialog).toHaveCount(0);
+
+  const todo = state.tables.todos.find(t => t.id === 'hw')!;
+  const steps = todo.steps as { id: string; title: string; minutes: number }[];
+  expect(steps.map(s => [s.title, s.minutes])).toEqual([['Problems 1–3', 30], ['Problems 4–6', 60]]);
+  const sittings = state.tables.todo_sessions.filter(s => s.todo_id === 'hw').sort((a, b) => String(a.start_time).localeCompare(String(b.start_time)));
+  expect(sittings.map(s => s.step_id)).toEqual(steps.map(s => s.id));
+  expect(sittings[0].id).toBe('g1');                                     // the generic sitting became step 1
+  expect(sittings.map(s => (+new Date(String(s.end_time)) - +new Date(String(s.start_time))) / 60000)).toEqual([30, 60]);
+  await expect(page.getByRole('listitem').filter({ hasText: 'HW 9.5' }).getByText('2 steps', { exact: false })).toBeVisible();
+});
+
+test('details: your own deadline moves the work earlier, and the due card says so', async ({ page }) => {
+  const state = await setup(page, {
+    todos: [task('lab', 'Lab 10', dateOf(4), { kind: 'lab', auto_schedule: null, date: dateOf(4) })],
+    todo_sessions: [{ id: 'l1', user_id: account.id, todo_id: 'lab', date: dateOf(3), start_time: at(3, '15:00'), end_time: at(3, '16:00') }],
+  });
+  await page.goto('/dashboard');
+  await page.getByRole('button', { name: /Fri\s*20/ }).first().click();
+  await page.locator('article[data-kind="due"]').getByRole('button', { name: 'Details: Lab 10' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Task details' });
+  await expect(dialog.getByText(/As posted: Fri, Nov 20/)).toBeVisible();
+  await dialog.getByLabel('Your deadline, day').fill(dateOf(2));
+  await expect(dialog.getByText(/Posted as due Fri, Nov 20/)).toBeVisible();
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await expect(dialog).toHaveCount(0);
+  const todo = state.tables.todos.find(t => t.id === 'lab')!;
+  expect(todo.my_due).toBe(`${dateOf(2)}T23:59`);
+  expect(todo.due_date).toBe(dateOf(4));                                 // the posted date stays
+  // Finish a day before your deadline: by tomorrow.
+  await expect.poll(() => String(state.tables.todo_sessions.find(s => s.id === 'l1')!.date) <= dateOf(1)).toBe(true);
+});
+
+test('details: work days and a sitting count bound and split the work', async ({ page }) => {
+  const state = await setup(page, { todos: [task('essay', 'Essay', dateOf(6), { estimated_minutes: 120 })] });
+  await page.goto('/tasks');
+  await page.getByRole('button', { name: 'Details: Essay' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Task details' });
+  await dialog.getByLabel('Earliest day to work on it').fill(dateOf(3));
+  await dialog.getByLabel('Latest day to work on it').fill(dateOf(4));
+  await dialog.getByRole('combobox', { name: 'Sittings' }).selectOption({ index: 2 });   // 2 × 1h
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await expect(dialog).toHaveCount(0);
+  const todo = state.tables.todos.find(t => t.id === 'essay')!;
+  expect(todo).toMatchObject({ work_from: dateOf(3), work_until: dateOf(4), sitting_count: 2 });
+  const sittings = state.tables.todo_sessions.filter(s => s.todo_id === 'essay');
+  expect(sittings).toHaveLength(2);
+  expect(sittings.every(s => String(s.date) >= dateOf(3) && String(s.date) <= dateOf(4))).toBe(true);
+});
+
+test('brain dump: a line with a due date becomes a task with details, and leaves the list', async ({ page }) => {
+  const state = await setup(page, { brain_dump_items: [{ id: 'd1', user_id: account.id, text: 'Lab report', created_at: '2026-11-16T08:00:00Z' }] });
+  await page.goto('/dashboard');
+  await page.getByRole('button', { name: 'Add “Lab report” to your plan' }).click();
+  await page.getByRole('button', { name: 'Make it a task' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Make it a task' });
+  await dialog.getByLabel('Due day').fill(dateOf(3));
+  await dialog.getByRole('button', { name: 'Schedule it' }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect.poll(() => state.tables.todos.find(t => t.text === 'Lab report')?.due_date).toBe(`${dateOf(3)}T23:59`);
+  await expect.poll(() => state.tables.brain_dump_items.length).toBe(0);
+  const id = state.tables.todos.find(t => t.text === 'Lab report')!.id;
+  await expect.poll(() => state.tables.todo_sessions.filter(s => s.todo_id === id).length).toBeGreaterThan(0);
 });

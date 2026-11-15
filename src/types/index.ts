@@ -67,6 +67,8 @@ export interface TodoSession {
   doneAt?: string;
   /** Placed or pinned by the student: the scheduler never moves it. */
   pinned?: boolean;
+  /** The task step this sitting is for (task_details_migration.sql). */
+  stepId?: string;
 }
 
 export interface CanvasAssignment {
@@ -166,6 +168,12 @@ export interface Todo {
   rank?: number;
   /** true: Soma schedules its sittings; false: turned off; unset: the default for its kind. */
   autoSchedule?: boolean;
+  /** Task details (lib/taskDetails.ts). null clears one when saving. */
+  myDue?: string | null;
+  workFrom?: string | null;
+  workUntil?: string | null;
+  sittingCount?: number | null;
+  steps?: import('../lib/taskDetails').TaskStep[] | null;
 }
 
 export interface GoogleCalendarEvent {

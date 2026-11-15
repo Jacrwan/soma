@@ -47,7 +47,9 @@ export interface DashboardRuntime {
   /** Plan it's sittings for it: how many, how many checked off, and the minutes logged on them. */
   plan?: { total: number; done: number; minutes: number };
   /** A course-site task Soma schedules (id is the todo id), shown on its due day while its sittings sit earlier. */
-  task?: boolean }[];
+  task?: boolean;
+  /** The student's own deadline for it (task details), when it differs from the posted one. */
+  mine?: string }[];
  /** Schedule it: a due assignment becomes a task Soma schedules (src/lib/taskSchedule.ts). */
  planIt?: {
   estimate: (target: PlanTarget) => { minutes: number; basis: string };
@@ -58,6 +60,8 @@ export interface DashboardRuntime {
  initialPlan?: PlanTarget;
  /** Start focus on a due assignment, and mark one handed in. */
  onFocusDue?: (id: number | string) => void; onDueDone?: (id: number | string) => void;
+ /** Open a due item's task details: your deadline, work days, sittings, steps (Tasks/TaskDetail.tsx). */
+ onOpenDue?: (id: number | string) => void;
  onSave: (block: Block) => Promise<void>;
  onState: (id: string | number, state: State, opts?: { deleteLoggedTime?: boolean }) => Promise<void>;
  onDismiss: (id: string | number) => void;
@@ -202,7 +206,7 @@ export default function DashboardV2({runtime}:{runtime?:DashboardRuntime}) {
       ? <span className={styles.dueProgress}>{x.plan.total > 1 ? `${x.plan.done} of ${x.plan.total} sittings done` : x.plan.done ? 'Sitting done' : 'Sitting planned'}{logged ? ` · ${logged}` : ''}</span>
       : logged ? <span className={styles.dueProgress}>{logged}</span>
       : runtime?.planIt && x.day <= 3 ? <span className={styles.dueUnplanned}>Not planned yet</span> : null;
-    return <article key={`due-${x.id}`} data-kind="due" className={`${styles.block} ${styles[x.color as Block['color']] ?? ''}`}><div className={styles.blockTime}>Due<span>{formatClock(clock,timeFormat)}</span></div><div className={styles.blockBody}><span className={styles.subject}>{x.subject}</span><h3>{x.title}</h3><span className={styles.state}>{x.task ? 'Scheduled by Soma' : 'From Canvas · not handed in'}{progress && <> · {progress}</>}</span></div><div className={styles.actions}>{runtime?.planIt && day>=0 && !x.task && <button aria-label={`Plan it: ${x.title}`} onClick={()=>{setEditor(null);setPlanning(target);}}><CalendarPlus size={13}/> Plan it</button>}{runtime?.onFocusDue && day>=0 && <button disabled={runtime.timerActive} aria-label={`Start focus: ${x.title}`} onClick={()=>runtime.onFocusDue!(x.id)}><Play size={13}/> Focus</button>}{runtime?.onDueDone && <button aria-label={`${x.task ? 'Done' : 'Handed in'}: ${x.title}`} title={x.task ? 'Done' : 'Handed in'} onClick={()=>runtime.onDueDone!(x.id)}><Check size={14}/></button>}</div></article>;
+    return <article key={`due-${x.id}`} data-kind="due" className={`${styles.block} ${styles[x.color as Block['color']] ?? ''}`}><div className={styles.blockTime}>Due<span>{formatClock(clock,timeFormat)}</span></div><div className={styles.blockBody}><span className={styles.subject}>{x.subject}</span><h3>{runtime?.onOpenDue ? <button type="button" className={styles.dueOpen} aria-label={`Details: ${x.title}`} onClick={()=>runtime.onOpenDue!(x.id)}>{x.title}</button> : x.title}</h3><span className={styles.state}>{x.task ? 'Scheduled by Soma' : 'From Canvas · not handed in'}{x.mine && <> · Due for you {new Date(x.mine).toLocaleDateString(undefined,{weekday:'short'})} {formatClock(`${String(new Date(x.mine).getHours()).padStart(2,'0')}:${String(new Date(x.mine).getMinutes()).padStart(2,'0')}`,timeFormat)}</>}{progress && <> · {progress}</>}</span></div><div className={styles.actions}>{runtime?.planIt && day>=0 && !x.task && <button aria-label={`Plan it: ${x.title}`} onClick={()=>{setEditor(null);setPlanning(target);}}><CalendarPlus size={13}/> Plan it</button>}{runtime?.onFocusDue && day>=0 && <button disabled={runtime.timerActive} aria-label={`Start focus: ${x.title}`} onClick={()=>runtime.onFocusDue!(x.id)}><Play size={13}/> Focus</button>}{runtime?.onDueDone && <button aria-label={`${x.task ? 'Done' : 'Handed in'}: ${x.title}`} title={x.task ? 'Done' : 'Handed in'} onClick={()=>runtime.onDueDone!(x.id)}><Check size={14}/></button>}</div></article>;
   }
   // One card for both the timed agenda and the unscheduled list.
   function blockCard(b: Block) {

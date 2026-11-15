@@ -9,6 +9,43 @@ still needed.
 
 ---
 
+## 2026-11-15 (task details: your deadline, work days, sittings, steps) · branch task-details, preview
+
+- **Why:** the owner wanted to open a due assignment like a block and say how
+  it's scheduled: how many sittings, named steps instead of generic sittings,
+  their own deadline ("due Wednesday could be due Tuesday for me"), and the
+  earliest and latest days to work on it. Brain dump lines could become such
+  a task, or stay a one-step to-do.
+- **What:**
+  - `task_details_migration.sql` (new, NOT run yet): `todos.my_due`,
+    `work_from`, `work_until`, `sitting_count`, `steps` (JSONB) and
+    `todo_sessions.step_id`. src/lib/taskDetails.ts reads and writes them
+    (`detailsFromRow`, `detailsToRow`, `deadlineOf`); saveTodo sends them only
+    when set, with a "run the migration" message if the columns are missing.
+  - Tasks/TaskDetail.tsx: a dialog opened from a due card's title (Canvas or
+    course-site), a Tasks row's title, or the brain dump's "Make it a task".
+    Imported work keeps its name, course and posted date; "Your deadline"
+    differs from it only when changed ("Use the posted date" resets). Work on
+    it from/until, steps (name, length, done), or how long + sittings when
+    there are no steps. Saving turns scheduling on and places it again.
+  - Scheduler (taskScheduler.ts): `steps` (each open step one sitting of its
+    length, after the step before; generic sittings are reused for steps or
+    removed; a kept step sitting out of order moves), `count` (that many
+    equal sittings), `from` / `until` (replace the start window and finish
+    day; no earlier days at all with a chosen start). Runner uses
+    `deadlineOf` for the due moment and priority, and writes `step_id`.
+  - Fixed while here: a short window put a sitting on a day before the window
+    rather than doubling up inside it. The window (one a day, then doubling
+    up) now always comes before earlier days.
+  - Step sittings show the step after their state ("Planned · Problems 1–3");
+    due cards show "Due for you Tue 11:59 PM"; Tasks shows "Due for you" and
+    the step count, and its ± buttons are off for tasks with steps.
+- **Tests:** tests/task-scheduler.spec.ts (steps in order and reused; done
+  step's sitting goes; order kept; count; deadline and work days), and
+  tests/tasks-page.spec.ts (steps from Tasks, your deadline from the due
+  card, work days + count, brain dump → task).
+- **Setup:** run `task_details_migration.sql` (after task_scheduler_migration.sql).
+
 ## 2026-11-15 (task scheduler: today stays as planned; due day shows scheduled tasks)
 
 - **Why:** the owner moved a quiz sitting off today to Tuesday (no prep needed

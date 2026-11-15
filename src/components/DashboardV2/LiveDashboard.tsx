@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import AgentBrief from './AgentBrief';
 import CatchUp from './CatchUp';
 import BrainDump, { type DumpPlanner } from './BrainDump';
+import TaskDetail, { type TaskDetailTarget } from '../Tasks/TaskDetail';
 import Habits from './Habits';
 import { readLayout, type DashboardLayout } from '../../lib/dashboardLayout';
 import { CANVAS_CHANGED } from '../../lib/canvasExtension';
@@ -29,6 +30,7 @@ import { dashboardDayFor } from '../../lib/calendarView';
 import { coveredBy, finishThrough, rangeLabel, renameLoggedTime, retitle } from '../../lib/courseItems';
 import { acceptAhead, clearFutureSittings, declineAhead, rescheduleTasks, setSittingDone, type AheadOffer, type RescheduleResult } from '../../lib/taskSchedule';
 import { dueMoment, isManaged } from '../../lib/taskScheduler';
+import { deadlineOf } from '../../lib/taskDetails';
 import { asTodoKind } from '../../types';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './DashboardV2.module.css';
@@ -157,6 +159,9 @@ export default function LiveDashboard({userId}:{userId:string}) {
  // What the task scheduler last moved, and how many tasks don't fit before they're due.
  const [taskNote,setTaskNote]=useState<{moves:MovedBlock[];atRisk:number}|null>(null);
  const [ahead,setAhead]=useState<AheadOffer|null>(null);
+ // Task details open (Tasks/TaskDetail.tsx), and the brain dump waiting to hear whether it was saved.
+ const [detail,setDetail]=useState<TaskDetailTarget|null>(null);
+ const detailDone=useRef<((saved:boolean)=>void)|null>(null);
  const reclaimLock=useRef(false);
  const editingPlan=useRef(false);
  const onEditingChange=useCallback((editing:boolean)=>{editingPlan.current=editing;},[]);
@@ -514,7 +519,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
    if(t.assignmentId!==undefined || !t.dueDate || !isManaged(t,autoImported,today))return [];
    const sittings=snapshot.sessions.filter(sn=>sn.todoId===t.id && sn.startTime);
    if(!sittings.length)return [];
-   const at=dueMoment(t.dueDate),midnight=new Date(at);midnight.setHours(0,0,0,0);
+   const at=dueMoment(deadlineOf(t)!),midnight=new Date(at);midnight.setHours(0,0,0,0);
    const day=Math.round((midnight.getTime()-start)/86_400_000);
    const subject=snapshot.subjects.find(sb=>sb.id===t.subjectId);
    if(day<0 || subject?.archived)return [];
@@ -523,14 +528,15 @@ export default function LiveDashboard({userId}:{userId:string}) {
   });
  })();
  const pulseDays=Array.from({length:7},(_,i)=>snapshot.history.filter(h=>h.date===localDate(dateAt(origin,i-6))).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0));
- return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{onEditingChange,initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,planNotice:moveNote || taskNote || ahead ? <>{ahead && <AheadNote title={ahead.title} opened={ahead.opened} from={ahead.from} start={ahead.start} end={ahead.end} busy={busy} onAccept={()=>{const offer=ahead;setAhead(null);void (async()=>{try{await acceptAhead(userId,offer);await reload();runSchedule(300);}catch(e){setError(e instanceof Error ? e.message : 'Could not move it.');}})();}} onDecline={()=>{declineAhead(userId);setAhead(null);}}/>}{moveNote && <MoveNote reason={moveNote.reason} moves={moveNote.moves} busy={busy} onUndo={()=>void undoMoves()} onDismiss={()=>setMoveNote(null)}/>}{taskNote && <MoveNote reason="tasks" moves={taskNote.moves} atRisk={taskNote.atRisk} busy={busy} onTasks={()=>navigate('/tasks')} onDismiss={()=>setTaskNote(null)}/>}</> : null,compare:{shown:compareOn,toggle:()=>setCompareOn(v=>!v),panel:<DayCompare current={toVersionBlocks(snapshot.blocks)} versions={versions} selectedId={compareId || versions[0]?.id || ''} onSelect={setCompareId}/>},rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<CatchUp key={localDate(origin)} userId={userId} origin={origin} onApply={applyBatch}>{catchUp=><AgentBrief catchUp={catchUp}/>}</CatchUp>,dump:<BrainDump userId={userId} onPlan={planDump}/>,habits:<Habits/>,layout,onLayout:saveLayout,due:[...taskDues,...due.map(x=>{
+ return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{onEditingChange,initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,planNotice:moveNote || taskNote || ahead ? <>{ahead && <AheadNote title={ahead.title} opened={ahead.opened} from={ahead.from} start={ahead.start} end={ahead.end} busy={busy} onAccept={()=>{const offer=ahead;setAhead(null);void (async()=>{try{await acceptAhead(userId,offer);await reload();runSchedule(300);}catch(e){setError(e instanceof Error ? e.message : 'Could not move it.');}})();}} onDecline={()=>{declineAhead(userId);setAhead(null);}}/>}{moveNote && <MoveNote reason={moveNote.reason} moves={moveNote.moves} busy={busy} onUndo={()=>void undoMoves()} onDismiss={()=>setMoveNote(null)}/>}{taskNote && <MoveNote reason="tasks" moves={taskNote.moves} atRisk={taskNote.atRisk} busy={busy} onTasks={()=>navigate('/tasks')} onDismiss={()=>setTaskNote(null)}/>}</> : null,compare:{shown:compareOn,toggle:()=>setCompareOn(v=>!v),panel:<DayCompare current={toVersionBlocks(snapshot.blocks)} versions={versions} selectedId={compareId || versions[0]?.id || ''} onSelect={setCompareId}/>},rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<CatchUp key={localDate(origin)} userId={userId} origin={origin} onApply={applyBatch}>{catchUp=><AgentBrief catchUp={catchUp}/>}</CatchUp>,dump:<BrainDump userId={userId} onPlan={planDump} onMakeTask={(text,courseId)=>new Promise<boolean>(resolve=>{detailDone.current=resolve;setDetail({seed:{title:text,...(courseId ? {subjectId:courseId} : {})}});})}/>,habits:<Habits/>,layout,onLayout:saveLayout,due:[...taskDues,...due.map(x=>{
   // Plan it's sittings for this assignment, and the time logged on them (or on the assignment itself).
   const mine=snapshot.todos.filter(t=>t.subjectId===x.subjectId && isSittingOf(t.text,x.title));
   const seconds=snapshot.history.filter(h=>h.subject_id===x.subjectId && isSittingOf(h.task_text??'',x.title)).reduce((n,h)=>n+(h.duration_seconds||0),0);
   // A scheduled task's sittings are its sessions; older Plan it sittings were tasks named "· 1 of 3".
   const task=snapshot.todos.find(t=>t.assignmentId===x.id && t.status!=='done');
   const sittings=task ? snapshot.sessions.filter(sn=>sn.todoId===task.id && sn.startTime) : [];
-  if(sittings.length)return {...x,plan:{total:sittings.length,done:sittings.filter(sn=>sn.doneAt).length,minutes:Math.round(seconds/60)}};
+  const own=task?.myDue ? {mine:dueMoment(task.myDue).toISOString()} : {};
+  if(sittings.length)return {...x,...own,plan:{total:sittings.length,done:sittings.filter(sn=>sn.doneAt).length,minutes:Math.round(seconds/60)}};
   return {...x,plan:{total:mine.length,done:mine.filter(t=>t.status==='done').length,minutes:Math.round(seconds/60)}};
  })],initialPlan:planFromDeadlines ?? undefined,planIt:{
   estimate:(target)=>planEstimate(target,snapshot.history),
@@ -563,7 +569,12 @@ export default function LiveDashboard({userId}:{userId:string}) {
     await reload();
    }finally{writing.current=false;}
   },
- },onFocusDue:id=>{const x=[...taskDues,...due].find(d=>d.id===id);const subject=snapshot.subjects.find(s=>s.id===x?.subjectId);if(x&&subject)timer.startSession(subject,x.title,0);else setError('Add this course as a subject before starting focus on it.');},onDueDone:id=>{if(typeof id==='string'){const todo=snapshot.todos.find(t=>t.id===id);if(todo)void (async()=>{try{await setTaskStatus(userId,snapshot,todo,'done');await clearFutureSittings(userId,snapshot.sessions.filter(sn=>sn.todoId===id));await storage.fetchAllTodos();await reload();}catch(e){setError(e instanceof Error ? e.message : 'Could not mark it done.');}})();return;}storage.setAssignmentStatus({...storage.getAssignmentStatus(),[id]:'done'});setDue(dueItems(origin));window.dispatchEvent(new Event(CANVAS_CHANGED));},onFocus:b=>{const live=snapshot.blocks.find(x=>x.id===b.id);const subject=snapshot.subjects.find(s=>s.id===live?.subjectId);if(subject)timer.startSession(subject,b.title,0);else setError('Choose a subject with Edit plan before starting focus.');},pulseSeconds:pulseDays.reduce((a,b)=>a+b,0),pulseDays,subjectNames:snapshot.subjects.filter(s=>!s.archived).map(s=>s.name),usedColors:snapshot.subjects.map(s=>s.color),onEditSession:async(sessionId,minutes,startTime,date)=>{
+ },onFocusDue:id=>{const x=[...taskDues,...due].find(d=>d.id===id);const subject=snapshot.subjects.find(s=>s.id===x?.subjectId);if(x&&subject)timer.startSession(subject,x.title,0);else setError('Add this course as a subject before starting focus on it.');},onOpenDue:id=>{
+  if(typeof id==='string'){const todo=snapshot.todos.find(t=>t.id===id);if(todo)setDetail({todo});return;}
+  const linked=snapshot.todos.find(t=>t.assignmentId===id && t.status!=='done');
+  const x=due.find(d=>d.id===id);
+  if(linked)setDetail({todo:linked});else if(x)setDetail({seed:{title:x.title,subjectId:x.subjectId,dueDate:x.dueAt,assignmentId:id}});
+ },onDueDone:id=>{if(typeof id==='string'){const todo=snapshot.todos.find(t=>t.id===id);if(todo)void (async()=>{try{await setTaskStatus(userId,snapshot,todo,'done');await clearFutureSittings(userId,snapshot.sessions.filter(sn=>sn.todoId===id));await storage.fetchAllTodos();await reload();}catch(e){setError(e instanceof Error ? e.message : 'Could not mark it done.');}})();return;}storage.setAssignmentStatus({...storage.getAssignmentStatus(),[id]:'done'});setDue(dueItems(origin));window.dispatchEvent(new Event(CANVAS_CHANGED));},onFocus:b=>{const live=snapshot.blocks.find(x=>x.id===b.id);const subject=snapshot.subjects.find(s=>s.id===live?.subjectId);if(subject)timer.startSession(subject,b.title,0);else setError('Choose a subject with Edit plan before starting focus.');},pulseSeconds:pulseDays.reduce((a,b)=>a+b,0),pulseDays,subjectNames:snapshot.subjects.filter(s=>!s.archived).map(s=>s.name),usedColors:snapshot.subjects.map(s=>s.color),onEditSession:async(sessionId,minutes,startTime,date)=>{
  const row=snapshot.history.find(h=>h.id===sessionId);
  if(!row)throw new Error('That session is no longer there. Refresh and try again.');
  // Keep where it started unless the correction moved it, then let the length
@@ -599,5 +610,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
  }finally{writing.current=false;}
 },logsFor:(b)=>{const live=snapshot.blocks.find(x=>x.id===b.id);if(!live)return [];return snapshot.history.filter(h=>h.subject_id===live.subjectId && h.task_text===live.title && (h.duration_seconds||0)>0).map(h=>({id:h.id,date:h.date,minutes:Math.round((h.duration_seconds||0)/60),start:h.start_time?utcIso(h.start_time):undefined,end:h.end_time?utcIso(h.end_time):undefined}))
  // Newest first by when each session started; the date alone left same-day sessions in any order.
- .sort((a,c)=>new Date(c.start??`${c.date}T12:00:00`).getTime()-new Date(a.start??`${a.date}T12:00:00`).getTime());},focus:<section className={styles.focus} aria-label="Focus timer"><h2>Focus</h2><p className={styles.description}>{timer.activeSession?.subject.name??'One thing at a time.'}</p><h3>{timer.activeSession?.task??'Ready when you are'}</h3><div className={styles.timer}>{String(Math.floor(timer.elapsed/60)).padStart(2,'0')}<span>:</span>{String(timer.elapsed%60).padStart(2,'0')}{timer.pausedSince!==null && <PausedFor since={timer.pausedSince} className={styles.pausedFor}/>}</div>{timer.activeSession ? <div className={styles.focusActions}><button disabled={timer.saving || timer.savePending} onClick={()=>timer.isPaused ? timer.resumeSession() : timer.pauseSession()}>{timer.isPaused ? 'Resume' : 'Pause'}</button><button disabled={timer.saving} onClick={()=>void timer.stopSession()}>{timer.saving ? 'Saving…' : 'Stop & save'}</button></div> : <p className={styles.description}>Choose Focus on a study block or a due assignment to begin.</p>}{timer.error && <p role="alert">{timer.error}</p>}<small>Actual work is tracked separately from your plan. Complete the task when it is finished.</small></section>}}/></>;
+ .sort((a,c)=>new Date(c.start??`${c.date}T12:00:00`).getTime()-new Date(a.start??`${a.date}T12:00:00`).getTime());},focus:<section className={styles.focus} aria-label="Focus timer"><h2>Focus</h2><p className={styles.description}>{timer.activeSession?.subject.name??'One thing at a time.'}</p><h3>{timer.activeSession?.task??'Ready when you are'}</h3><div className={styles.timer}>{String(Math.floor(timer.elapsed/60)).padStart(2,'0')}<span>:</span>{String(timer.elapsed%60).padStart(2,'0')}{timer.pausedSince!==null && <PausedFor since={timer.pausedSince} className={styles.pausedFor}/>}</div>{timer.activeSession ? <div className={styles.focusActions}><button disabled={timer.saving || timer.savePending} onClick={()=>timer.isPaused ? timer.resumeSession() : timer.pauseSession()}>{timer.isPaused ? 'Resume' : 'Pause'}</button><button disabled={timer.saving} onClick={()=>void timer.stopSession()}>{timer.saving ? 'Saving…' : 'Stop & save'}</button></div> : <p className={styles.description}>Choose Focus on a study block or a due assignment to begin.</p>}{timer.error && <p role="alert">{timer.error}</p>}<small>Actual work is tracked separately from your plan. Complete the task when it is finished.</small></section>}}/>{detail && <TaskDetail userId={userId} target={detail} subjects={snapshot.subjects.filter(sb=>!sb.archived)} sessions={snapshot.sessions}
+  guess={(text,subjectId)=>{const sb=snapshot.subjects.find(x=>x.id===subjectId);return sb ? planEstimate({key:'detail',title:text,subject:sb.name,subjectId:sb.id,color:'',due:''},snapshot.history).minutes : 60;}}
+  onClose={saved=>{setDetail(null);detailDone.current?.(saved);detailDone.current=null;if(saved)void reload().catch(()=>{});}}/>}</>;
 }

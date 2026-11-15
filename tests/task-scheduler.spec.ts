@@ -189,3 +189,51 @@ test('a task that only fits with today is offered today, not crammed in', () => 
   expect(r.atRisk).toEqual([{ taskId: 't', short: 60 }]);
   expect(r.ahead).toEqual({ taskId: 't', start: at(0, 9), end: at(0, 10) });
 });
+
+// ── Task details (2026-11-15) ──
+
+test('steps replace generic sittings: one each, its own length, in order', () => {
+  const t = task('hw', { due: at(6, 23, 59), sittings: [{ id: 'g1', start: at(2, 10), end: at(2, 11) }],
+    steps: [{ id: 'a', minutes: 30 }, { id: 'b', minutes: 90 }, { id: 'c', minutes: 45 }] });
+  const r = run({ tasks: [t] });
+  const placed = r.place.filter(p => p.taskId === 'hw').sort((x, y) => x.start - y.start);
+  expect(placed.map(p => p.stepId)).toEqual(['a', 'b', 'c']);
+  expect(placed.map(p => p.end - p.start)).toEqual([30, 90, 45]);
+  expect(placed.every(p => p.end <= at(6, 0))).toBe(true);
+  // The generic sitting is reused for the first step (same id), not left behind.
+  expect(placed[0].id).toBe('g1');
+  expect(r.remove).toEqual([]);
+});
+
+test('a step sitting that is fine stays; one for a step now done goes', () => {
+  const t = task('hw', { due: at(6, 23, 59),
+    sittings: [{ id: 'sa', stepId: 'a', start: at(4, 10), end: at(4, 10, 30) }, { id: 'sx', stepId: 'gone', start: at(4, 10), end: at(4, 11) }],
+    steps: [{ id: 'a', minutes: 30 }] });
+  const r = run({ tasks: [t] });
+  expect(r.place).toEqual([]);
+  expect(r.remove).toEqual([{ taskId: 'hw', id: 'sx' }]);
+});
+
+test('steps keep their order: a later step placed before an earlier one moves after it', () => {
+  const t = task('hw', { due: at(6, 23, 59),
+    sittings: [{ id: 'sa', stepId: 'a', start: at(4, 10), end: at(4, 11) }, { id: 'sb', stepId: 'b', start: at(3, 10), end: at(3, 11) }],
+    steps: [{ id: 'a', minutes: 60 }, { id: 'b', minutes: 60 }] });
+  const r = run({ tasks: [t] });
+  const b = r.place.find(p => p.id === 'sb')!;
+  expect(b.start).toBeGreaterThanOrEqual(at(4, 11));
+});
+
+test('a set number of sittings splits the work that many ways', () => {
+  const r = run({ tasks: [task('hw', { total: 90, due: at(6, 23, 59), count: 3 })] });
+  expect(r.place.map(p => p.end - p.start)).toEqual([30, 30, 30]);
+});
+
+test('your own deadline and work days bound the sittings', () => {
+  // Posted due day 6; due day 3 for you: finish day 2.
+  const mine = run({ tasks: [task('hw', { total: 60, due: at(3, 23, 59) })] });
+  expect(Math.floor(mine.place[0].start / D)).toBeLessThanOrEqual(2);
+  // Work on it only on days 4–5.
+  const r = run({ tasks: [task('hw', { total: 120, due: at(8, 23, 59), from: at(4, 0), until: at(6, 0) })] });
+  expect(r.place.every(p => p.start >= at(4, 0) && p.end <= at(6, 0))).toBe(true);
+  expect(r.finishBy.hw).toBe(at(6, 0));
+});

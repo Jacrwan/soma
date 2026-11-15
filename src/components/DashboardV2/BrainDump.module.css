@@ -382,3 +382,17 @@
 .dialog .chips button[aria-pressed=true]:hover:not(:disabled) {
   background: color-mix(in oklch, var(--accent), var(--bg) 82%);
 }
+
+.linkButton {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.linkButton:hover {
+  text-decoration: underline;
+}
