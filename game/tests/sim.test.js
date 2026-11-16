@@ -388,6 +388,12 @@ test('the market keeps one stock per day, sells once, and tea boosts the next se
   const a = S.marketStock(s, NOW);
   assert.deepStrictEqual(S.marketStock(s, NOW + 1000), a);
   assert.ok(a.some((o) => o.kind === 'gear') && a.some((o) => o.kind === 'tea'));
+  const chestAt = a.findIndex((o) => o.kind === 'chest');
+  assert.ok(chestAt >= 0 && ['rare', 'epic', 'legendary'].includes(a[chestAt].rarity));
+  const chests = s.school.chests.length;
+  assert.ok(S.buyOffer(s, chestAt, NOW).chest);
+  assert.strictEqual(s.school.chests.length, chests + 1);
+  assert.strictEqual(S.buyOffer(s, chestAt, NOW), null); // one a day
   const coins = s.coins;
   const tea = a.findIndex((o) => o.kind === 'tea');
   assert.ok(S.buyOffer(s, tea, NOW));

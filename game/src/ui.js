@@ -739,13 +739,15 @@ export function createUI(on) {
     /** The market: today's stock, plus selling what you don't need. */
     market({ coins, offers, junk, onBuy, onSellJunk, showcase = [], onVault }) {
       const label = (o) => o.kind === 'gear' ? o.item.name : o.kind === 'look' ? o.name : o.kind === 'tea' ? 'Study tea' : o.name;
+      const picture = (o) => { const i = el('img', { class: 'thumb', alt: '' }); o.picture?.then((src) => { i.src = src; }).catch(() => {}); return i; };
       const detail = (o) => o.kind === 'gear' ? `${o.item.rarity} ${SLOT_NAMES[o.item.slot].toLowerCase()} · level ${o.item.level} · ${gearStat(o.item)}`
         : o.kind === 'look' ? 'A new look for your hero (Wardrobe)'
           : o.kind === 'tea' ? 'Your next study session pays 50% more XP'
-            : 'A rare decoration for build mode (B)';
+            : o.kind === 'chest' ? `Today's chest, bought with coins. Can hold anything from the Vault${o.rarity === 'legendary' ? ', even a mythic' : ''}.` : 'A rare decoration for build mode (B)';
       panel({ title: 'Market', subtitle: `New stock every day · you have ${fmt(coins)} coins`, wide: true },
-        el('div', { class: 'gear-row market' }, offers.map((o, i) => el('div', { class: `gear ${o.kind === 'gear' ? `g-${o.item.rarity}` : 'g-rare'} ${o.sold ? 'sold' : ''}` },
-          el('small', { text: o.kind === 'gear' ? 'Gear' : o.kind === 'look' ? 'Look' : o.kind === 'tea' ? 'Potion' : 'Decoration' }),
+        el('div', { class: 'gear-row market' }, offers.map((o, i) => el('div', { class: `gear ${o.kind === 'gear' ? `g-${o.item.rarity}` : o.kind === 'chest' ? `g-${o.rarity}` : 'g-rare'} ${o.sold ? 'sold' : ''} k-${o.kind}` },
+          picture(o),
+          el('small', { text: o.kind === 'gear' ? 'Gear' : o.kind === 'look' ? 'Look' : o.kind === 'tea' ? 'Potion' : o.kind === 'chest' ? 'Chest of the day' : 'Decoration' }),
           el('b', { text: label(o) }),
           el('span', { text: detail(o) }),
           el('div', { class: 'gear-do' }, o.sold ? el('em', { text: 'Sold' })

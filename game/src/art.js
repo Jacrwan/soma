@@ -2053,3 +2053,46 @@ export function makeVaultDecor(type) {
   g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   return g;
 }
+
+// --- Market pictures: armour, charms, tea and colours ---------------------------------
+const RARITY_TRIM = { common: 0x9aa0a8, rare: 0x4a90e2, epic: 0xa35be0, legendary: 0xf2c14e };
+/** A breastplate with pauldrons, trimmed in the rarity colour. */
+export function makeArmorPiece(rarity = 'rare') {
+  const steel = { metal: 0.8, rough: 0.3 };
+  const trim = RARITY_TRIM[rarity] || C.gold;
+  const g = new THREE.Group();
+  g.add(at(squash(ball(0.5, C.metal, 1, steel), 1, 1.15, 0.6), 0, 0.6, 0), at(box(0.85, 0.12, 0.5, trim, { metal: 0.7, rough: 0.3 }), 0, 0.12, 0));
+  for (const sx of [-1, 1]) g.add(at(squash(ball(0.26, C.metal, 1, steel), 1.1, 0.7, 1), sx * 0.55, 0.95, 0), at(squash(ball(0.27, trim, 0, { metal: 0.7 }), 1.1, 0.25, 1.05), sx * 0.55, 0.98, 0));
+  g.add(at(box(0.08, 0.6, 0.06, trim, { metal: 0.7 }), 0, 0.35, 0.3), at(box(0.32, 0.06, 0.06, trim, { metal: 0.7 }), 0, 0.72, 0.3));
+  if (rarity === 'legendary' || rarity === 'epic') g.add(at(ball(0.09, trim, 0, { emissive: trim, glow: 1.4 }), 0, 0.75, 0.33));
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
+/** A pendant on a chain, its gem in the rarity colour. */
+export function makeCharmPiece(rarity = 'rare') {
+  const trim = RARITY_TRIM[rarity] || C.gold;
+  const g = new THREE.Group();
+  const chain = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.02, 6, 32, Math.PI * 1.1), mat(C.gold, { metal: 0.9, rough: 0.2 }));
+  chain.rotation.z = Math.PI + 1.15;
+  chain.position.y = 0.75;
+  const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.2, 0), new THREE.MeshStandardMaterial({ color: trim, emissive: trim, emissiveIntensity: 0.9, roughness: 0.1, flatShading: true }));
+  gem.scale.set(0.8, 1.2, 0.5);
+  gem.position.y = 0.2;
+  g.add(chain, at(torus(0.24, 0.04, C.gold, { metal: 0.9, rough: 0.2 }), 0, 0.2, 0), gem);
+  return g;
+}
+export function makeTeaCup() {
+  const g = new THREE.Group();
+  g.add(at(cyl(0.5, 0.42, 0.06, 0xf5f0e7, 20), 0, 0, 0), at(cyl(0.34, 0.24, 0.42, 0xf5f0e7, 20), 0, 0.06, 0), at(cyl(0.31, 0.31, 0.02, 0x9a6a2a, 20), 0, 0.42, 0));
+  g.add(at(tilt(torus(0.12, 0.035, 0xf5f0e7), 0, Math.PI / 2), 0.36, 0.28, 0));
+  for (let i = 0; i < 3; i++) { const puff = at(ball(0.07 + i * 0.02, 0xffffff, 0, { opacity: 0.6 }), Math.sin(i * 2) * 0.08, 0.55 + i * 0.16, 0); g.add(puff); }
+  g.add(at(squash(ball(0.08, 0x5fa83e, 0), 1, 0.3, 1.6), 0.12, 0.44, 0.05));
+  return g;
+}
+/** A paint pot of an outfit colour. */
+export function makePaintPot(color) {
+  const g = new THREE.Group();
+  g.add(cyl(0.38, 0.34, 0.55, 0xb8b4a8, 16, { metal: 0.5, rough: 0.35 }), at(cyl(0.36, 0.36, 0.04, color, 16), 0, 0.55, 0));
+  g.add(at(squash(ball(0.12, color, 0), 1, 1.6, 1), 0.38, 0.4, 0), at(tilt(box(0.08, 0.7, 0.02, C.woodDark), 0, -0.4), 0.15, 0.55, -0.05));
+  return g;
+}

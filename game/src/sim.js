@@ -1183,7 +1183,11 @@ export const TEA_BOOST = 0.5; // the next study session pays 50% more XP
 export function marketStock(state, now = Date.now()) {
   const day = dayOf(now);
   const m = state.market;
-  if (m.day === day && m.offers.length) return m.offers;
+  if (m.day === day && m.offers.length) {
+    // Stock from before chests were sold gets today's chest added.
+    if (!m.offers.some((o) => o.kind === 'chest')) m.offers.push(marketChest(state, day));
+    return m.offers;
+  }
   const rng = seededRng([...day].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 17) ^ (state.hero.level * 7919));
   const offers = [];
   const gearRarity = () => (rng() < 0.15 ? 'legendary' : rng() < 0.5 ? 'epic' : 'rare');
@@ -1200,9 +1204,19 @@ export function marketStock(state, now = Date.now()) {
   offers.push({ kind: 'tea', price: price(state, 300, 150), sold: false });
   const rare = Object.keys(DECOR).filter((k) => DECOR[k].market && !state.decorUnlocked.includes(k));
   if (rare.length) offers.push({ kind: 'decor', id: rare[Math.floor(rng() * rare.length)], price: price(state, 3000, 2500), sold: false });
+  offers.push(marketChest(state, day));
   m.day = day;
   m.offers = offers;
   return offers;
+}
+
+// One chest a day, bought with coins (which only come from playing and
+// studying, never from real money). Most days rare, some epic, now and then legendary.
+const CHEST_PRICE = { rare: [1500, 800], epic: [4000, 3000], legendary: [12000, 12000] };
+function marketChest(state, day) {
+  const r = seededRng([...day].reduce((h, ch) => (h * 33 + ch.charCodeAt(0)) >>> 0, 5))();
+  const rarity = r < 0.06 ? 'legendary' : r < 0.32 ? 'epic' : 'rare';
+  return { kind: 'chest', rarity, price: price(state, CHEST_PRICE[rarity][0], CHEST_PRICE[rarity][1]), sold: false };
 }
 
 /** Buys offer i. Returns what was bought, or null if it can't be. */
@@ -1215,6 +1229,7 @@ export function buyOffer(state, i, now = Date.now()) {
   if (offer.kind === 'look') state.cosmetics.owned.push(offer.id);
   else if (offer.kind === 'tea') state.study.tea = (state.study.tea || 0) + 1;
   else if (offer.kind === 'decor') state.decorUnlocked.push(offer.id);
+  else if (offer.kind === 'chest') return { offer, chest: grantChest(state, offer.rarity, 'The market') };
   return { offer };
 }
 

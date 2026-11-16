@@ -821,3 +821,8 @@ body.shiftlock, body.shiftlock canvas, body.shiftlock #labels, body.shiftlock #l
 .op-jackpot-mythic::before { background: radial-gradient(circle at 50% 45%, rgba(255, 79, 216, 0.55), rgba(127, 211, 255, 0.25) 40%, transparent 70%); }
 .op-jackpot-legendary::before { background: radial-gradient(circle at 50% 45%, rgba(242, 193, 78, 0.5), transparent 65%); }
 @keyframes jackpot { from { opacity: 1; transform: scale(0.6); } to { opacity: 0; transform: scale(1.4); } }
+
+/* Market pictures */
+.gear-row.market .gear .thumb { display: block; width: 100%; height: 96px; object-fit: contain; margin-bottom: 4px; filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.4)); }
+.gear-row.market .gear.k-chest { background: linear-gradient(160deg, rgba(242, 193, 78, 0.18), rgba(255, 255, 255, 0.05)); }
+.gear-row.market .gear.sold .thumb { filter: grayscale(1) opacity(0.6); }

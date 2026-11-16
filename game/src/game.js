@@ -11,6 +11,7 @@ import { useCharacter, hasAvatar, createAvatar, createVillager, previewAvatar, C
 import { createRealms } from './realm.js';
 import { makePractice } from './practice.js';
 import * as Soma from './soma.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { focusView } from './nature.js';
 import { enemiesReady, hasEnemy, createEnemy } from './enemies.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -2018,7 +2019,7 @@ function openMarket() {
   const junk = state.hero.bag.filter((i) => S.gearScore(i) <= S.gearScore(state.hero.gear[i.slot]));
   ui.market({
     coins: state.coins,
-    offers: offers.map((o) => ({ ...o, name: o.kind === 'look' ? A.COSMETIC_NAMES[o.id] || o.id : o.kind === 'decor' ? S.DECOR[o.id].name : null })),
+    offers: offers.map((o) => ({ ...o, name: o.kind === 'look' ? A.COSMETIC_NAMES[o.id] || o.id : o.kind === 'decor' ? S.DECOR[o.id].name : o.kind === 'chest' ? `${o.rarity[0].toUpperCase()}${o.rarity.slice(1)} chest` : null, picture: thumbFor(o.kind === 'gear' ? { kind: 'gear', item: o.item } : o.kind === 'decor' ? { kind: 'decor', id: o.id } : o.kind === 'chest' ? { kind: 'chest', rarity: o.rarity } : o) })),
     junk: { count: junk.length, value: junk.reduce((sum, i) => sum + S.sellValue(i), 0) },
     onBuy: (i) => {
       const got = S.buyOffer(state, i);
@@ -2028,6 +2029,7 @@ function openMarket() {
       if (o.kind === 'gear') { ui.toast(got.equipped ? `Bought and equipped ${o.item.name}` : `Bought ${o.item.name}: it's in your bag (C)`, 'gold'); dressPlayer(); }
       else if (o.kind === 'look') ui.toast('New look unlocked: wear it from the Wardrobe in the Hero panel.', 'gold');
       else if (o.kind === 'tea') ui.toast('Study tea: your next study session pays 50% more XP.', 'gold');
+      else if (o.kind === 'chest') { ui.toast(`A ${o.rarity} chest is on your plaza. Open it, or open it from the Vault.`, 'gold'); syncChests(); chestsSeen = state.school.chests.length; }
       else ui.toast(`${S.DECOR[o.id].name} unlocked in build mode (B).`, 'gold');
       refreshHud(); save(); ui.close(); openMarket();
     },
@@ -2798,6 +2800,9 @@ const thumbSun = new THREE.DirectionalLight(0xfff2e0, 2.6);
 thumbSun.position.set(3, 5, 4);
 thumbScene.add(thumbSun);
 const thumbCam = new THREE.PerspectiveCamera(30, 1, 0.1, 200);
+// A soft studio around the thumbnails, so metal, gold and gems have something to reflect.
+thumbScene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+thumbScene.environmentIntensity = 0.8;
 const thumbTarget = new THREE.WebGLRenderTarget(256, 256, { samples: 4 });
 function renderThumb(object, angle = 0.6) {
   thumbScene.add(object);
@@ -2844,7 +2849,7 @@ function makeLure() {
 }
 /** A data URL for a reward or cosmetic; resolves once the model is ready. */
 function thumbFor(reward) {
-  const key = `${reward.kind}:${reward.id || reward.rarity || ''}`;
+  const key = reward.kind === 'gear' ? `gear:${reward.item.slot}:${reward.item.rarity}:${reward.item.look || 0}` : `${reward.kind}:${reward.id || reward.rarity || ''}`;
   if (thumbCache.has(key)) return thumbCache.get(key);
   let job;
   if (reward.kind === 'outfit') {
@@ -2864,6 +2869,13 @@ function thumbFor(reward) {
     }
     else if (reward.kind === 'theme') object = A.makeLanternScene();
     else if (reward.kind === 'collectible') object = collectibleModel(reward.id);
+    else if (reward.kind === 'gear') {
+      const it = reward.item;
+      object = it.slot === 'weapon' ? A.makeWeapon(Math.max(1, it.look || 1)) : it.slot === 'armor' ? A.makeArmorPiece(it.rarity) : A.makeCharmPiece(it.rarity);
+      if (it.slot === 'weapon') object.rotation.z = -0.6;
+    }
+    else if (reward.kind === 'look') object = reward.id.startsWith('color:') ? A.makePaintPot(A.SKIN_COLORS[reward.id] || 0xd9785a) : (() => { const h = A.makeHat(reward.id); h.scale.setScalar(1.5); return h; })();
+    else if (reward.kind === 'tea') object = A.makeTeaCup();
     job = Promise.resolve(renderThumb(object, reward.kind === 'decor' || reward.kind === 'collectible' ? 0.7 : 0.4));
   }
   thumbCache.set(key, job);
