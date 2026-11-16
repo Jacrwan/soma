@@ -41,6 +41,9 @@ export const BUILDINGS = {
 };
 
 const INCOME_PER_TIER = 6;
+// The town is an allowance, not the main income: studying is. This scales
+// everything buildings make (buildings still cost what they did).
+export const TOWN_SCALE = 0.001;
 const COST_PER_TIER = 10;
 export const LEVEL_MULT = [0, 1, 2.2, 4.5];
 const LEVEL_COST = [0, 1, 2, 5]; // multiples of the building's base cost
@@ -97,6 +100,7 @@ export function newState(now = Date.now()) {
     topics: {}, // exam itemId -> [{ name, minutes }]
     pass: { season: 'Fall 2026', points: 0, premium: false, freeClaimed: [], premiumClaimed: [] },
     tutorial: { step: 0, done: false },
+    week: { claimed: null, streak: 0 }, // the weekly goal: last week claimed, weeks in a row
     found: {}, // landmarks discovered: 'lm:<era>:<id>' -> true
     mapSeen: {}, // era -> string of '0'/'1', one per map cell walked near
     createdAt: now,
@@ -219,7 +223,7 @@ export function buildingName(b) {
 /** Coins per second for one building, before siege. */
 export function buildingIncome(state, b) {
   if (!b) return 0;
-  return BUILDINGS[b.type].income * INCOME_PER_TIER ** b.tier * LEVEL_MULT[b.level] * (b.golden ? GOLDEN_MULT : 1) * relicMult(state);
+  return BUILDINGS[b.type].income * INCOME_PER_TIER ** b.tier * LEVEL_MULT[b.level] * (b.golden ? GOLDEN_MULT : 1) * relicMult(state) * TOWN_SCALE;
 }
 
 export function buildingCap(state, b) {
@@ -239,9 +243,13 @@ export function baseIncome(state) {
  * fresh town in your age makes (a home and a works), so prices and pay don't
  * crash when a new age starts with an empty town and full pockets.
  */
+export const WAGE_DIV = 40000; // a 'second' of reward is worth ageCost / WAGE_DIV coins
+// How fast rewards come in each age, against its wonder: the Stone Age is a
+// quick first week, the Bronze Age a longer stretch up to midterms.
+export const AGE_PACE = [1, 0.55];
+export const agePace = (state) => AGE_PACE[state.era] ?? AGE_PACE[AGE_PACE.length - 1];
 export function wage(state) {
-  const fresh = (BUILDINGS.home.income + BUILDINGS.work.income) * INCOME_PER_TIER ** tierFor(state, state.era >= MOON_TIER ? 'moon' : 'earth');
-  return Math.max(baseIncome(state), fresh);
+  return Math.max(baseIncome(state), (ageCost(state) * agePace(state)) / WAGE_DIV);
 }
 
 export function totalIncome(state, now = Date.now()) {
@@ -342,9 +350,14 @@ export function addCoins(state, amount) {
 }
 
 /** The wonder you can build now, or null. Earth wonders are built on Earth, the Star Gate on the moon. */
+// Season 1 is the first two ages. Its last wonder ends the season instead of
+// starting a new age; later ages arrive in later seasons.
+export const SEASON = { name: 'Season 1', ages: 2 };
+export const seasonDone = (state) => state.era >= SEASON.ages || state.wonders.includes(SEASON.ages - 1);
+
 export function nextWonder(state) {
   const era = ERAS[state.era];
-  if (!era || !era.wonder) return null;
+  if (!era || !era.wonder || seasonDone(state)) return null;
   return { index: state.era, name: era.wonder, cost: era.wonderCost, scene: state.era >= MOON_TIER ? 'moon' : 'earth' };
 }
 
@@ -352,6 +365,11 @@ export function buildWonder(state) {
   const wonder = nextWonder(state);
   if (!wonder || wonder.scene !== state.scene || !spend(state, wonder.cost)) return null;
   state.wonders.push(wonder.index);
+  // The season's finale: you stay in this land, with a legendary chest.
+  if (wonder.index === SEASON.ages - 1) {
+    const chest = grantChest(state, 'legendary', `${SEASON.name} finale`);
+    return { ...wonder, finale: true, chest };
+  }
   state.era += 1;
   // A wonder on Earth ends the age: the town moves to a new landscape and
   // starts empty. Hero, coins, school, creatures and villagers come along;
@@ -512,7 +530,10 @@ export function handInReward(state, item) {
 
 // --- Studying: a real timer you run while you do the work ---------------------------
 
-export const STUDY_PAY = 90; // each minute studied pays this many seconds of town income
+// Each minute studied pays this share of the age's wonder. The Stone Age is
+// about a week of half-hour sessions; the Bronze Age runs to midterms.
+export const STUDY_SHARE = [0.004, 0.001];
+export const studyRate = (state) => Math.round(ageCost(state) * (STUDY_SHARE[state.era] ?? STUDY_SHARE[STUDY_SHARE.length - 1]));
 export const FOCUS_MULT = 2; // the town earns this much more while a session runs
 export const STUDY_LENGTHS = [{ minutes: 10, rarity: 'common' }, { minutes: 25, rarity: 'rare' }, { minutes: 45, rarity: 'epic' }];
 export const STUDY_GOAL = [0, 30, 60, 120]; // minutes that fully prepare an item, by size
@@ -600,7 +621,7 @@ export function finishStudy(state, now = Date.now()) {
   study.lureBank -= result.lures * LURE_MINUTES;
   state.critters.lures += result.lures;
   study.log = [...(study.log || []), { at: now, itemId: item ? item.id : null, courseId: item ? item.courseId : null, minutes }].slice(-400);
-  result.coins = Math.round(wage(state) * STUDY_PAY * minutes);
+  result.coins = studyRate(state) * minutes;
   passPoints(state, minutes);
   addCoins(state, result.coins);
   // A cup of study tea from the market makes this session pay half again.
@@ -697,7 +718,7 @@ export const COSMETICS = [
   'hat:straw', 'hat:crown', 'hat:helm', 'hat:top', 'hat:cap', 'hat:astro',
   'color:moss', 'color:ocean', 'color:plum', 'color:ember', 'color:snow', 'color:gold',
 ];
-export const CHEST_COINS = { common: 0.008, rare: 0.02, epic: 0.05, legendary: 0.12 }; // shares of this age's wonder
+export const CHEST_COINS = { common: 0.004, rare: 0.01, epic: 0.025, legendary: 0.06 }; // shares of this age's wonder: loot is mostly the items, not the coins
 
 /** Opens a chest: returns what was inside and applies it to the state. rng returns 0..1. */
 export function openChest(state, chestId, rng = Math.random, now = Date.now()) {
@@ -705,7 +726,7 @@ export function openChest(state, chestId, rng = Math.random, now = Date.now()) {
   if (i < 0) return null;
   const [chest] = state.school.chests.splice(i, 1);
   const loot = [];
-  const coins = Math.round(ageCost(state) * CHEST_COINS[chest.rarity]);
+  const coins = Math.round(ageCost(state) * agePace(state) * CHEST_COINS[chest.rarity]);
   addCoins(state, coins);
   loot.push({ kind: 'coins', amount: coins });
 
@@ -814,6 +835,37 @@ export function revealMap(state, x, z, radius = 22) {
   return changed;
 }
 export const mapSeenAt = (state, i, j) => (state.mapSeen[String(state.era)] || '')[j * MAP_N + i] === '1';
+
+// --- The week ---------------------------------------------------------------------
+// Every Monday a new goal: study WEEK_MINUTES and hand in everything due this
+// week. Clearing it drops an epic chest; every fourth week in a row, legendary.
+// School never runs out, so this never runs out either.
+export const WEEK_MINUTES = 150;
+export function weekStart(now = Date.now()) {
+  const d = new Date(now);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d.getTime();
+}
+export function weekStatus(state, now = Date.now()) {
+  const start = weekStart(now), end = start + 7 * DAY;
+  const minutes = Math.round((state.study.log || []).filter((l) => l.at >= start && l.at < end).reduce((n, l) => n + l.minutes, 0));
+  const due = Object.values(state.school.items).filter((a) => a.dueAt >= start && a.dueAt < end && a.kind !== 'boss' && !isIgnored(state, a));
+  const handed = due.filter((a) => a.submitted).length;
+  const id = dayOf(start);
+  const w = state.week || {};
+  return { id, minutes, goal: WEEK_MINUTES, due: due.length, handed, done: minutes >= WEEK_MINUTES && handed >= due.length, claimed: w.claimed === id, streak: w.streak || 0, daysLeft: Math.max(1, Math.ceil((end - now) / DAY)) };
+}
+export function claimWeek(state, now = Date.now()) {
+  const status = weekStatus(state, now);
+  if (!status.done || status.claimed) return null;
+  const w = state.week || (state.week = { claimed: null, streak: 0 });
+  w.streak = w.claimed === dayOf(weekStart(now) - 7 * DAY) ? w.streak + 1 : 1;
+  w.claimed = status.id;
+  const rarity = w.streak % 4 === 0 ? 'legendary' : 'epic';
+  const chest = grantChest(state, rarity, w.streak > 1 ? `Week cleared · ${w.streak} in a row` : 'Week cleared');
+  return { chest, streak: w.streak };
+}
 
 /** A shrine gives a small lasting boost, once ever. */
 export function useShrine(state, key, name) {
@@ -1994,7 +2046,7 @@ export function rollCollectible(state, chestRarity, rng = Math.random) {
     if (c.kind === 'trophy' && v.showcase.length < 8) v.showcase.push(id);
   }
   // A duplicate is still worth something.
-  const coins = dupe ? Math.round(Math.max(100, wage(state) * 120) * (1 + TIERS.indexOf(tier) * 2)) : 0;
+  const coins = dupe ? Math.round(wage(state) * 30 * (1 + TIERS.indexOf(tier) * 2)) : 0;
   if (coins) addCoins(state, coins);
   return { id, tier, dupe, coins, pity };
 }

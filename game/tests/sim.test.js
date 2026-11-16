@@ -21,28 +21,30 @@ test('buildings fill their own store up to a cap, and collecting banks it', () =
   S.build(s, 0, 'work');
   const before = s.coins;
   s.lastTick = NOW;
-  S.tick(s, NOW + 60_000);
-  assert.strictEqual(Math.round(s.pads.earth[0].stored), 300);
-  assert.strictEqual(S.collect(s, 0), 300);
-  assert.strictEqual(s.coins, before + 300);
-  S.tick(s, NOW + 60_000 + 100 * 3600_000);
+  S.tick(s, NOW + 3600_000);
+  const hour = 5 * 3600 * S.TOWN_SCALE; // a works makes 5 a second before the town scale
+  assert.strictEqual(Math.round(s.pads.earth[0].stored), Math.round(hour));
+  assert.strictEqual(S.collect(s, 0), Math.floor(hour));
+  assert.strictEqual(s.coins, before + Math.floor(hour));
+  S.tick(s, NOW + 3600_000 + 100 * 3600_000);
   assert.strictEqual(s.pads.earth[0].stored, S.buildingCap(s, s.pads.earth[0]), 'stops at the cap while away');
-  assert.strictEqual(S.buildingCap(s, s.pads.earth[0]), 5 * S.STORE_HOURS * 3600);
+  assert.ok(Math.abs(S.buildingCap(s, s.pads.earth[0]) - hour * S.STORE_HOURS) < 1e-6);
 });
 
 test('upgrading and gilding raise income; modernizing needs a newer era', () => {
   const s = rich();
   S.build(s, 0, 'home');
   const b = s.pads.earth[0];
-  assert.strictEqual(S.buildingIncome(s, b), 1);
+  const per = (x) => Math.round((x / S.TOWN_SCALE) * 1000) / 1000;
+  assert.strictEqual(per(S.buildingIncome(s, b)), 1);
   S.upgrade(s, 0); S.upgrade(s, 0);
   assert.strictEqual(b.level, 3);
   assert.ok(!S.upgrade(s, 0));
-  assert.strictEqual(S.buildingIncome(s, b), 4.5);
+  assert.strictEqual(per(S.buildingIncome(s, b)), 4.5);
   assert.ok(!S.gild(s, 0), 'no token yet');
   s.tokens = 1;
   assert.ok(S.gild(s, 0));
-  assert.strictEqual(S.buildingIncome(s, b), 13.5);
+  assert.strictEqual(per(S.buildingIncome(s, b)), 13.5);
   assert.ok(!S.modernize(s, 0), 'already current');
   S.placeDecor(s, 'lamp', 20, 20);
   const coins = s.coins;
@@ -58,7 +60,22 @@ test('upgrading and gilding raise income; modernizing needs a newer era', () => 
   assert.strictEqual(S.buildingName(s.pads.earth[0]), 'Mudbrick House');
 });
 
-test('wonders advance the era in order, the rocket unlocks the moon, and the Star Gate is built there', () => {
+test('Season 1: two ages, and the second wonder ends the season with a legendary chest', () => {
+  const s = rich(1e30);
+  assert.ok(S.buildWonder(s).newLand);
+  assert.strictEqual(s.era, 1);
+  const finale = S.buildWonder(s);
+  assert.ok(finale.finale);
+  assert.strictEqual(finale.chest.rarity, 'legendary');
+  assert.strictEqual(s.era, 1, 'you stay in the Bronze Age land');
+  assert.ok(S.seasonDone(s));
+  assert.strictEqual(S.nextWonder(s), null);
+  assert.strictEqual(S.buildWonder(s), null);
+});
+
+test('later seasons: wonders advance the era in order, the rocket unlocks the moon, and the Star Gate is built there', () => {
+  const ages = S.SEASON.ages;
+  S.SEASON.ages = 99; // every age open, as a later season will be
   const s = rich(1e30);
   for (let era = 0; era < 6; era++) {
     assert.strictEqual(S.nextWonder(s).scene, 'earth');
@@ -75,6 +92,7 @@ test('wonders advance the era in order, the rocket unlocks the moon, and the Sta
   assert.ok(S.buildWonder(s));
   assert.strictEqual(s.era, 7);
   assert.strictEqual(S.nextWonder(s), null);
+  S.SEASON.ages = ages;
 });
 
 test('numbers are shortened readably', () => {
@@ -115,12 +133,13 @@ test('handing in pays out once, a posted grade drops a chest by score, overdue w
   assert.strictEqual(S.threats(s, NOW).length, 1);
   assert.ok(!S.isUnderSiege(s, NOW));
   assert.ok(S.isUnderSiege(s, NOW + 2 * DAY));
-  assert.strictEqual(S.totalIncome(s, NOW + 2 * DAY), 11);
+  assert.ok(Math.abs(S.totalIncome(s, NOW + 2 * DAY) - 22 * S.TOWN_SCALE * S.SIEGE_MULT) < 1e-9);
 
   let events = S.syncSchool(s, [item({ submitted: true })], NOW + 2 * DAY);
   assert.deepStrictEqual(events.map((e) => e.type), ['handed-in']);
-  assert.strictEqual(events[0].reward, 22 * 120);
-  assert.strictEqual(s.coins, 22 * 120);
+  const pay = Math.round(Math.max(60, S.wage(s) * 120));
+  assert.strictEqual(events[0].reward, pay);
+  assert.strictEqual(s.coins, pay);
   assert.ok(!S.isUnderSiege(s, NOW + 2 * DAY));
   assert.strictEqual(S.threats(s, NOW + 2 * DAY).length, 0);
 
@@ -139,7 +158,7 @@ test('chests pay coins and richer chests give relics, cosmetics and tokens', () 
   const { loot } = S.openChest(s, s.school.chests[0].id, () => 0, NOW);
   assert.deepStrictEqual(loot.map((l) => l.kind), ['collectible', 'coins', 'relic', 'cosmetic', 'token', 'gear']);
   assert.strictEqual(s.hero.gear.weapon.rarity, 'legendary');
-  assert.strictEqual(s.coins, 0.12 * 16000); // 12% of the Stone Circle
+  assert.strictEqual(s.coins, S.CHEST_COINS.legendary * 16000); // a share of the Stone Circle
   assert.strictEqual(s.tokens, 1);
   assert.strictEqual(S.relicMult(s), 1.25);
   assert.strictEqual(s.school.chests.length, 0);
@@ -248,46 +267,51 @@ test('saves round-trip and bad saves start fresh', () => {
   assert.strictEqual(S.deserialize('{"v":99}', NOW).coins, 120);
 });
 
-// Pacing: a player who always buys the best thing they can afford, collecting constantly.
-test('pacing: each era takes longer than the last, and the first takes minutes not hours', () => {
+// Pacing: a student who opens the game three times a day, studies half an hour,
+// hands in about one assignment a day and opens two caches, buying the best
+// cheap upgrades. Season 1 should fill the first month, with studying paying most.
+test('pacing: the Stone Age is about a week and the Bronze Age runs to about week four', () => {
   const s = S.newState(NOW);
-  let t = NOW;
-  const reached = [];
-  const bestBuy = () => {
-    const options = [];
-    const tier = S.tierFor(s);
-    s.pads.earth.forEach((b, i) => {
-      if (i >= S.padsUnlocked(s)) return;
-      if (!b) for (const type of S.TYPES) options.push({ cost: S.buildCost(type, tier), gain: S.BUILDINGS[type].income * 6 ** tier, run: () => S.build(s, i, type) });
-      else {
-        if (b.level < 3) options.push({ cost: S.upgradeCost(b), gain: S.buildingIncome(s, { ...b, level: b.level + 1 }) - S.buildingIncome(s, b), run: () => S.upgrade(s, i) });
-        if (b.tier < tier) options.push({ cost: S.modernizeCost(s, b), gain: S.buildingIncome(s, { ...b, tier, level: 1 }) - S.buildingIncome(s, b), run: () => S.modernize(s, i) });
-      }
-    });
-    return options.filter((o) => o.gain > 0).sort((a, b) => a.cost / a.gain - b.cost / b.gain)[0];
+  s.tutorial.done = true;
+  const H = 3600e3;
+  const got = { study: 0, town: 0 };
+  const built = [];
+  const buy = () => {
+    for (let k = 0; k < 30; k++) {
+      let best = null;
+      const open = S.padsUnlocked(s), tier = S.tierFor(s);
+      const free = s.pads.earth.findIndex((b, i) => !b && i < open);
+      if (free >= 0) for (const type of S.TYPES) { const c = S.buildCost(type, tier), g = S.BUILDINGS[type].income * 6 ** tier; if (!best || g / c > best.r) best = { r: g / c, c, run: () => S.build(s, free, type) }; }
+      s.pads.earth.forEach((b, i) => { if (!b) return; const c = S.upgradeCost(b); if (!Number.isFinite(c)) return; const g = S.BUILDINGS[b.type].income * 6 ** b.tier * (S.LEVEL_MULT[b.level + 1] - S.LEVEL_MULT[b.level]); if (!best || g / c > best.r) best = { r: g / c, c, run: () => S.upgrade(s, i) }; });
+      const w = S.nextWonder(s);
+      if (!best || best.c > s.coins || (w && best.c > w.cost * 0.15)) break;
+      best.run();
+    }
   };
-  while (s.era < 6 && t < NOW + 2000 * 3600_000) {
-    t += s.era < 2 ? 5000 : 60000;
-    S.tick(s, t);
-    s.pads.earth.forEach((_, i) => S.collect(s, i));
-    const wonder = S.nextWonder(s);
-    for (let guard = 0; guard < 50; guard++) {
-      const buy = bestBuy();
-      const income = S.totalIncome(s, t);
-      if (wonder && s.coins >= wonder.cost && (!buy || wonder.cost < income * 600 || buy.cost / buy.gain > 900)) {
-        S.buildWonder(s);
-        reached.push((t - NOW) / 60000);
-        break;
+  for (let d = 0; d < 45 && !S.seasonDone(s); d++) {
+    for (const h of [8, 13, 20]) {
+      const t = NOW + d * 24 * H + h * H;
+      S.tick(s, t);
+      s.pads.earth.forEach((b, i) => { if (b) got.town += S.collect(s, i); });
+      if (h === 20) {
+        const before = s.coins;
+        S.startStudy(s, null, 30, t);
+        S.finishStudy(s, t + 30 * 60000);
+        got.study += s.coins - before;
+        S.addCoins(s, S.handInReward(s, { size: d % 3 === 2 ? 2 : 1 }));
+        for (let c = 0; c < 2; c++) { const chest = S.openCache(s, c, t); if (chest) S.openChest(s, chest.id, () => 0.5, t); }
       }
-      if (!buy || buy.cost > s.coins) break;
-      buy.run();
+      const w = S.nextWonder(s);
+      if (w && s.coins >= w.cost) { S.buildWonder(s); built.push(d + 1); }
+      buy();
     }
   }
-  console.log('      hours of constant play to reach each new era:', reached.map((m) => (m / 60).toFixed(1)).join(', '));
-  assert.strictEqual(reached.length, 6, 'reaches the Space launch');
-  assert.ok(reached[0] >= 4 && reached[0] <= 25, `first era took ${reached[0]} min`);
-  for (let i = 2; i < reached.length; i++) assert.ok(reached[i] - reached[i - 1] > reached[i - 1] - reached[i - 2], 'eras get longer');
-  assert.ok(reached[5] < 60 * 600, 'the rocket is reachable');
+  console.log('      days to each wonder:', built.join(', '));
+  assert.strictEqual(built.length, 2, 'Season 1 can be finished');
+  assert.ok(built[0] >= 4 && built[0] <= 10, `Stone Age took ${built[0]} days`);
+  assert.ok(built[1] >= 20 && built[1] <= 38, `Bronze Age ended on day ${built[1]}`);
+  console.log('      coins from studying vs the town:', Math.round(got.study), Math.round(got.town));
+  assert.ok(got.study > got.town, 'studying pays more than the town');
 });
 
 test('a full study session pays coins, a chest and a streak day, and doubles the town while it runs', () => {
@@ -812,24 +836,24 @@ test('work found already late on the first sync costs nothing, and paper work is
   assert.strictEqual(S.fromSomaSnapshot({ kind: 'canvas', host: 'h', courses: [], groups: [], assignments: [{ id: 1, courseId: 1, name: 'Lab', submissionTypes: ['on_paper'] }] })[0].noSubmit, true);
 });
 
-test('market prices follow the age, study pay follows income, and neither crashes in a new age', () => {
+test('market prices and study pay follow the age, and neither crashes in a new age', () => {
   const s = S.newState(NOW);
-  assert.strictEqual(S.wage(s), 6); // an empty Stone Age town still counts as a home and a works
+  assert.strictEqual(S.wage(s), 16000 / S.WAGE_DIV); // rewards follow the age's wonder, not the town
   s.coins = 1e9;
   S.buildWonder(s);
   assert.strictEqual(s.era, 1);
   assert.strictEqual(S.baseIncome(s), 0);
-  assert.strictEqual(S.wage(s), 36); // the floor rises with the age, even with an empty town
+  assert.strictEqual(S.wage(s), (600000 * S.AGE_PACE[1]) / S.WAGE_DIV); // and rise with the age, even with an empty town
   const chest = S.marketStock(s, NOW).find((o) => o.kind === 'chest');
   assert.strictEqual(chest.price, Math.round(S.ERAS[1].wonderCost * S.CHEST_PRICE[chest.rarity]));
   // A bought chest always costs more than the coins inside it.
   for (const r of ['rare', 'epic', 'legendary']) assert.ok(S.CHEST_PRICE[r] > 2 * S.CHEST_COINS[r]);
-  // A 25 minute study session pays 90 seconds of income per minute.
+  // A 25 minute study session pays the age's study rate for each minute.
   const t = S.newState(NOW);
   const before = t.coins;
   S.startStudy(t, null, 25, NOW);
   S.finishStudy(t, NOW + 25 * 60000);
-  assert.strictEqual(t.coins - before, 25 * 90 * 6);
+  assert.strictEqual(t.coins - before, 25 * Math.round(16000 * S.STUDY_SHARE[0]));
 });
 
 test('hidden caches give a chest once a day each, and refill the next day', () => {
@@ -855,4 +879,22 @@ test('landmarks pay once, all of them give a chest; the map reveals where you wa
   assert.ok(S.mapSeenAt(s, S.MAP_N / 2, S.MAP_N / 2));
   assert.ok(!S.mapSeenAt(s, 0, 0));
   assert.strictEqual(S.revealMap(s, 0, 0), false);
+});
+
+test('the week: study 150 minutes and hand in what is due for an epic chest; four weeks in a row, legendary', () => {
+  const s = S.newState(NOW);
+  const mon = S.weekStart(NOW);
+  S.syncSchool(s, [item({ id: 'hw', dueAt: mon + 3 * DAY })], mon + DAY, { source: 'demo' });
+  const study = (t, m) => { S.startStudy(s, null, m, t); S.finishStudy(s, t + m * 60000); };
+  study(mon + DAY, 60); study(mon + 2 * DAY, 90);
+  let w = S.weekStatus(s, mon + 2 * DAY + 2 * 3600e3);
+  assert.strictEqual(w.minutes, 150);
+  assert.strictEqual(w.due, 1);
+  assert.strictEqual(w.done, false, 'homework still due');
+  assert.strictEqual(S.claimWeek(s, mon + 2 * DAY + 2 * 3600e3), null);
+  S.syncSchool(s, [item({ id: 'hw', dueAt: mon + 3 * DAY, submitted: true })], mon + 2 * DAY + 3 * 3600e3);
+  const got = S.claimWeek(s, mon + 2 * DAY + 4 * 3600e3);
+  assert.strictEqual(got.chest.rarity, 'epic');
+  assert.strictEqual(S.claimWeek(s, mon + 2 * DAY + 5 * 3600e3), null, 'once a week');
+  for (let k = 1; k <= 3; k++) { study(mon + k * 7 * DAY + DAY, 150); const r = S.claimWeek(s, mon + k * 7 * DAY + DAY + 4 * 3600e3); assert.strictEqual(r.streak, k + 1); if (k === 3) assert.strictEqual(r.chest.rarity, 'legendary'); }
 });

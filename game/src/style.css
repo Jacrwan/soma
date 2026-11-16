@@ -901,3 +901,14 @@ body.shiftlock, body.shiftlock canvas, body.shiftlock #labels, body.shiftlock #l
 .map-legend .lg-star::before { background: #ffd04a; clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
 .map-legend .lg-cache::before { background: #ffd04a; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
 .map-legend .lg-fog::before { background: #1d1934; border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 3px; }
+
+/* --- The week, under today's quests --- */
+.daily .week { margin-top: 7px; padding-top: 7px; border-top: 1px solid rgba(255, 255, 255, 0.1); }
+.week-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 5px; }
+.week-head b { color: #c58cf2; text-transform: uppercase; letter-spacing: 0.04em; font-size: 12px; }
+.week-head span { font-size: 12px; opacity: 0.8; }
+.week-head em { margin-left: auto; font-style: normal; font-size: 12px; color: #c58cf2; }
+.week-bar { height: 7px; border-radius: 99px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.week-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #8f5be0, #c58cf2); transition: width 0.4s ease; }
+.daily .week small { display: block; margin-top: 4px; font-size: 11.5px; color: var(--muted); }
+.daily .week.done .week-bar i, .daily .week.claimed .week-bar i { background: linear-gradient(90deg, #3ec45a, #8fe07a); }

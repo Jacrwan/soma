@@ -254,7 +254,8 @@ function refreshWonders() {
     if (!built && !isNext) continue;
     // Each age is a new land, so an old age's wonder stays behind in its own
     // land. Only the rocket stays, to fly from, and the Star Gate on the Moon.
-    if (built && index < 5) continue;
+    // Built wonders stay behind in old lands, except the season finale, which stands in this one.
+    if (built && index < 5 && !(index === state.era && index === S.SEASON.ages - 1)) continue;
     const parent = index === 6 ? world.moon : world.earth;
     const object = built ? A.makeWonder(index) : A.makeWonderSite();
     object.position.copy(W.wonderPosition(index));
@@ -731,7 +732,7 @@ function refreshHud() {
     income: S.totalIncome(state, now),
     era: state.era,
     eraName: eraName(),
-    goal: wonder ? `Build the ${wonder.name}: ${S.fmt(Math.min(state.coins, wonder.cost))} / ${S.fmt(wonder.cost)}${wonder.scene !== state.scene ? ` (on ${wonder.scene === 'moon' ? 'the Moon' : 'Earth'})` : ''}` : 'You reached the stars.',
+    goal: wonder ? `Build the ${wonder.name}: ${S.fmt(Math.min(state.coins, wonder.cost))} / ${S.fmt(wonder.cost)}${wonder.scene !== state.scene ? ` (on ${wonder.scene === 'moon' ? 'the Moon' : 'Earth'})` : ''}` : S.seasonDone(state) ? `${S.SEASON.name} complete · new ages next season` : 'You reached the stars.',
     progress: wonder ? state.coins / wonder.cost : 1,
     siege: null,
     chests: state.school.chests.length,
@@ -862,7 +863,8 @@ function openBuilding(i) {
 function openWonder(wonder) {
   ui.wonder({
     name: wonder.name, cost: wonder.cost, affordable: state.coins >= wonder.cost, nextEra: eraName(state.era + 1),
-    newLand: wonder.scene === 'earth' && wonder.index < S.MOON_TIER - 1 ? ['the desert river', 'the lake hills', 'the rocky gorge', 'the seaside', 'the red canyon'][wonder.index] : null,
+    finale: wonder.index === S.SEASON.ages - 1 ? S.SEASON.name : null,
+    newLand: wonder.index === S.SEASON.ages - 1 ? null : wonder.scene === 'earth' && wonder.index < S.MOON_TIER - 1 ? ['the desert river', 'the lake hills', 'the rocky gorge', 'the seaside', 'the red canyon'][wonder.index] : null,
     onBuild: () => {
       const done = S.buildWonder(state);
       if (!done) return deny('Not enough coins yet.');
@@ -874,6 +876,15 @@ function openWonder(wonder) {
         }, k * 260);
       }
       audio.era();
+      if (done.finale) {
+        ui.banner(`${S.SEASON.name} complete`, done.name);
+        syncChests();
+        setTimeout(() => ui.toast(`A legendary chest landed on your plaza. New ages come next season; until then your weeks, exams, the Vault and the map are still going.`, 'gold'), 3200);
+        refreshWonders();
+        refreshHud();
+        save();
+        return;
+      }
       ui.banner(done.index === 5 ? 'The Moon is waiting' : done.index === 6 ? 'You reached the stars' : 'A new age begins', eraName());
       if (done.index === 5) setTimeout(() => ui.toast('Walk to the rocket and press E to fly to the Moon.', 'gold'), 3600);
       if (done.newLand) {
@@ -886,7 +897,7 @@ function openWonder(wonder) {
       world.setEra(state.era);
       dressPlayer();
       refreshAllPads();
-setTimeout(warmShaders, 0);
+      setTimeout(warmShaders, 0);
       refreshWonders();
       refreshHud();
       save();
@@ -1601,8 +1612,14 @@ const TUTORIAL = [
       if (state.coins < cost) { S.addCoins(state, cost - state.coins); refreshHud(); }
     },
     target: () => nearestEmptyPad(), done: () => S.buildingCount(state).used > tut.built },
-  { title: 'Collect coins', text: 'Buildings fill up with coins over time, even while you are away. Walk past one to collect.',
-    enter: () => { tut.collected = state.stats.collected; }, target: () => nearestBuilding(), done: () => state.stats.collected > tut.collected },
+  { title: 'Collect coins', text: 'Your town makes a small allowance, even while you are away. Walk past a building to collect. Studying pays far more.',
+    enter: () => {
+      tut.collected = state.stats.collected;
+      // Town income is slow on purpose; the first home starts with a little saved up.
+      const b = state.pads.earth.find(Boolean);
+      if (b) b.stored = Math.max(b.stored, 25);
+    },
+    target: () => nearestBuilding(), done: () => state.stats.collected > tut.collected },
   { title: 'Open a chest', text: 'Chests come from grades, quests and exploring. Here is one to start you off. Walk to it and press E.', keys: ['E'],
     enter: () => { tut.chestId = S.grantChest(state, 'rare', 'Your first chest').id; syncChests(); },
     target: () => chests.get(tut.chestId)?.object.position, done: () => !state.school.chests.some((c) => c.id === tut.chestId) && !ui.isOpen() },
@@ -1626,7 +1643,7 @@ function startTutorialStep() {
   step.enter?.();
   if (step.title === 'Your goal') {
     const w = S.nextWonder(state);
-    step.text = w ? `Build the ${w.name} to finish the ${S.ERAS[state.era].name}. Each age is a new land, with new buildings. Studying, homework, chests and your town all get you there.` : 'Keep studying and building. Press H any time to see every control.';
+    step.text = w ? `Build the ${w.name} to finish the ${S.ERAS[state.era].name}. ${S.SEASON.name} is two ages, about a month of studying. Each week, clear the weekly goal (top right) for an epic chest.` : 'Keep studying and clearing your weeks. Press H any time to see every control.';
   }
   coach.show(step, state.tutorial.step, TUTORIAL.length);
 }
@@ -2866,6 +2883,15 @@ function drawDaily() {
     if (q.type === 'plan' && !q.claimed) row.addEventListener('click', (e) => { e.stopPropagation(); togglePlanTask(q.id, have < 1); });
     dailyEl.append(row);
   }
+  // The week's goal under today's quests.
+  const w = S.weekStatus(state);
+  const week = document.createElement('div');
+  week.className = `week ${w.claimed ? 'claimed' : w.done ? 'done' : ''}`;
+  const part = Math.min(1, w.minutes / w.goal) * (w.due ? 0.6 : 1) + (w.due ? 0.4 * (w.handed / w.due) : 0);
+  week.innerHTML = `<div class="week-head"><b>This week</b><span>${w.claimed ? 'cleared ✓' : `${w.daysLeft} day${w.daysLeft === 1 ? '' : 's'} left`}</span>${w.streak > 1 ? `<em>${w.streak} weeks in a row</em>` : ''}</div>`
+    + `<div class="week-bar"><i style="width:${Math.round(part * 100)}%"></i></div>`
+    + `<small>Study ${Math.min(w.minutes, w.goal)}/${w.goal} min${w.due ? ` · Hand in ${w.handed}/${w.due}` : ''} · ${(w.streak + 1) % 4 === 0 && !w.claimed ? 'legendary' : 'epic'} chest</small>`;
+  dailyEl.append(week);
 }
 function dailyTick(startup = false) {
   const fresh = S.dailyRefresh(state);
@@ -2879,7 +2905,13 @@ function dailyTick(startup = false) {
     ui.banner(r.milestone ? `${r.streak}-day streak!` : `Day ${r.streak} streak`, r.milestone ? `A ${r.milestone} chest and 5 lures` : 'All three done: a chest is on your plaza');
     syncChests();
   }
-  if (fresh || r.claimed) save();
+  const wk = S.claimWeek(state);
+  if (wk) {
+    audio.era();
+    ui.banner(wk.streak > 1 ? `Week cleared · ${wk.streak} in a row` : 'Week cleared', `A ${wk.chest.rarity} chest is on your plaza`);
+    syncChests();
+  }
+  if (fresh || r.claimed || wk) save();
   drawDaily();
   if (fresh && !startup && state.daily.reported !== state.daily.day) openMorning();
 }

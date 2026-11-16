@@ -100,7 +100,7 @@ export function createUI(on) {
         wrap.classList.add('pop');
       }
       lastCoins = coins;
-      $('income').textContent = `+${fmt(income)} / sec${siege ? '  (halved)' : ''}`;
+      $('income').textContent = `+${fmt(income * 3600)} / hour${siege ? '  (halved)' : ''}`;
       $('eraIndex').textContent = ROMAN[era] || String(era + 1);
       $('eraName').textContent = eraName;
       $('eraGoal').textContent = goal;
@@ -225,7 +225,7 @@ export function createUI(on) {
           el('button', { class: 'card', disabled: !o.affordable, onclick: () => { close(); onPick(o.type); } },
             el('span', { class: 'glyph', html: ICONS[o.type] }),
             el('b', { text: o.name }),
-            el('small', { text: `+${fmt(o.income)} / sec` }),
+            el('small', { text: `+${fmt(o.income * 3600)} / hour` }),
             el('span', { class: `price ${o.affordable ? '' : 'no'}` }, price(o.cost))))),
       );
     },
@@ -233,26 +233,27 @@ export function createUI(on) {
     building({ name, level, maxLevel, income, stored, cap, golden, upgrade, modernize, gild, tokens, onUpgrade, onModernize, onGild }) {
       const actions = [];
       if (upgrade) actions.push(el('button', { class: 'btn primary', disabled: !upgrade.affordable, onclick: () => { close(); onUpgrade(); } },
-        el('span', {}, `Upgrade to level ${level + 1}`, el('small', { text: `Earns +${fmt(upgrade.income)} / sec` })), el('span', { class: 'cost' }, price(upgrade.cost))));
+        el('span', {}, `Upgrade to level ${level + 1}`, el('small', { text: `Earns +${fmt(upgrade.income * 3600)} / hour` })), el('span', { class: 'cost' }, price(upgrade.cost))));
       if (modernize) actions.push(el('button', { class: `btn ${upgrade ? '' : 'primary'}`, disabled: !modernize.affordable, onclick: () => { close(); onModernize(); } },
-        el('span', {}, `Rebuild as ${modernize.name}`, el('small', { text: `Earns +${fmt(modernize.income)} / sec at level 1` })), el('span', { class: 'cost' }, price(modernize.cost))));
+        el('span', {}, `Rebuild as ${modernize.name}`, el('small', { text: `Earns +${fmt(modernize.income * 3600)} / hour at level 1` })), el('span', { class: 'cost' }, price(modernize.cost))));
       if (gild) actions.push(el('button', { class: 'btn', disabled: tokens < 1, onclick: () => { close(); onGild(); } },
         el('span', {}, 'Make it golden', el('small', { text: 'Triples what it earns, for good' })), el('span', { class: 'cost', text: `${tokens} token${tokens === 1 ? '' : 's'}` })));
       panel({ title: `${golden ? 'Golden ' : ''}${name}`, subtitle: `Level ${level} of ${maxLevel}` },
         el('div', { class: 'stats' },
-          el('div', { class: 'stat' }, el('small', { text: 'Earns' }), el('b', { text: `+${fmt(income)} / sec` })),
+          el('div', { class: 'stat' }, el('small', { text: 'Earns' }), el('b', { text: `+${fmt(income * 3600)} / hour` })),
           el('div', { class: 'stat' }, el('small', { text: 'Waiting' }), el('b', { text: fmt(stored) })),
           el('div', { class: 'stat' }, el('small', { text: 'Holds up to' }), el('b', { text: fmt(cap) }))),
         el('div', { class: 'actions' }, actions.length ? actions : el('p', { class: 'note', text: 'Fully upgraded for this age. Reach the next age to rebuild it.' })),
       );
     },
 
-    wonder({ name, cost, affordable, nextEra, newLand, onBuild }) {
-      panel({ title: name, subtitle: `Building this wonder begins the ${nextEra}.` },
+    wonder({ name, cost, affordable, nextEra, newLand, finale, onBuild }) {
+      panel({ title: name, subtitle: finale ? `The last wonder of ${finale}.` : `Building this wonder begins the ${nextEra}.` },
+        finale ? el('p', { class: 'note', text: `Building it completes ${finale} and drops a legendary chest. You keep your town; new ages arrive next season.` }) : null,
         newLand ? el('p', { class: 'note', text: `A new age is a new land. Your people set out for ${newLand}, and the town starts over empty. Your hero, coins, creatures, class halls and villagers come along, and a settler's purse pays for the first homes.` }) : null,
         el('div', { class: 'actions' },
           el('button', { class: 'btn primary', disabled: !affordable, onclick: () => { close(); onBuild(); } },
-            el('span', {}, `Build the ${name}`, el('small', { text: newLand ? `Then set out for ${newLand}` : 'New buildings, more land, a new look for your town' })), el('span', { class: 'cost' }, price(cost)))),
+            el('span', {}, `Build the ${name}`, el('small', { text: finale ? `Completes ${finale}, with a legendary chest` : newLand ? `Then set out for ${newLand}` : 'New buildings, more land, a new look for your town' })), el('span', { class: 'cost' }, price(cost)))),
         affordable ? null : el('p', { class: 'note', text: 'Keep collecting. Handing in work and opening chests gets you there faster.' }),
       );
     },
