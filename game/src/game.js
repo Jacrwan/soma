@@ -565,6 +565,7 @@ const ui = createUI({
   endStudy: () => endStudy(),
   help: () => ui.help({ first: false, onTutorial: replayTutorial }),
   sound: () => toggleMute(),
+  map: () => openMap(),
   settings: () => openSettings(),
   pass: () => openPass(),
   interact: () => interact(),
@@ -1654,6 +1655,140 @@ function openCacheAt(i) {
   openLoot(chest.id, pos);
 }
 
+// --- Landmarks and the map ------------------------------------------------------------
+let revealClock = 0;
+function updateExploring(dt) {
+  if (inRealm() || state.scene !== 'earth') return;
+  const p = player.object.position;
+  revealClock -= dt;
+  if (revealClock <= 0) { revealClock = 0.4; S.revealMap(state, p.x, p.z); }
+  const marks = world.landmarks();
+  for (const l of marks) {
+    if (state.found[S.landmarkKey(state.era, l.id)] || Math.hypot(l.x - p.x, l.z - p.z) > l.solid + 7) continue;
+    const got = S.discover(state, l.id, marks.length);
+    if (!got) continue;
+    audio.chest();
+    ui.banner(`Discovered · ${got.count} of ${marks.length}`, l.name);
+    ui.toast(`${l.text} +${S.fmt(got.coins)} coins`, 'gold');
+    fx.burst(new THREE.Vector3(l.x, l.y + 2, l.z), A.C.gold, 30, 8, 9);
+    if (got.chest) { syncChests(); ui.toast(`Every landmark in this land found: a rare chest landed on your plaza.`, 'gold'); }
+    refreshHud();
+    save();
+  }
+}
+
+const mapTerrain = new Map(); // land index -> canvas
+function terrainImage() {
+  const key = world.landIndex();
+  if (mapTerrain.has(key)) return mapTerrain.get(key);
+  const n = 140, c = document.createElement('canvas');
+  c.width = c.height = n;
+  const g = c.getContext('2d');
+  const img = g.createImageData(n, n);
+  const step = S.MAP_SPAN / n;
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const x = -S.MAP_SPAN / 2 + (i + 0.5) * step, z = -S.MAP_SPAN / 2 + (j + 0.5) * step;
+    const col = world.mapColor(x, z);
+    // A touch of hill shading from the slope.
+    const shade = Math.max(-0.18, Math.min(0.18, (world.groundHeight('earth', x - 2, z - 2) - world.groundHeight('earth', x + 2, z + 2)) * 0.05));
+    const k = (j * n + i) * 4;
+    img.data[k] = Math.min(255, ((col >> 16) & 255) * (1 + shade));
+    img.data[k + 1] = Math.min(255, ((col >> 8) & 255) * (1 + shade));
+    img.data[k + 2] = Math.min(255, (col & 255) * (1 + shade));
+    img.data[k + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  mapTerrain.set(key, c);
+  return c;
+}
+
+function openMap() {
+  if (inRealm() || state.scene !== 'earth') return void ui.toast('The map shows your home land. Head back to use it.', 'bad');
+  S.revealMap(state, player.object.position.x, player.object.position.z);
+  const size = 640;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size * Math.min(2, devicePixelRatio);
+  canvas.className = 'map-canvas';
+  const g = canvas.getContext('2d');
+  const k = canvas.width / S.MAP_SPAN;
+  const X = (x) => (x + S.MAP_SPAN / 2) * k, Z = (z) => (z + S.MAP_SPAN / 2) * k;
+  g.imageSmoothingEnabled = true;
+  g.drawImage(terrainImage(), 0, 0, canvas.width, canvas.height);
+  // Town.
+  g.fillStyle = 'rgba(214, 196, 150, 0.55)';
+  g.beginPath(); g.arc(X(0), Z(0), W.TOWN_R * k, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = 'rgba(120, 90, 50, 0.6)'; g.lineWidth = 2 * k;
+  g.beginPath(); g.arc(X(0), Z(0), (W.TOWN_R - 1) * k, 0, Math.PI * 2); g.stroke();
+  state.pads.earth.forEach((b, i) => { if (!b || !pads.earth[i]) return; const q = pads.earth[i].group.position; g.fillStyle = '#7a4a2c'; g.fillRect(X(q.x) - 2.2 * k, Z(q.z) - 2.2 * k, 4.4 * k, 4.4 * k); });
+  // Roads and fields.
+  g.strokeStyle = '#b8935d'; g.lineWidth = 2.4 * k; g.lineCap = 'round'; g.lineJoin = 'round';
+  for (const road of world.roads()) { g.beginPath(); road.forEach((p, i) => (i ? g.lineTo(X(p.x), Z(p.z)) : g.moveTo(X(p.x), Z(p.z)))); g.stroke(); }
+  for (const f of world.fields()) {
+    g.save(); g.translate(X(f.x), Z(f.z)); g.rotate(-f.rot);
+    g.fillStyle = f.orchard ? '#4f8a3c' : '#c9b25a'; g.fillRect(-f.w / 2 * k, -f.d / 2 * k, f.w * k, f.d * k);
+    g.restore();
+  }
+  // What you have not walked near stays in the fog.
+  const fog = document.createElement('canvas');
+  fog.width = fog.height = canvas.width;
+  const fg = fog.getContext('2d');
+  fg.fillStyle = 'rgba(18, 15, 34, 0.93)';
+  fg.fillRect(0, 0, fog.width, fog.height);
+  fg.globalCompositeOperation = 'destination-out';
+  const cellPx = S.MAP_CELL * k;
+  for (let j = 0; j < S.MAP_N; j++) for (let i = 0; i < S.MAP_N; i++) {
+    if (!S.mapSeenAt(state, i, j)) continue;
+    const cx = (i + 0.5) * cellPx, cy = (j + 0.5) * cellPx;
+    const grad = fg.createRadialGradient(cx, cy, 0, cx, cy, cellPx * 1.25);
+    grad.addColorStop(0, 'rgba(0,0,0,1)'); grad.addColorStop(0.55, 'rgba(0,0,0,0.9)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
+    fg.fillStyle = grad;
+    fg.fillRect(cx - cellPx * 1.3, cy - cellPx * 1.3, cellPx * 2.6, cellPx * 2.6);
+  }
+  g.drawImage(fog, 0, 0);
+  const seen = (x, z) => S.mapSeenAt(state, Math.floor((x + S.MAP_SPAN / 2) / S.MAP_CELL), Math.floor((z + S.MAP_SPAN / 2) / S.MAP_CELL));
+  const label = (text, x, y, color = '#fff6dc') => {
+    g.font = `800 ${13 * k / 2.3}px Fredoka, sans-serif`; g.textAlign = 'center';
+    g.lineWidth = 4 * k / 2.3; g.strokeStyle = 'rgba(20, 16, 36, 0.85)'; g.strokeText(text, x, y); g.fillStyle = color; g.fillText(text, x, y);
+  };
+  // Caches, the trail to the Wilds, landmarks.
+  cacheObjects.forEach((c, i) => {
+    const q = c.object.position;
+    if (!seen(q.x, q.z)) return;
+    g.fillStyle = c.done ? '#8a8494' : '#ffd04a';
+    g.beginPath(); g.moveTo(X(q.x), Z(q.z) - 3.2 * k); g.lineTo(X(q.x) + 2.4 * k, Z(q.z)); g.lineTo(X(q.x), Z(q.z) + 3.2 * k); g.lineTo(X(q.x) - 2.4 * k, Z(q.z)); g.closePath(); g.fill();
+    g.strokeStyle = '#3a2a05'; g.lineWidth = 0.6 * k; g.stroke();
+  });
+  label('To the Wilds', X(W.DOCK_POS.x), Z(W.DOCK_POS.z) - 3 * k, '#bfe8ff');
+  const marks = world.landmarks();
+  for (const l of marks) {
+    const found = state.found[S.landmarkKey(state.era, l.id)];
+    if (!found && !seen(l.x, l.z)) continue;
+    const x = X(l.x), y = Z(l.z);
+    g.fillStyle = found ? '#ffd04a' : 'rgba(255, 255, 255, 0.85)';
+    g.strokeStyle = '#2a2140'; g.lineWidth = 0.8 * k;
+    g.beginPath();
+    for (let a = 0; a < 10; a++) { const r = (a % 2 ? 1.6 : 3.8) * k, t = -Math.PI / 2 + (a * Math.PI) / 5; g.lineTo(x + Math.cos(t) * r, y + Math.sin(t) * r); }
+    g.closePath(); g.fill(); g.stroke();
+    label(found ? l.name : '?', x, y - 5.2 * k, found ? '#fff6dc' : '#ffffff');
+  }
+  label('Town', X(0), Z(0) + 4 * k);
+  // You.
+  const p = player.object.position;
+  g.save(); g.translate(X(p.x), Z(p.z)); g.rotate(-player.facing + Math.PI);
+  g.fillStyle = '#ff5d5d'; g.strokeStyle = '#fff'; g.lineWidth = 0.9 * k;
+  g.beginPath(); g.moveTo(0, -4 * k); g.lineTo(3 * k, 3.4 * k); g.lineTo(0, 1.8 * k); g.lineTo(-3 * k, 3.4 * k); g.closePath(); g.fill(); g.stroke();
+  g.restore();
+  label('N', canvas.width / 2, 16 * k / 2.3);
+  const found = S.foundCount(state, state.era);
+  const left = cacheObjects.filter((c) => !c.done).length;
+  ui.map({
+    title: 'Map',
+    subtitle: `${world.landName()} · ${found} of ${marks.length} landmarks found · ${left} cache${left === 1 ? '' : 's'} left today`,
+    canvas,
+    legend: [['lg-you', 'You'], ['lg-star', 'Landmark'], ['lg-cache', 'Hidden cache'], ['lg-fog', 'Not explored yet']],
+  });
+}
+
 /** Opens a chest the player owns, wherever it is, with the full reveal. */
 function openLoot(id, pos) {
   const chest = state.school.chests.find((c) => c.id === id);
@@ -1698,7 +1833,7 @@ window.addEventListener('keydown', (event) => {
   else if (key === 't') openStudy();
   else if (key === 'p') openPractice();
   else if (key === 'h') ui.help({ first: false, onTutorial: replayTutorial });
-  else if (key === 'm') toggleMute();
+  else if (key === 'm') openMap();
   else if (key === 'o') openSettings();
   else if (key === 'k') openCollection();
   else if (key === 'y') openPass();
@@ -2077,6 +2212,8 @@ function frame(nowMs) {
   updatePlayer(dt, time);
   syncCaches();
   updateTutorial(time);
+  updateExploring(dt);
+  world.spinCountry(dt);
   for (const c of cacheObjects) if (!c.done) { c.object.userData.beam.material.opacity = 0.16 + Math.sin(time * 2) * 0.06; c.object.userData.chest.position.y = Math.sin(time * 1.5) * 0.06; }
   if (!inRealm()) { moveInvaders(dt, time); updateTown(dt, time); }
   updateBuild();
@@ -3519,6 +3656,7 @@ applySettings();
 refreshHud();
 if (S.dueReviews(state).length) setTimeout(() => ui.toast(`${S.dueReviews(state).length} missed questions are back for review. Find the pale books by the Canvas board.`, 'gold'), 3000);
 
+S.revealMap(state, 0, 0, W.TOWN_R + 4);
 if (state.tutorial && !state.tutorial.done) {
   startTutorialStep();
   if (state.tutorial.step === 0) setTimeout(() => ui.banner('Welcome to Epoch', 'An RPG that levels up when you study'), 600);
@@ -3544,7 +3682,7 @@ window.epoch = {
   state, S, cam,
   give(n) { S.addCoins(state, n); refreshHud(); },
   tutorial: () => ({ ...state.tutorial, title: tutorialStep()?.title }), skipStep: () => nextTutorialStep(),
-  caches: () => world.caches(), openCache: (i) => openCacheAt(i),
+  caches: () => world.caches(), openCache: (i) => openCacheAt(i), landmarks: () => world.landmarks(), openMap: () => openMap(), reveal: (x, z) => S.revealMap(state, x, z),
   refresh() { world.setEra(state.era); world.setScene(state.scene, state.era); dressPlayer(); refreshAllPads(); refreshWonders(); syncChests(); syncInvaders(Date.now()); syncDecor(); refreshHud(); },
   look(yaw, pitch, dist) { Object.assign(cam, { yaw, pitch, dist, want: dist }); },
   moveTo(x, z) { player.object.position.set(x, 0, z); },

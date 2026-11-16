@@ -97,6 +97,8 @@ export function newState(now = Date.now()) {
     topics: {}, // exam itemId -> [{ name, minutes }]
     pass: { season: 'Fall 2026', points: 0, premium: false, freeClaimed: [], premiumClaimed: [] },
     tutorial: { step: 0, done: false },
+    found: {}, // landmarks discovered: 'lm:<era>:<id>' -> true
+    mapSeen: {}, // era -> string of '0'/'1', one per map cell walked near
     createdAt: now,
     lastTick: now,
   };
@@ -774,6 +776,44 @@ export function openCache(state, i, now = Date.now()) {
   const roll = seededRng([...`${dayOf(now)}${key}`].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7))();
   return grantChest(state, roll < 0.2 ? 'rare' : 'common', 'A hidden cache');
 }
+
+/**
+ * Landmarks out in the country: the first visit pays a share of the age's
+ * wonder, and finding all of an age's landmarks gives a rare chest.
+ */
+export const LANDMARK_SHARE = 0.015;
+export const landmarkKey = (era, id) => `lm:${era}:${id}`;
+export function discover(state, id, total) {
+  const key = landmarkKey(state.era, id);
+  if (state.found[key]) return null;
+  state.found[key] = true;
+  const coins = Math.round(ageCost(state) * LANDMARK_SHARE);
+  addCoins(state, coins);
+  const count = foundCount(state, state.era);
+  const chest = total && count === total ? grantChest(state, 'rare', 'Every landmark found') : null;
+  return { coins, count, chest };
+}
+export const foundCount = (state, era) => Object.keys(state.found).filter((k) => k.startsWith(`lm:${era}:`)).length;
+
+/** The map reveals as you walk: cells of MAP_CELL metres across MAP_SPAN. */
+export const MAP_SPAN = 280, MAP_CELL = 10, MAP_N = MAP_SPAN / MAP_CELL;
+export function revealMap(state, x, z, radius = 22) {
+  const era = String(state.era);
+  let seen = state.mapSeen[era] || '0'.repeat(MAP_N * MAP_N);
+  let changed = false;
+  const chars = seen.split('');
+  const c = (v) => Math.floor((v + MAP_SPAN / 2) / MAP_CELL);
+  const reach = Math.ceil(radius / MAP_CELL);
+  for (let j = c(z) - reach; j <= c(z) + reach; j++) for (let i = c(x) - reach; i <= c(x) + reach; i++) {
+    if (i < 0 || j < 0 || i >= MAP_N || j >= MAP_N) continue;
+    const cx = (i + 0.5) * MAP_CELL - MAP_SPAN / 2, cz = (j + 0.5) * MAP_CELL - MAP_SPAN / 2;
+    if (Math.hypot(cx - x, cz - z) > radius + MAP_CELL / 2) continue;
+    if (chars[j * MAP_N + i] !== '1') { chars[j * MAP_N + i] = '1'; changed = true; }
+  }
+  if (changed) state.mapSeen[era] = chars.join('');
+  return changed;
+}
+export const mapSeenAt = (state, i, j) => (state.mapSeen[String(state.era)] || '')[j * MAP_N + i] === '1';
 
 /** A shrine gives a small lasting boost, once ever. */
 export function useShrine(state, key, name) {

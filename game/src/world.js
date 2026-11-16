@@ -2,6 +2,7 @@
 // water, sky, light, roads and scenery, and knows where everything goes.
 
 import * as THREE from 'three';
+import { layoutCountry } from './country.js';
 import { C, mat, at, makeRock, makeTownCenter, makeGate, makeLander } from './art.js';
 import { noiseTexture, rippleNormals, fbm, noise3 } from './tex.js';
 import { createForest, createGrass, createClouds, wind } from './nature.js';
@@ -420,7 +421,8 @@ export function createWorld(scene, renderer) {
   let grass = null;
   let wildGrass = null; // grass out in the country
   let caches = []; // [{ x, y, z }] hidden caches in this land
-  let treeSolids = []; // trees you can bump into, out in the country
+  let treeSolids = []; // trees and landmarks you can bump into, out in the country
+  let country = { landmarks: [], roads: [], fields: [], spin: [], mask: () => 0 };
   let grassLevel = 0;
   const dispose = (root) => root.traverse((o) => { if (o.isMesh || o.isInstancedMesh) { o.geometry?.dispose(); } });
   function buildLand(index) {
@@ -445,6 +447,10 @@ export function createWorld(scene, renderer) {
         caches.push({ x, y, z });
       }
     }
+
+    // Landmarks, roads and farms out in the country.
+    country = layoutCountry({ index, height: (x, z) => hillHeight(x, z), passOpen, caches, townR: TOWN_R, walkR: ISLAND_RADIUS });
+    landParts.add(country.object);
 
     // The hills around the town, coloured by height.
     {
@@ -541,6 +547,7 @@ export function createWorld(scene, renderer) {
         const x = Math.cos(a) * d, z = Math.sin(a) * d;
         const y = hillHeight(x, z, d);
         if (y > land.slope.maxY || y < 0.15 || passOpen(x, z, d) < 0.25) continue;
+        if (country.mask(x, z)) continue;
         if (d < RISE_R) {
           const grove = noise2(x * 0.05 + 3, z * 0.05 + 9) * 0.7 + noise2(x * 0.13 - 4, z * 0.13) * 0.3;
           if (grove < 0.2 && r() > 0.04) continue;
@@ -554,6 +561,7 @@ export function createWorld(scene, renderer) {
       }
       slopes.place(list);
       landParts.add(slopes.object);
+      for (const l of country.landmarks) treeSolids.push({ x: l.x, z: l.z, r: l.solid });
     }
 
     // Grass in this land's colours (sparse in the desert and the canyon).
@@ -564,7 +572,7 @@ export function createWorld(scene, renderer) {
     if (wildGrass) { earth.remove(wildGrass); wildGrass.geometry.dispose(); }
     wildGrass = createGrass(Math.round(land.grassCount * 1.3), RISE_R, (x, z) => {
       const d = Math.hypot(x, z);
-      if (d < TOWN_R - 3.5) return false;
+      if (d < TOWN_R - 3.5 || country.mask(x, z)) return false;
       const h = hillHeight(x, z, d);
       return h > -0.25 && h < 14;
     }, 33 + index, land.grass, (x, z) => hillHeight(x, z) - 0.05);
@@ -1083,7 +1091,20 @@ export function createWorld(scene, renderer) {
     }
   }
 
-  return { earth, moon, landName, caches: () => caches, treeSolids: () => treeSolids, setEra, setClearings, setScene, showRealm, update, setQuality, setDaylight, get daylight() { return daylight; }, groundHeight: (name, x, z) => (name === 'moon' ? moonHeight(x, z, Math.hypot(x, z)) : hillHeight(x, z)) };
+  /** A flat colour for the map at a spot, the same one the hills are painted with. */
+  function mapColor(x, z) {
+    const h = hillHeight(x, z);
+    if (h < -0.35) return 0x4f9fc4;
+    const stops = land.stops;
+    let k = stops.length - 2;
+    while (k > 0 && h < stops[k][0]) k -= 1;
+    const [h0, a] = stops[k], [h1, b] = stops[k + 1];
+    return new THREE.Color(a).lerp(new THREE.Color(b), Math.max(0, Math.min(1, (h - h0) / (h1 - h0)))).getHex();
+  }
+  function spinCountry(dt) {
+    for (const o of country.spin) o.rotation[o.userData.spin || o.userData.axis || 'z'] += dt * (o.userData.speed ?? 0.9);
+  }
+  return { earth, moon, landName, caches: () => caches, treeSolids: () => treeSolids, landmarks: () => country.landmarks, roads: () => country.roads, fields: () => country.fields, mapColor, spinCountry, landIndex: () => landIndex, setEra, setClearings, setScene, showRealm, update, setQuality, setDaylight, get daylight() { return daylight; }, groundHeight: (name, x, z) => (name === 'moon' ? moonHeight(x, z, Math.hypot(x, z)) : hillHeight(x, z)) };
 }
 
 export { EARTH_PADS };

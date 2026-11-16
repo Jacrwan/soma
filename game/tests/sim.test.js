@@ -843,3 +843,16 @@ test('hidden caches give a chest once a day each, and refill the next day', () =
   s.era = 1;
   assert.ok(S.openCache(s, 1, NOW + DAY)); // a new land has its own caches
 });
+
+test('landmarks pay once, all of them give a chest; the map reveals where you walk', () => {
+  const s = S.newState(NOW);
+  const first = S.discover(s, 'cave', 2);
+  assert.strictEqual(first.coins, Math.round(S.ERAS[0].wonderCost * S.LANDMARK_SHARE));
+  assert.strictEqual(S.discover(s, 'cave', 2), null);
+  const last = S.discover(s, 'mammoth', 2);
+  assert.strictEqual(last.chest.rarity, 'rare');
+  assert.ok(S.revealMap(s, 0, 0));
+  assert.ok(S.mapSeenAt(s, S.MAP_N / 2, S.MAP_N / 2));
+  assert.ok(!S.mapSeenAt(s, 0, 0));
+  assert.strictEqual(S.revealMap(s, 0, 0), false);
+});

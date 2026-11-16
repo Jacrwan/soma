@@ -414,6 +414,8 @@ h3 .points.on { background: var(--gold); color: var(--ink); font-weight: 900; }
 .hud-center { top: 10px; left: 50%; transform: translateX(-50%); }
 .tracker { top: 14px; right: 14px; width: 272px; display: flex; flex-direction: column; gap: 7px; }
 .hotbar { left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; gap: 8px; margin: 0; }
+/* Centre the hotbar in the room left of the menu, so the two never overlap. */
+@media (min-width: 981px) { .hotbar { left: calc(50% - 270px); } }
 .menu { right: 14px; bottom: 16px; display: flex; gap: 7px; }
 
 /* Shared slab look */
@@ -888,3 +890,14 @@ body.shiftlock, body.shiftlock canvas, body.shiftlock #labels, body.shiftlock #l
 .tut-glow { position: relative; z-index: 2; animation: tut-glow 1.1s ease-in-out infinite; }
 @keyframes tut-glow { 50% { box-shadow: 0 0 0 4px #ffd04a, 0 0 26px 6px rgba(255, 208, 74, 0.8); } }
 @media (max-width: 760px) { #coach { top: 64px; } .coach-title { font-size: 17px; } }
+
+/* --- Map ----------------------------------------------------------------------- */
+.map-wrap { display: grid; place-items: center; }
+.map-canvas { width: min(640px, 82vw, 66vh); aspect-ratio: 1; border-radius: 14px; border: 2px solid rgba(255, 255, 255, 0.14); box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.4), 0 10px 26px rgba(0, 0, 0, 0.35); background: #15122a; }
+.map-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 16px; margin-top: 10px; font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.map-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.map-legend span::before { content: ''; width: 12px; height: 12px; }
+.map-legend .lg-you::before { background: #ff5d5d; clip-path: polygon(50% 0, 100% 100%, 50% 75%, 0 100%); }
+.map-legend .lg-star::before { background: #ffd04a; clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
+.map-legend .lg-cache::before { background: #ffd04a; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.map-legend .lg-fog::before { background: #1d1934; border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 3px; }

@@ -56,6 +56,7 @@ export function createUI(on) {
   $('btnQuests').addEventListener('click', () => on.quests());
   $('quest').addEventListener('click', () => questOpen && questOpen());
   $('btnHelp').addEventListener('click', () => on.help());
+  $('btnMap')?.addEventListener('click', () => on.map?.());
   $('btnSound').addEventListener('click', () => on.sound());
   $('btnSettings')?.addEventListener('click', () => on.settings());
   $('btnPass')?.addEventListener('click', () => on.pass());
@@ -802,6 +803,10 @@ export function createUI(on) {
       $('focusTime').textContent = info.time;
       $('focusName').textContent = info.name;
       $('focusBar').style.width = `${Math.round(info.progress * 100)}%`;
+    },
+
+    map({ title, subtitle, canvas, legend }) {
+      panel({ title, subtitle, wide: true }, el('div', { class: 'map-wrap' }, canvas), el('div', { class: 'map-legend' }, legend.map(([cls, text]) => el('span', { class: cls, text }))));
     },
 
     help({ first, onStart, onTutorial }) {
