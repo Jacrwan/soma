@@ -9,6 +9,29 @@ still needed.
 
 ---
 
+## 2026-11-15 (sitting count re-cuts; undo a check-off; finished assignments stay, checked) · merged to master with task-details
+
+- **Why:** the owner tested the preview. Oral Presentations set to 2 sittings
+  still had 4 on the plan ("0 of 4 sittings done"); a task checked off on
+  Tasks couldn't be unchecked; and marking an assignment complete removed
+  its card from the dashboard instead of checking it.
+- **What:**
+  - Scheduler: with a set count, movable sittings that don't add up to it are
+    pooled and cut again (`sittingsSettled`: done, pinned, started and missed
+    ones count as they are). Before, sittings that were "fine" stayed, so a
+    new count only applied to new work.
+  - Tasks: "Done: …" carries an Undo that reopens the task; Soma places its
+    sittings again.
+  - Dashboard: a checked-off assignment stays on its due day as a quieter
+    card with the check filled ("Undo done: …" reopens it). Canvas ones come
+    from `doneDueItems` (marked done here, not handed in); course-site ones
+    from `taskDues`. A Canvas check-off now also finishes its linked task and
+    clears its future sittings, which stayed on the plan before. Done cards
+    aren't counted in the week strip, progress bar or Due soon.
+- **Tests:** tests/task-scheduler.spec.ts (count re-cut, pinned counts),
+  tests/tasks-page.spec.ts (undo on Tasks; 4 → 2 sittings; done card + undo).
+- **Setup:** `task_details_migration.sql` (and task_scheduler_migration.sql before it).
+
 ## 2026-11-15 (a due card moves to your own deadline; a faint one stays on the posted day) · branch task-details, preview
 
 - **Why:** owner: "when I change the due date on a Canvas assignment, the

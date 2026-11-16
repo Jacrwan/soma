@@ -34,6 +34,17 @@ export const toneOf = (hex?:string) => TONES[hex??'']??'blue';
 
 /** Synced Canvas work not yet handed in, by day from `origin`, for the week strip and the subject bar. */
 export type DueItem = { id:number; day:number; subject:string; subjectId?:string; color:string; title:string; dueAt:string };
+/** Canvas work the student checked off themselves: it stays on its day, checked, and can be unchecked. */
+export function doneDueItems(origin:Date):DueItem[] {
+ const subjects=storage.getSubjects(),marked=storage.getAssignmentStatus(),start=dateAt(origin,0).getTime();
+ return storage.getCachedAssignments().flatMap(a=>{
+  if(!a.dueAt || a.submittedAt || marked[a.id]!=='done') return [];
+  const due=new Date(a.dueAt); due.setHours(0,0,0,0);
+  const subject=subjectForCourse(subjects,a.courseId,a.courseName);
+  if(subject?.archived) return [];
+  return [{id:a.id,day:Math.round((due.getTime()-start)/86_400_000),subject:subject?.name ?? a.courseName,subjectId:subject?.id,color:toneOf(subject?.color),title:a.name,dueAt:a.dueAt}];
+ });
+}
 export function dueItems(origin:Date):DueItem[] {
  const subjects=storage.getSubjects();
  const marked=storage.getAssignmentStatus();

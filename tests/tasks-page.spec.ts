@@ -330,3 +330,51 @@ test('details: each step says when it is on the plan', async ({ page }) => {
   await expect(dialog.getByText(/Wed, Nov 18, 3:00\sPM–3:45\sPM/)).toBeVisible();
   await expect(dialog.getByText('Done', { exact: true })).toBeVisible();
 });
+
+// ── 2026-11-15 fixes ──
+
+test('Tasks: a check-off can be undone, and its sittings come back', async ({ page }) => {
+  const state = await setup(page, {
+    todos: [task('essay', 'Essay draft', dateOf(3))],
+    todo_sessions: [{ id: 's1', user_id: account.id, todo_id: 'essay', date: dateOf(2), start_time: at(2, '10:00'), end_time: at(2, '11:00') }],
+  });
+  await page.goto('/tasks');
+  await page.getByRole('checkbox', { name: 'Done: Essay draft' }).check();
+  await expect.poll(() => state.tables.todos.find(t => t.id === 'essay')!.status).toBe('done');
+  await expect.poll(() => state.tables.todo_sessions.length).toBe(0);
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect.poll(() => state.tables.todos.find(t => t.id === 'essay')!.status).toBe('nothing');
+  await expect(page.getByRole('listitem').filter({ hasText: 'Essay draft' })).toBeVisible();
+  await expect.poll(() => state.tables.todo_sessions.filter(s => s.todo_id === 'essay').length).toBe(1);
+});
+
+test('details: setting 2 sittings replaces the four already on the plan', async ({ page }) => {
+  const four = [1, 2, 3, 4].map(d => ({ id: `o${d}`, user_id: account.id, todo_id: 'oral', date: dateOf(d), start_time: at(d, '10:00'), end_time: at(d, '10:30') }));
+  const state = await setup(page, { todos: [task('oral', 'Oral Presentations', dateOf(6), { estimated_minutes: 120 })], todo_sessions: four });
+  await page.goto('/tasks');
+  await page.getByRole('button', { name: 'Details: Oral Presentations' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Task details' });
+  await dialog.getByRole('spinbutton', { name: 'Sittings' }).fill('2');
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await expect(dialog).toHaveCount(0);
+  const sittings = () => state.tables.todo_sessions.filter(s => s.todo_id === 'oral');
+  await expect.poll(() => sittings().length).toBe(2);
+  expect(sittings().map(s => (+new Date(String(s.end_time)) - +new Date(String(s.start_time))) / 60000)).toEqual([60, 60]);
+});
+
+test('dashboard: a finished assignment stays on its day, checked, and the check undoes it', async ({ page }) => {
+  const state = await setup(page, {
+    todos: [task('lab', 'Lab 10: SQL', dateOf(2), { kind: 'lab', auto_schedule: null, date: dateOf(0) })],
+    todo_sessions: [{ id: 'l1', user_id: account.id, todo_id: 'lab', date: dateOf(1), start_time: at(1, '15:00'), end_time: at(1, '16:00') }],
+  });
+  await page.goto('/dashboard');
+  await page.getByRole('button', { name: /Wed\s*18/ }).first().click();
+  await page.getByRole('button', { name: 'Done: Lab 10: SQL' }).click();
+  await expect.poll(() => state.tables.todos.find(t => t.id === 'lab')!.status).toBe('done');
+  // Still there, checked.
+  const done = page.locator('article[data-kind="due-done"]').filter({ hasText: 'Lab 10: SQL' });
+  await expect(done).toBeVisible();
+  await done.getByRole('button', { name: 'Undo done: Lab 10: SQL' }).click();
+  await expect.poll(() => state.tables.todos.find(t => t.id === 'lab')!.status).toBe('nothing');
+  await expect(page.locator('article[data-kind="due"]').filter({ hasText: 'Lab 10: SQL' })).toBeVisible();
+});

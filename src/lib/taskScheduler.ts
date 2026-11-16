@@ -268,6 +268,9 @@ export function schedule(input: ScheduleInput): ScheduleResult {
   /** Minutes `st` may still put on day d. */
   const roomOn = (st: State, d: number) => d !== today || forcedToday(st) ? Infinity : Math.max(0, todayRoom);
 
+  /** Sittings that stay as they are whatever the count: done, pinned or started ahead, and missed ones (re-placed whole). */
+  const sittingsSettled = (st: State) => st.task.sittings.filter(s => s.done || (s.end > now && (s.pinned || s.started || s.start < now))).length + st.pool.filter(p => p.asap).length;
+
   // 1. Keep what can stay. Higher tasks claim first where two overlap.
   for (const st of states) {
     const open = st.task.steps ? new Set(st.task.steps.map(x => x.id)) : null;
@@ -320,6 +323,22 @@ export function schedule(input: ScheduleInput): ScheduleResult {
       }
       continue;   // no trimming: each step is its own length
     }
+    // A set number of sittings that the ones on the plan don't match (the
+    // student changed it to 2 and four stayed, 2026-11-15): the ones that can
+    // move are cut again. Done, pinned, started and missed ones count as they are.
+    if (st.task.count) {
+      const settled = sittingsSettled(st);
+      if (st.movable.length && settled + st.movable.length !== st.task.count) {
+        for (const s of st.movable) {
+          release(s.start, s.end); use(s.start, -(s.end - s.start));
+          if (dayOf(s.start) === today) todayRoom += s.end - s.start;
+          st.covered -= s.end - s.start; st.days.delete(dayOf(s.start));
+          st.pool.push({ id: s.id, len: s.end - s.start, asap: false, removable: true });
+        }
+        st.movable = [];
+        continue;
+      }
+    }
     // More planned than the task still needs: drop or shorten the latest.
     for (const s of [...st.movable].sort((a, b) => b.start - a.start)) {
       const extra = st.covered - st.remaining;
@@ -339,6 +358,8 @@ export function schedule(input: ScheduleInput): ScheduleResult {
     }
   }
 
+  // Counted now, before missed sittings leave the pool for their new times.
+  const settledOf = new Map(states.map(st => [st, sittingsSettled(st)]));
   const need = (st: State) => Math.max(0, st.remaining - st.covered);
   const freeBefore = (t: number) => free.reduce((n, [a, z]) => n + Math.max(0, Math.min(z, t) - Math.max(a, now)), 0);
   /**
@@ -461,7 +482,7 @@ export function schedule(input: ScheduleInput): ScheduleResult {
     // The rest: spread over the days up to the finish day, one sitting a day where there's room.
     const pieces: number[] = [];
     // The student's number of sittings, less the ones that already stay.
-    const setCount = st.task.count ? Math.max(1, st.task.count - st.task.sittings.filter(s => !s.done && s.end > now && (st.movable.some(m => m.id === s.id) || s.pinned || s.started)).length) : 0;
+    const setCount = st.task.count ? Math.max(1, st.task.count - (settledOf.get(st) ?? 0) - st.movable.length) : 0;
     if (!setCount && short <= Math.max(60, prefs.usual) && short <= prefs.longest) pieces.push(short);
     else {
       const n = setCount || Math.ceil(short / prefs.usual), size = round5(short / n);

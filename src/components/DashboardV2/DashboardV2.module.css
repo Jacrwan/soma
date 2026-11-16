@@ -497,3 +497,19 @@
 .dueGhost:focus-within {
   opacity: .85;
 }
+
+/* A due card checked off: it stays on its day, quieter, with the check filled. */
+.dueDone {
+  opacity: .7;
+}
+
+.dueDone h3 {
+  text-decoration: line-through;
+  text-decoration-color: var(--text-muted);
+}
+
+.dueDone .actions button[aria-pressed=true] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}

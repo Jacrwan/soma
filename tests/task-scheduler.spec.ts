@@ -244,3 +244,22 @@ test('a typed length reads minutes, hours and h:mm', async () => {
   expect(parseLength('soon')).toBeNull();
   expect(parseLength('2')).toBe(5);   // a bare number is minutes, never under 5
 });
+
+test('changing the number of sittings re-cuts the ones already on the plan', () => {
+  // Four half-hour sittings; the student sets 2.
+  const four = [2, 3, 4, 5].map(d => ({ id: `s${d}`, start: at(d, 10), end: at(d, 10, 30) }));
+  const r = run({ tasks: [task('oral', { total: 120, due: at(7, 23, 59), count: 2, sittings: four })] });
+  const kept = four.filter(s => !r.remove.some(x => x.id === s.id));
+  expect(kept).toHaveLength(2);
+  expect(r.place.map(p => p.end - p.start)).toEqual([60, 60]);
+  expect(r.place.every(p => !!p.id)).toBe(true);                // two of the old ones, resized
+  // Already two: nothing moves.
+  const two = [{ id: 'a', start: at(3, 10), end: at(3, 11) }, { id: 'b', start: at(5, 10), end: at(5, 11) }];
+  const again = run({ tasks: [task('oral', { total: 120, due: at(7, 23, 59), count: 2, sittings: two })] });
+  expect(again.place).toEqual([]);
+  expect(again.remove).toEqual([]);
+  // A pinned one counts: one more of the rest.
+  const pinned = run({ tasks: [task('oral', { total: 120, due: at(7, 23, 59), count: 2, sittings: [{ ...four[0], pinned: true }, four[1], four[2]] })] });
+  expect(pinned.place.map(p => p.end - p.start)).toEqual([90]);
+  expect(pinned.remove).toHaveLength(1);
+});

@@ -7,8 +7,9 @@ import Habits from './Habits';
 import { readLayout, type DashboardLayout } from '../../lib/dashboardLayout';
 import { CANVAS_CHANGED } from '../../lib/canvasExtension';
 import { useLocation, useNavigate } from 'react-router-dom';
-import DashboardV2 from './DashboardV2';
-import { dateAt, deletePlanBlock, dueItems, localDate, readPlan, savePlanBlock, setTaskStatus, toneOf, utcIso, type Snapshot } from './liveData';
+import DashboardV2, { type DashboardRuntime } from './DashboardV2';
+type DueCard = NonNullable<DashboardRuntime['due']>[number];
+import { dateAt, deletePlanBlock, doneDueItems, dueItems, localDate, readPlan, savePlanBlock, setTaskStatus, toneOf, utcIso, type Snapshot } from './liveData';
 import type { PlanBlock, PlanState } from './PlanEditor';
 import { useTimerContext } from '../../contexts/TimerContext';
 import PausedFor from '../Timer/PausedFor';
@@ -31,7 +32,7 @@ import { coveredBy, finishThrough, rangeLabel, renameLoggedTime, retitle } from 
 import { acceptAhead, clearFutureSittings, declineAhead, rescheduleTasks, setSittingDone, type AheadOffer, type RescheduleResult } from '../../lib/taskSchedule';
 import { dueMoment, isManaged } from '../../lib/taskScheduler';
 import { deadlineOf } from '../../lib/taskDetails';
-import { asTodoKind } from '../../types';
+import { asTodoKind, type Todo } from '../../types';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './DashboardV2.module.css';
 
@@ -181,8 +182,10 @@ export default function LiveDashboard({userId}:{userId:string}) {
  // What the Canvas extension synced, kept current as syncs land and subjects load.
  const [due,setDue]=useState(()=>dueItems(origin));
  // Read again with each plan load too: the course match needs the courses, which may arrive after the first read.
- useEffect(()=>{setDue(dueItems(origin));},[origin,snapshot?.subjects]); // eslint-disable-line react-hooks/exhaustive-deps
- useEffect(()=>{const refresh=()=>setDue(dueItems(origin));refresh();const events=[CANVAS_CHANGED,'soma_subjects_changed'];for(const e of events)window.addEventListener(e,refresh);return()=>{for(const e of events)window.removeEventListener(e,refresh);};},[origin]);
+ useEffect(()=>{setDue(dueItems(origin));setDoneDue(doneDueItems(origin));},[origin,snapshot?.subjects]); // eslint-disable-line react-hooks/exhaustive-deps
+ // Canvas work checked off here: kept on its day, checked (2026-11-15), not removed.
+ const [doneDue,setDoneDue]=useState(()=>doneDueItems(origin));
+ useEffect(()=>{const refresh=()=>{setDue(dueItems(origin));setDoneDue(doneDueItems(origin));};refresh();const events=[CANVAS_CHANGED,'soma_subjects_changed'];for(const e of events)window.addEventListener(e,refresh);return()=>{for(const e of events)window.removeEventListener(e,refresh);};},[origin]);
  const rangeRef=useRef(0);rangeRef.current=rangeStart;
  const timer=useTimerContext();
  const generation=useRef(0),mounted=useRef(true),writing=useRef(false);
@@ -519,10 +522,12 @@ export default function LiveDashboard({userId}:{userId:string}) {
  const dueDay=(at:Date)=>{const midnight=new Date(at);midnight.setHours(0,0,0,0);return Math.round((midnight.getTime()-dateAt(origin,0).getTime())/86_400_000);};
  const taskDues=(()=>{
   const autoImported=storage.getSomaSettings().schedule?.autoImported ?? true,today=localDate(new Date()),start=dateAt(origin,0).getTime();
-  return snapshot.todos.flatMap(t=>{
+  return snapshot.todos.flatMap((t):DueCard[]=>{
    // `!= null`: a row with no Canvas link has assignment_id null, not undefined
    // (2026-11-15: every course-site task was skipped here, so Lab 10 never showed on its due day).
-   if(t.assignmentId!=null || !t.dueDate || !isManaged(t,autoImported,today))return [];
+   // A finished one stays on its day, checked, as long as it was one Soma scheduled or imported.
+   const finished=t.status==='done';
+   if(t.assignmentId!=null || !t.dueDate || (finished ? !(t.kind || t.autoSchedule) : !isManaged(t,autoImported,today)))return [];
    const sittings=snapshot.sessions.filter(sn=>sn.todoId===t.id && sn.startTime);
    const at=dueMoment(deadlineOf(t)!),midnight=new Date(at);midnight.setHours(0,0,0,0);
    // With no session at all it already shows as an untimed block on its own date; skip only that case.
@@ -531,6 +536,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
    const subject=snapshot.subjects.find(sb=>sb.id===t.subjectId);
    if(day<0 || subject?.archived)return [];
    const seconds=snapshot.history.filter(h=>h.subject_id===t.subjectId && h.task_text===t.text).reduce((n,h)=>n+(h.duration_seconds||0),0);
+   if(finished)return [{id:t.id,day,subject:subject?.name??'Personal',subjectId:t.subjectId,color:toneOf(subject?.color),title:t.text,dueAt:at.toISOString(),task:true as const,done:true as const}];
    const card={id:t.id,day,subject:subject?.name??'Personal',subjectId:t.subjectId,color:toneOf(subject?.color),title:t.text,dueAt:at.toISOString(),task:true as const,plan:{total:sittings.length,done:sittings.filter(sn=>sn.doneAt).length,minutes:Math.round(seconds/60)}};
    // Moved to the student's own deadline: a faint card stays where it was posted.
    const posted=dueMoment(t.dueDate),postedDay=dueDay(posted);
@@ -540,7 +546,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
  })();
  const guessLength=(text:string,subjectId?:string)=>{const sb=snapshot.subjects.find(x=>x.id===subjectId);return sb ? planEstimate({key:'detail',title:text,subject:sb.name,subjectId:sb.id,color:'',due:''},snapshot.history).minutes : 60;};
  const pulseDays=Array.from({length:7},(_,i)=>snapshot.history.filter(h=>h.date===localDate(dateAt(origin,i-6))).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0));
- return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{onEditingChange,initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,planNotice:moveNote || taskNote || ahead ? <>{ahead && <AheadNote title={ahead.title} opened={ahead.opened} from={ahead.from} start={ahead.start} end={ahead.end} busy={busy} onAccept={()=>{const offer=ahead;setAhead(null);void (async()=>{try{await acceptAhead(userId,offer);await reload();runSchedule(300);}catch(e){setError(e instanceof Error ? e.message : 'Could not move it.');}})();}} onDecline={()=>{declineAhead(userId);setAhead(null);}}/>}{moveNote && <MoveNote reason={moveNote.reason} moves={moveNote.moves} busy={busy} onUndo={()=>void undoMoves()} onDismiss={()=>setMoveNote(null)}/>}{taskNote && <MoveNote reason="tasks" moves={taskNote.moves} atRisk={taskNote.atRisk} busy={busy} onTasks={()=>navigate('/tasks')} onDismiss={()=>setTaskNote(null)}/>}</> : null,compare:{shown:compareOn,toggle:()=>setCompareOn(v=>!v),panel:<DayCompare current={toVersionBlocks(snapshot.blocks)} versions={versions} selectedId={compareId || versions[0]?.id || ''} onSelect={setCompareId}/>},rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<CatchUp key={localDate(origin)} userId={userId} origin={origin} onApply={applyBatch}>{catchUp=><AgentBrief catchUp={catchUp}/>}</CatchUp>,dump:<BrainDump userId={userId} onPlan={planDump} onMakeTask={(text,courseId)=>new Promise<boolean>(resolve=>{detailDone.current=resolve;setDetail({seed:{title:text,...(courseId ? {subjectId:courseId} : {})}});})}/>,habits:<Habits/>,layout,onLayout:saveLayout,due:[...taskDues,...due.flatMap(raw=>{
+ return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{onEditingChange,initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,planNotice:moveNote || taskNote || ahead ? <>{ahead && <AheadNote title={ahead.title} opened={ahead.opened} from={ahead.from} start={ahead.start} end={ahead.end} busy={busy} onAccept={()=>{const offer=ahead;setAhead(null);void (async()=>{try{await acceptAhead(userId,offer);await reload();runSchedule(300);}catch(e){setError(e instanceof Error ? e.message : 'Could not move it.');}})();}} onDecline={()=>{declineAhead(userId);setAhead(null);}}/>}{moveNote && <MoveNote reason={moveNote.reason} moves={moveNote.moves} busy={busy} onUndo={()=>void undoMoves()} onDismiss={()=>setMoveNote(null)}/>}{taskNote && <MoveNote reason="tasks" moves={taskNote.moves} atRisk={taskNote.atRisk} busy={busy} onTasks={()=>navigate('/tasks')} onDismiss={()=>setTaskNote(null)}/>}</> : null,compare:{shown:compareOn,toggle:()=>setCompareOn(v=>!v),panel:<DayCompare current={toVersionBlocks(snapshot.blocks)} versions={versions} selectedId={compareId || versions[0]?.id || ''} onSelect={setCompareId}/>},rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<CatchUp key={localDate(origin)} userId={userId} origin={origin} onApply={applyBatch}>{catchUp=><AgentBrief catchUp={catchUp}/>}</CatchUp>,dump:<BrainDump userId={userId} onPlan={planDump} onMakeTask={(text,courseId)=>new Promise<boolean>(resolve=>{detailDone.current=resolve;setDetail({seed:{title:text,...(courseId ? {subjectId:courseId} : {})}});})}/>,habits:<Habits/>,layout,onLayout:saveLayout,due:[...taskDues,...due.flatMap((raw):DueCard[]=>{
   // Shown under the course its task is filed in, with that course's colour, like its sittings.
   const filed=snapshot.todos.find(t=>t.assignmentId===raw.id && t.status!=='done');
   const course=filed?.subjectId ? snapshot.subjects.find(sb=>sb.id===filed.subjectId) : undefined;
@@ -559,6 +565,11 @@ export default function LiveDashboard({userId}:{userId:string}) {
   const own=dueMoment(task.myDue),ownDay=dueDay(own);
   const moved={...card,day:ownDay,dueAt:own.toISOString(),posted:x.dueAt};
   return ownDay===x.day ? [moved] : [moved,{...card,ghost:true as const,mine:own.toISOString()}];
+ }),...doneDue.map((raw):DueCard=>{
+  const filed=snapshot.todos.find(t=>t.assignmentId===raw.id);
+  const course=filed?.subjectId ? snapshot.subjects.find(sb=>sb.id===filed.subjectId) : undefined;
+  const own=filed?.myDue ? dueMoment(filed.myDue) : null;
+  return {...raw,...(course ? {subject:course.name,subjectId:course.id,color:toneOf(course.color)} : {}),...(own ? {day:dueDay(own),dueAt:own.toISOString()} : {}),done:true as const};
  })],initialPlan:planFromDeadlines ?? undefined,planIt:{
   estimate:(target)=>planEstimate(target,snapshot.history),
   place:async(target,choice)=>{
@@ -606,7 +617,29 @@ export default function LiveDashboard({userId}:{userId:string}) {
   const target:TaskDetailTarget|null=linked ? {todo:linked} : x ? {seed:{title:x.title,subjectId:x.subjectId,dueDate:x.dueAt,assignmentId:x.id}} : null;
   if(!target)return null;
   return <TaskDetail variant="panel" userId={userId} target={target} subjects={snapshot.subjects.filter(sb=>!sb.archived)} sessions={snapshot.sessions} guess={guessLength} onClose={saved=>{close();if(saved)void reload().catch(()=>{});}}/>;
- },onDueDone:id=>{if(typeof id==='string'){const todo=snapshot.todos.find(t=>t.id===id);if(todo)void (async()=>{try{await setTaskStatus(userId,snapshot,todo,'done');await clearFutureSittings(userId,snapshot.sessions.filter(sn=>sn.todoId===id));await storage.fetchAllTodos();await reload();}catch(e){setError(e instanceof Error ? e.message : 'Could not mark it done.');}})();return;}storage.setAssignmentStatus({...storage.getAssignmentStatus(),[id]:'done'});setDue(dueItems(origin));window.dispatchEvent(new Event(CANVAS_CHANGED));},onFocus:b=>{const live=snapshot.blocks.find(x=>x.id===b.id);const subject=snapshot.subjects.find(s=>s.id===live?.subjectId);if(subject)timer.startSession(subject,b.title,0);else setError('Choose a subject with Edit plan before starting focus.');},pulseSeconds:pulseDays.reduce((a,b)=>a+b,0),pulseDays,subjectNames:snapshot.subjects.filter(s=>!s.archived).map(s=>s.name),usedColors:snapshot.subjects.map(s=>s.color),onEditSession:async(sessionId,minutes,startTime,date)=>{
+ },onDueDone:id=>{
+  // The check toggles: done keeps the card on its day, checked; again reopens it and Soma places it again.
+  const finish=async(todo:Todo,done:boolean)=>{
+   await setTaskStatus(userId,snapshot,todo,done ? 'done' : 'nothing');
+   if(done)await clearFutureSittings(userId,snapshot.sessions.filter(sn=>sn.todoId===todo.id));
+  };
+  void (async()=>{
+   try{
+    if(typeof id==='string'){
+     const todo=snapshot.todos.find(t=>t.id===id);if(!todo)return;
+     await finish(todo,todo.status!=='done');
+    }else{
+     const marks={...storage.getAssignmentStatus()},done=marks[id]!=='done';
+     if(done)marks[id]='done';else delete marks[id];
+     storage.setAssignmentStatus(marks);
+     const linked=snapshot.todos.find(t=>t.assignmentId===id);
+     if(linked && (linked.status==='done')!==done)await finish(linked,done);
+     setDue(dueItems(origin));setDoneDue(doneDueItems(origin));window.dispatchEvent(new Event(CANVAS_CHANGED));
+    }
+    await storage.fetchAllTodos();await reload();runSchedule(300);
+   }catch(e){setError(e instanceof Error ? e.message : 'Could not save that.');}
+  })();
+ },onFocus:b=>{const live=snapshot.blocks.find(x=>x.id===b.id);const subject=snapshot.subjects.find(s=>s.id===live?.subjectId);if(subject)timer.startSession(subject,b.title,0);else setError('Choose a subject with Edit plan before starting focus.');},pulseSeconds:pulseDays.reduce((a,b)=>a+b,0),pulseDays,subjectNames:snapshot.subjects.filter(s=>!s.archived).map(s=>s.name),usedColors:snapshot.subjects.map(s=>s.color),onEditSession:async(sessionId,minutes,startTime,date)=>{
  const row=snapshot.history.find(h=>h.id===sessionId);
  if(!row)throw new Error('That session is no longer there. Refresh and try again.');
  // Keep where it started unless the correction moved it, then let the length

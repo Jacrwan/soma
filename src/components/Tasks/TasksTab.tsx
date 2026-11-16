@@ -46,6 +46,8 @@ export default function TasksTab({ userId }: { userId: string }) {
   const [overIndex, setOverIndex] = useState<number | null>(null);
   const [status, setStatus] = useState('');
   const [details, setDetails] = useState<Todo | null>(null);
+  // The task just checked off, as it was, for Undo.
+  const [undo, setUndo] = useState<Todo | null>(null);
   // The add row.
   const [title, setTitle] = useState('');
   const [course, setCourse] = useState('');
@@ -123,10 +125,19 @@ export default function TasksTab({ userId }: { userId: string }) {
   };
 
   const setTotal = (t: TaskInfo, minutes: number) => act(() => storage.saveTodo({ ...t.todo, estimatedMinutes: Math.max(15, Math.min(1200, minutes)) }));
-  const finish = (t: TaskInfo) => act(async () => {
-    await setTaskStatus(userId, snapshot, t.todo, 'done');
-    await clearFutureSittings(userId, snapshot.sessions.filter(s => s.todoId === t.todo.id));
-  }, `Done: “${t.todo.text}”.`);
+  const finish = async (t: TaskInfo) => {
+    await act(async () => {
+      await setTaskStatus(userId, snapshot, t.todo, 'done');
+      await clearFutureSittings(userId, snapshot.sessions.filter(s => s.todoId === t.todo.id));
+    }, `Done: “${t.todo.text}”.`);
+    setUndo(t.todo);
+  };
+  /** Undo a check-off: the task is open again, and Soma places its sittings again. */
+  const undoFinish = async () => {
+    const todo = undo; if (!todo) return;
+    setUndo(null);
+    await act(() => storage.saveTodo(todo), `“${todo.text}” is back on your list.`);
+  };
   const setManaged = (t: TaskInfo, on: boolean) => act(() => storage.saveTodo({ ...t.todo, autoSchedule: on }), on ? `Soma is scheduling “${t.todo.text}”.` : `Soma stopped scheduling “${t.todo.text}”. Its sittings stay on your plan.`);
   const pin = (sessionId: string, pinned: boolean) => act(() => setSittingPinned(userId, sessionId, pinned));
 
@@ -156,7 +167,7 @@ export default function TasksTab({ userId }: { userId: string }) {
 
       <div className={styles.live} aria-live="polite">
         {error && <p role="alert" className={styles.error}>{error}</p>}
-        {status && !error && <p className={styles.status}>{status}</p>}
+        {status && !error && <p className={styles.status}>{status}{undo && status.startsWith('Done:') && <> <button type="button" className={styles.link} disabled={busy} onClick={() => void undoFinish()}>Undo</button></>}</p>}
         {busy && <p className={styles.status}>Scheduling…</p>}
       </div>
 
