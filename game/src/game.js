@@ -1526,7 +1526,7 @@ const nearestCache = () => nearestOf(cacheObjects.filter((c) => !c.done).map((c)
 const TUTORIAL = [
   { title: 'Walk around', text: 'Use W A S D to walk. Hold Shift to run and press Space to jump.', keys: ['W', 'A', 'S', 'D'],
     enter: () => { tut.start = player.object.position.clone(); }, done: () => player.object.position.distanceTo(tut.start) > 8 },
-  { title: 'Look around', text: 'Hold the right mouse button and drag to turn the camera. Scroll to zoom. Tap Shift to lock the camera to your mouse.', keys: ['Right drag', 'Scroll', 'Shift'],
+  { title: 'Look around', text: 'Hold the right mouse button and drag to turn the camera. Scroll to zoom. Tap Ctrl to lock the camera to your mouse.', keys: ['Right drag', 'Scroll', 'Ctrl'],
     enter: () => { tut.lastYaw = cam.yaw; tut.yawMoved = 0; }, tick: () => { tut.yawMoved += Math.abs(cam.yaw - tut.lastYaw); tut.lastYaw = cam.yaw; }, done: () => tut.yawMoved > 1.4 },
   { title: 'Your Canvas board', text: 'Your real assignments, tests and grades from Canvas live here. Walk to the board and press E.', keys: ['E'],
     target: () => BOARD_POS, done: () => tut.flags.school },
@@ -1869,9 +1869,10 @@ function toggleMouseLook() {
   else lockPointer();
 }
 
-// Shift lock (like Roblox): tap Shift or press the lock button. The cursor
+// Shift lock (like Roblox): tap Ctrl or press the lock button. The cursor
 // hides, the mouse turns the camera, the hero always faces where the camera
-// looks, and the view sits over the right shoulder. Holding Shift still runs.
+// looks, and the view sits over the right shoulder. Shift is only for running,
+// so a short sprint can never flip the lock.
 let shiftLock = false;
 let shoulder = 0; // 0..1, eases the over-the-shoulder offset in and out
 const lockButton = document.getElementById('skLock');
@@ -1894,20 +1895,19 @@ function toggleShiftLock(on = !shiftLock) {
   if (on && !locked()) lockPointer();
   if (!on && locked()) document.exitPointerLock();
   showShiftLock();
-  ui.toast(on ? 'Shift lock on: move the mouse to look, your hero faces where you look. Tap Shift to turn it off.' : 'Shift lock off', 'good');
+  ui.toast(on ? 'Shift lock on: move the mouse to look, your hero faces where you look. Tap Ctrl to turn it off.' : 'Shift lock off', 'good');
 }
 lockButton?.addEventListener('click', (e) => { e.stopPropagation(); audio.unlock(); toggleShiftLock(); });
-let shiftDownAt = 0;
-let shiftUsed = false;
+// A tap of Ctrl on its own toggles it (not Ctrl held with another key).
+let ctrlDownAt = 0;
+let ctrlUsed = false;
 window.addEventListener('keydown', (event) => {
-  if (event.key === 'Shift' && !event.repeat) { shiftDownAt = event.timeStamp; shiftUsed = false; }
-  else if (event.key !== 'Shift') shiftUsed = true;
+  if (event.key === 'Control' && !event.repeat) { ctrlDownAt = event.timeStamp; ctrlUsed = false; }
+  else if (event.key !== 'Control') ctrlUsed = true;
 }, true);
 window.addEventListener('keyup', (event) => {
-  // A quick tap toggles shift lock; holding Shift to run doesn't.
-  if (event.key !== 'Shift' || ui.isOpen()) return;
-  // Timed from the keys themselves, so a slow frame can't turn a tap into a hold.
-  if (event.timeStamp - shiftDownAt < 250 && !shiftUsed) toggleShiftLock();
+  if (event.key !== 'Control' || ui.isOpen()) return;
+  if (event.timeStamp - ctrlDownAt < 400 && !ctrlUsed) toggleShiftLock();
 }, true);
 
 document.addEventListener('pointerlockchange', () => {
