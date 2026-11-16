@@ -406,6 +406,7 @@ export function layoutCountry({ index, height, passOpen, caches, townR, walkR })
   }
   for (const f of fields) object.add(f.orchard ? orchard(f, index, height) : farm(f, index, height));
 
+  A.bakeModel(object);
   return { object, landmarks, roads, fields, spin, mask: (x, z) => at_(x, z) };
 }
 

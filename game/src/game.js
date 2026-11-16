@@ -58,6 +58,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPrefere
 let pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
 renderer.setPixelRatio(pixelRatio);
 renderer.shadowMap.enabled = true;
+renderer.info.autoReset = false; // counted per frame (the post passes would otherwise reset it)
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 // Neutral keeps the cartoon colours as painted; ACES would mute them.
 renderer.toneMapping = THREE.NeutralToneMapping;
@@ -102,26 +103,46 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-// If frames run slow for a few seconds, step the detail down (never back up, to avoid flapping).
+// Detail levels: 0 high, 1 medium, 2 low (for weak laptops: no shadows, no
+// post effects, least grass). Auto starts from a guess at the graphics chip and
+// steps down if frames run slow for a few seconds (never back up, to avoid flapping).
 let quality = 0;
-const pace = { time: 0, frames: 0, slow: 0, warm: 8 };
+const pace = { time: 0, frames: 0, slow: 0, warm: 6 };
+function guessQuality() {
+  try {
+    const gl = renderer.getContext();
+    const info = gl.getExtension('WEBGL_debug_renderer_info');
+    const gpu = String(info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)).toLowerCase();
+    if (/swiftshader|llvmpipe|software|basic render/.test(gpu)) return 2;
+    const cores = navigator.hardwareConcurrency || 4;
+    const memory = navigator.deviceMemory || 8;
+    if (/intel|uhd|iris|hd graphics|mali|adreno|powervr|videocore/.test(gpu)) return cores <= 4 || memory <= 4 ? 2 : 1;
+    if (cores <= 4 || memory <= 4) return 1;
+  } catch { /* no hint: start high and let the pace check step down */ }
+  return 0;
+}
 function watchPace(dt) {
   if (state.settings.quality !== 'auto') return; // the player picked a level in Settings
   if (pace.warm > 0) { pace.warm -= dt; return; } // loading hitches don't count
   if (dt > 0.25 || document.visibilityState !== 'visible') { pace.time = 0; pace.frames = 0; return; }
   pace.time += dt;
   pace.frames += 1;
-  if (pace.time < 4) return;
+  if (pace.time < 3) return;
   const fps = pace.frames / pace.time;
   pace.time = 0;
   pace.frames = 0;
-  pace.slow = fps < 36 ? pace.slow + 1 : 0;
-  if (pace.slow >= 2 && quality < 2) { pace.slow = 0; setQuality(quality + 1); }
+  // Well under 40 drops a level at once; a bit under, after two checks in a row.
+  pace.slow = fps < 30 ? 2 : fps < 42 ? pace.slow + 1 : 0;
+  if (pace.slow >= 2 && quality < 2) { pace.slow = 0; pace.warm = 2; setQuality(quality + 1); }
 }
+let usePost = true; // bloom and grading; off on low, where the scene is drawn straight to the screen
 function setQuality(level) {
   quality = level;
-  pixelRatio = level === 0 ? Math.min(window.devicePixelRatio || 1, 1.5) : Math.min(window.devicePixelRatio || 1, 1.3);
-  bloom.enabled = level < 2;
+  const dpr = window.devicePixelRatio || 1;
+  pixelRatio = [Math.min(dpr, 1.5), Math.min(dpr, 1), Math.min(dpr, 1) * 0.85][level];
+  bloom.enabled = level === 0;
+  usePost = level < 2;
+  for (const rt of [composer.renderTarget1, composer.renderTarget2]) { if (rt.samples !== (level === 0 ? 4 : 0)) { rt.samples = level === 0 ? 4 : 0; rt.dispose(); } }
   world.setQuality(level);
   resize();
 }
@@ -1628,7 +1649,7 @@ function makeCache() {
   beam.position.y = 13;
   g.add(beam);
   g.userData = { chest, beam };
-  return g;
+  return A.bakeModel(g);
 }
 function syncCaches() {
   if (inRealm() || state.scene !== 'earth') return;
@@ -1656,6 +1677,23 @@ function openCacheAt(i) {
 }
 
 // --- Landmarks and the map ------------------------------------------------------------
+// Characters far from you skip the shadow pass (each one is many draw calls).
+let shadowClock = 0;
+function trimShadows(dt) {
+  shadowClock -= dt;
+  if (shadowClock > 0) return;
+  shadowClock = 0.5;
+  const p = player.object.position;
+  const set = (object) => {
+    const near = Math.hypot(object.position.x - p.x, object.position.z - p.z) < 26;
+    if (object.userData.shadowNear === near) return;
+    object.userData.shadowNear = near;
+    object.traverse((o) => { if (o.isMesh) o.castShadow = near; });
+  };
+  for (const inv of invaders.values()) set(inv.object);
+  for (const pack of packs.values()) for (const m of pack.values()) set(m.object);
+}
+
 let revealClock = 0;
 function updateExploring(dt) {
   if (inRealm() || state.scene !== 'earth') return;
@@ -2204,6 +2242,7 @@ let slowTimer = 0;
 let saveTimer = 0;
 
 function frame(nowMs) {
+  const cpuStart = performance.now();
   const rawDt = (nowMs - last) / 1000;
   const dt = Math.min(0.05, rawDt);
   last = nowMs;
@@ -2213,6 +2252,7 @@ function frame(nowMs) {
   syncCaches();
   updateTutorial(time);
   updateExploring(dt);
+  trimShadows(dt);
   world.spinCountry(dt);
   for (const c of cacheObjects) if (!c.done) { c.object.userData.beam.material.opacity = 0.16 + Math.sin(time * 2) * 0.06; c.object.userData.chest.position.y = Math.sin(time * 1.5) * 0.06; }
   if (!inRealm()) { moveInvaders(dt, time); updateTown(dt, time); }
@@ -2279,7 +2319,10 @@ function frame(nowMs) {
     saveTimer = 8;
     save();
   }
-  composer.render();
+  renderer.info.reset();
+  if (usePost) composer.render();
+  else renderer.render(scene, camera);
+  pace.cpu = (pace.cpu || 0) * 0.95 + (performance.now() - cpuStart) * 0.05;
   requestAnimationFrame(frame);
 }
 
@@ -3588,6 +3631,7 @@ function applySettings() {
   audio.applyVolumes();
   document.getElementById('labels').style.display = st.labels === false ? 'none' : '';
   if (st.quality !== 'auto' && st.quality !== quality) setQuality(st.quality);
+  else if (st.quality === 'auto' && !pace.guessed) { pace.guessed = true; setQuality(guessQuality()); }
   refreshHud();
 }
 function openSettings() {
@@ -3596,7 +3640,7 @@ function openSettings() {
     values: { ...state.settings },
     onChange: (key, value) => {
       state.settings[key] = value;
-      if (key === 'quality' && value === 'auto') { pace.slow = 0; setQuality(0); }
+      if (key === 'quality' && value === 'auto') { pace.slow = 0; setQuality(guessQuality()); }
       applySettings();
       if (key === 'sfxVol' || key === 'sfx') audio.coin();
       save();
@@ -3727,7 +3771,8 @@ window.epoch = {
   vault: () => openVault(), aura(id) { state.vault.owned[id] = 1; state.vault.aura = id; dressAura(); }, grant(id) { state.vault.owned[id] = (state.vault.owned[id] || 0) + 1; if (S.COLLECTIBLES[id].kind === 'hat' && !state.cosmetics.owned.includes(id)) state.cosmetics.owned.push(id); if (S.COLLECTIBLES[id].kind === 'pet') state.critters.caught[id] = 1; if (S.COLLECTIBLES[id].kind === 'decor' && !state.decorUnlocked.includes(id)) state.decorUnlocked.push(id); syncPedestals(); }, openTop() { const c = state.school.chests.at(-1); if (c) openLoot(c.id, player.object.position.clone()); },
   invaders: () => [...invaders.values()].map((i) => ({ name: i.item.name, mode: i.mode, x: +i.object.position.x.toFixed(1), z: +i.object.position.z.toFixed(1), inScene: Boolean(i.object.parent) })),
   armor(id) { const inv = invaders.get(id); return inv && inv.object.userData.armor?.filter((p) => p.visible).length; },
-  info: () => ({ quality, calls: renderer.info.render.calls, tris: renderer.info.render.triangles }),
+  info: () => ({ quality, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, cpuMs: Math.round((pace.cpu || 0) * 10) / 10 }),
+  debug: { scene, renderer, bloom, world, composer },
   reset() { localStorage.removeItem(SAVE_KEY); location.reload(); },
 };
 

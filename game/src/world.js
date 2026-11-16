@@ -420,6 +420,7 @@ export function createWorld(scene, renderer) {
   let landIndex = -1;
   let grass = null;
   let wildGrass = null; // grass out in the country
+  let countryTrees = null; // the forest past the walls
   let caches = []; // [{ x, y, z }] hidden caches in this land
   let treeSolids = []; // trees and landmarks you can bump into, out in the country
   let country = { landmarks: [], roads: [], fields: [], spin: [], mask: () => 0 };
@@ -561,6 +562,8 @@ export function createWorld(scene, renderer) {
       }
       slopes.place(list);
       landParts.add(slopes.object);
+      countryTrees = slopes.object;
+      applyTreeShadows();
       for (const l of country.landmarks) treeSolids.push({ x: l.x, z: l.z, r: l.solid });
     }
 
@@ -580,7 +583,9 @@ export function createWorld(scene, renderer) {
     applyGrassLevel();
   }
   function applyGrassLevel() {
-    for (const g of [grass, wildGrass]) if (g) g.count = Math.floor(g.userData.full * [1, 0.55, 0.25][grassLevel]);
+    if (grass) grass.count = Math.floor(grass.userData.full * [0.8, 0.45, 0.2][grassLevel]);
+    if (wildGrass) wildGrass.count = Math.floor(wildGrass.userData.full * [0.6, 0.25, 0][grassLevel]);
+    if (wildGrass) wildGrass.visible = grassLevel < 2;
   }
 
   earth.add(createClouds(16, 404, 60, 190, 34, 62));
@@ -1080,10 +1085,21 @@ export function createWorld(scene, renderer) {
   }
 
   /** Lighter settings for slow machines: 0 full, 1 less grass and smaller shadows, 2 least. */
+  // The country forest is instanced with no culling, so every tree would be
+  // drawn into the shadow map each frame: only on high quality.
+  function applyTreeShadows() {
+    countryTrees?.traverse((o) => { if (o.isMesh) o.castShadow = grassLevel === 0; });
+  }
+  /** 0 high, 1 medium, 2 low (no shadows, least grass). */
   function setQuality(level) {
     grassLevel = level;
     applyGrassLevel();
-    const size = [2048, 1024, 1024][level];
+    applyTreeShadows();
+    sun.castShadow = level < 2;
+    const size = [2048, 1024, 512][level];
+    const reach = [70, 48, 48][level];
+    Object.assign(sun.shadow.camera, { left: -reach, right: reach, top: reach, bottom: -reach });
+    sun.shadow.camera.updateProjectionMatrix();
     if (sun.shadow.mapSize.x !== size) {
       sun.shadow.mapSize.set(size, size);
       sun.shadow.map?.dispose();

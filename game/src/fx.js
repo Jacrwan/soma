@@ -14,12 +14,16 @@ export function createFx(scene, camera) {
   const cube = new THREE.BoxGeometry(0.22, 0.22, 0.22);
   const v = new THREE.Vector3();
 
-  function project(pos, node, dy = 0) {
+  let hudAge = 0;
+  let hudRects = [];
+  // Places node over pos on screen. show: also make it visible (labels decide that themselves).
+  function project(pos, node, dy = 0, show = true) {
     v.copy(pos);
     v.y += dy;
     v.project(camera);
     const visible = v.z < 1 && v.z > -1 && Math.abs(v.x) < 1.15 && Math.abs(v.y) < 1.15;
-    node.style.display = visible ? '' : 'none';
+    if (!visible && node.style.display !== 'none') node.style.display = 'none';
+    else if (visible && show && node.style.display !== '') node.style.display = '';
     if (visible) node.style.transform = `translate(${((v.x + 1) / 2) * innerWidth}px, ${((1 - v.y) / 2) * innerHeight}px) translate(-50%, -100%)`;
     return visible;
   }
@@ -144,9 +148,15 @@ export function createFx(scene, camera) {
       // Labels never pile up: exam labels and the nearest ones go first, and a
       // label that would overlap one already placed waits until there's room.
       // A label mostly hidden under a HUD card is dropped rather than shown cut off.
-      const hud = [...document.querySelectorAll('#hud .unit, #hud .era-card, #hud .hud-left > :not([hidden]), #hud .tracker, #hud .hud-center, #hud .menu, #hud .hotbar')]
-        .map((n) => n.getBoundingClientRect()).filter((r) => r.width && r.height)
-        .map((r) => ({ l: r.left, r: r.right, t: r.top, b: r.bottom }));
+      // Where the HUD cards sit: measured twice a second, not every frame.
+      hudAge -= dt;
+      if (hudAge <= 0) {
+        hudAge = 0.5;
+        hudRects = [...document.querySelectorAll('#hud .unit, #hud .era-card, #hud .hud-left > :not([hidden]), #hud .tracker, #hud .hud-center, #hud .menu, #hud .hotbar')]
+          .map((n) => n.getBoundingClientRect()).filter((r) => r.width && r.height)
+          .map((r) => ({ l: r.left, r: r.right, t: r.top, b: r.bottom }));
+      }
+      const hud = hudRects;
       const placed = [];
       const order = [];
       for (const entry of labels) {
@@ -154,7 +164,7 @@ export function createFx(scene, camera) {
         const pos = v.clone();
         let shown = Boolean(entry.object.parent);
         for (let o = entry.object; o && shown; o = o.parent) shown = o.visible;
-        if (!shown || !project(pos, entry.node, entry.height)) { entry.node.style.display = 'none'; continue; }
+        if (!shown || !project(pos, entry.node, entry.height, false)) { if (entry.node.style.display !== 'none') entry.node.style.display = 'none'; continue; }
         order.push({ entry, x: ((v.x + 1) / 2) * innerWidth, y: ((1 - v.y) / 2) * innerHeight, depth: v.z, boss: entry.node.classList.contains('boss') });
       }
       order.sort((a, b) => (b.boss - a.boss) || (a.depth - b.depth));
@@ -165,7 +175,8 @@ export function createFx(scene, camera) {
         const area = (box.r - box.l) * (box.b - box.t);
         const under = hud.some((p) => Math.max(0, Math.min(box.r, p.r) - Math.max(box.l, p.l)) * Math.max(0, Math.min(box.b, p.b) - Math.max(box.t, p.t)) > area * 0.5);
         const hit = under || placed.some((p) => box.l < p.r && box.r > p.l && box.t < p.b && box.b > p.t);
-        e.node.style.display = hit ? 'none' : '';
+        const want = hit ? 'none' : '';
+        if (e.node.style.display !== want) e.node.style.display = want;
         if (!hit) placed.push(box);
       }
       for (let i = rings.length - 1; i >= 0; i--) {

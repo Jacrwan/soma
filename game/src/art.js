@@ -2096,3 +2096,60 @@ export function makePaintPot(color) {
   g.add(at(squash(ball(0.12, color, 0), 1, 1.6, 1), 0.38, 0.4, 0), at(tilt(box(0.08, 0.7, 0.02, C.woodDark), 0, -0.4), 0.15, 0.55, -0.05));
   return g;
 }
+
+// --- Baking: fewer draw calls -------------------------------------------------------
+// A model built from dozens of little boxes costs a draw call per box (twice
+// with shadows). bakeModel() merges the plain parts into one mesh per material.
+// Parts the game moves or looks up stay as they are: anything named (except
+// 'window' and 'glow', which only matter for their shared material), anything
+// under a named group, and anything a userData field points at.
+const MERGE_NAMES = new Set(['', 'window', 'glow']);
+export function bakeModel(root) {
+  root.updateMatrixWorld(true);
+  const keep = new Set();
+  root.traverse((o) => {
+    for (const v of Object.values(o.userData || {})) for (const x of Array.isArray(v) ? v : [v]) if (x && x.isObject3D) x.traverse((c) => keep.add(c));
+    if (o !== root && o.name && !MERGE_NAMES.has(o.name) && !o.isMesh) o.traverse((c) => keep.add(c));
+  });
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const local = new THREE.Matrix4();
+  const buckets = new Map();
+  const taken = [];
+  root.traverse((o) => {
+    if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || keep.has(o) || !MERGE_NAMES.has(o.name) || Array.isArray(o.material) || !o.visible) return;
+    const geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    geo.clearGroups();
+    for (const name of Object.keys(geo.morphAttributes)) delete geo.morphAttributes[name];
+    local.multiplyMatrices(inv, o.matrixWorld);
+    geo.applyMatrix4(local);
+    const attrs = Object.keys(geo.attributes).sort().join(',');
+    const key = `${o.material.uuid}|${o.name}|${attrs}|${o.castShadow}|${o.receiveShadow}`;
+    if (!buckets.has(key)) buckets.set(key, { material: o.material, name: o.name, cast: o.castShadow, receive: o.receiveShadow, geos: [] });
+    buckets.get(key).geos.push(geo);
+    taken.push(o);
+  });
+  if (taken.length < 3) return root;
+  for (const o of taken) o.parent.remove(o);
+  for (const b of buckets.values()) {
+    const merged = b.geos.length === 1 ? b.geos[0] : mergeGeometries(b.geos, false);
+    if (!merged) continue;
+    const m = new THREE.Mesh(merged, b.material);
+    m.name = b.name;
+    m.castShadow = b.cast;
+    m.receiveShadow = b.receive;
+    root.add(m);
+  }
+  return root;
+}
+
+// Every static model comes out baked. (Exported function bindings can be re-pointed from inside the module.)
+{ const raw = makeDecor; makeDecor = (...args) => bakeModel(raw(...args)); }
+{ const raw = makeHall; makeHall = (...args) => bakeModel(raw(...args)); }
+{ const raw = makeMarket; makeMarket = (...args) => bakeModel(raw(...args)); }
+{ const raw = makeVault; makeVault = (...args) => bakeModel(raw(...args)); }
+{ const raw = makeLair; makeLair = (...args) => bakeModel(raw(...args)); }
+{ const raw = makeWatchtower; makeWatchtower = (...args) => bakeModel(raw(...args)); }
+{ const raw = makeChest; makeChest = (...args) => bakeModel(raw(...args)); }
+{ const raw = makeCreature; makeCreature = (...args) => bakeModel(raw(...args)); }
+{ const raw = makePedestal; makePedestal = (...args) => bakeModel(raw(...args)); }
+{ const raw = makeTrophy; makeTrophy = (...args) => bakeModel(raw(...args)); }
