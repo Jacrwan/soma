@@ -104,11 +104,12 @@ test('syllabus: Find dates reads the uploaded document through the importer and 
 
 // ── Cost, on the server ─────────────────────────────────────────────────────
 
-test('the server takes only known purposes: triage, and practice questions for the game', async () => {
+test('the server takes only known purposes: triage, and practice and the week planner for the game', async () => {
   expect(validateChatInput({ messages: [{ role: 'user', content: 'Course: Biology' }], systemPrompt: 'Write questions', purpose: 'study' })).toBe('invalid_purpose');
   expect(validateChatInput({ messages: [{ role: 'user', content: 'hi' }], purpose: 'triage' })).toBeNull();
   expect(validateChatInput({ messages: [{ role: 'user', content: 'Course: Biology' }], systemPrompt: 'Write questions', purpose: 'practice' })).toBeNull();
   expect(validateChatInput({ messages: [{ role: 'user', content: 'Course: Biology' }], purpose: 'practice', model: 'sonnet' })).toBe('invalid_model');
+  expect(validateChatInput({ messages: [{ role: 'user', content: 'Plan my week' }], systemPrompt: 'Plan', purpose: 'oracle' })).toBeNull();
 });
 
 test('reading a course site or syllabus stops at the budget, and is counted when it runs', async () => {

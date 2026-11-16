@@ -565,6 +565,53 @@ test('buildings can go anywhere: free slots first, more room each age', () => {
   assert.deepStrictEqual(s.padSpots.earth, {});
 });
 
+test('with the Soma plan, planned tasks for today become the daily quests', () => {
+  const s = rich();
+  S.dailyRefresh(s, NOW);
+  const generic = s.daily.quests.map((q) => q.type);
+  const today = new Date(NOW);
+  const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const todos = [{ id: 't1', text: 'Read 4.1-4.3', date: iso, minutes: 30, done: false }, { id: 't2', text: 'Problem Set 7', date: iso, minutes: 45, done: false }, { id: 't3', text: 'Tomorrow thing', date: '2099-01-01', done: false }];
+  S.setSomaPlan(s, { status: 'free', todos }, NOW);
+  assert.deepStrictEqual(s.daily.quests.map((q) => q.type), generic); // free: generic quests stay
+  S.setSomaPlan(s, { status: 'plus', todos }, NOW);
+  assert.deepStrictEqual(s.daily.quests.map((q) => q.id), ['t1', 't2']);
+  assert.strictEqual(S.claimDaily(s, NOW).claimed, 0);
+  s.soma.done.t1 = true; s.soma.done.t2 = true;
+  const r = S.claimDaily(s, NOW);
+  assert.strictEqual(r.claimed, 2);
+  assert.strictEqual(r.streak, 1);
+});
+
+test('the Semester Pass fills only from studying and pays each reward once', () => {
+  const s = rich();
+  assert.strictEqual(S.passTier(s), 0);
+  S.startStudy(s, null, 45, NOW);
+  S.finishStudy(s, NOW + 45 * 60_000);
+  S.startStudy(s, null, 45, NOW + DAY);
+  S.finishStudy(s, NOW + DAY + 45 * 60_000);
+  assert.strictEqual(S.passTier(s), 1);
+  assert.deepStrictEqual(S.passClaimable(s), [[1, 'free']]);
+  const lures = s.critters.lures;
+  assert.strictEqual(S.claimPass(s, 1, 'free').n, 3);
+  assert.strictEqual(s.critters.lures, lures + 3);
+  assert.strictEqual(S.claimPass(s, 1, 'free'), null);
+  assert.strictEqual(S.claimPass(s, 1, 'premium'), null); // no pass
+  s.pass.premium = true;
+  assert.strictEqual(S.claimPass(s, 1, 'premium').id, 'frostknight');
+  assert.ok(s.cosmetics.outfits.includes('frostknight'));
+  assert.strictEqual(S.claimPass(s, 2, 'free'), null); // not reached
+  s.pass.points = S.PASS_TIER_POINTS * 20;
+  S.claimPass(s, 20, 'free');
+  assert.ok(s.cosmetics.themes.includes('lanterns'));
+  S.claimPass(s, 10, 'free');
+  assert.strictEqual(s.critters.caught.ghostowl, 1);
+  S.claimPass(s, 4, 'premium');
+  assert.ok(S.decorAvailable(s).includes('torii'));
+  assert.ok(!S.decorAvailable(s).includes('koi'));
+  for (let i = 0; i < 200; i++) assert.notStrictEqual(S.rollCritter(i % 2 === 0), 'ghostowl');
+});
+
 test('camps and treasure come back the next day, shrines pay once ever', () => {
   const s = rich(0);
   assert.ok(!S.exploreDone(s, 'wilds:camp:0', NOW));

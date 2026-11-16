@@ -86,6 +86,59 @@ export const CHARACTERS = [
 ];
 const byId = (id) => CHARACTERS.find((c) => c.id === id) || CHARACTERS[0];
 
+/** Frost Knight colours: armour and cloth go to ice and deep winter blue; skin and eyes stay. */
+function frostColours(map) {
+  const image = map.image;
+  const canvas = document.createElement('canvas');
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(image, 0, 0);
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = img.data;
+  const COLS = 8, ROWS = 4, cw = canvas.width / COLS, ch = canvas.height / ROWS;
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let y = Math.floor((row + 0.2) * ch); y < (row + 0.8) * ch; y += 6) {
+        for (let x = Math.floor((col + 0.15) * cw); x < (col + 0.7) * cw; x += 6) {
+          const i = (y * canvas.width + x) * 4;
+          r += d[i]; g += d[i + 1]; b += d[i + 2]; n += 1;
+        }
+      }
+      const [h, sat, l] = hsl(r / n / 255, g / n / 255, b / n / 255);
+      if (l < 0.13) continue; // eyes and outlines
+      if (h > 12 && h < 42 && sat > 0.3 && l > 0.55) continue; // skin
+      // Warm cloth (the tabard, the cape) becomes deep winter blue; metal and the rest go icy.
+      const warm = (h < 20 || h > 330) && sat > 0.35;
+      // Each colour keeps its place in the light-to-dark order, so plate, trim and
+      // straps stay told apart: pale greys become ice white, mid greys steel blue,
+      // dark greys deep navy; warm cloth (tabard, cape) goes royal blue; gold trim
+      // turns to silver.
+      const gold = h > 38 && h < 62 && sat > 0.35;
+      const band = warm ? [222, 0.66, 0.3] : gold ? [205, 0.18, 0.86] : l > 0.7 ? [198, 0.42, 0.9] : l > 0.45 ? [204, 0.5, 0.6] : l > 0.25 ? [212, 0.48, 0.36] : [222, 0.5, 0.18];
+      const paint = (v) => rgb(band[0], band[1], Math.max(0.05, Math.min(0.97, band[2] + (v - l) * 0.9)));
+      for (let y = Math.floor(row * ch); y < (row + 1) * ch; y++) {
+        for (let x = Math.floor(col * cw); x < (col + 1) * cw; x++) {
+          const i = (y * canvas.width + x) * 4;
+          const out = paint(hsl(d[i] / 255, d[i + 1] / 255, d[i + 2] / 255)[2]);
+          d[i] = out[0] * 255; d[i + 1] = out[1] * 255; d[i + 2] = out[2] * 255;
+        }
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const next = new THREE.CanvasTexture(canvas);
+  next.colorSpace = THREE.SRGBColorSpace;
+  next.flipY = map.flipY;
+  next.wrapS = map.wrapS;
+  next.wrapT = map.wrapT;
+  next.magFilter = map.magFilter;
+  next.minFilter = map.minFilter;
+  return next;
+}
+const PALETTES = { frost: frostColours };
+
 const loader = new GLTFLoader();
 const loaded = new Map(); // id -> Promise<{ char, gltf, fit }>
 let current = null; // { char, gltf, fit }
@@ -158,9 +211,10 @@ function dropFangs(gltf) {
   });
 }
 
-function load(char) {
-  if (!loaded.has(char.id)) {
-    loaded.set(char.id, loader.loadAsync(`/game/models/${char.file}`).then(async (gltf) => {
+function load(char, palette = null) {
+  const key = palette ? `${char.id}:${palette}` : char.id;
+  if (!loaded.has(key)) {
+    loaded.set(key, loader.loadAsync(`/game/models/${char.file}`).then(async (gltf) => {
       gltf.scene.updateMatrixWorld(true);
       const box = new THREE.Box3();
       gltf.scene.traverse((o) => { if (o.isSkinnedMesh && /Body|Head|Leg/.test(o.name)) box.expandByObject(o); });
@@ -175,19 +229,27 @@ function load(char) {
           o.material.map = repainted.get(o.material.map);
         });
       }
+      if (palette && PALETTES[palette]) {
+        const repainted = new Map();
+        gltf.scene.traverse((o) => {
+          if (!o.isMesh || !o.material.map?.image) return;
+          if (!repainted.has(o.material.map)) repainted.set(o.material.map, PALETTES[palette](o.material.map));
+          o.material.map = repainted.get(o.material.map);
+        });
+      }
       // Repainted first, so the borrowed head keeps its own colours.
       if (char.head) swapHead(gltf, await loader.loadAsync(`/game/models/${char.head.file}`), char.head.mesh, `${char.name}_Head`, char.head.trim);
-      return { char, gltf, fit };
+      return { char, gltf, fit, palette };
     }));
   }
-  return loaded.get(char.id);
+  return loaded.get(key);
 }
 
 /** Switches the hero to a character (by id). Resolves true once it can be drawn. */
-export function useCharacter(id) {
+export function useCharacter(id, palette = null) {
   const char = byId(id);
-  return load(char).then((entry) => {
-    if (byId(id) === char) current = entry;
+  return load(char, palette).then((entry) => {
+    current = entry;
     return true;
   }).catch((error) => {
     console.warn('Avatar model did not load; using the built-in figure.', error);
@@ -347,6 +409,23 @@ export function createVillager(lookId, { tint = null, scale = 0.88 } = {}) {
         mixer.update(dt);
       },
     };
+    return root;
+  });
+}
+
+/** A still copy of a hero model (for thumbnails and previews), weapons hidden. */
+export function previewAvatar(id, palette = null) {
+  const char = byId(id);
+  return load(char, palette).then(({ gltf, fit }) => {
+    const model = cloneSkinned(gltf.scene);
+    model.scale.setScalar(fit);
+    for (const name of [...char.hide, char.great]) { const p = model.getObjectByName(name); if (p) p.visible = false; }
+    const mixer = new THREE.AnimationMixer(model);
+    const idle = gltf.animations.find((a) => a.name === 'Idle');
+    if (idle) { mixer.clipAction(idle).play(); mixer.update(0.4); }
+    model.traverse((o) => { if (o.isMesh) o.frustumCulled = false; });
+    const root = new THREE.Group();
+    root.add(model);
     return root;
   });
 }

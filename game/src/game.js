@@ -7,9 +7,10 @@ import * as A from './art.js';
 import * as W from './world.js';
 import { createUI, timeLeft } from './ui.js';
 import { createFx, createAudio } from './fx.js';
-import { useCharacter, hasAvatar, createAvatar, createVillager, CHARACTERS } from './avatar.js';
+import { useCharacter, hasAvatar, createAvatar, createVillager, previewAvatar, CHARACTERS } from './avatar.js';
 import { createRealms } from './realm.js';
 import { makePractice } from './practice.js';
+import * as Soma from './soma.js';
 import { focusView } from './nature.js';
 import { enemiesReady, hasEnemy, createEnemy } from './enemies.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -140,9 +141,19 @@ function dressPlayer() {
   } else player.model = A.makeCharacter(state.cosmetics.color, hat);
   player.object.add(player.model);
 }
-useCharacter(state.cosmetics.character).then((ok) => { if (ok) dressPlayer(); });
+/** The model the hero wears: an outfit (e.g. Frost Knight) or the picked character. */
+function heroLook() {
+  const outfit = S.OUTFITS[state.cosmetics.outfit];
+  return outfit ? { id: outfit.base, palette: outfit.palette } : { id: state.cosmetics.character, palette: null };
+}
+function wearLook() {
+  const look = heroLook();
+  return useCharacter(look.id, look.palette).then((ok) => { if (ok) dressPlayer(); return ok; });
+}
+wearLook();
 function pickCharacter(id) {
   state.cosmetics.character = id;
+  state.cosmetics.outfit = null;
   save();
   useCharacter(id).then((ok) => { if (ok && state.cosmetics.character === id) { dressPlayer(); fx.burst(player.object.position.clone().add(new THREE.Vector3(0, 1, 0)), A.C.gold, 18, 5, 5); } });
 }
@@ -549,6 +560,7 @@ const ui = createUI({
   help: () => ui.help({ first: false }),
   sound: () => toggleMute(),
   settings: () => openSettings(),
+  pass: () => openPass(),
   interact: () => interact(),
 });
 
@@ -1012,6 +1024,7 @@ function openHero() {
     onSell: (id) => { if (S.sellGear(state, id)) { audio.coin(); reopen(); } },
     onSkill: (id) => { if (S.spendSkill(state, id)) { audio.build(); reopen(); } },
     onWardrobe: () => { ui.close(); openWardrobe(); },
+    onStyle: () => { ui.close(); openStyle(); },
     characters: CHARACTERS.map(({ id, name }) => ({ id, name })), character: state.cosmetics.character,
     onCharacter: (id) => { pickCharacter(id); ui.close(); openHero(); },
     onStudy: () => { ui.close(); openStudy(); },
@@ -1409,7 +1422,7 @@ function hitTownEnemies(inArc, mult = 1) {
 let target = null;
 
 function findTarget() {
-  if (fight || player.down || build.on) return null;
+  if (fight || player.down || build.on || tryOn) return null;
   const p = player.object.position;
   let best = null;
   const offer = (dist, range, entry) => {
@@ -1451,6 +1464,8 @@ function findTarget() {
   if (sceneName === 'earth') offer(Math.hypot(p.x - BOARD_POS.x, p.z - BOARD_POS.z), 4, { text: 'Canvas board: your assignments and grades', run: openSchool });
   if (sceneName === 'earth' && !build.on) {
     offer(Math.hypot(p.x - MARKET_POS.x, p.z - MARKET_POS.z), 5, { text: 'Open the market', run: openMarket });
+    offer(Math.hypot(p.x - WATCH_POS.x, p.z - WATCH_POS.z), 5, { text: 'Watchtower: what Canvas doesn\u2019t show', run: openWatchtower });
+    for (const [id, sh] of shadows) offer(Math.hypot(p.x - sh.object.position.x, p.z - sh.object.position.z), 3.4, sh.revealed ? { text: `Mark \u201c${sh.reading.label}\u201d as read`, run: () => readShadow(id) } : { text: 'Something from your syllabus (Watchtower)', run: openWatchtower });
     for (const [name, f] of folk) offer(Math.hypot(p.x - f.object.position.x, p.z - f.object.position.z), 3.2, { text: `Talk to ${name}`, run: () => openVillager(name) });
     for (const g of ghosts) offer(p.distanceTo(g.object.position), 3.6, { text: `Review ${S.dueReviews(state).length} missed questions`, run: openReview });
     for (const [id, h] of halls) {
@@ -1523,6 +1538,7 @@ window.addEventListener('keydown', (event) => {
   else if (key === 'm') toggleMute();
   else if (key === 'o') openSettings();
   else if (key === 'k') openCollection();
+  else if (key === 'y') openPass();
 });
 window.addEventListener('keyup', (event) => keys.delete(event.key.toLowerCase()));
 window.addEventListener('blur', () => keys.clear());
@@ -1611,7 +1627,7 @@ function solids() {
   else list.push({ x: W.LANDER_POS.x, z: W.LANDER_POS.z, r: 2.2 });
   if (fight) list.push({ x: fight.inv.object.position.x, z: fight.inv.object.position.z, r: 2.6 });
   if (sceneName === 'earth') {
-    list.push({ x: MARKET_POS.x, z: MARKET_POS.z, r: 2.6 });
+    list.push({ x: MARKET_POS.x, z: MARKET_POS.z, r: 2.6 }, { x: WATCH_POS.x, z: WATCH_POS.z, r: 2.4 });
     for (const h of halls.values()) list.push({ x: h.object.position.x, z: h.object.position.z, r: 2.7 });
     for (const d of state.decor) { const r = S.DECOR[d.type]?.solid; if (r) list.push({ x: d.x, z: d.z, r }); }
   }
@@ -1831,7 +1847,17 @@ function frame(nowMs) {
   updateBuild();
   if (!inRealm() && state.scene === 'earth') moveVillagers(dt, time);
   updateCritters(dt, time);
+  if (!inRealm() && state.scene === 'earth') moveShadows(dt, time);
+  watchtower.userData.beam.rotation.y += dt * 0.6;
   updatePet(dt, time);
+  updateTheme(dt, time);
+  for (const g of gardenAnim) {
+    if (!g.parent) continue;
+    if (g.name === 'koifish') for (const f of g.children) { f.userData.a += dt * 0.6 / f.userData.r; f.position.set(Math.cos(f.userData.a) * f.userData.r, 0.1, Math.sin(f.userData.a) * f.userData.r * 0.8); f.rotation.y = -f.userData.a; }
+    else for (const p of g.children) { const t = (time * 0.15 + p.userData.seed) % 1; p.position.set(Math.sin(p.userData.seed * 7 + time) * 1.2, 2.6 - t * 2.6, Math.cos(p.userData.seed * 5) * 1.1 + t * 0.6); p.rotation.set(time * 2 + p.userData.seed, 0, time); }
+  }
+  updateTrail(dt);
+  if (tryOn) { cam.yaw += dt * 0.5; cam.pitch += (0.18 - cam.pitch) * Math.min(1, dt * 3); cam.want += (5.5 - cam.want) * Math.min(1, dt * 3); }
   ghosts.forEach((g, i) => { g.object.position.y = 0.5 + Math.sin(time * 1.6 + i) * 0.25; g.object.rotation.y = Math.sin(time * 0.5 + i) * 0.6; });
   updateRaiders(dt);
   realms.update(dt, time, player.object.position, !player.down);
@@ -1968,6 +1994,7 @@ function syncHalls() {
 
 // Build mode: place decorations anywhere in town.
 const decorObjects = new Map(); // decor id -> object
+const gardenAnim = []; // koi that swim, petals that fall
 function syncDecor() {
   const ids = new Set(state.decor.map((d) => d.id));
   for (const [id, o] of decorObjects) if (!ids.has(id)) { o.parent?.remove(o); decorObjects.delete(id); }
@@ -1978,7 +2005,7 @@ function syncDecor() {
     o.rotation.y = d.rot;
     world.earth.add(o);
     decorObjects.set(d.id, o);
-    o.traverse((m) => { if (m.name === 'sails') spinners.push(m); });
+    o.traverse((m) => { if (m.name === 'sails') spinners.push(m); if (m.name === 'koifish' || m.name === 'petals') gardenAnim.push(m); });
   }
 }
 
@@ -2012,6 +2039,7 @@ function buildBlocked(x, z, big = false) {
   for (let i = 0; i < 7; i++) if (W.wonderPosition(i) && near(W.wonderPosition(i), 5)) return true;
   if (near(MARKET_POS, 3.6) || near(BOARD_POS, 2.4) || near(W.GATE, 4) || near(W.DOCK_POS, 4)) return true;
   for (const at of HALL_SLOTS) if (near(at, 3.4)) return true;
+  if (near(W.WATCHTOWER_POS, 3.6)) return true;
   // Keep the road to the gate clear for the marching assignments.
   if (Math.abs(x) < 2.6 && z > 3) return true;
   return false;
@@ -2352,13 +2380,15 @@ function drawDaily() {
   dailyEl.replaceChildren();
   const head = document.createElement('div');
   head.className = 'daily-head';
-  head.innerHTML = `<b>Today</b><span>${done}/${d.quests.length}</span>${d.streak ? `<em>🔥 ${d.streak} day${d.streak === 1 ? '' : 's'}</em>` : ''}`;
+  head.innerHTML = `<b>${d.fromPlan ? 'Your plan' : 'Today'}</b><span>${done}/${d.quests.length}</span>${d.streak ? `<em>🔥 ${d.streak} day${d.streak === 1 ? '' : 's'}</em>` : ''}`;
   dailyEl.append(head);
   for (const q of d.quests) {
     const row = document.createElement('div');
     const have = S.dailyProgress(state, q);
-    row.className = `daily-row ${have >= q.target ? 'done' : ''}`;
-    row.innerHTML = `<i></i><span>${escapeHtml(q.text)}</span><small>${have >= q.target ? '✓' : `${have}/${q.target}`}</small>`;
+    row.className = `daily-row ${have >= q.target ? 'done' : ''} ${q.type === 'plan' ? 'plan' : ''}`;
+    row.innerHTML = `<i></i><span>${escapeHtml(q.text)}</span><small>${have >= q.target ? '✓' : q.type === 'plan' ? (q.minutes ? `${q.minutes}m` : '') : `${have}/${q.target}`}</small>`;
+    // Planned tasks come from Soma: click to check one off (it updates in Soma too).
+    if (q.type === 'plan' && !q.claimed) row.addEventListener('click', (e) => { e.stopPropagation(); togglePlanTask(q.id, have < 1); });
     dailyEl.append(row);
   }
 }
@@ -2530,6 +2560,344 @@ function openCollection() {
   });
 }
 
+
+// --- Soma: the plan, the syllabus, the Watchtower and the Oracle ---------------------------
+// With Soma's plan (trial or paid): syllabus readings Canvas doesn't show
+// march as shadow books, today's AI-planned tasks become the daily quests,
+// and the Oracle plans your week. Without it, the shadows march unrevealed.
+let somaBusy = false;
+let somaAt = 0;
+async function somaRefresh(force = false) {
+  if (somaBusy || (!force && Date.now() - somaAt < 180000)) return;
+  somaBusy = true;
+  somaAt = Date.now();
+  try {
+    const status = await Soma.planStatus();
+    const plan = status === 'offline' ? { todos: [], readings: [] } : await Soma.loadPlan().catch(() => ({ todos: [], readings: [] }));
+    S.setSomaPlan(state, { status, ...plan });
+    syncShadows();
+    drawDaily();
+    save();
+  } finally {
+    somaBusy = false;
+  }
+}
+window.addEventListener('focus', () => somaRefresh());
+
+const WATCH_POS = W.WATCHTOWER_POS;
+const watchtower = A.makeWatchtower();
+onGround(watchtower, WATCH_POS.x, WATCH_POS.z);
+watchtower.rotation.y = Math.atan2(-WATCH_POS.x, -WATCH_POS.z);
+world.earth.add(watchtower);
+const watchLabel = fx.label(watchtower, watchtower.userData.height + 0.3, '<em>Soma</em>Watchtower', 'board');
+
+// Shadow books: syllabus readings due in the next 10 days (or a week late).
+const shadows = new Map(); // reading id -> { object, label, reading, revealed }
+function syncShadows() {
+  const now = Date.now();
+  const revealed = state.soma.status === 'plus';
+  const wanted = new Map();
+  if (state.scene === 'earth' && !inRealm()) {
+    for (const r of state.soma.readings) {
+      const due = Date.parse(`${r.due}T23:59:00`);
+      if (!Number.isFinite(due) || due - now > 10 * 86400000 || now - due > 7 * 86400000) continue;
+      wanted.set(r.id, { r, due });
+    }
+  }
+  for (const [id, sh] of shadows) {
+    if (wanted.has(id) && sh.revealed === revealed) continue;
+    sh.object.parent?.remove(sh.object);
+    sh.label.remove();
+    shadows.delete(id);
+  }
+  let i = 0;
+  for (const [id, { r, due }] of wanted) {
+    let sh = shadows.get(id);
+    if (!sh) {
+      const object = A.makeShadowBook(revealed);
+      world.earth.add(object);
+      sh = { object, reading: r, revealed, label: fx.label(object, 2.4, '', 'shadow') };
+      shadows.set(id, sh);
+    }
+    // They march on the side lanes, a step closer each day, like Canvas work.
+    const t = Math.max(0, Math.min(1, 1 - (due - now) / (10 * 86400000)));
+    const lane = (i % 2 ? 1 : -1) * (6.5 + (i % 3) * 1.4);
+    sh.home = { x: lane, z: W.PATH_START_Z + (W.PATH_END_Z - W.PATH_START_Z) * t };
+    if (!sh.placed) { sh.object.position.set(lane, 0, W.PATH_START_Z + 4); sh.placed = true; }
+    sh.reading = r;
+    const when = due < now ? `${timeLeft(now - due)} behind` : `due ${new Date(due).toLocaleDateString(undefined, { weekday: 'short' })}`;
+    sh.label.set(revealed
+      ? `<em>Syllabus · ${escapeHtml(r.course)}</em>${escapeHtml(`${r.label}${r.title ? ` ${r.title}` : ''}`)}<small>${when} · not on Canvas</small>`
+      : '<em>Not on Canvas</em>Something from your syllabus<small>the Watchtower can reveal it</small>', `shadow ${revealed ? 'seen' : ''}`);
+    i += 1;
+  }
+}
+function moveShadows(dt, time) {
+  for (const sh of shadows.values()) {
+    const o = sh.object.position;
+    if (sh.home) {
+      const dx = sh.home.x - o.x, dz = sh.home.z - o.z, d = Math.hypot(dx, dz);
+      if (d > 0.1) { o.x += (dx / d) * Math.min(d, 2 * dt); o.z += (dz / d) * Math.min(d, 2 * dt); sh.object.rotation.y = Math.atan2(dx, dz); }
+      else sh.object.rotation.y = Math.PI;
+    }
+    o.y = 0.15 + Math.sin(time * 1.4 + o.x) * 0.12;
+    for (const w of sh.object.userData.wisps.children) {
+      const t = (time * 0.5 + w.userData.seed) % 1;
+      w.position.set(Math.sin(w.userData.seed * 5 + time) * 0.5, 0.4 + t * 1.6, -0.3 + Math.cos(w.userData.seed * 3) * 0.3);
+      w.material.opacity = 0.55 * (1 - t);
+    }
+  }
+}
+async function readShadow(id) {
+  const sh = shadows.get(id);
+  if (!sh) return;
+  try {
+    await Soma.markRead(id);
+  } catch {
+    return void ui.toast('Could not reach Soma to mark it read. Try again in a moment.', 'bad');
+  }
+  const r = S.readingDone(state, id);
+  for (let k = 0; k < 2; k++) fx.burst(sh.object.position.clone().add(new THREE.Vector3(0, 1 + k, 0)), [0xb48cff, A.C.white][k], 18, 6, 6);
+  audio.pop();
+  if (r) { gainedXp(r); ui.toast(`Marked read in Soma: ${sh.reading.label}. +${S.fmt(r.coins)} coins, +${r.xp} XP`, 'good'); }
+  syncShadows();
+  refreshHud();
+  save();
+}
+
+/** The Watchtower: what Canvas doesn't show, your plan, and the Oracle. */
+function openWatchtower() {
+  const st = state.soma;
+  const now = Date.now();
+  const days = new Map();
+  for (const t of st.todos) {
+    if (!days.has(t.date)) days.set(t.date, []);
+    days.get(t.date).push({ ...t, done: Boolean(st.done[t.id]) });
+  }
+  ui.watchtower({
+    status: st.status,
+    readings: st.readings.slice(0, 12).map((r) => ({ id: r.id, name: `${r.label}${r.title ? ` ${r.title}` : ''}`, course: r.course, due: r.due, late: Date.parse(`${r.due}T23:59:00`) < now })),
+    hidden: st.readings.length,
+    plan: [...days].sort(([a], [b]) => (a < b ? -1 : 1)).slice(0, 7).map(([date, list]) => ({ date, label: new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }), list })),
+    upgrade: Soma.UPGRADE_URL,
+    onRead: (id) => { ui.close(); readShadow(id); },
+    onToggle: (id, done) => togglePlanTask(id, done),
+    onOracle: (ask) => {
+      const due = [
+        ...S.threats(state, now).map((t) => t.item).map((a) => `${a.name} (${a.courseName}) due ${new Date(a.dueAt).toDateString()}${a.kind === 'boss' ? ', exam' : ''}`),
+        ...st.readings.slice(0, 20).map((r) => `Read ${r.label}${r.title ? ` ${r.title}` : ''} (${r.course}) by ${r.due}, from the syllabus`),
+      ];
+      const planned = st.todos.filter((t) => !st.done[t.id]).map((t) => `${t.date}: ${t.text}`);
+      return Soma.askOracle({ due, planned, ask });
+    },
+    onAccept: async (tasks) => {
+      await Soma.addTasks(tasks);
+      ui.toast(`Added ${tasks.length} task${tasks.length === 1 ? '' : 's'} to your Soma plan. They'll show up as daily quests on their day.`, 'gold');
+      audio.chest();
+      await somaRefresh(true);
+    },
+  });
+}
+async function togglePlanTask(id, done) {
+  state.soma.done[id] = done;
+  drawDaily();
+  try { await Soma.setTodoDone(id, done); } catch { ui.toast('Could not reach Soma. It will sync next time.', 'bad'); }
+  dailyTick();
+  save();
+}
+
+
+// --- Thumbnails: real renders of the actual models, for the pass and the style panel ---
+const thumbCache = new Map();
+const thumbScene = new THREE.Scene();
+thumbScene.add(new THREE.HemisphereLight(0xffffff, 0x9a8a7a, 2.4));
+const thumbSun = new THREE.DirectionalLight(0xfff2e0, 2.6);
+thumbSun.position.set(3, 5, 4);
+thumbScene.add(thumbSun);
+const thumbCam = new THREE.PerspectiveCamera(30, 1, 0.1, 200);
+const thumbTarget = new THREE.WebGLRenderTarget(256, 256, { samples: 4 });
+function renderThumb(object, angle = 0.6) {
+  thumbScene.add(object);
+  object.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(object);
+  const sphere = box.getBoundingSphere(new THREE.Sphere());
+  const d = sphere.radius / Math.sin((thumbCam.fov * Math.PI) / 360) * 1.05;
+  thumbCam.position.set(sphere.center.x + Math.sin(angle) * d, sphere.center.y + d * 0.35, sphere.center.z + Math.cos(angle) * d);
+  thumbCam.lookAt(sphere.center);
+  const before = renderer.getRenderTarget();
+  renderer.setRenderTarget(thumbTarget);
+  renderer.setClearColor(0x000000, 0);
+  renderer.clear();
+  renderer.render(thumbScene, thumbCam);
+  const px = new Uint8Array(256 * 256 * 4);
+  renderer.readRenderTargetPixels(thumbTarget, 0, 0, 256, 256, px);
+  renderer.setRenderTarget(before);
+  thumbScene.remove(object);
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(256, 256);
+  // Flip rows and go from linear light to screen colour.
+  for (let y = 0; y < 256; y++) {
+    for (let x = 0; x < 256; x++) {
+      const i = ((255 - y) * 256 + x) * 4, o = (y * 256 + x) * 4;
+      for (let k = 0; k < 3; k++) img.data[o + k] = 255 * Math.pow(px[i + k] / 255, 1 / 2.2);
+      img.data[o + 3] = px[i + 3];
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return c.toDataURL('image/png');
+}
+function makeLure() {
+  const g = new THREE.Group();
+  const jar = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.36, 0.7, 14), new THREE.MeshStandardMaterial({ color: 0xbfe8f5, transparent: true, opacity: 0.45, roughness: 0.1 }));
+  jar.position.y = 0.35;
+  const glow = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 8), new THREE.MeshStandardMaterial({ color: 0xffe08a, emissive: 0xffc04a, emissiveIntensity: 2 }));
+  glow.position.y = 0.35;
+  const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.1, 14), new THREE.MeshStandardMaterial({ color: 0x8a5a3a }));
+  lid.position.y = 0.74;
+  g.add(jar, glow, lid);
+  return g;
+}
+/** A data URL for a reward or cosmetic; resolves once the model is ready. */
+function thumbFor(reward) {
+  const key = `${reward.kind}:${reward.id || reward.rarity || ''}`;
+  if (thumbCache.has(key)) return thumbCache.get(key);
+  let job;
+  if (reward.kind === 'outfit') {
+    const o = S.OUTFITS[reward.id];
+    job = previewAvatar(o.base, o.palette).then((m) => renderThumb(m, 0.5));
+  } else {
+    let object;
+    if (reward.kind === 'decor') object = A.makeDecor(reward.id);
+    else if (reward.kind === 'pet') object = A.makeCritter(reward.id);
+    else if (reward.kind === 'chest') { object = A.makeChest(reward.rarity); object.getObjectByName('beam')?.removeFromParent(); }
+    else if (reward.kind === 'lures') object = makeLure();
+    else if (reward.kind === 'coins') {
+      // A little stack with one coin standing on its edge.
+      object = new THREE.Group();
+      for (let i = 0; i < 4; i++) { const c = A.makeCoin(); c.rotation.set(0, i * 0.4, 0); c.position.set((i % 2) * 0.04, 0.05 + i * 0.13, 0); object.add(c); }
+      const up = A.makeCoin(); up.position.set(0.75, 0.42, 0.1); up.rotation.y = 0.5; object.add(up);
+    }
+    else if (reward.kind === 'theme') object = A.makeLanternScene();
+    job = Promise.resolve(renderThumb(object, reward.kind === 'decor' ? 0.7 : 0.4));
+  }
+  thumbCache.set(key, job);
+  return job;
+}
+const rewardName = (r) => r.kind === 'outfit' ? S.OUTFITS[r.id].name : r.kind === 'theme' ? S.THEMES[r.id].name : r.kind === 'decor' ? S.DECOR[r.id].name
+  : r.kind === 'pet' ? S.CRITTERS[r.id].name : r.kind === 'chest' ? `${r.rarity[0].toUpperCase()}${r.rarity.slice(1)} chest` : r.kind === 'lures' ? `${r.n} lures` : 'Coins';
+
+// --- The Semester Pass panel ------------------------------------------------------------
+function openPass() {
+  if (ui.isOpen()) return;
+  const p = state.pass;
+  const tier = S.passTier(state);
+  ui.pass({
+    season: p.season, tier, tiers: S.PASS_TIERS, points: p.points, per: S.PASS_TIER_POINTS, premium: p.premium,
+    rows: S.PASS_REWARDS.map((r) => ({
+      tier: r.tier,
+      free: { ...r.free, name: rewardName(r.free), claimed: p.freeClaimed.includes(r.tier) },
+      premium: { ...r.premium, name: rewardName(r.premium), claimed: p.premiumClaimed.includes(r.tier) },
+    })),
+    thumb: thumbFor,
+    onClaim: (t, track) => {
+      const got = S.claimPass(state, t, track);
+      if (!got) return;
+      audio.chest();
+      ui.toast(`Semester Pass: ${rewardName(got)}${got.coins ? ` (+${S.fmt(got.coins)})` : ''}`, 'gold');
+      if (got.kind === 'chest') syncChests();
+      if (got.kind === 'outfit') ui.toast('New outfit: try it on from Style (Hero panel).', 'good');
+      if (got.kind === 'theme') ui.toast('New town theme: turn it on from Style (Hero panel).', 'good');
+      refreshHud(); save(); ui.close(); openPass();
+    },
+    onClaimAll: () => {
+      let n = 0;
+      for (const [t, track] of S.passClaimable(state)) if (S.claimPass(state, t, track)) n += 1;
+      if (n) { audio.chest(); ui.toast(`Claimed ${n} reward${n === 1 ? '' : 's'}`, 'gold'); syncChests(); }
+      refreshHud(); save(); ui.close(); openPass();
+    },
+  });
+}
+
+// --- Style: outfits, town themes, and the dressing room ------------------------------------
+let tryOn = null; // { outfit, prevOutfit, cam } while in the dressing room
+function openStyle() {
+  if (ui.isOpen()) return;
+  const c = state.cosmetics;
+  ui.style({
+    outfits: Object.entries(S.OUTFITS).map(([id, o]) => ({ id, ...o, owned: c.outfits.includes(id), on: c.outfit === id })),
+    themes: Object.entries(S.THEMES).map(([id, t]) => ({ id, ...t, owned: c.themes.includes(id), on: c.theme === id })),
+    thumb: thumbFor,
+    onTry: (id) => { ui.close(); startTryOn(id); },
+    onWear: (id) => { c.outfit = id; save(); wearLook(); ui.close(); openStyle(); },
+    onTheme: (id) => { c.theme = c.theme === id ? null : id; save(); applyTheme(); ui.close(); openStyle(); },
+    onPass: () => { ui.close(); openPass(); },
+  });
+}
+function startTryOn(id) {
+  tryOn = { outfit: id, prev: state.cosmetics.outfit, cam: { ...cam } };
+  state.cosmetics.outfit = id;
+  wearLook();
+  ui.dressing({
+    name: S.OUTFITS[id].name, text: S.OUTFITS[id].text, owned: state.cosmetics.outfits.includes(id),
+    onWear: () => { const t = tryOn; tryOn = null; Object.assign(cam, t.cam); save(); ui.toast(`Wearing ${S.OUTFITS[id].name}`, 'gold'); },
+    onBack: () => { const t = tryOn; tryOn = null; state.cosmetics.outfit = t.prev; Object.assign(cam, t.cam); wearLook(); },
+  });
+}
+
+// Town themes: the Lantern Festival hangs lanterns over the roads.
+let themeObject = null;
+function applyTheme() {
+  if (themeObject) { themeObject.parent?.remove(themeObject); themeObject = null; }
+  if (state.cosmetics.theme === 'lanterns') {
+    themeObject = A.makeLanternFestival();
+    world.earth.add(themeObject);
+  }
+}
+function updateTheme(dt, time) {
+  if (!themeObject) return;
+  const { lanterns, sky, mats } = themeObject.userData;
+  const dark = 1 - phase.light;
+  for (const m of mats) m.emissiveIntensity = 0.45 + dark * 0.75;
+  for (const l of lanterns) l.rotation.z = Math.sin(time * 1.3 + l.userData.phase) * 0.08;
+  // Sky lanterns drift up after dark, then start again from the town.
+  for (const s of sky) {
+    s.visible = dark > 0.4;
+    if (!s.visible) continue;
+    const t = (time * 0.018 + s.userData.seed) % 1;
+    s.position.set(s.userData.x + Math.sin(time * 0.2 + s.userData.seed * 9) * 3 * t, 2 + t * 70, s.userData.z + t * 12);
+    s.material.opacity = Math.min(1, (1 - t) * 1.6);
+  }
+}
+
+// The Frost Knight leaves frost where it steps.
+const frost = [];
+let frostStep = 0;
+function updateTrail(dt) {
+  const outfit = S.OUTFITS[state.cosmetics.outfit];
+  for (let i = frost.length - 1; i >= 0; i--) {
+    const f = frost[i];
+    f.life -= dt;
+    f.mesh.material.opacity = Math.max(0, f.life / 2.4) * 0.85;
+    if (f.life <= 0) { f.mesh.parent?.remove(f.mesh); frost.splice(i, 1); }
+  }
+  if (!outfit || outfit.trail !== 'frost' || !player.grounded) return;
+  const moving = keys.has('w') || keys.has('a') || keys.has('s') || keys.has('d') || keys.has('arrowup') || keys.has('arrowdown') || keys.has('arrowleft') || keys.has('arrowright');
+  frostStep -= dt;
+  if (!moving || frostStep > 0) return;
+  frostStep = 0.22;
+  const p = player.object.position;
+  const side = frost.length % 2 ? 0.18 : -0.18;
+  const m = new THREE.Mesh(new THREE.CircleGeometry(0.22, 10), new THREE.MeshBasicMaterial({ color: 0xe6f6ff, transparent: true, opacity: 0.85, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2;
+  m.scale.set(0.8, 1.3, 1);
+  m.position.set(p.x + Math.cos(player.facing) * side, p.y + 0.06, p.z - Math.sin(player.facing) * side);
+  scene.add(m);
+  frost.push({ mesh: m, life: 2.4 });
+  if (Math.random() < 0.5) fx.burst(p.clone().add(new THREE.Vector3(0, 0.2, 0)), 0xdff4ff, 3, 1.5, 2);
+}
+
 // --- Settings ------------------------------------------------------------------------------
 function toggleMute() {
   state.settings.muted = !state.settings.muted;
@@ -2602,6 +2970,8 @@ villagerTick(Date.now());
 applyTimeOfDay();
 dressPet();
 dailyTick(true);
+somaRefresh(true);
+applyTheme();
 applySettings();
 refreshHud();
 if (S.dueReviews(state).length) setTimeout(() => ui.toast(`${S.dueReviews(state).length} missed questions are back for review. Find the pale books by the Canvas board.`, 'gold'), 3000);
@@ -2629,7 +2999,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 window.epoch = {
   state, S, cam,
   give(n) { S.addCoins(state, n); refreshHud(); },
-  refresh() { world.setEra(state.era); world.setScene(state.scene, state.era); dressPlayer(); refreshAllPads(); refreshWonders(); syncChests(); syncInvaders(Date.now()); refreshHud(); },
+  refresh() { world.setEra(state.era); world.setScene(state.scene, state.era); dressPlayer(); refreshAllPads(); refreshWonders(); syncChests(); syncInvaders(Date.now()); syncDecor(); refreshHud(); },
   look(yaw, pitch, dist) { Object.assign(cam, { yaw, pitch, dist, want: dist }); },
   moveTo(x, z) { player.object.position.set(x, 0, z); },
   raid: spawnRaid,
@@ -2660,6 +3030,13 @@ window.epoch = {
     return r.intersectObjects(scene.children, true).slice(0, 4).map((h) => { const names = []; for (let o = h.object; o; o = o.parent) if (o.name) names.push(o.name); return { d: +h.distance.toFixed(1), names, type: h.object.type, emissive: h.object.material?.emissive?.getHexString?.(), glow: h.object.material?.emissiveIntensity, color: h.object.material?.color?.getHexString?.() }; });
   },
   wonder: () => openWonder(S.nextWonder(state)),
+  somaMock(data) { Soma.useMock(data); return somaRefresh(true); },
+  premium(on = true) { state.pass.premium = on; },
+  passPoints(n) { S.passPoints(state, n); },
+  pass: () => openPass(), style: () => openStyle(), watch: () => openWatchtower(), tryOn: (id) => startTryOn(id),
+  theme(id) { state.cosmetics.theme = id; applyTheme(); },
+  outfit(id) { state.cosmetics.outfit = id; return wearLook(); },
+  pet(id) { state.critters.caught[id] = 1; S.setPet(state, id); dressPet(); },
   invaders: () => [...invaders.values()].map((i) => ({ name: i.item.name, mode: i.mode, x: +i.object.position.x.toFixed(1), z: +i.object.position.z.toFixed(1), inScene: Boolean(i.object.parent) })),
   armor(id) { const inv = invaders.get(id); return inv && inv.object.userData.armor?.filter((p) => p.visible).length; },
   info: () => ({ quality, calls: renderer.info.render.calls, tris: renderer.info.render.triangles }),

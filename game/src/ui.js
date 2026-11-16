@@ -58,6 +58,7 @@ export function createUI(on) {
   $('btnHelp').addEventListener('click', () => on.help());
   $('btnSound').addEventListener('click', () => on.sound());
   $('btnSettings')?.addEventListener('click', () => on.settings());
+  $('btnPass')?.addEventListener('click', () => on.pass());
   $('prompt').addEventListener('click', () => on.interact());
   $('scrim').addEventListener('pointerdown', (event) => { if (event.target === $('scrim')) close(); });
 
@@ -299,7 +300,7 @@ export function createUI(on) {
     },
 
     /** The character sheet: level, stats, gear, bag and skills. */
-    hero({ level, xp, need, capped, points, stats, gear, bag, bagSize, skills, masteries, characters = [], character, onCharacter, onEquip, onSell, onSkill, onWardrobe, onStudy }) {
+    hero({ level, xp, need, capped, points, stats, gear, bag, bagSize, skills, masteries, characters = [], character, onCharacter, onEquip, onSell, onSkill, onWardrobe, onStyle, onStudy }) {
       const branches = [...new Set(skills.map((k) => k.branch))];
       panel({ title: `Level ${level} hero`, subtitle: 'Experience only comes from school: study sessions, handing work in, grades and exams. Fighting pays coins and gear.', wide: true },
         el('div', { class: 'xp-row' },
@@ -334,7 +335,7 @@ export function createUI(on) {
             el('em', { text: `${k.rank} / ${k.max}` })))))),
         masteries.length ? el('h3', { text: 'Course mastery' }) : null,
         masteries.length ? el('div', { class: 'stats' }, masteries.map((m) => el('div', { class: 'stat' }, el('small', { text: m.name }), el('b', { text: `Level ${m.level}` }), el('small', { text: `${m.minutes} min studied · +${m.level}% damage` })))) : null,
-        el('div', { class: 'source', style: 'margin-top:14px' }, el('button', { class: 'btn small', text: 'Wardrobe', onclick: onWardrobe })),
+        el('div', { class: 'source', style: 'margin-top:14px' }, el('button', { class: 'btn small', text: 'Wardrobe', onclick: onWardrobe }), onStyle ? el('button', { class: 'btn small primary', text: 'Style: outfits and town themes', onclick: onStyle }) : null),
       );
     },
 
@@ -513,6 +514,146 @@ export function createUI(on) {
           c.count ? el('div', { class: 'gear-do' }, pet === c.id ? el('button', { class: 'btn small', text: 'Put away', onclick: () => onPet(null) }) : el('button', { class: 'btn small primary', text: 'Make pet', onclick: () => onPet(c.id) })) : null))),
         el('p', { class: 'note', text: 'Find them in the Wilds. Walk up slowly (running scares them) and press E. Owls, moths and the star fox only come out at night, on your real clock.' }),
       );
+    },
+
+    /** Soma's Watchtower: syllabus work Canvas doesn't show, the week's plan, and the Oracle. */
+    watchtower({ status, readings, hidden, plan, upgrade, onRead, onToggle, onOracle, onAccept }) {
+      if (status !== 'plus') {
+        const offline = status === 'offline';
+        panel({ title: 'Watchtower', subtitle: offline ? 'Open the game from Soma, signed in, to connect it' : 'Soma Plus sees what Canvas doesn’t', wide: true },
+          el('div', { class: 'watch-hero' },
+            el('b', { text: offline ? 'Your syllabus has more than Canvas shows' : `${hidden} thing${hidden === 1 ? '' : 's'} from your syllabus ${hidden === 1 ? 'is' : 'are'} marching in the fog` }),
+            el('p', { text: 'Readings, in-class quizzes and paper work that teachers never post on Canvas. Soma reads them from your syllabus.' })),
+          el('div', { class: 'perks' }, [
+            ['Shadows revealed', 'Syllabus work Canvas doesn’t show marches in as shadow books you can see, study for and mark read.'],
+            ['Your plan is your quests', 'Each day’s tasks from Soma’s AI planner become your daily quests. Check them off here or in Soma.'],
+            ['The Oracle', 'Ask it to plan your week around what’s due. You approve every task before it lands in your plan.'],
+            ['AI practice', 'Practice questions written from your own course notes. Right answers break exam armor.'],
+          ].map(([t, d]) => el('div', { class: 'perk' }, el('b', { text: t }), el('span', { text: d })))),
+          offline ? el('p', { class: 'note', text: 'Everything else in the game works without it.' })
+            : el('div', { class: 'actions' }, el('button', { class: 'btn primary', style: 'justify-content:center', onclick: () => window.open(upgrade, '_blank') }, el('span', { text: 'See Soma Plus' }))),
+        );
+        return;
+      }
+      const oracle = el('div', { class: 'oracle' });
+      const ask = el('input', { type: 'text', placeholder: 'Anything to plan around? (optional) e.g. “midterm Thursday, busy weekend”', maxlength: 200 });
+      const drawOracle = (state, data) => {
+        if (state === 'idle') oracle.replaceChildren(el('div', { class: 'oracle-ask' }, ask, el('button', { class: 'btn primary', onclick: run }, el('span', { text: 'Ask the Oracle' }))));
+        else if (state === 'busy') oracle.replaceChildren(el('p', { class: 'note loading', text: 'The Oracle is reading your week…' }));
+        else if (state === 'error') oracle.replaceChildren(el('p', { class: 'note', text: data }), el('button', { class: 'btn small', text: 'Try again', onclick: () => drawOracle('idle') }));
+        else if (state === 'offer') {
+          const picks = data.tasks.map(() => true);
+          const list = el('div', { class: 'oracle-list' }, data.tasks.map((t, i) => {
+            const box = el('button', { class: 'tick on', onclick: () => { picks[i] = !picks[i]; box.classList.toggle('on', picks[i]); } });
+            return el('div', { class: 'oracle-task' }, box, el('span', {}, el('b', { text: t.text }), el('small', { text: `${new Date(`${t.date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}${t.minutes ? ` · ${t.minutes} min` : ''}${t.course ? ` · ${t.course}` : ''}` })));
+          }));
+          oracle.replaceChildren(
+            data.note ? el('p', { class: 'oracle-note', text: `“${data.note}”` }) : null,
+            list,
+            el('div', { class: 'actions' },
+              el('button', { class: 'btn primary', onclick: async () => {
+                const chosen = data.tasks.filter((_, i) => picks[i]);
+                if (!chosen.length) return drawOracle('idle');
+                drawOracle('busy');
+                try { await onAccept(chosen); close(); } catch { drawOracle('error', 'Could not add them to Soma. Try again.'); }
+              } }, el('span', { text: 'Add to my Soma plan' })),
+              el('button', { class: 'btn', onclick: () => drawOracle('idle') }, el('span', { text: 'Not these' }))),
+          );
+        }
+      };
+      async function run() {
+        drawOracle('busy');
+        try {
+          const out = await onOracle(ask.value.trim());
+          if (!out.tasks.length) return drawOracle('error', 'The Oracle had nothing to add. Your week looks covered.');
+          drawOracle('offer', out);
+        } catch (error) { drawOracle('error', error.message); }
+      }
+      drawOracle('idle');
+      panel({ title: 'Watchtower', subtitle: 'Soma Plus · what Canvas doesn’t show, and your plan', wide: true },
+        el('h3', { text: `Not on Canvas (${readings.length})` }),
+        readings.length ? el('div', { class: 'watch-list' }, readings.map((r) => el('div', { class: `watch-row ${r.late ? 'late' : ''}` },
+          el('span', {}, el('b', { text: r.name }), el('small', { text: `${r.course} · ${r.late ? 'behind since' : 'due'} ${new Date(`${r.due}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}` })),
+          el('button', { class: 'btn small', text: 'Mark read', onclick: () => onRead(r.id) }))))
+          : el('p', { class: 'note', text: 'Nothing from your syllabus is coming up. Add a syllabus in Soma and its readings show up here.' }),
+        el('h3', { text: 'Your plan this week' }),
+        plan.length ? el('div', { class: 'watch-plan' }, plan.map((d) => el('div', { class: 'plan-day' }, el('small', { text: d.label }),
+          d.list.map((t) => {
+            const tick = el('button', { class: `tick ${t.done ? 'on' : ''}`, onclick: () => { t.done = !t.done; tick.classList.toggle('on', t.done); onToggle(t.id, t.done); } });
+            return el('div', { class: 'plan-task' }, tick, el('span', { text: t.text }), t.minutes ? el('em', { text: `${t.minutes}m` }) : null);
+          }))))
+          : el('p', { class: 'note', text: 'No plan yet. Ask the Oracle below.' }),
+        el('h3', { text: 'The Oracle' }),
+        oracle,
+      );
+    },
+
+    /** The Semester Pass: a reward path filled by studying. thumb(reward) resolves to an image. */
+    pass({ season, tier, tiers, points, per, premium, rows, thumb, onClaim, onClaimAll }) {
+      const into = points - tier * per;
+      const img = (reward) => {
+        const i = el('img', { class: 'thumb', alt: '' });
+        thumb(reward).then((src) => { i.src = src; }).catch(() => {});
+        return i;
+      };
+      const card = (r, t, track) => {
+        const reached = t <= tier;
+        const locked = track === 'premium' && !premium;
+        const ready = reached && !r.claimed && !locked;
+        return el('div', { class: `pass-card ${track} ${r.claimed ? 'claimed' : ''} ${ready ? 'ready' : ''} ${reached ? '' : 'ahead'} ${locked ? 'locked' : ''} r-${r.rarity || ''} k-${r.kind}` },
+          img(r),
+          el('b', { text: r.name }),
+          ready ? el('button', { class: 'btn small primary', text: 'Claim', onclick: () => onClaim(t, track) })
+            : el('small', { text: r.claimed ? 'Claimed' : locked ? 'Premium' : `Tier ${t}` }));
+      };
+      const track = el('div', { class: 'pass-track' }, rows.map((row) => el('div', { class: `pass-col ${row.tier <= tier ? 'reached' : ''} ${row.tier === tier + 1 ? 'next' : ''}` },
+        el('em', { text: String(row.tier) }),
+        card(row.free, row.tier, 'free'),
+        card(row.premium, row.tier, 'premium'))));
+      const claimable = rows.some((r) => r.tier <= tier && (!r.free.claimed || (premium && !r.premium.claimed)));
+      panel({ title: `Semester Pass · ${season}`, subtitle: 'Filled only by studying: a point a minute, plus practice, review and daily quests', wide: true },
+        el('div', { class: 'pass-head' },
+          el('div', { class: 'pass-tier' }, el('small', { text: 'Tier' }), el('b', { text: `${tier}` }), el('span', { text: `of ${tiers}` })),
+          el('div', { class: 'pass-progress' },
+            el('div', { class: 'bar xp' }, el('i', { style: `width:${tier >= tiers ? 100 : Math.round((into / per) * 100)}%` })),
+            el('small', { text: tier >= tiers ? 'Pass complete' : `${Math.max(0, per - into)} points to tier ${tier + 1} · about ${Math.max(1, per - into)} minutes of study` })),
+          claimable ? el('button', { class: 'btn primary', text: 'Claim all', onclick: onClaimAll }) : null),
+        el('div', { class: 'pass-rows' }, el('div', { class: 'pass-legend' }, el('span', { text: 'Free' }), el('span', { class: 'prem', text: 'Premium' })), track),
+        premium ? null : el('div', { class: 'pass-upsell' },
+          el('div', {}, el('b', { text: 'Premium track' }), el('span', { text: 'The Frost Knight, the whole Japanese garden set and a chest at every tier. You still earn it by studying; nothing skips ahead.' })),
+          el('button', { class: 'btn', disabled: true }, el('span', {}, 'Coming soon', el('small', { text: 'Payments open soon' })))),
+      );
+      // Start the track at the next tier.
+      requestAnimationFrame(() => { const next = track.querySelector('.pass-col.next') || track.querySelector('.pass-col:last-child'); if (next) track.scrollLeft = next.offsetLeft - 120; });
+    },
+
+    /** Style: outfits (try on in the dressing room) and town themes. */
+    style({ outfits, themes, thumb, onTry, onWear, onTheme, onPass }) {
+      const img = (reward) => { const i = el('img', { class: 'thumb', alt: '' }); thumb(reward).then((src) => { i.src = src; }).catch(() => {}); return i; };
+      panel({ title: 'Style', subtitle: 'Outfits and town themes. They only change how things look.', wide: true },
+        el('h3', { text: 'Outfits' }),
+        el('div', { class: 'style-grid' }, outfits.map((o) => el('div', { class: `style-card ${o.on ? 'on' : ''} ${o.owned ? '' : 'locked'}` },
+          img({ kind: 'outfit', id: o.id }),
+          el('b', { text: o.name }), el('span', { text: o.text }),
+          el('div', { class: 'gear-do' },
+            el('button', { class: 'btn small', text: 'Try on', onclick: () => onTry(o.id) }),
+            o.owned ? (o.on ? el('em', { text: 'Wearing' }) : el('button', { class: 'btn small primary', text: 'Wear', onclick: () => onWear(o.id) })) : el('small', { text: 'Semester Pass' }))))),
+        el('h3', { text: 'Town themes' }),
+        el('div', { class: 'style-grid' }, themes.map((t) => el('div', { class: `style-card ${t.on ? 'on' : ''} ${t.owned ? '' : 'locked'}` },
+          img({ kind: 'theme', id: t.id }),
+          el('b', { text: t.name }), el('span', { text: t.text }),
+          el('div', { class: 'gear-do' }, t.owned ? el('button', { class: `btn small ${t.on ? '' : 'primary'}`, text: t.on ? 'Turn off' : 'Turn on', onclick: () => onTheme(t.id) }) : el('small', { text: 'Semester Pass, free track, tier 20' }))))),
+        el('div', { class: 'actions', style: 'margin-top:12px' }, el('button', { class: 'btn', onclick: onPass }, el('span', { text: 'Open the Semester Pass (Y)' }))),
+      );
+    },
+
+    /** The dressing room: the camera circles the hero wearing the outfit. */
+    dressing({ name, text, owned, onWear, onBack }) {
+      const bar = el('div', { class: 'dressing' },
+        el('div', {}, el('small', { text: 'Dressing room' }), el('b', { text: name }), el('span', { text: text })),
+        owned ? el('button', { class: 'btn primary', onclick: () => { bar.remove(); onWear(); } }, el('span', { text: 'Wear it' })) : el('em', { text: 'From the Semester Pass' }),
+        el('button', { class: 'btn', onclick: () => { bar.remove(); onBack(); } }, el('span', { text: owned ? 'Back' : 'Take it off' })));
+      document.body.append(bar);
     },
 
     /** The market: today's stock, plus selling what you don't need. */

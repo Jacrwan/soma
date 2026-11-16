@@ -75,7 +75,7 @@ export function newState(now = Date.now()) {
     wonders: [],
     relics: [],
     tokens: 0,
-    cosmetics: { owned: ['hat:none', 'color:clay'], hat: 'hat:none', color: 'color:clay', character: 'barbarian' },
+    cosmetics: { owned: ['hat:none', 'color:clay'], hat: 'hat:none', color: 'color:clay', character: 'barbarian', outfits: [], outfit: null, themes: [], theme: null },
     school: { source: 'none', items: {}, seen: {}, chests: [], ignored: {}, penalty: {}, warned: {} },
     explore: { day: null, done: {}, shrines: {} },
     study: { active: null, minutes: {}, courses: {}, log: [], practice: {}, streak: 0, lastDay: null, chestDay: null, chestsToday: 0, total: 0 },
@@ -91,6 +91,8 @@ export function newState(now = Date.now()) {
     villagers: { list: [], away: {}, lastArrival: 0, day: null },
     daily: { day: null, quests: [], streak: 0, best: 0, lastFull: null, bonus: false, reported: null },
     critters: { lures: 3, caught: {}, pet: null },
+    soma: { status: 'offline', todos: [], readings: [], done: {} },
+    pass: { season: 'Fall 2026', points: 0, premium: false, freeClaimed: [], premiumClaimed: [] },
     createdAt: now,
     lastTick: now,
   };
@@ -574,6 +576,7 @@ export function finishStudy(state, now = Date.now()) {
   state.critters.lures += result.lures;
   study.log = [...(study.log || []), { at: now, itemId: item ? item.id : null, courseId: item ? item.courseId : null, minutes }].slice(-400);
   result.coins = Math.round(Math.max(12 * minutes, baseIncome(state) * 20 * minutes));
+  passPoints(state, minutes);
   addCoins(state, result.coins);
   // A cup of study tea from the market makes this session pay half again.
   const tea = study.tea > 0 ? (study.tea -= 1, 1 + TEA_BOOST) : 1;
@@ -620,6 +623,7 @@ export function finishPractice(state, itemId, right, wrong, now = Date.now()) {
   const minutes = Math.min(room, right * PRACTICE_RIGHT_MINUTES + wrong * PRACTICE_WRONG_MINUTES);
   const result = { minutes, prepared: false, capped: Boolean(item) && minutes < right * PRACTICE_RIGHT_MINUTES + wrong * PRACTICE_WRONG_MINUTES };
   state.stats.practiceRight = (state.stats.practiceRight || 0) + right;
+  passPoints(state, right * 3);
   // A good practice round (3+ right) also earns a lure.
   result.lures = right >= 3 ? 1 : 0;
   state.critters.lures += result.lures;
@@ -1103,6 +1107,7 @@ export function answerReview(state, cardId, right, now = Date.now()) {
   const card = cards[i];
   const out = { learned: false, minutes: 0, prepared: false };
   state.stats.reviewed = (state.stats.reviewed || 0) + 1;
+  if (right) passPoints(state, 4);
   if (right) {
     card.box += 1;
     if (card.box >= REVIEW_GAPS.length) {
@@ -1231,6 +1236,13 @@ export const DECOR = {
   pond: { name: 'Pond', seconds: 500, floor: 500, solid: 2.0 },
   tower: { name: 'Watchtower', seconds: 800, floor: 800, solid: 1.3 },
   windmill: { name: 'Windmill', seconds: 1200, floor: 1200, solid: 1.8 },
+  // The Japanese garden set (Semester Pass).
+  toro: { name: 'Stone lantern', seconds: 200, floor: 200, solid: 0.5, pass: true, set: 'garden' },
+  bamboo: { name: 'Bamboo grove', seconds: 150, floor: 150, solid: 0.8, pass: true, set: 'garden' },
+  torii: { name: 'Torii gate', seconds: 900, floor: 900, solid: 0, pass: true, set: 'garden' },
+  koi: { name: 'Koi pond', seconds: 1200, floor: 1200, solid: 2.2, pass: true, set: 'garden' },
+  bridge: { name: 'Arched bridge', seconds: 900, floor: 900, solid: 0, pass: true, set: 'garden' },
+  sakura: { name: 'Cherry tree', seconds: 600, floor: 600, solid: 0.9, pass: true, set: 'garden' },
   fountain: { name: 'Fountain', seconds: 1500, floor: 1500, solid: 2.2, market: true },
   totem: { name: 'Totem', seconds: 1200, floor: 1200, solid: 0.8, market: true },
   gold: { name: 'Golden statue', seconds: 2400, floor: 2400, solid: 1.1, market: true },
@@ -1239,7 +1251,7 @@ export const DECOR = {
 export const DECOR_MAX = 160;
 
 export const decorCost = (state, type) => price(state, DECOR[type].seconds, DECOR[type].floor);
-export const decorAvailable = (state) => Object.keys(DECOR).filter((k) => !DECOR[k].market || state.decorUnlocked.includes(k));
+export const decorAvailable = (state) => Object.keys(DECOR).filter((k) => !(DECOR[k].market || DECOR[k].pass) || state.decorUnlocked.includes(k));
 
 /** Places a decoration; costs coins. Returns the piece, or null. */
 export function placeDecor(state, type, x, z, rot = 0) {
@@ -1466,6 +1478,7 @@ export const STREAK_MILESTONES = { 7: 'epic', 14: 'legendary', 30: 'legendary' }
 const dailyStat = {
   ...statNow,
   talk: (state) => state.stats.talks || 0,
+  plan: (state, q) => (state.soma?.done?.[q.id] ? 1 : 0),
   catch: (state) => state.stats.caught || 0,
 };
 
@@ -1513,6 +1526,7 @@ export function claimDaily(state, now = Date.now()) {
     q.claimed = true;
     out.claimed += 1;
     out.coins += q.reward;
+    passPoints(state, 15);
   }
   addCoins(state, out.coins);
   if (!d.bonus && d.quests.length && d.quests.every((q) => q.claimed)) {
@@ -1536,6 +1550,7 @@ export const CRITTERS = {
   hedgehog: { name: 'Hedgehog', rarity: 'rare', time: 'any', hint: 'Rare, any time' },
   fox: { name: 'Red fox', rarity: 'rare', time: 'day', hint: 'Rare, out in the day' },
   owl: { name: 'Night owl', rarity: 'epic', time: 'night', hint: 'Only after dark' },
+  ghostowl: { name: 'Ghost owl', rarity: 'epic', time: 'never', hint: 'A Semester Pass reward', pass: true },
   moth: { name: 'Glow moth', rarity: 'epic', time: 'night', hint: 'Only after dark, it glows' },
   stag: { name: 'White stag', rarity: 'legendary', time: 'day', hint: 'Very rare, in daylight' },
   starfox: { name: 'Star fox', rarity: 'legendary', time: 'night', hint: 'Very rare, only at night' },
@@ -1546,7 +1561,7 @@ const PET_BONUS = { common: 0.02, rare: 0.04, epic: 0.07, legendary: 0.12 };
 
 /** Picks a species to spawn. night is true after dark. rng returns 0..1. */
 export function rollCritter(night, rng = Math.random) {
-  const pool = Object.entries(CRITTERS).filter(([, c]) => c.time === 'any' || (c.time === 'night') === night);
+  const pool = Object.entries(CRITTERS).filter(([, c]) => !c.pass && (c.time === 'any' || (c.time === 'night') === night));
   const total = pool.reduce((n, [, c]) => n + SPAWN_WEIGHT[c.rarity], 0);
   let r = rng() * total;
   for (const [id, c] of pool) { r -= SPAWN_WEIGHT[c.rarity]; if (r <= 0) return id; }
@@ -1578,6 +1593,113 @@ export function setPet(state, species) {
 export function petBonus(state) {
   const pet = state.critters?.pet;
   return pet && CRITTERS[pet] ? PET_BONUS[CRITTERS[pet].rarity] : 0;
+}
+
+// --- Soma: the plan and the syllabus -------------------------------------------
+// With Soma's plan, today's tasks from Soma's AI planner replace the generic
+// daily quests, and syllabus readings Canvas never shows march as shadows.
+
+/** Takes a fresh copy of the plan from Soma. todos: [{ id, text, date, minutes, done }]. */
+export function setSomaPlan(state, { status, todos = [], readings = [] }, now = Date.now()) {
+  const soma = state.soma;
+  soma.status = status;
+  soma.todos = todos;
+  soma.readings = readings;
+  for (const t of todos) soma.done[t.id] = Boolean(t.done);
+  applyPlanQuests(state, now);
+}
+
+/** With Soma's plan, today's planned tasks (up to 5) become the day's quests. */
+export function applyPlanQuests(state, now = Date.now()) {
+  const soma = state.soma;
+  const d = state.daily;
+  if (soma.status !== 'plus') return false;
+  const today = dayOf(now);
+  const todays = soma.todos.filter((t) => t.date === isoDay(now)).slice(0, 5);
+  if (!todays.length) return false;
+  if (d.day !== today) dailyRefresh(state, now);
+  const kept = new Map(d.quests.filter((q) => q.type === 'plan').map((q) => [q.id, q]));
+  const pay = Math.round(Math.max(150, baseIncome(state) * 300));
+  d.quests = todays.map((t) => kept.get(t.id) || { type: 'plan', id: t.id, text: t.text, target: 1, base: 0, reward: pay, claimed: false, minutes: t.minutes });
+  d.fromPlan = true;
+  return true;
+}
+const isoDay = (now) => {
+  const x = new Date(now);
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+};
+
+/** Reading a syllabus item (marked read from the game): small pay and pass points. */
+export function readingDone(state, id) {
+  const soma = state.soma;
+  const i = soma.readings.findIndex((r) => r.id === id);
+  if (i < 0) return null;
+  soma.readings.splice(i, 1);
+  state.stats.readings = (state.stats.readings || 0) + 1;
+  const coins = Math.round(Math.max(80, baseIncome(state) * 120));
+  addCoins(state, coins);
+  passPoints(state, 10);
+  return { coins, ...addXp(state, 15) };
+}
+
+// --- The Semester Pass ----------------------------------------------------------
+// 40 tiers over the semester, filled only by studying: a point per minute,
+// plus practice, review and daily quests. Nothing on it can be bought with
+// coins, and nothing on it changes how fast you learn.
+export const PASS_TIERS = 40;
+export const PASS_TIER_POINTS = 60;
+export const OUTFITS = {
+  frostknight: { name: 'Frost Knight', base: 'knight', palette: 'frost', trail: 'frost', text: 'Ice-blue plate, a frozen cape, frost where you step' },
+};
+export const THEMES = {
+  lanterns: { name: 'Lantern Festival', text: 'Paper lanterns over every road, sky lanterns rising at night' },
+};
+
+/** Rewards by tier: free track for everyone, premium track with the pass. */
+export const PASS_REWARDS = Array.from({ length: PASS_TIERS }, (_, i) => {
+  const t = i + 1;
+  const free = { 1: { kind: 'lures', n: 3 }, 3: { kind: 'decor', id: 'toro' }, 5: { kind: 'chest', rarity: 'rare' }, 8: { kind: 'lures', n: 5 },
+    10: { kind: 'pet', id: 'ghostowl' }, 14: { kind: 'chest', rarity: 'epic' }, 17: { kind: 'decor', id: 'bamboo' }, 20: { kind: 'theme', id: 'lanterns' },
+    25: { kind: 'lures', n: 8 }, 30: { kind: 'chest', rarity: 'legendary' }, 35: { kind: 'lures', n: 10 }, 40: { kind: 'chest', rarity: 'legendary' } }[t]
+    || { kind: 'coins', seconds: 300 + t * 40 };
+  const premium = { 1: { kind: 'outfit', id: 'frostknight' }, 4: { kind: 'decor', id: 'torii' }, 7: { kind: 'decor', id: 'koi' }, 10: { kind: 'decor', id: 'bridge' },
+    13: { kind: 'decor', id: 'sakura' }, 20: { kind: 'chest', rarity: 'legendary' }, 30: { kind: 'chest', rarity: 'legendary' }, 40: { kind: 'chest', rarity: 'legendary' } }[t]
+    || (t % 3 === 0 ? { kind: 'lures', n: 4 } : { kind: 'chest', rarity: t > 20 ? 'epic' : 'rare' });
+  return { tier: t, free, premium };
+});
+
+export function passPoints(state, n) {
+  if (!state.pass || !(n > 0)) return;
+  state.pass.points += n;
+}
+export const passTier = (state) => Math.min(PASS_TIERS, Math.floor((state.pass?.points || 0) / PASS_TIER_POINTS));
+
+/** Claims one reward. track: 'free' | 'premium'. Returns what was given, or null. */
+export function claimPass(state, tier, track) {
+  const p = state.pass;
+  const list = track === 'premium' ? p.premiumClaimed : p.freeClaimed;
+  if (tier > passTier(state) || list.includes(tier) || (track === 'premium' && !p.premium)) return null;
+  const reward = PASS_REWARDS[tier - 1][track];
+  list.push(tier);
+  const out = { ...reward };
+  if (reward.kind === 'lures') state.critters.lures += reward.n;
+  else if (reward.kind === 'coins') { out.coins = Math.round(Math.max(200, baseIncome(state) * reward.seconds)); addCoins(state, out.coins); }
+  else if (reward.kind === 'chest') out.chest = grantChest(state, reward.rarity, `Semester Pass tier ${tier}`);
+  else if (reward.kind === 'decor') { if (!state.decorUnlocked.includes(reward.id)) state.decorUnlocked.push(reward.id); }
+  else if (reward.kind === 'pet') { state.critters.caught[reward.id] = (state.critters.caught[reward.id] || 0) + 1; }
+  else if (reward.kind === 'theme') { if (!state.cosmetics.themes.includes(reward.id)) state.cosmetics.themes.push(reward.id); }
+  else if (reward.kind === 'outfit') { if (!state.cosmetics.outfits.includes(reward.id)) state.cosmetics.outfits.push(reward.id); }
+  return out;
+}
+
+/** Everything claimable right now, as [tier, track] pairs. */
+export function passClaimable(state) {
+  const out = [];
+  for (let t = 1; t <= passTier(state); t++) {
+    if (!state.pass.freeClaimed.includes(t)) out.push([t, 'free']);
+    if (state.pass.premium && !state.pass.premiumClaimed.includes(t)) out.push([t, 'premium']);
+  }
+  return out;
 }
 
 // --- Saving ---------------------------------------------------------------------
@@ -1616,6 +1738,8 @@ export function deserialize(text, now = Date.now()) {
     state.villagers = { ...fresh.villagers, ...(saved.villagers || {}) };
     state.daily = { ...fresh.daily, ...(saved.daily || {}) };
     state.critters = { ...fresh.critters, ...(saved.critters || {}) };
+    state.soma = { ...fresh.soma, ...(saved.soma || {}), status: 'offline' };
+    state.pass = { ...fresh.pass, ...(saved.pass || {}) };
     return state;
   } catch {
     return fresh;

@@ -31,6 +31,7 @@ const MOON_PAD_POS = Array.from({ length: MOON_PADS }, (_, i) => polar(13, i * 4
 const WONDER_POS = [198, 228, 258, 282, 312, 342].map((deg) => polar(35, deg));
 // The market and one hall per class (game.js): the forest keeps clear of them.
 export const MARKET_POS = polar(16, 30);
+export const WATCHTOWER_POS = new THREE.Vector3(-9, 0, 34); // Soma's Watchtower, by the gate road
 export const HALL_SLOTS = [30, 58, 122, 150, 8, 172].map((deg) => polar(44, deg));
 WONDER_POS.push(STARGATE_POS);
 
@@ -542,6 +543,7 @@ export function createWorld(scene, renderer) {
     for (const p of EARTH_PAD_POS) if (Math.hypot(x - p.x, z - p.z) < 4.6) return true;
     for (const p of WONDER_POS.slice(0, 6)) if (Math.hypot(x - p.x, z - p.z) < 7.4) return true;
     if (Math.hypot(x - MARKET_POS.x, z - MARKET_POS.z) < 5.5) return true;
+    if (Math.hypot(x - WATCHTOWER_POS.x, z - WATCHTOWER_POS.z) < 5) return true;
     for (const p of HALL_SLOTS) if (Math.hypot(x - p.x, z - p.z) < 5.5) return true;
     return false;
   }

@@ -1076,6 +1076,7 @@ export function makeLander() {
 // --- Build mode decorations ---------------------------------------------------------
 /** A decoration from the build menu (DECOR in sim.js). Built in metres, centred on its base. */
 export function makeDecor(type) {
+  if (['torii', 'toro', 'bamboo', 'koi', 'bridge', 'sakura'].includes(type)) return makeGardenPiece(type);
   const g = new THREE.Group();
   const leaf = 0x6fae4f, leafDark = 0x4f8a3c;
   switch (type) {
@@ -1412,6 +1413,24 @@ export function makeCritter(species) {
       if (star) for (let i = 0; i < 5; i++) body.add(at(ball(0.03, 0xffffff, 0, glowing(0xffffff, 2)), Math.sin(i * 2.3) * 0.25, 0.5 + (i % 3) * 0.15, Math.cos(i * 1.7) * 0.35));
       break;
     }
+    case 'ghostowl': {
+      // A pale owl made of light, trailing wisps.
+      const ghost = { emissive: 0x7fd8ff, glow: 0.9 };
+      const shell = (r, x, y, z, sx = 1, sy = 1, sz = 1) => {
+        const m = at(squash(ball(r, 0xdff4ff, 0, ghost), sx, sy, sz), x, y, z);
+        m.material = m.material.clone();
+        m.material.transparent = true;
+        m.material.opacity = 0.72;
+        return m;
+      };
+      body.add(shell(0.3, 0, 0.42, 0, 1, 1.2, 0.95), shell(0.22, 0, 0.38, 0.17, 1, 1.1, 0.5));
+      for (const x of [-0.11, 0.11]) body.add(at(ball(0.09, 0x9fe8ff, 0, { emissive: 0x9fe8ff, glow: 2 }), x, 0.6, 0.24), at(ball(0.045, 0x1a3a6a, 0), x, 0.6, 0.32), at(cone(0.06, 0.14, 0xdff4ff, 4, ghost), x * 1.5, 0.82, 0));
+      const wings = [-1, 1].map((sx) => { const w = shell(0.17, sx * 0.29, 0.42, -0.02, 0.4, 1.1, 0.9); body.add(w); return w; });
+      for (let i = 0; i < 5; i++) { const wisp = at(ball(0.05 - i * 0.006, 0xbfeaff, 0, { emissive: 0x9fe8ff, glow: 1.6 }), Math.sin(i) * 0.1, 0.25 - i * 0.08, -0.25 - i * 0.12); body.add(wisp); }
+      g.userData.wings = wings;
+      g.userData.flies = true;
+      break;
+    }
     case 'owl': {
       const feather = 0x8a6a4e;
       body.add(at(squash(ball(0.3, feather, 0), 1, 1.2, 0.95), 0, 0.42, 0), at(squash(ball(0.22, 0xe8d6b8, 0), 1, 1.1, 0.5), 0, 0.38, 0.17));
@@ -1526,3 +1545,233 @@ const YARD = [
   { common: [yardSolar, yardPlanter, yardPathLights], home: [yardPlanter], work: [yardDronePad, yardSolar], trade: [yardDronePad, yardPlanter], fence: yardHedgeRow, light: yardPathLights },
   { common: [yardAntenna, yardCrate(C.white), yardRover], home: [yardAntenna], work: [yardRover], trade: [yardCrate(C.metal)], fence: null, light: yardPathLights },
 ];
+
+// --- The Watchtower: where Soma shows what Canvas doesn't -------------------------
+/** A tall stone tower with a lit lens at the top that sweeps the land. userData.beam turns. */
+export function makeWatchtower() {
+  const g = new THREE.Group();
+  g.add(cyl(2.3, 2.6, 0.5, C.stoneDark, 12));
+  for (let i = 0; i < 4; i++) {
+    const r = 1.75 - i * 0.18;
+    g.add(at(cyl(r - 0.06, r, 2.1, i % 2 ? C.stone : 0xe8e0cf, 12, { rough: 0.9 }), 0, 0.5 + i * 2.1, 0));
+    g.add(at(cyl(r + 0.08, r + 0.08, 0.18, C.stoneDark, 12), 0, 0.5 + i * 2.1 + 2.0, 0));
+    for (let k = 0; k < 3; k++) {
+      const a = (k / 3) * Math.PI * 2 + i;
+      const win = at(box(0.36, 0.6, 0.08, 0x2a3550, { emissive: 0xffd27a, glow: 0.4 }), Math.sin(a) * (r + 0.01), 1.3 + i * 2.1, Math.cos(a) * (r + 0.01));
+      win.rotation.y = a;
+      win.name = 'window';
+      g.add(win);
+    }
+  }
+  g.add(at(box(0.9, 1.4, 0.12, C.woodDark), 0, 0.5, 1.78), at(cyl(0.48, 0.48, 0.12, C.woodDark, 10, {}), 0, 1.9, 1.78));
+  // The lantern room: a glass drum with a bright lens, a copper roof and a flag.
+  const top = 0.5 + 4 * 2.1;
+  g.add(at(cyl(1.35, 1.35, 0.2, C.stoneDark, 12), 0, top, 0));
+  for (let k = 0; k < 8; k++) { const a = (k / 8) * Math.PI * 2; g.add(at(box(0.08, 1.3, 0.08, C.iron), Math.sin(a) * 1.05, top + 0.2, Math.cos(a) * 1.05)); }
+  g.add(at(cyl(1.0, 1.0, 1.3, 0xbfe8f5, 12, { emissive: 0x9fe8ff, glow: 0.25 }), 0, top + 0.2, 0));
+  const beam = new THREE.Group();
+  const lens = at(ball(0.42, 0xfff3c0, 1, { emissive: 0xffe08a, glow: 2.2 }), 0, 0, 0);
+  const cone2 = new THREE.Mesh(new THREE.ConeGeometry(2.6, 16, 18, 1, true), new THREE.MeshBasicMaterial({ color: 0xfff1b8, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide, toneMapped: false }));
+  cone2.rotation.z = Math.PI / 2;
+  cone2.position.x = 8;
+  beam.add(lens, cone2);
+  beam.position.y = top + 0.85;
+  beam.name = 'beam';
+  g.add(beam, at(cone(1.55, 1.5, 0x3f9a86, 12, { metal: 0.6, rough: 0.35 }), 0, top + 1.5, 0), at(cyl(0.04, 0.04, 1.4, C.iron, 4), 0, top + 3, 0), at(box(0.7, 0.4, 0.02, 0x7a56c2, { kind: 'fabric' }), 0.36, top + 3.9, 0));
+  g.userData.beam = beam;
+  g.userData.height = top + 4.4;
+  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  return g;
+}
+
+/** A syllabus reading Canvas doesn't show: a dark, half-seen book trailing wisps. */
+export function makeShadowBook(revealed) {
+  const g = makeCreature('invader', 1);
+  g.traverse((o) => {
+    if (!o.isMesh) return;
+    o.material = o.material.clone();
+    o.material.transparent = true;
+    o.material.opacity = revealed ? 0.82 : 0.42;
+    o.material.color.lerp(new THREE.Color(0x2a2140), revealed ? 0.55 : 0.85);
+    if (o.material.emissive) o.material.emissive.setHex(revealed ? 0x5a3a9a : 0x1a1030);
+    o.castShadow = false;
+  });
+  const wisps = new THREE.Group();
+  for (let i = 0; i < 6; i++) {
+    const w = new THREE.Mesh(new THREE.SphereGeometry(0.09 + (i % 3) * 0.03, 8, 6), new THREE.MeshBasicMaterial({ color: revealed ? 0xb48cff : 0x6a5a8a, transparent: true, opacity: 0.5, depthWrite: false, toneMapped: false }));
+    w.userData.seed = i * 1.3;
+    wisps.add(w);
+  }
+  wisps.name = 'wisps';
+  g.add(wisps);
+  g.userData.wisps = wisps;
+  return g;
+}
+
+// --- Lantern Festival (a town theme) -------------------------------------------------
+/** Strings of paper lanterns over the roads and sky lanterns that rise after dark. */
+export function makeLanternFestival() {
+  const g = new THREE.Group();
+  const colors = [0xe8432e, 0xf2a03a, 0xf6d04d, 0xe8432e, 0xd85a8a];
+  const lanternMats = colors.map((c) => new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.9, roughness: 0.6, name: 'lantern' }));
+  const capMat = new THREE.MeshStandardMaterial({ color: 0x2a1a12, roughness: 0.8 });
+  const ropeMat = new THREE.MeshStandardMaterial({ color: 0x5a3a28, roughness: 0.9 });
+  const lanternGeo = new THREE.SphereGeometry(0.32, 12, 8);
+  lanternGeo.scale(1, 1.25, 1);
+  const capGeo = new THREE.CylinderGeometry(0.16, 0.16, 0.08, 8);
+  const postGeo = new THREE.CylinderGeometry(0.08, 0.1, 4.4, 6);
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x8a2a1e, roughness: 0.7 });
+  const lanterns = [];
+  const span = (a, b) => {
+    // A rope sagging between two posts, with a lantern every 1.6 m.
+    const n = Math.max(2, Math.round(a.distanceTo(b) / 1.6));
+    const pts = [];
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      const p = a.clone().lerp(b, t);
+      p.y -= Math.sin(Math.PI * t) * 0.8;
+      pts.push(p);
+    }
+    const rope = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), n * 4, 0.025, 4), ropeMat);
+    g.add(rope);
+    for (let i = 1; i < n; i++) {
+      const m = new THREE.Mesh(lanternGeo, lanternMats[(((i + Math.round(a.x)) % lanternMats.length) + lanternMats.length) % lanternMats.length]);
+      m.position.copy(pts[i]).add(new THREE.Vector3(0, -0.42, 0));
+      const top = new THREE.Mesh(capGeo, capMat);
+      top.position.y = 0.42;
+      const bottom = new THREE.Mesh(capGeo, capMat);
+      bottom.position.y = -0.42;
+      m.add(top, bottom);
+      m.userData.phase = i * 0.7 + a.x;
+      m.name = 'lantern';
+      g.add(m);
+      lanterns.push(m);
+    }
+  };
+  const post = (p) => { const m = new THREE.Mesh(postGeo, postMat); m.position.set(p.x, 2.2, p.z); m.castShadow = true; g.add(m); return new THREE.Vector3(p.x, 4.3, p.z); };
+  for (const r of [10.6, 20.4]) {
+    const count = r < 15 ? 8 : 14;
+    const tops = [];
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2 + 0.2;
+      tops.push(post(new THREE.Vector3(Math.cos(a) * r, 0, Math.sin(a) * r)));
+    }
+    for (let i = 0; i < count; i++) span(tops[i], tops[(i + 1) % count]);
+  }
+  // Along the avenue to the gate, zigzagging across the road.
+  const left = [], right = [];
+  for (let z = 22; z <= 42; z += 5) { left.push(post(new THREE.Vector3(-2.6, 0, z))); right.push(post(new THREE.Vector3(2.6, 0, z))); }
+  for (let i = 0; i < left.length; i++) span(left[i], right[i]);
+  // Sky lanterns, released after dark.
+  const sky = [];
+  const skyGeo = new THREE.CylinderGeometry(0.26, 0.2, 0.5, 8, 1, true);
+  const skyMat = new THREE.MeshBasicMaterial({ color: 0xffb04a, transparent: true, opacity: 0.95, side: THREE.DoubleSide, toneMapped: false });
+  for (let i = 0; i < 28; i++) {
+    const m = new THREE.Mesh(skyGeo, skyMat.clone());
+    m.add(new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 4), new THREE.MeshBasicMaterial({ color: 0xfff1c0, toneMapped: false })));
+    m.userData = { seed: i * 0.37, x: (Math.sin(i * 12.9) * 0.5 + 0.5) * 70 - 35, z: (Math.sin(i * 78.2) * 0.5 + 0.5) * 70 - 35 };
+    m.visible = false;
+    g.add(m);
+    sky.push(m);
+  }
+  g.userData = { lanterns, sky, mats: lanternMats };
+  return g;
+}
+
+// --- The Japanese garden set (decorations) ---------------------------------------
+export function makeGardenPiece(type) {
+  const g = new THREE.Group();
+  const vermilion = 0xd8452e, stone = 0xb9b4a6;
+  switch (type) {
+    case 'torii': {
+      for (const x of [-1.3, 1.3]) g.add(at(cyl(0.16, 0.19, 3.4, vermilion, 10, { rough: 0.6 }), x, 0, 0), at(cyl(0.22, 0.22, 0.3, 0x2a1a12, 10), x, 0, 0));
+      const kasagi = at(box(3.9, 0.22, 0.42, 0x2a1a12), 0, 3.5, 0);
+      g.add(kasagi, at(box(3.7, 0.22, 0.36, vermilion), 0, 3.3, 0), at(box(3.1, 0.18, 0.26, vermilion), 0, 2.75, 0), at(box(0.18, 0.55, 0.2, vermilion), 0, 2.93, 0));
+      for (const x of [-1.95, 1.95]) { const tip = at(box(0.4, 0.18, 0.42, 0x2a1a12), x, 3.6, 0); tip.rotation.z = x < 0 ? 0.25 : -0.25; g.add(tip); }
+      g.add(at(box(0.5, 0.4, 0.05, 0x2a1a12), 0, 2.85, 0.15));
+      break;
+    }
+    case 'toro': {
+      g.add(at(box(0.7, 0.2, 0.7, stone), 0, 0, 0), at(cyl(0.15, 0.18, 0.8, stone, 6), 0, 0.2, 0), at(box(0.6, 0.12, 0.6, stone), 0, 1.0, 0));
+      const light = at(box(0.42, 0.42, 0.42, 0xfff0c0, { emissive: 0xffc860, glow: 1.4 }), 0, 1.12, 0);
+      light.name = 'glow';
+      g.add(light);
+      for (const [x, z] of [[-0.2, 0.22], [0.2, 0.22], [-0.22, -0.2], [0.22, -0.2]]) g.add(at(box(0.08, 0.44, 0.08, stone), x, 1.12, z));
+      g.add(at(cone(0.62, 0.42, stone, 4), 0, 1.56, 0, Math.PI / 4), at(ball(0.1, stone, 0), 0, 1.98, 0));
+      break;
+    }
+    case 'bamboo': {
+      for (let i = 0; i < 9; i++) {
+        const x = Math.sin(i * 2.4) * 0.55, z = Math.cos(i * 1.7) * 0.5, h = 2.4 + (i % 4) * 0.6;
+        for (let k = 0; k < Math.round(h / 0.55); k++) g.add(at(cyl(0.06, 0.065, 0.52, k % 2 ? 0x7cb04a : 0x6aa040, 6), x, k * 0.55, z), at(cyl(0.075, 0.075, 0.04, 0x4f8a32, 6), x, k * 0.55 + 0.5, z));
+        for (let k = 0; k < 3; k++) { const leaf = at(squash(ball(0.18, 0x5fa83e, 0), 2.2, 0.25, 0.7), x + 0.15, h - 0.3 - k * 0.5, z); leaf.rotation.y = i + k; g.add(leaf); }
+      }
+      break;
+    }
+    case 'koi': {
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * Math.PI * 2;
+        g.add(at(squash(ball(0.36, i % 3 ? stone : 0x8f8a7c, 0), 1.2, 0.55, 1), Math.cos(a) * 2.3, 0.1, Math.sin(a) * 1.8));
+      }
+      g.add(at(squash(cyl(2.2, 2.2, 0.05, 0x2f7f8f, 20, { rough: 0.1 }), 1, 1, 0.8), 0, 0.08, 0));
+      const fish = new THREE.Group();
+      [[0xf28a2e, 0.9], [0xf5f0e7, 1.4], [0xe8432e, 0.6]].forEach(([c, r], i) => {
+        const f = group(squash(ball(0.16, c, 0), 0.55, 0.4, 1.4), at(cone(0.1, 0.18, c, 4), 0, 0, -0.27));
+        f.children[1].rotation.x = -Math.PI / 2;
+        f.position.set(Math.cos(i * 2.1) * r, 0.1, Math.sin(i * 2.1) * r * 0.8);
+        f.rotation.y = i * 2.1 + Math.PI / 2;
+        f.userData.r = r;
+        f.userData.a = i * 2.1;
+        fish.add(f);
+      });
+      fish.name = 'koifish';
+      g.add(fish);
+      for (const [x, z] of [[0.9, -0.4], [-1.1, 0.5]]) g.add(at(squash(cyl(0.3, 0.3, 0.03, 0x4f9a38, 10), 1, 1, 1), x, 0.12, z), at(ball(0.08, 0xf7b8d2, 0), x + 0.1, 0.18, z));
+      break;
+    }
+    case 'bridge': {
+      const n = 9;
+      for (let i = 0; i < n; i++) {
+        const t = i / (n - 1), x = (t - 0.5) * 3.6, y = Math.sin(Math.PI * t) * 0.9;
+        const plank = at(box(0.42, 0.1, 1.3, 0x8a5a3a, { kind: 'planks' }), x, y, 0);
+        plank.rotation.z = Math.cos(Math.PI * t) * -0.45;
+        g.add(plank);
+        if (i % 2 === 0) for (const z of [-0.62, 0.62]) g.add(at(box(0.08, 0.7, 0.08, vermilion), x, y, z));
+      }
+      for (const z of [-0.62, 0.62]) {
+        const pts = Array.from({ length: 13 }, (_, i) => { const t = i / 12; return new THREE.Vector3((t - 0.5) * 3.6, Math.sin(Math.PI * t) * 0.9 + 0.7, z); });
+        g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, 0.05, 6), mat(vermilion, { rough: 0.6 })));
+      }
+      break;
+    }
+    case 'sakura': {
+      g.add(at(tilt(cyl(0.14, 0.24, 1.6, 0x4a3226, 7), 0.15, 0), 0, 0, 0), at(tilt(cyl(0.08, 0.12, 1.0, 0x4a3226, 6), -0.6, 0.3), 0.2, 1.3, 0.1));
+      const pinks = [0xf7b8d2, 0xf5a3c3, 0xfcd2e2, 0xf09ab8];
+      for (const [x, y, z, r] of [[0, 2.1, 0, 0.95], [0.75, 1.9, 0.25, 0.7], [-0.7, 1.95, -0.2, 0.72], [0.15, 2.65, -0.3, 0.6], [-0.3, 1.7, 0.6, 0.55]]) g.add(at(ball(r, pinks[Math.round(x * 10 + y) & 3], 0), x, y, z));
+      const petals = new THREE.Group();
+      for (let i = 0; i < 10; i++) { const p = at(squash(ball(0.05, 0xf7b8d2, 0), 1, 0.3, 1), 0, 0, 0); p.userData.seed = i * 0.61; petals.add(p); }
+      petals.name = 'petals';
+      g.add(petals);
+      break;
+    }
+    default:
+      g.add(box(0.5, 0.5, 0.5, C.wood));
+  }
+  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  return g;
+}
+
+/** A small scene for the Lantern Festival's picture: two posts and a string of lanterns. */
+export function makeLanternScene() {
+  const g = new THREE.Group();
+  const post = (x) => at(cyl(0.08, 0.1, 2.6, 0x8a2a1e, 6), x, 0, 0);
+  g.add(post(-1.8), post(1.8), at(box(4.4, 0.08, 1.4, 0x84bd52), 0, -0.05, 0));
+  const pts = Array.from({ length: 11 }, (_, i) => { const t = i / 10; return new THREE.Vector3(-1.8 + 3.6 * t, 2.55 - Math.sin(Math.PI * t) * 0.6, 0); });
+  g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 30, 0.025, 4), mat(0x5a3a28)));
+  [0xe8432e, 0xf6d04d, 0xf2a03a, 0xe8432e].forEach((c, i) => {
+    const p = pts[2 + i * 2];
+    const l = at(squash(ball(0.3, c, 0, { emissive: c, glow: 1.6 }), 1, 1.25, 1), p.x, p.y - 0.75, 0);
+    g.add(l, at(cyl(0.15, 0.15, 0.07, 0x2a1a12, 8), p.x, p.y - 0.4, 0), at(cyl(0.15, 0.15, 0.07, 0x2a1a12, 8), p.x, p.y - 1.15, 0));
+  });
+  return g;
+}

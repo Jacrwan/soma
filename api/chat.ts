@@ -53,7 +53,9 @@ export function validateChatInput(body:unknown):string|null{
  // 'triage' sorts a message: Haiku, with no memory and nothing learned.
  // 'practice' writes practice questions for the study game (/game): Haiku,
  // with no memory and nothing learned, so a quiz never lands in Soma's notes.
- if(purpose!==undefined && purpose!=='triage' && purpose!=='practice')return 'invalid_purpose';
+ // 'oracle' is the game's week planner: the same quiet Haiku call; the tasks
+ // it proposes only reach the plan after the student approves them in the game.
+ if(purpose!==undefined && purpose!=='triage' && purpose!=='practice' && purpose!=='oracle')return 'invalid_purpose';
  if(purpose!==undefined && model!==undefined)return 'invalid_model';
  if(conversationId!==undefined && !isConversationId(conversationId))return 'invalid_conversation';
  if(!Array.isArray(messages) || !messages.length || messages.length>50)return 'invalid_messages';
@@ -161,7 +163,7 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
    // The first pass that sorts a message (and answers small talk) needs no
    // memory, and learning from the message is left to the reply proper.
    const triage=purpose==='triage';
-   const quiet=triage || purpose==='practice';
+   const quiet=triage || purpose==='practice' || purpose==='oracle';
    const lastContent=messages[messages.length-1].content;
    const query=typeof lastContent==='string' ? lastContent : lastContent.filter((b:any)=>b.type==='text').map((b:any)=>b.text).join(' ');
    const savedMemory=quiet ? '' : await (deps.memory??loadMemoryContext)(auth.userId,query);
