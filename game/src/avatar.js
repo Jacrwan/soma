@@ -233,35 +233,26 @@ function paintFace() {
   const under = g.createRadialGradient(cx, 360, 10, cx, 360, 200);
   under.addColorStop(0, 'rgba(233,169,136,0)'); under.addColorStop(1, 'rgba(233,169,136,0.35)');
   g.fillStyle = under; g.fillRect(0, 0, 1024, 512);
-  // Cheeks.
-  for (const side of [-1, 1]) {
-    const b = g.createRadialGradient(cx + side * 96, eyeY + 44, 2, cx + side * 96, eyeY + 44, 34);
-    b.addColorStop(0, 'rgba(255,128,150,0.65)'); b.addColorStop(1, 'rgba(255,128,150,0)');
-    g.fillStyle = b;
-    g.beginPath(); g.ellipse(cx + side * 96, eyeY + 44, 36, 22, 0, 0, Math.PI * 2); g.fill();
-  }
-  // Eyes: tall dark ovals, a warm iris low down, two highlights.
+  // Eyes: simple dark ovals with one small highlight. No lashes, no blush.
   for (const side of [-1, 1]) {
     const x = cx + side * gap;
-    g.fillStyle = '#2a1a16';
-    g.beginPath(); g.ellipse(x, eyeY, 21, 30, 0, 0, Math.PI * 2); g.fill();
-    const iris = g.createLinearGradient(0, eyeY - 6, 0, eyeY + 30);
-    iris.addColorStop(0, 'rgba(120,70,48,0)'); iris.addColorStop(1, 'rgba(150,90,60,0.95)');
-    g.fillStyle = iris;
-    g.beginPath(); g.ellipse(x, eyeY + 8, 16, 20, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#231815';
+    g.beginPath(); g.ellipse(x, eyeY + 4, 14, 19, 0, 0, Math.PI * 2); g.fill();
     g.fillStyle = '#ffffff';
-    g.beginPath(); g.ellipse(x + side * 7, eyeY - 11, 8.5, 9.5, 0, 0, Math.PI * 2); g.fill();
-    g.beginPath(); g.arc(x - side * 7, eyeY + 12, 4, 0, Math.PI * 2); g.fill();
-    // Tiny lashes at the outer corner.
-    g.strokeStyle = '#2a1a16'; g.lineWidth = 4; g.lineCap = 'round';
-    g.beginPath(); g.moveTo(x + side * 18, eyeY - 18); g.lineTo(x + side * 27, eyeY - 25); g.stroke();
+    g.beginPath(); g.arc(x + side * 4, eyeY - 4, 4.5, 0, Math.PI * 2); g.fill();
   }
-  // Soft brows.
-  g.strokeStyle = 'rgba(90,58,38,0.75)'; g.lineWidth = 5;
-  for (const side of [-1, 1]) { g.beginPath(); g.arc(cx + side * gap, eyeY - 18, 26, Math.PI * 1.3, Math.PI * 1.7); g.stroke(); }
-  // A small smile.
-  g.strokeStyle = '#7a3428'; g.lineWidth = 5;
-  g.beginPath(); g.arc(cx, eyeY + 46, 12, Math.PI * 0.15, Math.PI * 0.85); g.stroke();
+  // Straight, thick brows.
+  g.fillStyle = '#4a2f20';
+  for (const side of [-1, 1]) {
+    g.save();
+    g.translate(cx + side * gap, eyeY - 30);
+    g.rotate(side * -0.1);
+    g.beginPath(); g.roundRect(-20, -5, 40, 10, 5); g.fill();
+    g.restore();
+  }
+  // A small, relaxed mouth.
+  g.strokeStyle = '#7a3a2c'; g.lineWidth = 5; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(cx - 11, eyeY + 50); g.quadraticCurveTo(cx, eyeY + 55, cx + 11, eyeY + 50); g.stroke();
   faceTexture = new THREE.CanvasTexture(c);
   faceTexture.colorSpace = THREE.SRGBColorSpace;
   faceTexture.anisotropy = 4;
