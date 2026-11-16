@@ -72,11 +72,107 @@ function passOpen(x, z, r) {
   }
   return open;
 }
-export function hillHeight(x, z, r = Math.hypot(x, z)) {
+// --- Lands: every age is a new landscape ------------------------------------------
+// The town circle (r < 45) is always flat; what changes is everything around it.
+const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+function valleyHeight(x, z, r) {
   if (r < 45) return 0;
   const open = passOpen(x, z, r);
   const rise = ((r - 45) / 12) ** 1.55 * 4.4 * (0.75 + 0.45 * noise2(x * 0.35, z * 0.35));
   return Math.min(74, rise * (0.05 + 0.95 * open * open));
+}
+// Bronze Age: low dunes, sandstone mesas far out, and a river behind the town.
+function duneHeight(x, z, r) {
+  if (r < 45) return 0;
+  const open = passOpen(x, z, r);
+  let h = ((r - 45) / 14) ** 1.3 * 2.4 * (0.5 + 0.9 * noise2(x * 0.12, z * 0.12));
+  h = Math.min(14, h);
+  const mesa = noise2(x * 0.035 + 7, z * 0.035);
+  if (r > 75 && mesa > 0.62) h = Math.max(h, 18 + Math.round(mesa * 10) * 2);
+  h *= 0.15 + 0.85 * open;
+  // The river: a wide band north of town, its banks sloping down.
+  const bank = smooth((Math.abs(z + 60) - 6) / 6);
+  return h * bank + (1 - bank) * -1.4;
+}
+// Medieval: green rolling hills, mountains beyond, and a lake to the west.
+function rollingHeight(x, z, r) {
+  if (r < 45) return 0;
+  const open = passOpen(x, z, r);
+  let h = ((r - 45) / 16) ** 1.2 * 3.2 * (0.7 + 0.6 * noise2(x * 0.08, z * 0.08)) + Math.sin(x * 0.07) * Math.cos(z * 0.06) * 2 * smooth((r - 50) / 10);
+  if (r > 95) h += ((r - 95) / 10) ** 1.6 * 5;
+  h = Math.min(70, Math.max(0, h)) * (0.1 + 0.9 * open * open);
+  const lake = smooth((Math.hypot(x + 68, z - 6) - 13) / 7);
+  return h * lake + (1 - lake) * -1.6;
+}
+// Industrial: a rocky gorge, steep stepped cliffs.
+function gorgeHeight(x, z, r) {
+  if (r < 44) return 0;
+  const open = passOpen(x, z, r);
+  let h = ((r - 44) / 8) ** 1.35 * 6 * (0.6 + 0.7 * noise2(x * 0.2, z * 0.2));
+  h = Math.round(Math.min(64, h) / 3.5) * 3.5;
+  return h * (0.04 + 0.96 * open * open);
+}
+// Modern: the sea to the west with a beach; gentle green hills inland.
+function coastHeight(x, z, r) {
+  if (r < 45 && x > -40) return 0;
+  const shore = smooth((-x - 40) / 10);
+  const open = passOpen(x, z, r);
+  let land = r < 45 ? 0 : Math.min(22, ((r - 45) / 16) ** 1.3 * 3 * (0.6 + 0.8 * noise2(x * 0.1, z * 0.1))) * (0.1 + 0.9 * open * open);
+  return land * (1 - shore) + shore * -Math.min(6, (-x - 40) * 0.25 + 0.6);
+}
+// Space Age: a red canyon of stepped buttes.
+function canyonHeight(x, z, r) {
+  if (r < 45) return 0;
+  const open = passOpen(x, z, r);
+  const n = noise2(x * 0.06, z * 0.06);
+  let h = ((r - 45) / 10) ** 1.4 * 5 * (0.4 + n);
+  h = Math.round(Math.min(48, h) / 5) * 5 + (n > 0.7 && r > 70 ? 10 : 0);
+  return h * (0.05 + 0.95 * open * open);
+}
+
+/** How each age's land looks. Indexed by era (0..5); the Moon is its own place. */
+const LANDS = [
+  { name: 'Green valley', height: valleyHeight,
+    stops: [[0, 0x84bd52], [7, 0x72b048], [22, 0x5c9a40], [32, 0x8f949a], [48, 0xa9aeb4], [58, 0xf4f6f8]],
+    paint: { base: 0x84bd52, patches: [0x7db54c, 0x8ac459, 0x8fc95e, 0x79b04a], shade: 0x5f9640, worn: 0xc9a46e },
+    grass: [0x86c255, 0x8fc95d, 0x7dba4e, 0x94cd62], grassCount: 52000,
+    slope: { kinds: [[0, 0.5], [1, 0.5]], count: 780, maxY: 34 }, town: { kinds: [[0, 0.55], [1, 0.45]], count: 58 },
+    far: { low: 0x5c9a40, high: 0x9aa0a6, snow: 0xf4f6f8, tall: 1 } },
+  { name: 'Desert river', height: duneHeight,
+    stops: [[-1.5, 0x8fa46a], [0, 0xe2c98f], [3, 0xd9b77a], [10, 0xcf9f62], [18, 0xc98652], [26, 0xb9784a]],
+    paint: { base: 0xe3cb8e, patches: [0xd9bd7e, 0xead39c, 0xdcc285, 0xd2b676], shade: 0xc9a86c, worn: 0xc79a5e },
+    grass: [0xa9b45a, 0xb7bd66, 0x9aa850, 0xc2c27a], grassCount: 9000,
+    slope: { kinds: [[2, 0.75], [3, 0.25]], count: 220, maxY: 7, nearWater: true }, town: { kinds: [[2, 0.85], [0, 0.15]], count: 20 },
+    far: { low: 0xd9a066, high: 0xb8714a, snow: null, tall: 0.55 }, water: { kind: 'river' } },
+  { name: 'Lake hills', height: rollingHeight,
+    stops: [[-1.5, 0x5f8a4a], [0, 0x6fb04a], [8, 0x5ea643], [20, 0x4c8f3a], [32, 0x7d8a8c], [48, 0x9aa3ad], [60, 0xf4f6f8]],
+    paint: { base: 0x72b549, patches: [0x6aad43, 0x7cbe52, 0x66a842, 0x84c45a], shade: 0x528a38, worn: 0xb8955f },
+    grass: [0x6fb84a, 0x7dc354, 0x66ad44, 0x86c95c], grassCount: 60000,
+    slope: { kinds: [[1, 0.8], [0, 0.2]], count: 1000, maxY: 32 }, town: { kinds: [[1, 0.55], [0, 0.45]], count: 50 },
+    far: { low: 0x4c7a5a, high: 0x7d8ca6, snow: 0xf4f6f8, tall: 1.15 }, water: { kind: 'lake' } },
+  { name: 'Rocky gorge', height: gorgeHeight,
+    stops: [[0, 0x9aa05a], [4, 0x8a8f55], [10, 0x8a7558], [22, 0x75624f], [40, 0x625a52], [56, 0x8a8580]],
+    paint: { base: 0x97a35c, patches: [0x8c9655, 0xa3a865, 0x8a8a5a, 0xa8986a], shade: 0x7a7f4c, worn: 0xa08a64 },
+    grass: [0x8f9d55, 0x9aa75e, 0x86914f, 0xa3a565], grassCount: 28000,
+    slope: { kinds: [[4, 0.75], [1, 0.25]], count: 300, maxY: 26 }, town: { kinds: [[4, 0.5], [0, 0.3], [1, 0.2]], count: 30 },
+    far: { low: 0x6e6458, high: 0x8a8580, snow: null, tall: 1.25 } },
+  { name: 'Seaside', height: coastHeight,
+    stops: [[-3, 0xd8c690], [-0.2, 0xead9a8], [1, 0x8cc06a], [8, 0x7ab35a], [18, 0x6aa24e], [28, 0x8f949a]],
+    paint: { base: 0x8cc85a, patches: [0x84c052, 0x96cf64, 0x80bb50, 0x9bd46a], shade: 0x669a44, worn: 0xd8c08a, beach: true },
+    grass: [0x8cc85a, 0x96cf64, 0x84c052, 0x9bd46a], grassCount: 40000,
+    slope: { kinds: [[2, 0.5], [0, 0.5]], count: 380, maxY: 20 }, town: { kinds: [[2, 0.5], [0, 0.5]], count: 30 },
+    far: { low: 0x5c9a40, high: 0x8f949a, snow: null, tall: 0.45 }, water: { kind: 'sea' } },
+  { name: 'Red canyon', height: canyonHeight,
+    stops: [[0, 0xd9a066], [4, 0xcf8a52], [10, 0xc06a3e], [20, 0xa9532f], [34, 0xc77a4a], [50, 0xe0a070]],
+    paint: { base: 0xd8a46a, patches: [0xcf9a60, 0xe0ae74, 0xc98f58, 0xd4a86e], shade: 0xb98552, worn: 0xc08050 },
+    grass: [0xb8a05a, 0xc4a866, 0xa8944e, 0xccb070], grassCount: 6000,
+    slope: { kinds: [[3, 1]], count: 110, maxY: 6 }, town: { kinds: [[3, 0.8], [4, 0.2]], count: 14 },
+    far: { low: 0xc06a3e, high: 0x8f4528, snow: null, tall: 0.75 } },
+];
+let land = LANDS[0];
+export const landName = () => land.name;
+export function hillHeight(x, z, r = Math.hypot(x, z)) {
+  return land.height(x, z, r);
 }
 
 // --- Ground --------------------------------------------------------------------------
@@ -281,38 +377,7 @@ export function createWorld(scene, renderer) {
   mapTexture.flipY = false;
   mapTexture.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 4;
   const grain = noiseTexture('dust', 256);
-  const island = ground(MAP_SPAN, 104, hillHeight, groundMaterial(mapTexture, grain, 70, 0.25, 0.18), MAP_SPAN);
-  earth.add(island);
-
-  // The hills and mountains around the valley, coloured by height.
-  {
-    const half = MAP_SPAN / 2;
-    const g = new THREE.PlaneGeometry(560, 560, 140, 140);
-    g.rotateX(-Math.PI / 2);
-    const p = g.attributes.position;
-    const colors = new Float32Array(p.count * 3);
-    const c = new THREE.Color();
-    const stops = [[0, 0x84bd52], [7, 0x72b048], [22, 0x5c9a40], [32, 0x8f949a], [48, 0xa9aeb4], [58, 0xf4f6f8]];
-    for (let i = 0; i < p.count; i++) {
-      const x = p.getX(i), z = p.getZ(i);
-      const h = hillHeight(x, z);
-      // Under the painted meadow this sheet sits just below it.
-      p.setY(i, Math.abs(x) < half - 0.5 && Math.abs(z) < half - 0.5 ? h - 0.8 : h);
-      const t = h + noise2(x * 0.5, z * 0.5) * 2.5;
-      let k = stops.length - 2;
-      while (k > 0 && t < stops[k][0]) k -= 1;
-      const [h0, a] = stops[k], [h1, b] = stops[k + 1];
-      c.set(a).lerp(new THREE.Color(b), Math.max(0, Math.min(1, (t - h0) / (h1 - h0))));
-      c.multiplyScalar(0.97 + 0.05 * (noise2(x * 2.3, z * 2.3) * 0.5 + 0.5));
-      c.toArray(colors, i * 3);
-    }
-    g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    g.computeVertexNormals();
-    const hills = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true }));
-    hills.receiveShadow = true;
-    earth.add(hills);
-  }
-
+  const groundMat = groundMaterial(mapTexture, grain, 70, 0.25, 0.18);
   const waterUniforms = {
     ripples: { value: rippleNormals(256) }, time: skyUniforms.time, haze: { value: 0.006 },
     zenith: skyUniforms.zenith, horizon: skyUniforms.horizon, sunDir: skyUniforms.sunDir, sunColor: skyUniforms.sunColor,
@@ -322,54 +387,137 @@ export function createWorld(scene, renderer) {
   water.rotation.x = -Math.PI / 2;
   water.position.y = -0.5;
   water.renderOrder = 2;
-  water.visible = false; // the valley has no sea
+  water.visible = false; // only the seaside age has a sea
+  earth.add(water);
 
   earth.add(createClouds(16, 404, 60, 190, 34, 62));
 
-  // Far-off peaks, so the horizon isn't empty.
-  const far = seeded(314);
-  const islandMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true });
-  for (let i = 0; i < 15; i++) {
-    const a = (i / 15) * 6.28 + far() * 0.3;
-    const d = 300 + far() * 160;
-    const size = 80 + far() * 90;
-    const g = new THREE.SphereGeometry(size, 22, 12, 0, Math.PI * 2, 0, Math.PI / 2);
-    const p = g.attributes.position;
-    const colors = new Float32Array(p.count * 3);
-    const c = new THREE.Color();
-    const tall = 0.7 + far() * 0.6;
-    for (let k = 0; k < p.count; k++) {
-      const x = p.getX(k), y = p.getY(k), z = p.getZ(k);
-      const n = noise3(x * 0.07 + i * 9, y * 0.07, z * 0.07);
-      const ny = y * tall * (0.55 + n * 0.9);
-      p.setXYZ(k, x * (0.8 + n * 0.4), ny - 1, z * (0.8 + n * 0.4));
-      const t = ny / (size * tall);
-      c.set(0x5c9a40).lerp(new THREE.Color(0x9aa0a6), Math.max(0, Math.min(1, t * 2.4 - 0.3 + (n - 0.5))));
-      if (t + (n - 0.5) * 0.3 > 0.62) c.set(0xf4f6f8);
-      c.toArray(colors, k * 3);
+
+  // Everything that belongs to one age's land, rebuilt when a new age starts.
+  const landParts = new THREE.Group();
+  earth.add(landParts);
+  let landIndex = -1;
+  let grass = null;
+  let grassLevel = 0;
+  const dispose = (root) => root.traverse((o) => { if (o.isMesh || o.isInstancedMesh) { o.geometry?.dispose(); } });
+  function buildLand(index) {
+    landIndex = index;
+    land = LANDS[index];
+    dispose(landParts);
+    landParts.clear();
+
+    landParts.add(ground(MAP_SPAN, 104, hillHeight, groundMat, MAP_SPAN));
+
+    // The hills around the town, coloured by height.
+    {
+      const half = MAP_SPAN / 2;
+      const g = new THREE.PlaneGeometry(560, 560, 140, 140);
+      g.rotateX(-Math.PI / 2);
+      const p = g.attributes.position;
+      const colors = new Float32Array(p.count * 3);
+      const c = new THREE.Color();
+      const stops = land.stops;
+      for (let i = 0; i < p.count; i++) {
+        const x = p.getX(i), z = p.getZ(i);
+        const h = hillHeight(x, z);
+        // Under the painted meadow this sheet sits just below it.
+        p.setY(i, Math.abs(x) < half - 0.5 && Math.abs(z) < half - 0.5 ? h - 0.8 : h);
+        const t = h + noise2(x * 0.5, z * 0.5) * 2.5;
+        let k = stops.length - 2;
+        while (k > 0 && t < stops[k][0]) k -= 1;
+        const [h0, a] = stops[k], [h1, b] = stops[k + 1];
+        c.set(a).lerp(new THREE.Color(b), Math.max(0, Math.min(1, (t - h0) / (h1 - h0))));
+        c.multiplyScalar(0.97 + 0.05 * (noise2(x * 2.3, z * 2.3) * 0.5 + 0.5));
+        c.toArray(colors, i * 3);
+      }
+      g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      g.computeVertexNormals();
+      const hills = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true }));
+      hills.receiveShadow = true;
+      landParts.add(hills);
     }
-    g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-    g.computeVertexNormals();
-    const m = new THREE.Mesh(g, islandMat);
-    m.position.set(Math.cos(a) * d, 0, Math.sin(a) * d);
-    earth.add(m);
+
+    // Water: a river, a lake or the sea, depending on the land.
+    water.visible = land.water?.kind === 'sea';
+    if (land.water?.kind === 'river') {
+      const river = new THREE.Mesh(new THREE.PlaneGeometry(700, 14), water.material);
+      river.rotation.x = -Math.PI / 2;
+      river.position.set(0, -0.45, -60);
+      river.renderOrder = 2;
+      landParts.add(river);
+    } else if (land.water?.kind === 'lake') {
+      const lake = new THREE.Mesh(new THREE.CircleGeometry(17, 40), water.material);
+      lake.rotation.x = -Math.PI / 2;
+      lake.position.set(-68, -0.45, 6);
+      lake.renderOrder = 2;
+      landParts.add(lake);
+    }
+
+    // Far-off peaks, so the horizon isn't empty.
+    {
+      const far = seeded(314 + index * 17);
+      const islandMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true });
+      const lo = new THREE.Color(land.far.low), hi = new THREE.Color(land.far.high);
+      for (let i = 0; i < 15; i++) {
+        const a = (i / 15) * 6.28 + far() * 0.3;
+        // The seaside age keeps its west horizon open over the water.
+        if (land.water?.kind === 'sea' && Math.cos(a) < -0.3) continue;
+        const d = 300 + far() * 160;
+        const size = 80 + far() * 90;
+        const g = new THREE.SphereGeometry(size, 22, 12, 0, Math.PI * 2, 0, Math.PI / 2);
+        const p = g.attributes.position;
+        const colors = new Float32Array(p.count * 3);
+        const c = new THREE.Color();
+        const tall = (0.7 + far() * 0.6) * land.far.tall;
+        for (let k = 0; k < p.count; k++) {
+          const x = p.getX(k), y = p.getY(k), z = p.getZ(k);
+          const n = noise3(x * 0.07 + i * 9, y * 0.07, z * 0.07);
+          let ny = y * tall * (0.55 + n * 0.9);
+          if (index === 5 || index === 1) ny = Math.round(ny / 18) * 18; // flat-topped buttes and mesas
+          p.setXYZ(k, x * (0.8 + n * 0.4), ny - 1, z * (0.8 + n * 0.4));
+          const t = ny / (size * Math.max(0.3, tall));
+          c.copy(lo).lerp(hi, Math.max(0, Math.min(1, t * 2.4 - 0.3 + (n - 0.5))));
+          if (land.far.snow && t + (n - 0.5) * 0.3 > 0.62) c.set(land.far.snow);
+          c.toArray(colors, k * 3);
+        }
+        g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        g.computeVertexNormals();
+        const m = new THREE.Mesh(g, islandMat);
+        m.position.set(Math.cos(a) * d, 0, Math.sin(a) * d);
+        landParts.add(m);
+      }
+    }
+
+    // Trees (or palms, or cacti) on the slopes around the town.
+    {
+      const r = seeded(77 + index);
+      const slopes = createForest();
+      const list = [];
+      const pick = (kinds, v) => { let acc = 0; for (const [k, w] of kinds) { acc += w; if (v < acc) return k; } return kinds[0][0]; };
+      for (let tries = 0; tries < 8000 && list.length < land.slope.count; tries++) {
+        const a = r() * 6.28, d = 46.5 + r() * r() * 95;
+        const x = Math.cos(a) * d, z = Math.sin(a) * d;
+        const y = hillHeight(x, z, d);
+        if (y > land.slope.maxY || y < 0.15 || passOpen(x, z, d) < 0.25) continue;
+        // Desert palms grow along the river.
+        if (land.slope.nearWater && Math.abs(z + 60) > 16 && r() < 0.85) continue;
+        list.push({ x, y: y - 0.3, z, kind: pick(land.slope.kinds, r()), scale: 1.1 + r() * 1.3, turn: r() * 6.28 });
+      }
+      slopes.place(list);
+      landParts.add(slopes.object);
+    }
+
+    // Grass in this land's colours (sparse in the desert and the canyon).
+    if (grass) earth.remove(grass);
+    grass = createGrass(land.grassCount, 41, grassAllowed, 21, land.grass);
+    earth.add(grass);
+    applyGrassLevel();
+  }
+  function applyGrassLevel() {
+    if (grass) grass.count = Math.floor(grass.userData.full * [1, 0.55, 0.25][grassLevel]);
   }
 
-  // Woods on the slopes around the valley. They never change, so they are placed once.
-  {
-    const r = seeded(77);
-    const slopes = createForest();
-    const list = [];
-    for (let tries = 0; tries < 6000 && list.length < 780; tries++) {
-      const a = r() * 6.28, d = 46.5 + r() * r() * 95;
-      const x = Math.cos(a) * d, z = Math.sin(a) * d;
-      const y = hillHeight(x, z, d);
-      if (y > 34 || passOpen(x, z, d) < 0.25) continue;
-      list.push({ x, y: y - 0.3, z, kind: r() < 0.5 ? 0 : 1, scale: 1.1 + r() * 1.3, turn: r() * 6.28 });
-    }
-    slopes.place(list);
-    earth.add(slopes.object);
-  }
+  earth.add(createClouds(16, 404, 60, 190, 34, 62));
 
   function onRoad(x, z, pad = 0) {
     const r = Math.hypot(x, z);
@@ -404,8 +552,6 @@ export function createWorld(scene, renderer) {
     for (const p of WONDER_POS.slice(0, 6)) if (Math.hypot(x - p.x, z - p.z) < 5.2) return false;
     return true;
   }
-  const grass = createGrass(52000, 41, grassAllowed);
-  earth.add(grass);
   const forest = createForest(90);
   earth.add(forest.object);
 
@@ -420,9 +566,10 @@ export function createWorld(scene, renderer) {
       ctx.drawImage(img, X(x) - radius * s, X(z) - radius * s, radius * 2 * s, radius * 2 * s);
     };
     ctx.globalAlpha = 1;
-    ctx.fillStyle = '#84bd52';
+    const P = land.paint;
+    ctx.fillStyle = css(P.base);
     ctx.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
-    const sands = [stamp(0x7db54c), stamp(0x8ac459), stamp(0x79b04a)];
+    const sands = P.patches.slice(0, 3).map(stamp);
     for (let i = 0; i < 900; i++) {
       const a = r() * 6.28, d = 39 + r() * 13;
       dab(sands[i % 3], Math.cos(a) * d, Math.sin(a) * d, 0.6 + r() * 2.2, 0.25);
@@ -430,14 +577,14 @@ export function createWorld(scene, renderer) {
     // Grass, fading into the beach.
     ctx.globalAlpha = 1;
     const fade = ctx.createRadialGradient(X(0), X(0), 39.6 * s, X(0), X(0), 42.6 * s);
-    fade.addColorStop(0, css(0x84bd52, 1));
-    fade.addColorStop(1, css(0x84bd52, 0));
+    fade.addColorStop(0, css(P.base, 1));
+    fade.addColorStop(1, css(P.base, 0));
     ctx.fillStyle = fade;
     ctx.beginPath();
     ctx.arc(X(0), X(0), 43 * s, 0, 6.3);
     ctx.fill();
     // Cartoon grass: one clean green with a few big, soft patches.
-    const greens = [0x7db54c, 0x8ac459, 0x8fc95e, 0x79b04a].map(stamp);
+    const greens = P.patches.map(stamp);
     for (let i = 0; i < 700; i++) {
       const a = r() * 6.28, d = Math.sqrt(r()) * 41;
       dab(greens[Math.floor(r() * greens.length)], Math.cos(a) * d, Math.sin(a) * d, 2 + r() * 5, 0.12 + r() * 0.12);
@@ -448,13 +595,21 @@ export function createWorld(scene, renderer) {
       dab(tufts[i % 2], Math.cos(a) * d, Math.sin(a) * d, 0.12 + r() * 0.25, 0.3);
     }
     // Worn earth where things stand and where the fight happens.
-    const worn = stamp(0xc9a46e);
+    const worn = stamp(P.worn);
     for (const p of EARTH_PAD_POS) dab(worn, p.x, p.z, 4.6, 0.75);
     for (const p of WONDER_POS.slice(0, 6)) dab(worn, p.x, p.z, 6.6, 0.6);
     dab(worn, ARENA.x, ARENA.z, 10.5, 0.75);
     // Shade under the trees.
-    const shade = stamp(0x5f9640);
+    const shade = stamp(P.shade);
     for (const t of trees) dab(shade, t.x, t.z, 1.6 * t.scale, 0.35);
+    // The seaside age: sand where the town runs down to the water.
+    if (P.beach) {
+      const sand = [stamp(0xead9a8), stamp(0xe2cf98)];
+      for (let i = 0; i < 2600; i++) {
+        const x = -52 + r() * 22, z = (r() - 0.5) * 104;
+        dab(sand[i % 2], x, z, 1.2 + r() * 2.4, 0.3 + Math.max(0, (-x - 34) / 18) * 0.7);
+      }
+    }
 
     // Roads.
     const road = ROADS[e];
@@ -543,6 +698,7 @@ export function createWorld(scene, renderer) {
 
   function setEra(era) {
     const e = Math.min(era, 5);
+    if (e !== landIndex) buildLand(e);
     eraParts.traverse((o) => { if (o.isMesh) o.geometry.dispose(); });
     eraParts.clear();
 
@@ -556,12 +712,13 @@ export function createWorld(scene, renderer) {
 
     const r = seeded(42);
     const trees = [];
-    for (let tries = 0; tries < 900 && trees.length < TREES[e]; tries++) {
+    for (let tries = 0; tries < 900 && trees.length < land.town.count; tries++) {
       const a = r() * Math.PI * 2;
       const d = 8 + Math.sqrt(r()) * 35;
       const x = Math.cos(a) * d;
       const z = Math.sin(a) * d;
-      const kind = r() < 0.55 ? 0 : 1;
+      let kind = land.town.kinds[0][0];
+      { const v = r(); let acc = 0; for (const [k, w] of land.town.kinds) { acc += w; if (v < acc) { kind = k; break; } } }
       const scale = 0.85 + r() * 0.7;
       const turn = r() * 6.28;
       if (blocked(x, z)) continue;
@@ -835,7 +992,8 @@ export function createWorld(scene, renderer) {
 
   /** Lighter settings for slow machines: 0 full, 1 less grass and smaller shadows, 2 least. */
   function setQuality(level) {
-    grass.count = Math.floor(grass.userData.full * [1, 0.55, 0.25][level]);
+    grassLevel = level;
+    applyGrassLevel();
     const size = [2048, 1024, 1024][level];
     if (sun.shadow.mapSize.x !== size) {
       sun.shadow.mapSize.set(size, size);
@@ -844,7 +1002,7 @@ export function createWorld(scene, renderer) {
     }
   }
 
-  return { earth, moon, setEra, setScene, showRealm, update, setQuality, setDaylight, get daylight() { return daylight; }, groundHeight: (name, x, z) => (name === 'moon' ? moonHeight(x, z, Math.hypot(x, z)) : hillHeight(x, z)) };
+  return { earth, moon, landName, setEra, setScene, showRealm, update, setQuality, setDaylight, get daylight() { return daylight; }, groundHeight: (name, x, z) => (name === 'moon' ? moonHeight(x, z, Math.hypot(x, z)) : hillHeight(x, z)) };
 }
 
 export { EARTH_PADS };

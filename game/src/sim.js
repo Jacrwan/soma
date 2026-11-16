@@ -310,7 +310,29 @@ export function buildWonder(state) {
   if (!wonder || wonder.scene !== state.scene || !spend(state, wonder.cost)) return null;
   state.wonders.push(wonder.index);
   state.era += 1;
+  // A wonder on Earth ends the age: the town moves to a new landscape and
+  // starts empty. Hero, coins, school, creatures and villagers come along;
+  // the old buildings stay behind, decorations are sold for half, and a
+  // settler's purse pays for a first home and works in the new age.
+  // (The Moon Rocket is the exception: you fly from Space Age land.)
+  if (wonder.scene === 'earth' && wonder.index < MOON_TIER - 1) {
+    const out = newLand(state);
+    return { ...wonder, ...out };
+  }
   return wonder;
+}
+
+/** Empties the town for a fresh start in the next age. Returns { purse, decorBack }. */
+export function newLand(state) {
+  state.pads.earth = state.pads.earth.map(() => null);
+  let decorBack = 0;
+  for (const d of state.decor) decorBack += Math.floor((d.paid || 0) / 2);
+  state.decor = [];
+  const tier = tierFor(state, 'earth');
+  const purse = buildCost('home', tier) * 2 + buildCost('work', tier);
+  addCoins(state, purse + decorBack);
+  state.stats.lands = (state.stats.lands || 1) + 1;
+  return { purse, decorBack, newLand: true };
 }
 
 /** Advances production. Buildings fill their own stores up to a cap; walking by collects them. */

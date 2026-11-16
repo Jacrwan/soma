@@ -264,6 +264,96 @@ const TREE_SIZE = 4.6; // the pack's trees are about 1.1 units tall
  * has no broadleaf trees): a tapered trunk and three faceted blobs of leaves,
  * lighter on top. About 1 unit tall, coloured per vertex.
  */
+/** Vertex-coloured, flat-shaded parts merged into one geometry (same style as the round tree). */
+function painted(parts) {
+  for (const g of parts) {
+    g.deleteAttribute('uv');
+    g.computeVertexNormals();
+  }
+  return mergeGeometries(parts);
+}
+function paintWith(g, fn) {
+  const p = g.attributes.position;
+  const colors = new Float32Array(p.count * 3);
+  const c = new THREE.Color();
+  for (let i = 0; i < p.count; i++) {
+    fn(c, p.getX(i), p.getY(i), p.getZ(i));
+    c.toArray(colors, i * 3);
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  return g;
+}
+/** A palm: a leaning ringed trunk and drooping fronds. About 1.3 tall before TREE_SIZE. */
+function palmGeometry() {
+  const parts = [];
+  for (let i = 0; i < 6; i++) {
+    const seg = new THREE.CylinderGeometry(0.045 - i * 0.003, 0.055 - i * 0.003, 0.2, 6).toNonIndexed();
+    seg.translate(i * 0.025, 0.1 + i * 0.19, 0);
+    parts.push(paintWith(seg, (c, x, y) => c.set(i % 2 ? 0x9a6a44 : 0x8a5c3a).lerp(new THREE.Color(0xb0805a), (y % 0.19) / 0.19 * 0.4)));
+  }
+  const top = new THREE.Vector3(0.14, 1.16, 0);
+  for (let k = 0; k < 7; k++) {
+    const a = (k / 7) * Math.PI * 2;
+    const frond = new THREE.ConeGeometry(0.09, 0.62, 4, 1).toNonIndexed();
+    frond.translate(0, 0.31, 0);
+    frond.scale(1, 1, 0.35);
+    frond.rotateZ(-1.9);
+    frond.rotateY(a);
+    frond.translate(top.x, top.y, top.z);
+    parts.push(paintWith(frond, (c, x, y) => c.set(0x3f8f3a).lerp(new THREE.Color(0x7cc04a), Math.max(0, Math.min(1, (y - 0.9) * 2.5)))));
+  }
+  const nut = new THREE.IcosahedronGeometry(0.06, 0).toNonIndexed();
+  nut.translate(top.x, top.y - 0.06, top.z);
+  parts.push(paintWith(nut, (c) => c.set(0x6b4a2a)));
+  return painted(parts);
+}
+/** A saguaro cactus: a column and two bent arms. */
+function cactusGeometry() {
+  const parts = [];
+  const green = (c, x, y, z) => c.set(0x4f9a4a).lerp(new THREE.Color(0x7cc05a), (Math.sin(Math.atan2(z, x) * 8) * 0.5 + 0.5) * 0.5);
+  const col = new THREE.CylinderGeometry(0.07, 0.08, 0.62, 8).toNonIndexed();
+  col.translate(0, 0.31, 0);
+  parts.push(paintWith(col, green));
+  const cap = new THREE.SphereGeometry(0.07, 8, 4, 0, Math.PI * 2, 0, Math.PI / 2).toNonIndexed();
+  cap.translate(0, 0.62, 0);
+  parts.push(paintWith(cap, green));
+  for (const [sx, y, h] of [[1, 0.28, 0.22], [-1, 0.36, 0.16]]) {
+    const out = new THREE.CylinderGeometry(0.045, 0.045, 0.14, 6).toNonIndexed();
+    out.rotateZ(Math.PI / 2);
+    out.translate(sx * 0.12, y, 0);
+    const up = new THREE.CylinderGeometry(0.045, 0.045, h, 6).toNonIndexed();
+    up.translate(sx * 0.18, y + h / 2, 0);
+    const tip = new THREE.SphereGeometry(0.045, 6, 3, 0, Math.PI * 2, 0, Math.PI / 2).toNonIndexed();
+    tip.translate(sx * 0.18, y + h, 0);
+    parts.push(paintWith(out, green), paintWith(up, green), paintWith(tip, green));
+  }
+  return painted(parts);
+}
+/** A bare, windswept tree for rocky and industrial land. */
+function bareTreeGeometry() {
+  const parts = [];
+  const bark = (c, x, y) => c.set(0x5a4434).lerp(new THREE.Color(0x7a6050), Math.min(1, y));
+  const trunk = new THREE.CylinderGeometry(0.035, 0.07, 0.6, 5).toNonIndexed();
+  trunk.translate(0, 0.3, 0);
+  parts.push(paintWith(trunk, bark));
+  for (const [a, tilt, len, y] of [[0, 0.7, 0.35, 0.5], [2.1, 0.8, 0.3, 0.42], [4.2, 0.6, 0.32, 0.56], [1, 0.3, 0.28, 0.62]]) {
+    const b = new THREE.CylinderGeometry(0.012, 0.03, len, 4).toNonIndexed();
+    b.translate(0, len / 2, 0);
+    b.rotateZ(tilt);
+    b.rotateY(a);
+    b.translate(0, y, 0);
+    parts.push(paintWith(b, bark));
+  }
+  // A few clumps of dusty leaves hanging on.
+  for (const [x, y, z, r] of [[0.15, 0.72, 0.05, 0.1], [-0.12, 0.66, -0.1, 0.08]]) {
+    const g = new THREE.IcosahedronGeometry(r, 0).toNonIndexed();
+    g.translate(x, y, z);
+    parts.push(paintWith(g, (c) => c.set(0x7f8a4a)));
+  }
+  return painted(parts);
+}
+let extraTrees = null;
+
 function roundTreeGeometry() {
   const parts = [];
   const paint = (g, fn) => {
@@ -315,16 +405,22 @@ export function createForest() {
       m.dispose();
     }
     meshes = [];
-    // kind 0: round leafy tree; kind 1: one of the pack's two pines.
+    // kind 0: round leafy tree; kind 1: one of the pack's two pines;
+    // 2 palm, 3 cactus, 4 bare tree (the later ages' landscapes).
     const pine = (t) => (Math.abs(Math.sin(t.x * 3.1 + t.z * 1.7)) < 0.5 ? 1 : 2);
+    const slot = (t) => (t.kind === 1 ? pine(t) : t.kind >= 2 ? t.kind + 1 : 0);
     if (!roundTree) {
       roundTree = {
         geometry: roundTreeGeometry(),
         material: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true }),
       };
     }
-    [roundTree, kit.tree_single_A, kit.tree_single_B].forEach((src, kind) => {
-      const list = trees.filter((t) => (t.kind === 1 ? pine(t) : 0) === kind);
+    if (!extraTrees) {
+      const mat = () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, flatShading: true });
+      extraTrees = [{ geometry: palmGeometry(), material: mat() }, { geometry: cactusGeometry(), material: mat() }, { geometry: bareTreeGeometry(), material: mat() }];
+    }
+    [roundTree, kit.tree_single_A, kit.tree_single_B, ...extraTrees].forEach((src, kind) => {
+      const list = trees.filter((t) => slot(t) === kind);
       if (!list.length) return;
       const material = sway(src.material.clone(), 0.016, 0.35);
       const mesh = new THREE.InstancedMesh(src.geometry, material, list.length);
@@ -412,7 +508,7 @@ export function rockGeometry(smooth = false) {
   return scaleUv(g, 3.5, 2);
 }
 
-export function createGrass(count, radius, allowed, seedN = 21) {
+export function createGrass(count, radius, allowed, seedN = 21, colours = [0x86c255, 0x8fc95d, 0x7dba4e, 0x94cd62]) {
   const r = seeded(seedN);
   const pos = [];
   const col = [];
@@ -452,7 +548,7 @@ export function createGrass(count, radius, allowed, seedN = 21) {
   };
   const mesh = new THREE.InstancedMesh(g, material, count);
   const dummy = new THREE.Object3D();
-  const shades = [0x86c255, 0x8fc95d, 0x7dba4e, 0x94cd62].map((c) => new THREE.Color(c));
+  const shades = colours.map((c) => new THREE.Color(c));
   const c = new THREE.Color();
   let placed = 0;
   for (let tries = 0; tries < count * 3 && placed < count; tries++) {

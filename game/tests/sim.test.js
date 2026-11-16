@@ -44,11 +44,18 @@ test('upgrading and gilding raise income; modernizing needs a newer era', () => 
   assert.ok(S.gild(s, 0));
   assert.strictEqual(S.buildingIncome(s, b), 13.5);
   assert.ok(!S.modernize(s, 0), 'already current');
-  S.buildWonder(s);
+  S.placeDecor(s, 'lamp', 20, 20);
+  const coins = s.coins;
+  const done = S.buildWonder(s);
   assert.strictEqual(s.era, 1);
-  assert.ok(S.modernize(s, 0));
-  assert.deepStrictEqual([b.tier, b.level, b.golden], [1, 1, true]);
-  assert.strictEqual(S.buildingName(b), 'Mudbrick House');
+  // A new age is a new land: the town starts empty, with a settler's purse.
+  assert.ok(done.newLand);
+  assert.ok(s.pads.earth.every((p) => p === null));
+  assert.strictEqual(s.decor.length, 0);
+  assert.strictEqual(done.purse, S.buildCost('home', 1) * 2 + S.buildCost('work', 1));
+  assert.strictEqual(s.coins, coins - S.ERAS[0].wonderCost + done.purse + done.decorBack);
+  assert.ok(S.build(s, 0, 'home'));
+  assert.strictEqual(S.buildingName(s.pads.earth[0]), 'Mudbrick House');
 });
 
 test('wonders advance the era in order, the rocket unlocks the moon, and the Star Gate is built there', () => {

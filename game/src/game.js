@@ -208,6 +208,9 @@ function refreshWonders() {
     const built = state.wonders.includes(index);
     const isNext = next && next.index === index;
     if (!built && !isNext) continue;
+    // Each age is a new land, so an old age's wonder stays behind in its own
+    // land. Only the rocket stays, to fly from, and the Star Gate on the Moon.
+    if (built && index < 5) continue;
     const parent = index === 6 ? world.moon : world.earth;
     const object = built ? A.makeWonder(index) : A.makeWonderSite();
     object.position.copy(W.wonderPosition(index));
@@ -809,6 +812,7 @@ function openBuilding(i) {
 function openWonder(wonder) {
   ui.wonder({
     name: wonder.name, cost: wonder.cost, affordable: state.coins >= wonder.cost, nextEra: eraName(state.era + 1),
+    newLand: wonder.scene === 'earth' && wonder.index < S.MOON_TIER - 1 ? ['the desert river', 'the lake hills', 'the rocky gorge', 'the seaside', 'the red canyon'][wonder.index] : null,
     onBuild: () => {
       const done = S.buildWonder(state);
       if (!done) return deny('Not enough coins yet.');
@@ -822,6 +826,13 @@ function openWonder(wonder) {
       audio.era();
       ui.banner(done.index === 5 ? 'The Moon is waiting' : done.index === 6 ? 'You reached the stars' : 'A new age begins', eraName());
       if (done.index === 5) setTimeout(() => ui.toast('Walk to the rocket and press E to fly to the Moon.', 'gold'), 3600);
+      if (done.newLand) {
+        // Let the wonder stand for a moment, then set out for the new land.
+        refreshWonders();
+        save();
+        setTimeout(() => moveToNewLand(done), 3200);
+        return;
+      }
       world.setEra(state.era);
       dressPlayer();
       refreshAllPads();
@@ -829,6 +840,32 @@ function openWonder(wonder) {
       refreshHud();
       save();
     },
+  });
+}
+
+/** The start of a new age: a fresh, empty town in a new landscape. */
+function moveToNewLand(done) {
+  if (build.on) toggleBuild(false);
+  audio.launch();
+  ui.fade(() => {
+    world.setEra(state.era);
+    dressPlayer();
+    refreshAllPads();
+    refreshWonders();
+    syncDecor();
+    for (const r of raiders.splice(0)) r.object.parent?.remove(r.object);
+    player.object.position.set(0, 0, 9);
+    player.vy = 0;
+    // The villagers come along, walking in through the new gate.
+    for (const f of folk.values()) { f.object.position.set((f.i % 3 - 1) * 1.2, 0, W.GATE.z - 1); f.target = null; f.wait = 1 + f.i; }
+    syncInvaders(Date.now());
+    syncChests();
+    syncHalls();
+    applyTimeOfDay();
+    refreshHud();
+    ui.banner(eraName(), `A new land: ${world.landName()}`);
+    setTimeout(() => ui.toast(`Your old town stays behind. A settler's purse of ${S.fmt(done.purse)} coins${done.decorBack ? ` (+${S.fmt(done.decorBack)} for your decorations)` : ''} gets the first homes built.`, 'gold'), 2600);
+    save();
   });
 }
 
@@ -2587,6 +2624,7 @@ window.epoch = {
     r.setFromCamera(new THREE.Vector2(fx * 2 - 1, -(fy * 2 - 1)), camera);
     return r.intersectObjects(scene.children, true).slice(0, 4).map((h) => { const names = []; for (let o = h.object; o; o = o.parent) if (o.name) names.push(o.name); return { d: +h.distance.toFixed(1), names, type: h.object.type, emissive: h.object.material?.emissive?.getHexString?.(), glow: h.object.material?.emissiveIntensity, color: h.object.material?.color?.getHexString?.() }; });
   },
+  wonder: () => openWonder(S.nextWonder(state)),
   invaders: () => [...invaders.values()].map((i) => ({ name: i.item.name, mode: i.mode, x: +i.object.position.x.toFixed(1), z: +i.object.position.z.toFixed(1), inScene: Boolean(i.object.parent) })),
   armor(id) { const inv = invaders.get(id); return inv && inv.object.userData.armor?.filter((p) => p.visible).length; },
   info: () => ({ quality, calls: renderer.info.render.calls, tris: renderer.info.render.triangles }),

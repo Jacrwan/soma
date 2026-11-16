@@ -245,11 +245,12 @@ export function createUI(on) {
       );
     },
 
-    wonder({ name, cost, affordable, nextEra, onBuild }) {
+    wonder({ name, cost, affordable, nextEra, newLand, onBuild }) {
       panel({ title: name, subtitle: `Building this wonder begins the ${nextEra}.` },
+        newLand ? el('p', { class: 'note', text: `A new age is a new land. Your people set out for ${newLand}, and the town starts over empty. Your hero, coins, creatures, class halls and villagers come along, and a settler's purse pays for the first homes.` }) : null,
         el('div', { class: 'actions' },
           el('button', { class: 'btn primary', disabled: !affordable, onclick: () => { close(); onBuild(); } },
-            el('span', {}, `Build the ${name}`, el('small', { text: 'New buildings, more land, a new look for your town' })), el('span', { class: 'cost' }, price(cost)))),
+            el('span', {}, `Build the ${name}`, el('small', { text: newLand ? `Then set out for ${newLand}` : 'New buildings, more land, a new look for your town' })), el('span', { class: 'cost' }, price(cost)))),
         affordable ? null : el('p', { class: 'note', text: 'Keep collecting. Handing in work and opening chests gets you there faster.' }),
       );
     },
