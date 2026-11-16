@@ -44,3 +44,20 @@ export const DETAILS_MESSAGE = 'Run task_details_migration.sql in Supabase to sa
 
 /** The deadline Soma works to: yours when you set one, else the posted one. */
 export const deadlineOf = (t: Pick<Todo, 'myDue' | 'dueDate'>) => t.myDue || t.dueDate;
+
+/**
+ * A length as typed: "45", "45 min", "1h", "1h 30m", "1.5h", "1:30". A bare
+ * number is minutes. null when it can't be read.
+ */
+export function parseLength(text: string): number | null {
+  const t = text.trim().toLowerCase();
+  if (!t) return null;
+  let m: RegExpExecArray | null;
+  let minutes: number | null = null;
+  if ((m = /^(\d{1,2}):([0-5]\d)$/.exec(t))) minutes = Number(m[1]) * 60 + Number(m[2]);
+  else if ((m = /^(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hour|hours)(?:\s*(\d+)\s*(?:m|min|mins|minutes)?)?$/.exec(t))) minutes = Number(m[1]) * 60 + Number(m[2] ?? 0);
+  else if ((m = /^(\d+)\s*(?:m|min|mins|minute|minutes)?$/.exec(t))) minutes = Number(m[1]);
+  if (minutes === null || !Number.isFinite(minutes)) return null;
+  return Math.min(1440, Math.max(5, Math.round(minutes)));
+}
+

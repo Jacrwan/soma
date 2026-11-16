@@ -237,3 +237,10 @@ test('your own deadline and work days bound the sittings', () => {
   expect(r.place.every(p => p.start >= at(4, 0) && p.end <= at(6, 0))).toBe(true);
   expect(r.finishBy.hw).toBe(at(6, 0));
 });
+
+test('a typed length reads minutes, hours and h:mm', async () => {
+  const { parseLength } = await import('../src/lib/taskDetails');
+  expect(['45', '45 min', '1h', '1h 30m', '1.5h', '1:30', '2 hours', '90m'].map(parseLength)).toEqual([45, 45, 60, 90, 90, 90, 120, 90]);
+  expect(parseLength('soon')).toBeNull();
+  expect(parseLength('2')).toBe(5);   // a bare number is minutes, never under 5
+});

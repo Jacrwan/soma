@@ -45,7 +45,8 @@ async function setup(page: Page, tables: Record<string, Row[]> = {}) {
   return state;
 }
 
-const task = (id: string, text: string, due: string, extra: Row = {}): Row => ({ id, user_id: account.id, text, subject_id: 'hist', status: 'nothing', date: dateOf(0), due_date: due, estimated_minutes: 60, auto_schedule: true, ...extra });
+// assignment_id null, as the database returns it for a task with no Canvas link.
+const task = (id: string, text: string, due: string, extra: Row = {}): Row => ({ id, user_id: account.id, text, subject_id: 'hist', status: 'nothing', date: dateOf(0), due_date: due, estimated_minutes: 60, auto_schedule: true, assignment_id: null, ...extra });
 
 test('Tasks: adding a task places its sittings right away, before it is due', async ({ page }) => {
   const state = await setup(page);
@@ -126,7 +127,11 @@ test('Tasks: open to-dos long past their date are not listed; ones still ahead a
 
 test('dashboard: a scheduled course-site task still shows on the day it is due', async ({ page }) => {
   await setup(page, {
-    todos: [task('lab', 'Lab 10: SQL', dateOf(2), { kind: 'lab', auto_schedule: null, date: dateOf(2) })],
+    todos: [
+      task('lab', 'Lab 10: SQL', dateOf(2), { kind: 'lab', auto_schedule: null, date: dateOf(2) }),
+      // No sittings yet, and filed on another day than it's due: still on its due day.
+      task('proj', 'Project 4 checkpoint', dateOf(2), { kind: 'project', auto_schedule: false, date: dateOf(0) }),
+    ],
     todo_sessions: [{ id: 'l1', user_id: account.id, todo_id: 'lab', date: dateOf(1), start_time: at(1, '15:00'), end_time: at(1, '16:00') }],
   });
   await page.goto('/dashboard');
@@ -190,7 +195,10 @@ test('details: steps replace generic sittings, each named on the plan, in order'
   await dialog.getByRole('textbox', { name: 'Step 1', exact: true }).fill('Problems 1–3');
   await dialog.getByRole('button', { name: 'Add a step' }).click();
   await dialog.getByRole('textbox', { name: 'Step 2', exact: true }).fill('Problems 4–6');
-  await dialog.getByRole('combobox', { name: 'Step 2 length' }).selectOption({ label: '1h' });
+  // Lengths are typed, not picked: "1h", "60", "1:00" all read as an hour.
+  await dialog.getByRole('textbox', { name: 'Step 2 length' }).fill('1h');
+  await dialog.getByRole('textbox', { name: 'Step 2 length' }).blur();
+  await expect(dialog.getByText(/1h 30m in all/)).toBeVisible();
   await dialog.getByRole('button', { name: 'Save' }).click();
   await expect(dialog).toHaveCount(0);
 
@@ -233,7 +241,8 @@ test('details: work days and a sitting count bound and split the work', async ({
   const dialog = page.getByRole('dialog', { name: 'Task details' });
   await dialog.getByLabel('Earliest day to work on it').fill(dateOf(3));
   await dialog.getByLabel('Latest day to work on it').fill(dateOf(4));
-  await dialog.getByRole('combobox', { name: 'Sittings' }).selectOption({ index: 2 });   // 2 × 1h
+  await dialog.getByRole('spinbutton', { name: 'Sittings' }).fill('2');
+  await expect(dialog.getByText('2 sittings of 1h.', { exact: false })).toBeVisible();
   await dialog.getByRole('button', { name: 'Save' }).click();
   await expect(dialog).toHaveCount(0);
   const todo = state.tables.todos.find(t => t.id === 'essay')!;
@@ -278,4 +287,16 @@ test('a Canvas due card shows under its task’s course and colour, like its sit
   await expect(card).toBeVisible();
   await expect(card.getByText('HIST 10', { exact: true })).toBeVisible();
   await expect(card.getByText(/Introductory Mechanics/)).toHaveCount(0);
+});
+
+test('details: each step says when it is on the plan', async ({ page }) => {
+  await setup(page, {
+    todos: [task('hw', 'HW 9.5', dateOf(4), { steps: [{ id: 'a', title: 'Problems 1–3', minutes: 45 }, { id: 'b', title: 'Problems 4–6', minutes: 30, done: true }] })],
+    todo_sessions: [{ id: 'sa', user_id: account.id, todo_id: 'hw', date: dateOf(2), start_time: at(2, '15:00'), end_time: at(2, '15:45'), step_id: 'a' }],
+  });
+  await page.goto('/tasks');
+  await page.getByRole('button', { name: 'Details: HW 9.5' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Task details' });
+  await expect(dialog.getByText(/Wed, Nov 18, 3:00\sPM–3:45\sPM/)).toBeVisible();
+  await expect(dialog.getByText('Done', { exact: true })).toBeVisible();
 });

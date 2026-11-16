@@ -9,6 +9,32 @@ still needed.
 
 ---
 
+## 2026-11-15 (course-site tasks on their due day, for real; typed lengths; step times) · branch task-details, preview
+
+- **Why:** Lab 10 was right on Deadlines (Wed Nov 18) but still missing from
+  the dashboard's Wednesday. The owner also wanted lengths typed, not picked
+  from a dropdown, each step to say when it's scheduled, and asked whether
+  "Soma picks" uses AI (it doesn't).
+- **What:**
+  - The due-card bug: `taskDues` skipped tasks with `assignmentId !==
+    undefined`, but a row with no Canvas link carries `null`, so every
+    course-site task was skipped. Now `!= null`, and liveData's `todoRow`
+    maps null to undefined as storage does. The first fix's test passed only
+    because its mock rows left the field out; test rows now carry
+    `assignment_id: null`. A managed task with no sittings yet also gets its
+    due card (unless it already shows as an untimed block that day).
+  - Task details: "How long" and each step's length are typed (`parseLength`
+    in lib/taskDetails.ts: "45", "45 min", "1h 30m", "1.5h", "1:30"; a bare
+    number is minutes); Sittings is a typed number, empty = automatic. Each
+    step shows its sitting's day and time, "Done", or that it gets a time on
+    save. "Soma picks" / "Let Soma pick" became "Automatic" / "Clear", and
+    the hints say it follows the Scheduling settings, no AI.
+  - My guess last entry that Lab 10 was filed under Monday was wrong: its
+    date was right. The "(due …)" import rule stays as a real safeguard.
+- **Tests:** tests/tasks-page.spec.ts (due card with realistic rows and with
+  no sittings; typed step length and sittings; step times),
+  tests/task-scheduler.spec.ts (parseLength).
+
 ## 2026-11-15 (due card opens like a block; stated times ask; course-site "(due …)" dates) · branch task-details, preview
 
 - **Why:** on the preview the owner found the due card's title a small boxed

@@ -518,10 +518,13 @@ export default function LiveDashboard({userId}:{userId:string}) {
  const taskDues=(()=>{
   const autoImported=storage.getSomaSettings().schedule?.autoImported ?? true,today=localDate(new Date()),start=dateAt(origin,0).getTime();
   return snapshot.todos.flatMap(t=>{
-   if(t.assignmentId!==undefined || !t.dueDate || !isManaged(t,autoImported,today))return [];
+   // `!= null`: a row with no Canvas link has assignment_id null, not undefined
+   // (2026-11-15: every course-site task was skipped here, so Lab 10 never showed on its due day).
+   if(t.assignmentId!=null || !t.dueDate || !isManaged(t,autoImported,today))return [];
    const sittings=snapshot.sessions.filter(sn=>sn.todoId===t.id && sn.startTime);
-   if(!sittings.length)return [];
    const at=dueMoment(deadlineOf(t)!),midnight=new Date(at);midnight.setHours(0,0,0,0);
+   // With no session at all it already shows as an untimed block on its own date; skip only that case.
+   if(!snapshot.sessions.some(sn=>sn.todoId===t.id) && t.date===localDate(midnight))return [];
    const day=Math.round((midnight.getTime()-start)/86_400_000);
    const subject=snapshot.subjects.find(sb=>sb.id===t.subjectId);
    if(day<0 || subject?.archived)return [];

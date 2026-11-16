@@ -3,7 +3,7 @@ import { Plus, X } from 'lucide-react';
 import { storage } from '../../lib/storage';
 import { rescheduleTasks } from '../../lib/taskSchedule';
 import { dueMoment } from '../../lib/taskScheduler';
-import type { TaskStep } from '../../lib/taskDetails';
+import { parseLength, type TaskStep } from '../../lib/taskDetails';
 import { kindOf } from '../../lib/planIt';
 import { asTodoKind, type Todo, type TodoSession } from '../../types';
 import styles from './TaskDetail.module.css';
@@ -35,8 +35,20 @@ type Props = {
   variant?: 'dialog' | 'panel';
 };
 
-const LENGTHS = [15, 30, 45, 60, 90, 120, 150, 180, 240, 300, 360, 480];
-const STEP_LENGTHS = [15, 30, 45, 60, 90, 120, 180];
+/** A length you type, not pick: it reads what you wrote when you leave the field. */
+function LengthInput({ value, onChange, label }: { value: number; onChange: (minutes: number) => void; label: string }) {
+  const [text, setText] = useState(hm(value));
+  const [bad, setBad] = useState(false);
+  useEffect(() => { setText(hm(value)); setBad(false); }, [value]);
+  const commit = () => {
+    const minutes = parseLength(text);
+    if (minutes === null) { setBad(true); return; }
+    setBad(false); setText(hm(minutes)); onChange(minutes);
+  };
+  return <input type="text" inputMode="text" className={styles.length} aria-label={label} aria-invalid={bad || undefined} title="Type a length, like 45 min or 1h 30m"
+    placeholder="45 min" value={text} onChange={e => setText(e.target.value)} onFocus={e => e.target.select()} onBlur={commit}
+    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }} />;
+}
 const hm = (m: number) => m < 60 ? `${m} min` : `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}`;
 const pad = (n: number) => String(n).padStart(2, '0');
 const dateOf = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -75,7 +87,15 @@ export default function TaskDetail({ userId, target, subjects, sessions, guess, 
   const stepTotal = steps.reduce((n, s) => n + s.minutes, 0);
   const dueAt = dueDay ? new Date(`${dueDay}T${dueTime || '23:59'}:00`) : null;
   const moved = !!(imported && postedAt && dueAt && Math.abs(+dueAt - +postedAt) >= 60_000);
-  const lengths = [...new Set([...LENGTHS, minutes])].sort((a, b) => a - b);
+  // When each step is on the plan: its sitting's day and time.
+  const clock = (d: Date) => d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const whenOf = (stepId: string): string => {
+    const sitting = sessions.find(x => x.todoId === todo?.id && x.stepId === stepId && x.startTime && x.endTime);
+    if (!sitting) return '';
+    const a = new Date(sitting.startTime!), z = new Date(sitting.endTime!);
+    const day = dateOf(a) === today ? 'Today' : longDate(a);
+    return `${sitting.doneAt ? 'Done · ' : ''}${day}, ${clock(a)}–${clock(z)}`;
+  };
 
   function problem(): string {
     if (!title.trim()) return 'Give it a name.';
@@ -154,9 +174,9 @@ export default function TaskDetail({ userId, target, subjects, sessions, guess, 
           <div className={styles.row}>
             <label className={styles.inline}>From <input type="date" aria-label="Earliest day to work on it" value={from} min={today} max={dueDay || undefined} onChange={e => setFrom(e.target.value)} /></label>
             <label className={styles.inline}>until <input type="date" aria-label="Latest day to work on it" value={until} min={from || today} max={dueDay || undefined} onChange={e => setUntil(e.target.value)} /></label>
-            {(from || until) && <button type="button" className={styles.link} onClick={() => { setFrom(''); setUntil(''); }}>Let Soma pick</button>}
+            {(from || until) && <button type="button" className={styles.link} onClick={() => { setFrom(''); setUntil(''); }}>Clear</button>}
           </div>
-          <p className={styles.hint}>{from || until ? 'Sittings stay between these days.' : 'Empty: Soma starts a few days before and finishes a day early, as in Settings.'}</p>
+          <p className={styles.hint}>{from || until ? 'Sittings stay between these days.' : 'Empty: it starts a few days before and finishes a day early, by your Scheduling settings. No AI.'}</p>
         </fieldset>
 
         <fieldset className={styles.field}>
@@ -165,10 +185,9 @@ export default function TaskDetail({ userId, target, subjects, sessions, guess, 
             {steps.map((s, i) => <li key={s.id}>
               <input type="checkbox" aria-label={`Step ${i + 1} done`} checked={!!s.done} onChange={e => setStep(s.id, { done: e.target.checked || undefined })} />
               <input type="text" aria-label={`Step ${i + 1}`} placeholder={`Step ${i + 1}, e.g. Problems 1–3`} value={s.title} maxLength={120} onChange={e => setStep(s.id, { title: e.target.value })} />
-              <select aria-label={`Step ${i + 1} length`} value={s.minutes} onChange={e => setStep(s.id, { minutes: Number(e.target.value) })}>
-                {[...new Set([...STEP_LENGTHS, s.minutes])].sort((a, b) => a - b).map(m => <option key={m} value={m}>{hm(m)}</option>)}
-              </select>
+              <LengthInput label={`Step ${i + 1} length`} value={s.minutes} onChange={m => setStep(s.id, { minutes: m })} />
               <button type="button" className={styles.x} aria-label={`Remove step ${i + 1}`} onClick={() => setSteps(list => list.filter(x => x.id !== s.id))}><X size={14} /></button>
+              <span className={styles.when}>{whenOf(s.id) || (s.done ? 'Done' : 'Not on your plan yet. It gets a time when you save.')}</span>
             </li>)}
           </ol>}
           <button type="button" className={styles.addStep} onClick={addStep}><Plus size={14} /> Add a step</button>
@@ -177,16 +196,13 @@ export default function TaskDetail({ userId, target, subjects, sessions, guess, 
 
         {!steps.length && <div className={styles.pair}>
           <label className={styles.field}><span>How long, in all</span>
-            <select value={minutes} onChange={e => setMinutes(Number(e.target.value))}>
-              {lengths.map(m => <option key={m} value={m}>{hm(m)}</option>)}
-            </select>
+            <LengthInput label="How long, in all" value={minutes} onChange={setMinutes} />
           </label>
           <label className={styles.field}><span>Sittings</span>
-            <select value={count} onChange={e => setCount(e.target.value ? Number(e.target.value) : '')}>
-              <option value="">Soma picks</option>
-              {[1, 2, 3, 4, 5, 6, 8].map(n => <option key={n} value={n}>{n} × {hm(Math.max(5, Math.round(minutes / n / 5) * 5))}</option>)}
-            </select>
+            <input type="number" aria-label="Sittings" min={1} max={20} step={1} inputMode="numeric" placeholder="Automatic" value={count}
+              onChange={e => { const n = Math.round(Number(e.target.value)); setCount(e.target.value && n >= 1 ? Math.min(20, n) : ''); }} />
           </label>
+          <p className={`${styles.hint} ${styles.wide}`}>{count ? `${count} ${count === 1 ? 'sitting' : 'sittings'} of ${hm(Math.max(5, Math.round(minutes / count / 5) * 5))}.` : 'Sittings empty: split by your usual sitting length in Scheduling settings. No AI.'} Type a length like 45 min, 1h 30m or 1.5h.</p>
         </div>}
 
   </>;

@@ -62,6 +62,8 @@
   margin-bottom: 6px;
 }
 
+.dialog input[type=number],
+.panel input[type=number],
 .dialog input[type=text],
 .dialog input[type=date],
 .dialog input[type=time],
@@ -297,4 +299,30 @@
   padding: 0;
   border: 0;
   background: none;
+}
+
+/* A typed length ("45 min", "1h 30m"): narrow in a step row, full width on its own. */
+.steps .length {
+  width: 92px;
+}
+
+.panel .steps .length {
+  width: 92px;
+}
+
+.length[aria-invalid=true] {
+  border-color: var(--danger);
+}
+
+/* When the step is on the plan, under its row. */
+.when {
+  grid-column: 2 / -1;
+  margin-top: -2px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.wide {
+  grid-column: 1 / -1;
+  margin-top: -4px;
 }
