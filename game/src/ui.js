@@ -708,8 +708,36 @@ export function createUI(on) {
       );
     },
 
+    /** The Vault: every collectible by tier, with the real odds and the pity counters. */
+    vault({ found, total, sinceEpic, sinceMythic, pityEpic, pityMythic, waiting, table, tiers, thumb, onUse, onOpenChest }) {
+      const pct = (x) => (x >= 1 ? `${Math.round(x)}%` : `${x}%`);
+      const verb = { hat: 'Wear', aura: 'Equip', pet: 'Make pet', decor: 'Place (B)', trophy: 'On display' };
+      const offVerb = { hat: 'Take off', aura: 'Unequip', pet: 'Put away' };
+      panel({ title: 'The Vault', subtitle: `${found} of ${total} rare finds · every chest comes from studying`, wide: true },
+        el('div', { class: 'vault-head' },
+          el('div', { class: 'pity' }, el('small', { text: 'Epic or better' }), el('b', { text: `within ${Math.max(1, pityEpic - sinceEpic)} chests` }), el('div', { class: 'bar' }, el('i', { style: `width:${Math.round((sinceEpic / pityEpic) * 100)}%` }))),
+          el('div', { class: 'pity mythic' }, el('small', { text: 'Mythic guaranteed' }), el('b', { text: `within ${Math.max(1, pityMythic - sinceMythic)} chests` }), el('div', { class: 'bar' }, el('i', { style: `width:${Math.round((sinceMythic / pityMythic) * 100)}%` }))),
+          el('button', { class: 'btn primary', disabled: !waiting, onclick: onOpenChest }, el('span', {}, waiting ? `Open a chest (${waiting})` : 'No chests waiting', el('small', { text: waiting ? 'The best one first' : 'Study, finish steps, practice' })))),
+        tiers.map(({ tier, items }) => el('section', { class: `vault-tier t-${tier}` },
+          el('div', { class: 'tier-head' },
+            el('b', { text: tier }),
+            el('small', { text: `Odds per collectible: ${['common', 'rare', 'epic', 'legendary'].map((r) => `${r} chest ${pct(table[r].odds[tier])}`).join(' · ')}` })),
+          el('div', { class: 'vault-grid' }, items.map((it) => {
+            const img = el('img', { class: 'thumb', alt: '' });
+            thumb(it.id).then((src) => { img.src = src; }).catch(() => {});
+            return el('div', { class: `vault-card ${it.count ? 'owned' : 'unknown'} ${it.on ? 'on' : ''}` },
+              img,
+              el('b', { text: it.count ? it.name : '???' }),
+              el('small', { text: it.count ? `${it.kind}${it.count > 1 ? ` · ×${it.count}` : ''}` : it.kind }),
+              it.count ? el('span', { text: it.text }) : null,
+              it.count && it.kind !== 'trophy' ? el('button', { class: `btn small ${it.on ? '' : 'primary'}`, text: it.on ? offVerb[it.kind] : verb[it.kind], onclick: () => onUse(it.id) }) : null);
+          })))),
+        el('p', { class: 'note', text: `How chests are earned: study sessions, every 3rd step you finish, hand-ins, grades, perfect practice rounds, learned reviews, broken weak points and streak days. A collectible's tier is rolled with the odds above; duplicates turn into coins. Nothing here can be bought.` }),
+      );
+    },
+
     /** The market: today's stock, plus selling what you don't need. */
-    market({ coins, offers, junk, onBuy, onSellJunk }) {
+    market({ coins, offers, junk, onBuy, onSellJunk, showcase = [], onVault }) {
       const label = (o) => o.kind === 'gear' ? o.item.name : o.kind === 'look' ? o.name : o.kind === 'tea' ? 'Study tea' : o.name;
       const detail = (o) => o.kind === 'gear' ? `${o.item.rarity} ${SLOT_NAMES[o.item.slot].toLowerCase()} · level ${o.item.level} · ${gearStat(o.item)}`
         : o.kind === 'look' ? 'A new look for your hero (Wardrobe)'
@@ -722,6 +750,9 @@ export function createUI(on) {
           el('span', { text: detail(o) }),
           el('div', { class: 'gear-do' }, o.sold ? el('em', { text: 'Sold' })
             : el('button', { class: 'btn small primary', disabled: coins < o.price, onclick: () => onBuy(i) }, 'Buy ', price(o.price)))))),
+        showcase.length ? el('div', { class: 'showcase' },
+          el('div', { class: 'showcase-head' }, el('b', { text: 'Rarest finds' }), el('small', { text: 'Not for sale. Found only in chests you earn by studying.' }), el('button', { class: 'btn small', text: 'The Vault (U)', onclick: onVault })),
+          el('div', { class: 'showcase-row' }, showcase.map((x) => { const img = el('img', { class: 'thumb', alt: '' }); x.src.then((src) => { img.src = src; }).catch(() => {}); return el('div', { class: `show-item t-${x.tier} ${x.owned ? '' : 'unknown'}` }, img, el('b', { text: x.owned ? x.name : '???' }), el('small', { text: `${x.tier} · ${x.odds}` })); }))) : null,
         el('div', { class: 'actions', style: 'margin-top:12px' },
           el('button', { class: 'btn', disabled: !junk.count, onclick: onSellJunk }, el('span', {}, junk.count ? `Sell ${junk.count} weaker piece${junk.count === 1 ? '' : 's'} of gear` : 'Nothing to sell', el('small', { text: junk.count ? `Keeps anything better than what you wear · +${fmt(junk.value)} coins` : 'Gear weaker than what you wear shows up here' })))),
       );

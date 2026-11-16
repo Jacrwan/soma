@@ -1469,6 +1469,7 @@ function findTarget() {
   if (sceneName === 'earth') offer(Math.hypot(p.x - BOARD_POS.x, p.z - BOARD_POS.z), 4, { text: 'Canvas board: your assignments and grades', run: openSchool });
   if (sceneName === 'earth' && !build.on) {
     offer(Math.hypot(p.x - MARKET_POS.x, p.z - MARKET_POS.z), 5, { text: 'Open the market', run: openMarket });
+    offer(Math.hypot(p.x - VAULT_POS.x, p.z - VAULT_POS.z), 5.5, { text: `The Vault: ${S.vaultFound(state)}/${Object.keys(S.COLLECTIBLES).length} rare finds`, run: openVault });
     offer(Math.hypot(p.x - WATCH_POS.x, p.z - WATCH_POS.z), 5, { text: 'Watchtower: what Canvas doesn\u2019t show', run: openWatchtower });
     for (const [id, sh] of shadows) offer(Math.hypot(p.x - sh.object.position.x, p.z - sh.object.position.z), 3.4, sh.revealed ? { text: `Mark \u201c${sh.reading.label}\u201d as read`, run: () => readShadow(id) } : { text: 'Something from your syllabus (Watchtower)', run: openWatchtower });
     for (const [name, f] of folk) offer(Math.hypot(p.x - f.object.position.x, p.z - f.object.position.z), 3.2, { text: `Talk to ${name}`, run: () => openVillager(name) });
@@ -1512,10 +1513,12 @@ function openLoot(id, pos) {
   save();
   ui.loot({
     rarity: result.chest.rarity, from: result.chest.from, percent: result.chest.percent, loot: result.loot,
-    names: A.COSMETIC_NAMES, colors: A.SKIN_COLORS, audio,
+    names: A.COSMETIC_NAMES, colors: A.SKIN_COLORS, audio, collectibles: S.COLLECTIBLES, best: result.best,
+    thumb: (id) => thumbFor({ kind: 'collectible', id }),
     onDone: () => {
       fx.coinsTo(pos, player.object, 12, () => audio.coin());
       if (result.loot.some((l) => l.kind === 'gear' && l.equipped)) dressPlayer();
+      if (result.loot.some((l) => l.kind === 'collectible' && !l.dupe)) { syncPedestals(); const top = result.loot.find((l) => l.kind === 'collectible'); if (tierRank(top.tier) >= 3) ui.banner(top.tier === 'mythic' ? 'MYTHIC FIND' : 'Legendary find', S.COLLECTIBLES[top.id].name); }
       refreshHud();
     },
   });
@@ -1548,6 +1551,7 @@ window.addEventListener('keydown', (event) => {
   else if (key === 'o') openSettings();
   else if (key === 'k') openCollection();
   else if (key === 'y') openPass();
+  else if (key === 'u') openVault();
 });
 window.addEventListener('keyup', (event) => keys.delete(event.key.toLowerCase()));
 window.addEventListener('blur', () => keys.clear());
@@ -1687,7 +1691,7 @@ function solids() {
   else list.push({ x: W.LANDER_POS.x, z: W.LANDER_POS.z, r: 2.2 });
   if (fight) list.push({ x: fight.inv.object.position.x, z: fight.inv.object.position.z, r: 2.6 });
   if (sceneName === 'earth') {
-    list.push({ x: MARKET_POS.x, z: MARKET_POS.z, r: 2.6 }, { x: WATCH_POS.x, z: WATCH_POS.z, r: 2.4 });
+    list.push({ x: MARKET_POS.x, z: MARKET_POS.z, r: 2.6 }, { x: WATCH_POS.x, z: WATCH_POS.z, r: 2.4 }, { x: VAULT_POS.x, z: VAULT_POS.z, r: 3.4 });
     for (const h of halls.values()) list.push({ x: h.object.position.x, z: h.object.position.z, r: 2.7 });
     for (const d of state.decor) { const r = S.DECOR[d.type]?.solid; if (r) list.push({ x: d.x, z: d.z, r }); }
   }
@@ -1924,6 +1928,7 @@ function frame(nowMs) {
   watchtower.userData.beam.rotation.y += dt * 0.6;
   updatePet(dt, time);
   updateTheme(dt, time);
+  updateAura(dt, time);
   for (const g of gardenAnim) {
     if (!g.parent) continue;
     if (g.name === 'koifish') for (const f of g.children) { f.userData.a += dt * 0.6 / f.userData.r; f.position.set(Math.cos(f.userData.a) * f.userData.r, 0.1, Math.sin(f.userData.a) * f.userData.r * 0.8); f.rotation.y = -f.userData.a; }
@@ -1966,6 +1971,7 @@ function frame(nowMs) {
     villagerTick(Date.now());
     applyTimeOfDay();
     dailyTick();
+    watchChests();
     if (build.on) drawBuildBar();
     checkDeadlines();
     checkStory();
@@ -2025,6 +2031,8 @@ function openMarket() {
       else ui.toast(`${S.DECOR[o.id].name} unlocked in build mode (B).`, 'gold');
       refreshHud(); save(); ui.close(); openMarket();
     },
+    showcase: Object.entries(S.COLLECTIBLES).filter(([, c]) => c.tier === 'mythic' || c.tier === 'legendary').sort(([, a], [, b]) => tierRank(b.tier) - tierRank(a.tier)).map(([id, c]) => ({ id, name: c.name, tier: c.tier, owned: Boolean(state.vault.owned[id]), odds: `${S.DROP_TABLE.legendary.odds[c.tier]}% from a legendary chest`, src: thumbFor({ kind: 'collectible', id }) })),
+    onVault: () => { ui.close(); openVault(); },
     onSellJunk: () => {
       const coins = S.sellJunk(state);
       if (coins) { audio.coin(); ui.toast(`Sold old gear for ${S.fmt(coins)} coins`, 'good'); }
@@ -2855,7 +2863,8 @@ function thumbFor(reward) {
       const up = A.makeCoin(); up.position.set(0.75, 0.42, 0.1); up.rotation.y = 0.5; object.add(up);
     }
     else if (reward.kind === 'theme') object = A.makeLanternScene();
-    job = Promise.resolve(renderThumb(object, reward.kind === 'decor' ? 0.7 : 0.4));
+    else if (reward.kind === 'collectible') object = collectibleModel(reward.id);
+    job = Promise.resolve(renderThumb(object, reward.kind === 'decor' || reward.kind === 'collectible' ? 0.7 : 0.4));
   }
   thumbCache.set(key, job);
   return job;
@@ -3137,6 +3146,125 @@ function openExam(itemId) {
   });
 }
 
+
+// --- The Vault: rare finds from chests, and the odds of each tier ---------------------------
+const VAULT_POS = W.VAULT_POS;
+const vault = A.makeVault();
+onGround(vault, VAULT_POS.x, VAULT_POS.z);
+faceCentre(vault);
+world.earth.add(vault);
+vault.traverse((o) => { if (o.name === 'spin') spinners.push(o); });
+fx.label(vault, 7, '<em>The Vault</em>Rare finds and their odds', 'board');
+const tierRank = (t) => S.TIERS.indexOf(t);
+function collectibleModel(id) {
+  const c = S.COLLECTIBLES[id];
+  if (!c) return null;
+  if (c.kind === 'hat') { const h = A.makeHat(id); h.scale.setScalar(1.4); return h; }
+  if (c.kind === 'pet') return A.makeCritter(id);
+  if (c.kind === 'decor') { const d = A.makeDecor(id); d.scale.setScalar(id === 'obelisk' ? 0.32 : 0.55); return d; }
+  if (c.kind === 'aura') {
+    // A still frame of the aura around a small glowing orb.
+    const g = A.makeAura(id);
+    for (const m of g.userData.motes) m.position.set(Math.cos(m.userData.seed * 9) * 0.6, 0.2 + (m.userData.seed % 1) * 1.2, Math.sin(m.userData.seed * 9) * 0.6);
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 12), new THREE.MeshStandardMaterial({ color: A.RARITY_COLORS[c.tier], emissive: A.RARITY_COLORS[c.tier], emissiveIntensity: 1.2 })));
+    g.scale.setScalar(0.6);
+    return g;
+  }
+  return A.makeTrophy(id);
+}
+// Four pedestals in front of the Vault show your rarest finds.
+const pedestals = [];
+function syncPedestals() {
+  for (const p of pedestals) p.group.parent?.remove(p.group);
+  pedestals.length = 0;
+  const owned = Object.keys(S.COLLECTIBLES).filter((id) => state.vault.owned[id]).sort((a, b) => tierRank(S.COLLECTIBLES[b].tier) - tierRank(S.COLLECTIBLES[a].tier)).slice(0, 4);
+  const toward = Math.atan2(-VAULT_POS.x, -VAULT_POS.z);
+  owned.forEach((id, i) => {
+    const side = (i - 1.5) * 2.1;
+    const x = VAULT_POS.x + Math.sin(toward) * 5.2 + Math.cos(toward) * side;
+    const z = VAULT_POS.z + Math.cos(toward) * 5.2 - Math.sin(toward) * side;
+    const group = A.makePedestal(A.RARITY_COLORS[S.COLLECTIBLES[id].tier]);
+    onGround(group, x, z);
+    const item = collectibleModel(id);
+    if (item) { item.position.y = 1.3; item.name = 'showpiece'; group.add(item); }
+    world.earth.add(group);
+    pedestals.push({ group, item, id });
+  });
+}
+
+// Auras circle the hero.
+let auraObject = null;
+function dressAura() {
+  if (auraObject) auraObject.parent?.remove(auraObject);
+  auraObject = null;
+  const id = state.vault.aura;
+  if (!id || !state.vault.owned[id]) return;
+  auraObject = A.makeAura(id);
+  player.object.add(auraObject);
+}
+function updateAura(dt, time) {
+  for (const p of pedestals) if (p.item) { p.item.rotation.y = time * 0.8; p.item.position.y = 1.3 + Math.sin(time * 1.5 + p.group.position.x) * 0.06; }
+  if (!auraObject) return;
+  const kind = auraObject.userData.kind;
+  for (const m of auraObject.userData.motes) {
+    const s = m.userData.seed;
+    if (kind === 'sparkle') { const a = time * 0.8 + s * 9; m.position.set(Math.cos(a) * (0.7 + (s % 0.5)), 0.4 + ((time * 0.3 + s) % 1) * 1.8, Math.sin(a) * (0.7 + (s % 0.5))); m.material.opacity = 0.4 + Math.sin(time * 4 + s * 10) * 0.4; }
+    else { const t = (time * 0.6 + s) % 1; const a = s * 20; m.position.set(Math.cos(a) * (0.5 + t * 0.4), t * 2.4, Math.sin(a) * (0.5 + t * 0.4)); m.material.opacity = 1 - t; m.scale.setScalar(1 - t * 0.6); }
+  }
+  auraObject.traverse((o) => {
+    if (o.name === 'ribbon') { o.rotation.z += dt * o.userData.speed; o.material.opacity = 0.4 + Math.sin(time * 1.5 + o.position.y * 3) * 0.2; }
+    if (o.name === 'disk') o.rotation.y += dt * 0.5;
+    if (o.name === 'nebula') o.material.opacity = 0.14 + Math.sin(time) * 0.05;
+    if (o.name === 'orbit') for (const st of o.children) { st.userData.a += dt * 0.7; st.position.set(Math.cos(st.userData.a) * 0.8, Math.sin(st.userData.a * 2) * 0.2, Math.sin(st.userData.a) * 0.8); st.rotation.y += dt * 2; }
+  });
+}
+
+function openVault() {
+  if (ui.isOpen()) return;
+  const v = state.vault;
+  ui.vault({
+    found: S.vaultFound(state), total: Object.keys(S.COLLECTIBLES).length,
+    sinceEpic: v.sinceEpic, sinceMythic: v.sinceMythic, pityEpic: S.PITY_EPIC, pityMythic: S.PITY_MYTHIC,
+    waiting: state.school.chests.length,
+    table: S.DROP_TABLE,
+    tiers: [...S.TIERS].reverse().map((tier) => ({
+      tier,
+      items: Object.entries(S.COLLECTIBLES).filter(([, c]) => c.tier === tier).map(([id, c]) => ({
+        id, ...c, count: v.owned[id] || 0,
+        on: (c.kind === 'hat' && state.cosmetics.hat === id) || (c.kind === 'aura' && v.aura === id) || (c.kind === 'pet' && state.critters.pet === id),
+      })),
+    })),
+    thumb: (id) => thumbFor({ kind: 'collectible', id }),
+    onUse: (id) => {
+      const c = S.COLLECTIBLES[id];
+      if (c.kind === 'hat') { state.cosmetics.hat = state.cosmetics.hat === id ? 'hat:none' : id; dressPlayer(); }
+      if (c.kind === 'aura') { v.aura = v.aura === id ? null : id; dressAura(); }
+      if (c.kind === 'pet') { S.setPet(state, state.critters.pet === id ? null : id); dressPet(); }
+      if (c.kind === 'decor') { ui.close(); toggleBuild(true); setGhost(id); return; }
+      save(); ui.close(); openVault();
+    },
+    onOpenChest: () => {
+      const chest = [...state.school.chests].sort((a, b) => tierRank(b.rarity) - tierRank(a.rarity))[0];
+      if (!chest) return;
+      ui.close();
+      openLoot(chest.id, player.object.position.clone());
+    },
+  });
+}
+
+// Every new chest gets a heads-up, wherever it came from.
+let chestsSeen = null;
+function watchChests() {
+  const n = state.school.chests.length;
+  if (chestsSeen !== null && n > chestsSeen) {
+    const newest = state.school.chests.slice(chestsSeen);
+    for (const c of newest.slice(-2)) ui.toast(`A ${c.rarity} chest landed on your plaza: ${c.from}`, c.rarity === 'legendary' || c.rarity === 'epic' ? 'gold' : 'good');
+    syncChests();
+    audio.chest();
+  }
+  chestsSeen = n;
+}
+
 // --- Settings ------------------------------------------------------------------------------
 function toggleMute() {
   state.settings.muted = !state.settings.muted;
@@ -3208,6 +3336,9 @@ syncReview();
 villagerTick(Date.now());
 applyTimeOfDay();
 dressPet();
+dressAura();
+syncPedestals();
+watchChests();
 dailyTick(true);
 syncFronts();
 somaRefresh(true);
@@ -3280,6 +3411,7 @@ window.epoch = {
   uiOpen: () => ui.isOpen(),
   shiftLock: () => ({ on: shiftLock, locked: locked(), yaw: cam.yaw, facing: player.facing }),
   exam: (id) => openExam(id), steps: (id) => openSteps(id),
+  vault: () => openVault(), aura(id) { state.vault.owned[id] = 1; state.vault.aura = id; dressAura(); }, grant(id) { state.vault.owned[id] = (state.vault.owned[id] || 0) + 1; if (S.COLLECTIBLES[id].kind === 'hat' && !state.cosmetics.owned.includes(id)) state.cosmetics.owned.push(id); if (S.COLLECTIBLES[id].kind === 'pet') state.critters.caught[id] = 1; if (S.COLLECTIBLES[id].kind === 'decor' && !state.decorUnlocked.includes(id)) state.decorUnlocked.push(id); syncPedestals(); }, openTop() { const c = state.school.chests.at(-1); if (c) openLoot(c.id, player.object.position.clone()); },
   invaders: () => [...invaders.values()].map((i) => ({ name: i.item.name, mode: i.mode, x: +i.object.position.x.toFixed(1), z: +i.object.position.z.toFixed(1), inScene: Boolean(i.object.parent) })),
   armor(id) { const inv = invaders.get(id); return inv && inv.object.userData.armor?.filter((p) => p.visible).length; },
   info: () => ({ quality, calls: renderer.info.render.calls, tris: renderer.info.render.triangles }),

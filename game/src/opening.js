@@ -124,11 +124,20 @@ export function createOpening() {
   // --- One run ------------------------------------------------------------------
   let run = null;
 
-  function card(item, { names, colors, rarityColor }) {
+  function card(item, { names, colors, rarityColor, collectibles, thumb }) {
     const node = document.createElement('div');
     node.className = 'op-card';
     let color = hex(C.gold), icon, title, sub, tag;
-    if (item.kind === 'coins') {
+    if (item.kind === 'collectible') {
+      const c = collectibles[item.id];
+      color = hex(RARITY_COLORS[item.tier]);
+      icon = '<img class="op-thumb" alt="">';
+      title = c.name;
+      sub = item.dupe ? `Duplicate · +${fmt(item.coins)} coins` : `${c.kind === 'hat' ? 'New hat' : c.kind === 'aura' ? 'New aura' : c.kind === 'pet' ? 'New pet' : c.kind === 'decor' ? 'New decoration' : 'New trophy'}${item.pity ? ' · pity' : ''}`;
+      tag = item.tier;
+      node.classList.add(`op-${item.tier}-card`);
+      thumb?.(item.id).then((src) => { const img = node.querySelector('.op-thumb'); if (img) img.src = src; }).catch(() => {});
+    } else if (item.kind === 'coins') {
       icon = '<span class="op-coins"><i></i><i></i><i></i></span>';
       title = `+${fmt(item.amount)}`;
       sub = 'Coins';
@@ -338,7 +347,7 @@ export function createOpening() {
   return {
     isOpen: () => Boolean(run),
 
-    play({ rarity, from, percent, loot, names, colors, audio, onDone }) {
+    play({ rarity, from, percent, loot, names, colors, audio, onDone, collectibles = {}, thumb, best }) {
       if (run) return;
       const t3 = ensureThree();
       const color = RARITY_COLORS[rarity];
@@ -353,7 +362,9 @@ export function createOpening() {
       fromText.textContent = percent != null ? `${from} · ${percent}%` : from;
       hint.textContent = 'Click to skip';
       claim.disabled = true;
-      cards.replaceChildren(...loot.map((item) => card(item, { names, colors, rarityColor })));
+      cards.replaceChildren(...loot.map((item) => card(item, { names, colors, rarityColor, collectibles, thumb })));
+      // A legendary or mythic find gets its own moment.
+      const jackpot = best === 'legendary' || best === 'mythic' ? best : null;
 
       t3.chest = makeChest(rarity);
       t3.chest.remove(t3.chest.getObjectByName('beam'));
@@ -368,7 +379,7 @@ export function createOpening() {
       const rattleAt = Array.from({ length: rattles }, (_, k) => 0.62 + k * 0.5);
       const burstAt = 0.62 + rattles * 0.5 + 0.12;
       const firstCard = burstAt + 0.55;
-      const doneAt = firstCard + loot.length * 0.36 + 0.25;
+      const doneAt = firstCard + loot.length * 0.36 + 0.25 + (best === 'legendary' || best === 'mythic' ? 0.9 : 0);
       const say = (fn) => { if (!run.silent) fn(); };
       const events = [
         { at: 0.42, fn: () => say(() => audio.thud()) },
@@ -382,11 +393,17 @@ export function createOpening() {
             burstConfetti(CONFETTI[rarity], [rarityColor, light, '#ffffff', hex(C.gold)]);
           },
         },
-        ...loot.map((_, i) => ({
-          at: firstCard + i * 0.36,
+        ...loot.map((item, i) => ({
+          at: firstCard + i * 0.36 + (jackpot ? 0.9 : 0),
           fn: () => {
             cards.children[i].classList.add('in');
             say(() => audio.card(i));
+            if (item.kind === 'collectible' && jackpot) {
+              root.classList.add(`op-jackpot`, `op-jackpot-${jackpot}`);
+              const jc = hex(RARITY_COLORS[jackpot]);
+              burstConfetti(jackpot === 'mythic' ? 260 : 160, jackpot === 'mythic' ? ['#ff4fd8', '#7fd3ff', '#fff2a0', '#b48cff', '#ffffff'] : [jc, '#fff2c0', '#ffffff']);
+              say(() => audio.era());
+            }
           },
         })),
         {

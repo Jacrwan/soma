@@ -93,6 +93,7 @@ export function newState(now = Date.now()) {
     critters: { lures: 3, caught: {}, pet: null },
     soma: { status: 'offline', todos: [], readings: [], done: {} },
     steps: {}, // itemId -> [{ id, text, done, somaId? }]
+    vault: { owned: {}, sinceEpic: 0, sinceMythic: 0, showcase: [], aura: null },
     topics: {}, // exam itemId -> [{ name, minutes }]
     pass: { season: 'Fall 2026', points: 0, premium: false, freeClaimed: [], premiumClaimed: [] },
     createdAt: now,
@@ -635,6 +636,8 @@ export function finishPractice(state, itemId, right, wrong, now = Date.now(), to
   // Practice on one topic chips that topic's crystal, outside the daily practice cap.
   if (itemId && topic) addTopicMinutes(state, itemId, topic, right * PRACTICE_RIGHT_MINUTES);
   passPoints(state, right * 3);
+  // A perfect round (5 of 5) drops a rare chest.
+  result.chest = right >= 5 && wrong === 0 ? grantChest(state, 'rare', 'A perfect practice round') : null;
   // A good practice round (3+ right) also earns a lure.
   result.lures = right >= 3 ? 1 : 0;
   state.critters.lures += result.lures;
@@ -715,8 +718,10 @@ export function openChest(state, chestId, rng = Math.random, now = Date.now()) {
     const got = addGear(state, rollGear(state, chest.rarity, rng));
     loot.push({ kind: 'gear', item: got.item, equipped: got.equipped });
   }
+  const found = rollCollectible(state, chest.rarity, rng);
+  if (found) loot.unshift({ kind: 'collectible', ...found });
   state.stats.chestsOpened += 1;
-  return { chest, loot };
+  return { chest, loot, best: found ? found.tier : null };
 }
 
 export function grantChest(state, rarity, from) {
@@ -1125,6 +1130,7 @@ export function answerReview(state, cardId, right, now = Date.now()) {
       cards.splice(i, 1);
       out.learned = true;
       state.review.learned += 1;
+      out.chest = grantChest(state, 'common', 'A question learned for good');
     } else card.due = now + REVIEW_GAPS[card.box] * DAY;
     const item = card.itemId ? state.school.items[card.itemId] : null;
     if (item) {
@@ -1255,6 +1261,11 @@ export const DECOR = {
   koi: { name: 'Koi pond', seconds: 1200, floor: 1200, solid: 2.2, pass: true, set: 'garden' },
   bridge: { name: 'Arched bridge', seconds: 900, floor: 900, solid: 0, pass: true, set: 'garden' },
   sakura: { name: 'Cherry tree', seconds: 600, floor: 600, solid: 0.9, pass: true, set: 'garden' },
+  // Vault finds (from chests).
+  mushrooms: { name: 'Mushroom ring', seconds: 60, floor: 60, solid: 0, pass: true },
+  owlstatue: { name: 'Owl statue', seconds: 300, floor: 300, solid: 0.9, pass: true },
+  crystallamp: { name: 'Crystal lamp', seconds: 600, floor: 600, solid: 0.6, pass: true },
+  obelisk: { name: 'Starfall obelisk', seconds: 1200, floor: 1200, solid: 1.2, pass: true },
   fountain: { name: 'Fountain', seconds: 1500, floor: 1500, solid: 2.2, market: true },
   totem: { name: 'Totem', seconds: 1200, floor: 1200, solid: 0.8, market: true },
   gold: { name: 'Golden statue', seconds: 2400, floor: 2400, solid: 1.1, market: true },
@@ -1563,6 +1574,8 @@ export const CRITTERS = {
   fox: { name: 'Red fox', rarity: 'rare', time: 'day', hint: 'Rare, out in the day' },
   owl: { name: 'Night owl', rarity: 'epic', time: 'night', hint: 'Only after dark' },
   ghostowl: { name: 'Ghost owl', rarity: 'epic', time: 'never', hint: 'A Semester Pass reward', pass: true },
+  goldfox: { name: 'Golden fox', rarity: 'legendary', time: 'never', hint: 'A legendary find in chests', pass: true },
+  phoenix: { name: 'Phoenix', rarity: 'legendary', time: 'never', hint: 'A mythic find in chests', pass: true },
   moth: { name: 'Glow moth', rarity: 'epic', time: 'night', hint: 'Only after dark, it glows' },
   stag: { name: 'White stag', rarity: 'legendary', time: 'day', hint: 'Very rare, in daylight' },
   starfox: { name: 'Star fox', rarity: 'legendary', time: 'night', hint: 'Very rare, only at night' },
@@ -1765,10 +1778,12 @@ export function finishStep(state, itemId, stepId) {
   step.done = true;
   if (step.somaId) state.soma.done[step.somaId] = true;
   state.stats.steps = (state.stats.steps || 0) + 1;
+  // Every few steps leaves a small chest.
+  const chest = state.stats.steps % 3 === 0 ? grantChest(state, 'common', `Steps on ${item.name}`) : null;
   const coins = Math.round(handInReward(state, item) * 0.2);
   addCoins(state, coins);
   passPoints(state, 5);
-  return { step, coins, left: state.steps[itemId].filter((x) => !x.done).length, ...addXp(state, 8) };
+  return { step, coins, chest, left: state.steps[itemId].filter((x) => !x.done).length, ...addXp(state, 8) };
 }
 
 // --- Exam weak points: one crystal per topic --------------------------------------
@@ -1790,7 +1805,9 @@ export function addTopicMinutes(state, itemId, topic, minutes) {
   if (!t || !(minutes > 0)) return null;
   const before = t.minutes;
   t.minutes += minutes;
-  return { topic: t, broke: before < TOPIC_GOAL && t.minutes >= TOPIC_GOAL };
+  const broke = before < TOPIC_GOAL && t.minutes >= TOPIC_GOAL;
+  // Breaking a weak point drops an epic chest.
+  return { topic: t, broke, chest: broke ? grantChest(state, 'epic', `Broke ${t.name}`) : null };
 }
 
 export function topicProgress(state, item) {
@@ -1807,6 +1824,87 @@ export function suggestTopics(state, item) {
   const pick = (exams.length ? exams : readings.filter((r) => !item.dueAt || Date.parse(`${r.due}T12:00:00`) <= item.dueAt)).slice(-TOPIC_MAX);
   return pick.map((r) => (r.title ? r.title : r.label));
 }
+
+// --- Collectibles and the Vault ---------------------------------------------------
+// Rare things to find in chests, from common to mythic. Chests only come from
+// studying (sessions, steps, hand-ins, grades, practice, weak points, streaks),
+// so every find is earned; none of this is sold. Odds are shown in the Vault.
+export const TIERS = ['common', 'rare', 'epic', 'legendary', 'mythic'];
+export const COLLECTIBLES = {
+  crane: { tier: 'common', kind: 'trophy', name: 'Paper crane', text: 'Folded from an old study plan' },
+  'hat:leaf': { tier: 'common', kind: 'hat', name: 'Leaf crown', text: 'Woven from library ivy' },
+  quill: { tier: 'common', kind: 'trophy', name: 'Ink quill', text: 'Still wet, somehow' },
+  mushrooms: { tier: 'common', kind: 'decor', name: 'Mushroom ring', text: 'Glows a little after dark' },
+  'hat:gradcap': { tier: 'rare', kind: 'hat', name: 'Graduation cap', text: 'Gold tassel included' },
+  sparkle: { tier: 'rare', kind: 'aura', name: 'Stardust aura', text: 'Motes of light drift around you' },
+  telescope: { tier: 'rare', kind: 'trophy', name: 'Brass telescope', text: 'For seeing exams coming' },
+  owlstatue: { tier: 'rare', kind: 'decor', name: 'Owl statue', text: 'Keeps watch over your town' },
+  'hat:wizard': { tier: 'epic', kind: 'hat', name: 'Wizard hat', text: 'Starry, pointy, very wise' },
+  ember: { tier: 'epic', kind: 'aura', name: 'Ember aura', text: 'Sparks rise wherever you stand' },
+  goldbook: { tier: 'epic', kind: 'trophy', name: 'Golden book', text: 'Every page you ever studied' },
+  crystallamp: { tier: 'epic', kind: 'decor', name: 'Crystal lamp', text: 'A floating crystal on a stone stand' },
+  aurora: { tier: 'legendary', kind: 'aura', name: 'Aurora', text: 'Ribbons of northern light circle you' },
+  goldfox: { tier: 'legendary', kind: 'pet', name: 'Golden fox', text: 'A fox cast in living gold' },
+  'hat:deans': { tier: 'legendary', kind: 'hat', name: 'Dean’s List crown', text: 'Gold laurels and a ruby' },
+  globe: { tier: 'legendary', kind: 'trophy', name: 'Celestial globe', text: 'A small sky in a brass cage' },
+  'hat:halo': { tier: 'mythic', kind: 'hat', name: 'Scholar’s halo', text: 'Only the most dedicated ever see one' },
+  phoenix: { tier: 'mythic', kind: 'pet', name: 'Phoenix', text: 'Reborn every exam season' },
+  galaxy: { tier: 'mythic', kind: 'aura', name: 'Galaxy', text: 'A whole galaxy turning around you' },
+  obelisk: { tier: 'mythic', kind: 'decor', name: 'Starfall obelisk', text: 'Fallen stars orbit its peak' },
+};
+/** Chance a chest holds a collectible, and the odds of each tier, by chest rarity. */
+export const DROP_TABLE = {
+  common: { chance: 0.3, odds: { common: 70, rare: 24, epic: 5, legendary: 0.9, mythic: 0.1 } },
+  rare: { chance: 0.45, odds: { common: 45, rare: 38, epic: 13, legendary: 3.5, mythic: 0.5 } },
+  epic: { chance: 0.65, odds: { common: 20, rare: 40, epic: 28, legendary: 10, mythic: 2 } },
+  legendary: { chance: 1, odds: { common: 0, rare: 30, epic: 40, legendary: 25, mythic: 5 } },
+};
+export const PITY_EPIC = 10; // a collectible of epic or better at least this often
+export const PITY_MYTHIC = 120; // and a mythic at least this often
+
+function rollTier(chestRarity, rng) {
+  const odds = DROP_TABLE[chestRarity].odds;
+  const total = TIERS.reduce((n, t) => n + odds[t], 0);
+  let r = rng() * total;
+  for (const t of TIERS) { r -= odds[t]; if (r <= 0) return t; }
+  return 'common';
+}
+
+/** Rolls a chest's collectible (with pity). Returns { id, tier, dupe, coins, pity } or null. */
+export function rollCollectible(state, chestRarity, rng = Math.random) {
+  const v = state.vault;
+  v.sinceEpic += 1;
+  v.sinceMythic += 1;
+  let tier = null;
+  let pity = false;
+  if (v.sinceMythic >= PITY_MYTHIC) { tier = 'mythic'; pity = true; }
+  else if (v.sinceEpic >= PITY_EPIC) { tier = rollTier(chestRarity, rng); if (TIERS.indexOf(tier) < 2) tier = 'epic'; pity = true; }
+  else if (rng() < DROP_TABLE[chestRarity].chance) tier = rollTier(chestRarity, rng);
+  if (!tier) return null;
+  if (TIERS.indexOf(tier) >= 2) v.sinceEpic = 0;
+  if (tier === 'mythic') v.sinceMythic = 0;
+  // Prefer something not owned yet within the tier.
+  const pool = Object.keys(COLLECTIBLES).filter((id) => COLLECTIBLES[id].tier === tier);
+  const fresh = pool.filter((id) => !v.owned[id]);
+  const from = fresh.length && rng() < 0.75 ? fresh : pool;
+  const id = from[Math.floor(rng() * from.length) % from.length];
+  const dupe = Boolean(v.owned[id]);
+  v.owned[id] = (v.owned[id] || 0) + 1;
+  const c = COLLECTIBLES[id];
+  // What owning it unlocks elsewhere in the game.
+  if (!dupe) {
+    if (c.kind === 'hat' && !state.cosmetics.owned.includes(id)) state.cosmetics.owned.push(id);
+    if (c.kind === 'decor' && !state.decorUnlocked.includes(id)) state.decorUnlocked.push(id);
+    if (c.kind === 'pet') state.critters.caught[id] = (state.critters.caught[id] || 0) + 1;
+    if (c.kind === 'trophy' && v.showcase.length < 8) v.showcase.push(id);
+  }
+  // A duplicate is still worth something.
+  const coins = dupe ? Math.round(Math.max(100, baseIncome(state) * 120) * (1 + TIERS.indexOf(tier) * 2)) : 0;
+  if (coins) addCoins(state, coins);
+  return { id, tier, dupe, coins, pity };
+}
+
+export const vaultFound = (state) => Object.keys(COLLECTIBLES).filter((id) => state.vault.owned[id]).length;
 
 // --- Saving ---------------------------------------------------------------------
 
@@ -1847,6 +1945,7 @@ export function deserialize(text, now = Date.now()) {
     state.soma = { ...fresh.soma, ...(saved.soma || {}), status: 'offline' };
     state.pass = { ...fresh.pass, ...(saved.pass || {}) };
     state.steps = saved.steps || {};
+    state.vault = { ...fresh.vault, ...(saved.vault || {}) };
     state.topics = saved.topics || {};
     return state;
   } catch {

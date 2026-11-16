@@ -32,6 +32,7 @@ const WONDER_POS = [198, 228, 258, 282, 312, 342].map((deg) => polar(35, deg));
 // The market and one hall per class (game.js): the forest keeps clear of them.
 export const MARKET_POS = polar(16, 30);
 export const WATCHTOWER_POS = new THREE.Vector3(-9, 0, 34); // Soma's Watchtower, by the gate road
+export const VAULT_POS = polar(15.5, 150); // the Vault, across the plaza from the market
 // Each course's front: a lair at the town's edge, between the wonder sites,
 // and the straight path its work marches in on, toward the plaza.
 export const FRONT_ANGLES = [213, 243, 297, 327, 180, 0];
@@ -550,6 +551,7 @@ export function createWorld(scene, renderer) {
     for (const p of WONDER_POS.slice(0, 6)) if (Math.hypot(x - p.x, z - p.z) < 7.4) return true;
     if (Math.hypot(x - MARKET_POS.x, z - MARKET_POS.z) < 5.5) return true;
     if (Math.hypot(x - WATCHTOWER_POS.x, z - WATCHTOWER_POS.z) < 5) return true;
+    if (Math.hypot(x - VAULT_POS.x, z - VAULT_POS.z) < 7) return true;
     for (let i = 0; i < FRONT_ANGLES.length; i++) {
       if (Math.hypot(x - FRONT_POS[i].x, z - FRONT_POS[i].z) < 7) return true;
       // Keep each front's path clear of trees.

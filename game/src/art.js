@@ -688,6 +688,7 @@ export const SKIN_COLORS = {
 };
 export const COSMETIC_NAMES = {
   'hat:none': 'No hat', 'hat:straw': 'Straw Hat', 'hat:crown': 'Crown', 'hat:helm': 'Knight Helm', 'hat:top': 'Top Hat', 'hat:cap': 'Cap', 'hat:astro': 'Star Helmet',
+  'hat:leaf': 'Leaf crown', 'hat:gradcap': 'Graduation cap', 'hat:wizard': 'Wizard hat', 'hat:deans': 'Dean’s List crown', 'hat:halo': 'Scholar’s halo',
   'color:clay': 'Clay', 'color:moss': 'Moss', 'color:ocean': 'Ocean', 'color:plum': 'Plum', 'color:ember': 'Ember', 'color:snow': 'Snow', 'color:gold': 'Gold',
 };
 
@@ -744,6 +745,38 @@ function hat(id) {
     case 'hat:top': return group(cyl(0.52, 0.52, 0.06, C.ink, 10), at(cyl(0.32, 0.34, 0.5, C.ink, 10), 0, 0.05, 0), at(cyl(0.345, 0.345, 0.1, C.red, 10), 0, 0.08, 0));
     case 'hat:cap': return group(dome(0.42, C.blue), at(box(0.5, 0.05, 0.4, C.blue), 0, 0.02, 0.4));
     case 'hat:astro': return group(at(ball(0.62, C.glass, 1, { opacity: 0.35, rough: 0.1 }), 0, -0.2, 0), at(torus(0.42, 0.06, C.white), 0, -0.55, 0));
+    case 'hat:leaf': {
+      const g = group(at(tilt(torus(0.34, 0.035, 0x6a8a3a), Math.PI / 2, 0), 0, 0.05, 0));
+      for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; const l = at(squash(ball(0.09, i % 2 ? 0x6fae4f : 0x8cc85a, 0), 0.5, 0.25, 1.4), Math.cos(a) * 0.34, 0.08, Math.sin(a) * 0.34); l.rotation.y = -a; l.rotation.x = 0.4; g.add(l); }
+      return g;
+    }
+    case 'hat:gradcap': {
+      const g = group(cyl(0.34, 0.36, 0.22, C.ink, 10, { kind: 'fabric' }), at(box(0.95, 0.05, 0.95, C.ink, { kind: 'fabric' }), 0, 0.22, 0, Math.PI / 4), at(cyl(0.05, 0.05, 0.04, C.gold, 8, { metal: 0.6 }), 0, 0.27, 0));
+      g.add(at(box(0.02, 0.02, 0.4, C.gold), 0.2, 0.28, 0.2, Math.PI / 4), at(box(0.03, 0.32, 0.03, C.gold), 0.33, 0.12, 0.33), at(cone(0.06, 0.15, C.gold, 8, { metal: 0.5 }), 0.33, -0.02, 0.33));
+      return g;
+    }
+    case 'hat:wizard': {
+      const blue = 0x2a3a8a;
+      const tip = at(tilt(cone(0.24, 0.55, blue, 10, { kind: 'fabric' }), 0.35, 0), 0.05, 0.58, 0);
+      const g = group(cyl(0.62, 0.62, 0.05, blue, 14, { kind: 'fabric' }), at(cone(0.38, 0.65, blue, 10, { kind: 'fabric' }), 0, 0.03, 0), tip, at(cyl(0.385, 0.385, 0.09, C.gold, 12, { metal: 0.5 }), 0, 0.05, 0));
+      for (let i = 0; i < 6; i++) g.add(at(ball(0.035, 0xfff2a0, 0, { emissive: 0xffe08a, glow: 1.5 }), Math.cos(i * 1.7) * 0.25, 0.2 + (i % 3) * 0.17, Math.sin(i * 1.7) * 0.25));
+      return g;
+    }
+    case 'hat:deans': {
+      const metal = { metal: 0.85, rough: 0.2 };
+      const g = group(cyl(0.37, 0.35, 0.18, C.gold, 12, metal));
+      for (let i = 0; i < 7; i++) { const a = (i / 7) * Math.PI * 2; g.add(at(cone(0.07, 0.24, C.gold, 4, metal), Math.cos(a) * 0.33, 0.18, Math.sin(a) * 0.33), at(ball(0.04, 0xfff3c0, 0, { emissive: 0xffe08a, glow: 1 }), Math.cos(a) * 0.33, 0.43, Math.sin(a) * 0.33)); }
+      for (const sx of [-1, 1]) for (let k = 0; k < 4; k++) { const l = at(squash(ball(0.07, 0x9fd06a, 0, metal), 0.4, 0.3, 1.3), sx * 0.36, 0.05 + k * 0.05, 0.25 - k * 0.15); l.rotation.y = sx * 0.6; g.add(l); }
+      g.add(at(squash(ball(0.08, 0xd81e3a, 0, { emissive: 0xa00020, glow: 0.8, rough: 0.1 }), 1, 1.2, 0.6), 0, 0.1, 0.37));
+      return g;
+    }
+    case 'hat:halo': {
+      const ring = at(tilt(torus(0.36, 0.045, 0xfff6c8, { emissive: 0xffe6a0, glow: 2.4 }), Math.PI / 2, 0), 0, 0.45, 0);
+      ring.name = 'halo';
+      const g = group(ring);
+      for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; g.add(at(ball(0.035, 0xffffff, 0, { emissive: 0xfff2c0, glow: 2 }), Math.cos(a) * 0.36, 0.45, Math.sin(a) * 0.36)); }
+      return g;
+    }
     default: return null;
   }
 }
@@ -1025,7 +1058,7 @@ export function makeBoard() {
   return g;
 }
 
-export const RARITY_COLORS = { common: 0x9aa0a8, rare: 0x4a90e2, epic: 0xa35be0, legendary: 0xf2c14e };
+export const RARITY_COLORS = { common: 0x9aa0a8, rare: 0x4a90e2, epic: 0xa35be0, legendary: 0xf2c14e, mythic: 0xff4fd8 };
 
 export function makeChest(rarity) {
   const trim = RARITY_COLORS[rarity];
@@ -1089,6 +1122,7 @@ export function makeLander() {
 /** A decoration from the build menu (DECOR in sim.js). Built in metres, centred on its base. */
 export function makeDecor(type) {
   if (['torii', 'toro', 'bamboo', 'koi', 'bridge', 'sakura'].includes(type)) return makeGardenPiece(type);
+  if (['mushrooms', 'owlstatue', 'crystallamp', 'obelisk'].includes(type)) return makeVaultDecor(type);
   const g = new THREE.Group();
   const leaf = 0x6fae4f, leafDark = 0x4f8a3c;
   switch (type) {
@@ -1408,6 +1442,36 @@ export function makeCritter(species) {
         body.add(spike);
       }
       body.add(at(squash(ball(0.15, 0xe8c9a0, 0), 1, 0.9, 1.3), 0, 0.2, 0.28), at(ball(0.04, C.ink, 0), 0, 0.22, 0.47), eye(-0.07, 0.29, 0.38, 0.03), eye(0.07, 0.29, 0.38, 0.03));
+      break;
+    }
+    case 'goldfox': {
+      const gold = { metal: 0.9, rough: 0.2, emissive: 0xffb02a, glow: 0.25 };
+      const coat = 0xf2c14e;
+      body.add(at(squash(ball(0.3, coat, 0, gold), 0.9, 0.85, 1.4), 0, 0.42, 0), at(squash(ball(0.24, coat, 0, gold), 1, 0.95, 1.05), 0, 0.62, 0.38));
+      body.add(at(squash(ball(0.13, 0xfff3c0, 0, gold), 1, 0.8, 1.2), 0, 0.55, 0.55), at(ball(0.035, C.ink, 0), 0, 0.57, 0.68));
+      for (const x of [-0.12, 0.12]) body.add(at(cone(0.08, 0.2, coat, 4, gold), x, 0.8, 0.36), eye(x * 0.9, 0.67, 0.56, 0.035));
+      for (const [x, z] of [[-0.12, 0.25], [0.12, 0.25], [-0.12, -0.25], [0.12, -0.25]]) body.add(at(cyl(0.05, 0.05, 0.3, 0xc9a24a, 5, gold), x, 0.05, z));
+      const tail = at(squash(ball(0.17, coat, 0, gold), 0.8, 0.8, 1.8), 0, 0.5, -0.5);
+      tail.rotation.x = -0.6;
+      body.add(tail, at(ball(0.09, 0xfff3c0, 0, { emissive: 0xffe08a, glow: 1.5 }), 0, 0.6, -0.78));
+      for (let i = 0; i < 6; i++) body.add(at(ball(0.025, 0xffffff, 0, { emissive: 0xfff2c0, glow: 2.4 }), Math.sin(i * 2.3) * 0.32, 0.4 + (i % 3) * 0.18, Math.cos(i * 1.7) * 0.4));
+      break;
+    }
+    case 'phoenix': {
+      const fire = (c, glow = 1.6) => ({ emissive: c, glow });
+      body.add(at(squash(ball(0.26, 0xff5a1a, 0, fire(0xff4a10, 1.2)), 0.9, 1.1, 1.3), 0, 0.7, 0), at(ball(0.18, 0xffa03a, 0, fire(0xff8a1a, 1.4)), 0, 0.98, 0.22));
+      body.add(at(tilt(cone(0.05, 0.16, 0xffd24a, 4, fire(0xffc030)), Math.PI / 2, 0), 0, 0.96, 0.42), at(ball(0.035, C.ink, 0), -0.08, 1.02, 0.36), at(ball(0.035, C.ink, 0), 0.08, 1.02, 0.36));
+      for (let i = 0; i < 3; i++) { const c = at(cone(0.05, 0.28, [0xffd24a, 0xff8a1a, 0xff4a12][i], 4, fire([0xffc030, 0xff7a10, 0xff3a0a][i])), (i - 1) * 0.08, 1.12, 0.1); c.rotation.x = -0.4; body.add(c); }
+      const wings = [-1, 1].map((sx) => {
+        const w = new THREE.Group();
+        for (let k = 0; k < 4; k++) { const f = at(squash(ball(0.16, [0xff5a1a, 0xff8a1a, 0xffb03a, 0xffd24a][k], 0, fire([0xff4a10, 0xff7a10, 0xffa02a, 0xffc040][k])), 0.25, 0.5, 1.6), sx * (0.18 + k * 0.17), 0.08 - k * 0.04, -0.05 - k * 0.04); f.rotation.y = sx * 0.3; w.add(f); }
+        w.position.set(sx * 0.15, 0.78, 0);
+        body.add(w);
+        return w;
+      });
+      for (let k = 0; k < 5; k++) { const t = at(squash(ball(0.1, [0xff4a12, 0xff8a1a, 0xffd24a][k % 3], 0, fire(0xff6a10)), 0.4, 0.3, 1.8), (k - 2) * 0.07, 0.55 - k * 0.04, -0.45 - k * 0.08); t.rotation.x = 0.4; body.add(t); }
+      g.userData.wings = wings;
+      g.userData.flies = true;
       break;
     }
     case 'fox':
@@ -1816,5 +1880,176 @@ export function makeLair(color) {
   g.userData.rift = rift;
   g.userData.swirl = swirl;
   g.traverse((o) => { if (o.isMesh && o !== rift && o !== swirl) { o.castShadow = true; o.receiveShadow = true; } });
+  return g;
+}
+
+// --- Auras: an effect that circles the hero (animated by the game) ------------------
+export function makeAura(id) {
+  const g = new THREE.Group();
+  g.name = 'aura';
+  g.userData.kind = id;
+  const glow = (color, size, opacity = 0.9) => new THREE.Mesh(new THREE.SphereGeometry(size, 8, 6), new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, toneMapped: false }));
+  const motes = [];
+  if (id === 'sparkle') for (let i = 0; i < 16; i++) { const m = glow(i % 3 ? 0xfff2c0 : 0xffffff, 0.04 + (i % 3) * 0.015); m.userData.seed = i * 0.39; motes.push(m); g.add(m); }
+  if (id === 'ember') for (let i = 0; i < 20; i++) { const m = glow([0xff7a1a, 0xffb03a, 0xff4a12][i % 3], 0.05); m.userData.seed = i * 0.31; motes.push(m); g.add(m); }
+  if (id === 'aurora') {
+    const colors = [0x5fffc8, 0x5fb8ff, 0xb48cff];
+    colors.forEach((c, i) => {
+      const ribbon = new THREE.Mesh(new THREE.TorusGeometry(1.15 + i * 0.18, 0.06, 6, 48, Math.PI * 1.3), new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.55, depthWrite: false, toneMapped: false }));
+      ribbon.rotation.x = Math.PI / 2 + (i - 1) * 0.25;
+      ribbon.position.y = 0.6 + i * 0.45;
+      ribbon.userData.speed = 0.6 + i * 0.35;
+      ribbon.name = 'ribbon';
+      g.add(ribbon);
+    });
+  }
+  if (id === 'galaxy') {
+    const disk = new THREE.Group();
+    disk.name = 'disk';
+    for (let i = 0; i < 90; i++) {
+      const arm = i % 3, t = (i / 90) * 3.2;
+      const r = 0.55 + t * 0.45, a = t * 2.4 + arm * ((Math.PI * 2) / 3);
+      const m = glow([0xffffff, 0xb48cff, 0x7fc8ff, 0xff8ad8][i % 4], 0.03 + (i % 5 === 0 ? 0.03 : 0));
+      m.position.set(Math.cos(a) * r, (Math.sin(i) * 0.06), Math.sin(a) * r);
+      disk.add(m);
+    }
+    const core = glow(0xffe6ff, 0.12, 0.85);
+    disk.add(core);
+    disk.position.y = 0.15;
+    g.add(disk);
+    const nebula = new THREE.Mesh(new THREE.RingGeometry(0.6, 2.0, 48), new THREE.MeshBasicMaterial({ color: 0x7a3ad8, transparent: true, opacity: 0.18, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }));
+    nebula.rotation.x = -Math.PI / 2;
+    nebula.position.y = 0.14;
+    nebula.name = 'nebula';
+    g.add(nebula);
+  }
+  g.userData.motes = motes;
+  return g;
+}
+
+// --- Trophies: shown on pedestals in front of the Vault ------------------------------
+export function makeTrophy(id) {
+  const g = new THREE.Group();
+  const brass = { metal: 0.8, rough: 0.3 };
+  switch (id) {
+    case 'crane': {
+      g.add(at(squash(prism(0.5, 0.25, 0.7, 0xf5f0e7), 1, 1, 1), 0, 0.15, 0));
+      for (const sx of [-1, 1]) { const w = at(box(0.55, 0.02, 0.3, 0xe8d6b8), sx * 0.3, 0.32, 0); w.rotation.z = sx * 0.4; g.add(w); }
+      const neck = at(box(0.05, 0.4, 0.05, 0xf5f0e7), 0, 0.35, 0.35); neck.rotation.x = 0.6; g.add(neck, at(cone(0.04, 0.12, 0xf5f0e7, 4), 0, 0.52, 0.5));
+      break;
+    }
+    case 'quill': {
+      g.add(at(cyl(0.16, 0.2, 0.28, 0x2a2238, 10, { rough: 0.2 }), 0, 0, 0), at(cyl(0.12, 0.12, 0.04, C.ink, 10), 0, 0.28, 0));
+      const feather = group(at(squash(ball(0.14, 0xf5f0e7, 0), 0.25, 1.9, 0.6), 0, 0.45, 0), at(cyl(0.012, 0.012, 0.75, 0x8a7a6a, 4), 0, 0.1, 0));
+      feather.rotation.z = -0.35;
+      feather.position.set(0.05, 0.2, 0);
+      g.add(feather);
+      break;
+    }
+    case 'telescope': {
+      for (const a of [0, 2.1, 4.2]) { const leg = at(cyl(0.02, 0.025, 0.7, C.woodDark, 5), Math.sin(a) * 0.18, 0, Math.cos(a) * 0.18); leg.rotation.set(Math.cos(a) * 0.25, 0, -Math.sin(a) * 0.25); g.add(leg); }
+      const tube = group(cyl(0.09, 0.07, 0.9, 0xc9a24a, 12, brass), at(cyl(0.1, 0.1, 0.08, 0x8a6a2a, 12, brass), 0, 0.85, 0), at(cyl(0.11, 0.11, 0.05, 0x8a6a2a, 12, brass), 0, 0.3, 0));
+      tube.rotation.z = -1.0;
+      tube.position.set(-0.3, 0.65, 0);
+      g.add(tube);
+      break;
+    }
+    case 'goldbook': {
+      const gold = { metal: 0.9, rough: 0.2, emissive: 0xffc04a, glow: 0.25 };
+      for (const sx of [-1, 1]) { const page = at(box(0.42, 0.04, 0.55, C.gold, gold), sx * 0.22, 0.12, 0); page.rotation.z = sx * -0.18; g.add(page); }
+      g.add(at(box(0.06, 0.08, 0.55, 0xc9a24a, gold), 0, 0.06, 0), at(box(0.7, 0.06, 0.46, 0xfff3d6), 0, 0.14, 0));
+      for (let i = 0; i < 6; i++) g.add(at(ball(0.03, 0xfff2c0, 0, { emissive: 0xffe08a, glow: 2 }), Math.sin(i * 1.3) * 0.25, 0.35 + (i % 3) * 0.12, Math.cos(i * 1.7) * 0.15));
+      break;
+    }
+    case 'globe': {
+      const orb = at(ball(0.3, 0x2a3a8a, 1, { emissive: 0x3a5aff, glow: 0.35, rough: 0.2 }), 0, 0.62, 0);
+      g.add(at(cyl(0.18, 0.24, 0.12, 0xc9a24a, 12, brass), 0, 0, 0), at(cyl(0.03, 0.03, 0.3, 0xc9a24a, 6, brass), 0, 0.12, 0), orb);
+      for (const [rx, rz] of [[Math.PI / 2, 0], [Math.PI / 2, 0.8], [1.1, -0.6]]) { const r = at(tilt(torus(0.4, 0.015, 0xc9a24a, brass), rx, rz), 0, 0.62, 0); g.add(r); }
+      for (let i = 0; i < 8; i++) g.add(at(ball(0.025, 0xffffff, 0, { emissive: 0xffffff, glow: 2 }), Math.cos(i) * 0.22, 0.62 + Math.sin(i * 2) * 0.18, Math.sin(i) * 0.22));
+      break;
+    }
+    default: g.add(box(0.3, 0.3, 0.3, C.gold));
+  }
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
+
+// --- The Vault: a small marble treasury, with lit pedestals out front ---------------
+export function makeVault() {
+  const g = new THREE.Group();
+  const marble = 0xf2eee6, trim = 0xd9c48a;
+  g.add(at(box(6.6, 0.4, 5.2, C.stoneDark), 0, 0, 0), at(box(6.2, 0.25, 4.8, marble), 0, 0.4, 0));
+  for (let i = 0; i < 3; i++) g.add(at(box(2.4 - i * 0.2, 0.18, 0.5, marble), 0, i * 0.18, 2.75 + (2 - i) * 0.25));
+  g.add(at(box(5.4, 3.4, 3.6, marble, { rough: 0.6 }), 0, 0.65, -0.3));
+  for (const x of [-2.2, -1.1, 1.1, 2.2]) g.add(at(cyl(0.22, 0.26, 3.2, marble, 12, { rough: 0.5 }), x, 0.65, 1.95), at(box(0.62, 0.18, 0.62, trim), x, 3.85, 1.95), at(box(0.62, 0.15, 0.62, trim), x, 0.65, 1.95));
+  g.add(at(box(5.8, 0.35, 4.6, trim, { metal: 0.3 }), 0, 4.0, 0), at(prism(5.8, 1.2, 0.6, marble), 0, 4.35, 2.0, Math.PI / 2));
+  g.add(at(dome(1.7, 0xd9c48a, { metal: 0.6, rough: 0.3 }), 0, 4.35, -0.4), at(cone(0.25, 0.7, 0xd9c48a, 8, { metal: 0.6 }), 0, 6.0, -0.4));
+  // A heavy gold door with a round lock.
+  g.add(at(box(1.5, 2.3, 0.12, 0xc9a24a, { metal: 0.85, rough: 0.25 }), 0, 0.65, 1.52), at(cyl(0.38, 0.38, 0.1, 0xa8842a, 16, { metal: 0.9, rough: 0.2 }), 0, 1.8, 1.6));
+  const lockSpin = at(tilt(box(0.6, 0.06, 0.06, 0x6a5420, { metal: 0.9 }), Math.PI / 2, 0), 0, 1.8, 1.67);
+  lockSpin.name = 'spin';
+  g.add(lockSpin);
+  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  return g;
+}
+/** A pedestal lit in a rarity colour; the trophy sits on top. */
+export function makePedestal(color) {
+  const g = new THREE.Group();
+  g.add(at(cyl(0.48, 0.55, 0.2, C.stoneDark, 12), 0, 0, 0), at(cyl(0.34, 0.38, 0.9, 0xf2eee6, 12, { rough: 0.5 }), 0, 0.2, 0), at(cyl(0.46, 0.42, 0.14, 0xf2eee6, 12), 0, 1.1, 0));
+  const ring = at(cyl(0.47, 0.47, 0.05, color, 16, { emissive: color, glow: 1.2 }), 0, 1.22, 0);
+  ring.name = 'glow';
+  g.add(ring);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, 3.2, 16, 1, true), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false, toneMapped: false }));
+  beam.position.y = 2.85;
+  g.add(beam);
+  g.traverse((o) => { if (o.isMesh && o !== beam) o.castShadow = true; });
+  return g;
+}
+
+/** Decorations found in chests. */
+export function makeVaultDecor(type) {
+  const g = new THREE.Group();
+  switch (type) {
+    case 'mushrooms':
+      for (let i = 0; i < 9; i++) {
+        const a = (i / 9) * Math.PI * 2, r = 0.9 + (i % 2) * 0.15, h = 0.18 + (i % 3) * 0.08;
+        g.add(at(cyl(0.05, 0.06, h, 0xf5f0e7, 6), Math.cos(a) * r, 0, Math.sin(a) * r), at(squash(ball(0.14 + (i % 3) * 0.03, i % 2 ? 0xe8432e : 0xf28a3c, 0, { emissive: i % 2 ? 0x601010 : 0x6a3a10, glow: 0.4 }), 1, 0.55, 1), Math.cos(a) * r, h, Math.sin(a) * r));
+      }
+      break;
+    case 'owlstatue':
+      g.add(at(box(0.9, 0.5, 0.9, C.stoneDark), 0, 0, 0), at(squash(ball(0.5, C.stone, 0), 1, 1.25, 0.95), 0, 1.05, 0), at(squash(ball(0.36, 0xd9d4c6, 0), 1, 1.1, 0.5), 0, 1.0, 0.24));
+      for (const x of [-0.18, 0.18]) g.add(at(ball(0.13, 0xe8e4d8, 0), x, 1.45, 0.34), at(ball(0.06, 0xf2c14e, 0, { emissive: 0xffc04a, glow: 1.5 }), x, 1.45, 0.45), at(cone(0.08, 0.2, C.stone, 4), x * 1.4, 1.75, 0));
+      g.add(at(tilt(cone(0.06, 0.14, 0xb8b2a4, 4), Math.PI, 0), 0, 1.36, 0.46));
+      break;
+    case 'crystallamp': {
+      g.add(at(cyl(0.35, 0.45, 0.25, C.stoneDark, 8), 0, 0, 0), at(cyl(0.12, 0.16, 1.1, C.stone, 8), 0, 0.25, 0), at(cyl(0.32, 0.2, 0.15, C.stone, 8), 0, 1.35, 0));
+      const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.32, 0), new THREE.MeshStandardMaterial({ color: 0xc9a6ff, emissive: 0x8a5aff, emissiveIntensity: 1.6, roughness: 0.15, flatShading: true }));
+      crystal.scale.set(0.8, 1.4, 0.8);
+      crystal.position.y = 2.0;
+      crystal.name = 'spin';
+      g.add(crystal);
+      break;
+    }
+    case 'obelisk': {
+      g.add(at(box(1.6, 0.4, 1.6, 0x2a2238), 0, 0, 0), at(box(1.2, 0.3, 1.2, 0x3a3048), 0, 0.4, 0));
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.45, 4.2, 4), new THREE.MeshStandardMaterial({ color: 0x1a1428, roughness: 0.25, metalness: 0.4, flatShading: true }));
+      shaft.position.y = 2.8;
+      shaft.rotation.y = Math.PI / 4;
+      g.add(shaft, at(cone(0.3, 0.6, 0x1a1428, 4, { metal: 0.4, rough: 0.25 }), 0, 4.9, 0, Math.PI / 4));
+      for (let i = 0; i < 4; i++) g.add(at(box(0.04, 3.4, 0.02, 0xff4fd8, { emissive: 0xff4fd8, glow: 1.5 }), Math.cos(i * Math.PI / 2 + Math.PI / 4) * 0.3, 1.0, Math.sin(i * Math.PI / 2 + Math.PI / 4) * 0.3));
+      const stars = new THREE.Group();
+      for (let i = 0; i < 7; i++) {
+        const st = new THREE.Mesh(new THREE.OctahedronGeometry(0.12, 0), new THREE.MeshBasicMaterial({ color: [0xffffff, 0xff9ae8, 0x9fe8ff][i % 3], toneMapped: false }));
+        st.userData.a = (i / 7) * Math.PI * 2;
+        stars.add(st);
+      }
+      stars.position.y = 5.3;
+      stars.name = 'orbit';
+      g.add(stars);
+      break;
+    }
+    default: g.add(box(0.5, 0.5, 0.5, C.wood));
+  }
+  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   return g;
 }

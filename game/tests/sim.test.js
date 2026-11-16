@@ -137,7 +137,7 @@ test('chests pay coins and richer chests give relics, cosmetics and tokens', () 
   const s = rich(0);
   S.grantChest(s, 'legendary', 'test');
   const { loot } = S.openChest(s, s.school.chests[0].id, () => 0, NOW);
-  assert.deepStrictEqual(loot.map((l) => l.kind), ['coins', 'relic', 'cosmetic', 'token', 'gear']);
+  assert.deepStrictEqual(loot.map((l) => l.kind), ['collectible', 'coins', 'relic', 'cosmetic', 'token', 'gear']);
   assert.strictEqual(s.hero.gear.weapon.rarity, 'legendary');
   assert.strictEqual(s.coins, 5000);
   assert.strictEqual(s.tokens, 1);
@@ -648,6 +648,51 @@ test('exam topics are crystals: study, practice and review on a topic break it',
   assert.strictEqual(S.crystalsLeft(s, exam), 0);
   S.setTopics(s, 'm', ['Energy', 'Waves']);
   assert.strictEqual(s.topics.m[0].minutes, 25); // kept when the list is edited
+});
+
+test('collectibles: odds by chest, pity for epic and mythic, duplicates pay coins', () => {
+  const s = rich(0);
+  for (const r of ['common', 'rare', 'epic', 'legendary']) {
+    const sum = S.TIERS.reduce((n, t) => n + S.DROP_TABLE[r].odds[t], 0);
+    assert.ok(Math.abs(sum - 100) < 1e-9, r);
+  }
+  // rng 0.99: no collectible from a common chest... until pity at 10.
+  const got = [];
+  for (let i = 0; i < S.PITY_EPIC; i++) got.push(S.rollCollectible(s, 'common', () => 0.99));
+  assert.strictEqual(got.slice(0, -1).filter(Boolean).length, 0);
+  const pity = got[S.PITY_EPIC - 1];
+  assert.ok(pity.pity && ['epic', 'legendary', 'mythic'].includes(pity.tier));
+  s.vault.sinceMythic = S.PITY_MYTHIC - 1;
+  const myth = S.rollCollectible(s, 'common', () => 0.99);
+  assert.strictEqual(myth.tier, 'mythic');
+  assert.strictEqual(s.vault.sinceMythic, 0);
+  // Finds unlock things: hats in the wardrobe, decorations in build mode, pets.
+  s.vault.owned = {};
+  const all = Object.keys(S.COLLECTIBLES);
+  let n = 0;
+  for (const id of all) { s.vault.sinceMythic = 0; s.vault.sinceEpic = 0; }
+  const rng = () => ((n = (n * 9301 + 49297) % 233280) / 233280);
+  for (let i = 0; i < 400; i++) S.rollCollectible(s, 'legendary', rng);
+  assert.ok(S.vaultFound(s) >= 14);
+  assert.ok(s.cosmetics.owned.includes('hat:wizard') || s.cosmetics.owned.includes('hat:deans'));
+  const before = s.coins;
+  const dupe = S.rollCollectible(s, 'legendary', () => 0.5);
+  if (dupe && dupe.dupe) assert.ok(s.coins > before);
+});
+
+test('studying drops more chests: steps, perfect practice, learned reviews, broken weak points', () => {
+  const s = rich();
+  S.syncSchool(s, [item({ id: 'h:1', name: 'Essay 1', groupName: 'Essays' }), { id: 'm', name: 'Midterm exam', courseId: 'c', courseName: 'Physics', dueAt: NOW + 5 * DAY, pointsPossible: 100, weight: 30, submitted: false }], NOW, { source: 'soma' });
+  const start = s.school.chests.length;
+  const steps = S.breakDown(s, 'h:1');
+  for (const st of steps.slice(0, 3)) S.finishStep(s, 'h:1', st.id);
+  assert.strictEqual(s.school.chests.length, start + 1);
+  S.finishPractice(s, 'm', 5, 0, NOW);
+  assert.strictEqual(s.school.chests.at(-1).rarity, 'rare');
+  S.setTopics(s, 'm', ['Momentum']);
+  S.startStudy(s, 'm', 25, NOW, 'Momentum');
+  S.finishStudy(s, NOW + 25 * 60_000);
+  assert.ok(s.school.chests.some((c) => c.rarity === 'epic' && /Momentum/.test(c.from)));
 });
 
 test('camps and treasure come back the next day, shrines pay once ever', () => {

@@ -776,3 +776,48 @@ body.shiftlock, body.shiftlock canvas, body.shiftlock #labels, body.shiftlock #l
 .x-small { width: 26px; height: 26px; border-radius: 8px; border: none; background: rgba(255, 255, 255, 0.08); color: inherit; cursor: pointer; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
 .chip { padding: 5px 10px; border-radius: 99px; border: 1px solid rgba(79, 200, 255, 0.45); background: rgba(79, 200, 255, 0.12); color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
+
+/* The Vault */
+.vault-head { display: flex; gap: 12px; align-items: stretch; margin-bottom: 14px; }
+.pity { flex: 1; display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 14px; background: rgba(163, 91, 224, 0.16); border: 1px solid rgba(163, 91, 224, 0.35); }
+.pity.mythic { background: linear-gradient(135deg, rgba(255, 79, 216, 0.2), rgba(127, 211, 255, 0.14)); border-color: rgba(255, 79, 216, 0.45); }
+.pity small { opacity: 0.75; font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+.pity .bar i { background: linear-gradient(90deg, #a35be0, #ff4fd8); }
+.vault-head .btn { flex: none; width: auto; }
+.vault-tier { margin-bottom: 14px; padding: 10px 12px 12px; border-radius: 16px; background: rgba(255, 255, 255, 0.04); border-left: 4px solid var(--tc); }
+.vault-tier.t-common { --tc: #9aa0a8; } .vault-tier.t-rare { --tc: #4a90e2; } .vault-tier.t-epic { --tc: #a35be0; } .vault-tier.t-legendary { --tc: #f2c14e; }
+.vault-tier.t-mythic { --tc: #ff4fd8; background: linear-gradient(135deg, rgba(255, 79, 216, 0.12), rgba(127, 211, 255, 0.08)); }
+.tier-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.tier-head b { color: var(--tc); text-transform: uppercase; letter-spacing: 0.08em; font-size: 15px; }
+.vault-tier.t-mythic .tier-head b { background: linear-gradient(90deg, #ff4fd8, #7fd3ff, #fff2a0, #ff4fd8); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer 3s linear infinite; }
+@keyframes shimmer { to { background-position: 200% 0; } }
+.tier-head small { opacity: 0.6; font-size: 11px; }
+.vault-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.vault-card { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 8px; border-radius: 14px; background: rgba(255, 255, 255, 0.06); border: 2px solid transparent; text-align: center; }
+.vault-card .thumb { width: 96px; height: 96px; object-fit: contain; filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.4)); }
+.vault-card.unknown .thumb { filter: brightness(0) drop-shadow(0 0 1px rgba(255, 255, 255, 0.5)); opacity: 0.55; }
+.vault-card.owned { border-color: color-mix(in srgb, var(--tc) 55%, transparent); box-shadow: 0 0 14px color-mix(in srgb, var(--tc) 25%, transparent); }
+.vault-card.on { background: color-mix(in srgb, var(--tc) 18%, transparent); }
+.vault-card small { text-transform: uppercase; font-size: 10px; letter-spacing: 0.06em; opacity: 0.65; }
+.vault-card span { font-size: 11.5px; opacity: 0.8; line-height: 1.3; }
+.vault-tier.t-mythic .vault-card.owned { animation: mythicGlow 2.4s ease-in-out infinite; }
+@keyframes mythicGlow { 50% { box-shadow: 0 0 24px rgba(255, 79, 216, 0.55), 0 0 40px rgba(127, 211, 255, 0.25); } }
+/* Market showcase */
+.showcase { margin-top: 12px; padding: 12px; border-radius: 16px; background: linear-gradient(135deg, rgba(255, 79, 216, 0.12), rgba(242, 193, 78, 0.1)); border: 1px solid rgba(255, 79, 216, 0.3); }
+.showcase-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.showcase-head small { flex: 1; opacity: 0.7; }
+.showcase-head .btn { width: auto; flex: none; }
+.showcase-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+.show-item { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 6px; border-radius: 12px; background: rgba(20, 17, 31, 0.5); text-align: center; }
+.show-item .thumb { width: 72px; height: 72px; object-fit: contain; }
+.show-item.unknown .thumb { filter: brightness(0) drop-shadow(0 0 1px rgba(255, 255, 255, 0.5)); opacity: 0.55; }
+.show-item b { font-size: 12px; } .show-item small { font-size: 10px; opacity: 0.7; }
+.show-item.t-mythic b { color: #ff8ae8; } .show-item.t-legendary b { color: #ffd36a; }
+/* Chest opening: collectible cards and jackpots */
+.op-card .op-thumb { width: 86px; height: 86px; object-fit: contain; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.5)); }
+.op-card.op-mythic-card { background: linear-gradient(160deg, rgba(255, 79, 216, 0.35), rgba(127, 211, 255, 0.25)); box-shadow: 0 0 30px rgba(255, 79, 216, 0.6); }
+.op-card.op-legendary-card { box-shadow: 0 0 26px rgba(242, 193, 78, 0.55); }
+.op-jackpot-mythic::before, .op-jackpot-legendary::before { content: ''; position: absolute; inset: 0; pointer-events: none; animation: jackpot 1.2s ease-out; }
+.op-jackpot-mythic::before { background: radial-gradient(circle at 50% 45%, rgba(255, 79, 216, 0.55), rgba(127, 211, 255, 0.25) 40%, transparent 70%); }
+.op-jackpot-legendary::before { background: radial-gradient(circle at 50% 45%, rgba(242, 193, 78, 0.5), transparent 65%); }
+@keyframes jackpot { from { opacity: 1; transform: scale(0.6); } to { opacity: 0; transform: scale(1.4); } }
