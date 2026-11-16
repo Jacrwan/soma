@@ -292,6 +292,7 @@ function newHead(gltf, char) {
   const covered = Boolean(char.hat) || hooded.length > 0;
   const R = Math.max(size.x, size.z) * 0.5 * (covered ? 0.92 : 1);
   if (covered) centre.z += R * 0.04;
+  centre.y -= R * 0.06;
   const head = new THREE.Group();
   head.position.copy(centre);
   // The skull: a sphere a little wider than tall, fuller at the cheeks.
@@ -302,12 +303,16 @@ function newHead(gltf, char) {
     const y = p.getY(i) / R;
     // Rounder cheeks below the middle, a softer chin.
     const k = y < 0 ? 1 + 0.06 * Math.sin(-y * Math.PI) : 1;
-    p.setXYZ(i, p.getX(i) * k, p.getY(i) * (y < 0 ? 0.9 : 0.97), p.getZ(i) * k);
+    p.setXYZ(i, p.getX(i) * k, p.getY(i) * (y < 0 ? 0.95 : 0.97), p.getZ(i) * k);
   }
   skullGeo.computeVertexNormals();
   const skull = new THREE.Mesh(skullGeo, skin);
   skull.castShadow = true;
   head.add(skull);
+  // A neck down into the collar, so there's no gap under the round head.
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(R * 0.36, R * 0.42, R * 0.7, 20), new THREE.MeshStandardMaterial({ color: SKIN_SHADE, roughness: 0.8 }));
+  neck.position.y = -R * 0.95;
+  head.add(neck);
   // Ears.
   const earMat = new THREE.MeshStandardMaterial({ color: SKIN_SHADE, roughness: 0.8 });
   for (const side of [-1, 1]) {

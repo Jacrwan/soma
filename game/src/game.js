@@ -589,7 +589,20 @@ window.addEventListener('message', (event) => {
     useSomaSnapshots();
   }
 });
-const askSoma = () => window.postMessage({ source: 'soma-app', type: 'hello' }, location.origin);
+const askSoma = () => {
+  window.postMessage({ source: 'soma-app', type: 'hello' }, location.origin);
+  // Soma's own copy of the last Canvas sync, for pages the extension doesn't run on.
+  Soma.loadCanvasSnapshots().then((list) => {
+    let changed = false;
+    for (const snap of list) {
+      const have = somaSnapshots.get(snap.host);
+      if (have && have.syncedAt >= snap.syncedAt) continue;
+      somaSnapshots.set(snap.host, snap);
+      changed = true;
+    }
+    if (changed) useSomaSnapshots();
+  }).catch(() => { /* not signed in, or the table isn't there: the extension and the sample still work */ });
+};
 
 // Coming back to this tab (say, after handing something in on Canvas) asks the
 // extension to re-read Canvas, so the hand-in shows up here by itself. At most

@@ -261,10 +261,32 @@ export function createAudio(settings) {
   // scale, a round bass and a light shaker. 'town' is warm and steady; 'study'
   // is slower and quieter, with no shaker, so it sits under real work.
   const NOTE = (n) => 440 * 2 ** ((n - 69) / 12);
-  const SONGS = {
-    town: { bpm: 92, chords: [[60, 64, 67], [57, 60, 64], [53, 57, 60], [55, 59, 62]], scale: [72, 74, 76, 79, 81, 84], shaker: true, pluck: 0.07 },
-    study: { bpm: 70, chords: [[57, 60, 64], [53, 57, 60], [60, 64, 67], [55, 59, 62]], scale: [69, 72, 74, 76, 79, 81], shaker: false, pluck: 0.045 },
+  // Music styles, picked in Settings. Each has a town tune and a softer study one.
+  // pad / lead: oscillator types; kick: a soft low thump on the beat.
+  const STYLES = {
+    cozy: {
+      town: { bpm: 92, chords: [[60, 64, 67], [57, 60, 64], [53, 57, 60], [55, 59, 62]], scale: [72, 74, 76, 79, 81, 84], shaker: true, pluck: 0.07 },
+      study: { bpm: 70, chords: [[57, 60, 64], [53, 57, 60], [60, 64, 67], [55, 59, 62]], scale: [69, 72, 74, 76, 79, 81], shaker: false, pluck: 0.045 },
+    },
+    lofi: {
+      town: { bpm: 78, chords: [[57, 60, 64, 67], [50, 53, 57, 60], [55, 59, 62, 65], [48, 52, 55, 59]], scale: [69, 72, 74, 76, 79], pad: 'sine', lead: 'sine', pluck: 0.07, kick: true, shaker: true },
+      study: { bpm: 66, chords: [[57, 60, 64, 67], [53, 57, 60, 64], [50, 53, 57, 60], [52, 55, 59, 62]], scale: [69, 72, 74, 76, 79], pad: 'sine', lead: 'sine', pluck: 0.05, kick: true },
+    },
+    adventure: {
+      town: { bpm: 112, chords: [[62, 66, 69], [59, 62, 66], [55, 59, 62], [57, 61, 64]], scale: [74, 76, 78, 81, 83, 86], lead: 'square', pluck: 0.035, kick: true, shaker: true },
+      study: { bpm: 84, chords: [[62, 66, 69], [55, 59, 62], [59, 62, 66], [57, 61, 64]], scale: [74, 76, 78, 81, 83], lead: 'triangle', pluck: 0.045 },
+    },
+    piano: {
+      town: { bpm: 76, chords: [[48, 55, 64], [53, 60, 69], [57, 60, 64], [55, 62, 67]], scale: [72, 74, 76, 79, 81, 84], pad: 'sine', lead: 'sine', pluck: 0.08, long: true },
+      study: { bpm: 60, chords: [[48, 55, 64], [57, 60, 64], [53, 60, 69], [55, 62, 67]], scale: [72, 74, 76, 79, 81], pad: 'sine', lead: 'sine', pluck: 0.06, long: true },
+    },
+    night: {
+      town: { bpm: 86, chords: [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]], scale: [69, 72, 74, 76, 79, 81], pad: 'sawtooth', lead: 'square', pluck: 0.03, padVol: 0.016, kick: true },
+      study: { bpm: 68, chords: [[57, 60, 64], [52, 55, 59], [53, 57, 60], [55, 59, 62]], scale: [69, 72, 74, 76], pad: 'sawtooth', lead: 'triangle', pluck: 0.035, padVol: 0.014 },
+    },
   };
+  const style = () => STYLES[settings().track] || STYLES.cozy;
+  const SONGS = STYLES.cozy;
   let mode = 'town';
   let timer = null;
   let nextAt = 0;
@@ -305,14 +327,14 @@ export function createAudio(settings) {
   }
   let lastNote = 2;
   function schedule() {
-    const song = SONGS[mode];
+    const song = style()[mode];
     const beat = 60 / song.bpm / 2; // eighth notes
     while (nextAt < ctx.currentTime + 0.25) {
       const bar = Math.floor(step / 8) % song.chords.length;
       const inBar = step % 8;
       const chord = song.chords[bar];
       if (inBar === 0) {
-        for (const n of chord) voice(NOTE(n), nextAt, beat * 8.4, 'triangle', 0.035, 0.5);
+        for (const n of chord) voice(NOTE(n), nextAt, beat * 8.4, song.pad || 'triangle', song.padVol || 0.035, 0.5);
         voice(NOTE(chord[0] - 24), nextAt, beat * 3.6, 'sine', 0.13, 0.03);
       }
       if (inBar === 4) voice(NOTE(chord[0] - 24 + (bar % 2 ? 7 : 0)), nextAt, beat * 3.4, 'sine', 0.09, 0.03);
@@ -321,8 +343,9 @@ export function createAudio(settings) {
       if (play) {
         lastNote = Math.max(0, Math.min(song.scale.length - 1, lastNote + Math.round((rand() - 0.5) * 3)));
         const fits = chord.some((c) => (song.scale[lastNote] - c) % 12 === 0) || rand() < 0.6;
-        if (fits) voice(NOTE(song.scale[lastNote]), nextAt, beat * (mode === 'study' ? 3 : 1.8), 'triangle', song.pluck, 0.008);
+        if (fits) voice(NOTE(song.scale[lastNote]), nextAt, beat * (song.long ? 4 : mode === 'study' ? 3 : 1.8), song.lead || 'triangle', song.pluck, 0.008);
       }
+      if (song.kick && inBar % 4 === 0) voice(55, nextAt, 0.22, 'sine', 0.16, 0.004);
       if (song.shaker && inBar % 2 === 1) shake(nextAt);
       nextAt += beat;
       step += 1;

@@ -84,6 +84,19 @@ export async function loadPlan(now = Date.now()) {
   };
 }
 
+/**
+ * The student's Canvas, as the Soma extension last synced it: Soma keeps every
+ * sync in its own database (canvas_snapshots), so the game gets real Canvas
+ * data whenever the student is signed in to Soma, even on a page the extension
+ * doesn't run on. Returns the snapshots, newest first.
+ */
+export async function loadCanvasSnapshots() {
+  if (mock) return mock.snapshots || [];
+  if (!live()) return [];
+  const rows = await rest('canvas_snapshots?select=host,payload,synced_at&order=synced_at.desc');
+  return rows.map((r) => r.payload).filter((p) => p && p.kind === 'canvas' && typeof p.host === 'string' && Array.isArray(p.assignments));
+}
+
 /** Checks a planned task off (or back on) in Soma. */
 export async function setTodoDone(id, done) {
   if (mock) { const t = mock.todos.find((x) => x.id === id); if (t) t.done = done; return; }

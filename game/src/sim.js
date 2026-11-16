@@ -85,7 +85,7 @@ export function newState(now = Date.now()) {
     hero: { level: 1, xp: 0, points: 0, skills: {}, gear: { weapon: null, armor: null, charm: null }, bag: [], nextId: 1 },
     quest: { step: 0 },
     stats: { collected: 0, raidersBeaten: 0, bossesBeaten: 0, chestsOpened: 0, handedIn: 0, campsCleared: 0, treasures: 0, realmBosses: {} },
-    settings: { muted: false, music: true, sfx: true, musicVol: 0.6, sfxVol: 0.8, sensitivity: 1, quality: 'auto', labels: true },
+    settings: { muted: false, music: true, track: 'cozy', sfx: true, musicVol: 0.6, sfxVol: 0.8, sensitivity: 1, quality: 'auto', labels: true },
     review: { cards: [], nextId: 1, learned: 0 },
     market: { day: null, offers: [] },
     decor: [],

@@ -454,9 +454,20 @@ export function createUI(on) {
         (() => {
           // On means muted here, the opposite of the other switches.
           const b = el('button', { class: `switch ${v.muted ? 'on' : ''}`, role: 'switch', 'aria-checked': String(Boolean(v.muted)), onclick: () => { v.muted = !v.muted; b.classList.toggle('on', v.muted); b.setAttribute('aria-checked', String(v.muted)); onChange('muted', v.muted); } }, el('i'));
-          return el('div', { class: 'setting' }, el('div', {}, el('b', { text: 'Mute everything' }), el('small', { text: 'Same as pressing M' })), b);
+          return el('div', { class: 'setting' }, el('div', {}, el('b', { text: 'Mute everything' }), el('small', { text: 'Turns off music and effects' })), b);
         })(),
-        toggle('music', 'Music', 'A calm tune in town, a softer one while you study'),
+        toggle('music', 'Music', 'A tune in town, a softer one while you study'),
+        (() => {
+          const tracks = el('div', { class: 'segmented tracks' }, [['cozy', 'Cozy'], ['lofi', 'Lo-fi'], ['piano', 'Piano'], ['adventure', 'Adventure'], ['night', 'Night']].map(([val, text]) => {
+            const b = el('button', { class: (v.track || 'cozy') === val ? 'on' : '', text, onclick: () => {
+              v.track = val;
+              tracks.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+              onChange('track', val);
+            } });
+            return b;
+          }));
+          return el('div', { class: 'setting' }, el('div', {}, el('b', { text: 'Music style' })), tracks);
+        })(),
         slider('musicVol', 'Music volume', 0, 1, 0.05, pct),
         toggle('sfx', 'Sound effects'),
         slider('sfxVol', 'Effects volume', 0, 1, 0.05, pct),

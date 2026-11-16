@@ -976,3 +976,5 @@ body.in-realm .tracker #quest { display: block; }
 .label.npc.talk.taunt.boss::after { border-top-color: #ff4a3a; }
 
 .label { will-change: transform; }
+
+.segmented.tracks { flex-wrap: wrap; justify-content: flex-end; max-width: 300px; }
