@@ -8,7 +8,7 @@ import { rangeOf } from './clockRange';
 import { pinBlock, pinKey, pinnedKeys } from './pinnedBlocks';
 import { subjectForCourse } from './canvasDeepSync';
 import { asTodoKind, type Todo, type TodoSession } from '../types';
-import { dueMoment, effectiveRank, isManaged, resolvePrefs, schedule, type SchedTask } from './taskScheduler';
+import { dueMoment, effectiveRank, isManaged, plannedOn, resolvePrefs, schedule, type SchedTask } from './taskScheduler';
 
 /**
  * Runs the task scheduler (lib/taskScheduler.ts) on the student's real plan
@@ -145,10 +145,7 @@ async function adoptCanvas(userId: string, todos: Todo[]): Promise<number> {
  * task's length, so ticking its only sitting left it open with another
  * sitting to place.
  */
-export const plannedOn = (sittings: Pick<TaskSitting, 'start' | 'end' | 'done' | 'started'>[], logged: number, now = Date.now()) => {
-  const minutes = (list: typeof sittings) => list.reduce((n, s) => n + Math.round((+s.end - +s.start) / 60000), 0);
-  return Math.max(logged, minutes(sittings.filter(s => s.done))) + minutes(sittings.filter(s => !s.done && !s.started && +s.end > now));
-};
+export { plannedOn } from './taskScheduler';
 
 /**
  * Work handed in on Canvas is finished: its task is checked off and its

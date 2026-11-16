@@ -334,7 +334,12 @@ export default function LiveDashboard({userId}:{userId:string}) {
   const windowEnd=reclaimWindowEnd(storage.getSomaSettings());
   // A scheduled task's sittings are moved by the task scheduler, not here.
   const held=(bs:Snapshot['blocks'])=>bs.filter(b=>b.day===0).map(b=>b.sitting ? {...b,external:true} : b);
-  const missed=snapshot.blocks.filter(b=>b.sitting && b.day===0 && b.ended && b.state==='Planned' && !(b.focusedSeconds??0)).map(b=>String(b.id));
+  // Missed by the clock now, not by `ended`: that flag is set when the plan is
+  // read, so with the dashboard left open a sitting's end never flipped it and
+  // the scheduler never heard about the miss (2026-11-15: blocks not started
+  // on time stopped moving once most blocks became scheduled sittings).
+  const minute=nowMinutes();
+  const missed=snapshot.blocks.filter(b=>b.sitting && b.day===0 && !!b.time && b.state==='Planned' && !(b.focusedSeconds??0) && rangeOf(b.time)[1]<=minute).map(b=>String(b.id));
   if(missed.some(id=>!missedSeen.current.has(id))){for(const id of missed)missedSeen.current.add(id);runSchedule(0);}
   if(!planToday(held(snapshot.blocks),nowMinutes(),windowEnd,reclaimOpts()).moved.length)return;
   let fresh:Snapshot;

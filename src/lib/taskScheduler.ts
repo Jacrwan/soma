@@ -651,3 +651,16 @@ export function isManaged(t: { status: string; dueDate?: string; kind?: string; 
   if (t.autoSchedule !== undefined) return t.autoSchedule;
   return autoImported && !!t.kind && t.dueDate.slice(0, 10) >= today;
 }
+
+// ── What's already planned (used by the runner, lib/taskSchedule.ts) ──
+
+/** As taskScheduler's MISSED_LOOKBACK: older misses are left as history. */
+const MISSED_LOOKBACK_MS = 14 * 86_400_000;
+export const plannedOn = (sittings: { start: Date; end: Date; done: boolean; started: boolean }[], logged: number, now = Date.now()) => {
+  const minutes = (list: typeof sittings) => list.reduce((n, s) => n + Math.round((+s.end - +s.start) / 60000), 0);
+  // A sitting that passed without being started is still owed: it counts
+  // until the scheduler places it again (2026-11-15: left out, a task with no
+  // length set could decide nothing was owed and leave the miss in the past).
+  const owed = sittings.filter(s => !s.done && !s.started && (+s.end > now || +s.start >= now - MISSED_LOOKBACK_MS));
+  return Math.max(logged, minutes(sittings.filter(s => s.done))) + minutes(owed);
+};

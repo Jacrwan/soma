@@ -277,3 +277,16 @@ test('a set number of sittings holds on a crowded day: no extra pieces', () => {
   expect(again.place).toEqual([]);
   expect(again.remove).toEqual([]);
 });
+
+test('a missed sitting still counts as work owed, so a task with no length keeps it', async () => {
+  const { plannedOn } = await import('../src/lib/taskScheduler');
+  const now = new Date(2026, 10, 16, 12, 0);
+  const h = (day: number, hour: number) => new Date(2026, 10, day, hour, 0);
+  const missed = { start: h(16, 9), end: h(16, 10), done: false, started: false };
+  const ahead = { start: h(17, 9), end: h(17, 10), done: false, started: false };
+  expect(plannedOn([missed, ahead], 0, +now)).toBe(120);
+  // Started, it's counted through the logged time instead.
+  expect(plannedOn([{ ...missed, started: true }, ahead], 45, +now)).toBe(105);
+  // Weeks old: history, not owed.
+  expect(plannedOn([{ ...missed, start: h(1, 9), end: h(1, 10) }, ahead], 0, +now)).toBe(60);
+});

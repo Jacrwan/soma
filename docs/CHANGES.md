@@ -9,6 +9,26 @@ still needed.
 
 ---
 
+## 2026-11-15 (blocks not started on time move again)
+
+- **Why:** the owner noticed blocks they didn't start on time had stopped
+  moving. Not intended. Since the task scheduler, a scheduled task's sittings
+  are held fixed by same-day reclaim and moved by the scheduler instead, and
+  with imported work scheduled by default nearly every block is a sitting.
+  The hand-off waited on `block.ended`, which liveData sets when the plan is
+  read; with the dashboard left open it never flipped, so the scheduler never
+  heard about the miss.
+- **What:**
+  - `runReclaim` (LiveDashboard.tsx) finds missed sittings by the clock:
+    today, Planned, no Focus, and `rangeOf(time)[1] <= nowMinutes()`.
+  - `plannedOn` (moved to the pure src/lib/taskScheduler.ts, re-exported
+    from taskSchedule.ts) counts a sitting that passed unstarted, within the
+    14-day lookback, as still owed. Before, a task with no length set could
+    work out that nothing was owed and leave the missed sitting in the past.
+- **Tests:** tests/tasks-page.spec.ts ("a sitting not started on time moves,
+  with the dashboard left open": fails on the old check), and
+  tests/task-scheduler.spec.ts (plannedOn counts misses, not old history).
+
 ## 2026-11-15 (audit fixes: three server checks, two scheduler bugs)
 
 - **Why:** a read-through of master for bugs and security flaws; the owner

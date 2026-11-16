@@ -14,9 +14,11 @@ const at = (offset: number, time: string) => new Date(`${dateOf(offset)}T${time}
 type Row = Record<string, unknown>;
 type State = { tables: Record<string, Row[]> };
 
-async function setup(page: Page, tables: Record<string, Row[]> = {}) {
+/** `running`: a clock the test moves forward (page.clock.runFor), instead of one stopped at `now`. */
+async function setup(page: Page, tables: Record<string, Row[]> = {}, opts: { running?: boolean } = {}) {
   const state: State = { tables: { subjects: [{ id: 'hist', user_id: account.id, name: 'HIST 10', color: '#ab47bc', archived: false }], todos: [], todo_sessions: [], timer_sessions: [], active_timer: [], brain_dump_items: [], ...tables } };
-  await page.clock.setFixedTime(now);
+  if (opts.running) await page.clock.install({ time: now });
+  else await page.clock.setFixedTime(now);
   await page.addInitScript(account => { localStorage.setItem('sb-soma-regression-auth-token', JSON.stringify({ access_token: 'test-token', refresh_token: 'test-refresh', token_type: 'bearer', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, user: account })); }, account);
   await page.route('https://soma-regression.supabase.co/**', async route => {
     const req = route.request(), url = new URL(req.url()), table = url.pathname.split('/').pop()!;
@@ -419,4 +421,22 @@ test('dashboard: work handed in on Canvas finishes its task and clears its sitti
   await expect.poll(() => state.tables.todo_sessions.map(s => s.id)).toEqual(['past']);
   // Only the status was written: the rest of the row is as it was.
   expect(state.tables.todos.find(t => t.id === 'hw')).toMatchObject({ notes: 'bring calculator', assignment_id: 95, kind: 'homework' });
+});
+
+test('dashboard: a sitting not started on time moves, with the dashboard left open', async ({ page }) => {
+  // 2026-11-15: the miss was only noticed when the plan was read again, so a sitting
+  // left alone on an open dashboard stayed where it was.
+  const state = await setup(page, {
+    todos: [task('essay', 'Essay draft', dateOf(2))],
+    todo_sessions: [{ id: 'm', user_id: account.id, todo_id: 'essay', date: dateOf(0), start_time: at(0, '09:20'), end_time: at(0, '09:50') }],
+  }, { running: true });
+  await page.goto('/dashboard');
+  await expect(page.locator('article').filter({ hasText: 'Essay draft' }).first()).toBeVisible();
+  expect(state.tables.todo_sessions.find(s => s.id === 'm')!.start_time).toBe(at(0, '09:20'));
+  // 9:00 → 9:53: its time passes without Focus. Jump, then let the minute check run.
+  await page.clock.fastForward('52:00');
+  await page.clock.runFor(61_000);
+  await expect.poll(() => String(state.tables.todo_sessions.find(s => s.id === 'm')!.start_time) >= at(0, '09:50')).toBe(true);
+  expect(state.tables.todo_sessions.find(s => s.id === 'm')!.date).toBe(dateOf(0));
+  await expect(page.getByText('Moved a sitting that had to move')).toBeVisible();
 });
