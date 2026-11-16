@@ -295,6 +295,10 @@ export function schedule(input: ScheduleInput): ScheduleResult {
         // Missed (never started): moved, unless long gone. A pin holds a time
         // until it passes unstarted, then it moves like any miss (2026-11-16).
         if (!s.started && s.start >= now - MISSED_LOOKBACK) st.pool.push({ id: s.id, len, asap: true, removable: false, ...(open && s.stepId ? { stepId: s.stepId } : {}) });
+        // Worked on in its time: that step has had its sitting, even if it isn't
+        // ticked yet. Without this the step looked unplaced and, needing to come
+        // before the next step, read as not fitting (2026-11-17, Quiz 12).
+        else if (s.started && open && stepOk && s.stepId) st.stepEnd.set(s.stepId, s.end);
         continue;
       }
       if (s.pinned || s.started || s.start < now) {

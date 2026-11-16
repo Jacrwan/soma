@@ -506,3 +506,24 @@ test('a sitting being focused on past its end time is not missed: it stays where
   expect([sitting.start_time, sitting.end_time]).toEqual([at(0, '07:00'), at(0, '08:00')]);
   await expect(page.getByText('Moved a sitting that had to move')).toHaveCount(0);
 });
+
+test('with two sittings of one task today, the running timer shows on the one it started in', async ({ page }) => {
+  const start = new Date(at(0, '07:00')).toISOString();
+  await setup(page, {
+    todos: [task('quiz', 'Physics 5A Quiz 12', dateOf(0) + 'T16:00', { estimated_minutes: 120 })],
+    todo_sessions: [
+      // The later sitting first, as on Nov 17 (it was made first).
+      { id: 'q2', user_id: account.id, todo_id: 'quiz', date: dateOf(0), start_time: at(0, '10:00'), end_time: at(0, '11:00') },
+      { id: 'q1', user_id: account.id, todo_id: 'quiz', date: dateOf(0), start_time: at(0, '07:00'), end_time: at(0, '08:00') },
+    ],
+    active_timer: [{ id: 'live', user_id: account.id, subject_id: 'hist', subject_name: 'HIST 10', task_text: 'Physics 5A Quiz 12', session_start_time: start, start_time: start, accumulated_seconds: 600, is_paused: true }],
+  });
+  await page.addInitScript(([userId, start]) => {
+    localStorage.setItem('soma_active_timer', JSON.stringify({ userId, subjectId: 'hist', subjectName: 'HIST 10', subjectColor: '#ab47bc', task: 'Physics 5A Quiz 12', sessionStartTimeISO: start, accumulatedSeconds: 600, isPaused: true, markedAtMs: Date.parse(start) }));
+  }, [account.id, start] as const);
+  await page.goto('/dashboard');
+  const first = page.locator('article[data-kind="study"]').filter({ hasText: '7:00 AM–8:00 AM' });
+  const second = page.locator('article[data-kind="study"]').filter({ hasText: '10:00 AM–11:00 AM' });
+  await expect(first.getByText(/^Paused/)).toBeVisible();
+  await expect(second.getByText(/^Planned/)).toBeVisible();
+});

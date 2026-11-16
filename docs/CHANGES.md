@@ -9,6 +9,21 @@ still needed.
 
 ---
 
+## 2026-11-17 (a step worked on counts as placed; the timer shows on its own sitting)
+
+- **Why:** with Quiz 12's step 1 focused on 1–2 PM and step 2 at 3–4 PM, the
+  dashboard still said "doesn't fit before it's due" and Tasks "1h doesn't
+  fit". An ended sitting that was worked on was neither missed nor counted, so
+  its step looked unplaced and, having to come before step 2's 3 PM, didn't
+  fit. And "Paused" showed on the 3 PM sitting, not the 1 PM one the timer was on.
+- **What:** `taskScheduler.ts`: an ended, started step sitting sets its step's
+  end (`stepEnd`), as a kept one does. `LiveDashboard.tsx` `timedBlock`: with
+  several same-named sittings that day, the timer belongs to the one its
+  session started in, else the nearest (used for the live time and Focus).
+- **Tests:** task-scheduler.spec.ts ("a step worked on in its sitting, now
+  over, counts as placed"), tasks-page.spec.ts ("the running timer shows on
+  the one it started in"); both fail on the old code.
+
 ## 2026-11-17 (a sitting being focused on is never missed)
 
 - **Why:** the owner moved Physics 5A Quiz 12's sitting to 1–2 PM and

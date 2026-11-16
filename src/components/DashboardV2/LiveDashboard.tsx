@@ -271,9 +271,22 @@ export default function LiveDashboard({userId}:{userId:string}) {
   }catch(e){setError(e instanceof Error ? e.message : 'Could not save. Please retry.');throw e;}
   finally{writing.current=false;setBusy(false);}
  }
+ /**
+  * The block the running timer is on: its task, that day. With several
+  * sittings of one task that day, the one the session started in, else the
+  * nearest (2026-11-17: "Paused" showed on Quiz 12's 3 PM sitting while the
+  * timer was on the 1 PM one).
+  */
+ function timedBlock(list:Snapshot['blocks']){
+  const s=timer.activeSession;if(!s)return undefined;
+  const at=new Date(s.sessionStartTimeISO),day=localDate(at),m=at.getHours()*60+at.getMinutes();
+  const mine=list.filter(b=>!b.external && b.subjectId===s.subject.id && b.title===s.task && localDate(dateAt(origin,b.day))===day);
+  const gap=(b:Snapshot['blocks'][number])=>{if(!b.time)return 1e6;const [x,y]=rangeOf(b.time);return m<x ? x-m : m>=y ? m-y+1 : 0;};
+  return [...mine].sort((p,q)=>gap(p)-gap(q))[0];
+ }
  function focusId(){
   if(!timer.activeSession || !snapshot)return null;
-  const match=snapshot.blocks.find(b=>!b.external && b.subjectId===timer.activeSession?.subject.id && b.title===timer.activeSession?.task && localDate(dateAt(origin,b.day))===localDate(new Date(timer.activeSession.sessionStartTimeISO)));
+  const match=timedBlock(snapshot.blocks);
   return match?.id ?? null;
  }
  const reclaimOpts=()=>{const date=localDate(origin);if(stuck.current.date!==date)stuck.current={date,ids:new Set()};for(const id of loadKept(userId,date))stuck.current.ids.add(id);return {activeId:focusId(),pins:pinnedKeys(userId),date,stuck:stuck.current.ids};};
@@ -451,7 +464,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
  if(!snapshot)return error
   ? <div className={styles.loading}><p role="alert">{error}</p><button onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Retry dashboard</button></div>
   : <DashboardSkeleton/>;
- const active=snapshot.blocks.find(b=>!b.external && b.subjectId===timer.activeSession?.subject.id && b.title===timer.activeSession?.task && localDate(dateAt(origin,b.day))===localDate(new Date(timer.activeSession.sessionStartTimeISO)));
+ const active=timedBlock(snapshot.blocks);
  const weekdayName=(d:number)=>dateAt(origin,d).toLocaleDateString('en-US',{weekday:'long'});
  const pendingChange=new Map(proposals.filter(p=>p.replaces!==undefined).map(p=>[p.replaces,p]));
  const skipped=skippedKeys(userId);

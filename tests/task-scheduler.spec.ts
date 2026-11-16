@@ -350,3 +350,16 @@ test('a later step with no room after the earlier one: the steps are placed agai
   expect([after('b')?.start, after('b')?.end]).toEqual([at(0, 15), at(0, 16)]);
   expect(r.atRisk).toEqual([]);
 });
+
+test('a step worked on in its sitting, now over, counts as placed: the next step is not at risk', async () => {
+  // Nov 17, 2:10 PM: step a was focused on 1–2 PM (not ticked yet); step b is at 3–4 PM; due 4 PM.
+  const busy = [{ start: at(0, 14), end: at(0, 14, 59) }, { start: at(0, 16), end: at(0, 17, 59) }];
+  const quiz = task('quiz12', { total: 120, due: at(0, 16), steps: [{ id: 'a', minutes: 60 }, { id: 'b', minutes: 60 }], sittings: [
+    { id: 'sa', start: at(0, 13), end: at(0, 14), stepId: 'a', started: true },
+    { id: 'sb', start: at(0, 15), end: at(0, 16), stepId: 'b' },
+  ] });
+  const r = run({ now: at(0, 14, 10), busy, tasks: [quiz] });
+  expect(r.atRisk).toEqual([]);
+  expect(r.place).toEqual([]);
+  expect(r.remove).toEqual([]);
+});
