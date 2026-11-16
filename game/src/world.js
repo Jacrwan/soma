@@ -7,13 +7,14 @@ import { noiseTexture, rippleNormals, fbm, noise3 } from './tex.js';
 import { createForest, createGrass, createClouds, wind } from './nature.js';
 import { EARTH_PADS, MOON_PADS } from './sim.js';
 
-export const ISLAND_RADIUS = 43; // how far you can walk
+export const TOWN_R = 62; // the flat town circle in every land
+export const ISLAND_RADIUS = 60; // how far you can walk
 export const MOON_RADIUS = 33;
-export const GATE = new THREE.Vector3(0, 0, 28);
-export const PATH_START_Z = 44.5; // where invaders land
-export const PATH_END_Z = 31; // where they stop, in front of the gate
-export const ARENA = { x: 0, z: 37, r: 8.5 };
-export const BOSS_SPOT = new THREE.Vector3(-6.5, 0, 37);
+export const GATE = new THREE.Vector3(0, 0, 44);
+export const PATH_START_Z = 60.5; // where invaders land
+export const PATH_END_Z = 47; // where they stop, in front of the gate
+export const ARENA = { x: 0, z: 53, r: 8.5 };
+export const BOSS_SPOT = new THREE.Vector3(-6.5, 0, 53);
 export const MOON_SPAWN = new THREE.Vector3(0, 0, 18);
 export const LANDER_POS = new THREE.Vector3(0, 0, 23);
 export const STARGATE_POS = new THREE.Vector3(0, 0, -23);
@@ -30,7 +31,7 @@ const MOON_PAD_POS = Array.from({ length: MOON_PADS }, (_, i) => polar(13, i * 4
 const WONDER_POS = [198, 228, 258, 282, 312, 342].map((deg) => polar(35, deg));
 // The market and one hall per class (game.js): the forest keeps clear of them.
 export const MARKET_POS = polar(16, 30);
-export const HALL_SLOTS = [32, 54, 126, 148, 10, 170].map((deg) => polar(31, deg));
+export const HALL_SLOTS = [30, 58, 122, 150, 8, 172].map((deg) => polar(44, deg));
 WONDER_POS.push(STARGATE_POS);
 
 export function padPosition(scene, i) {
@@ -73,60 +74,60 @@ function passOpen(x, z, r) {
   return open;
 }
 // --- Lands: every age is a new landscape ------------------------------------------
-// The town circle (r < 45) is always flat; what changes is everything around it.
+// The town circle (r < TOWN_R) is always flat; what changes is everything around it.
 const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 function valleyHeight(x, z, r) {
-  if (r < 45) return 0;
+  if (r < TOWN_R) return 0;
   const open = passOpen(x, z, r);
-  const rise = ((r - 45) / 12) ** 1.55 * 4.4 * (0.75 + 0.45 * noise2(x * 0.35, z * 0.35));
+  const rise = ((r - TOWN_R) / 12) ** 1.55 * 4.4 * (0.75 + 0.45 * noise2(x * 0.35, z * 0.35));
   return Math.min(74, rise * (0.05 + 0.95 * open * open));
 }
 // Bronze Age: low dunes, sandstone mesas far out, and a river behind the town.
 function duneHeight(x, z, r) {
-  if (r < 45) return 0;
+  if (r < TOWN_R) return 0;
   const open = passOpen(x, z, r);
-  let h = ((r - 45) / 14) ** 1.3 * 2.4 * (0.5 + 0.9 * noise2(x * 0.12, z * 0.12));
+  let h = ((r - TOWN_R) / 14) ** 1.3 * 2.4 * (0.5 + 0.9 * noise2(x * 0.12, z * 0.12));
   h = Math.min(14, h);
   const mesa = noise2(x * 0.035 + 7, z * 0.035);
-  if (r > 75 && mesa > 0.62) h = Math.max(h, 18 + Math.round(mesa * 10) * 2);
+  if (r > TOWN_R + 30 && mesa > 0.62) h = Math.max(h, 18 + Math.round(mesa * 10) * 2);
   h *= 0.15 + 0.85 * open;
   // The river: a wide band north of town, its banks sloping down.
-  const bank = smooth((Math.abs(z + 60) - 6) / 6);
+  const bank = smooth((Math.abs(z + 78) - 6) / 6);
   return h * bank + (1 - bank) * -1.4;
 }
 // Medieval: green rolling hills, mountains beyond, and a lake to the west.
 function rollingHeight(x, z, r) {
-  if (r < 45) return 0;
+  if (r < TOWN_R) return 0;
   const open = passOpen(x, z, r);
-  let h = ((r - 45) / 16) ** 1.2 * 3.2 * (0.7 + 0.6 * noise2(x * 0.08, z * 0.08)) + Math.sin(x * 0.07) * Math.cos(z * 0.06) * 2 * smooth((r - 50) / 10);
-  if (r > 95) h += ((r - 95) / 10) ** 1.6 * 5;
+  let h = ((r - TOWN_R) / 16) ** 1.2 * 3.2 * (0.7 + 0.6 * noise2(x * 0.08, z * 0.08)) + Math.sin(x * 0.07) * Math.cos(z * 0.06) * 2 * smooth((r - TOWN_R - 5) / 10);
+  if (r > TOWN_R + 50) h += ((r - TOWN_R - 50) / 10) ** 1.6 * 5;
   h = Math.min(70, Math.max(0, h)) * (0.1 + 0.9 * open * open);
-  const lake = smooth((Math.hypot(x + 68, z - 6) - 13) / 7);
+  const lake = smooth((Math.hypot(x + 86, z - 6) - 13) / 7);
   return h * lake + (1 - lake) * -1.6;
 }
 // Industrial: a rocky gorge, steep stepped cliffs.
 function gorgeHeight(x, z, r) {
-  if (r < 44) return 0;
+  if (r < TOWN_R - 1) return 0;
   const open = passOpen(x, z, r);
-  let h = ((r - 44) / 8) ** 1.35 * 6 * (0.6 + 0.7 * noise2(x * 0.2, z * 0.2));
+  let h = ((r - TOWN_R + 1) / 8) ** 1.35 * 6 * (0.6 + 0.7 * noise2(x * 0.2, z * 0.2));
   h = Math.round(Math.min(64, h) / 3.5) * 3.5;
   return h * (0.04 + 0.96 * open * open);
 }
 // Modern: the sea to the west with a beach; gentle green hills inland.
 function coastHeight(x, z, r) {
-  if (r < 45 && x > -40) return 0;
-  const shore = smooth((-x - 40) / 10);
+  if (r < TOWN_R && x > -57) return 0;
+  const shore = smooth((-x - 57) / 10);
   const open = passOpen(x, z, r);
-  let land = r < 45 ? 0 : Math.min(22, ((r - 45) / 16) ** 1.3 * 3 * (0.6 + 0.8 * noise2(x * 0.1, z * 0.1))) * (0.1 + 0.9 * open * open);
-  return land * (1 - shore) + shore * -Math.min(6, (-x - 40) * 0.25 + 0.6);
+  let land = r < TOWN_R ? 0 : Math.min(22, ((r - TOWN_R) / 16) ** 1.3 * 3 * (0.6 + 0.8 * noise2(x * 0.1, z * 0.1))) * (0.1 + 0.9 * open * open);
+  return land * (1 - shore) + shore * -Math.min(6, (-x - 57) * 0.25 + 0.6);
 }
 // Space Age: a red canyon of stepped buttes.
 function canyonHeight(x, z, r) {
-  if (r < 45) return 0;
+  if (r < TOWN_R) return 0;
   const open = passOpen(x, z, r);
   const n = noise2(x * 0.06, z * 0.06);
-  let h = ((r - 45) / 10) ** 1.4 * 5 * (0.4 + n);
-  h = Math.round(Math.min(48, h) / 5) * 5 + (n > 0.7 && r > 70 ? 10 : 0);
+  let h = ((r - TOWN_R) / 10) ** 1.4 * 5 * (0.4 + n);
+  h = Math.round(Math.min(48, h) / 5) * 5 + (n > 0.7 && r > TOWN_R + 25 ? 10 : 0);
   return h * (0.05 + 0.95 * open * open);
 }
 
@@ -226,7 +227,7 @@ function stamp(hex) {
   return c;
 }
 
-const MAP_SPAN = 104; // metres the painted ground map covers
+const MAP_SPAN = 140; // metres the painted ground map covers
 const MAP_SIZE = 2048;
 const ROADS = [
   { base: 0xd6b07a, edge: 0xc09862, speck: [0xcca673, 0xe0bf8c], kind: 'dirt' },
@@ -321,12 +322,12 @@ const WATER_FRAG = `
     col += sunColor * (pow(sd, 260.0) * 5.0 + pow(sd, 24.0) * 0.12);
     // Foam where the sea meets the sand, in bands that roll in.
     float chop = texture2D(ripples, p * 0.12 + time * 0.01).b * 0.5 + n1.x * 0.5;
-    float edge = r - 45.6 - sin(time * 0.7 + atan(p.y, p.x) * 5.0) * 0.35;
+    float edge = r - 62.6 - sin(time * 0.7 + atan(p.y, p.x) * 5.0) * 0.35;
     float wash = (1.0 - smoothstep(0.0, 1.6, edge)) * smoothstep(-1.8, 0.2, edge);
     float bands = smoothstep(0.72, 0.98, sin(edge * 1.9 - time * 1.1 + chop * 2.5) * 0.5 + 0.5) * (1.0 - smoothstep(1.0, 7.0, edge)) * step(0.0, edge);
     float foam = clamp(wash * (0.55 + chop) + bands * 0.55, 0.0, 1.0);
     col = mix(col, vec3(1.0), foam * 0.85);
-    float alpha = clamp(mix(0.45, 0.97, smoothstep(44.5, 54.0, r)) + fres * 0.4 + foam, 0.0, 1.0);
+    float alpha = clamp(mix(0.45, 0.97, smoothstep(61.5, 71.0, r)) + fres * 0.4 + foam, 0.0, 1.0);
     float fog = 1.0 - exp(-haze * haze * dist * dist);
     gl_FragColor = vec4(mix(col, horizon, fog), mix(alpha, 1.0, fog));
   }`;
@@ -342,7 +343,7 @@ export function createWorld(scene, renderer) {
   const sun = new THREE.DirectionalLight(0xfff1d6, 3.4);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  Object.assign(sun.shadow.camera, { left: -52, right: 52, top: 52, bottom: -52, near: 1, far: 170 });
+  Object.assign(sun.shadow.camera, { left: -70, right: 70, top: 70, bottom: -70, near: 1, far: 200 });
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.05;
   scene.add(hemi, sun, sun.target);
@@ -406,7 +407,7 @@ export function createWorld(scene, renderer) {
     dispose(landParts);
     landParts.clear();
 
-    landParts.add(ground(MAP_SPAN, 104, hillHeight, groundMat, MAP_SPAN));
+    landParts.add(ground(MAP_SPAN, 140, hillHeight, groundMat, MAP_SPAN));
 
     // The hills around the town, coloured by height.
     {
@@ -442,13 +443,13 @@ export function createWorld(scene, renderer) {
     if (land.water?.kind === 'river') {
       const river = new THREE.Mesh(new THREE.PlaneGeometry(700, 14), water.material);
       river.rotation.x = -Math.PI / 2;
-      river.position.set(0, -0.45, -60);
+      river.position.set(0, -0.45, -78);
       river.renderOrder = 2;
       landParts.add(river);
     } else if (land.water?.kind === 'lake') {
       const lake = new THREE.Mesh(new THREE.CircleGeometry(17, 40), water.material);
       lake.rotation.x = -Math.PI / 2;
-      lake.position.set(-68, -0.45, 6);
+      lake.position.set(-86, -0.45, 6);
       lake.renderOrder = 2;
       landParts.add(lake);
     }
@@ -495,12 +496,12 @@ export function createWorld(scene, renderer) {
       const list = [];
       const pick = (kinds, v) => { let acc = 0; for (const [k, w] of kinds) { acc += w; if (v < acc) return k; } return kinds[0][0]; };
       for (let tries = 0; tries < 8000 && list.length < land.slope.count; tries++) {
-        const a = r() * 6.28, d = 46.5 + r() * r() * 95;
+        const a = r() * 6.28, d = TOWN_R + 1.5 + r() * r() * 95;
         const x = Math.cos(a) * d, z = Math.sin(a) * d;
         const y = hillHeight(x, z, d);
         if (y > land.slope.maxY || y < 0.15 || passOpen(x, z, d) < 0.25) continue;
         // Desert palms grow along the river.
-        if (land.slope.nearWater && Math.abs(z + 60) > 16 && r() < 0.85) continue;
+        if (land.slope.nearWater && Math.abs(z + 78) > 16 && r() < 0.85) continue;
         list.push({ x, y: y - 0.3, z, kind: pick(land.slope.kinds, r()), scale: 1.1 + r() * 1.3, turn: r() * 6.28 });
       }
       slopes.place(list);
@@ -509,7 +510,7 @@ export function createWorld(scene, renderer) {
 
     // Grass in this land's colours (sparse in the desert and the canyon).
     if (grass) earth.remove(grass);
-    grass = createGrass(land.grassCount, 41, grassAllowed, 21, land.grass);
+    grass = createGrass(Math.round(land.grassCount * 1.9), TOWN_R - 4, grassAllowed, 21, land.grass);
     earth.add(grass);
     applyGrassLevel();
   }
@@ -523,7 +524,7 @@ export function createWorld(scene, renderer) {
     const r = Math.hypot(x, z);
     if (r < 7 + pad) return true;
     if (Math.abs(r - 9.5) < 0.65 + pad || Math.abs(r - 19) < 0.65 + pad) return true;
-    if (Math.abs(x) < 1.7 + pad && z > 5 && z < 45) return true;
+    if (Math.abs(x) < 1.7 + pad && z > 5 && z < TOWN_R) return true;
     if (r > 9.5 && r < 19) {
       const a = (((Math.atan2(z, x) * 180) / Math.PI - 30) % 60 + 60) % 60;
       const off = Math.min(a, 60 - a);
@@ -533,10 +534,10 @@ export function createWorld(scene, renderer) {
   }
   function blocked(x, z) {
     const r = Math.hypot(x, z);
-    if (r < 8.5 || r > 42.5) return true;
+    if (r < 8.5 || r > TOWN_R - 2.5) return true;
     if (Math.abs(r - 9.5) < 1.4 || Math.abs(r - 19) < 1.4) return true;
     if (Math.abs(x) < 3.2 && z > 5) return true;
-    if (Math.abs(x) < 11 && z > 28) return true;
+    if (Math.abs(x) < 11 && z > GATE.z) return true;
     if (Math.hypot(x - DOCK_POS.x, z - DOCK_POS.z) < 6.5) return true;
     for (const p of EARTH_PAD_POS) if (Math.hypot(x - p.x, z - p.z) < 4.6) return true;
     for (const p of WONDER_POS.slice(0, 6)) if (Math.hypot(x - p.x, z - p.z) < 7.4) return true;
@@ -546,8 +547,8 @@ export function createWorld(scene, renderer) {
   }
   function grassAllowed(x, z) {
     const r = Math.hypot(x, z);
-    if (r > 41 || onRoad(x, z, 0.25)) return false;
-    if (Math.abs(x) < 9 && z > 29.5) return false;
+    if (r > TOWN_R - 4 || onRoad(x, z, 0.25)) return false;
+    if (Math.abs(x) < 9 && z > GATE.z + 1.5) return false;
     for (const p of EARTH_PAD_POS) if (Math.hypot(x - p.x, z - p.z) < 3.3) return false;
     for (const p of WONDER_POS.slice(0, 6)) if (Math.hypot(x - p.x, z - p.z) < 5.2) return false;
     return true;
@@ -571,22 +572,22 @@ export function createWorld(scene, renderer) {
     ctx.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
     const sands = P.patches.slice(0, 3).map(stamp);
     for (let i = 0; i < 900; i++) {
-      const a = r() * 6.28, d = 39 + r() * 13;
+      const a = r() * 6.28, d = TOWN_R - 6 + r() * 13;
       dab(sands[i % 3], Math.cos(a) * d, Math.sin(a) * d, 0.6 + r() * 2.2, 0.25);
     }
     // Grass, fading into the beach.
     ctx.globalAlpha = 1;
-    const fade = ctx.createRadialGradient(X(0), X(0), 39.6 * s, X(0), X(0), 42.6 * s);
+    const fade = ctx.createRadialGradient(X(0), X(0), (TOWN_R - 5.4) * s, X(0), X(0), (TOWN_R - 2.4) * s);
     fade.addColorStop(0, css(P.base, 1));
     fade.addColorStop(1, css(P.base, 0));
     ctx.fillStyle = fade;
     ctx.beginPath();
-    ctx.arc(X(0), X(0), 43 * s, 0, 6.3);
+    ctx.arc(X(0), X(0), (TOWN_R - 2) * s, 0, 6.3);
     ctx.fill();
     // Cartoon grass: one clean green with a few big, soft patches.
     const greens = P.patches.map(stamp);
     for (let i = 0; i < 700; i++) {
-      const a = r() * 6.28, d = Math.sqrt(r()) * 41;
+      const a = r() * 6.28, d = Math.sqrt(r()) * (TOWN_R - 4);
       dab(greens[Math.floor(r() * greens.length)], Math.cos(a) * d, Math.sin(a) * d, 2 + r() * 5, 0.12 + r() * 0.12);
     }
     const tufts = [stamp(0x8fb257), stamp(0x4c7634)];
@@ -606,7 +607,7 @@ export function createWorld(scene, renderer) {
     if (P.beach) {
       const sand = [stamp(0xead9a8), stamp(0xe2cf98)];
       for (let i = 0; i < 2600; i++) {
-        const x = -52 + r() * 22, z = (r() - 0.5) * 104;
+        const x = -70 + r() * 22, z = (r() - 0.5) * 140;
         dab(sand[i % 2], x, z, 1.2 + r() * 2.4, 0.3 + Math.max(0, (-x - 34) / 18) * 0.7);
       }
     }
@@ -627,7 +628,7 @@ export function createWorld(scene, renderer) {
     const avenue = () => {
       ctx.beginPath();
       ctx.moveTo(X(0), X(5));
-      ctx.lineTo(X(0), X(52));
+      ctx.lineTo(X(0), X(70));
     };
     const lay = (color, alpha, grow) => {
       ctx.globalAlpha = alpha;
@@ -656,7 +657,7 @@ export function createWorld(scene, renderer) {
     const specks = road.speck.map(stamp);
     const count = road.kind === 'cobble' ? 60000 : soft ? 5000 : 26000;
     for (let i = 0; i < count; i++) {
-      const a = r() * 6.28, d = Math.sqrt(r()) * 45;
+      const a = r() * 6.28, d = Math.sqrt(r()) * TOWN_R;
       const x = Math.cos(a) * d, z = Math.sin(a) * d;
       if (!onRoad(x, z, soft ? 0.25 : -0.12)) continue;
       const size = road.kind === 'cobble' ? 0.14 + r() * 0.07 : road.kind === 'asphalt' ? 0.05 + r() * 0.3 : 0.06 + r() * 0.45;
@@ -665,7 +666,7 @@ export function createWorld(scene, renderer) {
     if (soft) {
       // Ragged edges: grass creeping back over the dirt.
       for (let i = 0; i < 16000; i++) {
-        const a = r() * 6.28, d = Math.sqrt(r()) * 45;
+        const a = r() * 6.28, d = Math.sqrt(r()) * TOWN_R;
         const x = Math.cos(a) * d, z = Math.sin(a) * d;
         if (onRoad(x, z, 0.3) && !onRoad(x, z, -0.25) && r() < 0.18) dab(greens[Math.floor(r() * 4)], x, z, 0.3 + r() * 0.4, 0.6);
       }
@@ -678,7 +679,7 @@ export function createWorld(scene, renderer) {
       ctx.lineWidth = 0.16 * s;
       ctx.beginPath();
       ctx.moveTo(X(0), X(8));
-      ctx.lineTo(X(0), X(27));
+      ctx.lineTo(X(0), X(GATE.z - 1));
       ctx.stroke();
       ctx.beginPath();
       ctx.arc(X(0), X(0), 19 * s, 0, 6.3);
@@ -696,6 +697,20 @@ export function createWorld(scene, renderer) {
   let gateFlag = null;
   let animated = [];
 
+  // Trees step aside for buildings placed by hand.
+  let townTrees = [];
+  let clearings = [];
+  function placeTownTrees() {
+    forest.place(townTrees.filter((t) => clearings.every((c) => Math.hypot(t.x - c.x, t.z - c.z) > 4.2)));
+  }
+  function setClearings(list) {
+    const key = JSON.stringify(list.map((c) => [c.x, c.z]));
+    if (key === setClearings.key) return;
+    setClearings.key = key;
+    clearings = list;
+    placeTownTrees();
+  }
+
   function setEra(era) {
     const e = Math.min(era, 5);
     if (e !== landIndex) buildLand(e);
@@ -712,9 +727,9 @@ export function createWorld(scene, renderer) {
 
     const r = seeded(42);
     const trees = [];
-    for (let tries = 0; tries < 900 && trees.length < land.town.count; tries++) {
+    for (let tries = 0; tries < 1400 && trees.length < Math.round(land.town.count * 1.6); tries++) {
       const a = r() * Math.PI * 2;
-      const d = 8 + Math.sqrt(r()) * 35;
+      const d = 8 + Math.sqrt(r()) * (TOWN_R - 8);
       const x = Math.cos(a) * d;
       const z = Math.sin(a) * d;
       let kind = land.town.kinds[0][0];
@@ -725,10 +740,11 @@ export function createWorld(scene, renderer) {
       if (trees.some((t) => Math.hypot(t.x - x, t.z - z) < 1.6)) continue;
       trees.push({ x, z, kind, scale, turn });
     }
-    forest.place(trees);
+    townTrees = trees;
+    placeTownTrees();
     for (let i = 0; i < 26; i++) {
       const a = r() * Math.PI * 2;
-      const d = 10 + r() * 33;
+      const d = 10 + r() * (TOWN_R - 12);
       const x = Math.cos(a) * d;
       const z = Math.sin(a) * d;
       const s = 0.5 + r() * 0.9;
@@ -1002,7 +1018,7 @@ export function createWorld(scene, renderer) {
     }
   }
 
-  return { earth, moon, landName, setEra, setScene, showRealm, update, setQuality, setDaylight, get daylight() { return daylight; }, groundHeight: (name, x, z) => (name === 'moon' ? moonHeight(x, z, Math.hypot(x, z)) : hillHeight(x, z)) };
+  return { earth, moon, landName, setEra, setClearings, setScene, showRealm, update, setQuality, setDaylight, get daylight() { return daylight; }, groundHeight: (name, x, z) => (name === 'moon' ? moonHeight(x, z, Math.hypot(x, z)) : hillHeight(x, z)) };
 }
 
 export { EARTH_PADS };

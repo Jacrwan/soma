@@ -164,17 +164,19 @@ function refreshPad(sceneName, i) {
   let pad = pads[sceneName][i];
   if (!pad) {
     const group = new THREE.Group();
-    group.position.copy(W.padPosition(sceneName, i));
-    if (sceneName === 'moon') group.position.y = world.groundHeight('moon', group.position.x, group.position.z);
     parent.add(group);
     pad = pads[sceneName][i] = { group, slab: null, marker: null, building: null, bubble: null, top: 3 };
   }
+  // A building placed by hand stands where it was put; otherwise on its fixed spot.
+  const custom = state.padSpots?.[sceneName]?.[i];
+  const spot = custom || W.padPosition(sceneName, i);
   const b = state.pads[sceneName][i];
-  const unlocked = i < S.padsUnlocked(state, sceneName);
+  const unlocked = i < S.padsUnlocked(state, sceneName) && Boolean(spot) && (Boolean(b) || !custom);
   pad.group.clear();
   pad.building = pad.marker = pad.bubble = null;
   pad.group.visible = unlocked;
   if (!unlocked) return;
+  pad.group.position.set(spot.x, world.groundHeight(sceneName, spot.x, spot.z), spot.z);
   pad.slab = A.makePad(b ? b.tier : S.tierFor(state, sceneName));
   pad.group.add(pad.slab);
   if (!b) {
@@ -184,8 +186,8 @@ function refreshPad(sceneName, i) {
   }
   pad.building = A.makeBuilding(b.type, b.tier, b.level, b.golden);
   pad.building.position.y = 0.12;
-  // Face the plaza.
-  pad.building.rotation.y = Math.atan2(-pad.group.position.x, -pad.group.position.z);
+  // Face the plaza, or the way it was turned when placed.
+  pad.building.rotation.y = custom ? custom.rot : Math.atan2(-pad.group.position.x, -pad.group.position.z);
   pad.group.add(pad.building);
   pad.top = heightOf(pad.building) + 0.6;
   pad.bubble = A.makeCoinBubble();
@@ -197,6 +199,7 @@ function refreshPad(sceneName, i) {
 
 function refreshAllPads() {
   for (let i = 0; i < S.EARTH_PADS; i++) refreshPad('earth', i);
+  world.setClearings(Object.values(state.padSpots?.earth || {}));
   for (let i = 0; i < S.MOON_PADS; i++) refreshPad('moon', i);
 }
 
@@ -1406,7 +1409,7 @@ function hitTownEnemies(inArc, mult = 1) {
 let target = null;
 
 function findTarget() {
-  if (fight || player.down) return null;
+  if (fight || player.down || build.on) return null;
   const p = player.object.position;
   let best = null;
   const offer = (dist, range, entry) => {
@@ -1745,7 +1748,7 @@ function updateCamera(dt) {
   const want = new THREE.Vector3(f.x + Math.sin(cam.yaw) * flat, f.y + Math.sin(cam.pitch) * cam.dist + 1.5, f.z + Math.cos(cam.yaw) * flat);
   // In the valley the view stays out of the wooded slopes.
   if (!inRealm() && state.scene === 'earth') {
-    for (let k = 0; k < 12 && Math.hypot(want.x, want.z) > 50; k++) { want.x += (f.x - want.x) * 0.12; want.z += (f.z - want.z) * 0.12; }
+    for (let k = 0; k < 12 && Math.hypot(want.x, want.z) > W.TOWN_R + 6; k++) { want.x += (f.x - want.x) * 0.12; want.z += (f.z - want.z) * 0.12; }
   }
   want.y = Math.max(want.y, (inRealm() ? 0 : world.groundHeight(state.scene, want.x, want.z)) + 0.7);
   camera.position.copy(want);
@@ -1786,7 +1789,7 @@ function updateTown(dt, time) {
       }
     }
   }
-  for (const o of spinners) o.rotation.y += dt * 1.6;
+  for (const o of spinners) { if (o.userData.axis === 'z') o.rotation.z += dt * 0.9; else o.rotation.y += dt * 1.6; }
   for (const [index, entry] of wonderObjects) {
     if (index === 6 && entry.built) {
       const portal = entry.object.getObjectByName('portal');
@@ -1975,10 +1978,11 @@ function syncDecor() {
     o.rotation.y = d.rot;
     world.earth.add(o);
     decorObjects.set(d.id, o);
+    o.traverse((m) => { if (m.name === 'sails') spinners.push(m); });
   }
 }
 
-const build = { on: false, type: 'fence', rot: 0, ghost: null, at: null, ok: false, bar: null };
+const build = { on: false, type: 'b:home', rot: 0, ghost: null, at: null, ok: false, bar: null };
 const pointer = { x: innerWidth / 2, y: innerHeight / 2 };
 canvas.addEventListener('mousemove', (event) => { pointer.x = event.clientX; pointer.y = event.clientY; });
 const ray = new THREE.Raycaster();
@@ -1992,10 +1996,19 @@ function groundAt(x, y) {
   }
   return null;
 }
-function buildBlocked(x, z) {
-  if (Math.hypot(x, z) > W.ISLAND_RADIUS - 3 || Math.hypot(x, z) < 3.2) return true;
-  const near = (p, r) => Math.hypot(x - p.x, z - p.z) < r;
-  for (let i = 0; i < S.EARTH_PADS; i++) if (near(W.padPosition('earth', i), 3.3)) return true;
+// Buildings keep off the plaza and the ring roads.
+function onTownRoad(x, z) {
+  const r = Math.hypot(x, z);
+  return r < 9 || Math.abs(r - 9.5) < 2.4 || Math.abs(r - 19) < 2.6;
+}
+function buildBlocked(x, z, big = false) {
+  if (Math.hypot(x, z) > W.ISLAND_RADIUS - (big ? 5 : 3) || Math.hypot(x, z) < 3.2) return true;
+  if (big) for (const d of state.decor) if (Math.hypot(x - d.x, z - d.z) < 3) return true;
+  const near = (p, r) => Math.hypot(x - p.x, z - p.z) < r + (big ? 1.4 : 0);
+  for (let i = 0; i < S.EARTH_PADS; i++) {
+    const spot = state.padSpots.earth[i] || (i < S.FIXED_EARTH_PADS ? W.padPosition('earth', i) : null);
+    if (spot && near(spot, state.pads.earth[i] ? 4.4 : 3.3)) return true;
+  }
   for (let i = 0; i < 7; i++) if (W.wonderPosition(i) && near(W.wonderPosition(i), 5)) return true;
   if (near(MARKET_POS, 3.6) || near(BOARD_POS, 2.4) || near(W.GATE, 4) || near(W.DOCK_POS, 4)) return true;
   for (const at of HALL_SLOTS) if (near(at, 3.4)) return true;
@@ -2003,8 +2016,13 @@ function buildBlocked(x, z) {
   if (Math.abs(x) < 2.6 && z > 3) return true;
   return false;
 }
+const isBuilding = (type) => type.startsWith('b:');
+const buildingType = (type) => type.slice(2);
+function pieceCost(type) {
+  return isBuilding(type) ? S.buildCost(buildingType(type), S.tierFor(state, 'earth')) : S.decorCost(state, type);
+}
 function makeGhost(type) {
-  const g = A.makeDecor(type);
+  const g = isBuilding(type) ? A.makeBuilding(buildingType(type), S.tierFor(state, 'earth'), 1, false) : A.makeDecor(type);
   g.traverse((o) => {
     if (!o.isMesh) return;
     o.material = o.material.clone();
@@ -2024,17 +2042,20 @@ function setGhost(type) {
 }
 function drawBuildBar() {
   if (!build.bar) return;
-  const list = S.decorAvailable(state);
+  const list = [...Object.keys(S.BUILDINGS).map((k) => `b:${k}`), ...S.decorAvailable(state)];
+  const count = S.buildingCount(state);
   build.bar.replaceChildren(
     ...list.map((type) => {
-      const cost = S.decorCost(state, type);
+      const cost = pieceCost(type);
       const b = document.createElement('button');
       b.className = `build-item ${type === build.type ? 'on' : ''} ${state.coins < cost ? 'poor' : ''}`;
-      b.innerHTML = `<b>${S.DECOR[type].name}</b><small><span class="coin sm"></span>${S.fmt(cost)}</small>`;
+      const name = isBuilding(type) ? S.buildingName({ type: buildingType(type), tier: S.tierFor(state, 'earth') }) : S.DECOR[type].name;
+      if (isBuilding(type)) b.classList.add('building');
+      b.innerHTML = `<b>${name}</b><small><span class="coin sm"></span>${S.fmt(cost)}</small>`;
       b.onclick = (e) => { e.stopPropagation(); setGhost(type); };
       return b;
     }),
-    Object.assign(document.createElement('p'), { className: 'build-help', textContent: `Click to place · R rotate · X remove (half back) · B or Esc when done · ${state.decor.length}/${S.DECOR_MAX}` }),
+    Object.assign(document.createElement('p'), { className: 'build-help', textContent: `Click to place · R rotate · X remove a decoration (half back) · B or Esc when done · buildings ${count.used}/${count.room} this age · decorations ${state.decor.length}/${S.DECOR_MAX}` }),
   );
 }
 function toggleBuild(force) {
@@ -2046,7 +2067,7 @@ function toggleBuild(force) {
     build.bar = document.createElement('div');
     build.bar.id = 'buildbar';
     document.getElementById('hud').append(build.bar);
-    if (!S.decorAvailable(state).includes(build.type)) build.type = 'fence';
+    if (!isBuilding(build.type) && !S.decorAvailable(state).includes(build.type)) build.type = 'b:home';
     setGhost(build.type);
     ui.toast('Build mode: pick a piece below and click to place it.', 'good');
   } else {
@@ -2064,7 +2085,9 @@ function updateBuild() {
   at.x = Math.round(at.x * 2) / 2;
   at.z = Math.round(at.z * 2) / 2;
   build.at = at;
-  build.ok = !buildBlocked(at.x, at.z) && state.coins >= S.decorCost(state, build.type) && state.decor.length < S.DECOR_MAX;
+  const big = isBuilding(build.type);
+  const roomy = big ? S.buildingCount(state).used < S.buildingCount(state).room && !onTownRoad(at.x, at.z) : state.decor.length < S.DECOR_MAX;
+  build.ok = !buildBlocked(at.x, at.z, big) && state.coins >= pieceCost(build.type) && roomy;
   onGround(build.ghost, at.x, at.z);
   build.ghost.rotation.y = build.rot;
   build.ghost.traverse((o) => { if (o.isMesh && o.material.emissive) o.material.emissive.setHex(build.ok ? 0x0f2a12 : 0x5a0f0f); });
@@ -2073,7 +2096,19 @@ function placeBuild() {
   if (!build.on || !build.at) return;
   if (!build.ok) {
     audio.deny();
-    return void ui.toast(state.coins < S.decorCost(state, build.type) ? 'Not enough coins for that.' : 'Can’t build there: keep pads, buildings and the gate road clear.', 'bad');
+    const full = isBuilding(build.type) && S.buildingCount(state).used >= S.buildingCount(state).room;
+    return void ui.toast(full ? 'This age has no room for more buildings. Upgrade the ones you have, or build the wonder for a bigger town.' : state.coins < pieceCost(build.type) ? 'Not enough coins for that.' : 'Can’t build there: keep roads, buildings and the gate road clear.', 'bad');
+  }
+  if (isBuilding(build.type)) {
+    const i = S.placeBuilding(state, buildingType(build.type), build.at.x, build.at.z, build.rot);
+    if (i < 0) return void audio.deny();
+    audio.build();
+    refreshPad('earth', i);
+    world.setClearings(Object.values(state.padSpots.earth));
+    for (let k = 0; k < 2; k++) fx.burst(new THREE.Vector3(build.at.x, 1 + k, build.at.z), [A.C.white, A.C.gold][k], 16, 6, 6);
+    ui.toast(`Built a ${S.buildingName(state.pads.earth[i])}. Walk up to it to upgrade.`, 'good');
+    refreshHud(); drawBuildBar(); save();
+    return;
   }
   const piece = S.placeDecor(state, build.type, build.at.x, build.at.z, build.rot);
   if (!piece) return void audio.deny();

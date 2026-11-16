@@ -13,7 +13,7 @@ test('a new game can afford its first home and nothing more expensive', () => {
   assert.ok(!S.build(s, 1, 'trade'));
   assert.strictEqual(s.pads.earth[0].tier, 0);
   assert.ok(!S.build(s, 0, 'home'), 'pad is taken');
-  assert.ok(!S.build(s, 6, 'home'), 'pad 6 is locked in the Stone Age');
+  assert.ok(!S.build(s, 8, 'home'), 'pad 8 is locked in the Stone Age');
 });
 
 test('buildings fill their own store up to a cap, and collecting banks it', () => {
@@ -65,7 +65,7 @@ test('wonders advance the era in order, the rocket unlocks the moon, and the Sta
     assert.ok(S.buildWonder(s));
   }
   assert.strictEqual(s.era, 6);
-  assert.strictEqual(S.padsUnlocked(s, 'earth'), 16);
+  assert.strictEqual(S.padsUnlocked(s, 'earth'), 38);
   assert.strictEqual(S.padsUnlocked(s, 'moon'), 8);
   assert.strictEqual(S.nextWonder(s).name, 'Star Gate');
   assert.strictEqual(S.buildWonder(s), null, 'not from Earth');
@@ -242,7 +242,7 @@ test('saves round-trip and bad saves start fresh', () => {
   S.grantChest(s, 'rare', 'x');
   const back = S.deserialize(S.serialize(s), NOW);
   assert.deepStrictEqual(back.pads.earth[2], s.pads.earth[2]);
-  assert.strictEqual(back.pads.earth.length, 16);
+  assert.strictEqual(back.pads.earth.length, S.EARTH_PADS);
   assert.strictEqual(back.school.chests.length, 1);
   assert.strictEqual(S.deserialize('not json', NOW).coins, 120);
   assert.strictEqual(S.deserialize('{"v":99}', NOW).coins, 120);
@@ -546,6 +546,23 @@ test('studying earns lures; catching spends them, fills the book, and a pet boos
   assert.strictEqual(S.tryCatch(s, 'frog'), null);
   for (let i = 0; i < 50; i++) assert.notStrictEqual(S.CRITTERS[S.rollCritter(true)].time, 'day');
   for (let i = 0; i < 50; i++) assert.notStrictEqual(S.CRITTERS[S.rollCritter(false)].time, 'night');
+});
+
+test('buildings can go anywhere: free slots first, more room each age', () => {
+  const s = rich();
+  assert.strictEqual(S.padsUnlocked(s, 'earth'), 8);
+  const i = S.placeBuilding(s, 'home', 30, -12, 1.2);
+  assert.strictEqual(i, 0); // Stone Age has no free slots past the fixed spots yet
+  assert.deepStrictEqual(s.padSpots.earth[0], { x: 30, z: -12, rot: 1.2 });
+  s.era = 2;
+  assert.strictEqual(S.padsUnlocked(s, 'earth'), 20);
+  const j = S.placeBuilding(s, 'work', -20, 5);
+  assert.strictEqual(j, S.FIXED_EARTH_PADS);
+  for (let k = 0; k < 30; k++) S.placeBuilding(s, 'home', k, k);
+  assert.deepStrictEqual(S.buildingCount(s), { used: 20, room: 20 });
+  assert.strictEqual(S.placeBuilding(s, 'home', 0, 0), -1);
+  S.newLand(s);
+  assert.deepStrictEqual(s.padSpots.earth, {});
 });
 
 test('camps and treasure come back the next day, shrines pay once ever', () => {

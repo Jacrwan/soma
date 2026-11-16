@@ -49,12 +49,13 @@ export const GOLDEN_MULT = 3;
 export const STORE_HOURS = 2;
 export const SIEGE_MULT = 0.5;
 
-export const EARTH_PADS = 16;
+export const EARTH_PADS = 40; // building slots on Earth; the first 16 have fixed spots, the rest go wherever you place them
+export const FIXED_EARTH_PADS = 16;
 export const MOON_PADS = 8;
 
 export function padsUnlocked(state, scene = state.scene) {
   if (scene === 'moon') return state.era >= MOON_TIER ? MOON_PADS : 0;
-  return Math.min(EARTH_PADS, 6 + 2 * Math.min(state.era, LAST_EARTH_TIER));
+  return Math.min(EARTH_PADS - 2, 8 + 6 * Math.min(state.era, LAST_EARTH_TIER));
 }
 
 /** The tier a new or modernized building gets in a scene right now. */
@@ -70,6 +71,7 @@ export function newState(now = Date.now()) {
     era: 0,
     scene: 'earth',
     pads: { earth: Array(EARTH_PADS).fill(null), moon: Array(MOON_PADS).fill(null) },
+    padSpots: { earth: {}, moon: {} }, // index -> { x, z, rot } for buildings placed by hand
     wonders: [],
     relics: [],
     tokens: 0,
@@ -257,6 +259,28 @@ export function build(state, index, type, scene = state.scene) {
   return true;
 }
 
+/**
+ * Builds wherever you choose (build mode). Uses a free slot, preferring the
+ * ones without a fixed spot. Returns the slot index, or -1 if it can't.
+ */
+export function placeBuilding(state, type, x, z, rot = 0, scene = 'earth') {
+  if (!BUILDINGS[type]) return -1;
+  const open = padsUnlocked(state, scene);
+  const pads = state.pads[scene];
+  let index = -1;
+  for (let i = scene === 'earth' ? FIXED_EARTH_PADS : 0; i < open && index < 0; i++) if (!pads[i]) index = i;
+  for (let i = 0; i < Math.min(open, scene === 'earth' ? FIXED_EARTH_PADS : open) && index < 0; i++) if (!pads[i]) index = i;
+  if (index < 0) return -1;
+  if (!build(state, index, type, scene)) return -1;
+  state.padSpots[scene][index] = { x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, rot: Math.round(rot * 100) / 100 };
+  return index;
+}
+
+/** How many buildings are standing, and how many this age allows. */
+export function buildingCount(state, scene = 'earth') {
+  return { used: state.pads[scene].filter(Boolean).length, room: padsUnlocked(state, scene) };
+}
+
 export function upgrade(state, index, scene = state.scene) {
   const b = state.pads[scene][index];
   if (!b || b.level >= MAX_LEVEL || !spend(state, upgradeCost(b))) return false;
@@ -325,6 +349,7 @@ export function buildWonder(state) {
 /** Empties the town for a fresh start in the next age. Returns { purse, decorBack }. */
 export function newLand(state) {
   state.pads.earth = state.pads.earth.map(() => null);
+  state.padSpots.earth = {};
   let decorBack = 0;
   for (const d of state.decor) decorBack += Math.floor((d.paid || 0) / 2);
   state.decor = [];
@@ -1200,6 +1225,12 @@ export const DECOR = {
   crates: { name: 'Crates', seconds: 60, floor: 60, solid: 0.9 },
   well: { name: 'Well', seconds: 300, floor: 300, solid: 1.3 },
   statue: { name: 'Statue', seconds: 600, floor: 600, solid: 1.1 },
+  hedge: { name: 'Hedge', seconds: 40, floor: 40, solid: 0.7 },
+  wall: { name: 'Stone wall', seconds: 60, floor: 60, solid: 0.9 },
+  arch: { name: 'Archway', seconds: 400, floor: 400, solid: 0 },
+  pond: { name: 'Pond', seconds: 500, floor: 500, solid: 2.0 },
+  tower: { name: 'Watchtower', seconds: 800, floor: 800, solid: 1.3 },
+  windmill: { name: 'Windmill', seconds: 1200, floor: 1200, solid: 1.8 },
   fountain: { name: 'Fountain', seconds: 1500, floor: 1500, solid: 2.2, market: true },
   totem: { name: 'Totem', seconds: 1200, floor: 1200, solid: 0.8, market: true },
   gold: { name: 'Golden statue', seconds: 2400, floor: 2400, solid: 1.1, market: true },
@@ -1564,6 +1595,7 @@ export function deserialize(text, now = Date.now()) {
     const state = { ...fresh, ...saved };
     state.pads = { earth: [...(saved.pads?.earth || [])], moon: [...(saved.pads?.moon || [])] };
     state.pads.earth.length = EARTH_PADS;
+    state.padSpots = { earth: {}, moon: {}, ...(saved.padSpots || {}) };
     state.pads.moon.length = MOON_PADS;
     for (const scene of ['earth', 'moon']) state.pads[scene] = Array.from(state.pads[scene], (b) => b || null);
     state.school = { ...fresh.school, ...(saved.school || {}) };

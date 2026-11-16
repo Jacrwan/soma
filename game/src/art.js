@@ -471,6 +471,7 @@ function trade(tier, lv) {
 /** A finished building for a pad. Golden buildings get gold caps and a floating star. */
 export function makeBuilding(type, tier, level, golden) {
   const g = { home, work, trade }[type](tier, level);
+  dressBuilding(g, type, tier, level);
   if (golden) {
     g.traverse((o) => {
       if (o.isMesh && [C.thatch, C.brick, C.slate, C.sand, C.woodDark].includes(o.material.color.getHex()) && o.position.y > 1) {
@@ -490,7 +491,7 @@ export function makeBuilding(type, tier, level, golden) {
 /** The slab a building stands on. Empty pads show a marker. */
 export function makePad(tier) {
   const color = [C.dirt, C.sand, C.stone, C.stoneDark, C.asphalt, C.white, C.moonDark][tier] ?? C.stone;
-  const g = group(cyl(2.9, 3.0, 0.12, color, 14));
+  const g = group(cyl(3.5, 3.6, 0.12, color, 16));
   g.children[0].castShadow = false;
   return g;
 }
@@ -1163,6 +1164,63 @@ export function makeDecor(type) {
       g.add(at(cyl(0.05, 0.05, 2.3, C.woodDark, 6), 0, 0, 1.45), at(box(0.5, 0.35, 0.02, C.red, { kind: 'fabric' }), 0.25, 1.9, 1.45));
       break;
     }
+    case 'hedge':
+      for (const x of [-0.75, 0, 0.75]) g.add(at(squash(ball(0.55, x === 0 ? 0x5a9a42 : 0x4f8c3a, 0), 1, 0.9, 0.75), x, 0.45, 0));
+      g.add(at(box(2.2, 0.5, 0.75, 0x4f8c3a), 0, 0, 0));
+      break;
+    case 'wall':
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) g.add(at(box(0.72, 0.42, 0.5, (i + j) % 2 ? C.stone : C.stoneDark, { rough: 0.9 }), -0.75 + i * 0.75 + (j % 2) * 0.18, j * 0.42, 0));
+      g.add(at(box(2.3, 0.16, 0.62, C.stone), 0, 0.84, 0));
+      break;
+    case 'arch': {
+      for (const x of [-1, 1]) g.add(at(box(0.5, 2.6, 0.6, C.stone, { rough: 0.9 }), x * 1.1, 0, 0), at(box(0.62, 0.2, 0.72, C.stoneDark), x * 1.1, 0, 0));
+      for (let i = 0; i < 7; i++) {
+        const a = (i / 6) * Math.PI;
+        const stone = at(box(0.45, 0.32, 0.6, i % 2 ? C.stone : C.stoneDark), -Math.cos(a) * 1.1, 2.6 + Math.sin(a) * 0.75, 0);
+        stone.rotation.z = a - Math.PI / 2;
+        g.add(stone);
+      }
+      g.add(at(box(0.5, 0.36, 0.05, C.gold, { metal: 0.6 }), 0, 3.1, 0.33));
+      break;
+    }
+    case 'pond': {
+      for (let i = 0; i < 12; i++) {
+        const a = (i / 12) * Math.PI * 2;
+        g.add(at(squash(ball(0.32, i % 2 ? C.rock : C.rockDark, 0), 1.2, 0.6, 1), Math.cos(a) * 1.9, 0.08, Math.sin(a) * 1.5));
+      }
+      const water = squash(cyl(1.85, 1.85, 0.05, 0x4fb4c9, 16, { rough: 0.15 }), 1, 1, 0.8);
+      g.add(at(water, 0, 0.06, 0));
+      for (const [x, z] of [[0.6, 0.3], [-0.5, -0.4]]) g.add(at(squash(cyl(0.28, 0.28, 0.03, 0x5aa83e, 8), 1, 1, 1), x, 0.12, z), at(ball(0.07, 0xf5a0c8, 0), x + 0.08, 0.18, z));
+      g.add(at(cyl(0.03, 0.03, 0.7, 0x5a8a3a, 4), -1.3, 0, 0.6), at(cyl(0.05, 0.05, 0.2, 0x7a4a2a, 5), -1.3, 0.7, 0.6), at(cyl(0.03, 0.03, 0.8, 0x5a8a3a, 4), -1.45, 0, 0.45));
+      break;
+    }
+    case 'tower': {
+      for (const [x, z] of [[-0.8, -0.8], [0.8, -0.8], [-0.8, 0.8], [0.8, 0.8]]) g.add(at(tilt(box(0.16, 3.8, 0.16, C.woodDark), x * 0.04, -z * 0.04), x, 0, z));
+      for (const y of [1.2, 2.4]) for (const r of [0, Math.PI / 2]) { const brace = at(box(1.8, 0.1, 0.1, C.wood), 0, y, 0); const h = new THREE.Group(); h.add(brace); h.rotation.y = r; g.add(h); }
+      g.add(at(box(2.2, 0.16, 2.2, C.wood, { kind: 'planks' }), 0, 3.7, 0));
+      for (const [x, z, w, d] of [[0, 1.05, 2.2, 0.1], [0, -1.05, 2.2, 0.1], [1.05, 0, 0.1, 2.2], [-1.05, 0, 0.1, 2.2]]) g.add(at(box(w, 0.6, d, C.wood, { kind: 'planks' }), x, 3.86, z));
+      g.add(at(cone(1.7, 1.3, C.brick, 4), 0, 4.9, 0, Math.PI / 4));
+      for (const [x, z] of [[-0.95, -0.95], [0.95, -0.95], [-0.95, 0.95], [0.95, 0.95]]) g.add(at(box(0.12, 1.2, 0.12, C.woodDark), x, 3.86, z));
+      g.add(at(cyl(0.03, 0.03, 0.8, C.woodDark, 4), 0, 6.1, 0), at(box(0.5, 0.3, 0.02, C.red, { kind: 'fabric' }), 0.26, 6.7, 0));
+      break;
+    }
+    case 'windmill': {
+      g.add(at(cyl(0.9, 1.3, 3.6, C.white, 8, { rough: 0.85 }), 0, 0, 0), at(cone(1.1, 1.3, C.brick, 8), 0, 3.6, 0));
+      g.add(at(box(0.6, 1.0, 0.08, C.woodDark), 0, 0, 1.25), at(box(0.4, 0.4, 0.06, 0x2a3550), 0, 2.0, 1.04));
+      const sails = new THREE.Group();
+      for (let i = 0; i < 4; i++) {
+        const arm = new THREE.Group();
+        arm.add(at(box(0.08, 2.3, 0.06, C.woodDark), 0, 1.15, 0), at(box(0.55, 1.8, 0.03, C.cream, { kind: 'fabric' }), 0.32, 1.35, 0));
+        arm.rotation.z = (i * Math.PI) / 2;
+        sails.add(arm);
+      }
+      sails.position.set(0, 3.3, 1.35);
+      sails.rotation.x = 0;
+      sails.name = 'sails';
+      sails.userData.axis = 'z';
+      g.add(sails, at(tilt(cyl(0.1, 0.1, 0.5, C.woodDark, 6), Math.PI / 2, 0), 0, 3.3, 1.1));
+      break;
+    }
     default:
       g.add(box(0.6, 0.6, 0.6, C.wood));
   }
@@ -1399,3 +1457,72 @@ export function makeCritter(species) {
   g.userData.body = body;
   return g;
 }
+
+// --- Yards: the small things around a building that make it look lived in ---------
+// Props fit the age and the kind of building, and more appear as it levels up.
+// They stand around the sides and back (the door faces +z), on the pad.
+function dressBuilding(g, type, tier, lv) {
+  const seed = [...`${type}${tier}${lv}`].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 9);
+  let n = seed;
+  const rnd = () => ((n = (n * 16807) % 2147483647) / 2147483647);
+  const spots = [110, 150, 200, 245, 75, 285].map((d) => (d * Math.PI) / 180);
+  let k = 0;
+  const put = (obj, r = 2.75) => {
+    const a = spots[k % spots.length] + (rnd() - 0.5) * 0.25;
+    k += 1;
+    obj.position.set(Math.sin(a) * r, obj.position.y, Math.cos(a) * r);
+    obj.rotation.y = rnd() * 6.28;
+    g.add(obj);
+  };
+  const props = YARD[Math.min(tier, YARD.length - 1)];
+  const want = 1 + lv; // 2, 3 or 4 props
+  const pool = [...props.common, ...(props[type] || [])];
+  for (let i = 0; i < want; i++) put(pool[(seed + i * 3) % pool.length]());
+  // A fence or low wall along the back from level 2.
+  if (lv >= 2 && props.fence) { const f = props.fence(); f.position.set(0, 0, -3.15); g.add(f); }
+  // A light by the door at level 3.
+  if (lv >= 3 && props.light) { const l = props.light(); l.position.set(1.6, 0, 2.6); g.add(l); }
+}
+
+const yardWoodpile = () => { const p = new THREE.Group(); for (let i = 0; i < 3; i++) for (let j = 0; j < 3 - i; j++) { const log = at(cyl(0.12, 0.12, 0.9, j % 2 ? C.wood : C.woodDark, 6), -0.26 + j * 0.26 + i * 0.13, 0.12 + i * 0.22, 0); log.rotation.x = Math.PI / 2; p.add(log); } return p; };
+const yardPots = (c = C.clay) => () => group(at(squash(ball(0.22, c, 0), 1, 1.2, 1), 0, 0.24, 0), at(cyl(0.1, 0.14, 0.12, c, 8), 0, 0.48, 0), at(squash(ball(0.16, C.mud, 0), 1, 1.1, 1), 0.38, 0.17, 0.12), at(squash(ball(0.13, c, 0), 1, 1.3, 1), -0.32, 0.16, 0.18));
+const yardRack = () => group(at(box(0.08, 1.1, 0.08, C.woodDark), -0.5, 0, 0), at(box(0.08, 1.1, 0.08, C.woodDark), 0.5, 0, 0), at(box(1.1, 0.06, 0.06, C.woodDark), 0, 1.05, 0), at(box(0.8, 0.6, 0.03, C.hide, { kind: 'fabric' }), 0, 0.68, 0));
+const yardStoneRing = () => { const p = new THREE.Group(); for (let i = 0; i < 6; i++) p.add(at(ball(0.14, C.rockDark, 0), Math.cos(i) * 0.35, 0.08, Math.sin(i) * 0.35)); p.add(at(cone(0.12, 0.3, C.orange, 6, { emissive: 0xff6a10, glow: 1.2 }), 0, 0.05, 0)); return p; };
+const yardSpears = () => group(...[-0.2, 0, 0.2].map((x) => at(tilt(cyl(0.025, 0.025, 1.4, C.wood, 4), 0, x * 0.4), x, 0, 0)), ...[-0.2, 0, 0.2].map((x) => at(cone(0.05, 0.16, C.rock, 4), x + x * 0.56, 1.38, 0)));
+const yardWattle = () => { const p = new THREE.Group(); for (let i = 0; i < 6; i++) p.add(at(box(0.07, 0.75, 0.07, C.woodDark), -1.5 + i * 0.6, 0, 0)); p.add(at(box(3.1, 0.12, 0.05, C.wood), 0, 0.3, 0), at(box(3.1, 0.12, 0.05, C.wood), 0, 0.58, 0)); return p; };
+const yardCrate = (c = C.wood) => () => group(at(box(0.55, 0.55, 0.55, c, { kind: 'planks' }), 0, 0, 0), at(box(0.42, 0.42, 0.42, c, { kind: 'planks' }), 0.5, 0, 0.1), at(box(0.38, 0.38, 0.38, C.woodDark, { kind: 'planks' }), 0.15, 0.55, 0.05));
+const yardAwning = () => group(...[[-0.6, -0.4], [0.6, -0.4], [-0.6, 0.4], [0.6, 0.4]].map(([x, z]) => at(box(0.07, 1.4, 0.07, C.wood), x, 0, z)), at(box(1.5, 0.08, 1.1, 0x9aa24a, { kind: 'fabric' }), 0, 1.4, 0), at(box(0.9, 0.3, 0.5, C.sand), 0, 0, 0));
+const yardBaskets = () => group(at(cyl(0.22, 0.18, 0.3, C.thatch, 8, { kind: 'fabric' }), 0, 0, 0), at(cyl(0.18, 0.15, 0.24, C.thatch, 8, { kind: 'fabric' }), 0.42, 0, 0.1), ...[[0, 0.3], [0.05, 0.36]].map(([x, y]) => at(ball(0.07, C.red, 0), x, y, 0)));
+const yardMudwall = () => group(at(box(3.0, 0.6, 0.35, C.mud), 0, 0, 0), at(box(3.1, 0.08, 0.42, C.sand), 0, 0.6, 0));
+const yardBarrel = (c = C.wood) => () => group(at(cyl(0.26, 0.26, 0.6, c, 10, { kind: 'planks' }), 0, 0, 0), at(torus(0.27, 0.025, C.iron), 0, 0.12, 0), at(torus(0.27, 0.025, C.iron), 0, 0.48, 0), at(cyl(0.22, 0.22, 0.5, c, 10, { kind: 'planks' }), 0.5, 0, 0.1));
+const yardHay = () => group(at(box(0.8, 0.45, 0.5, C.thatch, { kind: 'fabric' }), 0, 0, 0), at(box(0.8, 0.45, 0.5, C.thatch, { kind: 'fabric' }), 0.1, 0.45, 0, 0.3));
+const yardFlowerBox = () => group(at(box(1.0, 0.3, 0.35, C.woodDark), 0, 0, 0), ...[-0.35, -0.12, 0.12, 0.35].map((x, i) => at(ball(0.11, [0xf26b6b, 0xffd24a, 0xf5f0e7, 0xc77dff][i], 0), x, 0.35, 0)));
+const yardCart = () => { const p = group(at(box(1.2, 0.18, 0.7, C.wood, { kind: 'planks' }), 0, 0.42, 0), at(box(1.2, 0.3, 0.05, C.wood), 0, 0.6, 0.33), at(box(1.2, 0.3, 0.05, C.wood), 0, 0.6, -0.33), at(box(0.9, 0.05, 0.05, C.woodDark), 1.0, 0.45, 0)); for (const z of [-0.4, 0.4]) { const w = at(cyl(0.3, 0.3, 0.07, C.woodDark, 10), 0, 0.3, z); w.rotation.x = Math.PI / 2; p.add(w); } return p; };
+const yardPicket = () => { const p = new THREE.Group(); for (let i = 0; i < 9; i++) p.add(at(box(0.09, 0.7, 0.05, C.white), -1.6 + i * 0.4, 0, 0), at(cone(0.065, 0.12, C.white, 4), -1.6 + i * 0.4, 0.7, 0)); p.add(at(box(3.4, 0.07, 0.04, C.white), 0, 0.45, -0.03)); return p; };
+const yardLantern = () => group(at(box(0.08, 1.7, 0.08, C.woodDark), 0, 0, 0), at(box(0.35, 0.06, 0.06, C.woodDark), 0.14, 1.65, 0), at(box(0.16, 0.22, 0.16, 0xffd27a, { emissive: 0xffb84a, glow: 1.3 }), 0.28, 1.4, 0));
+const yardCoal = () => group(at(squash(ball(0.5, 0x2a2a30, 0, { rough: 1 }), 1.2, 0.6, 1), 0, 0.2, 0), at(cyl(0.05, 0.05, 0.9, C.woodDark, 4), 0.55, 0, 0.2), at(box(0.25, 0.04, 0.2, C.iron), 0.55, 0.9, 0.2));
+const yardOilDrums = () => group(at(cyl(0.22, 0.22, 0.6, 0x3a5a7a, 10, { metal: 0.4 }), 0, 0, 0), at(cyl(0.22, 0.22, 0.6, 0xa0442a, 10, { metal: 0.4 }), 0.46, 0, 0.1), at(cyl(0.22, 0.22, 0.6, 0x3a5a7a, 10, { metal: 0.4 }), 0.22, 0.6, 0.05));
+const yardStreetLamp = () => group(at(cyl(0.05, 0.07, 2.2, C.iron, 6), 0, 0, 0), at(box(0.3, 0.3, 0.3, C.iron), 0, 2.2, 0), at(box(0.22, 0.22, 0.22, 0xfff0b0, { emissive: 0xffd27a, glow: 1.4 }), 0, 2.22, 0));
+const yardIronFence = () => { const p = new THREE.Group(); for (let i = 0; i < 12; i++) p.add(at(cyl(0.02, 0.02, 0.8, C.iron, 4), -1.65 + i * 0.3, 0, 0)); p.add(at(box(3.4, 0.05, 0.05, C.iron), 0, 0.7, 0), at(box(3.4, 0.05, 0.05, C.iron), 0, 0.25, 0)); return p; };
+const yardBush = () => group(at(ball(0.42, C.leaf, 0), 0, 0.35, 0), at(ball(0.3, C.leafDark, 0), 0.35, 0.25, 0.1));
+const yardBench = () => group(at(box(1.2, 0.08, 0.4, C.wood, { kind: 'planks' }), 0, 0.42, 0), at(box(1.2, 0.35, 0.06, C.wood, { kind: 'planks' }), 0, 0.5, -0.18), ...[-0.5, 0.5].map((x) => at(box(0.06, 0.42, 0.36, C.iron), x, 0, 0)));
+const yardMailbox = () => group(at(box(0.06, 0.9, 0.06, C.iron), 0, 0, 0), at(box(0.22, 0.24, 0.4, C.blue), 0, 0.9, 0), at(box(0.04, 0.16, 0.08, C.red), 0.13, 1.0, 0.1));
+const yardCarModel = () => { const c = [C.red, C.blue, 0xf2c14e, C.white][Math.floor(Math.random() * 4)]; const p = group(at(box(1.6, 0.45, 0.8, c, { metal: 0.3, rough: 0.4 }), 0, 0.18, 0), at(box(0.9, 0.38, 0.72, c, { metal: 0.3, rough: 0.4 }), -0.1, 0.63, 0), at(box(0.92, 0.3, 0.74, C.glass, { rough: 0.2 }), -0.1, 0.66, 0)); for (const [x, z] of [[-0.5, 0.4], [0.5, 0.4], [-0.5, -0.4], [0.5, -0.4]]) { const w = at(cyl(0.18, 0.18, 0.12, C.ink, 10), x, 0.18, z); w.rotation.x = Math.PI / 2; p.add(w); } return p; };
+const yardAcUnit = () => group(at(box(0.6, 0.5, 0.4, C.metal, { metal: 0.4 }), 0, 0, 0), at(cyl(0.16, 0.16, 0.02, C.iron, 10), 0, 0.25, 0.21));
+const yardHedgeRow = () => { const p = new THREE.Group(); for (let i = 0; i < 6; i++) p.add(at(ball(0.36, i % 2 ? C.leaf : C.leafDark, 0), -1.5 + i * 0.6, 0.3, 0)); return p; };
+const yardSolar = () => { const p = group(at(box(0.08, 0.6, 0.08, C.metal), 0, 0, 0)); const panel = at(box(1.2, 0.05, 0.8, 0x23396b, { metal: 0.5, rough: 0.2 }), 0, 0.65, 0); panel.rotation.x = -0.5; p.add(panel); return p; };
+const yardPlanter = () => group(at(cyl(0.4, 0.35, 0.4, C.white, 12), 0, 0, 0), at(ball(0.33, C.leaf, 0), 0, 0.55, 0), at(ball(0.07, 0xffd24a, 0, { emissive: 0xffb02a, glow: 0.6 }), 0.2, 0.75, 0.1));
+const yardDronePad = () => group(at(cyl(0.6, 0.6, 0.06, C.slate, 16), 0, 0, 0), at(torus(0.5, 0.03, 0x6fd8ff, { emissive: 0x6fd8ff, glow: 1 }), 0, 0.07, 0), at(box(0.3, 0.1, 0.3, C.white), 0, 0.12, 0));
+const yardPathLights = () => group(...[-0.6, 0, 0.6].map((x) => at(cyl(0.05, 0.06, 0.35, 0x6fd8ff, 8, { emissive: 0x6fd8ff, glow: 1.2 }), x, 0, 0)));
+const yardAntenna = () => group(at(cyl(0.04, 0.06, 1.8, C.metal, 6), 0, 0, 0), at(tilt(dome(0.4, C.white), Math.PI * 0.75), 0, 1.6, 0), at(ball(0.06, C.red, 0, { emissive: 0xff3030, glow: 1.2 }), 0, 1.85, 0));
+const yardRover = () => { const p = group(at(box(0.9, 0.3, 0.6, C.white), 0, 0.3, 0), at(box(0.3, 0.3, 0.3, C.metal), 0.2, 0.6, 0)); for (const [x, z] of [[-0.35, 0.33], [0.35, 0.33], [-0.35, -0.33], [0.35, -0.33]]) { const w = at(cyl(0.14, 0.14, 0.1, C.iron, 8), x, 0.14, z); w.rotation.x = Math.PI / 2; p.add(w); } return p; };
+
+const YARD = [
+  { common: [yardWoodpile, yardPots(C.clay), yardStoneRing], home: [yardRack], work: [yardSpears, yardWoodpile], trade: [yardPots(C.mud), yardRack], fence: yardWattle, light: yardStoneRing },
+  { common: [yardPots(C.clay), yardBaskets, yardCrate(C.wood)], home: [yardAwning], work: [yardPots(0xb87a48)], trade: [yardAwning, yardBaskets], fence: yardMudwall, light: yardLantern },
+  { common: [yardBarrel(C.wood), yardHay, yardCrate(C.wood)], home: [yardFlowerBox, yardCart], work: [yardCart, yardBarrel(C.woodDark)], trade: [yardCart, yardBarrel(C.wood)], fence: yardPicket, light: yardLantern },
+  { common: [yardCrate(C.wood), yardOilDrums, yardBarrel(C.woodDark)], home: [yardFlowerBox], work: [yardCoal, yardOilDrums], trade: [yardCrate(C.woodDark), yardCoal], fence: yardIronFence, light: yardStreetLamp },
+  { common: [yardBush, yardBench, yardAcUnit], home: [yardMailbox, yardCarModel], work: [yardAcUnit, yardCarModel], trade: [yardCarModel, yardBench], fence: yardHedgeRow, light: yardStreetLamp },
+  { common: [yardSolar, yardPlanter, yardPathLights], home: [yardPlanter], work: [yardDronePad, yardSolar], trade: [yardDronePad, yardPlanter], fence: yardHedgeRow, light: yardPathLights },
+  { common: [yardAntenna, yardCrate(C.white), yardRover], home: [yardAntenna], work: [yardRover], trade: [yardCrate(C.metal)], fence: null, light: yardPathLights },
+];
