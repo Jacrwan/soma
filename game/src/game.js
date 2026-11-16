@@ -561,6 +561,7 @@ const realms = createRealms({
 const inRealm = () => Boolean(realms.active);
 
 function enterRealm(name) {
+  if (build.on) toggleBuild(false);
   if (!realms.ready(name)) return void ui.toast('Still loading that place. Try again in a moment.', 'bad');
   if (state.study.active && false) return;
   audio.launch();
@@ -834,6 +835,7 @@ function openWonder(wonder) {
 }
 
 function travel(to) {
+  if (build.on) toggleBuild(false);
   audio.launch();
   ui.fade(() => {
     state.scene = to;
@@ -1036,6 +1038,7 @@ function openPractice(id = null) {
   ui.practice({
     name: item.name, course: item.courseName || 'your course', armor: item.kind === 'boss' ? S.examArmor(state, item) : null,
     load: () => makePractice(item),
+    onAnswer: (q, right) => { if (!right) S.addReview(state, item, q); },
     finish: (right, wrong) => {
       const r = S.finishPractice(state, item.id, right, wrong);
       gainedXp(r);
@@ -1047,7 +1050,7 @@ function openPractice(id = null) {
       const toast = `Practice: ${right} right. +${r.xp} XP${r.minutes ? `, ${r.minutes} min of study credit` : ''}.${armor}`;
       ui.toast(toast, 'good');
       if (r.prepared) ui.toast(item.kind === 'boss' ? `${item.name} has no armor left. Your gate will hold on exam day.` : `${item.name} is fully studied: handing it in pays 50% more.`, 'gold');
-      return `+${r.xp} XP${r.minutes ? ` and ${r.minutes} minutes of study credit` : ''}.${armor}${r.capped ? ' Practice credit for this one is used up today; more rounds still pay XP.' : ''}`;
+      return `+${r.xp} XP${r.minutes ? ` and ${r.minutes} minutes of study credit` : ''}.${armor}${wrong ? ` The ${wrong} you missed come${wrong === 1 ? 's' : ''} back for review tomorrow.` : ''}${r.capped ? ' Practice credit for this one is used up today; more rounds still pay XP.' : ''}`;
     },
     again: () => openPractice(item.id),
   });
@@ -1403,6 +1406,14 @@ function findTarget() {
     offer(Math.hypot(p.x - W.LANDER_POS.x, p.z - W.LANDER_POS.z), 5.5, { text: 'Return to Earth', run: () => ui.travel({ title: 'Lander', subtitle: 'Your town keeps earning while you are away.', label: 'Fly home', onGo: () => travel('earth') }) });
   }
   if (sceneName === 'earth') offer(Math.hypot(p.x - BOARD_POS.x, p.z - BOARD_POS.z), 4, { text: 'Canvas board: your assignments and grades', run: openSchool });
+  if (sceneName === 'earth' && !build.on) {
+    offer(Math.hypot(p.x - MARKET_POS.x, p.z - MARKET_POS.z), 5, { text: 'Open the market', run: openMarket });
+    for (const g of ghosts) offer(p.distanceTo(g.object.position), 3.6, { text: `Review ${S.dueReviews(state).length} missed questions`, run: openReview });
+    for (const [id, h] of halls) {
+      const next = S.threats(state).map((t) => t.item).filter((a) => a.courseId === id).sort((a, b) => a.dueAt - b.dueAt)[0];
+      offer(Math.hypot(p.x - h.object.position.x, p.z - h.object.position.z), 5, { text: `Study for ${h.name}`, run: () => openStudy(next?.id ?? null) });
+    }
+  }
   if (sceneName === 'earth' && !state.study.active) {
     for (const inv of invaders.values()) {
       if (fight && fight.id === inv.item.id) continue;
@@ -1447,7 +1458,7 @@ window.addEventListener('keydown', (event) => {
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
   const key = event.key.toLowerCase();
   audio.unlock();
-  if (key === 'escape') return void ui.close();
+  if (key === 'escape') return void (build.on && !ui.isOpen() ? toggleBuild(false) : ui.close());
   if (ui.isOpen()) return;
   keys.add(key);
   if (key === ' ') event.preventDefault();
@@ -1459,7 +1470,9 @@ window.addEventListener('keydown', (event) => {
   else if (key === 'j') openQuests();
   else if (key === 'v') toggleMouseLook();
   else if (key === 'q') dodge();
-  else if (key === 'r') slam();
+  else if (key === 'r') { if (build.on) { build.rot += Math.PI / 4; } else slam(); }
+  else if (key === 'b') toggleBuild();
+  else if ((key === 'x' || key === 'delete' || key === 'backspace') && build.on) removeBuild();
   else if (key === 't') openStudy();
   else if (key === 'p') openPractice();
   else if (key === 'h') ui.help({ first: false });
@@ -1508,7 +1521,7 @@ document.addEventListener('mousemove', (event) => {
 canvas.addEventListener('contextmenu', (event) => event.preventDefault());
 canvas.addEventListener('mousedown', (event) => {
   audio.unlock();
-  if (event.button === 0) return void attack();
+  if (event.button === 0) return void (build.on ? placeBuild() : attack());
   if (event.button !== 2) return;
   event.preventDefault();
   drag = { x: event.clientX, y: event.clientY };
@@ -1553,6 +1566,11 @@ function solids() {
   if (sceneName === 'earth') list.push({ x: 0, z: 0, r: 2.4 }, { x: -3.2, z: W.GATE.z, r: 1.5 }, { x: 3.2, z: W.GATE.z, r: 1.5 });
   else list.push({ x: W.LANDER_POS.x, z: W.LANDER_POS.z, r: 2.2 });
   if (fight) list.push({ x: fight.inv.object.position.x, z: fight.inv.object.position.z, r: 2.6 });
+  if (sceneName === 'earth') {
+    list.push({ x: MARKET_POS.x, z: MARKET_POS.z, r: 2.6 });
+    for (const h of halls.values()) list.push({ x: h.object.position.x, z: h.object.position.z, r: 2.7 });
+    for (const d of state.decor) { const r = S.DECOR[d.type]?.solid; if (r) list.push({ x: d.x, z: d.z, r }); }
+  }
   return list;
 }
 
@@ -1766,6 +1784,8 @@ function frame(nowMs) {
   S.tick(state);
   updatePlayer(dt, time);
   if (!inRealm()) { moveInvaders(dt, time); updateTown(dt, time); }
+  updateBuild();
+  ghosts.forEach((g, i) => { g.object.position.y = 0.5 + Math.sin(time * 1.6 + i) * 0.25; g.object.rotation.y = Math.sin(time * 0.5 + i) * 0.6; });
   updateRaiders(dt);
   realms.update(dt, time, player.object.position, !player.down);
   if (fight) updateExamDay(dt);
@@ -1793,6 +1813,9 @@ function frame(nowMs) {
   if (slowTimer <= 0) {
     slowTimer = 1;
     syncInvaders(Date.now());
+    syncHalls();
+    syncReview();
+    if (build.on) drawBuildBar();
     checkDeadlines();
     checkStory();
   }
@@ -1819,6 +1842,265 @@ dock.position.copy(W.DOCK_POS);
 dock.rotation.y = Math.atan2(W.DOCK_POS.x, W.DOCK_POS.z) - Math.PI / 2;
 world.earth.add(dock);
 fx.label(dock, 5, '<em>Explore</em>Trail to the Wilds', 'board');
+
+// --- Market, class halls, build mode and review ghosts ------------------------------------
+const deg = (d) => (d * Math.PI) / 180;
+const ring = (r, d) => new THREE.Vector3(Math.cos(deg(d)) * r, 0, Math.sin(deg(d)) * r);
+const faceCentre = (o) => { o.rotation.y = Math.atan2(-o.position.x, -o.position.z); };
+const onGround = (o, x, z) => o.position.set(x, world.groundHeight('earth', x, z), z);
+
+const MARKET_POS = W.MARKET_POS;
+const market = A.makeMarket();
+onGround(market, MARKET_POS.x, MARKET_POS.z);
+faceCentre(market);
+world.earth.add(market);
+fx.label(market, 4.6, '<em>Market</em>New stock every day', 'board');
+
+function openMarket() {
+  const offers = S.marketStock(state);
+  const junk = state.hero.bag.filter((i) => S.gearScore(i) <= S.gearScore(state.hero.gear[i.slot]));
+  ui.market({
+    coins: state.coins,
+    offers: offers.map((o) => ({ ...o, name: o.kind === 'look' ? A.COSMETIC_NAMES[o.id] || o.id : o.kind === 'decor' ? S.DECOR[o.id].name : null })),
+    junk: { count: junk.length, value: junk.reduce((sum, i) => sum + S.sellValue(i), 0) },
+    onBuy: (i) => {
+      const got = S.buyOffer(state, i);
+      if (!got) return void audio.deny();
+      audio.coin();
+      const o = got.offer;
+      if (o.kind === 'gear') { ui.toast(got.equipped ? `Bought and equipped ${o.item.name}` : `Bought ${o.item.name}: it's in your bag (C)`, 'gold'); dressPlayer(); }
+      else if (o.kind === 'look') ui.toast('New look unlocked: wear it from the Wardrobe in the Hero panel.', 'gold');
+      else if (o.kind === 'tea') ui.toast('Study tea: your next study session pays 50% more XP.', 'gold');
+      else ui.toast(`${S.DECOR[o.id].name} unlocked in build mode (B).`, 'gold');
+      refreshHud(); save(); ui.close(); openMarket();
+    },
+    onSellJunk: () => {
+      const coins = S.sellJunk(state);
+      if (coins) { audio.coin(); ui.toast(`Sold old gear for ${S.fmt(coins)} coins`, 'good'); }
+      refreshHud(); save(); ui.close(); openMarket();
+    },
+  });
+}
+
+// One hall per class, on the outer ring south of the plaza. It gains a floor
+// each mastery level, so the classes you study tower over the ones you don't.
+const HALL_SLOTS = W.HALL_SLOTS;
+const HALL_COLORS = [0x4a78d0, 0xd9534f, 0x3fb8a8, 0xf08a3c, 0x7a56c2, 0xc9a227];
+const halls = new Map(); // courseId -> { object, label, level, slot }
+const nextFloorAt = (level) => 15 * (level + 1) ** 2;
+function syncHalls() {
+  const list = S.courseHalls(state).slice(0, HALL_SLOTS.length);
+  const ids = new Set(list.map((h) => h.id));
+  for (const [id, h] of halls) if (!ids.has(id)) { h.object.parent?.remove(h.object); h.label.remove(); halls.delete(id); }
+  list.forEach((hall, slot) => {
+    let h = halls.get(hall.id);
+    if (!h || h.level !== hall.level || h.slot !== slot) {
+      const grew = h && h.level < hall.level;
+      if (h) { h.object.parent?.remove(h.object); h.label.remove(); }
+      const object = A.makeHall(hall.level, HALL_COLORS[hash(hall.id) % HALL_COLORS.length]);
+      const at = HALL_SLOTS[slot];
+      onGround(object, at.x, at.z);
+      faceCentre(object);
+      world.earth.add(object);
+      h = { object, level: hall.level, slot, label: fx.label(object, (object.userData.height || 3) + 0.4, '', 'board') };
+      halls.set(hall.id, h);
+      if (grew) {
+        for (let k = 0; k < 3; k++) fx.burst(object.position.clone().add(new THREE.Vector3(0, 2 + k * 2, 0)), [A.C.gold, A.C.white, A.C.gold][k], 18, 7, 7);
+        ui.toast(`Your ${hall.name} hall grew to ${hall.level} floor${hall.level === 1 ? '' : 's'}`, 'gold');
+        audio.build();
+      }
+    }
+    h.name = hall.name;
+    h.label.set(`<em>Class hall · ${hall.level ? `${hall.level} floor${hall.level === 1 ? '' : 's'}` : 'not started'}</em>${escapeHtml(hall.name)}<small>${hall.minutes} min studied · next floor at ${nextFloorAt(hall.level)}</small>`, 'board');
+  });
+}
+
+// Build mode: place decorations anywhere in town.
+const decorObjects = new Map(); // decor id -> object
+function syncDecor() {
+  const ids = new Set(state.decor.map((d) => d.id));
+  for (const [id, o] of decorObjects) if (!ids.has(id)) { o.parent?.remove(o); decorObjects.delete(id); }
+  for (const d of state.decor) {
+    if (decorObjects.has(d.id)) continue;
+    const o = A.makeDecor(d.type);
+    onGround(o, d.x, d.z);
+    o.rotation.y = d.rot;
+    world.earth.add(o);
+    decorObjects.set(d.id, o);
+  }
+}
+
+const build = { on: false, type: 'fence', rot: 0, ghost: null, at: null, ok: false, bar: null };
+const pointer = { x: innerWidth / 2, y: innerHeight / 2 };
+canvas.addEventListener('mousemove', (event) => { pointer.x = event.clientX; pointer.y = event.clientY; });
+const ray = new THREE.Raycaster();
+function groundAt(x, y) {
+  const rect = canvas.getBoundingClientRect();
+  ray.setFromCamera(new THREE.Vector2(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1), camera);
+  const o = ray.ray.origin, d = ray.ray.direction;
+  for (let t = 0.5; t < 180; t += 0.4) {
+    const px = o.x + d.x * t, py = o.y + d.y * t, pz = o.z + d.z * t;
+    if (py <= world.groundHeight('earth', px, pz)) return new THREE.Vector3(px, 0, pz);
+  }
+  return null;
+}
+function buildBlocked(x, z) {
+  if (Math.hypot(x, z) > W.ISLAND_RADIUS - 3 || Math.hypot(x, z) < 3.2) return true;
+  const near = (p, r) => Math.hypot(x - p.x, z - p.z) < r;
+  for (let i = 0; i < S.EARTH_PADS; i++) if (near(W.padPosition('earth', i), 3.3)) return true;
+  for (let i = 0; i < 7; i++) if (W.wonderPosition(i) && near(W.wonderPosition(i), 5)) return true;
+  if (near(MARKET_POS, 3.6) || near(BOARD_POS, 2.4) || near(W.GATE, 4) || near(W.DOCK_POS, 4)) return true;
+  for (const at of HALL_SLOTS) if (near(at, 3.4)) return true;
+  // Keep the road to the gate clear for the marching assignments.
+  if (Math.abs(x) < 2.6 && z > 3) return true;
+  return false;
+}
+function makeGhost(type) {
+  const g = A.makeDecor(type);
+  g.traverse((o) => {
+    if (!o.isMesh) return;
+    o.material = o.material.clone();
+    o.material.transparent = true;
+    o.material.opacity = 0.6;
+    o.material.depthWrite = false;
+    o.castShadow = false;
+  });
+  return g;
+}
+function setGhost(type) {
+  build.type = type;
+  if (build.ghost) build.ghost.parent?.remove(build.ghost);
+  build.ghost = makeGhost(type);
+  world.earth.add(build.ghost);
+  drawBuildBar();
+}
+function drawBuildBar() {
+  if (!build.bar) return;
+  const list = S.decorAvailable(state);
+  build.bar.replaceChildren(
+    ...list.map((type) => {
+      const cost = S.decorCost(state, type);
+      const b = document.createElement('button');
+      b.className = `build-item ${type === build.type ? 'on' : ''} ${state.coins < cost ? 'poor' : ''}`;
+      b.innerHTML = `<b>${S.DECOR[type].name}</b><small><span class="coin sm"></span>${S.fmt(cost)}</small>`;
+      b.onclick = (e) => { e.stopPropagation(); setGhost(type); };
+      return b;
+    }),
+    Object.assign(document.createElement('p'), { className: 'build-help', textContent: `Click to place · R rotate · X remove (half back) · B or Esc when done · ${state.decor.length}/${S.DECOR_MAX}` }),
+  );
+}
+function toggleBuild(force) {
+  const on = force ?? !build.on;
+  if (on && (state.scene !== 'earth' || inRealm() || fight || ui.isOpen())) return void ui.toast('Build mode works in your town on Earth.', 'bad');
+  build.on = on;
+  document.querySelector('.hotbar')?.toggleAttribute('hidden', on);
+  if (on) {
+    build.bar = document.createElement('div');
+    build.bar.id = 'buildbar';
+    document.getElementById('hud').append(build.bar);
+    if (!S.decorAvailable(state).includes(build.type)) build.type = 'fence';
+    setGhost(build.type);
+    ui.toast('Build mode: pick a piece below and click to place it.', 'good');
+  } else {
+    build.bar?.remove();
+    build.bar = null;
+    build.ghost?.parent?.remove(build.ghost);
+    build.ghost = null;
+  }
+}
+function updateBuild() {
+  if (!build.on || !build.ghost) return;
+  const p = player.object.position;
+  let at = locked() ? null : groundAt(pointer.x, pointer.y);
+  if (!at || at.distanceTo(p) > 40) at = new THREE.Vector3(p.x + Math.sin(player.facing) * 3.5, 0, p.z + Math.cos(player.facing) * 3.5);
+  at.x = Math.round(at.x * 2) / 2;
+  at.z = Math.round(at.z * 2) / 2;
+  build.at = at;
+  build.ok = !buildBlocked(at.x, at.z) && state.coins >= S.decorCost(state, build.type) && state.decor.length < S.DECOR_MAX;
+  onGround(build.ghost, at.x, at.z);
+  build.ghost.rotation.y = build.rot;
+  build.ghost.traverse((o) => { if (o.isMesh && o.material.emissive) o.material.emissive.setHex(build.ok ? 0x0f2a12 : 0x5a0f0f); });
+}
+function placeBuild() {
+  if (!build.on || !build.at) return;
+  if (!build.ok) {
+    audio.deny();
+    return void ui.toast(state.coins < S.decorCost(state, build.type) ? 'Not enough coins for that.' : 'Can’t build there: keep pads, buildings and the gate road clear.', 'bad');
+  }
+  const piece = S.placeDecor(state, build.type, build.at.x, build.at.z, build.rot);
+  if (!piece) return void audio.deny();
+  audio.build();
+  syncDecor();
+  fx.burst(new THREE.Vector3(piece.x, world.groundHeight('earth', piece.x, piece.z), piece.z), A.C.white, 8, 4, 4);
+  refreshHud();
+  drawBuildBar();
+  save();
+}
+function removeBuild() {
+  if (!build.on || !build.at) return;
+  let best = null, dist = 2;
+  for (const d of state.decor) {
+    const dd = Math.hypot(d.x - build.at.x, d.z - build.at.z);
+    if (dd < dist) { dist = dd; best = d; }
+  }
+  if (!best) return;
+  const back = S.removeDecor(state, best.id);
+  syncDecor();
+  audio.pop();
+  ui.toast(`Removed ${S.DECOR[best.type].name}: +${S.fmt(back)} coins back`, 'good');
+  refreshHud();
+  drawBuildBar();
+  save();
+}
+
+// Review ghosts: missed practice questions come back as pale books by the board.
+const ghosts = [];
+function syncReview() {
+  const due = state.scene === 'earth' && !inRealm() ? S.dueReviews(state).length : 0;
+  const want = Math.min(3, Math.ceil(due / 4));
+  while (ghosts.length > want) { const g = ghosts.pop(); g.object.parent?.remove(g.object); g.label?.remove(); }
+  while (ghosts.length < want) {
+    const object = A.makeCreature('invader', 1);
+    object.traverse((o) => {
+      if (!o.isMesh) return;
+      o.material = o.material.clone();
+      o.material.transparent = true;
+      o.material.opacity = 0.55;
+      if (o.material.emissive) o.material.emissive.setHex(0x3a6aa8);
+      o.castShadow = false;
+    });
+    const i = ghosts.length;
+    object.position.set(BOARD_POS.x + 2.2 + i * 1.6, 0, BOARD_POS.z - 2.4 - i * 0.8);
+    world.earth.add(object);
+    ghosts.push({ object, label: i === 0 ? fx.label(object, 2.6, '', 'review') : null });
+  }
+  if (ghosts[0]) ghosts[0].label.set(`<em>Review</em>${due} missed question${due === 1 ? '' : 's'}<small>press E to go over them</small>`, 'review');
+}
+
+function openReview() {
+  const cards = S.dueReviews(state).slice(0, 10).map((c) => ({ ...c }));
+  if (!cards.length) return void ui.toast('Nothing to review right now. Missed practice questions come back here.', 'good');
+  const tally = { xp: 0, minutes: 0, learned: 0, levels: 0 };
+  ui.practice({
+    title: 'Review', name: 'Review', course: `${cards.length} question${cards.length === 1 ? '' : 's'} you missed before`, loading: 'Getting your missed questions…',
+    load: () => Promise.resolve({ questions: cards, files: [] }),
+    onAnswer: (q, right) => {
+      const r = S.answerReview(state, q.id, right);
+      if (!r) return;
+      tally.xp += r.xp || 0; tally.minutes += r.minutes; tally.learned += r.learned ? 1 : 0;
+      if (r.levels) gainedXp(r);
+      if (r.prepared) ui.toast('An exam just lost the last of its armor.', 'gold');
+    },
+    finish: (right) => {
+      if (right) audio.coin();
+      refreshHud(); syncInvaders(Date.now()); syncReview(); save();
+      ui.toast(`Review: ${right} remembered. +${tally.xp} XP${tally.minutes ? `, ${tally.minutes} min of study credit` : ''}.`, 'good');
+      return `+${tally.xp} XP${tally.minutes ? ` and ${tally.minutes} minutes of study credit` : ''}.${tally.learned ? ` ${tally.learned} learned for good.` : ''} Misses come back tomorrow.`;
+    },
+    again: openReview,
+  });
+}
+
 enemiesReady.then(() => {});
 dressPlayer();
 if (state.scene === 'moon') player.object.position.copy(W.MOON_SPAWN);
@@ -1829,7 +2111,11 @@ refreshWonders();
 // What is already saved needs no announcement: this only rebuilds the scene.
 syncChests();
 syncInvaders(Date.now());
+syncHalls();
+syncDecor();
+syncReview();
 refreshHud();
+if (S.dueReviews(state).length) setTimeout(() => ui.toast(`${S.dueReviews(state).length} missed questions are back for review. Find the pale books by the Canvas board.`, 'gold'), 3000);
 
 if (!state.settings.seenHelp) {
   ui.help({ first: true, onStart: () => { state.settings.seenHelp = true; save(); } });

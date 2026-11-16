@@ -597,3 +597,16 @@ select, input { font: inherit; }
 .practice .why { margin-top: 12px; }
 .practice-score { display: flex; align-items: baseline; gap: 10px; margin: 6px 0 4px; }
 .practice-score b { font-size: 44px; color: var(--gold); }
+
+/* Build mode */
+#buildbar { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; max-width: min(920px, calc(100vw - 140px)); padding: 10px; border-radius: 18px; background: rgba(20, 17, 31, 0.86); border: 2px solid rgba(255, 255, 255, 0.1); pointer-events: auto; z-index: 5; }
+.build-item { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 78px; padding: 7px 9px; border-radius: 12px; border: 2px solid transparent; background: rgba(255, 255, 255, 0.07); color: #fff; font: inherit; font-size: 13px; cursor: pointer; }
+.build-item small { display: flex; align-items: center; gap: 3px; opacity: 0.8; font-size: 11px; }
+.build-item:hover { background: rgba(255, 255, 255, 0.14); }
+.build-item.on { border-color: var(--gold); background: rgba(242, 193, 78, 0.18); }
+.build-item.poor { opacity: 0.45; }
+.build-help { width: 100%; margin: 4px 0 0; text-align: center; font-size: 12px; opacity: 0.75; }
+/* Market */
+.gear-row.market .gear.sold { opacity: 0.45; }
+/* Review ghosts */
+.label.review { background: rgba(58, 106, 168, 0.85); }

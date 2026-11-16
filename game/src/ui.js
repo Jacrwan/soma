@@ -365,9 +365,9 @@ export function createUI(on) {
      * A round of AI practice questions. load() resolves { questions, files };
      * finish(right, wrong) pays for the round and returns a line to show.
      */
-    practice({ name, course, armor, load, finish, again }) {
-      const body = el('div', { class: 'practice' }, el('p', { class: 'note loading', text: `Soma is writing questions from your ${course} notes…` }));
-      panel({ title: `Practice: ${name}`, subtitle: `${course}${armor != null ? ` · armor ${Math.round(armor * 100)}%` : ''}`, wide: true }, body);
+    practice({ name, course, armor, load, finish, again, onAnswer, title, loading }) {
+      const body = el('div', { class: 'practice' }, el('p', { class: 'note loading', text: loading || `Soma is writing questions from your ${course} notes…` }));
+      panel({ title: title || `Practice: ${name}`, subtitle: `${course}${armor != null ? ` · armor ${Math.round(armor * 100)}%` : ''}`, wide: true }, body);
       let right = 0, wrong = 0, paid = false;
       const pay = () => { if (!paid && right + wrong) { paid = true; return finish(right, wrong); } return null; };
       // Closing midway still pays for what was answered.
@@ -393,12 +393,13 @@ export function createUI(on) {
             choices.forEach((c, j) => { c.disabled = true; if (j === q.answer) c.classList.add('right'); });
             if (k === q.answer) right += 1;
             else { wrong += 1; choices[k].classList.add('wrong'); }
+            onAnswer?.(q, k === q.answer);
             why.textContent = `${k === q.answer ? 'Right. ' : 'Not quite. '}${q.why || ''}`;
             why.hidden = false;
             next.hidden = false;
           } }, el('i', { text: 'ABCD'[k] }), el('span', { text })));
           body.replaceChildren(
-            el('small', { class: 'practice-count', text: `Question ${i + 1} of ${questions.length}${files.length ? ` · from ${files.slice(0, 2).join(', ')}${files.length > 2 ? ` +${files.length - 2}` : ''}` : ''}` }),
+            el('small', { class: 'practice-count', text: `Question ${i + 1} of ${questions.length}${q.from ? ` · missed on ${q.from}` : ''}${files.length ? ` · from ${files.slice(0, 2).join(', ')}${files.length > 2 ? ` +${files.length - 2}` : ''}` : ''}` }),
             el('h3', { class: 'practice-q', text: q.q }),
             el('div', { class: 'choices' }, choices), why, el('div', { class: 'actions' }, next));
         };
@@ -407,6 +408,25 @@ export function createUI(on) {
         if (!open) return;
         body.replaceChildren(el('p', { class: 'note', text: error.message || 'Practice is not available right now.' }), el('div', { class: 'actions' }, el('button', { class: 'btn', onclick: close }, el('span', { text: 'Close' }))));
       });
+    },
+
+    /** The market: today's stock, plus selling what you don't need. */
+    market({ coins, offers, junk, onBuy, onSellJunk }) {
+      const label = (o) => o.kind === 'gear' ? o.item.name : o.kind === 'look' ? o.name : o.kind === 'tea' ? 'Study tea' : o.name;
+      const detail = (o) => o.kind === 'gear' ? `${o.item.rarity} ${SLOT_NAMES[o.item.slot].toLowerCase()} · level ${o.item.level} · ${gearStat(o.item)}`
+        : o.kind === 'look' ? 'A new look for your hero (Wardrobe)'
+          : o.kind === 'tea' ? 'Your next study session pays 50% more XP'
+            : 'A rare decoration for build mode (B)';
+      panel({ title: 'Market', subtitle: `New stock every day · you have ${fmt(coins)} coins`, wide: true },
+        el('div', { class: 'gear-row market' }, offers.map((o, i) => el('div', { class: `gear ${o.kind === 'gear' ? `g-${o.item.rarity}` : 'g-rare'} ${o.sold ? 'sold' : ''}` },
+          el('small', { text: o.kind === 'gear' ? 'Gear' : o.kind === 'look' ? 'Look' : o.kind === 'tea' ? 'Potion' : 'Decoration' }),
+          el('b', { text: label(o) }),
+          el('span', { text: detail(o) }),
+          el('div', { class: 'gear-do' }, o.sold ? el('em', { text: 'Sold' })
+            : el('button', { class: 'btn small primary', disabled: coins < o.price, onclick: () => onBuy(i) }, 'Buy ', price(o.price)))))),
+        el('div', { class: 'actions', style: 'margin-top:12px' },
+          el('button', { class: 'btn', disabled: !junk.count, onclick: onSellJunk }, el('span', {}, junk.count ? `Sell ${junk.count} weaker piece${junk.count === 1 ? '' : 's'} of gear` : 'Nothing to sell', el('small', { text: junk.count ? `Keeps anything better than what you wear · +${fmt(junk.value)} coins` : 'Gear weaker than what you wear shows up here' })))),
+      );
     },
 
     /** Pick what to study and for how long. */
@@ -460,6 +480,7 @@ export function createUI(on) {
           el('span', { class: 'k' }, el('kbd', { text: 'Right drag' })), el('span', { text: 'Hold right click and move the mouse to look around. Left click swings. Scroll to zoom. V locks the mouse to the view.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'T' })), el('span', { text: 'Start a study session. This is the only way to level up.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'C' }), el('kbd', { text: 'J' })), el('span', { text: 'Your hero (gear and skills) and your quests.' }),
+          el('span', { class: 'k' }, el('kbd', { text: 'B' })), el('span', { text: 'Build mode: place fences, lamps, trees and more anywhere in town. The market sells rare pieces.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'P' })), el('span', { text: 'Practice questions from Soma AI, written from your course notes. Right answers break exam armor.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'E' })), el('span', { text: 'Build, upgrade, open chests, pick what to study.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'F' })), el('span', { text: 'Swing (or click). Three swings in a row end in a combo hit.' }),

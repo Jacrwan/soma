@@ -1078,3 +1078,166 @@ export function makeLander() {
   }
   return g;
 }
+
+// --- Build mode decorations ---------------------------------------------------------
+/** A decoration from the build menu (DECOR in sim.js). Built in metres, centred on its base. */
+export function makeDecor(type) {
+  const g = new THREE.Group();
+  const leaf = 0x6fae4f, leafDark = 0x4f8a3c;
+  switch (type) {
+    case 'fence':
+      for (const x of [-1, 1]) g.add(at(box(0.18, 1.0, 0.18, C.woodDark), x, 0, 0), at(cone(0.13, 0.18, C.woodDark, 4), x, 1.0, 0));
+      g.add(at(box(2.2, 0.14, 0.1, C.wood), 0, 0.35, 0), at(box(2.2, 0.14, 0.1, C.wood), 0, 0.72, 0));
+      break;
+    case 'path':
+      [[-0.5, -0.4, 0.55], [0.45, -0.2, 0.5], [-0.1, 0.5, 0.6], [0.6, 0.65, 0.4]].forEach(([x, z, r], i) => g.add(at(cyl(r, r * 1.08, 0.08, i % 2 ? C.stone : C.stoneDark, 6), x, 0, z, i)));
+      break;
+    case 'flowers': {
+      g.add(at(cyl(0.95, 1.05, 0.22, C.woodDark, 8), 0, 0, 0), at(cyl(0.88, 0.88, 0.05, C.dirt, 8), 0, 0.2, 0));
+      const petals = [0xf26b6b, 0xffd24a, 0xf5f0e7, 0xc77dff, 0xff9f43];
+      for (let i = 0; i < 9; i++) {
+        const a = i * 2.4, r = 0.25 + (i % 3) * 0.22;
+        g.add(at(cyl(0.025, 0.025, 0.3, leafDark, 4), Math.cos(a) * r, 0.22, Math.sin(a) * r), at(ball(0.11, petals[i % petals.length], 0), Math.cos(a) * r, 0.55, Math.sin(a) * r));
+      }
+      break;
+    }
+    case 'bush':
+      g.add(at(ball(0.7, leaf, 0), 0, 0.5, 0), at(ball(0.5, leafDark, 0), 0.5, 0.4, 0.2), at(ball(0.45, leaf, 0), -0.45, 0.35, -0.15));
+      break;
+    case 'tree':
+      g.add(at(cyl(0.18, 0.26, 1.6, C.woodDark, 6), 0, 0, 0), at(cone(1.2, 1.8, leafDark, 6), 0, 1.3, 0), at(cone(0.9, 1.5, leaf, 6), 0, 2.3, 0), at(cone(0.55, 1.1, leaf, 6), 0, 3.2, 0));
+      break;
+    case 'rocks':
+      g.add(at(squash(ball(0.6, C.rock, 0), 1.2, 0.8, 1), 0, 0.3, 0), at(squash(ball(0.4, C.rockDark, 0), 1, 0.8, 1.1), 0.6, 0.2, 0.3), at(ball(0.28, C.stoneDark, 0), -0.55, 0.15, 0.25));
+      break;
+    case 'lamp': {
+      g.add(at(cyl(0.22, 0.28, 0.25, C.slate, 6), 0, 0, 0), at(cyl(0.07, 0.09, 2.4, C.slate, 6), 0, 0.2, 0), at(box(0.5, 0.06, 0.06, C.slate), 0.2, 2.45, 0));
+      const glow = at(ball(0.2, 0xffe08a, 0, { emissive: 0xffc04a, glow: 1.6 }), 0.42, 2.18, 0);
+      glow.name = 'glow';
+      g.add(glow, at(cone(0.24, 0.22, C.slate, 6), 0.42, 2.38, 0));
+      break;
+    }
+    case 'bench':
+      g.add(at(box(1.8, 0.1, 0.5, C.wood, { kind: 'planks' }), 0, 0.45, 0), at(box(1.8, 0.45, 0.08, C.wood, { kind: 'planks' }), 0, 0.55, -0.22));
+      for (const x of [-0.75, 0.75]) g.add(at(box(0.1, 0.45, 0.45, C.woodDark), x, 0, 0));
+      break;
+    case 'banner': {
+      g.add(at(cyl(0.06, 0.08, 3.2, C.woodDark, 6), 0, 0, 0), at(ball(0.11, C.gold, 0, { metal: 0.8, rough: 0.3 }), 0, 3.25, 0), at(box(0.9, 0.06, 0.06, C.woodDark), 0.4, 2.95, 0));
+      const cloth = at(box(0.75, 1.3, 0.04, C.red, { kind: 'fabric' }), 0.42, 1.65, 0);
+      cloth.name = 'cloth';
+      g.add(cloth, at(box(0.3, 0.3, 0.05, C.gold, { metal: 0.6 }), 0.42, 2.25, 0));
+      break;
+    }
+    case 'crates':
+      g.add(at(box(0.8, 0.8, 0.8, C.wood, { kind: 'planks' }), 0, 0, 0, 0.2), at(box(0.65, 0.65, 0.65, C.wood, { kind: 'planks' }), 0.75, 0, 0.25, -0.3), at(box(0.55, 0.55, 0.55, C.woodDark, { kind: 'planks' }), 0.2, 0.8, 0.05, 0.5));
+      break;
+    case 'well':
+      g.add(at(cyl(0.9, 1.0, 0.8, C.stone, 10), 0, 0, 0), at(cyl(0.72, 0.72, 0.05, 0x3f8fb0, 10, { rough: 0.2 }), 0, 0.72, 0));
+      for (const x of [-0.8, 0.8]) g.add(at(box(0.12, 1.5, 0.12, C.woodDark), x, 0.7, 0));
+      g.add(at(prism(2.0, 0.6, 1.3, C.brick), 0, 2.15, 0, Math.PI / 2), at(cyl(0.06, 0.06, 1.7, C.woodDark, 6), 0, 1.75, 0));
+      g.children[g.children.length - 1].rotation.z = Math.PI / 2;
+      break;
+    case 'statue':
+    case 'gold': {
+      const c = type === 'gold' ? C.gold : C.stone;
+      const o = type === 'gold' ? { metal: 0.85, rough: 0.25 } : { rough: 0.9 };
+      g.add(at(box(1.1, 0.5, 1.1, C.stoneDark), 0, 0, 0), at(box(0.9, 0.12, 0.9, C.stone), 0, 0.5, 0));
+      g.add(at(cyl(0.28, 0.36, 0.9, c, 8, o), 0, 0.62, 0), at(ball(0.26, c, 1, o), 0, 1.75, 0), at(cone(0.3, 0.25, c, 8, o), 0, 1.95, 0));
+      g.add(at(capsule(0.09, 0.5, c, o), -0.36, 1.25, 0), at(capsule(0.09, 0.5, c, o), 0.36, 1.25, 0), at(box(0.07, 1.2, 0.07, c, o), 0.45, 1.1, 0.12));
+      break;
+    }
+    case 'fountain': {
+      g.add(at(cyl(1.9, 2.0, 0.5, C.stone, 12), 0, 0, 0), at(cyl(1.65, 1.65, 0.06, 0x4fb4c9, 12, { rough: 0.15 }), 0, 0.42, 0));
+      g.add(at(cyl(0.25, 0.35, 1.3, C.stone, 8), 0, 0.4, 0), at(cyl(0.8, 0.5, 0.25, C.stone, 10), 0, 1.6, 0), at(cyl(0.6, 0.6, 0.04, 0x4fb4c9, 10, { rough: 0.15 }), 0, 1.8, 0));
+      const jet = at(cone(0.16, 0.7, 0xbfe9f5, 8, { emissive: 0x7fd3ea, glow: 0.4 }), 0, 1.85, 0);
+      jet.name = 'jet';
+      g.add(jet);
+      break;
+    }
+    case 'totem': {
+      const faces = [C.red, 0x2f6f9e, C.gold];
+      faces.forEach((c, i) => {
+        g.add(at(cyl(0.38, 0.42, 0.7, i % 2 ? C.wood : C.woodDark, 8, { kind: 'planks' }), 0, i * 0.7, 0));
+        for (const x of [-0.14, 0.14]) g.add(at(ball(0.07, c, 0), x, i * 0.7 + 0.42, 0.36));
+        g.add(at(box(0.3, 0.07, 0.05, c), 0, i * 0.7 + 0.2, 0.38));
+      });
+      g.add(at(box(1.5, 0.12, 0.25, C.red), 0, 1.75, 0), at(cone(0.3, 0.4, C.gold, 6), 0, 2.1, 0));
+      break;
+    }
+    case 'tent': {
+      g.add(at(prism(2.6, 2.0, 2.8, 0xe8d6a8, { kind: 'fabric' }), 0, 0, 0));
+      g.add(at(prism(1.0, 1.0, 0.04, 0x5a3b26, { kind: 'fabric' }), 0, 0, 1.42));
+      g.add(at(cyl(0.05, 0.05, 2.3, C.woodDark, 6), 0, 0, 1.45), at(box(0.5, 0.35, 0.02, C.red, { kind: 'fabric' }), 0.25, 1.9, 1.45));
+      break;
+    }
+    default:
+      g.add(box(0.6, 0.6, 0.6, C.wood));
+  }
+  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  return g;
+}
+
+// --- Class halls: one per course, a floor per mastery level -----------------------
+/** A tower for a course. floors 0 is a foundation with scaffolding; each level adds a storey. */
+export function makeHall(floors, color) {
+  const g = new THREE.Group();
+  g.add(at(box(4.4, 0.5, 4.4, C.stoneDark), 0, 0, 0), at(box(3.4, 0.3, 0.8, C.stone), 0, 0, 2.6));
+  const shown = Math.min(floors, 8);
+  if (shown === 0) {
+    // Only a foundation and scaffolding: nobody has studied this class yet.
+    for (const [x, z] of [[-1.6, -1.6], [1.6, -1.6], [-1.6, 1.6], [1.6, 1.6]]) g.add(at(box(0.15, 2.4, 0.15, C.wood), x, 0.5, z));
+    g.add(at(box(3.4, 0.1, 0.4, C.wood, { kind: 'planks' }), 0, 1.6, 1.6), at(box(1.6, 0.6, 1.0, C.stone), -0.7, 0.5, -0.6), at(box(0.8, 0.5, 0.8, C.stone), 0.9, 0.5, 0.4));
+    return g;
+  }
+  let y = 0.5;
+  for (let i = 0; i < shown; i++) {
+    const w = 3.4 - i * 0.22;
+    const h = 1.7;
+    g.add(at(box(w, h, w, i % 2 ? C.stone : 0xe8e0cf, { kind: 'planks', rough: 0.9 }), 0, y, 0));
+    g.add(at(box(w + 0.2, 0.18, w + 0.2, color), 0, y + h - 0.05, 0));
+    for (const side of [0, 1, 2, 3]) {
+      const win = at(box(0.5, 0.7, 0.06, 0x2a3550, { emissive: 0xffd27a, glow: i === shown - 1 ? 0.5 : 0.15 }), 0, y + 0.55, w / 2 + 0.02);
+      const holder = new THREE.Group();
+      holder.add(win);
+      holder.rotation.y = (side * Math.PI) / 2;
+      holder.position.y = 0;
+      g.add(holder);
+    }
+    y += h + 0.13;
+  }
+  const top = 3.4 - shown * 0.22;
+  g.add(at(cone(top * 0.78, 1.6 + shown * 0.12, color, 6), 0, y, 0), at(cyl(0.04, 0.04, 1.2, C.woodDark, 4), 0, y + 1.5 + shown * 0.12, 0));
+  const flag = at(box(0.7, 0.4, 0.03, color, { kind: 'fabric' }), 0.36, y + 2.3 + shown * 0.12, 0);
+  flag.name = 'flag';
+  g.add(flag, at(box(0.9, 0.9, 0.12, 0x4a3524), 0, 0.5, top / 2 + 0.95));
+  g.userData.height = y + 2.8;
+  return g;
+}
+
+// --- The market stall ---------------------------------------------------------------
+export function makeMarket() {
+  const g = new THREE.Group();
+  g.add(at(box(4.6, 0.25, 2.8, C.woodDark, { kind: 'planks' }), 0, 0, 0));
+  for (const [x, z] of [[-2.1, -1.2], [2.1, -1.2], [-2.1, 1.2], [2.1, 1.2]]) g.add(at(box(0.18, 2.9, 0.18, C.wood), x, 0.2, z));
+  // Striped awning.
+  for (let i = 0; i < 6; i++) {
+    const stripe = at(box(0.78, 0.08, 3.3, i % 2 ? 0xf5f0e7 : C.red, { kind: 'fabric' }), -1.95 + i * 0.78, 3.2, 0.1);
+    stripe.rotation.x = -0.18;
+    g.add(stripe);
+  }
+  for (let i = 0; i < 6; i++) g.add(at(cone(0.22, 0.32, i % 2 ? 0xf5f0e7 : C.red, 3, { kind: 'fabric' }), -1.95 + i * 0.78, 2.72, 1.75, Math.PI));
+  // Counter with goods.
+  g.add(at(box(4.0, 1.0, 0.9, C.wood, { kind: 'planks' }), 0, 0.25, 0.9));
+  const goods = [[0xf26b6b, ball], [0xffd24a, ball], [0x6fae4f, ball], [C.gold, null], [0x7a4bc2, null]];
+  goods.forEach(([c, kind], i) => {
+    const x = -1.6 + i * 0.8;
+    g.add(at(cyl(0.32, 0.26, 0.2, C.woodDark, 8), x, 1.25, 0.9));
+    if (kind) for (let k = 0; k < 3; k++) g.add(at(ball(0.12, c, 0), x + (k - 1) * 0.12, 1.5, 0.9 + (k % 2) * 0.08));
+    else g.add(at(box(0.32, 0.3, 0.32, c, { metal: c === C.gold ? 0.7 : 0 }), x, 1.45, 0.9));
+  });
+  g.add(at(box(0.7, 0.7, 0.7, C.wood, { kind: 'planks' }), -2.7, 0, 1.6, 0.3), at(cyl(0.38, 0.38, 0.9, C.woodDark, 8, { kind: 'planks' }), 2.7, 0, 1.4));
+  // Sign.
+  g.add(at(box(2.0, 0.6, 0.08, C.wood, { kind: 'planks' }), 0, 3.55, 1.6), at(box(1.6, 0.32, 0.02, C.gold), 0, 3.69, 1.65));
+  g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  return g;
+}

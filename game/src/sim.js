@@ -81,6 +81,11 @@ export function newState(now = Date.now()) {
     quest: { step: 0 },
     stats: { collected: 0, raidersBeaten: 0, bossesBeaten: 0, chestsOpened: 0, handedIn: 0, campsCleared: 0, treasures: 0, realmBosses: {} },
     settings: { muted: false },
+    review: { cards: [], nextId: 1, learned: 0 },
+    market: { day: null, offers: [] },
+    decor: [],
+    decorNext: 1,
+    decorUnlocked: [],
     createdAt: now,
     lastTick: now,
   };
@@ -515,7 +520,10 @@ export function finishStudy(state, now = Date.now()) {
   study.log = [...(study.log || []), { at: now, itemId: item ? item.id : null, courseId: item ? item.courseId : null, minutes }].slice(-400);
   result.coins = Math.round(Math.max(12 * minutes, baseIncome(state) * 20 * minutes));
   addCoins(state, result.coins);
-  Object.assign(result, addXp(state, minutes * XP_PER_MINUTE * (complete ? XP_FULL_SESSION : 1) * heroStats(state).studyXp));
+  // A cup of study tea from the market makes this session pay half again.
+  const tea = study.tea > 0 ? (study.tea -= 1, 1 + TEA_BOOST) : 1;
+  result.tea = tea > 1;
+  Object.assign(result, addXp(state, minutes * XP_PER_MINUTE * (complete ? XP_FULL_SESSION : 1) * heroStats(state).studyXp * tea));
   if (!complete) return result;
 
   const today = dayOf(now);
@@ -1004,6 +1012,189 @@ export function demoSemester(now = Date.now()) {
   ];
 }
 
+// --- Review: missed practice questions come back (spaced repetition) ---------
+// A question you got wrong is saved and asked again 1, 3 and 7 days later.
+// Right on the last one and it is learned. A miss sends it back to day 1.
+export const REVIEW_GAPS = [1, 3, 7]; // days
+export const REVIEW_RIGHT_MINUTES = 10; // twice a practice answer: remembering is what counts
+export const REVIEW_MAX = 150;
+
+/** Saves a missed question for review. q: { q, choices, answer, why }. */
+export function addReview(state, item, q, now = Date.now()) {
+  const cards = state.review.cards;
+  if (cards.some((c) => c.q === q.q)) return null;
+  const card = { id: `r${state.review.nextId++}`, itemId: item?.id || null, courseId: item?.courseId || null, course: item?.courseName || '', from: item?.name || '', q: q.q, choices: q.choices, answer: q.answer, why: q.why || '', box: 0, due: now + REVIEW_GAPS[0] * DAY };
+  cards.push(card);
+  if (cards.length > REVIEW_MAX) cards.splice(0, cards.length - REVIEW_MAX);
+  return card;
+}
+
+export const dueReviews = (state, now = Date.now()) => state.review.cards.filter((c) => c.due <= now);
+
+/**
+ * Answers one review card. Right moves it to the next gap (or retires it);
+ * wrong starts it over. Right answers count as study for the item they came
+ * from, which breaks an exam's armor. Returns { learned, minutes, xp, ... }.
+ */
+export function answerReview(state, cardId, right, now = Date.now()) {
+  const cards = state.review.cards;
+  const i = cards.findIndex((c) => c.id === cardId);
+  if (i < 0) return null;
+  const card = cards[i];
+  const out = { learned: false, minutes: 0, prepared: false };
+  if (right) {
+    card.box += 1;
+    if (card.box >= REVIEW_GAPS.length) {
+      cards.splice(i, 1);
+      out.learned = true;
+      state.review.learned += 1;
+    } else card.due = now + REVIEW_GAPS[card.box] * DAY;
+    const item = card.itemId ? state.school.items[card.itemId] : null;
+    if (item) {
+      const before = studyProgress(state, item);
+      const study = state.study;
+      out.minutes = REVIEW_RIGHT_MINUTES;
+      study.minutes[item.id] = (study.minutes[item.id] || 0) + out.minutes;
+      study.courses[item.courseId] = (study.courses[item.courseId] || 0) + out.minutes;
+      study.log = [...(study.log || []), { at: now, itemId: item.id, courseId: item.courseId, minutes: out.minutes }].slice(-400);
+      out.prepared = before < 1 && studyProgress(state, item) >= 1;
+    } else if (card.courseId) {
+      state.study.courses[card.courseId] = (state.study.courses[card.courseId] || 0) + REVIEW_RIGHT_MINUTES;
+    }
+  } else {
+    card.box = 0;
+    card.due = now + REVIEW_GAPS[0] * DAY;
+  }
+  return Object.assign(out, addXp(state, right ? 2 * PRACTICE_XP * heroStats(state).studyXp : 0));
+}
+
+// --- Class halls: one building per course, growing with study --------------
+// Floors come from course mastery (15, 60, 135... minutes studied).
+
+/** Every course the game knows, with the floors its hall has. */
+export function courseHalls(state) {
+  const seen = new Map();
+  for (const a of Object.values(state.school.items)) if (a.courseId && !seen.has(a.courseId)) seen.set(a.courseId, a.courseName || 'Course');
+  return [...seen].map(([id, name]) => ({ id, name, level: mastery(state, id), minutes: Math.round(state.study.courses[id] || 0) }));
+}
+
+// --- Market -----------------------------------------------------------------
+// New stock every day: gear, a look, a study tea, and a rare decoration.
+
+function seededRng(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const price = (state, seconds, floor) => Math.round(Math.max(floor, baseIncome(state) * seconds));
+export const TEA_BOOST = 0.5; // the next study session pays 50% more XP
+
+/** Today's stock. Rolled once a day and kept, so it doesn't change on reload. */
+export function marketStock(state, now = Date.now()) {
+  const day = dayOf(now);
+  const m = state.market;
+  if (m.day === day && m.offers.length) return m.offers;
+  const rng = seededRng([...day].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 17) ^ (state.hero.level * 7919));
+  const offers = [];
+  const gearRarity = () => (rng() < 0.15 ? 'legendary' : rng() < 0.5 ? 'epic' : 'rare');
+  for (const slot of SLOTS) {
+    const rarity = gearRarity();
+    const item = rollGear(state, rarity, rng, slot);
+    offers.push({ kind: 'gear', item, price: price(state, { rare: 900, epic: 2400, legendary: 6000 }[rarity], { rare: 400, epic: 1500, legendary: 6000 }[rarity]), sold: false });
+  }
+  const looks = COSMETICS.filter((c) => !state.cosmetics.owned.includes(c));
+  for (let k = 0; k < 2 && looks.length; k++) {
+    const id = looks.splice(Math.floor(rng() * looks.length), 1)[0];
+    offers.push({ kind: 'look', id, price: price(state, 1200, 600), sold: false });
+  }
+  offers.push({ kind: 'tea', price: price(state, 300, 150), sold: false });
+  const rare = Object.keys(DECOR).filter((k) => DECOR[k].market && !state.decorUnlocked.includes(k));
+  if (rare.length) offers.push({ kind: 'decor', id: rare[Math.floor(rng() * rare.length)], price: price(state, 3000, 2500), sold: false });
+  m.day = day;
+  m.offers = offers;
+  return offers;
+}
+
+/** Buys offer i. Returns what was bought, or null if it can't be. */
+export function buyOffer(state, i, now = Date.now()) {
+  const offer = marketStock(state, now)[i];
+  if (!offer || offer.sold || state.coins < offer.price) return null;
+  state.coins -= offer.price;
+  offer.sold = true;
+  if (offer.kind === 'gear') return { offer, ...addGear(state, { ...offer.item, id: `g${state.hero.nextId++}` }) };
+  if (offer.kind === 'look') state.cosmetics.owned.push(offer.id);
+  else if (offer.kind === 'tea') state.study.tea = (state.study.tea || 0) + 1;
+  else if (offer.kind === 'decor') state.decorUnlocked.push(offer.id);
+  return { offer };
+}
+
+/** Sells every bag item weaker than what is worn in its slot. Returns coins made. */
+export function sellJunk(state) {
+  const hero = state.hero;
+  let coins = 0;
+  for (const item of [...hero.bag]) {
+    if (gearScore(item) <= gearScore(hero.gear[item.slot])) {
+      coins += sellValue(item);
+      hero.bag.splice(hero.bag.indexOf(item), 1);
+    }
+  }
+  addCoins(state, coins);
+  return coins;
+}
+
+// --- Decorations: build mode, placed anywhere in town ------------------------
+// cost is in seconds of town income (with a floor); market ones are unlocked
+// by buying them once at the market.
+export const DECOR = {
+  fence: { name: 'Fence', seconds: 20, floor: 20, solid: 0.6 },
+  path: { name: 'Path stones', seconds: 15, floor: 15, solid: 0 },
+  flowers: { name: 'Flower bed', seconds: 30, floor: 30, solid: 0 },
+  bush: { name: 'Bush', seconds: 30, floor: 30, solid: 0.7 },
+  tree: { name: 'Tree', seconds: 60, floor: 60, solid: 0.8 },
+  rocks: { name: 'Rocks', seconds: 40, floor: 40, solid: 0.9 },
+  lamp: { name: 'Lamp post', seconds: 90, floor: 90, solid: 0.4 },
+  bench: { name: 'Bench', seconds: 90, floor: 90, solid: 0.8 },
+  banner: { name: 'Banner', seconds: 120, floor: 120, solid: 0.3 },
+  crates: { name: 'Crates', seconds: 60, floor: 60, solid: 0.9 },
+  well: { name: 'Well', seconds: 300, floor: 300, solid: 1.3 },
+  statue: { name: 'Statue', seconds: 600, floor: 600, solid: 1.1 },
+  fountain: { name: 'Fountain', seconds: 1500, floor: 1500, solid: 2.2, market: true },
+  totem: { name: 'Totem', seconds: 1200, floor: 1200, solid: 0.8, market: true },
+  gold: { name: 'Golden statue', seconds: 2400, floor: 2400, solid: 1.1, market: true },
+  tent: { name: 'Tent', seconds: 900, floor: 900, solid: 1.8, market: true },
+};
+export const DECOR_MAX = 160;
+
+export const decorCost = (state, type) => price(state, DECOR[type].seconds, DECOR[type].floor);
+export const decorAvailable = (state) => Object.keys(DECOR).filter((k) => !DECOR[k].market || state.decorUnlocked.includes(k));
+
+/** Places a decoration; costs coins. Returns the piece, or null. */
+export function placeDecor(state, type, x, z, rot = 0) {
+  if (!DECOR[type] || !decorAvailable(state).includes(type) || state.decor.length >= DECOR_MAX) return null;
+  const cost = decorCost(state, type);
+  if (state.coins < cost) return null;
+  state.coins -= cost;
+  const piece = { id: state.decorNext++, type, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, rot: Math.round(rot * 100) / 100, paid: cost };
+  state.decor.push(piece);
+  return piece;
+}
+
+/** Takes a decoration back for half what it cost. */
+export function removeDecor(state, id) {
+  const i = state.decor.findIndex((d) => d.id === id);
+  if (i < 0) return 0;
+  const [piece] = state.decor.splice(i, 1);
+  const back = Math.floor((piece.paid || 0) / 2);
+  addCoins(state, back);
+  return back;
+}
+
 // --- Saving ---------------------------------------------------------------------
 
 export function serialize(state) {
@@ -1034,6 +1225,8 @@ export function deserialize(text, now = Date.now()) {
     // A save from before heroes existed: the minutes already studied still count.
     if (!saved.hero && state.study.total > 0) addXp(state, state.study.total * XP_PER_MINUTE);
     state.settings = { ...fresh.settings, ...(saved.settings || {}) };
+    state.review = { ...fresh.review, ...(saved.review || {}) };
+    state.market = { ...fresh.market, ...(saved.market || {}) };
     return state;
   } catch {
     return fresh;

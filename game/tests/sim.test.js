@@ -344,6 +344,82 @@ test('practice answers strip exam armor, capped per day, and pay XP', () => {
   assert.strictEqual(S.finishPractice(s, null, 3, 0, NOW).minutes, 0);
 });
 
+test('missed questions come back after 1, 3 and 7 days and break armor when remembered', () => {
+  const s = rich();
+  S.syncSchool(s, [{ id: 'm', name: 'Midterm exam', courseId: 'c', courseName: 'Physics', dueAt: NOW + 20 * DAY, pointsPossible: 100, weight: 30, submitted: false }], NOW, { source: 'soma' });
+  const q = { q: 'What is F?', choices: ['ma', 'mv', 'm/a', 'a/m'], answer: 0, why: 'Newton' };
+  const card = S.addReview(s, s.school.items.m, q, NOW);
+  assert.strictEqual(S.addReview(s, s.school.items.m, q, NOW), null); // no duplicates
+  assert.strictEqual(S.dueReviews(s, NOW).length, 0);
+  assert.strictEqual(S.dueReviews(s, NOW + DAY).length, 1);
+  let r = S.answerReview(s, card.id, true, NOW + DAY);
+  assert.strictEqual(r.minutes, S.REVIEW_RIGHT_MINUTES);
+  assert.ok(S.examArmor(s, s.school.items.m) < 1);
+  assert.strictEqual(card.due, NOW + 4 * DAY);
+  r = S.answerReview(s, card.id, false, NOW + 4 * DAY);
+  assert.strictEqual(card.box, 0);
+  assert.strictEqual(card.due, NOW + 5 * DAY);
+  S.answerReview(s, card.id, true, NOW + 5 * DAY);
+  S.answerReview(s, card.id, true, NOW + 8 * DAY);
+  r = S.answerReview(s, card.id, true, NOW + 15 * DAY);
+  assert.ok(r.learned);
+  assert.strictEqual(s.review.cards.length, 0);
+  assert.strictEqual(s.review.learned, 1);
+});
+
+test('class halls grow with study for that course', () => {
+  const s = rich();
+  S.syncSchool(s, [item({ id: 'a', courseId: 'p', courseName: 'Physics' }), item({ id: 'b', courseId: 'w', courseName: 'Writing' })], NOW, { source: 'soma' });
+  s.study.courses.p = 60;
+  const halls = Object.fromEntries(S.courseHalls(s).map((h) => [h.id, h]));
+  assert.strictEqual(halls.p.level, 2);
+  assert.strictEqual(halls.w.level, 0);
+});
+
+test('the market keeps one stock per day, sells once, and tea boosts the next session', () => {
+  const s = rich(1e9);
+  const a = S.marketStock(s, NOW);
+  assert.deepStrictEqual(S.marketStock(s, NOW + 1000), a);
+  assert.ok(a.some((o) => o.kind === 'gear') && a.some((o) => o.kind === 'tea'));
+  const coins = s.coins;
+  const tea = a.findIndex((o) => o.kind === 'tea');
+  assert.ok(S.buyOffer(s, tea, NOW));
+  assert.strictEqual(S.buyOffer(s, tea, NOW), null);
+  assert.strictEqual(s.coins, coins - a[tea].price);
+  S.startStudy(s, null, 10, NOW);
+  const boosted = S.finishStudy(s, NOW + 10 * 60_000);
+  assert.ok(boosted.tea);
+  S.startStudy(s, null, 10, NOW + DAY);
+  const plain = S.finishStudy(s, NOW + DAY + 10 * 60_000);
+  assert.ok(!plain.tea);
+  const decor = a.findIndex((o) => o.kind === 'decor');
+  if (decor >= 0) { S.buyOffer(s, decor, NOW); assert.ok(S.decorAvailable(s).includes(a[decor].id)); }
+  assert.notDeepStrictEqual(S.marketStock(s, NOW + 2 * DAY).map((o) => o.price), []);
+});
+
+test('decorations cost coins, refund half, and market ones need unlocking', () => {
+  const s = rich(1e6);
+  const coins = s.coins;
+  const piece = S.placeDecor(s, 'lamp', 3, 4, 1);
+  assert.ok(piece);
+  assert.strictEqual(s.coins, coins - piece.paid);
+  assert.strictEqual(S.placeDecor(s, 'fountain', 0, 0), null);
+  assert.strictEqual(S.removeDecor(s, piece.id), Math.floor(piece.paid / 2));
+  assert.strictEqual(s.decor.length, 0);
+  const poor = rich(0);
+  assert.strictEqual(S.placeDecor(poor, 'lamp', 0, 0), null);
+});
+
+test('selling junk keeps anything better than what is worn', () => {
+  const s = rich(0);
+  s.hero.gear.weapon = { ...S.rollGear(s, 'epic', () => 0.1, 'weapon'), might: 50 };
+  s.hero.bag.push({ ...S.rollGear(s, 'common', () => 0.1, 'weapon'), might: 5 }, { ...S.rollGear(s, 'legendary', () => 0.1, 'weapon'), might: 90 });
+  const made = S.sellJunk(s);
+  assert.ok(made > 0);
+  assert.strictEqual(s.hero.bag.length, 1);
+  assert.strictEqual(s.hero.bag[0].might, 90);
+});
+
 test('camps and treasure come back the next day, shrines pay once ever', () => {
   const s = rich(0);
   assert.ok(!S.exploreDone(s, 'wilds:camp:0', NOW));

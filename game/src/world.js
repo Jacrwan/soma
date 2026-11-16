@@ -28,6 +28,9 @@ const EARTH_PAD_POS = [
 ];
 const MOON_PAD_POS = Array.from({ length: MOON_PADS }, (_, i) => polar(13, i * 45 + 22.5));
 const WONDER_POS = [198, 228, 258, 282, 312, 342].map((deg) => polar(35, deg));
+// The market and one hall per class (game.js): the forest keeps clear of them.
+export const MARKET_POS = polar(16, 30);
+export const HALL_SLOTS = [32, 54, 126, 148, 10, 170].map((deg) => polar(31, deg));
 WONDER_POS.push(STARGATE_POS);
 
 export function padPosition(scene, i) {
@@ -389,6 +392,8 @@ export function createWorld(scene, renderer) {
     if (Math.hypot(x - DOCK_POS.x, z - DOCK_POS.z) < 6.5) return true;
     for (const p of EARTH_PAD_POS) if (Math.hypot(x - p.x, z - p.z) < 4.6) return true;
     for (const p of WONDER_POS.slice(0, 6)) if (Math.hypot(x - p.x, z - p.z) < 7.4) return true;
+    if (Math.hypot(x - MARKET_POS.x, z - MARKET_POS.z) < 5.5) return true;
+    for (const p of HALL_SLOTS) if (Math.hypot(x - p.x, z - p.z) < 5.5) return true;
     return false;
   }
   function grassAllowed(x, z) {
