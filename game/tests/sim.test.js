@@ -420,6 +420,76 @@ test('selling junk keeps anything better than what is worn', () => {
   assert.strictEqual(s.hero.bag[0].might, 90);
 });
 
+test('villagers move in as the town grows, one every 6 hours after the first two', () => {
+  const s = rich();
+  assert.strictEqual(S.villagerRoom(s), 2);
+  assert.ok(S.moveIn(s, NOW));
+  assert.ok(S.moveIn(s, NOW));
+  assert.strictEqual(S.moveIn(s, NOW), null); // full
+  S.build(s, 0, 'home');
+  assert.strictEqual(S.villagerRoom(s), 3);
+  assert.strictEqual(S.moveIn(s, NOW + HOUR), null); // too soon
+  const third = S.moveIn(s, NOW + 7 * HOUR);
+  assert.ok(third);
+  assert.strictEqual(new Set(s.villagers.list.map((p) => p.name)).size, 3);
+});
+
+test('a wrecked town and late work drive villagers away; they stay gone for 3 days', () => {
+  const s = rich();
+  S.moveIn(s, NOW); S.moveIn(s, NOW);
+  S.syncSchool(s, [item({ id: 'x', dueAt: NOW + HOUR })], NOW, { source: 'soma' });
+  assert.deepStrictEqual(S.villagersFeel(s, -30, NOW), []);
+  assert.strictEqual(s.villagers.list[0].mood, 40);
+  const day = S.villagerDay(s, NOW + 2 * HOUR);
+  assert.strictEqual(day.late, 1);
+  assert.strictEqual(s.villagers.list[0].mood, 36);
+  assert.strictEqual(S.villagerDay(s, NOW + 3 * HOUR), null); // once a day
+  const left = S.villagersFeel(s, -100, NOW + 4 * HOUR);
+  assert.strictEqual(left.length, 2);
+  assert.strictEqual(s.villagers.list.length, 0);
+  const gone = new Set(left.map((p) => p.name));
+  const next = S.moveIn(s, NOW + DAY);
+  assert.ok(next && !gone.has(next.name)); // someone new, not the ones who just left
+  s.villagers.list = [];
+  s.villagers.lastArrival = 0;
+  const back = [S.moveIn(s, NOW + 4 * DAY), S.moveIn(s, NOW + 4 * DAY)].map((p) => p.name);
+  assert.ok(back.some((n) => gone.has(n))); // after 3 days they can come back
+});
+
+test('villager quests track real progress and pay once; talking and gifts are daily', () => {
+  const s = rich();
+  S.syncSchool(s, [item({ id: 'a', courseId: 'p', courseName: 'Physics', dueAt: NOW + 3 * DAY })], NOW, { source: 'soma' });
+  const p = S.moveIn(s, NOW);
+  p.quest = { type: 'studyAny', target: 30, text: 'Study for 30 minutes', day: 'x', done: false, reward: { coins: 500, friend: 12 }, base: s.study.total };
+  assert.strictEqual(S.claimVillagerQuest(s, p.name), null);
+  S.startStudy(s, null, 30, NOW);
+  S.finishStudy(s, NOW + 30 * 60_000);
+  assert.strictEqual(S.questProgress(s, p.quest), 30);
+  const coins = s.coins;
+  assert.deepStrictEqual(S.claimVillagerQuest(s, p.name), { coins: 500, friend: 12 });
+  assert.strictEqual(s.coins, coins + 500);
+  assert.strictEqual(S.claimVillagerQuest(s, p.name), null);
+  assert.ok(S.talkTo(s, p.name, NOW));
+  assert.ok(!S.talkTo(s, p.name, NOW + 1000));
+  assert.strictEqual(S.villagerGift(s, p.name, NOW), null); // not friends yet
+  p.friend = 85;
+  assert.deepStrictEqual(S.villagerGift(s, p.name, NOW), { tea: 1 });
+  assert.strictEqual(S.villagerGift(s, p.name, NOW), null);
+  const q = S.makeVillagerQuest(s, p, NOW);
+  assert.ok(q.text && q.target > 0 && q.base >= 0);
+});
+
+test('villagers talk about your real situation', () => {
+  const s = rich();
+  S.syncSchool(s, [item({ id: 'late', name: 'Lab Report', dueAt: NOW - 2 * HOUR }), { id: 'm', name: 'Midterm exam', courseId: 'c', courseName: 'Physics', dueAt: NOW + 2 * DAY, pointsPossible: 100, weight: 30, submitted: false }], NOW - DAY, { source: 'soma' });
+  const p = S.moveIn(s, NOW);
+  const said = Array.from({ length: 12 }, (_, k) => S.villagerLine(s, p, NOW, k));
+  assert.ok(said.some((l) => l.includes('Lab Report')));
+  assert.ok(said.some((l) => l.includes('Midterm exam') && l.includes('armor')));
+  p.mood = 10;
+  assert.ok(S.villagerLine(s, p, NOW, 0).includes('packing'));
+});
+
 test('camps and treasure come back the next day, shrines pay once ever', () => {
   const s = rich(0);
   assert.ok(!S.exploreDone(s, 'wilds:camp:0', NOW));

@@ -300,3 +300,53 @@ export function createAvatar({ tint, hat, weapon, weaponLook = 0 }) {
   };
   return root;
 }
+
+/**
+ * A villager: any hero model without weapons or hats-for-battle, with walk,
+ * idle, sit and cheer. Resolves to an object whose userData.villager.update
+ * takes (dt, mode) where mode is 'idle' | 'walk' | 'sit' | 'cheer'.
+ */
+export function createVillager(lookId, { tint = null, scale = 0.88 } = {}) {
+  const char = byId(lookId);
+  return load(char).then(({ gltf, fit }) => {
+    const model = cloneSkinned(gltf.scene);
+    const root = new THREE.Group();
+    root.add(model);
+    model.scale.setScalar(fit * scale);
+    model.traverse((o) => {
+      if (!o.isMesh) return;
+      o.castShadow = true;
+      o.frustumCulled = false;
+      o.material = o.material.clone();
+      o.material.roughness = 0.85;
+      o.material.metalness = 0;
+      if (tint) o.material.color.lerp(new THREE.Color(tint), 0.35);
+    });
+    for (const name of [...char.hide, char.weapon, char.great]) {
+      const part = model.getObjectByName(name);
+      if (part) part.visible = false;
+    }
+    const mixer = new THREE.AnimationMixer(model);
+    const actions = {};
+    const clips = { idle: 'Unarmed_Idle', walk: 'Walking_A', sit: 'Sit_Floor_Idle', cheer: 'Cheer' };
+    for (const [mode, name] of Object.entries(clips)) {
+      const clip = gltf.animations.find((a) => a.name === name) || gltf.animations.find((a) => a.name === 'Idle');
+      if (clip) actions[mode] = mixer.clipAction(clip);
+    }
+    let now = null;
+    // Start each villager at a different point in its loop so a crowd doesn't move in lockstep.
+    mixer.setTime(Math.random() * 3);
+    root.userData.villager = {
+      update(dt, mode = 'idle') {
+        const next = actions[mode] || actions.idle;
+        if (next && next !== now) {
+          next.reset().fadeIn(0.25).play();
+          if (now) now.fadeOut(0.25);
+          now = next;
+        }
+        mixer.update(dt);
+      },
+    };
+    return root;
+  });
+}

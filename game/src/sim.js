@@ -86,6 +86,7 @@ export function newState(now = Date.now()) {
     decor: [],
     decorNext: 1,
     decorUnlocked: [],
+    villagers: { list: [], away: {}, lastArrival: 0, day: null },
     createdAt: now,
     lastTick: now,
   };
@@ -564,6 +565,7 @@ export function finishPractice(state, itemId, right, wrong, now = Date.now()) {
   const room = item ? practiceRoom(state, itemId, now) : 0;
   const minutes = Math.min(room, right * PRACTICE_RIGHT_MINUTES + wrong * PRACTICE_WRONG_MINUTES);
   const result = { minutes, prepared: false, capped: Boolean(item) && minutes < right * PRACTICE_RIGHT_MINUTES + wrong * PRACTICE_WRONG_MINUTES };
+  state.stats.practiceRight = (state.stats.practiceRight || 0) + right;
   if (item && minutes > 0) {
     const before = studyProgress(state, item);
     const study = state.study;
@@ -742,6 +744,7 @@ export function resolveExams(state, now = Date.now()) {
       if (outcome === 'wrecked') event.wrecked = wreckBuilding(state);
     }
     seen.exam = { outcome, armor, at: now };
+    event.left = villagersFeel(state, { held: 10, dented: -12, wrecked: -30 }[outcome], now);
     events.push(event);
   }
   return events;
@@ -1042,6 +1045,7 @@ export function answerReview(state, cardId, right, now = Date.now()) {
   if (i < 0) return null;
   const card = cards[i];
   const out = { learned: false, minutes: 0, prepared: false };
+  state.stats.reviewed = (state.stats.reviewed || 0) + 1;
   if (right) {
     card.box += 1;
     if (card.box >= REVIEW_GAPS.length) {
@@ -1195,6 +1199,201 @@ export function removeDecor(state, id) {
   return back;
 }
 
+// --- Villagers --------------------------------------------------------------
+// People move in as the town grows, walk around, talk about your real
+// schoolwork, give a small quest each day, and pack up and leave if the town
+// keeps getting wrecked on exam day or work keeps going late.
+
+export const VILLAGERS = [
+  { name: 'Mira', role: 'Herbalist', look: 'rogue' },
+  { name: 'Tobin', role: 'Smith', look: 'barbarian' },
+  { name: 'Odo', role: 'Scholar', look: 'mage' },
+  { name: 'Wren', role: 'Bard', look: 'hooded' },
+  { name: 'Bram', role: 'Guard', look: 'knight' },
+  { name: 'Juna', role: 'Baker', look: 'rogue' },
+  { name: 'Pell', role: 'Farmer', look: 'barbarian' },
+  { name: 'Sela', role: 'Merchant', look: 'hooded' },
+];
+export const VILLAGER_MAX = VILLAGERS.length;
+const MOVE_IN_GAP = 6 * 3600000; // one arrival every 6 hours at most (the first two come at once)
+
+/** How many people the town can hold: two to start, one more per building and per class hall with a floor. */
+export function villagerRoom(state) {
+  const built = state.pads.earth.filter(Boolean).length;
+  const halls = courseHalls(state).filter((h) => h.level > 0).length;
+  return Math.min(VILLAGER_MAX, 2 + built + halls);
+}
+
+/** Moves someone in if there's room. Returns the newcomer or null. */
+export function moveIn(state, now = Date.now()) {
+  const v = state.villagers;
+  if (v.list.length >= villagerRoom(state)) return null;
+  if (v.list.length >= 2 && now - (v.lastArrival || 0) < MOVE_IN_GAP) return null;
+  const taken = new Set(v.list.map((p) => p.name));
+  const pick = VILLAGERS.find((p) => !taken.has(p.name) && !(v.away[p.name] > now));
+  if (!pick) return null;
+  const person = { ...pick, mood: 70, friend: 0, joined: now, talked: null, gift: null, quest: null };
+  person.quest = makeVillagerQuest(state, person, now);
+  v.list.push(person);
+  v.lastArrival = now;
+  return person;
+}
+
+/** Everyone's mood moves by delta. Anyone who hits 0 leaves (and won't come back for 3 days). Returns who left. */
+export function villagersFeel(state, delta, now = Date.now()) {
+  const v = state.villagers;
+  if (!v) return [];
+  const left = [];
+  for (const p of [...v.list]) {
+    p.mood = Math.max(0, Math.min(100, p.mood + delta));
+    if (p.mood <= 0) {
+      v.list.splice(v.list.indexOf(p), 1);
+      v.away[p.name] = now + 3 * DAY;
+      left.push(p);
+    }
+  }
+  return left;
+}
+
+/**
+ * Once a day: late work wears everyone down (4 mood per late piece), a
+ * clean day cheers them up, and each person gets a fresh quest.
+ * Returns { left: [...], day } or null if today was already done.
+ */
+export function villagerDay(state, now = Date.now()) {
+  const v = state.villagers;
+  const today = dayOf(now);
+  if (v.day === today) return null;
+  v.day = today;
+  const late = lateItems(state, now).length;
+  const left = villagersFeel(state, late ? -4 * late : 5, now);
+  for (const p of v.list) if (!p.quest || p.quest.day !== today) p.quest = makeVillagerQuest(state, p, now);
+  return { left, late };
+}
+
+const statNow = {
+  study: (state, q) => state.study.courses[q.courseId] || 0,
+  studyAny: (state) => state.study.total || 0,
+  handin: (state) => state.stats.handedIn || 0,
+  review: (state) => state.stats.reviewed || 0,
+  practice: (state) => state.stats.practiceRight || 0,
+  build: (state, q) => state.decor.filter((d) => d.type === q.decor).length,
+  camp: (state) => state.stats.campsCleared || 0,
+};
+
+/** A small quest that fits the person and what's on your plate today. */
+export function makeVillagerQuest(state, person, now = Date.now()) {
+  const next = threats(state, now).map((t) => t.item).sort((a, b) => a.dueAt - b.dueAt);
+  const exam = next.find((a) => a.kind === 'boss');
+  const work = next.find((a) => a.kind !== 'boss');
+  const pay = Math.round(Math.max(120, baseIncome(state) * 240));
+  const options = [];
+  if (exam) options.push({ type: 'study', courseId: exam.courseId, courseName: exam.courseName, target: 25, text: `Study ${exam.courseName} for 25 minutes. ${exam.name} is coming.` });
+  if (work) options.push({ type: 'study', courseId: work.courseId, courseName: work.courseName, target: 20, text: `Put 20 minutes into ${work.courseName}.` });
+  if (state.review.cards.length) options.push({ type: 'review', target: 5, text: 'Go over 5 missed questions by the board.' });
+  if (next.length) options.push({ type: 'handin', target: 1, text: 'Hand in one thing on Canvas.' });
+  options.push({ type: 'practice', target: 4, text: 'Get 4 practice questions right (P).' });
+  options.push({ type: 'studyAny', target: 30, text: 'Study for 30 minutes, anything at all.' });
+  const decor = { Herbalist: 'flowers', Smith: 'lamp', Farmer: 'bush', Baker: 'bench', Guard: 'fence', Bard: 'banner', Merchant: 'crates', Scholar: 'statue' }[person.role];
+  if (decor) options.push({ type: 'build', decor, target: decor === 'fence' ? 3 : 1, text: `Build ${decor === 'fence' ? '3 fences' : `a ${DECOR[decor].name.toLowerCase()}`} somewhere in town (B).` });
+  if (person.role === 'Guard') options.push({ type: 'camp', target: 1, text: 'Clear a camp out in the Wilds.' });
+  // Each person leans toward their kind of task; the Scholar always pushes study.
+  const leaning = { Scholar: ['study', 'practice', 'review'], Smith: ['build', 'studyAny'], Guard: ['camp', 'handin'], Herbalist: ['build', 'review'], Bard: ['practice', 'studyAny'], Baker: ['build', 'handin'], Farmer: ['build', 'study'], Merchant: ['handin', 'build'] }[person.role] || [];
+  const seed = [...`${person.name}${dayOf(now)}`].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 3);
+  const preferred = options.filter((o) => leaning.includes(o.type));
+  const pool = preferred.length && seed % 3 !== 0 ? preferred : options;
+  const q = { ...pool[seed % pool.length], day: dayOf(now), done: false, reward: { coins: pay, friend: 12 } };
+  q.base = statNow[q.type](state, q);
+  return q;
+}
+
+export function questProgress(state, q) {
+  if (!q) return 0;
+  return Math.max(0, Math.min(q.target, Math.floor(statNow[q.type](state, q) - q.base)));
+}
+
+/** Talking: once a day it's worth a little friendship. Returns true the first time today. */
+export function talkTo(state, name, now = Date.now()) {
+  const p = state.villagers.list.find((x) => x.name === name);
+  if (!p || p.talked === dayOf(now)) return false;
+  p.talked = dayOf(now);
+  p.friend = Math.min(100, p.friend + 2);
+  return true;
+}
+
+/** Hands in a finished villager quest. Returns { coins, friend, mood } or null. */
+export function claimVillagerQuest(state, name) {
+  const p = state.villagers.list.find((x) => x.name === name);
+  if (!p || !p.quest || p.quest.done || questProgress(state, p.quest) < p.quest.target) return null;
+  p.quest.done = true;
+  p.friend = Math.min(100, p.friend + p.quest.reward.friend);
+  p.mood = Math.min(100, p.mood + 8);
+  addCoins(state, p.quest.reward.coins);
+  return { coins: p.quest.reward.coins, friend: p.quest.reward.friend };
+}
+
+/** Good friends (50+) leave a small gift once a day: coins, or study tea at 80+. */
+export function villagerGift(state, name, now = Date.now()) {
+  const p = state.villagers.list.find((x) => x.name === name);
+  if (!p || p.friend < 50 || p.gift === dayOf(now)) return null;
+  p.gift = dayOf(now);
+  if (p.friend >= 80) {
+    state.study.tea = (state.study.tea || 0) + 1;
+    return { tea: 1 };
+  }
+  const coins = Math.round(Math.max(200, baseIncome(state) * 600));
+  addCoins(state, coins);
+  return { coins };
+}
+
+export function giftReady(state, name, now = Date.now()) {
+  const p = state.villagers.list.find((x) => x.name === name);
+  return Boolean(p && p.friend >= 50 && p.gift !== dayOf(now));
+}
+
+const ago = (ms) => (ms < 3600000 ? `${Math.max(1, Math.round(ms / 60000))} minutes` : ms < DAY ? `${Math.round(ms / 3600000)} hours` : `${Math.round(ms / DAY)} days`);
+
+/**
+ * Something this person would say right now, from your real school
+ * situation. k picks among the things that apply, so lines vary.
+ */
+export function villagerLine(state, person, now = Date.now(), k = 0) {
+  const lines = [];
+  const late = lateItems(state, now);
+  const next = threats(state, now).map((t) => t.item).sort((a, b) => a.dueAt - b.dueAt);
+  const exam = next.find((a) => a.kind === 'boss');
+  const soon = next.find((a) => a.kind !== 'boss' && a.dueAt > now && a.dueAt - now < DAY);
+  if (person.mood < 30) lines.push(person.mood < 15 ? "I've started packing. One more bad day and I'm gone." : "Honestly? This town's been rough lately. I'm thinking about leaving.");
+  if (late.length) lines.push(late.length === 1 ? `${late[0].name} has been chasing you around for ${ago(now - late[0].dueAt)}. Just hand it in.` : `${late.length} late things are stomping around town. It's getting loud.`);
+  if (soon) lines.push(`${soon.name} is due in ${ago(soon.dueAt - now)}. It's already inside the walls, you know.`);
+  if (exam) {
+    const armor = Math.round(examArmor(state, exam) * 100);
+    lines.push(armor > 60 ? `${exam.name} still has ${armor}% of its armor. If it hits the gate like that, it's taking a building with it.`
+      : armor > 20 ? `${exam.name} is down to ${armor}% armor. A bit more studying and the gate holds.`
+        : `${exam.name} is barely armored now. Whatever you did, keep doing it.`);
+  }
+  if (state.study.streak >= 2) lines.push(`${state.study.streak} days of studying in a row. The whole town noticed.`);
+  if (state.review.cards.some((c) => c.due <= now)) lines.push('Those pale books by the board are your missed questions. They want a rematch.');
+  const halls = courseHalls(state);
+  const tall = [...halls].sort((a, b) => b.level - a.level)[0];
+  const low = [...halls].sort((a, b) => a.level - b.level)[0];
+  if (tall && tall.level >= 2) lines.push(`The ${tall.name} hall keeps getting taller. You can see it from the fields.`);
+  if (low && low.level === 0 && halls.length > 1) lines.push(`The ${low.name} hall is still scaffolding. Just saying.`);
+  if (person.quest && !person.quest.done) lines.push(questProgress(state, person.quest) >= person.quest.target ? 'You did it! Come talk to me.' : `Don't forget: ${person.quest.text.charAt(0).toLowerCase()}${person.quest.text.slice(1)}`);
+  const flavor = {
+    Herbalist: ['Chamomile helps before exams. So does actually studying.', 'The flowers do better when you study. I have no proof. I believe it.'],
+    Smith: ['Every floor on those halls, I forged the nails for.', 'A lamp or two by the road would help at night.'],
+    Scholar: ['Twenty-five minutes, then a break. Works every time.', "Practice questions are how you find out what you don't know."],
+    Bard: ["I'm writing a song about the time the gate held. Make it happen.", 'Every grade that comes in, I add a verse.'],
+    Guard: ["I can hold the wall against raiders. Exams? That's on you.", 'Stay off the road when the books come through.'],
+    Baker: ['Fresh bread for anyone who finishes a full session.', 'Smells like a study day. I can tell.'],
+    Farmer: ["Crops don't grow overnight. Neither do grades.", 'Quiet out in the fields today.'],
+    Merchant: ['New stock at the market today. Prices fair, mostly.', 'Coins are nice. Coins and a good grade, better.'],
+  }[person.role] || ['Nice day.'];
+  lines.push(...flavor);
+  return lines[((k % lines.length) + lines.length) % lines.length];
+}
+
 // --- Saving ---------------------------------------------------------------------
 
 export function serialize(state) {
@@ -1227,6 +1426,7 @@ export function deserialize(text, now = Date.now()) {
     state.settings = { ...fresh.settings, ...(saved.settings || {}) };
     state.review = { ...fresh.review, ...(saved.review || {}) };
     state.market = { ...fresh.market, ...(saved.market || {}) };
+    state.villagers = { ...fresh.villagers, ...(saved.villagers || {}) };
     return state;
   } catch {
     return fresh;

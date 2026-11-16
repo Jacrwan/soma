@@ -459,6 +459,29 @@ export function createUI(on) {
       );
     },
 
+    /** Talking to a villager: what they say, how they feel, their quest for today. */
+    villager({ name, role, mood, friend, line, quest, gift, onClaim, onGift }) {
+      const feel = mood >= 70 ? ['Happy', '😊'] : mood >= 45 ? ['Fine', '🙂'] : mood >= 25 ? ['Worried', '😟'] : ['About to leave', '😣'];
+      const bond = friend >= 80 ? 'Best friend' : friend >= 50 ? 'Friend' : friend >= 20 ? 'Friendly' : 'New neighbour';
+      const ready = quest && !quest.done && quest.have >= quest.need;
+      panel({ title: name, subtitle: `${role} · ${bond}` },
+        el('blockquote', { class: 'npc-line', text: `“${line}”` }),
+        el('div', { class: 'stats' },
+          el('div', { class: 'stat' }, el('small', { text: 'Mood' }), el('b', { text: `${feel[1]} ${feel[0]}` }), el('div', { class: 'bar' }, el('i', { style: `width:${mood}%` }))),
+          el('div', { class: 'stat' }, el('small', { text: 'Friendship' }), el('b', { text: `${Math.round(friend)} / 100` }), el('div', { class: 'bar xp' }, el('i', { style: `width:${friend}%` })))),
+        el('h3', { text: 'Today’s favour' }),
+        quest ? el('div', { class: `quest-card ${quest.done ? 'done' : ''}` },
+          el('div', {}, el('b', { text: quest.text }),
+            el('div', { class: 'bar study' }, el('i', { style: `width:${Math.round((Math.min(quest.have, quest.need) / quest.need) * 100)}%` })),
+            el('small', { text: quest.done ? 'Done for today. Come back tomorrow.' : `${Math.min(quest.have, quest.need)} / ${quest.need}` })),
+          el('div', { class: 'quest-pay' }, el('small', {}, 'Reward ', price(quest.reward)), el('small', { text: '+ friendship' }),
+            ready ? el('button', { class: 'btn small primary', text: 'Hand it over', onclick: onClaim }) : null))
+          : el('p', { class: 'note', text: 'Nothing today. Come back tomorrow.' }),
+        gift ? el('div', { class: 'actions', style: 'margin-top:10px' }, el('button', { class: 'btn', onclick: onGift }, el('span', {}, 'Accept a gift', el('small', { text: 'Good friends leave you something once a day' })))) : null,
+        el('p', { class: 'note', text: mood < 30 ? 'Late work and wrecked buildings wear people down. Hand things in and hold the gate on exam day to keep them here.' : 'Do their favours to become friends. Friends leave gifts, and best friends bring study tea.' }),
+      );
+    },
+
     /** The market: today's stock, plus selling what you don't need. */
     market({ coins, offers, junk, onBuy, onSellJunk }) {
       const label = (o) => o.kind === 'gear' ? o.item.name : o.kind === 'look' ? o.name : o.kind === 'tea' ? 'Study tea' : o.name;
@@ -529,6 +552,7 @@ export function createUI(on) {
           el('span', { class: 'k' }, el('kbd', { text: 'Right drag' })), el('span', { text: 'Hold right click and move the mouse to look around. Left click swings. Scroll to zoom. V locks the mouse to the view.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'T' })), el('span', { text: 'Start a study session. This is the only way to level up.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'C' }), el('kbd', { text: 'J' })), el('span', { text: 'Your hero (gear and skills) and your quests.' }),
+          el('span', { class: 'k' }, el('kbd', { text: 'E' })), el('span', { text: 'Talk to villagers: they move in as your town grows, give a small favour each day, and leave if the town keeps getting wrecked.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'B' })), el('span', { text: 'Build mode: place fences, lamps, trees and more anywhere in town. The market sells rare pieces.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'P' })), el('span', { text: 'Practice questions from Soma AI, written from your course notes. Right answers break exam armor.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'E' })), el('span', { text: 'Build, upgrade, open chests, pick what to study.' }),

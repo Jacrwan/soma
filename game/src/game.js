@@ -7,7 +7,7 @@ import * as A from './art.js';
 import * as W from './world.js';
 import { createUI, timeLeft } from './ui.js';
 import { createFx, createAudio } from './fx.js';
-import { useCharacter, hasAvatar, createAvatar, CHARACTERS } from './avatar.js';
+import { useCharacter, hasAvatar, createAvatar, createVillager, CHARACTERS } from './avatar.js';
 import { createRealms } from './realm.js';
 import { makePractice } from './practice.js';
 import { focusView } from './nature.js';
@@ -1200,6 +1200,7 @@ function updateExamDay(dt) {
 }
 
 function finishExamDay(event, pos) {
+  villagersReact(event);
   const { item, outcome, coins, chest, wrecked } = event;
   if (pos) {
     despawnInvader(item.id, false);
@@ -1406,6 +1407,7 @@ function findTarget() {
   if (sceneName === 'earth') offer(Math.hypot(p.x - BOARD_POS.x, p.z - BOARD_POS.z), 4, { text: 'Canvas board: your assignments and grades', run: openSchool });
   if (sceneName === 'earth' && !build.on) {
     offer(Math.hypot(p.x - MARKET_POS.x, p.z - MARKET_POS.z), 5, { text: 'Open the market', run: openMarket });
+    for (const [name, f] of folk) offer(Math.hypot(p.x - f.object.position.x, p.z - f.object.position.z), 3.2, { text: `Talk to ${name}`, run: () => openVillager(name) });
     for (const g of ghosts) offer(p.distanceTo(g.object.position), 3.6, { text: `Review ${S.dueReviews(state).length} missed questions`, run: openReview });
     for (const [id, h] of halls) {
       const next = S.threats(state).map((t) => t.item).filter((a) => a.courseId === id).sort((a, b) => a.dueAt - b.dueAt)[0];
@@ -1782,6 +1784,7 @@ function frame(nowMs) {
   updatePlayer(dt, time);
   if (!inRealm()) { moveInvaders(dt, time); updateTown(dt, time); }
   updateBuild();
+  if (!inRealm() && state.scene === 'earth') moveVillagers(dt, time);
   ghosts.forEach((g, i) => { g.object.position.y = 0.5 + Math.sin(time * 1.6 + i) * 0.25; g.object.rotation.y = Math.sin(time * 0.5 + i) * 0.6; });
   updateRaiders(dt);
   realms.update(dt, time, player.object.position, !player.down);
@@ -1813,6 +1816,7 @@ function frame(nowMs) {
     syncInvaders(Date.now());
     syncHalls();
     syncReview();
+    villagerTick(Date.now());
     if (build.on) drawBuildBar();
     checkDeadlines();
     checkStory();
@@ -2075,6 +2079,145 @@ function syncReview() {
   if (ghosts[0]) ghosts[0].label.set(`<em>Review</em>${due} missed question${due === 1 ? '' : 's'}<small>press E to go over them</small>`, 'review');
 }
 
+
+// --- Villagers ------------------------------------------------------------------------
+// People who live in town: they wander between the fire, the market, the
+// board and their homes, talk about your real schoolwork when you're near,
+// give a small quest each day, and leave if the town keeps getting wrecked.
+const folk = new Map(); // name -> { object, model, label, target, wait, mode, k, lineAt, cheer }
+const VILLAGER_TINTS = { Mira: 0x9fd18a, Juna: 0xf2b0a0, Tobin: null, Pell: 0xc9b07a, Odo: null, Wren: 0x8fa8e8, Sela: 0xe0b860, Bram: null };
+function spotsFor(person, i) {
+  const spots = [];
+  const fireA = (i / 8) * Math.PI * 2;
+  spots.push({ x: Math.cos(fireA) * 2.9, z: Math.sin(fireA) * 2.9, sit: true }); // by the fire
+  spots.push({ x: MARKET_POS.x - Math.sin(Math.atan2(MARKET_POS.x, MARKET_POS.z)) * 3.6 + (i % 3 - 1), z: MARKET_POS.z - 3 + (i % 2) });
+  spots.push({ x: BOARD_POS.x - 2.2 + (i % 3), z: BOARD_POS.z - 2.5 });
+  const pad = W.padPosition('earth', i % 6);
+  spots.push({ x: pad.x * 0.8, z: pad.z * 0.8 });
+  const hall = HALL_SLOTS[i % HALL_SLOTS.length];
+  spots.push({ x: hall.x * 0.82, z: hall.z * 0.82 });
+  for (let k = 0; k < 2; k++) { const a = (hash(person.name + k) % 360) * Math.PI / 180, r = 6 + (hash(person.name + 'r' + k) % 12); spots.push({ x: Math.cos(a) * r, z: Math.sin(a) * r }); }
+  return spots;
+}
+function syncVillagers() {
+  const names = new Set(state.villagers.list.map((p) => p.name));
+  for (const [name, f] of folk) {
+    if (names.has(name)) continue;
+    fx.burst(f.object.position.clone().add(new THREE.Vector3(0, 1, 0)), A.C.white, 14, 5, 5);
+    f.object.parent?.remove(f.object);
+    f.label.remove();
+    folk.delete(name);
+  }
+  state.villagers.list.forEach((person, i) => {
+    if (folk.has(person.name)) return;
+    const object = new THREE.Group();
+    // New arrivals walk in through the gate.
+    object.position.set((i % 3 - 1) * 1.2, 0, W.GATE.z - 1);
+    world.earth.add(object);
+    const f = { object, model: null, label: fx.label(object, 2.35, '', 'npc empty'), target: null, wait: 1 + i, mode: 'idle', k: hash(person.name) % 7, lineAt: 0, cheer: 0, spots: spotsFor(person, i), i };
+    folk.set(person.name, f);
+    createVillager(person.look, { tint: VILLAGER_TINTS[person.name] }).then((model) => {
+      if (folk.get(person.name) !== f) return;
+      f.model = model;
+      object.add(model);
+    }).catch(() => {});
+  });
+}
+function villagerTick(now) {
+  const day = S.villagerDay(state, now);
+  if (day) {
+    for (const p of day.left) ui.toast(`${p.name} the ${p.role.toLowerCase()} packed up and left. Too much late work.`, 'bad');
+    if (day.late) ui.toast(`The town is grumbling: ${day.late} late assignment${day.late === 1 ? '' : 's'} made everyone a bit unhappier.`, 'bad');
+  }
+  const newcomer = S.moveIn(state, now);
+  if (newcomer) ui.toast(`${newcomer.name} the ${newcomer.role.toLowerCase()} moved into town. Go say hi (E).`, 'gold');
+  if (day || newcomer) save();
+  syncVillagers();
+}
+function villagersReact(event) {
+  for (const p of event.left || []) ui.toast(`${p.name} the ${p.role.toLowerCase()} left town after ${event.item.name} wrecked the gate.`, 'bad');
+  if (event.outcome === 'held') for (const f of folk.values()) f.cheer = 4;
+  syncVillagers();
+}
+function moveVillagers(dt, time) {
+  const p = player.object.position;
+  const now = Date.now();
+  for (const person of state.villagers.list) {
+    const f = folk.get(person.name);
+    if (!f) continue;
+    const o = f.object.position;
+    const near = Math.hypot(p.x - o.x, p.z - o.z) < 4.8 && state.scene === 'earth' && !inRealm();
+    f.cheer = Math.max(0, f.cheer - dt);
+    let mode = 'idle';
+    if (f.cheer > 0) mode = 'cheer';
+    else if (near) {
+      // Stops to chat: turns to face you.
+      f.object.rotation.y = Math.atan2(p.x - o.x, p.z - o.z);
+    } else if (f.target) {
+      const dx = f.target.x - o.x, dz = f.target.z - o.z, d = Math.hypot(dx, dz);
+      if (d < 0.25) {
+        f.wait = 6 + (hash(person.name + Math.floor(time)) % 14);
+        f.sitting = Boolean(f.target.sit);
+        if (f.sitting) f.object.rotation.y = Math.atan2(-o.x, -o.z);
+        f.target = null;
+      } else {
+        const step = Math.min(d, 1.55 * dt);
+        o.x += (dx / d) * step;
+        o.z += (dz / d) * step;
+        f.object.rotation.y = Math.atan2(dx, dz);
+        mode = 'walk';
+      }
+    } else {
+      f.wait -= dt;
+      if (f.sitting) mode = 'sit';
+      if (f.wait <= 0) {
+        f.sitting = false;
+        f.target = f.spots[hash(person.name + Math.floor(time / 7)) % f.spots.length];
+      }
+    }
+    o.y = world.groundHeight('earth', o.x, o.z);
+    f.mode = mode;
+    f.model?.userData.villager.update(dt, mode);
+    // What shows over their head: a line when you're close, "!" when their quest is done.
+    const ready = person.quest && !person.quest.done && S.questProgress(state, person.quest) >= person.quest.target;
+    if (near) {
+      if (time - f.lineAt > 6) { f.k += 1; f.lineAt = time; }
+      f.label.set(`<em>${person.name} · ${person.role}</em>${escapeHtml(S.villagerLine(state, person, now, f.k))}`, 'npc talk');
+    } else if (ready) f.label.set('<b>!</b>', 'npc mark');
+    else if (person.mood < 30) f.label.set('<b>…</b>', 'npc sad');
+    else f.label.set('', 'npc empty');
+  }
+}
+function openVillager(name) {
+  const person = state.villagers.list.find((x) => x.name === name);
+  if (!person) return;
+  if (S.talkTo(state, name)) save();
+  const f = folk.get(name);
+  const q = person.quest;
+  ui.villager({
+    name: person.name, role: person.role, mood: person.mood, friend: person.friend,
+    line: S.villagerLine(state, person, Date.now(), f ? f.k : 0),
+    quest: q ? { text: q.text, have: S.questProgress(state, q), need: q.target, done: q.done, reward: q.reward.coins } : null,
+    gift: S.giftReady(state, name),
+    onClaim: () => {
+      const r = S.claimVillagerQuest(state, name);
+      if (!r) return;
+      audio.chest();
+      if (f) f.cheer = 3;
+      fx.coinsTo(f ? f.object.position.clone() : player.object.position.clone(), player.object, 8, () => audio.coin());
+      ui.toast(`${name}: thank you! +${S.fmt(r.coins)} coins, and you two are closer now.`, 'gold');
+      refreshHud(); save(); ui.close(); openVillager(name);
+    },
+    onGift: () => {
+      const g = S.villagerGift(state, name);
+      if (!g) return;
+      audio.coin();
+      ui.toast(g.tea ? `${name} gave you a cup of study tea: your next session pays 50% more XP.` : `${name} slipped you ${S.fmt(g.coins)} coins.`, 'gold');
+      refreshHud(); save(); ui.close(); openVillager(name);
+    },
+  });
+}
+
 // --- Settings ------------------------------------------------------------------------------
 function toggleMute() {
   state.settings.muted = !state.settings.muted;
@@ -2143,6 +2286,7 @@ syncInvaders(Date.now());
 syncHalls();
 syncDecor();
 syncReview();
+villagerTick(Date.now());
 applySettings();
 refreshHud();
 if (S.dueReviews(state).length) setTimeout(() => ui.toast(`${S.dueReviews(state).length} missed questions are back for review. Find the pale books by the Canvas board.`, 'gold'), 3000);
@@ -2187,6 +2331,7 @@ window.epoch = {
   quality(n) { setQuality(n); },
   exams: checkExams,
   character: pickCharacter,
+  folk: () => [...folk].map(([name, f]) => ({ name, x: +f.object.position.x.toFixed(1), z: +f.object.position.z.toFixed(1), mode: f.mode, loaded: Boolean(f.model) })),
   invaders: () => [...invaders.values()].map((i) => ({ name: i.item.name, mode: i.mode, x: +i.object.position.x.toFixed(1), z: +i.object.position.z.toFixed(1), inScene: Boolean(i.object.parent) })),
   armor(id) { const inv = invaders.get(id); return inv && inv.object.userData.armor?.filter((p) => p.visible).length; },
   info: () => ({ quality, calls: renderer.info.render.calls, tris: renderer.info.render.triangles }),
