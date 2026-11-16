@@ -57,6 +57,7 @@ export function createUI(on) {
   $('quest').addEventListener('click', () => questOpen && questOpen());
   $('btnHelp').addEventListener('click', () => on.help());
   $('btnSound').addEventListener('click', () => on.sound());
+  $('btnSettings')?.addEventListener('click', () => on.settings());
   $('prompt').addEventListener('click', () => on.interact());
   $('scrim').addEventListener('pointerdown', (event) => { if (event.target === $('scrim')) close(); });
 
@@ -408,6 +409,54 @@ export function createUI(on) {
         if (!open) return;
         body.replaceChildren(el('p', { class: 'note', text: error.message || 'Practice is not available right now.' }), el('div', { class: 'actions' }, el('button', { class: 'btn', onclick: close }, el('span', { text: 'Close' }))));
       });
+    },
+
+    /** Settings: sound, music, controls and graphics. Changes apply as you make them. */
+    settings({ values, onChange, onHelp }) {
+      const v = { ...values };
+      const toggle = (key, label, hint) => {
+        const b = el('button', { class: `switch ${v[key] !== false ? 'on' : ''}`, role: 'switch', 'aria-checked': String(v[key] !== false), onclick: () => {
+          v[key] = v[key] === false;
+          b.classList.toggle('on', v[key]);
+          b.setAttribute('aria-checked', String(v[key]));
+          onChange(key, v[key]);
+        } }, el('i'));
+        return el('div', { class: 'setting' }, el('div', {}, el('b', { text: label }), hint ? el('small', { text: hint }) : null), b);
+      };
+      const slider = (key, label, min, max, stepSize, show) => {
+        const out = el('em', { text: show(v[key]) });
+        const input = el('input', { type: 'range', min, max, step: stepSize, value: v[key] });
+        input.addEventListener('input', () => { v[key] = Number(input.value); out.textContent = show(v[key]); onChange(key, v[key]); });
+        return el('div', { class: 'setting' }, el('div', {}, el('b', { text: label })), el('div', { class: 'slider' }, input, out));
+      };
+      const pct = (x) => `${Math.round(x * 100)}%`;
+      const quality = el('div', { class: 'segmented' }, [['auto', 'Auto'], [0, 'High'], [1, 'Medium'], [2, 'Low']].map(([val, text]) => {
+        const b = el('button', { class: v.quality === val ? 'on' : '', text, onclick: () => {
+          v.quality = val;
+          quality.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
+          onChange('quality', val);
+        } });
+        return b;
+      }));
+      panel({ title: 'Settings', subtitle: 'Changes save as you make them. Esc or O opens this any time.' },
+        el('h3', { text: 'Sound' }),
+        (() => {
+          // On means muted here, the opposite of the other switches.
+          const b = el('button', { class: `switch ${v.muted ? 'on' : ''}`, role: 'switch', 'aria-checked': String(Boolean(v.muted)), onclick: () => { v.muted = !v.muted; b.classList.toggle('on', v.muted); b.setAttribute('aria-checked', String(v.muted)); onChange('muted', v.muted); } }, el('i'));
+          return el('div', { class: 'setting' }, el('div', {}, el('b', { text: 'Mute everything' }), el('small', { text: 'Same as pressing M' })), b);
+        })(),
+        toggle('music', 'Music', 'A calm tune in town, a softer one while you study'),
+        slider('musicVol', 'Music volume', 0, 1, 0.05, pct),
+        toggle('sfx', 'Sound effects'),
+        slider('sfxVol', 'Effects volume', 0, 1, 0.05, pct),
+        el('h3', { text: 'Controls' }),
+        slider('sensitivity', 'Mouse look speed', 0.3, 2.5, 0.1, (x) => `${x.toFixed(1)}×`),
+        el('p', { class: 'note', text: 'Hold right click to look around · scroll to zoom · V locks the mouse' }),
+        el('h3', { text: 'Display' }),
+        el('div', { class: 'setting' }, el('div', {}, el('b', { text: 'Graphics' }), el('small', { text: 'Auto lowers detail if the game runs slow' })), quality),
+        toggle('labels', 'Name tags', 'The labels over assignments, buildings and halls'),
+        el('div', { class: 'actions', style: 'margin-top:12px' }, el('button', { class: 'btn', onclick: onHelp }, el('span', { text: 'Controls and how to play' }))),
+      );
     },
 
     /** The market: today's stock, plus selling what you don't need. */

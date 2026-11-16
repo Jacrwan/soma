@@ -612,14 +612,7 @@ export function makeWonderSite() {
 export function makeTownCenter(era) {
   const g = new THREE.Group();
   if (era === 0) {
-    for (let i = 0; i < 8; i++) g.add(at(ball(0.4, i % 2 ? C.rock : C.rockDark, 0), Math.cos(i * 0.785) * 1.3, 0.2, Math.sin(i * 0.785) * 1.3));
-    g.add(at(tilt(box(0.25, 1.6, 0.25, C.woodDark), 0.5), 0, 0, -0.4), at(tilt(box(0.25, 1.6, 0.25, C.woodDark), -0.5), 0, 0, 0.4), at(tilt(box(0.25, 1.6, 0.25, C.wood), 0, 0.5), 0.4, 0, 0));
-    const fire = group(cone(0.42, 1.25, C.orange, 9, { emissive: 0xff5a08, glow: 1.6 }), at(cone(0.3, 0.95, C.orange, 9, { emissive: 0xff8a1a, glow: 1.8 }), 0.16, 0, 0.1), at(cone(0.26, 0.8, C.orange, 9, { emissive: 0xff7a10, glow: 1.6 }), -0.18, 0, -0.06), at(cone(0.2, 0.75, C.gold, 9, { emissive: 0xffd35a, glow: 2.2 }), 0.02, 0.1, 0.03));
-    const glow = new THREE.PointLight(0xff8a3a, 14, 14, 1.6);
-    glow.position.y = 1.4;
-    g.add(glow);
-    fire.name = 'flicker';
-    g.add(at(fire, 0, 0.4, 0));
+    g.add(makeCampfire());
   } else if (era === 1) {
     g.add(box(2.6, 0.5, 2.6, C.sand), at(box(1.0, 5.0, 1.0, C.sand), 0, 0.5, 0), at(cone(0.72, 1.0, C.gold, 4, { metal: 0.6, rough: 0.3 }), 0, 5.5, 0, Math.PI / 4));
   } else if (era === 2) {
@@ -1239,5 +1232,74 @@ export function makeMarket() {
   // Sign.
   g.add(at(box(2.0, 0.6, 0.08, C.wood, { kind: 'planks' }), 0, 3.55, 1.6), at(box(1.6, 0.32, 0.02, C.gold), 0, 3.69, 1.65));
   g.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  return g;
+}
+
+// --- Campfire -----------------------------------------------------------------------
+// See-through glowing flame shells (not lit, added together so they glow),
+// layered orange to white, each flickering on its own (world.js), over a bed of
+// coals and crossed logs inside a ring of stones, with embers drifting up.
+function flameGeometry(r, h) {
+  const pts = [];
+  for (let i = 0; i <= 12; i++) {
+    const t = i / 12;
+    // A teardrop: full near the base, pinched to a point at the top.
+    const w = r * Math.sin(Math.PI * Math.min(1, t * 1.15)) ** 0.8 * (1 - t * 0.55);
+    pts.push(new THREE.Vector2(Math.max(0.001, w), t * h));
+  }
+  return new THREE.LatheGeometry(pts, 10);
+}
+export function makeCampfire() {
+  const g = new THREE.Group();
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * Math.PI * 2;
+    g.add(at(squash(ball(0.36, i % 2 ? C.rock : C.rockDark, 0), 1.15, 0.75, 1), Math.cos(a) * 1.35, 0.16, Math.sin(a) * 1.35));
+  }
+  // Logs lying crossed, ends charred.
+  // Logs leaning in to a point, a low teepee, tips charred.
+  for (let i = 0; i < 5; i++) {
+    const log = group(cyl(0.11, 0.14, 1.35, C.woodDark, 7), at(cyl(0.115, 0.115, 0.2, 0x2a1a12, 7), 0, 1.2, 0));
+    log.rotation.z = 0.95;
+    const holder = new THREE.Group();
+    holder.add(at(log, 0.95, 0.05, 0));
+    holder.rotation.y = (i / 5) * Math.PI * 2 + 0.4;
+    g.add(holder);
+  }
+  // Glowing coals.
+  const coalMat = { emissive: 0xff3a0a, glow: 1.1, rough: 0.9 };
+  for (let i = 0; i < 9; i++) {
+    const a = i * 2.3, r = 0.15 + (i % 3) * 0.17;
+    g.add(at(squash(ball(0.13, 0x3a1208, 0, coalMat), 1, 0.6, 1), Math.cos(a) * r, 0.1, Math.sin(a) * r));
+  }
+  const fire = new THREE.Group();
+  fire.name = 'fire';
+  const layer = (color, r, h, opacity, x, z, phase) => {
+    // Unlit and kept out of tone mapping so the colours stay hot in daylight; bloom adds the glow.
+    const m = new THREE.Mesh(flameGeometry(r, h), new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, toneMapped: false }));
+    m.position.set(x, 0.12, z);
+    m.name = 'flame';
+    m.userData.phase = phase;
+    m.userData.base = { x, z };
+    m.renderOrder = 2;
+    fire.add(m);
+  };
+  layer(0xe8380c, 0.58, 1.75, 0.92, 0, 0, 0);
+  layer(0xf2500e, 0.36, 1.3, 0.95, 0.24, 0.1, 1.7);
+  layer(0xf2500e, 0.33, 1.15, 0.95, -0.25, -0.08, 3.1);
+  layer(0xff8a1c, 0.4, 1.3, 0.97, 0.02, 0.05, 4.4);
+  layer(0xffc23a, 0.26, 0.95, 1, 0, 0.03, 5.6);
+  layer(0xfff0b0, 0.13, 0.55, 1, 0, 0.02, 2.2);
+  // Embers that drift up and fade (moved in world.js).
+  for (let i = 0; i < 10; i++) {
+    const e = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.07, 0.07), new THREE.MeshBasicMaterial({ color: 0xffa02a, transparent: true, depthWrite: false, toneMapped: false }));
+    e.name = 'ember';
+    e.userData.seed = i * 0.73;
+    fire.add(e);
+  }
+  g.add(fire);
+  const light = new THREE.PointLight(0xff8a3a, 16, 15, 1.6);
+  light.position.y = 1.3;
+  light.name = 'firelight';
+  g.add(light);
   return g;
 }

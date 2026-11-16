@@ -184,17 +184,40 @@ export function createFx(scene, camera) {
 
 // --- Sound: tiny synthesized blips, no audio files ---------------------------------
 
-export function createAudio(isMuted) {
+/**
+ * Sound effects and background music, all made in code (no audio files).
+ * settings() returns { muted, sfx, music, musicVol, sfxVol }: muted silences
+ * everything, sfx and music switch each part on or off, the volumes run 0..1.
+ */
+export function createAudio(settings) {
   let ctx = null;
+  let sfxOut = null, musicOut = null;
   const ensure = () => {
     if (!ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return null;
       ctx = new AC();
+      sfxOut = ctx.createGain();
+      sfxOut.connect(ctx.destination);
+      musicOut = ctx.createGain();
+      musicOut.gain.value = 0;
+      // A gentle low-pass keeps the music soft and behind the game.
+      const soft = ctx.createBiquadFilter();
+      soft.type = 'lowpass';
+      soft.frequency.value = 3200;
+      musicOut.connect(soft).connect(ctx.destination);
+      applyVolumes();
     }
     if (ctx.state === 'suspended') ctx.resume();
     return ctx;
   };
+  function applyVolumes() {
+    if (!ctx) return;
+    const s = settings();
+    sfxOut.gain.value = s.muted || !s.sfx ? 0 : s.sfxVol;
+    musicOut.gain.setTargetAtTime(s.muted || !s.music ? 0 : s.musicVol * 0.55, ctx.currentTime, 0.4);
+  }
+  const isMuted = () => { const s = settings(); return s.muted || !s.sfx; };
   function tone(freq, start, len, type = 'triangle', vol = 0.12, slide = 0) {
     const c = ensure();
     if (!c || isMuted()) return;
@@ -206,12 +229,102 @@ export function createAudio(isMuted) {
     g.gain.setValueAtTime(0.0001, c.currentTime + start);
     g.gain.exponentialRampToValueAtTime(vol, c.currentTime + start + 0.012);
     g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + start + len);
-    o.connect(g).connect(c.destination);
+    o.connect(g).connect(sfxOut);
     o.start(c.currentTime + start);
     o.stop(c.currentTime + start + len + 0.02);
   }
+
+  // --- Music ---------------------------------------------------------------
+  // A looping folk tune: soft pad chords, a plucked melody from the pentatonic
+  // scale, a round bass and a light shaker. 'town' is warm and steady; 'study'
+  // is slower and quieter, with no shaker, so it sits under real work.
+  const NOTE = (n) => 440 * 2 ** ((n - 69) / 12);
+  const SONGS = {
+    town: { bpm: 92, chords: [[60, 64, 67], [57, 60, 64], [53, 57, 60], [55, 59, 62]], scale: [72, 74, 76, 79, 81, 84], shaker: true, pluck: 0.07 },
+    study: { bpm: 70, chords: [[57, 60, 64], [53, 57, 60], [60, 64, 67], [55, 59, 62]], scale: [69, 72, 74, 76, 79, 81], shaker: false, pluck: 0.045 },
+  };
+  let mode = 'town';
+  let timer = null;
+  let nextAt = 0;
+  let step = 0;
+  let noise = null;
+  let seed = 7;
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  function voice(freq, at, len, type, vol, attack = 0.02, out = musicOut) {
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = type;
+    o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.linearRampToValueAtTime(vol, at + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+    o.connect(g).connect(out);
+    o.start(at);
+    o.stop(at + len + 0.05);
+  }
+  function shake(at) {
+    if (!noise) {
+      noise = ctx.createBuffer(1, ctx.sampleRate * 0.2, ctx.sampleRate);
+      const d = noise.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = noise;
+    const f = ctx.createBiquadFilter();
+    f.type = 'highpass';
+    f.frequency.value = 6000;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.linearRampToValueAtTime(0.05, at + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + 0.08);
+    src.connect(f).connect(g).connect(musicOut);
+    src.start(at);
+    src.stop(at + 0.1);
+  }
+  let lastNote = 2;
+  function schedule() {
+    const song = SONGS[mode];
+    const beat = 60 / song.bpm / 2; // eighth notes
+    while (nextAt < ctx.currentTime + 0.25) {
+      const bar = Math.floor(step / 8) % song.chords.length;
+      const inBar = step % 8;
+      const chord = song.chords[bar];
+      if (inBar === 0) {
+        for (const n of chord) voice(NOTE(n), nextAt, beat * 8.4, 'triangle', 0.035, 0.5);
+        voice(NOTE(chord[0] - 24), nextAt, beat * 3.6, 'sine', 0.13, 0.03);
+      }
+      if (inBar === 4) voice(NOTE(chord[0] - 24 + (bar % 2 ? 7 : 0)), nextAt, beat * 3.4, 'sine', 0.09, 0.03);
+      // The melody wanders the scale in small steps, resting now and then.
+      const play = mode === 'study' ? inBar % 2 === 0 && rand() < 0.6 : rand() < (inBar % 2 ? 0.35 : 0.7);
+      if (play) {
+        lastNote = Math.max(0, Math.min(song.scale.length - 1, lastNote + Math.round((rand() - 0.5) * 3)));
+        const fits = chord.some((c) => (song.scale[lastNote] - c) % 12 === 0) || rand() < 0.6;
+        if (fits) voice(NOTE(song.scale[lastNote]), nextAt, beat * (mode === 'study' ? 3 : 1.8), 'triangle', song.pluck, 0.008);
+      }
+      if (song.shaker && inBar % 2 === 1) shake(nextAt);
+      nextAt += beat;
+      step += 1;
+    }
+  }
+  function startMusic() {
+    const c = ensure();
+    if (!c || timer) return;
+    nextAt = c.currentTime + 0.1;
+    timer = setInterval(() => {
+      const s = settings();
+      if (s.muted || !s.music || document.visibilityState !== 'visible') { nextAt = ctx.currentTime + 0.1; return; }
+      schedule();
+    }, 90);
+  }
+  function setMusic(next) {
+    if (!SONGS[next] || next === mode) return;
+    mode = next;
+    step = 0;
+  }
   return {
-    unlock: ensure,
+    unlock: () => { ensure(); startMusic(); },
+    applyVolumes,
+    setMusic,
     coin: () => { tone(988, 0, 0.07, 'square', 0.05); tone(1319, 0.06, 0.12, 'square', 0.05); },
     build: () => { tone(196, 0, 0.12, 'triangle', 0.16); tone(294, 0.09, 0.14, 'triangle', 0.14); tone(392, 0.19, 0.2, 'triangle', 0.12); },
     swing: () => tone(520, 0, 0.09, 'sawtooth', 0.04, 0.4),

@@ -65,7 +65,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(46, 1, 0.5, 900);
 const world = W.createWorld(scene, renderer);
 const fx = createFx(scene, camera);
-const audio = createAudio(() => state.settings.muted);
+const audio = createAudio(() => state.settings);
 
 // Finishing: soft glow on bright things, a slight vignette and warmth, then tone mapping.
 const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
@@ -103,6 +103,7 @@ resize();
 let quality = 0;
 const pace = { time: 0, frames: 0, slow: 0, warm: 8 };
 function watchPace(dt) {
+  if (state.settings.quality !== 'auto') return; // the player picked a level in Settings
   if (pace.warm > 0) { pace.warm -= dt; return; } // loading hitches don't count
   if (dt > 0.25 || document.visibilityState !== 'visible') { pace.time = 0; pace.frames = 0; return; }
   pace.time += dt;
@@ -540,11 +541,8 @@ const ui = createUI({
   study: (id) => openStudy(id),
   endStudy: () => endStudy(),
   help: () => ui.help({ first: false }),
-  sound: () => {
-    state.settings.muted = !state.settings.muted;
-    refreshHud();
-    if (!state.settings.muted) audio.coin();
-  },
+  sound: () => toggleMute(),
+  settings: () => openSettings(),
   interact: () => interact(),
 });
 
@@ -1458,7 +1456,7 @@ window.addEventListener('keydown', (event) => {
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
   const key = event.key.toLowerCase();
   audio.unlock();
-  if (key === 'escape') return void (build.on && !ui.isOpen() ? toggleBuild(false) : ui.close());
+  if (key === 'escape') return void (build.on && !ui.isOpen() ? toggleBuild(false) : ui.isOpen() ? ui.close() : openSettings());
   if (ui.isOpen()) return;
   keys.add(key);
   if (key === ' ') event.preventDefault();
@@ -1476,10 +1474,8 @@ window.addEventListener('keydown', (event) => {
   else if (key === 't') openStudy();
   else if (key === 'p') openPractice();
   else if (key === 'h') ui.help({ first: false });
-  else if (key === 'm') {
-    state.settings.muted = !state.settings.muted;
-    refreshHud();
-  }
+  else if (key === 'm') toggleMute();
+  else if (key === 'o') openSettings();
 });
 window.addEventListener('keyup', (event) => keys.delete(event.key.toLowerCase()));
 window.addEventListener('blur', () => keys.clear());
@@ -1496,8 +1492,9 @@ const LOOK_SPEED = 0.0042;
 function turn(dx, dy) {
   // Browsers sometimes report a huge jump on the first locked move; drop it.
   if (Math.abs(dx) > 250 || Math.abs(dy) > 250) return;
-  cam.yaw -= dx * LOOK_SPEED;
-  cam.pitch = Math.max(0.05, Math.min(1.45, cam.pitch + dy * LOOK_SPEED * 0.8));
+  const k = LOOK_SPEED * (state.settings.sensitivity || 1);
+  cam.yaw -= dx * k;
+  cam.pitch = Math.max(0.05, Math.min(1.45, cam.pitch + dy * k * 0.8));
   cam.idle = 0;
 }
 function toggleMouseLook() {
@@ -1812,6 +1809,7 @@ function frame(nowMs) {
   slowTimer -= dt;
   if (slowTimer <= 0) {
     slowTimer = 1;
+    audio.setMusic(S.isStudying(state) ? 'study' : 'town');
     syncInvaders(Date.now());
     syncHalls();
     syncReview();
@@ -2077,6 +2075,37 @@ function syncReview() {
   if (ghosts[0]) ghosts[0].label.set(`<em>Review</em>${due} missed question${due === 1 ? '' : 's'}<small>press E to go over them</small>`, 'review');
 }
 
+// --- Settings ------------------------------------------------------------------------------
+function toggleMute() {
+  state.settings.muted = !state.settings.muted;
+  audio.applyVolumes();
+  refreshHud();
+  save();
+  if (!state.settings.muted) audio.coin();
+  ui.toast(state.settings.muted ? 'Sound off (M to turn it back on)' : 'Sound on', 'good');
+}
+function applySettings() {
+  const st = state.settings;
+  audio.applyVolumes();
+  document.getElementById('labels').style.display = st.labels === false ? 'none' : '';
+  if (st.quality !== 'auto' && st.quality !== quality) setQuality(st.quality);
+  refreshHud();
+}
+function openSettings() {
+  if (ui.isOpen()) return;
+  ui.settings({
+    values: { ...state.settings },
+    onChange: (key, value) => {
+      state.settings[key] = value;
+      if (key === 'quality' && value === 'auto') { pace.slow = 0; setQuality(0); }
+      applySettings();
+      if (key === 'sfxVol' || key === 'sfx') audio.coin();
+      save();
+    },
+    onHelp: () => { ui.close(); ui.help({ first: false }); },
+  });
+}
+
 function openReview() {
   const cards = S.dueReviews(state).slice(0, 10).map((c) => ({ ...c }));
   if (!cards.length) return void ui.toast('Nothing to review right now. Missed practice questions come back here.', 'good');
@@ -2114,6 +2143,7 @@ syncInvaders(Date.now());
 syncHalls();
 syncDecor();
 syncReview();
+applySettings();
 refreshHud();
 if (S.dueReviews(state).length) setTimeout(() => ui.toast(`${S.dueReviews(state).length} missed questions are back for review. Find the pale books by the Canvas board.`, 'gold'), 3000);
 

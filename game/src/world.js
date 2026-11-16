@@ -549,7 +549,7 @@ export function createWorld(scene, renderer) {
     townCenter = makeTownCenter(era);
     eraParts.add(townCenter);
     animated = [];
-    townCenter.traverse((o) => { if (o.name === 'spin' || o.name === 'flicker') animated.push(o); });
+    townCenter.traverse((o) => { if (['spin', 'flicker', 'flame', 'ember', 'firelight'].includes(o.name)) animated.push(o); });
     const gate = at(makeGate(era), GATE.x, 0, GATE.z);
     gateFlag = gate.getObjectByName('flag');
     eraParts.add(gate);
@@ -755,6 +755,21 @@ export function createWorld(scene, renderer) {
     if (gateFlag) gateFlag.rotation.y = Math.sin(time * 3) * 0.25;
     for (const o of animated) {
       if (o.name === 'spin') o.rotation.y += dt * 0.8;
+      else if (o.name === 'flame') {
+        // Each tongue of flame stretches, sways and leans on its own beat.
+        const p = o.userData.phase;
+        const lick = Math.sin(time * 9.3 + p) * 0.5 + Math.sin(time * 15.7 + p * 2.1) * 0.5;
+        o.scale.set(1 + Math.sin(time * 7 + p) * 0.07, 1 + lick * 0.16, 1 + Math.cos(time * 8 + p) * 0.07);
+        o.rotation.z = Math.sin(time * 3.1 + p) * 0.08;
+        o.rotation.x = Math.cos(time * 2.7 + p) * 0.07;
+        o.rotation.y += dt * 0.6;
+      } else if (o.name === 'ember') {
+        const t = (time * 0.45 + o.userData.seed) % 1;
+        const s = o.userData.seed * 9;
+        o.position.set(Math.sin(s + t * 4) * (0.15 + t * 0.5), 0.6 + t * 3.2, Math.cos(s * 1.3 + t * 3) * (0.15 + t * 0.5));
+        o.material.opacity = (1 - t) * 0.9;
+        o.scale.setScalar(1 - t * 0.6);
+      } else if (o.name === 'firelight') o.intensity = 14 + Math.sin(time * 13) * 2.2 + Math.sin(time * 23) * 1.4;
       else o.scale.set(1 + Math.sin(time * 11) * 0.08, 1 + Math.sin(time * 13 + 1) * 0.14, 1 + Math.cos(time * 9) * 0.08);
     }
     // Keep the shadow sharp around the player.
