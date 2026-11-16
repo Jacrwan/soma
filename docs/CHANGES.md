@@ -9,6 +9,22 @@ still needed.
 
 ---
 
+## 2026-11-17 (a sitting being focused on is never missed)
+
+- **Why:** the owner moved Physics 5A Quiz 12's sitting to 1–2 PM and
+  focused on it. With the timer still running at 2 PM, the dashboard called
+  the sitting missed and the scheduler moved it to 3 PM; the block they were
+  working in disappeared. A Focus session is saved only when the timer stops,
+  so neither check saw it: `runReclaim` looked at `focusedSeconds`, and
+  `sittingsOf` at saved history. A pin holds only until a sitting is missed
+  (2026-11-16), so it didn't help.
+- **What:** `sittingsOf` (`src/lib/taskSchedule.ts`) counts a sitting as
+  started when the running timer (`readMirror`, this student's, same course
+  and task) overlaps it (`liveFocus`). `runReclaim` (`LiveDashboard.tsx`)
+  leaves out the block whose task the timer is on. Started sittings never move.
+- **Tests:** tests/tasks-page.spec.ts ("a sitting being focused on past its end
+  time is not missed": fails on the old code).
+
 ## 2026-11-17 (step-named sittings, done cards open, no Plan it, Add task button, steady drag, steps re-placed)
 
 - **Why:** the owner's review of the 2026-11-16 release, and Physics 5A Quiz

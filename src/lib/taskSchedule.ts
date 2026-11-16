@@ -7,6 +7,7 @@ import { estimate, kindOf } from './planIt';
 import { rangeOf } from './clockRange';
 import { pinBlock, pinKey, pinnedKeys } from './pinnedBlocks';
 import { subjectForCourse } from './canvasDeepSync';
+import { readMirror } from './activeTimerMirror';
 import { asTodoKind, type Todo, type TodoSession } from '../types';
 import { dueMoment, effectiveRank, isManaged, plannedOn, resolvePrefs, schedule, type SchedTask } from './taskScheduler';
 
@@ -76,8 +77,22 @@ function guessFor(todo: Todo, snapshot: Pick<Snapshot, 'subjects' | 'history'>):
   return { minutes: e.minutes, basis: e.basis };
 }
 
-function sittingsOf(todo: Todo, sessions: TodoSession[], history: History[], pins: Set<string>): TaskSitting[] {
+/**
+ * The Focus timer running now, if it's this student's: its course, task and
+ * start. Its session is saved only when it stops, so until then history
+ * doesn't show it (2026-11-17: a sitting focused on past its end time read as
+ * missed and moved away mid-study).
+ */
+function liveFocus(userId: string): { subjectId: string; task: string; start: number } | null {
+  const m = readMirror();
+  if (!m || (m.userId && m.userId !== userId)) return null;
+  const start = Date.parse(m.sessionStartTimeISO);
+  return Number.isFinite(start) ? { subjectId: m.subjectId, task: m.task, start } : null;
+}
+
+function sittingsOf(todo: Todo, sessions: TodoSession[], history: History[], pins: Set<string>, live: ReturnType<typeof liveFocus> = null): TaskSitting[] {
   const mine = history.filter(h => h.subject_id === todo.subjectId && h.task_text === todo.text && h.start_time && h.end_time);
+  const focusing = !!live && live.subjectId === todo.subjectId && live.task === todo.text;
   return sessions.filter(s => s.todoId === todo.id && s.startTime && s.endTime).map(s => {
     const start = new Date(s.startTime!), end = new Date(s.endTime!);
     const hhmm = `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`;
@@ -85,7 +100,8 @@ function sittingsOf(todo: Todo, sessions: TodoSession[], history: History[], pin
       id: s.id, date: s.date, start, end, done: !!s.doneAt, ...(s.stepId ? { stepId: s.stepId } : {}),
       pinned: !!s.pinned || pins.has(pinKey(todo.id, s.date, hhmm)),
       // Focus ran during it.
-      started: mine.some(h => +new Date(utcIso(h.start_time!)) < +end && +new Date(utcIso(h.end_time!)) > +start),
+      started: mine.some(h => +new Date(utcIso(h.start_time!)) < +end && +new Date(utcIso(h.end_time!)) > +start)
+        || (focusing && live!.start < +end && Date.now() > +start),
     };
   }).sort((a, b) => +a.start - +b.start);
 }
@@ -100,9 +116,9 @@ export const openSteps = (t: Todo, sittings: { stepId?: string; done: boolean }[
 export function tasksFrom(snapshot: Pick<Snapshot, 'todos' | 'sessions' | 'subjects' | 'history'>, userId: string, now = new Date()): TaskInfo[] {
   const settings = storage.getSomaSettings();
   const auto = settings.schedule?.autoImported ?? true;
-  const today = localDate(now), pins = pinnedKeys(userId);
+  const today = localDate(now), pins = pinnedKeys(userId), live = liveFocus(userId);
   return snapshot.todos.filter(t => t.status !== 'done' && t.dueDate).map(todo => {
-    const sittings = sittingsOf(todo, snapshot.sessions, snapshot.history, pins);
+    const sittings = sittingsOf(todo, snapshot.sessions, snapshot.history, pins, live);
     const logged = loggedOn(todo, snapshot.history);
     const managed = isManaged(todo, auto, today), rank = rankOf(todo);
     if (todo.steps?.length) {
@@ -242,7 +258,8 @@ async function run(userId: string): Promise<RescheduleResult> {
   const ids = new Set(managed.map(t => t.id));
   const abs = (d: Date) => Math.round((+d - +origin) / 60000);
   const pins = pinnedKeys(userId);
-  const info = new Map(managed.map(t => [t.id, { todo: t, sittings: sittingsOf(t, snapshot.sessions, snapshot.history, pins) }]));
+  const live = liveFocus(userId);
+  const info = new Map(managed.map(t => [t.id, { todo: t, sittings: sittingsOf(t, snapshot.sessions, snapshot.history, pins, live) }]));
   const dayStart = (date: string) => abs(new Date(`${date}T00:00:00`));
   const tasks: SchedTask[] = managed.map(t => {
     const sittings = info.get(t.id)!.sittings;

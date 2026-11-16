@@ -345,7 +345,9 @@ export default function LiveDashboard({userId}:{userId:string}) {
   // the scheduler never heard about the miss (2026-11-15: blocks not started
   // on time stopped moving once most blocks became scheduled sittings).
   const minute=nowMinutes();
-  const missed=snapshot.blocks.filter(b=>b.sitting && b.day===0 && !!b.time && b.state==='Planned' && !(b.focusedSeconds??0) && rangeOf(b.time)[1]<=minute).map(b=>String(b.id));
+  // Not one being focused on right now: its time isn't saved until the timer stops (2026-11-17).
+  const focusing=(b:Snapshot['blocks'][number])=>!!timer.activeSession && b.subjectId===timer.activeSession.subject.id && b.title===timer.activeSession.task;
+  const missed=snapshot.blocks.filter(b=>b.sitting && b.day===0 && !!b.time && b.state==='Planned' && !(b.focusedSeconds??0) && !focusing(b) && rangeOf(b.time)[1]<=minute).map(b=>String(b.id));
   if(missed.some(id=>!missedSeen.current.has(id))){for(const id of missed)missedSeen.current.add(id);runSchedule(0);}
   if(!planToday(held(snapshot.blocks),nowMinutes(),windowEnd,reclaimOpts()).moved.length)return;
   let fresh:Snapshot;

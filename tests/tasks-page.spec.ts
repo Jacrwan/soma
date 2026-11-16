@@ -486,3 +486,23 @@ test('dashboard: a completed block still opens Edit block', async ({ page }) => 
   await page.getByRole('button', { name: 'Edit: Reading 4.1' }).click();
   await expect(page.getByRole('region', { name: 'Block editor' })).toBeVisible();
 });
+
+test('a sitting being focused on past its end time is not missed: it stays where it is', async ({ page }) => {
+  // 2026-11-17: Quiz 12's 1–2 PM sitting, Focus still running at 2 PM, moved to 3 PM mid-study.
+  // Here: a 7–8 AM sitting, Focus on its task since 7:00, and it's 9 AM.
+  const start = new Date(at(0, '07:00')).toISOString();
+  const state = await setup(page, {
+    todos: [task('quiz', 'Physics 5A Quiz 12', dateOf(0) + 'T16:00', { estimated_minutes: 60 })],
+    todo_sessions: [{ id: 'q1', user_id: account.id, todo_id: 'quiz', date: dateOf(0), start_time: at(0, '07:00'), end_time: at(0, '08:00'), pinned: true }],
+    active_timer: [{ id: 'live', user_id: account.id, subject_id: 'hist', subject_name: 'HIST 10', task_text: 'Physics 5A Quiz 12', session_start_time: start, start_time: start, accumulated_seconds: 0, is_paused: false }],
+  });
+  await page.addInitScript(([userId, start]) => {
+    localStorage.setItem('soma_active_timer', JSON.stringify({ userId, subjectId: 'hist', subjectName: 'HIST 10', subjectColor: '#ab47bc', task: 'Physics 5A Quiz 12', sessionStartTimeISO: start, accumulatedSeconds: 0, isPaused: false, markedAtMs: Date.parse(start) }));
+  }, [account.id, start] as const);
+  await page.goto('/dashboard');
+  await expect(page.getByRole('heading', { name: 'Physics 5A Quiz 12' }).first()).toBeVisible();
+  await page.waitForTimeout(2500);   // the scheduler's runs on load, and the reclaim's
+  const sitting = state.tables.todo_sessions.find(s => s.id === 'q1')!;
+  expect([sitting.start_time, sitting.end_time]).toEqual([at(0, '07:00'), at(0, '08:00')]);
+  await expect(page.getByText('Moved a sitting that had to move')).toHaveCount(0);
+});
