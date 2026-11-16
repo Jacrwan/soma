@@ -804,8 +804,9 @@ export function createUI(on) {
       $('focusBar').style.width = `${Math.round(info.progress * 100)}%`;
     },
 
-    help({ first, onStart }) {
+    help({ first, onStart, onTutorial }) {
       panel({ title: first ? 'Welcome to Epoch' : 'How to play', subtitle: 'An RPG where your hero is as strong as your studying.', onClose: onStart },
+        onTutorial ? el('div', { class: 'actions' }, el('button', { class: 'btn primary', onclick: onTutorial }, el('span', { text: 'Play the tutorial again' }), el('span', { class: 'cost', text: '10 steps' }))) : null,
         el('div', { class: 'keys' },
           el('span', { class: 'k' }, el('kbd', { text: 'W' }), el('kbd', { text: 'A' }), el('kbd', { text: 'S' }), el('kbd', { text: 'D' })), el('span', { text: 'Walk. Hold Shift to run, Space to jump.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'Shift' })), el('span', { text: 'Tap for shift lock: the mouse turns the view without dragging, and your hero faces where you look. Hold Shift to run.' }),

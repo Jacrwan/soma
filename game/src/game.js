@@ -19,6 +19,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { createCoach } from './tutorial.js';
 
 // --- State ----------------------------------------------------------------------
 // Inside Soma the save belongs to the signed-in student, so two accounts in
@@ -238,6 +239,8 @@ function refreshWonders() {
 // --- School: invaders, bosses, chests -----------------------------------------------
 const invaders = new Map(); // assignment id -> { object, label, boss }
 const chests = new Map(); // chest id -> { object, opening }
+// Tutorial progress within a step (the step number itself is saved in state.tutorial).
+const tut = { flags: {}, start: null, yawMoved: 0, lastYaw: 0, collected: 0, built: 0, chestId: null, advancing: false };
 const raiders = [];
 let fight = null; // exam day playing out at the gate: { id, item, inv, event, t, slams }
 let nextRaid = 80;
@@ -560,7 +563,7 @@ const ui = createUI({
   ignore: (id) => ignoreItem(id, true),
   study: (id) => openStudy(id),
   endStudy: () => endStudy(),
-  help: () => ui.help({ first: false }),
+  help: () => ui.help({ first: false, onTutorial: replayTutorial }),
   sound: () => toggleMute(),
   settings: () => openSettings(),
   pass: () => openPass(),
@@ -922,6 +925,7 @@ function openWardrobe() {
 }
 
 function openSchool() {
+  tut.flags.school = true;
   const now = Date.now();
   const byCourse = new Map();
   for (const a of Object.values(state.school.items).sort((x, y) => (x.dueAt || 0) - (y.dueAt || 0))) {
@@ -1067,6 +1071,7 @@ const clock = (ms) => {
 };
 
 function openStudy(selected = null) {
+  tut.flags.study = true;
   if (state.study.active) return void ui.toast('A study session is already running.', 'bad');
   if (fight) return;
   const now = Date.now();
@@ -1505,6 +1510,99 @@ function openChest(id) {
   openLoot(id, entry.object.position.clone());
 }
 
+// --- The tutorial: one real action at a time ---------------------------------------
+const nearestOf = (list) => {
+  const p = player.object.position;
+  let best = null, bestD = Infinity;
+  for (const v of list) { const d = Math.hypot(v.x - p.x, v.z - p.z); if (d < bestD) { bestD = d; best = v; } }
+  return best;
+};
+const nearestInvader = () => nearestOf([...invaders.values()].map((i) => i.object.position));
+const nearestEmptyPad = () => nearestOf(state.pads.earth.map((b, i) => (!b && i < S.padsUnlocked(state) ? pads.earth[i].group.position : null)).filter(Boolean));
+const nearestBuilding = () => nearestOf(state.pads.earth.map((b, i) => (b ? pads.earth[i].group.position : null)).filter(Boolean));
+const nearestCache = () => nearestOf(cacheObjects.filter((c) => !c.done).map((c) => c.object.position));
+
+const TUTORIAL = [
+  { title: 'Walk around', text: 'Use W A S D to walk. Hold Shift to run and press Space to jump.', keys: ['W', 'A', 'S', 'D'],
+    enter: () => { tut.start = player.object.position.clone(); }, done: () => player.object.position.distanceTo(tut.start) > 8 },
+  { title: 'Look around', text: 'Hold the right mouse button and drag to turn the camera. Scroll to zoom. Tap Shift to lock the camera to your mouse.', keys: ['Right drag', 'Scroll', 'Shift'],
+    enter: () => { tut.lastYaw = cam.yaw; tut.yawMoved = 0; }, tick: () => { tut.yawMoved += Math.abs(cam.yaw - tut.lastYaw); tut.lastYaw = cam.yaw; }, done: () => tut.yawMoved > 1.4 },
+  { title: 'Your Canvas board', text: 'Your real assignments, tests and grades from Canvas live here. Walk to the board and press E.', keys: ['E'],
+    target: () => BOARD_POS, done: () => tut.flags.school },
+  { title: 'Homework attacks', text: 'Every assignment marches on your town as a monster. The closer it gets, the sooner it is due. Go take a look at one.',
+    target: () => nearestInvader(), done: () => { const t = nearestInvader(); return !t || Math.hypot(t.x - player.object.position.x, t.z - player.object.position.z) < 8; } },
+  { title: 'Study to level up', text: 'Press T to open a study session. A real timer runs while you do the work, and it is the only way your hero levels up. Open it now; you can start one or close it.', keys: ['T'], glow: 'btnStudy',
+    done: () => tut.flags.study },
+  { title: 'Build a home', text: 'Walk to an empty plot (the gold + circle) and press E to build a Home. Homes make coins.', keys: ['E'],
+    enter: () => {
+      tut.built = S.buildingCount(state).used;
+      const cost = S.buildCost('home', S.tierFor(state));
+      if (state.coins < cost) { S.addCoins(state, cost - state.coins); refreshHud(); }
+    },
+    target: () => nearestEmptyPad(), done: () => S.buildingCount(state).used > tut.built },
+  { title: 'Collect coins', text: 'Buildings fill up with coins over time, even while you are away. Walk past one to collect.',
+    enter: () => { tut.collected = state.stats.collected; }, target: () => nearestBuilding(), done: () => state.stats.collected > tut.collected },
+  { title: 'Open a chest', text: 'Chests come from grades, quests and exploring. Here is one to start you off. Walk to it and press E.', keys: ['E'],
+    enter: () => { tut.chestId = S.grantChest(state, 'rare', 'Your first chest').id; syncChests(); },
+    target: () => chests.get(tut.chestId)?.object.position, done: () => !state.school.chests.some((c) => c.id === tut.chestId) && !ui.isOpen() },
+  { title: 'Explore', text: 'Past the town is open country. Follow a beam of light to a hidden cache. Each one gives a chest once a day.',
+    target: () => nearestCache(), done: () => cacheObjects.some((c) => c.done) },
+  { title: 'Your goal', text: '', manual: true, target: () => { const w = S.nextWonder(state); return w && w.scene === 'earth' ? W.wonderPosition(w.index) : null; } },
+];
+
+const coach = createCoach({
+  scene, camera,
+  onNext: () => nextTutorialStep(),
+  onSkip: () => nextTutorialStep(),
+  onQuit: () => finishTutorial(true),
+});
+const tutorialStep = () => (state.tutorial && !state.tutorial.done ? TUTORIAL[state.tutorial.step] : null);
+function startTutorialStep() {
+  const step = tutorialStep();
+  if (!step) return coach.hide();
+  tut.flags = {};
+  tut.advancing = false;
+  step.enter?.();
+  if (step.title === 'Your goal') {
+    const w = S.nextWonder(state);
+    step.text = w ? `Build the ${w.name} to finish the ${S.ERAS[state.era].name}. Each age is a new land, with new buildings. Studying, homework, chests and your town all get you there.` : 'Keep studying and building. Press H any time to see every control.';
+  }
+  coach.show(step, state.tutorial.step, TUTORIAL.length);
+}
+function nextTutorialStep() {
+  if (!tutorialStep()) return;
+  state.tutorial.step += 1;
+  if (state.tutorial.step >= TUTORIAL.length) return finishTutorial(false);
+  save();
+  startTutorialStep();
+}
+function finishTutorial(early) {
+  state.tutorial = { step: TUTORIAL.length, done: true };
+  state.settings.seenHelp = true;
+  coach.hide();
+  save();
+  if (!early) { audio.era(); ui.banner('You are ready', 'Press H any time to see every control'); }
+}
+function replayTutorial() {
+  ui.close();
+  state.tutorial = { step: 0, done: false };
+  startTutorialStep();
+}
+function updateTutorial(time) {
+  const step = tutorialStep();
+  if (!step || inRealm() || state.scene !== 'earth') { coach.setVisible(false); return; }
+  coach.setVisible(!ui.isOpen());
+  if (tut.advancing) return;
+  step.tick?.();
+  coach.point(step.target?.() || null, player.object.position, time);
+  if (!step.manual && step.done()) {
+    tut.advancing = true;
+    coach.complete();
+    audio.chest();
+    setTimeout(nextTutorialStep, 1100);
+  }
+}
+
 // --- Hidden caches out in the country ---------------------------------------------
 // A ring of standing stones round a chest, with a beam you can see from town.
 // Each gives a chest once a day; a new age's land has new ones.
@@ -1599,7 +1697,7 @@ window.addEventListener('keydown', (event) => {
   else if ((key === 'x' || key === 'delete' || key === 'backspace') && build.on) removeBuild();
   else if (key === 't') openStudy();
   else if (key === 'p') openPractice();
-  else if (key === 'h') ui.help({ first: false });
+  else if (key === 'h') ui.help({ first: false, onTutorial: replayTutorial });
   else if (key === 'm') toggleMute();
   else if (key === 'o') openSettings();
   else if (key === 'k') openCollection();
@@ -1978,6 +2076,7 @@ function frame(nowMs) {
   S.tick(state);
   updatePlayer(dt, time);
   syncCaches();
+  updateTutorial(time);
   for (const c of cacheObjects) if (!c.done) { c.object.userData.beam.material.opacity = 0.16 + Math.sin(time * 2) * 0.06; c.object.userData.chest.position.y = Math.sin(time * 1.5) * 0.06; }
   if (!inRealm()) { moveInvaders(dt, time); updateTown(dt, time); }
   updateBuild();
@@ -3365,7 +3464,7 @@ function openSettings() {
       if (key === 'sfxVol' || key === 'sfx') audio.coin();
       save();
     },
-    onHelp: () => { ui.close(); ui.help({ first: false }); },
+    onHelp: () => { ui.close(); ui.help({ first: false, onTutorial: replayTutorial }); },
   });
 }
 
@@ -3420,8 +3519,9 @@ applySettings();
 refreshHud();
 if (S.dueReviews(state).length) setTimeout(() => ui.toast(`${S.dueReviews(state).length} missed questions are back for review. Find the pale books by the Canvas board.`, 'gold'), 3000);
 
-if (!state.settings.seenHelp) {
-  ui.help({ first: true, onStart: () => { state.settings.seenHelp = true; save(); } });
+if (state.tutorial && !state.tutorial.done) {
+  startTutorialStep();
+  if (state.tutorial.step === 0) setTimeout(() => ui.banner('Welcome to Epoch', 'An RPG that levels up when you study'), 600);
 } else if (awayMs > 60000 && awayEarned >= 1) {
   ui.toast(`While you were away (${timeLeft(awayMs)}), your buildings made ${S.fmt(awayEarned)} coins. Walk past them to collect.`, 'gold');
 }
@@ -3443,6 +3543,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 window.epoch = {
   state, S, cam,
   give(n) { S.addCoins(state, n); refreshHud(); },
+  tutorial: () => ({ ...state.tutorial, title: tutorialStep()?.title }), skipStep: () => nextTutorialStep(),
   caches: () => world.caches(), openCache: (i) => openCacheAt(i),
   refresh() { world.setEra(state.era); world.setScene(state.scene, state.era); dressPlayer(); refreshAllPads(); refreshWonders(); syncChests(); syncInvaders(Date.now()); syncDecor(); refreshHud(); },
   look(yaw, pitch, dist) { Object.assign(cam, { yaw, pitch, dist, want: dist }); },

@@ -96,6 +96,7 @@ export function newState(now = Date.now()) {
     vault: { owned: {}, sinceEpic: 0, sinceMythic: 0, showcase: [], aura: null },
     topics: {}, // exam itemId -> [{ name, minutes }]
     pass: { season: 'Fall 2026', points: 0, premium: false, freeClaimed: [], premiumClaimed: [] },
+    tutorial: { step: 0, done: false },
     createdAt: now,
     lastTick: now,
   };
@@ -1997,6 +1998,8 @@ export function deserialize(text, now = Date.now()) {
     state.daily = { ...fresh.daily, ...(saved.daily || {}) };
     state.critters = { ...fresh.critters, ...(saved.critters || {}) };
     state.soma = { ...fresh.soma, ...(saved.soma || {}), status: 'offline' };
+    // Saves from before the tutorial: anyone who saw the old welcome has played already.
+    state.tutorial = saved.tutorial || { step: 0, done: Boolean(saved.settings?.seenHelp) };
     state.pass = { ...fresh.pass, ...(saved.pass || {}) };
     state.steps = saved.steps || {};
     state.vault = { ...fresh.vault, ...(saved.vault || {}) };
