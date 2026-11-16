@@ -4150,6 +4150,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 window.epoch = {
   state, S, cam,
   give(n) { S.addCoins(state, n); refreshHud(); },
+  thumb: (r) => thumbFor(r),
   character: (id) => pickCharacter(id),
   goTo(kind) { const inv = [...invaders.values()].filter((i) => (kind === 'boss') === i.boss).sort((a, b) => a.object.position.distanceTo(player.object.position) - b.object.position.distanceTo(player.object.position))[0]; if (!inv) return null; const o = inv.object.position; player.object.position.set(o.x + 4, 0, o.z + 4); cam.yaw = Math.atan2(4, 4); cam.pitch = 0.32; cam.want = cam.dist = inv.boss ? 20 : 13; return inv.item.name; },
   tutorial: () => ({ ...state.tutorial, title: tutorialStep()?.title }), skipStep: () => nextTutorialStep(),

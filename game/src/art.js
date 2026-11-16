@@ -1060,28 +1060,75 @@ export function makeBoard() {
 
 export const RARITY_COLORS = { common: 0x9aa0a8, rare: 0x4a90e2, epic: 0xa35be0, legendary: 0xf2c14e, mythic: 0xff4fd8 };
 
+// A treasure chest, dressed by rarity: plain iron on a common one, polished
+// steel on rare, dark wood with gold on epic, all gold on legendary. A rounded
+// lid with metal straps, corner caps, a lock plate with a glowing gem, and a
+// thin line of light leaking from under the lid. userData.lid hinges open;
+// 'beam' is the light column over it (removed where it isn't wanted).
+const CHEST_LOOK = {
+  common: { wood: 0x9c6b43, dark: 0x6d4a2e, band: 0x5d6168, bandMetal: 0.4, gem: 0xd9dde3, glow: 0.4 },
+  rare: { wood: 0x6b4a33, dark: 0x3f2b1e, band: 0x6f9fd8, bandMetal: 0.8, gem: 0x7fd0ff, glow: 1.2 },
+  epic: { wood: 0x4a2f3f, dark: 0x2f1d29, band: 0xe0b04a, bandMetal: 0.9, gem: 0xa35be0, glow: 1.6 },
+  legendary: { wood: 0x3a2618, dark: 0x24170e, band: 0xf2c14e, bandMetal: 0.95, gem: 0xff8a2a, glow: 2.2 },
+};
 export function makeChest(rarity) {
-  const trim = RARITY_COLORS[rarity];
-  const metal = { metal: 0.75, rough: 0.32 };
-  const W = 1.3, H = 0.62, D = 0.9, R = D / 2;
-  const g = group(box(W, H, D, C.wood), at(box(W + 0.06, 0.09, D + 0.06, trim, metal), 0, H - 0.09, 0), at(box(W + 0.06, 0.08, D + 0.06, C.woodDark), 0, 0, 0));
-  // Half a barrel for the lid, hinged along the back edge.
+  const look = CHEST_LOOK[rarity] || CHEST_LOOK.common;
+  const trim = RARITY_COLORS[rarity] ?? look.gem;
+  const band = { metal: look.bandMetal, rough: 0.28 };
+  const wood = { kind: 'planks' };
+  const W = 1.3, H = 0.6, D = 0.86, R = D / 2;
+  const g = new THREE.Group();
+  // Plinth, body, and a darker rim where the lid meets it.
+  g.add(at(box(W + 0.1, 0.08, D + 0.1, look.dark, wood), 0, 0, 0));
+  g.add(at(box(W, H - 0.08, D, look.wood, wood), 0, 0.08, 0));
+  g.add(at(box(W + 0.04, 0.06, D + 0.04, look.band, band), 0, H - 0.06, 0));
+  // Corner posts with caps.
+  for (const x of [-1, 1]) for (const z of [-1, 1]) {
+    g.add(at(box(0.1, H + 0.02, 0.1, look.band, band), x * (W / 2 - 0.02), 0, z * (D / 2 - 0.02)));
+    g.add(at(ball(0.065, look.band, 0, band), x * (W / 2 - 0.02), H + 0.02, z * (D / 2 - 0.02)));
+  }
+  // Two straps around the body, with rivets.
+  for (const x of [-0.36, 0.36]) {
+    g.add(at(box(0.11, H - 0.06, D + 0.03, look.band, band), x, 0.04, 0));
+    for (const y of [0.18, 0.42]) g.add(at(ball(0.026, look.dark, 0, { metal: 0.6, rough: 0.4 }), x, y, D / 2 + 0.02));
+  }
+  // The lid: half a barrel, hinged at the back, banded to match.
   const arc = (radius, length, color, opts) => {
-    const geo = new THREE.CylinderGeometry(radius, radius, length, 22, 1, false, 0, Math.PI);
+    const geo = new THREE.CylinderGeometry(radius, radius, length, 28, 1, false, 0, Math.PI);
     geo.rotateZ(Math.PI / 2);
     return mesh(geo, color, opts);
   };
   const lid = new THREE.Group();
-  lid.add(at(arc(R, W, C.woodDark), 0, 0, R), at(box(W + 0.06, 0.07, D + 0.06, trim, metal), 0, 0, R));
-  for (const x of [-0.44, 0.44]) {
-    g.add(at(box(0.13, H, D + 0.05, trim, metal), x, 0, 0));
-    lid.add(at(arc(R + 0.025, 0.13, trim, metal), x, 0, R));
-    for (const y of [0.14, 0.46]) g.add(at(ball(0.035, C.iron, 0, { metal: 0.8, rough: 0.35 }), x, y, D / 2 + 0.03));
+  lid.add(at(arc(R, W, look.wood, wood), 0, 0, R));
+  for (const x of [-W / 2 + 0.04, W / 2 - 0.04]) {
+    const cap = new THREE.Mesh(new THREE.CircleGeometry(R + 0.005, 28, 0, Math.PI), mat(look.dark));
+    cap.rotation.y = x > 0 ? Math.PI / 2 : -Math.PI / 2;
+    cap.position.set(x + (x > 0 ? 0.041 : -0.041), 0, R);
+    lid.add(cap);
   }
-  g.add(at(box(0.26, 0.24, 0.07, trim, metal), 0, H - 0.3, D / 2));
-  g.add(at(ball(0.045, C.ink, 0), 0, H - 0.2, D / 2 + 0.07));
-  lid.add(at(box(0.2, 0.16, 0.07, trim, metal), 0, 0.02, D - 0.02));
+  for (const x of [-0.36, 0.36, -W / 2 + 0.03, W / 2 - 0.03]) lid.add(at(arc(R + 0.02, 0.1, look.band, band), x, 0, R));
+  lid.add(at(box(W + 0.04, 0.05, 0.06, look.band, band), 0, 0, D - 0.01));
+  // Lock: a shield-shaped plate on the front with a glowing gem, and a hasp on the lid.
+  const plate = new THREE.Group();
+  plate.add(box(0.3, 0.26, 0.05, look.band, band));
+  const gem = ball(0.07, look.gem, 0, { emissive: look.gem, glow: 0.5 + look.glow * 0.25, metal: 0.2, rough: 0.15 });
+  gem.scale.set(1, 1.25, 0.6);
+  gem.name = 'glow';
+  plate.add(at(gem, 0, 0.13, 0.04));
+  g.add(at(plate, 0, H - 0.34, D / 2 + 0.03));
+  lid.add(at(box(0.16, 0.14, 0.05, look.band, band), 0, 0.03, D + 0.02));
+  // Light leaking out under the lid.
+  const seam = box(W - 0.06, 0.018, D - 0.06, trim, { emissive: trim, glow: look.glow * 0.8 });
+  seam.name = 'glow';
+  seam.castShadow = false;
+  g.add(at(seam, 0, H - 0.005, 0));
   g.add(at(lid, 0, H, -R));
+  if (rarity === 'legendary' || rarity === 'epic') {
+    // A crest on top of the lid.
+    const crest = ball(0.09, look.band, 0, band);
+    crest.scale.set(1, 0.6, 1);
+    lid.add(at(crest, 0, R + 0.02, R));
+  }
   const beam = mesh(new THREE.CylinderGeometry(0.55, 0.3, 4.5, 20, 1, true), trim, { emissive: trim, glow: 0.7, opacity: 0.13 });
   beam.material.side = THREE.DoubleSide;
   beam.castShadow = false;
