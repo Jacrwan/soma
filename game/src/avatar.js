@@ -78,7 +78,7 @@ function naturalColours(map) {
 }
 
 export const CHARACTERS = [
-  { id: 'barbarian', name: 'Barbarian', file: 'Barbarian.glb', weapon: '1H_Axe', great: '2H_Axe', hat: 'Barbarian_Hat', hide: ['1H_Axe_Offhand', 'Barbarian_Round_Shield', 'Mug'], natural: true, noBeard: true },
+  { id: 'barbarian', name: 'Barbarian', file: 'Barbarian.glb', weapon: '1H_Axe', great: '2H_Axe', hat: 'Barbarian_Hat', hide: ['1H_Axe_Offhand', 'Barbarian_Round_Shield', 'Mug'], natural: true, noBeard: true, head: { file: 'Knight.glb', mesh: 'Knight_Head', trim: 0.66 } },
   { id: 'rogue', name: 'Ranger', file: 'Rogue.glb', weapon: 'Knife', great: '2H_Crossbow', hide: ['Knife_Offhand', '1H_Crossbow', 'Throwable'] },
   { id: 'hooded', name: 'Hooded ranger', file: 'Rogue_Hooded.glb', weapon: 'Knife', great: '2H_Crossbow', hide: ['Knife_Offhand', '1H_Crossbow', 'Throwable'] },
   { id: 'knight', name: 'Knight', file: 'Knight.glb', weapon: '1H_Sword', great: '2H_Sword', hat: 'Knight_Helmet', hide: ['1H_Sword_Offhand', 'Badge_Shield', 'Rectangle_Shield', 'Spike_Shield', 'Round_Shield'] },
@@ -87,56 +87,56 @@ export const CHARACTERS = [
 const byId = (id) => CHARACTERS.find((c) => c.id === id) || CHARACTERS[0];
 
 const loader = new GLTFLoader();
-const loaded = new Map(); // id -> Promise<{ gltf, fit, mouth }>
-let current = null; // { char, gltf, fit, mouth }
+const loaded = new Map(); // id -> Promise<{ char, gltf, fit }>
+let current = null; // { char, gltf, fit }
 
-/** The Barbarian's mouth was painted under his beard, so it goes when the beard does. Returns where to put a new one, in head-bone space. */
-function dropBeard(gltf) {
-  let mouth = null;
-  gltf.scene.traverse((o) => {
-    if (!o.isMesh || !/_Head$/.test(o.name) || !o.geometry.index) return;
-    const g = o.geometry;
-    const uv = g.attributes.uv;
-    const pos = g.attributes.position;
-    const index = g.index.array;
-    const keep = [];
-    const box = new THREE.Box3();
-    const v = new THREE.Vector3();
-    for (let t = 0; t < index.length; t += 3) {
-      const u = (uv.getX(index[t]) + uv.getX(index[t + 1]) + uv.getX(index[t + 2])) / 3;
-      const w = (uv.getY(index[t]) + uv.getY(index[t + 1]) + uv.getY(index[t + 2])) / 3;
-      if (u >= 0.125 && u < 0.25 && w < 0.25) {
-        for (let k = 0; k < 3; k++) box.expandByPoint(v.fromBufferAttribute(pos, index[t + k]));
-        continue;
+/**
+ * Gives a hero another hero's head. Every KayKit hero shares one skeleton, so
+ * the donor's head mesh is rebound to this model's bones by name. Used to
+ * give the Barbarian (bear hat and all) the Knight's clean, beardless face.
+ */
+function swapHead(gltf, donor, donorName, ownName, trim = 0) {
+  const meshes = (root, name) => {
+    const out = [];
+    root.getObjectByName(name)?.traverse((o) => { if (o.isSkinnedMesh) out.push(o); });
+    return out;
+  };
+  const from = meshes(donor.scene, donorName);
+  const own = meshes(gltf.scene, ownName);
+  if (!from.length || !own.length) return;
+  const parent = own[0].parent;
+  for (const src of from) {
+    const bones = src.skeleton.bones.map((b) => gltf.scene.getObjectByName(b.name));
+    if (bones.some((b) => !b)) return;
+  }
+  for (const o of own) o.parent.remove(o);
+  for (const src of from) {
+    // The bear hat covers the top of the head; trim the borrowed scalp under
+    // it so none of it pokes through.
+    let geometry = src.geometry;
+    if (trim && geometry.index) {
+      geometry = geometry.clone();
+      geometry.computeBoundingBox();
+      const { min, max } = geometry.boundingBox;
+      const cut = min.y + (max.y - min.y) * trim;
+      const pos = geometry.attributes.position;
+      const index = geometry.index.array;
+      const keep = [];
+      for (let t = 0; t < index.length; t += 3) {
+        const y = (pos.getY(index[t]) + pos.getY(index[t + 1]) + pos.getY(index[t + 2])) / 3;
+        if (y <= cut) keep.push(index[t], index[t + 1], index[t + 2]);
       }
-      keep.push(index[t], index[t + 1], index[t + 2]);
+      geometry.setIndex(keep);
     }
-    g.setIndex(keep);
-    if (box.isEmpty()) return;
-    // The face sits just behind where the beard was: find the head's front
-    // surface at mouth height (near the top of the beard).
-    const size = box.getSize(new THREE.Vector3());
-    const at = new THREE.Vector3((box.min.x + box.max.x) / 2, box.max.y - size.y * 0.2, -Infinity);
-    for (let t = 0; t < keep.length; t++) {
-      v.fromBufferAttribute(pos, keep[t]);
-      if (Math.abs(v.x - at.x) < size.x * 0.25 && Math.abs(v.y - at.y) < size.y * 0.25) at.z = Math.max(at.z, v.z);
-    }
-    if (!Number.isFinite(at.z)) at.z = box.min.z;
-    // The skin colour: the texture spot of the face vertex nearest that point,
-    // so a nose built here matches the face exactly.
-    let skinUv = null, near = Infinity;
-    for (let t = 0; t < keep.length; t++) {
-      v.fromBufferAttribute(pos, keep[t]);
-      const dist = v.distanceToSquared(at);
-      if (dist < near) { near = dist; skinUv = [uv.getX(keep[t]), uv.getY(keep[t])]; }
-    }
-    const head = gltf.scene.getObjectByName('head');
-    if (!head) return;
-    o.localToWorld(at);
-    head.worldToLocal(at);
-    mouth = { at, width: size.x * 0.32, skinUv };
-  });
-  return mouth;
+    const head = new THREE.SkinnedMesh(geometry, src.material);
+    head.name = ownName;
+    head.position.copy(src.position);
+    head.quaternion.copy(src.quaternion);
+    head.scale.copy(src.scale);
+    parent.add(head);
+    head.updateMatrixWorld(true);
+    head.bind(new THREE.Skeleton(src.skeleton.bones.map((b) => gltf.scene.getObjectByName(b.name)), src.skeleton.boneInverses), src.bindMatrix);
+  }
 }
 
 /** The bear hat's two white fangs hang over the face like tears; drop them. */
@@ -160,12 +160,11 @@ function dropFangs(gltf) {
 
 function load(char) {
   if (!loaded.has(char.id)) {
-    loaded.set(char.id, loader.loadAsync(`/game/models/${char.file}`).then((gltf) => {
+    loaded.set(char.id, loader.loadAsync(`/game/models/${char.file}`).then(async (gltf) => {
       gltf.scene.updateMatrixWorld(true);
       const box = new THREE.Box3();
       gltf.scene.traverse((o) => { if (o.isSkinnedMesh && /Body|Head|Leg/.test(o.name)) box.expandByObject(o); });
       const fit = HEIGHT / Math.max(0.5, box.max.y - Math.min(0, box.min.y));
-      const mouth = char.noBeard ? dropBeard(gltf) : null;
       if (char.noBeard) dropFangs(gltf);
       if (char.natural) {
         const repainted = new Map();
@@ -176,7 +175,9 @@ function load(char) {
           o.material.map = repainted.get(o.material.map);
         });
       }
-      return { char, gltf, fit, mouth };
+      // Repainted first, so the borrowed head keeps its own colours.
+      if (char.head) swapHead(gltf, await loader.loadAsync(`/game/models/${char.head.file}`), char.head.mesh, `${char.name}_Head`, char.head.trim);
+      return { char, gltf, fit };
     }));
   }
   return loaded.get(char.id);
@@ -207,7 +208,7 @@ const ONCE = [...SWINGS, 'Dodge_Forward', 'Hit_A'];
  * object is given: 0 the hand axe, 1 the great axe.
  */
 export function createAvatar({ tint, hat, weapon, weaponLook = 0 }) {
-  const { char, gltf: source, fit, mouth } = current;
+  const { char, gltf: source, fit } = current;
   const model = cloneSkinned(source.scene);
   const root = new THREE.Group();
   root.add(model);
@@ -228,25 +229,7 @@ export function createAvatar({ tint, hat, weapon, weaponLook = 0 }) {
   if (part(char.weapon)) part(char.weapon).visible = !weapon && !great;
   if (part(char.great)) part(char.great).visible = great;
   if (char.hat && part(char.hat)) part(char.hat).visible = !hat;
-  if (mouth && part('head')) {
-    // The beard hid his nose and mouth. Put back a small nose in the face's
-    // own skin colour and a thin closed smile under it, in the pack's style.
-    const w = mouth.width;
-    const skin = part('Barbarian_Head')?.material;
-    const nose = new THREE.Mesh(new THREE.SphereGeometry(w * 0.14, 14, 10), skin || new THREE.MeshStandardMaterial({ color: 0xe8b48f }));
-    if (skin && mouth.skinUv) {
-      const uvs = nose.geometry.attributes.uv;
-      for (let i = 0; i < uvs.count; i++) uvs.setXY(i, mouth.skinUv[0], mouth.skinUv[1]);
-    }
-    nose.scale.set(1.15, 0.8, 0.85);
-    nose.position.copy(mouth.at).add(new THREE.Vector3(0, -w * 0.1, w * 0.22));
-    const smile = new THREE.Mesh(new THREE.TorusGeometry(w * 0.17, w * 0.04, 6, 16, Math.PI * 0.7), new THREE.MeshStandardMaterial({ color: 0x6b3526, roughness: 0.8 }));
-    smile.rotation.z = Math.PI + Math.PI * 0.15;
-    smile.position.copy(mouth.at).add(new THREE.Vector3(0, -w * 0.3, w * 0.22));
-    for (const m of [nose, smile]) { m.castShadow = false; part('head').add(m); }
-    smile.name = 'mouth';
-    nose.name = 'nose';
-  }
+
 
 
   // Anything pinned to a bone is built in metres; undo the model's own scale.
