@@ -145,7 +145,7 @@ test('chests pay coins and richer chests give relics, cosmetics and tokens', () 
   assert.strictEqual(s.school.chests.length, 0);
   assert.strictEqual(S.openChest(s, 'nope'), null);
   S.grantChest(s, 'common', 'test');
-  assert.deepStrictEqual(S.openChest(s, s.school.chests[0].id, () => 0.99, NOW).loot.map((l) => l.kind), ['coins']);
+  assert.deepStrictEqual(S.openChest(s, s.school.chests[0].id, () => 0.99, NOW).loot.map((l) => l.kind), ['collectible', 'coins']);
 });
 
 test('power grows with recent hand-ins for that course, not with the age', () => {
@@ -662,10 +662,10 @@ test('collectibles: odds by chest, pity for epic and mythic, duplicates pay coin
     const sum = S.TIERS.reduce((n, t) => n + S.DROP_TABLE[r].odds[t], 0);
     assert.ok(Math.abs(sum - 100) < 1e-9, r);
   }
-  // rng 0.99: no collectible from a common chest... until pity at 10.
+  // Every chest gives a collectible. rng 0.5: commons from a common chest... until pity at 10.
   const got = [];
-  for (let i = 0; i < S.PITY_EPIC; i++) got.push(S.rollCollectible(s, 'common', () => 0.99));
-  assert.strictEqual(got.slice(0, -1).filter(Boolean).length, 0);
+  for (let i = 0; i < S.PITY_EPIC; i++) got.push(S.rollCollectible(s, 'common', () => 0.5));
+  assert.deepStrictEqual(got.slice(0, -1).map((c) => c.tier), Array(S.PITY_EPIC - 1).fill('common'));
   const pity = got[S.PITY_EPIC - 1];
   assert.ok(pity.pity && ['epic', 'legendary', 'mythic'].includes(pity.tier));
   s.vault.sinceMythic = S.PITY_MYTHIC - 1;
@@ -830,4 +830,16 @@ test('market prices follow the age, study pay follows income, and neither crashe
   S.startStudy(t, null, 25, NOW);
   S.finishStudy(t, NOW + 25 * 60000);
   assert.strictEqual(t.coins - before, 25 * 90 * 6);
+});
+
+test('hidden caches give a chest once a day each, and refill the next day', () => {
+  const s = S.newState(NOW);
+  const chest = S.openCache(s, 0, NOW);
+  assert.ok(['common', 'rare'].includes(chest.rarity));
+  assert.strictEqual(chest.from, 'A hidden cache');
+  assert.strictEqual(S.openCache(s, 0, NOW + 1000), null);
+  assert.ok(S.openCache(s, 1, NOW));
+  assert.ok(S.openCache(s, 0, NOW + DAY));
+  s.era = 1;
+  assert.ok(S.openCache(s, 1, NOW + DAY)); // a new land has its own caches
 });

@@ -195,6 +195,10 @@ const CUTAWAY = `
       {
         float fragDepth = vViewPosition.z;
         float focusDepth = -uFocusView.z;
+        // Anything right in front of the camera dissolves, so walking through
+        // a grove never puts a wall of leaves over the screen.
+        float nearDither = fract(sin(dot(gl_FragCoord.xy, vec2(39.346, 11.135))) * 24634.6345);
+        if (fragDepth < 6.0 + nearDither * 5.0) discard;
         if (fragDepth < focusDepth - 0.8) {
           vec2 off = vViewPosition.xy / fragDepth + uFocusView.xy / focusDepth;
           off.y -= 0.035;
@@ -246,7 +250,7 @@ export function treeVariants() {
 const KIT_FILES = ['tree_single_A', 'tree_single_B', 'cloud_big', 'cloud_small'];
 export const kit = {};
 const kitLoader = new GLTFLoader();
-export const natureReady = Promise.all(KIT_FILES.map((name) => kitLoader.loadAsync(`/game/models/nature/${name}.gltf`).then((gltf) => {
+export const natureReady = Promise.all(KIT_FILES.map((name) => kitLoader.loadAsync(`/models/nature/${name}.gltf`).then((gltf) => {
   gltf.scene.updateMatrixWorld(true);
   gltf.scene.traverse((o) => {
     if (!o.isMesh || kit[name]) return;
@@ -508,7 +512,7 @@ export function rockGeometry(smooth = false) {
   return scaleUv(g, 3.5, 2);
 }
 
-export function createGrass(count, radius, allowed, seedN = 21, colours = [0x86c255, 0x8fc95d, 0x7dba4e, 0x94cd62]) {
+export function createGrass(count, radius, allowed, seedN = 21, colours = [0x86c255, 0x8fc95d, 0x7dba4e, 0x94cd62], heightAt = null) {
   const r = seeded(seedN);
   const pos = [];
   const col = [];
@@ -559,7 +563,7 @@ export function createGrass(count, radius, allowed, seedN = 21, colours = [0x86c
     // Patchy: thicker where the noise is high.
     const patch = noise3(x * 0.12, 0, z * 0.12);
     if (r() > 0.35 + patch * 0.9) continue;
-    dummy.position.set(x, 0, z);
+    dummy.position.set(x, heightAt ? heightAt(x, z) : 0, z);
     dummy.rotation.set(0, r() * 6.28, 0);
     const s = 0.75 + r() * 0.6 + patch * 0.4;
     dummy.scale.set(s, s * (0.8 + r() * 0.5), s);

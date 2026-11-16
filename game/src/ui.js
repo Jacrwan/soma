@@ -815,6 +815,7 @@ export function createUI(on) {
           el('span', { class: 'k' }, el('kbd', { text: 'E' })), el('span', { text: 'Talk to villagers: they move in as your town grows, give a small favour each day, and leave if the town keeps getting wrecked.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'K' })), el('span', { text: 'Creatures: catch them in the Wilds with lures you earn by studying. Pick one as a pet for bonus study XP.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'B' })), el('span', { text: 'Build mode: place fences, lamps, trees and more anywhere in town. The market sells rare pieces.' }),
+          el('span', { class: 'k' }, el('kbd', { text: '↗' })), el('span', { text: 'Explore past the town: walk out to the hills. Follow the light beams to hidden caches, each a chest a day.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'P' })), el('span', { text: 'Practice questions from Soma AI, written from your course notes. Right answers break exam armor.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'E' })), el('span', { text: 'Build, upgrade, open chests, pick what to study.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'F' })), el('span', { text: 'Swing (or click). Three swings in a row end in a combo hit.' }),

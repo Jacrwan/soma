@@ -1300,7 +1300,7 @@ function spawnRaid() {
   const targets = state.pads[state.scene].map((b, i) => ({ b, i })).filter(({ b }) => b);
   if (targets.length < 2 || fight) return;
   const count = Math.min(6, 2 + Math.floor(targets.length / 3));
-  const radius = state.scene === 'moon' ? W.MOON_RADIUS - 1 : W.ISLAND_RADIUS - 2;
+  const radius = state.scene === 'moon' ? W.MOON_RADIUS - 1 : W.TOWN_R - 4;
   const base = Math.random() * Math.PI * 2;
   for (let k = 0; k < count; k++) {
     const a = base + (k - count / 2) * 0.16;
@@ -1439,6 +1439,7 @@ function findTarget() {
     for (const c of critters) if (!c.gone) offer(Math.hypot(p.x - c.object.position.x, p.z - c.object.position.z), 2.8, { text: `Catch the ${S.CRITTERS[c.species].name.toLowerCase()} · 1 lure (${state.critters.lures} left)`, run: () => catchCritter(c) });
     return best;
   }
+  if (state.scene === 'earth') cacheObjects.forEach((c, i) => { if (!c.done) offer(Math.hypot(p.x - c.object.position.x, p.z - c.object.position.z), 3.6, { text: 'Open the hidden cache', run: () => openCacheAt(i) }); });
   for (const [id, entry] of chests) {
     if (entry.opening || entry.object.parent !== root()) continue;
     offer(p.distanceTo(entry.object.position), 3.4, { text: `Open the ${entry.chest.rarity} chest`, run: () => openChest(id) });
@@ -1504,6 +1505,57 @@ function openChest(id) {
   openLoot(id, entry.object.position.clone());
 }
 
+// --- Hidden caches out in the country ---------------------------------------------
+// A ring of standing stones round a chest, with a beam you can see from town.
+// Each gives a chest once a day; a new age's land has new ones.
+const cacheObjects = [];
+let cacheSig = '';
+function makeCache() {
+  const g = new THREE.Group();
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + 0.3;
+    const stone = A.makeRock(0.55 + (i % 3) * 0.12);
+    stone.scale.y *= 1.9;
+    stone.position.set(Math.cos(a) * 1.9, -0.1, Math.sin(a) * 1.9);
+    stone.rotation.y = a * 2.3;
+    g.add(stone);
+  }
+  const chest = A.makeChest('rare');
+  chest.remove(chest.getObjectByName('beam'));
+  chest.scale.setScalar(0.85);
+  chest.rotation.y = 0.4;
+  g.add(chest);
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.9, 26, 18, 1, true), new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+  beam.position.y = 13;
+  g.add(beam);
+  g.userData = { chest, beam };
+  return g;
+}
+function syncCaches() {
+  if (inRealm() || state.scene !== 'earth') return;
+  const spots = world.caches();
+  const sig = `${state.era}:${spots.length}:${spots.map((_, i) => (S.exploreDone(state, S.cacheKey(state, i)) ? 1 : 0)).join('')}:${spots[0]?.x}`;
+  if (sig === cacheSig) return;
+  cacheSig = sig;
+  while (cacheObjects.length < spots.length) { const object = makeCache(); world.earth.add(object); cacheObjects.push({ object }); }
+  while (cacheObjects.length > spots.length) world.earth.remove(cacheObjects.pop().object);
+  spots.forEach((spot, i) => {
+    const { object } = cacheObjects[i];
+    object.position.set(spot.x, spot.y, spot.z);
+    const done = S.exploreDone(state, S.cacheKey(state, i));
+    object.userData.chest.visible = !done;
+    object.userData.beam.visible = !done;
+    cacheObjects[i].done = done;
+  });
+}
+function openCacheAt(i) {
+  const chest = S.openCache(state, i);
+  if (!chest) return;
+  const pos = cacheObjects[i].object.position.clone().add(new THREE.Vector3(0, 0.6, 0));
+  syncCaches();
+  openLoot(chest.id, pos);
+}
+
 /** Opens a chest the player owns, wherever it is, with the full reveal. */
 function openLoot(id, pos) {
   const chest = state.school.chests.find((c) => c.id === id);
@@ -1514,7 +1566,7 @@ function openLoot(id, pos) {
   save();
   ui.loot({
     rarity: result.chest.rarity, from: result.chest.from, percent: result.chest.percent, loot: result.loot,
-    names: A.COSMETIC_NAMES, colors: A.SKIN_COLORS, audio, collectibles: S.COLLECTIBLES, best: result.best,
+    names: A.COSMETIC_NAMES, colors: A.SKIN_COLORS, audio, collectibles: S.COLLECTIBLES, best: result.best, drop: S.DROP_TABLE[result.chest.rarity],
     thumb: (id) => thumbFor({ kind: 'collectible', id }),
     onDone: () => {
       fx.coinsTo(pos, player.object, 12, () => audio.coin());
@@ -1695,6 +1747,10 @@ function solids() {
     list.push({ x: MARKET_POS.x, z: MARKET_POS.z, r: 2.6 }, { x: WATCH_POS.x, z: WATCH_POS.z, r: 2.4 }, { x: VAULT_POS.x, z: VAULT_POS.z, r: 3.4 });
     for (const h of halls.values()) list.push({ x: h.object.position.x, z: h.object.position.z, r: 2.7 });
     for (const d of state.decor) { const r = S.DECOR[d.type]?.solid; if (r) list.push({ x: d.x, z: d.z, r }); }
+    // Trees out in the country, only the ones close by.
+    const p = player.object.position;
+    if (Math.hypot(p.x, p.z) > W.TOWN_R - 6) for (const t of world.treeSolids()) if (Math.abs(t.x - p.x) < 4 && Math.abs(t.z - p.z) < 4) list.push(t);
+    for (const c of cacheObjects) list.push({ x: c.object.position.x, z: c.object.position.z, r: 1.1 });
   }
   return list;
 }
@@ -1724,6 +1780,7 @@ function updatePlayer(dt, time) {
     if (keys.has('d') || keys.has('arrowright')) ix += 1;
   }
   const moving = ix !== 0 || iz !== 0;
+  const fromX = p.x, fromZ = p.z;
   if (moving) {
     const len = Math.hypot(ix, iz);
     const sin = Math.sin(cam.yaw);
@@ -1762,6 +1819,8 @@ function updatePlayer(dt, time) {
     p.x *= limit / r;
     p.z *= limit / r;
   }
+  // No walking into lakes, rivers or the sea.
+  if (!inRealm() && !moon && world.groundHeight('earth', p.x, p.z) < -0.45) { p.x = fromX; p.z = fromZ; }
   const ground = inRealm() ? 0 : world.groundHeight(state.scene, p.x, p.z);
   if (player.grounded && keys.has(' ') && !ui.isOpen()) {
     player.vy = moon ? 6.2 : 8.6;
@@ -1837,9 +1896,9 @@ function updateCamera(dt) {
   const side = 1.4 * shoulder;
   const rx = Math.cos(cam.yaw) * side, rz = -Math.sin(cam.yaw) * side;
   const want = new THREE.Vector3(f.x + Math.sin(cam.yaw) * flat + rx, f.y + Math.sin(cam.pitch) * cam.dist + 1.5, f.z + Math.cos(cam.yaw) * flat + rz);
-  // In the valley the view stays out of the wooded slopes.
+  // The view stays out of the mountain sides.
   if (!inRealm() && state.scene === 'earth') {
-    for (let k = 0; k < 12 && Math.hypot(want.x, want.z) > W.TOWN_R + 6; k++) { want.x += (f.x - want.x) * 0.12; want.z += (f.z - want.z) * 0.12; }
+    for (let k = 0; k < 12 && Math.hypot(want.x, want.z) > W.RISE_R + 4; k++) { want.x += (f.x - want.x) * 0.12; want.z += (f.z - want.z) * 0.12; }
   }
   want.y = Math.max(want.y, (inRealm() ? 0 : world.groundHeight(state.scene, want.x, want.z)) + 0.7);
   camera.position.copy(want);
@@ -1918,6 +1977,8 @@ function frame(nowMs) {
   const time = nowMs / 1000;
   S.tick(state);
   updatePlayer(dt, time);
+  syncCaches();
+  for (const c of cacheObjects) if (!c.done) { c.object.userData.beam.material.opacity = 0.16 + Math.sin(time * 2) * 0.06; c.object.userData.chest.position.y = Math.sin(time * 1.5) * 0.06; }
   if (!inRealm()) { moveInvaders(dt, time); updateTown(dt, time); }
   updateBuild();
   // A panel needs the cursor back; a click on the game afterwards re-locks.
@@ -2113,7 +2174,7 @@ function onTownRoad(x, z) {
   return r < 9 || Math.abs(r - 9.5) < 2.4 || Math.abs(r - 19) < 2.6;
 }
 function buildBlocked(x, z, big = false) {
-  if (Math.hypot(x, z) > W.ISLAND_RADIUS - (big ? 5 : 3) || Math.hypot(x, z) < 3.2) return true;
+  if (Math.hypot(x, z) > W.BUILD_R - (big ? 3 : 1) || Math.hypot(x, z) < 3.2) return true;
   if (big) for (const d of state.decor) if (Math.hypot(x - d.x, z - d.z) < 3) return true;
   const near = (p, r) => Math.hypot(x - p.x, z - p.z) < r + (big ? 1.4 : 0);
   for (let i = 0; i < S.EARTH_PADS; i++) {
@@ -3382,6 +3443,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 window.epoch = {
   state, S, cam,
   give(n) { S.addCoins(state, n); refreshHud(); },
+  caches: () => world.caches(), openCache: (i) => openCacheAt(i),
   refresh() { world.setEra(state.era); world.setScene(state.scene, state.era); dressPlayer(); refreshAllPads(); refreshWonders(); syncChests(); syncInvaders(Date.now()); syncDecor(); refreshHud(); },
   look(yaw, pitch, dist) { Object.assign(cam, { yaw, pitch, dist, want: dist }); },
   moveTo(x, z) { player.object.position.set(x, 0, z); },

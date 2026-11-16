@@ -760,6 +760,20 @@ export function markExplored(state, key, now = Date.now()) {
   e.done[key] = true;
 }
 
+/**
+ * Hidden caches in the country around town: each gives a chest once a day.
+ * A new age is a new land, with its own caches. One in five is rare.
+ */
+export const cacheKey = (state, i) => `cache:${state.era}:${i}`;
+export function openCache(state, i, now = Date.now()) {
+  const key = cacheKey(state, i);
+  if (exploreDone(state, key, now)) return null;
+  markExplored(state, key, now);
+  state.stats.caches = (state.stats.caches || 0) + 1;
+  const roll = seededRng([...`${dayOf(now)}${key}`].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7))();
+  return grantChest(state, roll < 0.2 ? 'rare' : 'common', 'A hidden cache');
+}
+
 /** A shrine gives a small lasting boost, once ever. */
 export function useShrine(state, key, name) {
   if (state.explore.shrines[key]) return null;
@@ -1894,9 +1908,9 @@ export const COLLECTIBLES = {
 };
 /** Chance a chest holds a collectible, and the odds of each tier, by chest rarity. */
 export const DROP_TABLE = {
-  common: { chance: 0.3, odds: { common: 70, rare: 24, epic: 5, legendary: 0.9, mythic: 0.1 } },
-  rare: { chance: 0.45, odds: { common: 45, rare: 38, epic: 13, legendary: 3.5, mythic: 0.5 } },
-  epic: { chance: 0.65, odds: { common: 20, rare: 40, epic: 28, legendary: 10, mythic: 2 } },
+  common: { chance: 1, odds: { common: 70, rare: 24, epic: 5, legendary: 0.9, mythic: 0.1 } },
+  rare: { chance: 1, odds: { common: 45, rare: 38, epic: 13, legendary: 3.5, mythic: 0.5 } },
+  epic: { chance: 1, odds: { common: 20, rare: 40, epic: 28, legendary: 10, mythic: 2 } },
   legendary: { chance: 1, odds: { common: 0, rare: 30, epic: 40, legendary: 25, mythic: 5 } },
 };
 export const PITY_EPIC = 10; // a collectible of epic or better at least this often

@@ -8,7 +8,9 @@ import { createForest, createGrass, createClouds, wind } from './nature.js';
 import { EARTH_PADS, MOON_PADS } from './sim.js';
 
 export const TOWN_R = 62; // the flat town circle in every land
-export const ISLAND_RADIUS = 60; // how far you can walk
+export const RISE_R = TOWN_R + 56; // where the mountains start; between town and here is open country
+export const ISLAND_RADIUS = RISE_R - 5; // how far you can walk: the foot of the mountains
+export const BUILD_R = TOWN_R - 2; // building stays inside the town
 export const MOON_RADIUS = 33;
 export const GATE = new THREE.Vector3(0, 0, 44);
 export const PATH_START_Z = 60.5; // where invaders land
@@ -82,23 +84,32 @@ function passOpen(x, z, r) {
   return open;
 }
 // --- Lands: every age is a new landscape ------------------------------------------
-// The town circle (r < TOWN_R) is always flat; what changes is everything around it.
+// The town circle (r < TOWN_R) is always flat. Around it lies open country you
+// can walk through (gentle hills, groves, water, hidden caches) out to RISE_R,
+// where the mountains begin. What the country looks like changes with the age.
 const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+const rise = (r) => Math.max(0, r - RISE_R);
+/** Gentle rolling country between the town and the mountains, flatter along the passes. */
+function meadow(x, z, r, amp = 1) {
+  if (r < TOWN_R) return 0;
+  const n = noise2(x * 0.045 + 11, z * 0.045 - 5) * 0.6 + noise2(x * 0.11, z * 0.11) * 0.4;
+  return smooth((r - TOWN_R) / 16) * amp * (2.2 + 2 * n) * (0.35 + 0.65 * passOpen(x, z, r));
+}
 function valleyHeight(x, z, r) {
   if (r < TOWN_R) return 0;
   const open = passOpen(x, z, r);
-  const rise = ((r - TOWN_R) / 12) ** 1.55 * 4.4 * (0.75 + 0.45 * noise2(x * 0.35, z * 0.35));
-  return Math.min(74, rise * (0.05 + 0.95 * open * open));
+  const up = (rise(r) / 12) ** 1.55 * 4.4 * (0.75 + 0.45 * noise2(x * 0.35, z * 0.35));
+  return meadow(x, z, r) + Math.min(74, up * (0.05 + 0.95 * open * open));
 }
 // Bronze Age: low dunes, sandstone mesas far out, and a river behind the town.
 function duneHeight(x, z, r) {
   if (r < TOWN_R) return 0;
   const open = passOpen(x, z, r);
-  let h = ((r - TOWN_R) / 14) ** 1.3 * 2.4 * (0.5 + 0.9 * noise2(x * 0.12, z * 0.12));
+  let h = (rise(r) / 14) ** 1.3 * 2.4 * (0.5 + 0.9 * noise2(x * 0.12, z * 0.12));
   h = Math.min(14, h);
   const mesa = noise2(x * 0.035 + 7, z * 0.035);
-  if (r > TOWN_R + 30 && mesa > 0.62) h = Math.max(h, 18 + Math.round(mesa * 10) * 2);
-  h *= 0.15 + 0.85 * open;
+  if (r > RISE_R + 10 && mesa > 0.62) h = Math.max(h, 18 + Math.round(mesa * 10) * 2);
+  h = h * (0.15 + 0.85 * open) + meadow(x, z, r, 0.8);
   // The river: a wide band north of town, its banks sloping down.
   const bank = smooth((Math.abs(z + 78) - 6) / 6);
   return h * bank + (1 - bank) * -1.4;
@@ -107,9 +118,9 @@ function duneHeight(x, z, r) {
 function rollingHeight(x, z, r) {
   if (r < TOWN_R) return 0;
   const open = passOpen(x, z, r);
-  let h = ((r - TOWN_R) / 16) ** 1.2 * 3.2 * (0.7 + 0.6 * noise2(x * 0.08, z * 0.08)) + Math.sin(x * 0.07) * Math.cos(z * 0.06) * 2 * smooth((r - TOWN_R - 5) / 10);
-  if (r > TOWN_R + 50) h += ((r - TOWN_R - 50) / 10) ** 1.6 * 5;
-  h = Math.min(70, Math.max(0, h)) * (0.1 + 0.9 * open * open);
+  let h = (rise(r) / 16) ** 1.2 * 3.2 * (0.7 + 0.6 * noise2(x * 0.08, z * 0.08)) + Math.sin(x * 0.07) * Math.cos(z * 0.06) * 2 * smooth((r - TOWN_R - 5) / 10);
+  if (r > RISE_R + 50) h += ((r - RISE_R - 50) / 10) ** 1.6 * 5;
+  h = Math.min(70, Math.max(0, h)) * (0.1 + 0.9 * open * open) + meadow(x, z, r, 1.1);
   const lake = smooth((Math.hypot(x + 86, z - 6) - 13) / 7);
   return h * lake + (1 - lake) * -1.6;
 }
@@ -117,16 +128,16 @@ function rollingHeight(x, z, r) {
 function gorgeHeight(x, z, r) {
   if (r < TOWN_R - 1) return 0;
   const open = passOpen(x, z, r);
-  let h = ((r - TOWN_R + 1) / 8) ** 1.35 * 6 * (0.6 + 0.7 * noise2(x * 0.2, z * 0.2));
+  let h = (rise(r) / 8) ** 1.35 * 6 * (0.6 + 0.7 * noise2(x * 0.2, z * 0.2));
   h = Math.round(Math.min(64, h) / 3.5) * 3.5;
-  return h * (0.04 + 0.96 * open * open);
+  return h * (0.04 + 0.96 * open * open) + meadow(x, z, r, 0.8);
 }
 // Modern: the sea to the west with a beach; gentle green hills inland.
 function coastHeight(x, z, r) {
   if (r < TOWN_R && x > -57) return 0;
   const shore = smooth((-x - 57) / 10);
   const open = passOpen(x, z, r);
-  let land = r < TOWN_R ? 0 : Math.min(22, ((r - TOWN_R) / 16) ** 1.3 * 3 * (0.6 + 0.8 * noise2(x * 0.1, z * 0.1))) * (0.1 + 0.9 * open * open);
+  let land = r < TOWN_R ? 0 : Math.min(22, (rise(r) / 16) ** 1.3 * 3 * (0.6 + 0.8 * noise2(x * 0.1, z * 0.1))) * (0.1 + 0.9 * open * open) + meadow(x, z, r, 0.9);
   return land * (1 - shore) + shore * -Math.min(6, (-x - 57) * 0.25 + 0.6);
 }
 // Space Age: a red canyon of stepped buttes.
@@ -134,9 +145,9 @@ function canyonHeight(x, z, r) {
   if (r < TOWN_R) return 0;
   const open = passOpen(x, z, r);
   const n = noise2(x * 0.06, z * 0.06);
-  let h = ((r - TOWN_R) / 10) ** 1.4 * 5 * (0.4 + n);
-  h = Math.round(Math.min(48, h) / 5) * 5 + (n > 0.7 && r > TOWN_R + 25 ? 10 : 0);
-  return h * (0.05 + 0.95 * open * open);
+  let h = (rise(r) / 10) ** 1.4 * 5 * (0.4 + n);
+  h = Math.round(Math.min(48, h) / 5) * 5 + (n > 0.7 && r > RISE_R + 5 ? 10 : 0);
+  return h * (0.05 + 0.95 * open * open) + meadow(x, z, r, 0.7);
 }
 
 /** How each age's land looks. Indexed by era (0..5); the Moon is its own place. */
@@ -407,6 +418,9 @@ export function createWorld(scene, renderer) {
   earth.add(landParts);
   let landIndex = -1;
   let grass = null;
+  let wildGrass = null; // grass out in the country
+  let caches = []; // [{ x, y, z }] hidden caches in this land
+  let treeSolids = []; // trees you can bump into, out in the country
   let grassLevel = 0;
   const dispose = (root) => root.traverse((o) => { if (o.isMesh || o.isInstancedMesh) { o.geometry?.dispose(); } });
   function buildLand(index) {
@@ -417,10 +431,25 @@ export function createWorld(scene, renderer) {
 
     landParts.add(ground(MAP_SPAN, 140, hillHeight, groundMat, MAP_SPAN));
 
+    // Hidden caches out in the country: dry, fairly flat ground, spread around, off the roads.
+    {
+      const r = seeded(901 + index * 31);
+      caches = [];
+      for (let tries = 0; tries < 4000 && caches.length < 5; tries++) {
+        const a = r() * 6.28, d = TOWN_R + 16 + r() * (ISLAND_RADIUS - TOWN_R - 24);
+        const x = Math.cos(a) * d, z = Math.sin(a) * d;
+        const y = hillHeight(x, z, d);
+        if (y < 0.2 || y > 9 || passOpen(x, z, d) < 0.6) continue;
+        if (Math.abs(hillHeight(x + 2, z, d) - y) + Math.abs(hillHeight(x, z + 2, d) - y) > 1.2) continue;
+        if (caches.some((c) => Math.hypot(c.x - x, c.z - z) < 38)) continue;
+        caches.push({ x, y, z });
+      }
+    }
+
     // The hills around the town, coloured by height.
     {
       const half = MAP_SPAN / 2;
-      const g = new THREE.PlaneGeometry(560, 560, 140, 140);
+      const g = new THREE.PlaneGeometry(560, 560, 280, 280);
       g.rotateX(-Math.PI / 2);
       const p = g.attributes.position;
       const colors = new Float32Array(p.count * 3);
@@ -503,14 +532,25 @@ export function createWorld(scene, renderer) {
       const slopes = createForest();
       const list = [];
       const pick = (kinds, v) => { let acc = 0; for (const [k, w] of kinds) { acc += w; if (v < acc) return k; } return kinds[0][0]; };
-      for (let tries = 0; tries < 8000 && list.length < land.slope.count; tries++) {
-        const a = r() * 6.28, d = TOWN_R + 1.5 + r() * r() * 95;
+      // Out in the country trees grow in groves with meadows between; past
+      // RISE_R they thicken into forest up the mountain sides.
+      const want = Math.round(land.slope.count * 1.7);
+      treeSolids = [];
+      for (let tries = 0; tries < 20000 && list.length < want; tries++) {
+        const a = r() * 6.28, d = TOWN_R + 1.5 + Math.sqrt(r()) * (RISE_R + 70 - TOWN_R);
         const x = Math.cos(a) * d, z = Math.sin(a) * d;
         const y = hillHeight(x, z, d);
         if (y > land.slope.maxY || y < 0.15 || passOpen(x, z, d) < 0.25) continue;
+        if (d < RISE_R) {
+          const grove = noise2(x * 0.05 + 3, z * 0.05 + 9) * 0.7 + noise2(x * 0.13 - 4, z * 0.13) * 0.3;
+          if (grove < 0.2 && r() > 0.04) continue;
+          if (caches.some((c) => Math.hypot(c.x - x, c.z - z) < 6)) continue;
+        }
         // Desert palms grow along the river.
         if (land.slope.nearWater && Math.abs(z + 78) > 16 && r() < 0.85) continue;
-        list.push({ x, y: y - 0.3, z, kind: pick(land.slope.kinds, r()), scale: 1.1 + r() * 1.3, turn: r() * 6.28 });
+        const scale = 1.1 + r() * 1.3;
+        list.push({ x, y: y - 0.3, z, kind: pick(land.slope.kinds, r()), scale, turn: r() * 6.28 });
+        if (d < ISLAND_RADIUS + 3) treeSolids.push({ x, z, r: 0.35 + scale * 0.22 });
       }
       slopes.place(list);
       landParts.add(slopes.object);
@@ -520,10 +560,19 @@ export function createWorld(scene, renderer) {
     if (grass) earth.remove(grass);
     grass = createGrass(Math.round(land.grassCount * 1.9), TOWN_R - 4, grassAllowed, 21, land.grass);
     earth.add(grass);
+    // Thinner grass out in the country, following the ground.
+    if (wildGrass) { earth.remove(wildGrass); wildGrass.geometry.dispose(); }
+    wildGrass = createGrass(Math.round(land.grassCount * 1.3), RISE_R, (x, z) => {
+      const d = Math.hypot(x, z);
+      if (d < TOWN_R - 3.5) return false;
+      const h = hillHeight(x, z, d);
+      return h > -0.25 && h < 14;
+    }, 33 + index, land.grass, (x, z) => hillHeight(x, z) - 0.05);
+    earth.add(wildGrass);
     applyGrassLevel();
   }
   function applyGrassLevel() {
-    if (grass) grass.count = Math.floor(grass.userData.full * [1, 0.55, 0.25][grassLevel]);
+    for (const g of [grass, wildGrass]) if (g) g.count = Math.floor(g.userData.full * [1, 0.55, 0.25][grassLevel]);
   }
 
   earth.add(createClouds(16, 404, 60, 190, 34, 62));
@@ -1034,7 +1083,7 @@ export function createWorld(scene, renderer) {
     }
   }
 
-  return { earth, moon, landName, setEra, setClearings, setScene, showRealm, update, setQuality, setDaylight, get daylight() { return daylight; }, groundHeight: (name, x, z) => (name === 'moon' ? moonHeight(x, z, Math.hypot(x, z)) : hillHeight(x, z)) };
+  return { earth, moon, landName, caches: () => caches, treeSolids: () => treeSolids, setEra, setClearings, setScene, showRealm, update, setQuality, setDaylight, get daylight() { return daylight; }, groundHeight: (name, x, z) => (name === 'moon' ? moonHeight(x, z, Math.hypot(x, z)) : hillHeight(x, z)) };
 }
 
 export { EARTH_PADS };

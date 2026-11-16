@@ -339,6 +339,7 @@ export function createAudio(settings) {
       tone(1800, 0, 0.35, 'triangle', 0.05, 0.25);
       [523, 659, 784, 1047, 1319, 1568].slice(0, 3 + tier).forEach((f, i) => tone(f, 0.04 + i * 0.07, 0.5, 'triangle', 0.12));
     },
+    tick: () => tone(1750, 0, 0.025, 'square', 0.035),
     card: (i) => { tone(700 + i * 120, 0, 0.1, 'triangle', 0.13, 1.6); tone(1400 + i * 240, 0.07, 0.16, 'square', 0.035); },
     chest: () => [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.09, 0.3, 'triangle', 0.12)),
     era: () => [262, 330, 392, 523, 659, 784].forEach((f, i) => tone(f, i * 0.12, 0.5, 'triangle', 0.13)),

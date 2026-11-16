@@ -1,12 +1,19 @@
-// The chest opening: the chest drops onto a full-screen stage, rattles harder
-// and harder, bursts open in a flash, and the loot flies out card by card.
+// The chest opening: the chest drops onto a full-screen stage, rattles, and
+// bursts open. Then a reel of items rolls past a marker, each with its rarity
+// colour, slows down and lands on what you won; the loot follows card by card.
+// The reel's filler is drawn with the chest's real odds, and the spin is the
+// same length whatever you won, so the reel never fakes a near miss.
 
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { makeChest, makeCoin, RARITY_COLORS, C } from './art.js';
 import { fmt } from './sim.js';
 
-const RATTLES = { common: 2, rare: 3, epic: 3, legendary: 4 };
+const RATTLES = { common: 2, rare: 2, epic: 2, legendary: 2 };
+const REEL_TILES = 48; // tiles on the strip
+const REEL_WIN = 40; // the winning tile's place
+const SPIN = 5.4; // seconds the reel rolls
+const TIER_ORDER = ['common', 'rare', 'epic', 'legendary', 'mythic'];
 const CONFETTI = { common: 50, rare: 80, epic: 110, legendary: 170 };
 const ICONS = {
   relic: '<svg viewBox="0 0 48 48"><path d="M14 8h20l9 12-19 21L5 20z" fill="currentColor" opacity=".9"/><path d="M5 20h38M14 8l5 12 5 21 5-21 5-12M19 20l5-12 5 12" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="1.6" stroke-linejoin="round"/></svg>',
@@ -60,6 +67,9 @@ export function createOpening() {
   div('op-rays', stage);
   div('op-glow', stage);
   const view = div('op-view', stage, 'canvas');
+  const reel = div('op-reel', column);
+  const strip = div('op-strip', reel);
+  div('op-marker', reel);
   const cards = div('op-cards', column);
   const claim = div('op-claim', column, 'button');
   claim.type = 'button';
@@ -173,6 +183,27 @@ export function createOpening() {
     node.querySelector('b').textContent = title;
     node.querySelector('small').textContent = sub;
     return node;
+  }
+
+  function reelTile(entry, { collectibles, thumb }) {
+    const node = document.createElement('div');
+    node.className = `op-tile t-${entry.tier}`;
+    node.style.setProperty('--c', entry.tier === 'coins' ? '#8d93a6' : hex(RARITY_COLORS[entry.tier]));
+    node.innerHTML = `<em></em>${entry.id ? '<img alt="">' : '<span class="op-coins"><i></i><i></i><i></i></span>'}<b></b>`;
+    node.querySelector('em').textContent = entry.tier === 'coins' ? 'coins' : entry.tier;
+    node.querySelector('b').textContent = entry.id ? collectibles[entry.id]?.name || '' : entry.amount ? `+${fmt(entry.amount)}` : 'Coins';
+    if (entry.id) thumb?.(entry.id).then((src) => { node.querySelector('img').src = src; }).catch(() => {});
+    return node;
+  }
+
+  /** One filler tile, rolled with the chest's real odds. */
+  function fillerEntry(drop, collectibles) {
+    if (!drop || Math.random() > drop.chance) return { tier: 'coins' };
+    const total = TIER_ORDER.reduce((n, t) => n + (drop.odds[t] || 0), 0);
+    let r = Math.random() * total, tier = 'common';
+    for (const t of TIER_ORDER) { r -= drop.odds[t] || 0; if (r <= 0) { tier = t; break; } }
+    const pool = Object.keys(collectibles).filter((id) => collectibles[id].tier === tier);
+    return pool.length ? { tier, id: pool[Math.floor(Math.random() * pool.length)] } : { tier: 'coins' };
   }
 
   function burstConfetti(count, colors) {
@@ -295,6 +326,28 @@ export function createOpening() {
         three.coins.splice(i, 1);
       }
     }
+    if (run.reel && t >= run.reel.start) {
+      const r = run.reel;
+      if (!r.measured) {
+        // Measure once the reel is on screen.
+        const first = strip.children[0].getBoundingClientRect();
+        const second = strip.children[1].getBoundingClientRect();
+        r.tile = first.width;
+        r.step = second.left - first.left;
+        r.width = reel.clientWidth;
+        r.target = REEL_WIN * r.step + r.tile / 2 - r.width / 2 + r.jitter * r.tile;
+        r.measured = true;
+      }
+      const p = clamp01((t - r.start) / SPIN);
+      const eased = 1 - (1 - p) ** 4;
+      const x = eased * r.target;
+      strip.style.transform = `translate3d(${-x}px, 0, 0)`;
+      const under = Math.floor((x + r.width / 2) / r.step);
+      if (under !== r.under) {
+        r.under = under;
+        if (!run.silent && p < 1 && now - r.lastTick > 28) { r.lastTick = now; run.audio.tick?.(); }
+      }
+    }
     three.renderer.render(three.scene, three.camera);
     drawConfetti(dt);
     run.raf = requestAnimationFrame(frame);
@@ -314,6 +367,8 @@ export function createOpening() {
     root.classList.add('op-out');
     setTimeout(() => {
       cancelAnimationFrame(run.raf);
+      strip.replaceChildren();
+      strip.style.transform = '';
       for (const c of three.coins) three.rig.remove(c.m);
       three.coins.length = 0;
       three.rig.remove(three.chest);
@@ -347,7 +402,7 @@ export function createOpening() {
   return {
     isOpen: () => Boolean(run),
 
-    play({ rarity, from, percent, loot, names, colors, audio, onDone, collectibles = {}, thumb, best }) {
+    play({ rarity, from, percent, loot, names, colors, audio, onDone, collectibles = {}, thumb, best, drop }) {
       if (run) return;
       const t3 = ensureThree();
       const color = RARITY_COLORS[rarity];
@@ -375,11 +430,23 @@ export function createOpening() {
       t3.pool.material.color.set(light);
       resize();
 
+      // The reel: filler on both sides, what you won at REEL_WIN.
+      const won = loot.find((l) => l.kind === 'collectible');
+      const coinLoot = loot.find((l) => l.kind === 'coins');
+      const winEntry = won ? { tier: won.tier, id: won.id } : { tier: 'coins', amount: coinLoot?.amount };
+      const entries = Array.from({ length: REEL_TILES }, (_, i) => (i === REEL_WIN ? winEntry : fillerEntry(drop, collectibles)));
+      strip.replaceChildren(...entries.map((e) => reelTile(e, { collectibles, thumb })));
+      strip.style.transform = '';
+      const winTile = strip.children[REEL_WIN];
+
       const rattles = RATTLES[rarity];
       const rattleAt = Array.from({ length: rattles }, (_, k) => 0.62 + k * 0.5);
       const burstAt = 0.62 + rattles * 0.5 + 0.12;
-      const firstCard = burstAt + 0.55;
-      const doneAt = firstCard + loot.length * 0.36 + 0.25 + (best === 'legendary' || best === 'mythic' ? 0.9 : 0);
+      const reelStart = burstAt + 0.6;
+      const landAt = reelStart + SPIN;
+      const firstCard = landAt + 0.9 + (jackpot ? 0.6 : 0);
+      const doneAt = firstCard + loot.length * 0.3 + 0.25;
+      const winTier = winEntry.tier;
       const say = (fn) => { if (!run.silent) fn(); };
       const events = [
         { at: 0.42, fn: () => say(() => audio.thud()) },
@@ -388,22 +455,36 @@ export function createOpening() {
           at: burstAt,
           fn: () => {
             root.classList.add('op-burst');
-            audio.burst(rattles - 1);
+            say(() => audio.burst(1));
             spawnCoins(rarity === 'legendary' ? 26 : 16);
             burstConfetti(CONFETTI[rarity], [rarityColor, light, '#ffffff', hex(C.gold)]);
           },
         },
-        ...loot.map((item, i) => ({
-          at: firstCard + i * 0.36 + (jackpot ? 0.9 : 0),
+        { at: burstAt + 0.35, fn: () => root.classList.add('op-reeling') },
+        {
+          at: landAt,
           fn: () => {
-            cards.children[i].classList.add('in');
-            say(() => audio.card(i));
-            if (item.kind === 'collectible' && jackpot) {
-              root.classList.add(`op-jackpot`, `op-jackpot-${jackpot}`);
+            root.classList.add('op-landed');
+            winTile.classList.add('win');
+            const rank = TIER_ORDER.indexOf(winTier);
+            say(() => audio.burst(Math.max(0, rank)));
+            if (rank >= 2) {
+              const wc = hex(RARITY_COLORS[winTier]);
+              burstConfetti(rank >= 3 ? 70 : 40, [wc, '#ffffff']);
+            }
+            if (jackpot) {
+              root.classList.add('op-jackpot', `op-jackpot-${jackpot}`);
               const jc = hex(RARITY_COLORS[jackpot]);
               burstConfetti(jackpot === 'mythic' ? 260 : 160, jackpot === 'mythic' ? ['#ff4fd8', '#7fd3ff', '#fff2a0', '#b48cff', '#ffffff'] : [jc, '#fff2c0', '#ffffff']);
               say(() => audio.era());
             }
+          },
+        },
+        ...loot.map((item, i) => ({
+          at: firstCard + i * 0.3,
+          fn: () => {
+            cards.children[i].classList.add('in');
+            say(() => audio.card(i));
           },
         })),
         {
@@ -416,7 +497,8 @@ export function createOpening() {
           },
         },
       ];
-      run = { t: 0, last: performance.now(), raf: 0, events, rattles, rattleAt, burstAt, doneAt, confetti: [], done: false, silent: false, closing: false, onDone };
+      run = { t: 0, last: performance.now(), raf: 0, events, rattles, rattleAt, burstAt, doneAt, confetti: [], done: false, silent: false, closing: false, onDone, audio,
+        reel: { start: reelStart, jitter: (Math.random() - 0.5) * 0.7, measured: false, under: -1, lastTick: 0 } };
       void flash.offsetWidth;
       run.raf = requestAnimationFrame(frame);
     },

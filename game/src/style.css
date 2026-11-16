@@ -240,6 +240,31 @@ h3 { margin: 0 0 8px; font-size: 13px; letter-spacing: 0.08em; text-transform: u
 .op-card b { font-size: clamp(13px, 2.5vh, 18px); font-weight: 900; line-height: 1.1; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.45); }
 .op-card small { font-size: clamp(9.5px, 1.6vh, 11.5px); font-weight: 700; color: var(--muted); line-height: 1.2; }
 
+.op-stage { transition: width 0.4s cubic-bezier(0.3, 1, 0.4, 1); }
+.op-reeling .op-stage { width: min(20vh, 40vw, 200px); }
+.op-reel { --tw: clamp(92px, 15vh, 136px); position: relative; display: none; width: min(94vw, 1000px); height: calc(var(--tw) + 26px); overflow: hidden; border-radius: 16px; background: linear-gradient(180deg, rgba(8, 6, 20, 0.88), rgba(22, 18, 44, 0.88)); border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.65), 0 14px 40px rgba(0, 0, 0, 0.45); }
+.op-reeling .op-reel { display: block; animation: op-reel-in 0.35s ease-out; }
+@keyframes op-reel-in { from { opacity: 0; transform: scaleY(0.6); } }
+.op-reel::before, .op-reel::after { content: ''; position: absolute; top: 0; bottom: 0; width: 16%; z-index: 2; pointer-events: none; }
+.op-reel::before { left: 0; background: linear-gradient(90deg, rgba(8, 6, 20, 0.95), transparent); }
+.op-reel::after { right: 0; background: linear-gradient(-90deg, rgba(8, 6, 20, 0.95), transparent); }
+.op-strip { position: absolute; top: 13px; left: 0; display: flex; gap: 8px; will-change: transform; }
+.op-tile { position: relative; flex: 0 0 var(--tw); height: var(--tw); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 12px; overflow: hidden;
+  background: radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--c) 34%, transparent), transparent 70%), linear-gradient(180deg, #2a2546, #1a1630); border-bottom: 5px solid var(--c); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1); }
+.op-tile em { position: absolute; top: 5px; left: 7px; font-style: normal; font-size: 9px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c); }
+.op-tile img { width: 70%; height: 62%; object-fit: contain; filter: drop-shadow(0 5px 6px rgba(0, 0, 0, 0.5)); }
+.op-tile .op-coins { width: 46%; height: 46%; }
+.op-tile b { max-width: 92%; font-size: clamp(10px, 1.6vh, 12.5px); font-weight: 800; color: var(--cream); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.op-tile.t-legendary { box-shadow: inset 0 0 18px rgba(242, 193, 78, 0.35); }
+.op-tile.t-mythic { background: radial-gradient(circle at 50% 42%, rgba(255, 79, 216, 0.5), transparent 70%), linear-gradient(160deg, #3a2156, #1d2a4a); border-bottom-color: transparent; border-image: linear-gradient(90deg, #ff4fd8, #7fd3ff, #fff2a0) 1; }
+.op-marker { position: absolute; left: 50%; top: 0; bottom: 0; width: 3px; transform: translateX(-50%); z-index: 3; background: #ffd84e; box-shadow: 0 0 10px #ffd84e, 0 0 24px rgba(255, 216, 78, 0.6); }
+.op-marker::before, .op-marker::after { content: ''; position: absolute; left: 50%; transform: translateX(-50%); border: 9px solid transparent; }
+.op-marker::before { top: 0; border-top-color: #ffd84e; }
+.op-marker::after { bottom: 0; border-bottom-color: #ffd84e; }
+.op-landed .op-tile:not(.win) { opacity: 0.4; transition: opacity 0.4s ease; }
+.op-tile.win { z-index: 1; box-shadow: 0 0 0 2px var(--c), 0 0 34px var(--c); animation: op-win 0.55s cubic-bezier(0.2, 1.6, 0.4, 1); }
+@keyframes op-win { 0% { transform: scale(1); } 45% { transform: scale(1.12); } 100% { transform: scale(1.04); } }
+.op-reeling .op-cards { margin-top: 2px; }
 .op-claim {
   min-width: 190px; padding: clamp(7px, 1.5vh, 13px) 30px; border: 0; border-radius: 14px; font-size: clamp(15px, 2.6vh, 20px); font-weight: 900; letter-spacing: 0.04em; text-transform: uppercase;
   color: #10321a; background: linear-gradient(180deg, #9af28a, #4fcf5d 60%, #35b148); box-shadow: 0 5px 0 #1f7a33, 0 12px 26px rgba(0, 0, 0, 0.45); opacity: 0; transform: translateY(14px) scale(0.9); pointer-events: none;
@@ -814,7 +839,8 @@ body.shiftlock, body.shiftlock canvas, body.shiftlock #labels, body.shiftlock #l
 .show-item b { font-size: 12px; } .show-item small { font-size: 10px; opacity: 0.7; }
 .show-item.t-mythic b { color: #ff8ae8; } .show-item.t-legendary b { color: #ffd36a; }
 /* Chest opening: collectible cards and jackpots */
-.op-card .op-thumb { width: 86px; height: 86px; object-fit: contain; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.5)); }
+.op-card .op-icon:has(.op-thumb) { width: clamp(52px, 9vh, 78px); height: clamp(52px, 9vh, 78px); }
+.op-card .op-thumb { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.5)); }
 .op-card.op-mythic-card { background: linear-gradient(160deg, rgba(255, 79, 216, 0.35), rgba(127, 211, 255, 0.25)); box-shadow: 0 0 30px rgba(255, 79, 216, 0.6); }
 .op-card.op-legendary-card { box-shadow: 0 0 26px rgba(242, 193, 78, 0.55); }
 .op-jackpot-mythic::before, .op-jackpot-legendary::before { content: ''; position: absolute; inset: 0; pointer-events: none; animation: jackpot 1.2s ease-out; }
