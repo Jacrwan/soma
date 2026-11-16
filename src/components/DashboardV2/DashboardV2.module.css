@@ -485,3 +485,15 @@
 @media(max-width:700px){.splitPlan{grid-template-columns:1fr;gap:16px}.splitPlan>.agenda{padding-right:0;border-right:0}}
 :global([data-theme=dark]) .live .nextBlock{background:color-mix(in oklch,var(--tone,var(--text-secondary)),var(--bg) 88%)}
 .r1 .focus small{display:none}
+
+/* A due card's old place after the student moved its deadline: faint and dashed. */
+.dueGhost {
+  opacity: .55;
+  border-style: dashed;
+  background: transparent;
+}
+
+.dueGhost:hover,
+.dueGhost:focus-within {
+  opacity: .85;
+}

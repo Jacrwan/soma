@@ -230,6 +230,15 @@ test('details: your own deadline moves the work earlier, and the due card says s
   const todo = state.tables.todos.find(t => t.id === 'lab')!;
   expect(todo.my_due).toBe(`${dateOf(2)}T23:59`);
   expect(todo.due_date).toBe(dateOf(4));                                 // the posted date stays
+  // The card moves to your day; a faint one stays where it was posted.
+  await page.getByRole('button', { name: /Wed\s*18/ }).first().click();
+  const moved = page.locator('article[data-kind="due"]').filter({ hasText: 'Lab 10' });
+  await expect(moved).toBeVisible();
+  await expect(moved.getByText(/Your deadline \(posted for Fri, Nov 20\)/)).toBeVisible();
+  await page.getByRole('button', { name: /Fri\s*20/ }).first().click();
+  const ghost = page.locator('article[data-kind="due-ghost"]').filter({ hasText: 'Lab 10' });
+  await expect(ghost.getByText(/Posted as due this day · you moved it to Wed, Nov 18/)).toBeVisible();
+  await expect(page.locator('article[data-kind="due"]').filter({ hasText: 'Lab 10' })).toHaveCount(0);
   // Finish a day before your deadline: by tomorrow.
   await expect.poll(() => String(state.tables.todo_sessions.find(s => s.id === 'l1')!.date) <= dateOf(1)).toBe(true);
 });
@@ -287,6 +296,27 @@ test('a Canvas due card shows under its task’s course and colour, like its sit
   await expect(card).toBeVisible();
   await expect(card.getByText('HIST 10', { exact: true })).toBeVisible();
   await expect(card.getByText(/Introductory Mechanics/)).toHaveCount(0);
+});
+
+test('a Canvas assignment with your own deadline moves to that day, leaving a faint card behind', async ({ page }) => {
+  await setup(page, {
+    todos: [task('hw', 'HW9.5', new Date(2026, 10, 18, 23, 59).toISOString(), { assignment_id: 95, kind: 'homework', auto_schedule: null, my_due: `${dateOf(1)}T23:59` })],
+    todo_sessions: [{ id: 'h1', user_id: account.id, todo_id: 'hw', date: dateOf(0), start_time: at(0, '11:00'), end_time: at(0, '11:40') }],
+  });
+  await page.goto('/dashboard');
+  await page.evaluate(async due => {
+    // @ts-expect-error Vite serves this browser-only module at runtime.
+    const { setLocalSnapshot } = await import('/src/lib/canvasDeepSync.ts');
+    setLocalSnapshot({ v: 1, host: 'school.instructure.com', syncedAt: new Date().toISOString(), groups: [], announcements: [],
+      courses: [{ id: 7, name: 'HIST 10', courseCode: 'HIST 10', currentScore: null, currentGrade: null, weighted: false }],
+      assignments: [{ id: 95, courseId: 7, name: 'HW9.5', dueAt: due, htmlUrl: '', description: '', pointsPossible: null, groupId: null, workflowState: 'unsubmitted' }] });
+    window.dispatchEvent(new Event('soma_canvas_changed'));
+  }, new Date(2026, 10, 18, 23, 59).toISOString());
+  await page.getByRole('button', { name: /Tue\s*17/ }).first().click();
+  await expect(page.locator('article[data-kind="due"]').filter({ hasText: 'HW9.5' }).getByText(/Your deadline \(posted for Wed, Nov 18\)/)).toBeVisible();
+  await page.getByRole('button', { name: /Wed\s*18/ }).first().click();
+  await expect(page.locator('article[data-kind="due-ghost"]').filter({ hasText: 'HW9.5' })).toBeVisible();
+  await expect(page.locator('article[data-kind="due"]').filter({ hasText: 'HW9.5' })).toHaveCount(0);
 });
 
 test('details: each step says when it is on the plan', async ({ page }) => {

@@ -9,6 +9,20 @@ still needed.
 
 ---
 
+## 2026-11-15 (a due card moves to your own deadline; a faint one stays on the posted day) · branch task-details, preview
+
+- **Why:** owner: "when I change the due date on a Canvas assignment, the
+  block should move to that day; maybe leave a faint block where the original
+  belongs."
+- **What:** with `myDue` set, the due card (Canvas or course-site) shows on
+  that day ("Your deadline (posted for Wed, Nov 18)"), and a faint dashed
+  card stays on the posted day ("Posted as due this day · you moved it to
+  …"). The faint card opens the details and has no Focus/done; it isn't
+  counted in the week strip, the progress bar or the Due soon widget
+  (`ghost` on runtime.due; LiveDashboard builds both, DashboardV2 `dueCard`).
+- **Tests:** tests/tasks-page.spec.ts (course-site task and Canvas assignment
+  both move and leave the faint card).
+
 ## 2026-11-15 (course-site tasks on their due day, for real; typed lengths; step times) · branch task-details, preview
 
 - **Why:** Lab 10 was right on Deadlines (Wed Nov 18) but still missing from
