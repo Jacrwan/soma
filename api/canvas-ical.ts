@@ -1,8 +1,7 @@
 /// <reference types="node" />
-import * as dns from 'node:dns/promises';
-import * as net from 'node:net';
 import { createClient } from '@supabase/supabase-js';
 import { isRateLimited } from './_rateLimit';
+import { safeFetch, SafeFetchError } from './_safeFetch';
 
 const ALLOWED_ORIGINS = [
   'https://somastudy.app',
@@ -12,37 +11,38 @@ const ALLOWED_ORIGINS = [
 // Canvas calendar feeds all share the same path shape regardless of which
 // university hosts them — e.g. school.instructure.com, bruinlearn.ucla.edu,
 // canvas.harvard.edu. The hostname is not a reliable signal, so we identify a
-// Canvas feed by its path (/feeds/calendars/user_<token>.ics) and rely on the
-// HTTPS + public-IP (SSRF) checks below to keep the fetch safe.
+// Canvas feed by its path (/feeds/calendars/user_<token>.ics) and rely on
+// safeFetch to keep the fetch away from anything internal.
 const CANVAS_FEED_PATH_RE = /\/feeds\/calendars\/user_[^/]+\.ics$/i;
 
-function isPrivateIp(address: string): boolean {
-  const ipType = net.isIP(address);
-  if (ipType === 4) {
-    const [a, b] = address.split('.').map(Number);
-    return (
-      a === 0 || a === 10 || a === 127 ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      (a === 100 && b >= 64 && b <= 127) ||
-      a >= 224
-    );
-  }
-  if (ipType === 6) {
-    const lower = address.toLowerCase();
-    return (
-      lower === '::1' || lower === '::' ||
-      lower.startsWith('fc') || lower.startsWith('fd') ||
-      lower.startsWith('fe8') || lower.startsWith('fe9') ||
-      lower.startsWith('fea') || lower.startsWith('feb') ||
-      lower.startsWith('::ffff:10.') ||
-      lower.startsWith('::ffff:127.') ||
-      lower.startsWith('::ffff:192.168.')
-    );
-  }
-  return true;
+/**
+ * The feed's text. The URL is the student's, so it is untrusted: it goes
+ * through safeFetch (HTTPS, default port, public addresses only, every
+ * redirect re-checked, size capped), the same guard the course-site import
+ * uses. Until 2026-11-15 this route had its own weaker check: it followed
+ * redirects without looking at where they led and had no size limit.
+ */
+export async function readFeed(icalUrl: string, deps: Pick<Parameters<typeof safeFetch>[1], 'fetchImpl' | 'lookup'> = {}): Promise<string> {
+  let parsed: URL;
+  try { parsed = new URL(icalUrl); } catch { throw new SafeFetchError('invalid_url'); }
+  if (parsed.protocol !== 'https:') throw new SafeFetchError('https_required');
+  if (!CANVAS_FEED_PATH_RE.test(parsed.pathname)) throw new SafeFetchError('not_a_canvas_feed');
+  const page = await safeFetch(icalUrl, { accept: /^(text\/(calendar|plain)|application\/octet-stream)\b/, maxBytes: 5_000_000, ...deps });
+  return page.body;
 }
+
+/** What the student is told for each way reading the feed can fail. */
+const FEED_ERRORS: Record<string, string> = {
+  invalid_url: 'Invalid URL',
+  https_required: 'HTTPS required',
+  not_a_canvas_feed: 'URL does not look like a Canvas calendar feed (expected .../feeds/calendars/user_….ics)',
+  private_address: 'Calendar feed host must resolve to a public IP address',
+  host_not_found: 'Calendar feed host must resolve to a public IP address',
+  port_not_allowed: 'Calendar feed host must resolve to a public IP address',
+  credentials_in_url: 'Invalid URL',
+  unsupported_content_type: 'Response does not appear to be a valid iCal feed',
+  too_large: 'That calendar feed is too large to read',
+};
 
 function applyCors(req: any, res: any): boolean {
   const origin = req.headers['origin'] as string | undefined;
@@ -57,17 +57,6 @@ function applyCors(req: any, res: any): boolean {
     return true;
   }
   return false;
-}
-
-async function isPublicHost(hostname: string): Promise<boolean> {
-  if (net.isIP(hostname)) return !isPrivateIp(hostname);
-
-  try {
-    const records = await dns.lookup(hostname, { all: true, verbatim: true });
-    return records.length > 0 && records.every(record => !isPrivateIp(record.address));
-  } catch {
-    return false;
-  }
 }
 
 // ── iCal parser ──────────────────────────────────────────────────────────────
@@ -249,37 +238,18 @@ export default async function handler(req: any, res: any) {
   const icalUrl = typeof body?.icalUrl === 'string' ? body.icalUrl.trim() : '';
   if (!icalUrl) return res.status(400).json({ error: 'icalUrl is required' });
 
-  // Validate URL
-  let parsedUrl: URL;
-  try {
-    parsedUrl = new URL(icalUrl);
-  } catch {
-    return res.status(400).json({ error: 'Invalid URL' });
-  }
-
-  if (parsedUrl.protocol !== 'https:') return res.status(400).json({ error: 'HTTPS required' });
-  if (!CANVAS_FEED_PATH_RE.test(parsedUrl.pathname)) {
-    return res.status(400).json({
-      error: 'URL does not look like a Canvas calendar feed (expected .../feeds/calendars/user_….ics)',
-    });
-  }
-
-  // DNS / SSRF check
-  if (!await isPublicHost(parsedUrl.hostname)) {
-    return res.status(400).json({ error: 'Calendar feed host must resolve to a public IP address' });
-  }
-
   // Fetch iCal
   let icalText: string;
+  let parsedUrl: URL;
   try {
-    const fetchRes = await fetch(icalUrl, {
-      headers: { 'User-Agent': 'Soma/1.0 calendar-sync' },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!fetchRes.ok) return res.status(502).json({ error: `Calendar feed returned ${fetchRes.status}` });
-    icalText = await fetchRes.text();
+    icalText = await readFeed(icalUrl);
+    parsedUrl = new URL(icalUrl);
   } catch (e) {
-    console.error('[canvas-ical] fetch failed:', e);
+    if (e instanceof SafeFetchError) {
+      const upstream = /^upstream_(\d{3})$/.exec(e.code);
+      return res.status(e.status).json({ error: FEED_ERRORS[e.code] ?? (upstream ? `Calendar feed returned ${upstream[1]}` : 'Failed to fetch calendar feed') });
+    }
+    console.error('[canvas-ical] fetch failed:', e instanceof Error ? e.name : 'error');
     return res.status(502).json({ error: 'Failed to fetch calendar feed' });
   }
 

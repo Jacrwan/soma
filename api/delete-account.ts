@@ -21,6 +21,23 @@ function applyCors(req: any, res: any): boolean {
   return false;
 }
 
+/**
+ * Cancels the subscription on file, if one can still bill. False when it
+ * could not be canceled: the account is then left alone. Until 2026-11-15 a
+ * failed cancel was ignored and the account deleted anyway, which removed
+ * the only record of a subscription that went on charging. A subscription
+ * Stripe no longer has is already gone, and counts as stopped.
+ */
+export async function stopBilling(
+  sub: { stripe_subscription_id?: string | null; status?: string | null } | null,
+  cancel: ((subscriptionId: string) => Promise<unknown>) | null,
+): Promise<boolean> {
+  if (!sub?.stripe_subscription_id || sub.status === 'canceled' || sub.status === 'incomplete_expired') return true;
+  if (!cancel) return false;
+  try { await cancel(sub.stripe_subscription_id); return true; }
+  catch (e) { return (e as { code?: string } | null)?.code === 'resource_missing'; }
+}
+
 export default async function handler(req: any, res: any) {
   if (applyCors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -52,23 +69,15 @@ export default async function handler(req: any, res: any) {
   // Anything not yet canceled — trialing, active, past due, unpaid — would
   // keep charging the card of an account that no longer exists. Until
   // 2026-10-21 only trialing and active ones were canceled.
-  if (stripeKey) {
-    const { data: sub, error: lookupError } = await admin
-      .from('subscriptions')
-      .select('stripe_subscription_id, status')
-      .eq('user_id', uid)
-      .maybeSingle();
-    // Without knowing, deleting could leave a subscription billing nobody.
-    if (lookupError) return res.status(503).json({ error: 'Could not reach billing. Nothing was deleted; please try again.' });
-    try {
-      if (sub?.stripe_subscription_id && sub.status !== 'canceled') {
-        const stripe = new Stripe(stripeKey);
-        await stripe.subscriptions.cancel(sub.stripe_subscription_id);
-      }
-    } catch {
-      // Non-fatal: proceed with account deletion even if Stripe cancel fails
-    }
-  }
+  const { data: sub, error: lookupError } = await admin
+    .from('subscriptions')
+    .select('stripe_subscription_id, status')
+    .eq('user_id', uid)
+    .maybeSingle();
+  // Without knowing, deleting could leave a subscription billing nobody.
+  if (lookupError) return res.status(503).json({ error: 'Could not reach billing. Nothing was deleted; please try again.' });
+  const stopped = await stopBilling(sub, stripeKey ? id => new Stripe(stripeKey).subscriptions.cancel(id) : null);
+  if (!stopped) return res.status(503).json({ error: 'Could not cancel your subscription. Nothing was deleted; please try again, or cancel it in Settings first.' });
 
   // Delete the user's files and rows. Failures are logged by name only (no
   // user data) and don't block deleting the account itself.

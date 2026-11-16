@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { deleteUserData, USER_TABLES } from '../api/_deleteUserData';
+import { stopBilling } from '../api/delete-account';
+import { ownsPath } from '../api/extract-document';
 
 // Account deletion used to clear a fixed list of nine tables that predated
 // courses, documents, chats and calendar connections, and never touched the
@@ -51,4 +53,33 @@ test('a missing old table is reported but does not stop the rest', async () => {
   const failed = await deleteUserData(admin, 'user-1');
   expect(failed).toEqual(['schedule_blocks']);
   expect(deleted.map(d => d.table)).toContain('time_blocks');
+});
+
+// A failed cancel used to be ignored and the account deleted anyway, which
+// removed the only record of a subscription that kept charging (2026-11-15).
+test('an account is not deleted while its subscription could not be canceled', async () => {
+  const active = { stripe_subscription_id: 'sub_1', status: 'active' };
+  const canceled: string[] = [];
+  expect(await stopBilling(active, async id => { canceled.push(id); })).toBe(true);
+  expect(canceled).toEqual(['sub_1']);
+  expect(await stopBilling(active, async () => { throw new Error('network'); })).toBe(false);
+  // No Stripe key on the server: it can't be canceled, so nothing is deleted.
+  expect(await stopBilling(active, null)).toBe(false);
+});
+
+test('nothing to cancel, or a subscription Stripe no longer has, does not block deleting', async () => {
+  const never = async () => { throw new Error('should not be called'); };
+  expect(await stopBilling(null, never)).toBe(true);
+  expect(await stopBilling({ stripe_subscription_id: null, status: 'free' }, never)).toBe(true);
+  expect(await stopBilling({ stripe_subscription_id: 'sub_1', status: 'canceled' }, never)).toBe(true);
+  expect(await stopBilling({ stripe_subscription_id: 'sub_1', status: 'active' }, async () => { throw Object.assign(new Error('No such subscription'), { code: 'resource_missing' }); })).toBe(true);
+});
+
+// The file's path comes from a row the student can write; the download uses the service role.
+test('a document is only extracted from the student’s own folder', () => {
+  expect(ownsPath('user-1', 'user-1/abc-notes.pdf')).toBe(true);
+  expect(ownsPath('user-1', 'user-2/abc-notes.pdf')).toBe(false);
+  expect(ownsPath('user-1', 'user-10/abc-notes.pdf')).toBe(false);
+  expect(ownsPath('user-1', 'user-1/../user-2/abc-notes.pdf')).toBe(false);
+  expect(ownsPath('user-1', null)).toBe(false);
 });

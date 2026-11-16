@@ -378,3 +378,45 @@ test('dashboard: a finished assignment stays on its day, checked, and the check 
   await expect.poll(() => state.tables.todos.find(t => t.id === 'lab')!.status).toBe('nothing');
   await expect(page.locator('article[data-kind="due"]').filter({ hasText: 'Lab 10: SQL' })).toBeVisible();
 });
+
+test('dashboard: Focus through a sitting, then ticking it, finishes a task with a guessed length', async ({ page }) => {
+  // No length set: Soma guesses an hour. The hour was focused, then ticked.
+  // Logged time and the ticked sitting were added together (2026-11-15), so
+  // the task read as two hours, stayed open and got another sitting.
+  const state = await setup(page, {
+    todos: [task('hw', 'Homework 7', dateOf(3), { estimated_minutes: null, kind: 'homework' })],
+    todo_sessions: [{ id: 's1', user_id: account.id, todo_id: 'hw', date: dateOf(0), start_time: at(0, '07:30'), end_time: at(0, '08:30'), pinned: true }],
+    timer_sessions: [{ id: 'f1', user_id: account.id, subject_id: 'hist', task_text: 'Homework 7', date: dateOf(0), start_time: at(0, '07:30'), end_time: at(0, '08:30'), duration_seconds: 3600 }],
+  });
+  await page.goto('/dashboard');
+  const block = page.locator('article').filter({ hasText: 'Homework 7' }).first();
+  await block.getByRole('button', { name: 'Complete: Homework 7' }).click();
+  await expect.poll(() => state.tables.todos.find(t => t.id === 'hw')!.status).toBe('done');
+  expect(state.tables.todo_sessions.filter(s => s.todo_id === 'hw')).toHaveLength(1);
+});
+
+test('dashboard: work handed in on Canvas finishes its task and clears its sittings', async ({ page }) => {
+  const due = new Date(2026, 10, 18, 23, 59).toISOString();
+  const state = await setup(page, {
+    todos: [task('hw', 'HW9.5', due, { assignment_id: 95, kind: 'homework', auto_schedule: null, notes: 'bring calculator' })],
+    todo_sessions: [
+      { id: 'past', user_id: account.id, todo_id: 'hw', date: dateOf(-1), start_time: at(-1, '11:00'), end_time: at(-1, '11:40'), done_at: at(-1, '11:45') },
+      { id: 'ahead', user_id: account.id, todo_id: 'hw', date: dateOf(1), start_time: at(1, '11:00'), end_time: at(1, '11:40') },
+    ],
+  });
+  await page.goto('/dashboard');
+  await expect(page.getByRole('heading', { name: 'Focus', exact: true })).toBeVisible();
+  await page.evaluate(async due => {
+    // @ts-expect-error Vite serves this browser-only module at runtime.
+    const { setLocalSnapshot } = await import('/src/lib/canvasDeepSync.ts');
+    setLocalSnapshot({ v: 1, host: 'school.instructure.com', syncedAt: new Date().toISOString(), groups: [], announcements: [],
+      courses: [{ id: 7, name: 'HIST 10', courseCode: 'HIST 10', currentScore: null, currentGrade: null, weighted: false }],
+      assignments: [{ id: 95, courseId: 7, name: 'HW9.5', dueAt: due, htmlUrl: '', description: '', pointsPossible: null, groupId: null, workflowState: 'submitted', submittedAt: new Date().toISOString() }] });
+    window.dispatchEvent(new Event('soma_canvas_changed'));
+  }, due);
+  await expect.poll(() => state.tables.todos.find(t => t.id === 'hw')!.status).toBe('done');
+  // The sitting still ahead goes; the one already checked off stays as history.
+  await expect.poll(() => state.tables.todo_sessions.map(s => s.id)).toEqual(['past']);
+  // Only the status was written: the rest of the row is as it was.
+  expect(state.tables.todos.find(t => t.id === 'hw')).toMatchObject({ notes: 'bring calculator', assignment_id: 95, kind: 'homework' });
+});

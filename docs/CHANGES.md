@@ -9,6 +9,47 @@ still needed.
 
 ---
 
+## 2026-11-15 (audit fixes: three server checks, two scheduler bugs)
+
+- **Why:** a read-through of master for bugs and security flaws; the owner
+  picked these five to fix first. The others are listed, unfixed, at the end.
+- **What:**
+  - Canvas feed (`api/canvas-ical.ts`): the feed is read through `safeFetch`
+    (`readFeed`), like the course-site import. Its own check followed
+    redirects without looking where they led, missed some private address
+    forms, and had no size limit. Feeds over 5 MB are refused.
+  - Document text (`api/extract-document.ts`): `ownsPath` refuses a file path
+    outside the student's own folder. The path is on a row the student can
+    write and the download uses the service role.
+  - Delete account (`api/delete-account.ts`): `stopBilling`. If the Stripe
+    subscription can't be canceled, nothing is deleted and the student is
+    told to retry. A failed cancel used to be ignored, leaving a subscription
+    charging an account that no longer existed. A subscription Stripe no
+    longer has, or one already canceled, doesn't block.
+  - Scheduler (`src/lib/taskSchedule.ts` `plannedOn`): Focus logged and a
+    ticked sitting were added together, so a task with a guessed length
+    (all auto-added Canvas work) doubled when its sitting was focused through
+    and ticked: it stayed open and got another sitting. Work done is now the
+    larger of the two, as "what's left" already counted it.
+  - Scheduler (`closeHandedIn`, same file): a task linked to a Canvas
+    assignment that Canvas shows as handed in is checked off and its future
+    sittings removed, on every run. Before, the sittings stayed and each
+    missed one moved to the next open time until the due date. Only `status`
+    is written.
+- **Tests:** tests/import-schedule.spec.ts (feed redirect to a private
+  address, feed shape), tests/delete-account.spec.ts (`stopBilling`,
+  `ownsPath`), tests/tasks-page.spec.ts ("Focus through a sitting, then
+  ticking it…", "work handed in on Canvas…"; both fail on the old code).
+- **Setup:** none.
+- **Found, not fixed:** Google Calendar tokens readable from the browser
+  (`google_calendar_connections` policy; needs a migration); the session
+  token in the calendar OAuth `state`; rules for `subscriptions` and other
+  base tables aren't in the repo to check; tasks due over ~60 days out are
+  re-placed daily; a typed task with a `kind` opens as imported in details;
+  finishing on Deadlines leaves future sittings, and Undo on Tasks reopens
+  only one task; hand-moved blocks are pinned in one browser only; sittings
+  read an hour off across a clock change; two tabs can double-place.
+
 ## 2026-11-15 (walkthrough, landing page and legal pages catch up with task scheduling)
 
 - **Why:** the owner asked for the tour, the landing page and the legal notes

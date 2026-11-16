@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { safeFetch, isPrivateIp } from '../api/_safeFetch';
+import { readFeed } from '../api/canvas-ical';
 import { createImportHandler, htmlToText, validateItems, statedDue } from '../api/import-schedule';
 
 // ── safeFetch: a user-supplied URL must never reach anything internal ───────
@@ -34,6 +35,21 @@ test('a public page cannot redirect the server to a private address', async () =
     : new Response('secret')) as typeof fetch;
   await expect(safeFetch('https://cs61a.org/', { ...html, fetchImpl, lookup: lookupFor({ 'metadata.internal': '169.254.169.254' }) }))
     .rejects.toMatchObject({ code: 'private_address' });
+});
+
+// The Canvas feed route had its own, weaker check (2026-11-15): it followed
+// redirects without looking where they led. It now goes through safeFetch.
+test('a Canvas feed URL cannot redirect the server to a private address, and must look like a feed', async () => {
+  const feed = 'https://school.instructure.com/feeds/calendars/user_abc.ics';
+  const ical = { 'content-type': 'text/calendar; charset=utf-8' };
+  expect(await readFeed(feed, { lookup: publicLookup, fetchImpl: page('BEGIN:VCALENDAR', ical) })).toBe('BEGIN:VCALENDAR');
+  const bounce = (async (url: string) => url.startsWith('https://school.instructure.com')
+    ? new Response(null, { status: 302, headers: { location: 'https://metadata.internal/feeds/calendars/user_abc.ics' } })
+    : new Response('BEGIN:VCALENDAR secret', { headers: ical })) as typeof fetch;
+  await expect(readFeed(feed, { fetchImpl: bounce, lookup: lookupFor({ 'metadata.internal': '169.254.169.254' }) })).rejects.toMatchObject({ code: 'private_address' });
+  await expect(readFeed('https://[::ffff:127.0.0.1]/feeds/calendars/user_abc.ics', { lookup: publicLookup, fetchImpl: page('x', ical) })).rejects.toMatchObject({ code: 'private_address' });
+  await expect(readFeed('http://school.instructure.com/feeds/calendars/user_abc.ics', { lookup: publicLookup, fetchImpl: page('x', ical) })).rejects.toMatchObject({ code: 'https_required' });
+  await expect(readFeed('https://school.instructure.com/admin', { lookup: publicLookup, fetchImpl: page('x', ical) })).rejects.toMatchObject({ code: 'not_a_canvas_feed' });
 });
 
 test('redirect loops, wrong content types and oversized pages are refused', async () => {

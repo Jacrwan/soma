@@ -137,9 +137,45 @@ async function adoptCanvas(userId: string, todos: Todo[]): Promise<number> {
   return added;
 }
 
-/** Logged time plus sittings still to come or checked off: what's already planned. */
-const plannedOn = (sittings: TaskSitting[], logged: number) =>
-  logged + sittings.filter(s => s.done || (!s.started && +s.end > Date.now())).reduce((n, s) => n + Math.round((+s.end - +s.start) / 60000), 0);
+/**
+ * What's already planned: the work done so far, plus sittings still to come.
+ * Work done is the larger of Focus logged and sittings checked off, the way
+ * what's left is counted: a sitting focused through and then ticked is one
+ * hour, not two. Added together (until 2026-11-15) they doubled a guessed
+ * task's length, so ticking its only sitting left it open with another
+ * sitting to place.
+ */
+export const plannedOn = (sittings: Pick<TaskSitting, 'start' | 'end' | 'done' | 'started'>[], logged: number, now = Date.now()) => {
+  const minutes = (list: typeof sittings) => list.reduce((n, s) => n + Math.round((+s.end - +s.start) / 60000), 0);
+  return Math.max(logged, minutes(sittings.filter(s => s.done))) + minutes(sittings.filter(s => !s.done && !s.started && +s.end > now));
+};
+
+/**
+ * Work handed in on Canvas is finished: its task is checked off and its
+ * sittings still ahead come off the plan. Nothing did this before
+ * (2026-11-15): the due card went, but the sittings stayed and each one,
+ * once missed, moved to the next open time until the due date passed.
+ * Only `status` is written, so nothing else on the row can be overwritten.
+ */
+async function closeHandedIn(userId: string, todos: Todo[]): Promise<number> {
+  const handedIn = new Set(storage.getCachedAssignments().filter(a => a.submittedAt).map(a => a.id));
+  let closed = 0;
+  for (const t of todos) {
+    if (t.status === 'done' || t.assignmentId == null || !handedIn.has(t.assignmentId)) continue;
+    const { error } = await supabase.from('todos').update({ status: 'done' }).eq('id', t.id).eq('user_id', userId);
+    if (error) throw new Error(error.message);
+    t.status = 'done';
+    const { data, error: readError } = await supabase.from('todo_sessions').select('*').eq('todo_id', t.id).eq('user_id', userId);
+    if (readError) throw new Error(readError.message);
+    await clearFutureSittings(userId, ((data ?? []) as Record<string, unknown>[]).map(r => ({
+      id: String(r.id), todoId: t.id, date: String(r.date),
+      startTime: r.start_time ? utcIso(String(r.start_time)) : undefined,
+      ...(r.done_at ? { doneAt: String(r.done_at) } : {}),
+    })));
+    closed++;
+  }
+  return closed;
+}
 
 /**
  * The student's tasks, read by id. Not storage.fetchAllTodos(): that asks
@@ -188,9 +224,15 @@ async function run(userId: string): Promise<RescheduleResult> {
   const now = new Date(), origin = dateAt(now, 0), today = localDate(origin);
 
   let todos = await readTodos(userId);
+  const closed = await closeHandedIn(userId, todos);
   if (auto && await adoptCanvas(userId, todos)) todos = await readTodos(userId);
   const managed = todos.filter(t => isManaged(t, auto, today));
-  if (!managed.length) { last = empty; return empty; }
+  if (!managed.length) {
+    last = empty;
+    // The pages read the plan again: a task was just finished.
+    if (closed) window.dispatchEvent(new Event('soma_todos_changed'));
+    return closed ? { ...empty, removed: closed } : empty;
+  }
 
   const furthest = Math.max(...managed.map(t => Math.ceil((+dueMoment(deadlineOf(t)!) - +origin) / DAY_MS) + 1));
   const days = Math.min(MAX_DAYS, Math.max(7, furthest));
@@ -255,7 +297,7 @@ async function run(userId: string): Promise<RescheduleResult> {
   const opened = before === null ? 0 : result.todayOpen - before;
   const offer = result.ahead && opened >= prefs.shortest && !aheadDeclined(userId, today) ? result.ahead : undefined;
   const out: RescheduleResult = {
-    moved, created, removed: result.remove.length,
+    moved, created, removed: result.remove.length + closed,
     ...(offer ? { ahead: {
       todoId: offer.taskId, title: info.get(offer.taskId)!.todo.text, opened,
       ...(offer.id ? { sessionId: offer.id, from: moment(offer.from!) } : {}),
@@ -266,6 +308,7 @@ async function run(userId: string): Promise<RescheduleResult> {
   };
   last = out;
   window.dispatchEvent(new CustomEvent(TASKS_CHANGED, { detail: out }));
+  if (closed) window.dispatchEvent(new Event('soma_todos_changed'));
   return out;
 }
 

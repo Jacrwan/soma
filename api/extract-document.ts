@@ -62,6 +62,16 @@ async function extract(fileType: string, bytes: Uint8Array): Promise<string | nu
   return null;
 }
 
+/**
+ * A document's file is the student's own: under "<their id>/" in the bucket.
+ * The path comes from a row the student can write, and the download below
+ * uses the service role, so a row pointing at someone else's folder would
+ * hand back that person's file (2026-11-15).
+ */
+export function ownsPath(userId: string, path: unknown): path is string {
+  return typeof path === 'string' && path.startsWith(`${userId}/`) && !path.split('/').includes('..');
+}
+
 export default async function handler(req: any, res: any) {
   if (applyCors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -93,6 +103,7 @@ export default async function handler(req: any, res: any) {
     .single();
   if (docErr || !doc) return res.status(404).json({ error: 'not_found' });
   if (doc.user_id !== user.id) return res.status(403).json({ error: 'forbidden' });
+  if (!ownsPath(user.id, doc.storage_path)) return res.status(403).json({ error: 'forbidden' });
 
   await admin.from('documents').update({ extraction_status: 'processing' }).eq('id', documentId);
 
