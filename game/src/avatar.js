@@ -376,7 +376,7 @@ function load(char, palette = null) {
       }
       // Repainted first, so the borrowed head keeps its own colours.
       if (char.head) swapHead(gltf, await loader.loadAsync(`/models/${char.head.file}`), char.head.mesh, `${char.name}_Head`, char.head.trim);
-      newHead(gltf, char);
+      // newHead(gltf, char); — the original KayKit head (bear hat and all) is kept
       return { char, gltf, fit, palette };
     }));
   }
