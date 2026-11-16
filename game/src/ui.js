@@ -806,6 +806,15 @@ export function createUI(on) {
       $('focusBar').style.width = `${Math.round(info.progress * 100)}%`;
     },
 
+    rating({ stars, points, next, room, people, max, parts, tips }) {
+      panel({ title: 'Town rating', subtitle: `${'★'.repeat(stars)}${'☆'.repeat(5 - stars)} · ${next ? `${points} of ${next} points to the next star` : 'the top rating'}` },
+        el('p', { class: 'note', text: `A lovelier town draws more villagers: room for ${room} of ${max} (${people} living here now). Every star adds two.` }),
+        el('div', { class: 'rating-parts' }, parts.map((p) => el('div', { class: 'rating-part' },
+          el('span', { text: p.label }), el('div', { class: 'bar' }, el('i', { style: `width:${Math.round((p.points / p.max) * 100)}%` })), el('small', { text: `${p.points}/${p.max}` })))),
+        tips.length ? el('p', { class: 'note', text: `Next, try: ${tips.join(', ').toLowerCase()}.` }) : null,
+      );
+    },
+
     map({ title, subtitle, canvas, legend }) {
       panel({ title, subtitle, wide: true }, el('div', { class: 'map-wrap' }, canvas), el('div', { class: 'map-legend' }, legend.map(([cls, text]) => el('span', { class: cls, text }))));
     },
@@ -823,6 +832,7 @@ export function createUI(on) {
           el('span', { class: 'k' }, el('kbd', { text: 'K' })), el('span', { text: 'Creatures: catch them in the Wilds with lures you earn by studying. Pick one as a pet for bonus study XP.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'B' })), el('span', { text: 'Build mode: place fences, lamps, trees and more anywhere in town. The market sells rare pieces.' }),
           el('span', { class: 'k' }, el('kbd', { text: '↗' })), el('span', { text: 'Explore past the town: walk out to the hills. Follow the light beams to hidden caches, each a chest a day.' }),
+          el('span', { class: 'k' }, el('kbd', { text: 'Z' })), el('span', { text: 'Photo mode: hide the screen clutter, pick a filter, and save a picture of your village.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'P' })), el('span', { text: 'Practice questions from Soma AI, written from your course notes. Right answers break exam armor.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'E' })), el('span', { text: 'Build, upgrade, open chests, pick what to study.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'F' })), el('span', { text: 'Swing (or click). Three swings in a row end in a combo hit.' }),

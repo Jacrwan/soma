@@ -20,6 +20,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createCoach } from './tutorial.js';
+import { makePiece } from './catalog.js';
 
 // --- State ----------------------------------------------------------------------
 // Inside Soma the save belongs to the signed-in student, so two accounts in
@@ -944,6 +945,7 @@ function moveToNewLand(done) {
     refreshAllPads();
     refreshWonders();
     syncDecor();
+    syncPaths();
     for (const r of raiders.splice(0)) r.object.parent?.remove(r.object);
     player.object.position.set(0, 0, 9);
     player.vy = 0;
@@ -1205,7 +1207,12 @@ function endStudy() {
   const active = state.study.active;
   if (!active) return;
   const inv = active.itemId ? invaders.get(active.itemId) : null;
+  const hoursBefore = S.studyHours(state);
   const result = S.finishStudy(state);
+  // New village pieces unlocked by the hours just studied.
+  const fresh = [];
+  for (let h = Math.floor(hoursBefore) + 1; h <= Math.floor(S.studyHours(state)); h++) fresh.push(...S.decorAt(h).map((k) => S.DECOR[k].name), ...S.PATHS.filter((p) => p.hours === h).map((p) => p.name));
+  if (fresh.length) setTimeout(() => ui.toast(`New for your village (B): ${fresh.join(', ')}`, 'gold'), 1800);
   document.title = TITLE;
   ui.focus(null);
   studyRing.visible = false;
@@ -1909,6 +1916,11 @@ window.addEventListener('keydown', (event) => {
   if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
   const key = event.key.toLowerCase();
   audio.unlock();
+  if (photo.on) {
+    if (key === 'escape' || key === 'z') return void togglePhoto(false);
+    if (key === 'enter') return void snapPhoto();
+    if (key === 'arrowleft' || key === 'arrowright') { photo.filter = (photo.filter + (key === 'arrowright' ? 1 : FILTERS.length - 1)) % FILTERS.length; return void drawPhotoBar(); }
+  }
   if (key === 'escape') return void (build.on && !ui.isOpen() ? toggleBuild(false) : ui.isOpen() ? ui.close() : openSettings());
   if (ui.isOpen()) return;
   keys.add(key);
@@ -1928,6 +1940,7 @@ window.addEventListener('keydown', (event) => {
   else if (key === 'p') openPractice();
   else if (key === 'h') ui.help({ first: false, onTutorial: replayTutorial });
   else if (key === 'm') openMap();
+  else if (key === 'z') togglePhoto();
   else if (key === 'o') openSettings();
   else if (key === 'k') openCollection();
   else if (key === 'y') openPass();
@@ -2048,6 +2061,13 @@ const endLook = (event) => {
   }
 };
 window.addEventListener('mouseup', endLook);
+window.addEventListener('mouseup', (event) => {
+  if (event.button !== 0 || !build.painting) return;
+  build.painting = false;
+  syncPaths();
+  checkRating();
+  save();
+});
 window.addEventListener('blur', () => endLook());
 canvas.addEventListener('wheel', (event) => {
   event.preventDefault();
@@ -2492,7 +2512,7 @@ function syncDecor() {
   for (const [id, o] of decorObjects) if (!ids.has(id)) { o.parent?.remove(o); decorObjects.delete(id); }
   for (const d of state.decor) {
     if (decorObjects.has(d.id)) continue;
-    const o = A.makeDecor(d.type);
+    const o = makePiece(d.type);
     onGround(o, d.x, d.z);
     o.rotation.y = d.rot;
     world.earth.add(o);
@@ -2521,7 +2541,10 @@ function onTownRoad(x, z) {
   return r < 9 || Math.abs(r - 9.5) < 2.4 || Math.abs(r - 19) < 2.6;
 }
 function buildBlocked(x, z, big = false) {
-  if (Math.hypot(x, z) > W.BUILD_R - (big ? 3 : 1) || Math.hypot(x, z) < 3.2) return true;
+  const r = Math.hypot(x, z);
+  // Buildings stay in town; decorations go anywhere you can walk, but not in water.
+  if ((big ? r > W.BUILD_R - 3 : r > W.ISLAND_RADIUS - 3) || r < 3.2) return true;
+  if (!big && world.groundHeight('earth', x, z) < -0.2) return true;
   if (big) for (const d of state.decor) if (Math.hypot(x - d.x, z - d.z) < 3) return true;
   const near = (p, r) => Math.hypot(x - p.x, z - p.z) < r + (big ? 1.4 : 0);
   for (let i = 0; i < S.EARTH_PADS; i++) {
@@ -2537,12 +2560,22 @@ function buildBlocked(x, z, big = false) {
   return false;
 }
 const isBuilding = (type) => type.startsWith('b:');
+const isPath = (type) => type.startsWith('path:');
+const pathMaterial = (type) => Number(type.slice(5));
 const buildingType = (type) => type.slice(2);
 function pieceCost(type) {
+  if (isPath(type)) return 0;
   return isBuilding(type) ? S.buildCost(buildingType(type), S.tierFor(state, 'earth')) : S.decorCost(state, type);
 }
 function makeGhost(type) {
-  const g = isBuilding(type) ? A.makeBuilding(buildingType(type), S.tierFor(state, 'earth'), 1, false) : A.makeDecor(type);
+  if (isPath(type)) {
+    // The brush: a square outline the size of what one dab paints.
+    const ring = new THREE.Mesh(new THREE.RingGeometry(1.45, 1.75, 4, 1), new THREE.MeshBasicMaterial({ color: 0xffd04a, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }));
+    ring.rotation.set(-Math.PI / 2, 0, Math.PI / 4);
+    ring.position.y = 0.12;
+    return A.group(ring);
+  }
+  const g = isBuilding(type) ? A.makeBuilding(buildingType(type), S.tierFor(state, 'earth'), 1, false) : makePiece(type);
   g.traverse((o) => {
     if (!o.isMesh) return;
     o.material = o.material.clone();
@@ -2560,33 +2593,184 @@ function setGhost(type) {
   world.earth.add(build.ghost);
   drawBuildBar();
 }
+// The build bar: tabs of pieces by set, each with its picture and price, or
+// the hours of studying it unlocks at; a path brush; and the town rating.
+const BUILD_TABS = [{ id: 'buildings', name: 'Buildings' }, ...S.DECOR_SETS, { id: 'paths', name: 'Paths' }];
 function drawBuildBar() {
   if (!build.bar) return;
-  const list = [...Object.keys(S.BUILDINGS).map((k) => `b:${k}`), ...S.decorAvailable(state)];
+  if (!build.tab) build.tab = isBuilding(build.type) ? 'buildings' : isPath(build.type) ? 'paths' : S.DECOR[build.type]?.set || 'nature';
   const count = S.buildingCount(state);
-  build.bar.replaceChildren(
-    ...list.map((type) => {
-      const cost = pieceCost(type);
-      const b = document.createElement('button');
-      b.className = `build-item ${type === build.type ? 'on' : ''} ${state.coins < cost ? 'poor' : ''}`;
-      const name = isBuilding(type) ? S.buildingName({ type: buildingType(type), tier: S.tierFor(state, 'earth') }) : S.DECOR[type].name;
-      if (isBuilding(type)) b.classList.add('building');
-      b.innerHTML = `<b>${name}</b><small><span class="coin sm"></span>${S.fmt(cost)}</small>`;
-      b.onclick = (e) => { e.stopPropagation(); setGhost(type); };
-      return b;
-    }),
-    Object.assign(document.createElement('p'), { className: 'build-help', textContent: `Click to place · R rotate · X remove a decoration (half back) · B or Esc when done · buildings ${count.used}/${count.room} this age · decorations ${state.decor.length}/${S.DECOR_MAX}` }),
-  );
+  const hours = S.studyHours(state);
+  const rating = S.townRating(state);
+  const tabs = document.createElement('div');
+  tabs.className = 'build-tabs';
+  for (const t of BUILD_TABS) {
+    const b = document.createElement('button');
+    b.className = `build-tab ${t.id === build.tab ? 'on' : ''}`;
+    b.textContent = t.name;
+    b.onclick = (e) => { e.stopPropagation(); build.tab = t.id; drawBuildBar(); };
+    tabs.append(b);
+  }
+  const head = document.createElement('div');
+  head.className = 'build-head';
+  head.innerHTML = `<button class="build-rating" title="What makes a lovely town">${'<i class="on">★</i>'.repeat(rating.stars)}${'<i>★</i>'.repeat(5 - rating.stars)}<small>${rating.next ? `${rating.points}/${rating.next}` : 'top rating'}</small></button><span>${hours.toFixed(1)} h studied</span><button class="build-photo" title="Photo mode (Z)">Photo</button>`;
+  head.querySelector('.build-rating').onclick = (e) => { e.stopPropagation(); openRating(); };
+  head.querySelector('.build-photo').onclick = (e) => { e.stopPropagation(); togglePhoto(true); };
+  const items = document.createElement('div');
+  items.className = 'build-items';
+  const card = (type, name, priceText, locked, lockText) => {
+    const b = document.createElement('button');
+    b.className = `build-item ${type === build.type ? 'on' : ''} ${locked ? 'locked' : state.coins < pieceCost(type) ? 'poor' : ''}`;
+    b.innerHTML = `<img alt=""><b></b><small></small>`;
+    b.querySelector('b').textContent = name;
+    b.querySelector('small').innerHTML = locked ? lockText : priceText;
+    if (!isPath(type)) thumbFor(isBuilding(type) ? { kind: 'building', id: buildingType(type) } : { kind: 'decor', id: type }).then((src) => { const img = b.querySelector('img'); if (img) img.src = src; }).catch(() => {});
+    else b.querySelector('img').replaceWith(Object.assign(document.createElement('span'), { className: `path-swatch m${pathMaterial(type)}` }));
+    b.onclick = (e) => { e.stopPropagation(); if (locked) return void ui.toast(`${name} unlocks ${lockText.replace(/<[^>]+>/g, '')}.`, 'bad'); setGhost(type); };
+    return b;
+  };
+  const coin = (n) => `<span class="coin sm"></span>${S.fmt(n)}`;
+  if (build.tab === 'buildings') {
+    for (const k of Object.keys(S.BUILDINGS)) items.append(card(`b:${k}`, S.buildingName({ type: k, tier: S.tierFor(state, 'earth') }), coin(pieceCost(`b:${k}`)), false));
+  } else if (build.tab === 'paths') {
+    S.PATHS.forEach((p, i) => items.append(card(`path:${i}`, p.name, 'free · hold to paint', hours < p.hours, `after ${p.hours} h studied`)));
+    items.append(card('path:-1', 'Eraser', 'hold to clear', false));
+  } else {
+    const list = Object.keys(S.DECOR).filter((k) => S.DECOR[k].set === build.tab).sort((a, b) => (S.DECOR[a].hours || 0) - (S.DECOR[b].hours || 0));
+    for (const k of list) {
+      const lock = S.decorLock(state, k);
+      const why = lock.need === 'market' ? 'from the market' : lock.need === 'pass' ? 'in the Semester Pass' : lock.need === 'vault' ? 'from chests' : `after ${lock.need} h studied`;
+      items.append(card(k, S.DECOR[k].name, coin(pieceCost(k)), !lock.ok, `🔒 ${why}`));
+    }
+  }
+  const help = Object.assign(document.createElement('p'), { className: 'build-help', textContent: isPath(build.type) ? 'Hold the left mouse button and drag to paint · B or Esc when done' : `Click to place · R rotate · X remove (half back) · B or Esc when done · buildings ${count.used}/${count.room} · decorations ${state.decor.length}/${S.DECOR_MAX}` });
+  build.bar.replaceChildren(head, tabs, items, help);
 }
+
+// --- Painted paths --------------------------------------------------------------------
+const PATH_LOOK = [
+  { color: 0xb08a5e, size: 1.04, vary: 0.06 }, { color: 0xb3ada2, size: 0.9, vary: 0.1 },
+  { color: 0xb65b46, size: 0.92, vary: 0.08 }, { color: 0x9c6b43, size: 1.0, vary: 0.07, planks: true },
+];
+const pathTile = new THREE.BoxGeometry(1, 0.08, 1);
+const plankTile = (() => { const g = new THREE.BoxGeometry(1, 0.08, 0.3); return g; })();
+let pathMeshes = [];
+function syncPaths(grassToo = true) {
+  for (const m of pathMeshes) { m.parent?.remove(m); m.dispose(); }
+  pathMeshes = [];
+  const cells = Object.entries(state.paths || {});
+  // Grass doesn't grow through paving (redone when a stroke ends, not mid-stroke).
+  if (grassToo) world.trimGrass((x, z) => `${Math.round(x)},${Math.round(z)}` in (state.paths || {}));
+  if (!cells.length) return;
+  const dummy = new THREE.Object3D(), color = new THREE.Color();
+  PATH_LOOK.forEach((look, mat) => {
+    const mine = cells.filter(([, m]) => m === mat);
+    if (!mine.length) return;
+    const per = look.planks ? 3 : 1;
+    const mesh = new THREE.InstancedMesh(look.planks ? plankTile : pathTile, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95 }), mine.length * per);
+    let n = 0;
+    for (const [key] of mine) {
+      const [x, z] = key.split(',').map(Number);
+      const y = world.groundHeight('earth', x, z) + 0.04;
+      const jitter = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453 % 1;
+      for (let k = 0; k < per; k++) {
+        dummy.position.set(x, y, look.planks ? z - 0.33 + k * 0.33 : z);
+        dummy.rotation.set(0, look.planks ? 0 : jitter * 0.12, 0);
+        dummy.scale.set(look.size, 1, look.planks ? 0.95 : look.size);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(n, dummy.matrix);
+        color.set(look.color).multiplyScalar(1 - look.vary + Math.abs(jitter + k * 0.3) % 1 * look.vary * 2);
+        mesh.setColorAt(n, color);
+        n++;
+      }
+    }
+    mesh.receiveShadow = true;
+    world.earth.add(mesh);
+    pathMeshes.push(mesh);
+  });
+}
+
+// --- Town rating ----------------------------------------------------------------------
+function checkRating() {
+  const r = S.townRating(state);
+  const before = state.stats.stars ?? r.stars;
+  state.stats.stars = r.stars;
+  if (r.stars > before) {
+    audio.era();
+    ui.banner(`Town rating ${'★'.repeat(r.stars)}`, r.stars >= 5 ? 'The loveliest town around' : 'More people want to move in');
+  }
+}
+function openRating() {
+  const r = S.townRating(state);
+  ui.rating({
+    stars: r.stars, points: r.points, next: r.next, room: S.villagerRoom(state), people: state.villagers.list.length, max: S.VILLAGER_MAX,
+    parts: r.parts.map((p) => ({ label: p.label, points: p.points, max: p.max })), tips: r.tips,
+  });
+}
+
+// --- Photo mode -------------------------------------------------------------------------
+const FILTERS = [['Natural', ''], ['Warm', 'sepia(0.22) saturate(1.25) brightness(1.04)'], ['Film', 'contrast(1.08) saturate(0.85) sepia(0.14)'], ['Dusk', 'hue-rotate(-14deg) saturate(1.3) brightness(0.9)'], ['Black and white', 'grayscale(1) contrast(1.12)']];
+const photo = { on: false, filter: 0, bar: null, heroHidden: false };
+function togglePhoto(force) {
+  const on = force ?? !photo.on;
+  if (on && (ui.isOpen() || inRealm())) return;
+  if (on && build.on) toggleBuild(false);
+  photo.on = on;
+  document.body.classList.toggle('photo', on);
+  if (on) {
+    photo.bar = document.createElement('div');
+    photo.bar.id = 'photobar';
+    document.body.append(photo.bar);
+    drawPhotoBar();
+  } else {
+    photo.bar?.remove();
+    photo.bar = null;
+    canvas.style.filter = '';
+    player.object.visible = true;
+    photo.heroHidden = false;
+  }
+}
+function drawPhotoBar() {
+  if (!photo.bar) return;
+  canvas.style.filter = FILTERS[photo.filter][1];
+  photo.bar.innerHTML = `<button data-a="prev">◀</button><span>${FILTERS[photo.filter][0]}</span><button data-a="next">▶</button><button data-a="hero">${photo.heroHidden ? 'Show hero' : 'Hide hero'}</button><button data-a="snap" class="snap">Snap</button><button data-a="exit">Done</button><small>Right drag to frame · scroll to zoom · Enter to snap</small>`;
+  photo.bar.onclick = (e) => {
+    const a = e.target.closest('button')?.dataset.a;
+    if (!a) return;
+    e.stopPropagation();
+    if (a === 'prev' || a === 'next') { photo.filter = (photo.filter + (a === 'next' ? 1 : FILTERS.length - 1)) % FILTERS.length; drawPhotoBar(); }
+    else if (a === 'hero') { photo.heroHidden = !photo.heroHidden; player.object.visible = !photo.heroHidden; drawPhotoBar(); }
+    else if (a === 'snap') snapPhoto();
+    else if (a === 'exit') togglePhoto(false);
+  };
+}
+function snapPhoto() {
+  if (usePost) composer.render(); else renderer.render(scene, camera);
+  const out = document.createElement('canvas');
+  out.width = canvas.width;
+  out.height = canvas.height;
+  const g = out.getContext('2d');
+  g.filter = FILTERS[photo.filter][1] || 'none';
+  g.drawImage(canvas, 0, 0);
+  const link = document.createElement('a');
+  link.download = `my-epoch-town-${new Date().toISOString().slice(0, 10)}.png`;
+  link.href = out.toDataURL('image/png');
+  link.click();
+  audio.pop();
+  document.body.classList.add('photo-flash');
+  setTimeout(() => document.body.classList.remove('photo-flash'), 180);
+}
+
 function toggleBuild(force) {
   const on = force ?? !build.on;
   if (on && (state.scene !== 'earth' || inRealm() || fight || ui.isOpen())) return void ui.toast('Build mode works in your town on Earth.', 'bad');
   build.on = on;
   document.querySelector('.hotbar')?.toggleAttribute('hidden', on);
+  document.querySelector('.menu')?.toggleAttribute('hidden', on);
   if (on) {
     build.bar = document.createElement('div');
     build.bar.id = 'buildbar';
-    document.getElementById('hud').append(build.bar);
+    document.body.append(build.bar); // above the floating labels
     if (!isBuilding(build.type) && !S.decorAvailable(state).includes(build.type)) build.type = 'b:home';
     setGhost(build.type);
     ui.toast('Build mode: pick a piece below and click to place it.', 'good');
@@ -2605,6 +2789,16 @@ function updateBuild() {
   at.x = Math.round(at.x * 2) / 2;
   at.z = Math.round(at.z * 2) / 2;
   build.at = at;
+  if (isPath(build.type)) {
+    build.ok = Math.hypot(at.x, at.z) < W.ISLAND_RADIUS - 2 && world.groundHeight('earth', at.x, at.z) > -0.2;
+    onGround(build.ghost, Math.round(at.x), Math.round(at.z));
+    if (build.painting && build.ok) {
+      const changed = S.paintPath(state, at.x, at.z, pathMaterial(build.type), 1);
+      if (changed) { build.dirty = true; }
+    }
+    if (build.dirty && performance.now() - (build.paintedAt || 0) > 90) { build.dirty = false; build.paintedAt = performance.now(); syncPaths(false); }
+    return;
+  }
   const big = isBuilding(build.type);
   const roomy = big ? S.buildingCount(state).used < S.buildingCount(state).room && !onTownRoad(at.x, at.z) : state.decor.length < S.DECOR_MAX;
   build.ok = !buildBlocked(at.x, at.z, big) && state.coins >= pieceCost(build.type) && roomy;
@@ -2614,6 +2808,7 @@ function updateBuild() {
 }
 function placeBuild() {
   if (!build.on || !build.at) return;
+  if (isPath(build.type)) { build.painting = true; return; }
   if (!build.ok) {
     audio.deny();
     const full = isBuilding(build.type) && S.buildingCount(state).used >= S.buildingCount(state).room;
@@ -2636,6 +2831,7 @@ function placeBuild() {
   syncDecor();
   fx.burst(new THREE.Vector3(piece.x, world.groundHeight('earth', piece.x, piece.z), piece.z), A.C.white, 8, 4, 4);
   refreshHud();
+  checkRating();
   drawBuildBar();
   save();
 }
@@ -2651,6 +2847,7 @@ function removeBuild() {
   syncDecor();
   audio.pop();
   ui.toast(`Removed ${S.DECOR[best.type].name}: +${S.fmt(back)} coins back`, 'good');
+  checkRating();
   refreshHud();
   drawBuildBar();
   save();
@@ -3272,7 +3469,7 @@ function makeLure() {
 }
 /** A data URL for a reward or cosmetic; resolves once the model is ready. */
 function thumbFor(reward) {
-  const key = reward.kind === 'gear' ? `gear:${reward.item.slot}:${reward.item.rarity}:${reward.item.look || 0}` : `${reward.kind}:${reward.id || reward.rarity || ''}`;
+  const key = reward.kind === 'gear' ? `gear:${reward.item.slot}:${reward.item.rarity}:${reward.item.look || 0}` : reward.kind === 'building' ? `building:${reward.id}:${S.tierFor(state, 'earth')}` : `${reward.kind}:${reward.id || reward.rarity || ''}`;
   if (thumbCache.has(key)) return thumbCache.get(key);
   let job;
   if (reward.kind === 'outfit') {
@@ -3280,7 +3477,8 @@ function thumbFor(reward) {
     job = previewAvatar(o.base, o.palette).then((m) => renderThumb(m, 0.5));
   } else {
     let object;
-    if (reward.kind === 'decor') object = A.makeDecor(reward.id);
+    if (reward.kind === 'decor') object = makePiece(reward.id);
+    else if (reward.kind === 'building') object = A.makeBuilding(reward.id, S.tierFor(state, 'earth'), 1, false);
     else if (reward.kind === 'pet') object = A.makeCritter(reward.id);
     else if (reward.kind === 'chest') { object = A.makeChest(reward.rarity); object.getObjectByName('beam')?.removeFromParent(); }
     else if (reward.kind === 'lures') object = makeLure();
@@ -3299,7 +3497,7 @@ function thumbFor(reward) {
     }
     else if (reward.kind === 'look') object = reward.id.startsWith('color:') ? A.makePaintPot(A.SKIN_COLORS[reward.id] || 0xd9785a) : (() => { const h = A.makeHat(reward.id); h.scale.setScalar(1.5); return h; })();
     else if (reward.kind === 'tea') object = A.makeTeaCup();
-    job = Promise.resolve(renderThumb(object, reward.kind === 'decor' || reward.kind === 'collectible' ? 0.7 : 0.4));
+    job = Promise.resolve(renderThumb(object, reward.kind === 'decor' || reward.kind === 'collectible' || reward.kind === 'building' ? 0.7 : 0.4));
   }
   thumbCache.set(key, job);
   return job;
@@ -3596,7 +3794,7 @@ function collectibleModel(id) {
   if (!c) return null;
   if (c.kind === 'hat') { const h = A.makeHat(id); h.scale.setScalar(1.4); return h; }
   if (c.kind === 'pet') return A.makeCritter(id);
-  if (c.kind === 'decor') { const d = A.makeDecor(id); d.scale.setScalar(id === 'obelisk' ? 0.32 : 0.55); return d; }
+  if (c.kind === 'decor') { const d = makePiece(id); d.scale.setScalar(id === 'obelisk' ? 0.32 : 0.55); return d; }
   if (c.kind === 'aura') {
     // A still frame of the aura around a small glowing orb.
     const g = A.makeAura(id);
@@ -3768,6 +3966,8 @@ syncChests();
 syncInvaders(Date.now());
 syncHalls();
 syncDecor();
+syncPaths();
+state.stats.stars = S.townRating(state).stars;
 syncReview();
 villagerTick(Date.now());
 applyTimeOfDay();
@@ -3812,7 +4012,7 @@ window.epoch = {
   give(n) { S.addCoins(state, n); refreshHud(); },
   tutorial: () => ({ ...state.tutorial, title: tutorialStep()?.title }), skipStep: () => nextTutorialStep(),
   caches: () => world.caches(), openCache: (i) => openCacheAt(i), landmarks: () => world.landmarks(), openMap: () => openMap(), reveal: (x, z) => S.revealMap(state, x, z),
-  refresh() { world.setEra(state.era); world.setScene(state.scene, state.era); dressPlayer(); refreshAllPads(); refreshWonders(); syncChests(); syncInvaders(Date.now()); syncDecor(); refreshHud(); },
+  refresh() { world.setEra(state.era); world.setScene(state.scene, state.era); dressPlayer(); refreshAllPads(); refreshWonders(); syncChests(); syncInvaders(Date.now()); syncDecor(); syncPaths(); refreshHud(); },
   look(yaw, pitch, dist) { Object.assign(cam, { yaw, pitch, dist, want: dist }); },
   moveTo(x, z) { player.object.position.set(x, 0, z); },
   raid: spawnRaid,

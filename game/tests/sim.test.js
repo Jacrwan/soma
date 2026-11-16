@@ -463,8 +463,10 @@ test('villagers move in as the town grows, one every 6 hours after the first two
   assert.ok(S.moveIn(s, NOW));
   assert.ok(S.moveIn(s, NOW));
   assert.strictEqual(S.moveIn(s, NOW), null); // full
-  S.build(s, 0, 'home');
-  assert.strictEqual(S.villagerRoom(s), 3);
+  // A lovelier town has room for more: one star is two more people.
+  ['daisies', 'tulips', 'stump', 'boulder', 'bench', 'lamp'].forEach((t, i) => S.placeDecor(s, t, 10 + i * 3, 10));
+  assert.strictEqual(S.townRating(s).stars, 1);
+  assert.strictEqual(S.villagerRoom(s), 4);
   assert.strictEqual(S.moveIn(s, NOW + HOUR), null); // too soon
   const third = S.moveIn(s, NOW + 7 * HOUR);
   assert.ok(third);
@@ -897,4 +899,23 @@ test('the week: study 150 minutes and hand in what is due for an epic chest; fou
   assert.strictEqual(got.chest.rarity, 'epic');
   assert.strictEqual(S.claimWeek(s, mon + 2 * DAY + 5 * 3600e3), null, 'once a week');
   for (let k = 1; k <= 3; k++) { study(mon + k * 7 * DAY + DAY, 150); const r = S.claimWeek(s, mon + k * 7 * DAY + DAY + 4 * 3600e3); assert.strictEqual(r.streak, k + 1); if (k === 3) assert.strictEqual(r.chest.rarity, 'legendary'); }
+});
+
+test('the village builder: pieces unlock with hours studied, paths paint and erase, the rating counts stars', () => {
+  const s = rich();
+  assert.ok(S.decorLock(s, 'tulips').ok);
+  assert.deepStrictEqual(S.decorLock(s, 'maple'), { ok: false, need: 5 });
+  assert.strictEqual(S.placeDecor(s, 'maple', 5, 5), null, 'locked until 5 hours');
+  s.study.total = 5 * 60;
+  assert.ok(S.placeDecor(s, 'maple', 5, 5));
+  assert.strictEqual(S.decorLock(s, 'fountain').need, 'market');
+  assert.ok(Object.values(S.DECOR).every((d) => S.DECOR_SETS.some((x) => x.id === d.set)), 'every piece is in a set');
+  assert.ok(Object.keys(S.DECOR).length >= 70);
+  assert.strictEqual(S.paintPath(s, 0, 0, 1, 1), 5);
+  assert.strictEqual(S.paintPath(s, 0, 0, 1, 1), 0, 'already that');
+  assert.strictEqual(S.paintPath(s, 0, 0, -1, 0), 1);
+  assert.strictEqual(S.paintPath(s, 3, 3, 3, 0), 0, 'boardwalk needs 8 hours');
+  const empty = S.townRating(S.newState(NOW));
+  assert.strictEqual(empty.stars, 0);
+  assert.ok(empty.tips.length > 0);
 });

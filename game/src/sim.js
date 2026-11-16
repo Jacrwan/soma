@@ -91,6 +91,7 @@ export function newState(now = Date.now()) {
     decor: [],
     decorNext: 1,
     decorUnlocked: [],
+    paths: {}, // 'x,z' -> path material index
     villagers: { list: [], away: {}, lastArrival: 0, day: null },
     daily: { day: null, quests: [], streak: 0, best: 0, lastFull: null, bonus: false, reported: null },
     critters: { lures: 3, caught: {}, pet: null },
@@ -390,6 +391,7 @@ export function newLand(state) {
   let decorBack = 0;
   for (const d of state.decor) decorBack += Math.floor((d.paid || 0) / 2);
   state.decor = [];
+  state.paths = {}; // a new land starts unpaved
   const tier = tierFor(state, 'earth');
   const purse = buildCost('home', tier) * 2 + buildCost('work', tier);
   addCoins(state, purse + decorBack);
@@ -1383,45 +1385,112 @@ export function sellJunk(state) {
 // cost is in seconds of town income (see wage); market ones are unlocked
 // by buying them once at the market.
 export const DECOR = {
-  fence: { name: 'Fence', seconds: 20, floor: 20, solid: 0.6 },
-  path: { name: 'Path stones', seconds: 15, floor: 15, solid: 0 },
-  flowers: { name: 'Flower bed', seconds: 30, floor: 30, solid: 0 },
-  bush: { name: 'Bush', seconds: 30, floor: 30, solid: 0.7 },
-  tree: { name: 'Tree', seconds: 60, floor: 60, solid: 0.8 },
-  rocks: { name: 'Rocks', seconds: 40, floor: 40, solid: 0.9 },
-  lamp: { name: 'Lamp post', seconds: 90, floor: 90, solid: 0.4 },
-  bench: { name: 'Bench', seconds: 90, floor: 90, solid: 0.8 },
-  banner: { name: 'Banner', seconds: 120, floor: 120, solid: 0.3 },
-  crates: { name: 'Crates', seconds: 60, floor: 60, solid: 0.9 },
-  well: { name: 'Well', seconds: 300, floor: 300, solid: 1.3 },
-  statue: { name: 'Statue', seconds: 600, floor: 600, solid: 1.1 },
-  hedge: { name: 'Hedge', seconds: 40, floor: 40, solid: 0.7 },
-  wall: { name: 'Stone wall', seconds: 60, floor: 60, solid: 0.9 },
-  arch: { name: 'Archway', seconds: 400, floor: 400, solid: 0 },
-  pond: { name: 'Pond', seconds: 500, floor: 500, solid: 2.0 },
-  tower: { name: 'Watchtower', seconds: 800, floor: 800, solid: 1.3 },
-  windmill: { name: 'Windmill', seconds: 1200, floor: 1200, solid: 1.8 },
+  // Town basics. hours: lifetime hours studied to unlock. tags feed the town rating.
+  fence: { name: 'Fence', seconds: 20, solid: 0.6, set: 'town', hours: 0 },
+  path: { name: 'Path stones', seconds: 15, solid: 0, set: 'town', hours: 0, tags: ['path'] },
+  flowers: { name: 'Flower bed', seconds: 30, solid: 0, set: 'nature', hours: 0, tags: ['flower'] },
+  bush: { name: 'Bush', seconds: 30, solid: 0.7, set: 'nature', hours: 0, tags: ['green'] },
+  tree: { name: 'Tree', seconds: 60, solid: 0.8, set: 'nature', hours: 0, tags: ['tree'] },
+  rocks: { name: 'Rocks', seconds: 40, solid: 0.9, set: 'nature', hours: 0 },
+  lamp: { name: 'Lamp post', seconds: 90, solid: 0.4, set: 'town', hours: 0, tags: ['light'] },
+  bench: { name: 'Bench', seconds: 90, solid: 0.8, set: 'town', hours: 0, tags: ['seat'] },
+  banner: { name: 'Banner', seconds: 120, solid: 0.3, set: 'town', hours: 1 },
+  crates: { name: 'Crates', seconds: 60, solid: 0.9, set: 'harbor', hours: 0 },
+  well: { name: 'Well', seconds: 300, solid: 1.3, set: 'cottage', hours: 3, tags: ['water'] },
+  statue: { name: 'Statue', seconds: 600, solid: 1.1, set: 'town', hours: 8, tags: ['landmark'] },
+  hedge: { name: 'Hedge', seconds: 40, solid: 0.7, set: 'nature', hours: 0, tags: ['green'] },
+  wall: { name: 'Stone wall', seconds: 60, solid: 0.9, set: 'town', hours: 1 },
+  arch: { name: 'Archway', seconds: 400, solid: 0, set: 'town', hours: 5, tags: ['landmark'] },
+  pond: { name: 'Pond', seconds: 500, solid: 2.0, set: 'nature', hours: 5, tags: ['water'] },
+  tower: { name: 'Watchtower', seconds: 800, solid: 1.3, set: 'town', hours: 12, tags: ['landmark'] },
+  windmill: { name: 'Windmill', seconds: 1200, solid: 1.8, set: 'cottage', hours: 18, tags: ['landmark'] },
+  // Nature.
+  daisies: { name: 'Daisy patch', seconds: 15, solid: 0, set: 'nature', hours: 0, tags: ['flower'] },
+  tulips: { name: 'Tulip patch', seconds: 20, solid: 0, set: 'nature', hours: 0, tags: ['flower'] },
+  stump: { name: 'Tree stump', seconds: 20, solid: 0.5, set: 'nature', hours: 0, tags: ['seat'] },
+  boulder: { name: 'Mossy boulder', seconds: 40, solid: 1.1, set: 'nature', hours: 0 },
+  sunflowers: { name: 'Sunflowers', seconds: 30, solid: 0, set: 'nature', hours: 1, tags: ['flower'] },
+  pine: { name: 'Pine', seconds: 60, solid: 0.7, set: 'nature', hours: 1, tags: ['tree'] },
+  logbench: { name: 'Log bench', seconds: 50, solid: 0.6, set: 'nature', hours: 1, tags: ['seat'] },
+  roses: { name: 'Rose bush', seconds: 45, solid: 0.6, set: 'nature', hours: 2, tags: ['flower'] },
+  birch: { name: 'Birch tree', seconds: 70, solid: 0.6, set: 'nature', hours: 2, tags: ['tree'] },
+  berrybush: { name: 'Berry bush', seconds: 40, solid: 0.6, set: 'nature', hours: 2, tags: ['green'] },
+  cattails: { name: 'Cattails', seconds: 30, solid: 0, set: 'nature', hours: 3, tags: ['green'] },
+  pumpkins: { name: 'Pumpkin patch', seconds: 60, solid: 0.5, set: 'nature', hours: 5, tags: ['flower'] },
+  maple: { name: 'Maple tree', seconds: 90, solid: 0.8, set: 'nature', hours: 5, tags: ['tree'] },
+  appletree: { name: 'Apple tree', seconds: 110, solid: 0.8, set: 'nature', hours: 8, tags: ['tree'] },
+  greatoak: { name: 'Great oak', seconds: 900, solid: 1.6, set: 'nature', hours: 35, tags: ['tree', 'landmark'] },
+  // Cottage.
+  haybale: { name: 'Hay bale', seconds: 25, solid: 0.8, set: 'cottage', hours: 0 },
+  picket: { name: 'Picket fence', seconds: 25, solid: 0.5, set: 'cottage', hours: 1 },
+  mailbox: { name: 'Mailbox', seconds: 40, solid: 0.3, set: 'cottage', hours: 1 },
+  planter: { name: 'Flower planter', seconds: 50, solid: 0.5, set: 'cottage', hours: 2, tags: ['flower'] },
+  birdhouse: { name: 'Birdhouse', seconds: 60, solid: 0.3, set: 'cottage', hours: 2 },
+  wheelbarrow: { name: 'Wheelbarrow', seconds: 70, solid: 0.6, set: 'cottage', hours: 3 },
+  rosearch: { name: 'Rose arch', seconds: 250, solid: 0, set: 'cottage', hours: 5, tags: ['flower', 'landmark'] },
+  swing: { name: 'Swing', seconds: 300, solid: 0.9, set: 'cottage', hours: 8, tags: ['seat'] },
+  // Campus.
+  picnic: { name: 'Picnic table', seconds: 60, solid: 1.0, set: 'campus', hours: 0, tags: ['seat'] },
+  desk: { name: 'Study desk', seconds: 70, solid: 0.7, set: 'campus', hours: 1, tags: ['seat'] },
+  chalkboard: { name: 'Chalkboard sign', seconds: 60, solid: 0.4, set: 'campus', hours: 2 },
+  library: { name: 'Little library', seconds: 150, solid: 0.5, set: 'campus', hours: 3 },
+  bikerack: { name: 'Bike rack', seconds: 120, solid: 0.6, set: 'campus', hours: 5 },
+  flagpole: { name: 'Flagpole', seconds: 200, solid: 0.3, set: 'campus', hours: 8, tags: ['landmark'] },
+  clockpost: { name: 'Clock post', seconds: 300, solid: 0.4, set: 'campus', hours: 12, tags: ['light'] },
+  globe: { name: 'Globe statue', seconds: 700, solid: 1.0, set: 'campus', hours: 12, tags: ['landmark'] },
+  gazebo: { name: 'Gazebo', seconds: 1000, solid: 2.2, set: 'campus', hours: 18, tags: ['seat', 'landmark'] },
+  bandstand: { name: 'Bandstand', seconds: 1600, solid: 2.6, set: 'campus', hours: 50, tags: ['landmark', 'light'] },
+  // Harbor.
+  barrels: { name: 'Barrels', seconds: 40, solid: 0.8, set: 'harbor', hours: 1 },
+  buoy: { name: 'Buoy', seconds: 50, solid: 0.5, set: 'harbor', hours: 2 },
+  anchor: { name: 'Anchor', seconds: 90, solid: 0.6, set: 'harbor', hours: 3 },
+  bollards: { name: 'Rope posts', seconds: 60, solid: 0.4, set: 'harbor', hours: 3 },
+  rowboat: { name: 'Rowboat', seconds: 200, solid: 1.4, set: 'harbor', hours: 5 },
+  nets: { name: 'Fishing nets', seconds: 160, solid: 0.6, set: 'harbor', hours: 8 },
+  minilight: { name: 'Little lighthouse', seconds: 1200, solid: 1.3, set: 'harbor', hours: 25, tags: ['light', 'landmark'] },
+  // Night market.
+  signpost: { name: 'Sign post', seconds: 40, solid: 0.3, set: 'night', hours: 1 },
+  firepit: { name: 'Fire pit', seconds: 120, solid: 0.9, set: 'night', hours: 2, tags: ['light'] },
+  lanterns: { name: 'Lantern string', seconds: 150, solid: 0, set: 'night', hours: 3, tags: ['light'] },
+  hanginglamp: { name: 'Hanging lamp', seconds: 120, solid: 0.4, set: 'night', hours: 5, tags: ['light'] },
+  stall: { name: 'Food stall', seconds: 400, solid: 1.4, set: 'night', hours: 8, tags: ['seat'] },
+  fairyarch: { name: 'Fairy-light arch', seconds: 500, solid: 0, set: 'night', hours: 12, tags: ['light', 'landmark'] },
   // The Japanese garden set (Semester Pass).
-  toro: { name: 'Stone lantern', seconds: 200, floor: 200, solid: 0.5, pass: true, set: 'garden' },
-  bamboo: { name: 'Bamboo grove', seconds: 150, floor: 150, solid: 0.8, pass: true, set: 'garden' },
-  torii: { name: 'Torii gate', seconds: 900, floor: 900, solid: 0, pass: true, set: 'garden' },
-  koi: { name: 'Koi pond', seconds: 1200, floor: 1200, solid: 2.2, pass: true, set: 'garden' },
-  bridge: { name: 'Arched bridge', seconds: 900, floor: 900, solid: 0, pass: true, set: 'garden' },
-  sakura: { name: 'Cherry tree', seconds: 600, floor: 600, solid: 0.9, pass: true, set: 'garden' },
+  toro: { name: 'Stone lantern', seconds: 200, solid: 0.5, pass: true, set: 'garden', tags: ['light'] },
+  bamboo: { name: 'Bamboo grove', seconds: 150, solid: 0.8, pass: true, set: 'garden', tags: ['landmark'] },
+  torii: { name: 'Torii gate', seconds: 900, solid: 0, pass: true, set: 'garden', tags: ['landmark'] },
+  koi: { name: 'Koi pond', seconds: 1200, solid: 2.2, pass: true, set: 'garden', tags: ['water', 'landmark'] },
+  bridge: { name: 'Arched bridge', seconds: 900, solid: 0, pass: true, set: 'garden', tags: ['landmark'] },
+  sakura: { name: 'Cherry tree', seconds: 600, solid: 0.9, pass: true, set: 'garden', tags: ['landmark'] },
   // Vault finds (from chests).
-  mushrooms: { name: 'Mushroom ring', seconds: 60, floor: 60, solid: 0, pass: true },
-  owlstatue: { name: 'Owl statue', seconds: 300, floor: 300, solid: 0.9, pass: true },
-  crystallamp: { name: 'Crystal lamp', seconds: 600, floor: 600, solid: 0.6, pass: true },
-  obelisk: { name: 'Starfall obelisk', seconds: 1200, floor: 1200, solid: 1.2, pass: true },
-  fountain: { name: 'Fountain', seconds: 1500, floor: 1500, solid: 2.2, market: true },
-  totem: { name: 'Totem', seconds: 1200, floor: 1200, solid: 0.8, market: true },
-  gold: { name: 'Golden statue', seconds: 2400, floor: 2400, solid: 1.1, market: true },
-  tent: { name: 'Tent', seconds: 900, floor: 900, solid: 1.8, market: true },
+  mushrooms: { name: 'Mushroom ring', seconds: 60, solid: 0, pass: true, set: 'vault', tags: ['flower'] },
+  owlstatue: { name: 'Owl statue', seconds: 300, solid: 0.9, pass: true, set: 'vault', tags: ['landmark'] },
+  crystallamp: { name: 'Crystal lamp', seconds: 600, solid: 0.6, pass: true, set: 'vault', tags: ['light'] },
+  obelisk: { name: 'Starfall obelisk', seconds: 1200, solid: 1.2, pass: true, set: 'vault', tags: ['landmark', 'light'] },
+  fountain: { name: 'Fountain', seconds: 1500, solid: 2.2, market: true, set: 'special', tags: ['water', 'landmark'] },
+  totem: { name: 'Totem', seconds: 1200, solid: 0.8, market: true, set: 'special', tags: ['landmark'] },
+  gold: { name: 'Golden statue', seconds: 2400, solid: 1.1, market: true, set: 'special', tags: ['landmark'] },
+  tent: { name: 'Tent', seconds: 900, solid: 1.8, market: true, set: 'special', tags: ['landmark'] },
 };
 export const DECOR_MAX = 160;
 
+export const DECOR_SETS = [
+  { id: 'nature', name: 'Nature' }, { id: 'town', name: 'Town' }, { id: 'cottage', name: 'Cottage' }, { id: 'campus', name: 'Campus' },
+  { id: 'harbor', name: 'Harbor' }, { id: 'night', name: 'Night market' }, { id: 'garden', name: 'Garden' }, { id: 'vault', name: 'Vault finds' }, { id: 'special', name: 'Market' },
+];
 export const decorCost = (state, type) => price(state, DECOR[type].seconds);
-export const decorAvailable = (state) => Object.keys(DECOR).filter((k) => !(DECOR[k].market || DECOR[k].pass) || state.decorUnlocked.includes(k));
+/** Lifetime hours studied: what unlocks new pieces. */
+export const studyHours = (state) => (state.study.total || 0) / 60;
+/** Whether a piece can be placed, and if not, why: { ok, need } (need: hours, 'pass', 'market' or 'vault'). */
+export function decorLock(state, type) {
+  const d = DECOR[type];
+  if (!d) return { ok: false, need: null };
+  if (d.market || d.pass) return state.decorUnlocked.includes(type) ? { ok: true } : { ok: false, need: d.market ? 'market' : d.set === 'vault' ? 'vault' : 'pass' };
+  return studyHours(state) >= (d.hours || 0) ? { ok: true } : { ok: false, need: d.hours };
+}
+export const decorAvailable = (state) => Object.keys(DECOR).filter((k) => decorLock(state, k).ok);
+/** Pieces that unlock at exactly these hours, for "new!" toasts. */
+export const decorAt = (hours) => Object.keys(DECOR).filter((k) => !DECOR[k].market && !DECOR[k].pass && (DECOR[k].hours || 0) === hours);
 
 /** Places a decoration; costs coins. Returns the piece, or null. */
 export function placeDecor(state, type, x, z, rot = 0) {
@@ -1432,6 +1501,56 @@ export function placeDecor(state, type, x, z, rot = 0) {
   const piece = { id: state.decorNext++, type, x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, rot: Math.round(rot * 100) / 100, paid: cost };
   state.decor.push(piece);
   return piece;
+}
+
+// --- Paths you paint, one square metre at a time -------------------------------------
+export const PATHS = [
+  { id: 'dirt', name: 'Dirt path', hours: 0 }, { id: 'stone', name: 'Stone path', hours: 0 },
+  { id: 'brick', name: 'Brick path', hours: 3 }, { id: 'planks', name: 'Wooden boardwalk', hours: 8 },
+];
+export const PATH_MAX = 5000;
+/** Paints (or with material -1, clears) the cells within radius of x, z. Returns how many changed. */
+export function paintPath(state, x, z, material, radius = 1) {
+  if (material >= 0 && studyHours(state) < PATHS[material].hours) return 0;
+  const paths = state.paths || (state.paths = {});
+  let changed = 0;
+  for (let dz = -radius; dz <= radius; dz++) for (let dx = -radius; dx <= radius; dx++) {
+    if (dx * dx + dz * dz > radius * radius + 0.5) continue;
+    const key = `${Math.round(x) + dx},${Math.round(z) + dz}`;
+    if (material < 0) { if (key in paths) { delete paths[key]; changed++; } continue; }
+    if (paths[key] === material) continue;
+    if (!(key in paths) && Object.keys(paths).length >= PATH_MAX) return changed;
+    paths[key] = material;
+    changed++;
+  }
+  return changed;
+}
+
+// --- Town rating: how lovely the village is ----------------------------------------
+// Points for variety, flowers, trees, light, places to sit, water, paths and
+// landmarks, each with a cap so no single thing wins. More stars, more room
+// for villagers to move in.
+export const STAR_POINTS = [0, 12, 35, 70, 115, 170];
+export function townRating(state) {
+  const count = (tag) => state.decor.filter((d) => DECOR[d.type]?.tags?.includes(tag)).length;
+  const parts = [
+    { id: 'variety', label: 'Different pieces', have: new Set(state.decor.map((d) => d.type)).size, cap: 30, each: 2 },
+    { id: 'flower', label: 'Flowers', have: count('flower'), cap: 25, each: 1 },
+    { id: 'tree', label: 'Trees and greenery', have: count('tree') + count('green'), cap: 20, each: 1 },
+    { id: 'light', label: 'Lights for the night', have: count('light'), cap: 12, each: 2 },
+    { id: 'seat', label: 'Places to sit', have: count('seat'), cap: 8, each: 2 },
+    { id: 'water', label: 'Water', have: count('water'), cap: 4, each: 4 },
+    { id: 'landmark', label: 'Landmark pieces', have: count('landmark'), cap: 8, each: 3 },
+    { id: 'path', label: 'Painted paths', have: Math.floor(Object.keys(state.paths || {}).length / 15), cap: 20, each: 1 },
+  ];
+  let points = 0;
+  for (const p of parts) { p.points = Math.min(p.have, p.cap) * p.each; p.max = p.cap * p.each; points += p.points; }
+  let stars = 0;
+  while (stars < 5 && points >= STAR_POINTS[stars + 1]) stars++;
+  const next = stars < 5 ? STAR_POINTS[stars + 1] : null;
+  // What would help most: the parts furthest from full.
+  const tips = parts.filter((p) => p.points < p.max).sort((a, b) => a.points / a.max - b.points / b.max).slice(0, 3).map((p) => p.label);
+  return { points, stars, next, parts, tips };
 }
 
 /** Takes a decoration back for half what it cost. */
@@ -1458,15 +1577,19 @@ export const VILLAGERS = [
   { name: 'Juna', role: 'Baker', look: 'rogue' },
   { name: 'Pell', role: 'Farmer', look: 'barbarian' },
   { name: 'Sela', role: 'Merchant', look: 'hooded' },
+  { name: 'Ivy', role: 'Gardener', look: 'rogue' },
+  { name: 'Rook', role: 'Builder', look: 'knight' },
+  { name: 'Nell', role: 'Librarian', look: 'mage' },
+  { name: 'Fen', role: 'Fisher', look: 'hooded' },
 ];
 export const VILLAGER_MAX = VILLAGERS.length;
 const MOVE_IN_GAP = 6 * 3600000; // one arrival every 6 hours at most (the first two come at once)
 
 /** How many people the town can hold: two to start, one more per building and per class hall with a floor. */
 export function villagerRoom(state) {
-  const built = state.pads.earth.filter(Boolean).length;
+  // A lovelier town draws more people: two per star, plus your class halls.
   const halls = courseHalls(state).filter((h) => h.level > 0).length;
-  return Math.min(VILLAGER_MAX, 2 + built + halls);
+  return Math.min(VILLAGER_MAX, 2 + townRating(state).stars * 2 + halls);
 }
 
 /** Moves someone in if there's room. Returns the newcomer or null. */

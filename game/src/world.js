@@ -1107,6 +1107,23 @@ export function createWorld(scene, renderer) {
     }
   }
 
+  /** Hides grass blades where covered(x, z) is true (painted paths), and shows the rest again. */
+  function trimGrass(covered) {
+    const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+    for (const g of [grass, wildGrass]) {
+      if (!g) continue;
+      const arr = g.instanceMatrix.array;
+      if (!g.userData.orig) g.userData.orig = arr.slice();
+      const orig = g.userData.orig;
+      for (let i = 0; i < g.userData.full; i++) {
+        const o = i * 16;
+        if (covered(orig[o + 12], orig[o + 14])) zero.toArray(arr, o);
+        else for (let k = 0; k < 16; k++) arr[o + k] = orig[o + k];
+      }
+      g.instanceMatrix.needsUpdate = true;
+    }
+  }
+
   /** A flat colour for the map at a spot, the same one the hills are painted with. */
   function mapColor(x, z) {
     const h = hillHeight(x, z);
@@ -1120,7 +1137,7 @@ export function createWorld(scene, renderer) {
   function spinCountry(dt) {
     for (const o of country.spin) o.rotation[o.userData.spin || o.userData.axis || 'z'] += dt * (o.userData.speed ?? 0.9);
   }
-  return { earth, moon, landName, caches: () => caches, treeSolids: () => treeSolids, landmarks: () => country.landmarks, roads: () => country.roads, fields: () => country.fields, mapColor, spinCountry, landIndex: () => landIndex, setEra, setClearings, setScene, showRealm, update, setQuality, setDaylight, get daylight() { return daylight; }, groundHeight: (name, x, z) => (name === 'moon' ? moonHeight(x, z, Math.hypot(x, z)) : hillHeight(x, z)) };
+  return { earth, moon, landName, trimGrass, caches: () => caches, treeSolids: () => treeSolids, landmarks: () => country.landmarks, roads: () => country.roads, fields: () => country.fields, mapColor, spinCountry, landIndex: () => landIndex, setEra, setClearings, setScene, showRealm, update, setQuality, setDaylight, get daylight() { return daylight; }, groundHeight: (name, x, z) => (name === 'moon' ? moonHeight(x, z, Math.hypot(x, z)) : hillHeight(x, z)) };
 }
 
 export { EARTH_PADS };
