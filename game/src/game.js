@@ -1824,8 +1824,9 @@ function updateCombatHud(dt) {
   if (combatClock > 0) return;
   combatClock = 0.4;
   const p = player.object.position;
-  let near = inRealm() || Boolean(fight) || raiders.length > 0;
-  if (!near) for (const inv of invaders.values()) if (Math.hypot(inv.object.position.x - p.x, inv.object.position.z - p.z) < 8) { near = true; break; }
+  // Homework doesn't fight back any more, so only real fights show the attack buttons.
+  const near = inRealm() || Boolean(fight) || raiders.length > 0;
+  void p;
   document.body.classList.toggle('combat', near);
   document.body.classList.toggle('in-realm', inRealm());
 }
