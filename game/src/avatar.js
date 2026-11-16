@@ -122,11 +122,19 @@ function dropBeard(gltf) {
       if (Math.abs(v.x - at.x) < size.x * 0.25 && Math.abs(v.y - at.y) < size.y * 0.25) at.z = Math.max(at.z, v.z);
     }
     if (!Number.isFinite(at.z)) at.z = box.min.z;
+    // The skin colour: the texture spot of the face vertex nearest that point,
+    // so a nose built here matches the face exactly.
+    let skinUv = null, near = Infinity;
+    for (let t = 0; t < keep.length; t++) {
+      v.fromBufferAttribute(pos, keep[t]);
+      const dist = v.distanceToSquared(at);
+      if (dist < near) { near = dist; skinUv = [uv.getX(keep[t]), uv.getY(keep[t])]; }
+    }
     const head = gltf.scene.getObjectByName('head');
     if (!head) return;
     o.localToWorld(at);
     head.worldToLocal(at);
-    mouth = { at, width: size.x * 0.32 };
+    mouth = { at, width: size.x * 0.32, skinUv };
   });
   return mouth;
 }
@@ -201,13 +209,25 @@ export function createAvatar({ tint, hat, weapon, weaponLook = 0 }) {
   if (part(char.great)) part(char.great).visible = great;
   if (char.hat && part(char.hat)) part(char.hat).visible = !hat;
   if (mouth && part('head')) {
-    // A small closed smile where the beard used to be.
-    const smile = new THREE.Mesh(new THREE.TorusGeometry(mouth.width * 0.42, mouth.width * 0.1, 6, 14, Math.PI * 0.8), new THREE.MeshStandardMaterial({ color: 0x4a2418, roughness: 0.7 }));
-    smile.rotation.z = Math.PI + Math.PI * 0.1;
-    smile.position.copy(mouth.at).add(new THREE.Vector3(0, -mouth.width * 0.4, mouth.width * 0.3));
+    // The beard hid his nose and mouth. Put back a small nose in the face's
+    // own skin colour and a thin closed smile under it, in the pack's style.
+    const w = mouth.width;
+    const skin = part('Barbarian_Head')?.material;
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(w * 0.14, 14, 10), skin || new THREE.MeshStandardMaterial({ color: 0xe8b48f }));
+    if (skin && mouth.skinUv) {
+      const uvs = nose.geometry.attributes.uv;
+      for (let i = 0; i < uvs.count; i++) uvs.setXY(i, mouth.skinUv[0], mouth.skinUv[1]);
+    }
+    nose.scale.set(1.15, 0.8, 0.85);
+    nose.position.copy(mouth.at).add(new THREE.Vector3(0, -w * 0.1, w * 0.22));
+    const smile = new THREE.Mesh(new THREE.TorusGeometry(w * 0.17, w * 0.04, 6, 16, Math.PI * 0.7), new THREE.MeshStandardMaterial({ color: 0x6b3526, roughness: 0.8 }));
+    smile.rotation.z = Math.PI + Math.PI * 0.15;
+    smile.position.copy(mouth.at).add(new THREE.Vector3(0, -w * 0.3, w * 0.22));
+    for (const m of [nose, smile]) { m.castShadow = false; part('head').add(m); }
     smile.name = 'mouth';
-    part('head').add(smile);
+    nose.name = 'nose';
   }
+
 
   // Anything pinned to a bone is built in metres; undo the model's own scale.
   const pin = (to, object, place) => {
