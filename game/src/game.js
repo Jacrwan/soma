@@ -1560,12 +1560,51 @@ function turn(dx, dy) {
   cam.pitch = Math.max(0.05, Math.min(1.45, cam.pitch + dy * k * 0.8));
   cam.idle = 0;
 }
+// Some browsers (or an embedding page) refuse pointer lock; that must never throw.
+function lockPointer() {
+  try { canvas.requestPointerLock?.()?.catch?.(() => {}); } catch { /* refused */ }
+}
 function toggleMouseLook() {
   lookHeld = false;
   if (locked()) document.exitPointerLock();
-  else canvas.requestPointerLock?.();
+  else lockPointer();
 }
+
+// Shift lock (like Roblox): tap Shift or press the lock button. The cursor
+// hides, the mouse turns the camera, the hero always faces where the camera
+// looks, and the view sits over the right shoulder. Holding Shift still runs.
+let shiftLock = false;
+let shoulder = 0; // 0..1, eases the over-the-shoulder offset in and out
+const lockButton = document.getElementById('skLock');
+const crosshair = document.getElementById('crosshair');
+function showShiftLock() {
+  lockButton?.classList.toggle('on', shiftLock);
+  if (crosshair) crosshair.hidden = !shiftLock;
+}
+function toggleShiftLock(on = !shiftLock) {
+  shiftLock = on;
+  lookHeld = false;
+  if (on && !locked()) lockPointer();
+  if (!on && locked()) document.exitPointerLock();
+  showShiftLock();
+  ui.toast(on ? 'Shift lock on: move the mouse to look, your hero faces where you look. Tap Shift to turn it off.' : 'Shift lock off', 'good');
+}
+lockButton?.addEventListener('click', (e) => { e.stopPropagation(); audio.unlock(); toggleShiftLock(); });
+let shiftDownAt = 0;
+let shiftUsed = false;
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Shift' && !event.repeat) { shiftDownAt = performance.now(); shiftUsed = false; }
+  else if (event.key !== 'Shift') shiftUsed = true;
+}, true);
+window.addEventListener('keyup', (event) => {
+  // A quick tap toggles shift lock; holding Shift to run doesn't.
+  if (event.key !== 'Shift' || ui.isOpen()) return;
+  if (performance.now() - shiftDownAt < 220 && !shiftUsed) toggleShiftLock();
+}, true);
+
 document.addEventListener('pointerlockchange', () => {
+  showShiftLock();
+  if (shiftLock) return; // shift lock says its own thing; Esc pauses it until the next click
   if (lookHeld) {
     if (!locked()) lookHeld = false;
     return;
@@ -1576,11 +1615,13 @@ document.addEventListener('mousemove', (event) => {
   if (ui.isOpen()) return;
   if (locked()) turn(event.movementX, event.movementY);
   else if (drag) turn(event.clientX - drag.x, event.clientY - drag.y);
+  else if (shiftLock && !build.on) turn(event.movementX || 0, event.movementY || 0);
   if (drag) { drag.x = event.clientX; drag.y = event.clientY; }
 });
 canvas.addEventListener('contextmenu', (event) => event.preventDefault());
 canvas.addEventListener('mousedown', (event) => {
   audio.unlock();
+  if (shiftLock && !locked() && event.button === 0) { lockPointer(); if (locked()) return; }
   if (event.button === 0) return void (build.on ? placeBuild() : attack());
   if (event.button !== 2) return;
   event.preventDefault();
@@ -1589,6 +1630,7 @@ canvas.addEventListener('mousedown', (event) => {
     lookHeld = true;
     try {
       const asked = canvas.requestPointerLock?.({ unadjustedMovement: true });
+      asked?.catch?.(() => {});
       asked?.catch?.(() => canvas.requestPointerLock?.()?.catch?.(() => { lookHeld = false; }));
     } catch { lookHeld = false; }
   }
@@ -1674,6 +1716,12 @@ function updatePlayer(dt, time) {
     delta = Math.atan2(Math.sin(delta), Math.cos(delta));
     player.facing += delta * Math.min(1, dt * 14);
     player.walk += dt * (keys.has('shift') ? 15 : 11);
+  }
+  if (shiftLock && !ui.isOpen()) {
+    // Face where the camera looks, even standing still or walking sideways.
+    let turn = cam.yaw + Math.PI - player.facing;
+    turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+    player.facing += turn * Math.min(1, dt * 18);
   }
   for (const s of solids()) {
     const dx = p.x - s.x;
@@ -1761,7 +1809,11 @@ function updateCamera(dt) {
   const flat = Math.cos(cam.pitch) * cam.dist;
   // Up close the view sits over the shoulder and looks at the head; far out it looks at the feet.
   const near = 1 - Math.min(1, (cam.dist - CAM_MIN) / 14);
-  const want = new THREE.Vector3(f.x + Math.sin(cam.yaw) * flat, f.y + Math.sin(cam.pitch) * cam.dist + 1.5, f.z + Math.cos(cam.yaw) * flat);
+  // In shift lock the view slides over the right shoulder.
+  shoulder += ((shiftLock && !ui.isOpen() ? 1 : 0) - shoulder) * Math.min(1, dt * 8);
+  const side = 1.4 * shoulder;
+  const rx = Math.cos(cam.yaw) * side, rz = -Math.sin(cam.yaw) * side;
+  const want = new THREE.Vector3(f.x + Math.sin(cam.yaw) * flat + rx, f.y + Math.sin(cam.pitch) * cam.dist + 1.5, f.z + Math.cos(cam.yaw) * flat + rz);
   // In the valley the view stays out of the wooded slopes.
   if (!inRealm() && state.scene === 'earth') {
     for (let k = 0; k < 12 && Math.hypot(want.x, want.z) > W.TOWN_R + 6; k++) { want.x += (f.x - want.x) * 0.12; want.z += (f.z - want.z) * 0.12; }
@@ -1770,7 +1822,7 @@ function updateCamera(dt) {
   camera.position.copy(want);
   shake = Math.max(0, shake - dt * 1.6);
   if (shake > 0) camera.position.add(new THREE.Vector3((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake));
-  camera.lookAt(f.x, f.y + 1.6 + near * 0.5, f.z);
+  camera.lookAt(f.x + rx, f.y + 1.6 + near * 0.5 + shoulder * 0.3, f.z + rz);
   camera.updateMatrixWorld();
   focusView.value.set(p.x, p.y + 1, p.z).applyMatrix4(camera.matrixWorldInverse);
 }
@@ -1845,6 +1897,8 @@ function frame(nowMs) {
   updatePlayer(dt, time);
   if (!inRealm()) { moveInvaders(dt, time); updateTown(dt, time); }
   updateBuild();
+  // A panel needs the cursor back; a click on the game afterwards re-locks.
+  if (locked() && ui.isOpen()) document.exitPointerLock();
   if (!inRealm() && state.scene === 'earth') moveVillagers(dt, time);
   updateCritters(dt, time);
   if (!inRealm() && state.scene === 'earth') moveShadows(dt, time);
@@ -3037,6 +3091,7 @@ window.epoch = {
   theme(id) { state.cosmetics.theme = id; applyTheme(); },
   outfit(id) { state.cosmetics.outfit = id; return wearLook(); },
   pet(id) { state.critters.caught[id] = 1; S.setPet(state, id); dressPet(); },
+  shiftLock: () => ({ on: shiftLock, locked: locked(), yaw: cam.yaw, facing: player.facing }),
   invaders: () => [...invaders.values()].map((i) => ({ name: i.item.name, mode: i.mode, x: +i.object.position.x.toFixed(1), z: +i.object.position.z.toFixed(1), inScene: Boolean(i.object.parent) })),
   armor(id) { const inv = invaders.get(id); return inv && inv.object.userData.armor?.filter((p) => p.visible).length; },
   info: () => ({ quality, calls: renderer.info.render.calls, tris: renderer.info.render.triangles }),

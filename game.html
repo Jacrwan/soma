@@ -55,6 +55,7 @@
 
       <div class="hotbar skills">
         <span class="slot" title="Swing (F or click)"><svg viewBox="0 0 24 24"><path d="M14.5 3H21v6.5L10.8 19.7l-2.1-2.1L6 20.3 3.7 18l2.7-2.7-2.1-2.1z" /><path d="M7.5 12.5l4 4" fill="none" stroke="#14111f" stroke-width="1.6"/></svg><kbd>F</kbd></span>
+        <button class="slot lock" id="skLock" title="Shift lock (tap Shift)"><svg viewBox="0 0 24 24"><path d="M7 10V7a5 5 0 0110 0v3h1.2c.7 0 1.3.6 1.3 1.3v8.4c0 .7-.6 1.3-1.3 1.3H5.8c-.7 0-1.3-.6-1.3-1.3v-8.4c0-.7.6-1.3 1.3-1.3zm2.4 0h5.2V7a2.6 2.6 0 00-5.2 0z"/><circle cx="12" cy="15.5" r="1.6" fill="#14111f"/></svg><kbd>⇧</kbd></button>
         <span class="slot" id="skDodge" title="Dodge (Q)"><svg viewBox="0 0 24 24"><path d="M13 4l8 8-8 8v-5H9v-6h4z"/><rect x="5" y="9" width="2.6" height="6" rx="1"/><rect x="1.5" y="10" width="2" height="4" rx="1"/></svg><kbd>Q</kbd></span>
         <span class="slot" id="skSlam" title="Ground slam (R)"><svg viewBox="0 0 24 24"><path d="M12 1.5l2.2 6.3 5.6-3.4-2.6 6 6.3 1.6-6.3 1.6 2.6 6-5.6-3.4L12 22.5l-2.2-6.3-5.6 3.4 2.6-6L.5 12l6.3-1.6-2.6-6 5.6 3.4z"/></svg><kbd>R</kbd></span>
         <button class="slot study" id="btnStudy" title="Study session (T): the only way to level up"><svg viewBox="0 0 24 24"><path d="M3 4.5C6 3.5 9 3.8 11.2 5.3v14.4C9 18.3 6 18 3 19z"/><path d="M21 4.5c-3-1-6-.7-8.2.8v14.4C15 18.3 18 18 21 19z"/></svg><kbd>T</kbd><em>Study</em></button>
@@ -79,6 +80,7 @@
     </div>
 
     <div id="hurt"></div>
+    <div id="crosshair" hidden></div>
     <div id="prompt" hidden><kbd id="promptKey">E</kbd><span id="promptText"></span></div>
     <div id="toasts"></div>
     <div id="banner" hidden><small id="bannerSmall"></small><strong id="bannerBig"></strong></div>

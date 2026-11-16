@@ -743,3 +743,9 @@ select, input { font: inherit; }
 .pass-progress .bar { height: 12px; }
 .oracle-ask input { min-width: 0; }
 .oracle-ask .btn { flex: none; width: auto; }
+
+/* Shift lock */
+.slot.lock.on { background: linear-gradient(160deg, #6fd8ff, #3a8ae6); color: #0d2238; box-shadow: 0 0 0 2px rgba(111, 216, 255, 0.5), 0 0 16px rgba(111, 216, 255, 0.45); }
+.slot.lock { cursor: pointer; pointer-events: auto; }
+#crosshair { position: fixed; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.9); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); pointer-events: none; z-index: 4; }
+#crosshair[hidden] { display: none; }

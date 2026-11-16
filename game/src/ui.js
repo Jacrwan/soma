@@ -723,6 +723,7 @@ export function createUI(on) {
       panel({ title: first ? 'Welcome to Epoch' : 'How to play', subtitle: 'An RPG where your hero is as strong as your studying.', onClose: onStart },
         el('div', { class: 'keys' },
           el('span', { class: 'k' }, el('kbd', { text: 'W' }), el('kbd', { text: 'A' }), el('kbd', { text: 'S' }), el('kbd', { text: 'D' })), el('span', { text: 'Walk. Hold Shift to run, Space to jump.' }),
+          el('span', { class: 'k' }, el('kbd', { text: 'Shift' })), el('span', { text: 'Tap for shift lock: the mouse turns the view without dragging, and your hero faces where you look. Hold Shift to run.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'Right drag' })), el('span', { text: 'Hold right click and move the mouse to look around. Left click swings. Scroll to zoom. V locks the mouse to the view.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'T' })), el('span', { text: 'Start a study session. This is the only way to level up.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'C' }), el('kbd', { text: 'J' })), el('span', { text: 'Your hero (gear and skills) and your quests.' }),
