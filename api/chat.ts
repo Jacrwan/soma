@@ -51,8 +51,9 @@ export function validateChatInput(body:unknown):string|null{
  if(model!==undefined && model!=='sonnet')return 'invalid_model';
  if(effort!==undefined && effort!=='low' && effort!=='medium')return 'invalid_effort';
  // 'triage' sorts a message: Haiku, with no memory and nothing learned.
- // Soma organizes; it doesn't write study material, so there is no other purpose.
- if(purpose!==undefined && purpose!=='triage')return 'invalid_purpose';
+ // 'practice' writes practice questions for the study game (/game): Haiku,
+ // with no memory and nothing learned, so a quiz never lands in Soma's notes.
+ if(purpose!==undefined && purpose!=='triage' && purpose!=='practice')return 'invalid_purpose';
  if(purpose!==undefined && model!==undefined)return 'invalid_model';
  if(conversationId!==undefined && !isConversationId(conversationId))return 'invalid_conversation';
  if(!Array.isArray(messages) || !messages.length || messages.length>50)return 'invalid_messages';
@@ -160,11 +161,12 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
    // The first pass that sorts a message (and answers small talk) needs no
    // memory, and learning from the message is left to the reply proper.
    const triage=purpose==='triage';
+   const quiet=triage || purpose==='practice';
    const lastContent=messages[messages.length-1].content;
    const query=typeof lastContent==='string' ? lastContent : lastContent.filter((b:any)=>b.type==='text').map((b:any)=>b.text).join(' ');
-   const savedMemory=triage ? '' : await (deps.memory??loadMemoryContext)(auth.userId,query);
+   const savedMemory=quiet ? '' : await (deps.memory??loadMemoryContext)(auth.userId,query);
    // Notes from earlier chats, only when they match what is being asked.
-   const notes=triage ? '' : await (deps.notes??loadConversationNotes)(auth.userId,query,conversationId);
+   const notes=quiet ? '' : await (deps.notes??loadConversationNotes)(auth.userId,query,conversationId);
    // Prompt caching is a prefix match. systemPrompt (instructions, documents)
    // stays the same between messages, and so do the earlier turns of the chat;
    // the live plan (context) and memory (ranked per request) change every call.
@@ -197,9 +199,9 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
     // here must never affect the conversation, so it is detached and swallowed.
     const previous=messages.length>1 ? messages[messages.length-2] : null;
     const assistantContext=previous?.role==='assistant' ? (typeof previous.content==='string' ? previous.content : previous.content.filter((b:any)=>b.type==='text').map((b:any)=>b.text).join(' ')) : '';
-    if(!triage)(deps.defer??waitUntil)((deps.learn??learnFromMessage)(auth.userId,query,assistantContext,key).catch(()=>{}));
+    if(!quiet)(deps.defer??waitUntil)((deps.learn??learnFromMessage)(auth.userId,query,assistantContext,key).catch(()=>{}));
     // This conversation's note, updated with what was just said.
-    if(!triage && isConversationId(conversationId))(deps.defer??waitUntil)((deps.noteChat??noteFromChat)(auth.userId,conversationId,query,text,key).catch(()=>{}));
+    if(!quiet && isConversationId(conversationId))(deps.defer??waitUntil)((deps.noteChat??noteFromChat)(auth.userId,conversationId,query,text,key).catch(()=>{}));
    };
    if(stream===true && response.ok && response.body)return relayStream(response.body,res,{
     record:(model:string,usage:Usage)=>(deps.defer??waitUntil)((deps.record??recordUsage)(auth.userId,'reply',model,usage).catch(()=>{})),

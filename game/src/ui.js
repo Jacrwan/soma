@@ -297,7 +297,7 @@ export function createUI(on) {
     },
 
     /** The character sheet: level, stats, gear, bag and skills. */
-    hero({ level, xp, need, capped, points, stats, gear, bag, bagSize, skills, masteries, onEquip, onSell, onSkill, onWardrobe, onStudy }) {
+    hero({ level, xp, need, capped, points, stats, gear, bag, bagSize, skills, masteries, characters = [], character, onCharacter, onEquip, onSell, onSkill, onWardrobe, onStudy }) {
       const branches = [...new Set(skills.map((k) => k.branch))];
       panel({ title: `Level ${level} hero`, subtitle: 'Experience only comes from school: study sessions, handing work in, grades and exams. Fighting pays coins and gear.', wide: true },
         el('div', { class: 'xp-row' },
@@ -309,6 +309,8 @@ export function createUI(on) {
           el('div', { class: 'stat' }, el('small', { text: 'Health' }), el('b', { text: fmt(stats.health) })),
           el('div', { class: 'stat' }, el('small', { text: 'Critical hits' }), el('b', { text: `${Math.round(stats.crit * 100)}%` })),
           el('div', { class: 'stat' }, el('small', { text: 'Study XP' }), el('b', { text: `×${stats.studyXp.toFixed(2)}` }))),
+        characters.length ? el('h3', { text: 'Character' }) : null,
+        characters.length ? el('div', { class: 'cards characters' }, characters.map((c) => el('button', { class: `card ${c.id === character ? 'on' : ''}`, onclick: () => onCharacter(c.id) }, el('b', { text: c.name }), el('small', { text: c.id === character ? 'Playing' : 'Pick' })))) : null,
         el('h3', { text: 'Wearing' }),
         el('div', { class: 'gear-row' }, gear.map(({ slot, item }) => el('div', { class: `gear ${item ? `g-${item.rarity}` : 'empty'}` },
           el('small', { text: SLOT_NAMES[slot] }),
@@ -335,7 +337,7 @@ export function createUI(on) {
     },
 
     /** The quest log: the story quest, then every piece of schoolwork as a quest. */
-    quests({ story, done, total, level, school, onStudy }) {
+    quests({ story, done, total, level, school, onStudy, onPractice }) {
       const reward = (r) => [r.coins ? `${fmt(r.coins)} coins` : null, r.gear ? `${r.gear} ${r.slot}` : null].filter(Boolean).join(' + ');
       panel({ title: 'Quests', subtitle: `Story ${done} of ${total} done · you are level ${level}`, wide: true },
         el('h3', { text: 'Story' }),
@@ -353,13 +355,62 @@ export function createUI(on) {
             el('small', { text: `Study ${a.goal} min: +${a.studyXp} XP` }),
             el('small', { text: a.kind === 'boss' ? `Armor ${Math.round((1 - a.studied) * 100)}%: break it before exam day` : `Hand in: +${a.handInXp} XP` }),
             el('small', { text: 'Grade posted: chest + XP' }),
-            el('button', { class: 'btn small primary', text: 'Study', onclick: () => onStudy(a.id) }))))
+            el('button', { class: 'btn small primary', text: 'Study', onclick: () => onStudy(a.id) }),
+            onPractice ? el('button', { class: 'btn small', text: 'Practice', onclick: () => onPractice(a.id) }) : null)))
           : el('p', { class: 'note', text: 'Nothing due right now. Free study still gives XP.' }),
       );
     },
 
+    /**
+     * A round of AI practice questions. load() resolves { questions, files };
+     * finish(right, wrong) pays for the round and returns a line to show.
+     */
+    practice({ name, course, armor, load, finish, again }) {
+      const body = el('div', { class: 'practice' }, el('p', { class: 'note loading', text: `Soma is writing questions from your ${course} notes…` }));
+      panel({ title: `Practice: ${name}`, subtitle: `${course}${armor != null ? ` · armor ${Math.round(armor * 100)}%` : ''}`, wide: true }, body);
+      let right = 0, wrong = 0, paid = false;
+      const pay = () => { if (!paid && right + wrong) { paid = true; return finish(right, wrong); } return null; };
+      // Closing midway still pays for what was answered.
+      open.onClose = () => { pay(); };
+      load().then(({ questions, files }) => {
+        if (!open) return;
+        const show = (i) => {
+          if (i >= questions.length) {
+            const line = pay();
+            body.replaceChildren(
+              el('div', { class: 'practice-score' }, el('b', { text: `${right} / ${questions.length}` }), el('span', { text: 'right' })),
+              line ? el('p', { class: 'note', text: line }) : null,
+              el('div', { class: 'actions' },
+                el('button', { class: 'btn primary', onclick: () => { close(); again(); } }, el('span', { text: 'Another round' })),
+                el('button', { class: 'btn', onclick: close }, el('span', { text: 'Done' }))));
+            return;
+          }
+          const q = questions[i];
+          const why = el('p', { class: 'note why', hidden: true });
+          const next = el('button', { class: 'btn primary', hidden: true, onclick: () => show(i + 1) }, el('span', { text: i + 1 < questions.length ? 'Next question' : 'See score' }));
+          const choices = q.choices.map((text, k) => el('button', { class: 'choice', onclick: () => {
+            if (choices.some((c) => c.disabled)) return;
+            choices.forEach((c, j) => { c.disabled = true; if (j === q.answer) c.classList.add('right'); });
+            if (k === q.answer) right += 1;
+            else { wrong += 1; choices[k].classList.add('wrong'); }
+            why.textContent = `${k === q.answer ? 'Right. ' : 'Not quite. '}${q.why || ''}`;
+            why.hidden = false;
+            next.hidden = false;
+          } }, el('i', { text: 'ABCD'[k] }), el('span', { text })));
+          body.replaceChildren(
+            el('small', { class: 'practice-count', text: `Question ${i + 1} of ${questions.length}${files.length ? ` · from ${files.slice(0, 2).join(', ')}${files.length > 2 ? ` +${files.length - 2}` : ''}` : ''}` }),
+            el('h3', { class: 'practice-q', text: q.q }),
+            el('div', { class: 'choices' }, choices), why, el('div', { class: 'actions' }, next));
+        };
+        show(0);
+      }).catch((error) => {
+        if (!open) return;
+        body.replaceChildren(el('p', { class: 'note', text: error.message || 'Practice is not available right now.' }), el('div', { class: 'actions' }, el('button', { class: 'btn', onclick: close }, el('span', { text: 'Close' }))));
+      });
+    },
+
     /** Pick what to study and for how long. */
-    study({ items, selected, lengths, chestsLeft, streak, xpRate = 5, onStart }) {
+    study({ items, selected, lengths, chestsLeft, streak, xpRate = 5, onStart, onPractice }) {
       let length = lengths[1] || lengths[0];
       const pick = el('select', {}, el('option', { value: '', text: 'Something else (free study)' }),
         items.map((a) => el('option', { value: a.id, selected: a.id === selected, text: `${a.kind === 'boss' ? 'Exam: ' : ''}${a.name} · ${a.course}` })));
@@ -387,6 +438,7 @@ export function createUI(on) {
           el('div', { class: 'stat' }, el('small', { text: 'Study chests left today' }), el('b', { text: String(chestsLeft) })),
           el('div', { class: 'stat' }, el('small', { text: 'Streak' }), el('b', { text: `${streak} day${streak === 1 ? '' : 's'}` }))),
         el('div', { class: 'actions' }, go),
+        onPractice ? el('div', { class: 'actions', style: 'margin-top:8px' }, el('button', { class: 'btn', onclick: () => { const id = pick.value || null; if (!id) return; close(); onPractice(id); } }, el('span', {}, 'Practice questions with AI', el('small', { text: 'Soma writes questions from your course notes. Right answers break armor too. (P)' })))) : null,
         el('p', { class: 'note', text: 'You can switch tabs: the timer keeps running and shows in the tab title. Ending early still pays for the minutes you did, after the first five.' }),
       );
     },
@@ -408,6 +460,7 @@ export function createUI(on) {
           el('span', { class: 'k' }, el('kbd', { text: 'Right drag' })), el('span', { text: 'Hold right click and move the mouse to look around. Left click swings. Scroll to zoom. V locks the mouse to the view.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'T' })), el('span', { text: 'Start a study session. This is the only way to level up.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'C' }), el('kbd', { text: 'J' })), el('span', { text: 'Your hero (gear and skills) and your quests.' }),
+          el('span', { class: 'k' }, el('kbd', { text: 'P' })), el('span', { text: 'Practice questions from Soma AI, written from your course notes. Right answers break exam armor.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'E' })), el('span', { text: 'Build, upgrade, open chests, pick what to study.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'F' })), el('span', { text: 'Swing (or click). Three swings in a row end in a combo hit.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'Q' })), el('span', { text: 'Dodge. Nothing can hit you mid-dash.' }),

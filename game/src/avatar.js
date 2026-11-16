@@ -1,15 +1,14 @@
-// The player: the Barbarian from the KayKit Adventurers pack by Kay Lousberg
-// (CC0, public/models/Barbarian.glb). A stylised character built for games,
-// with its own idle, run, attack, dodge, jump and hit animations. Loads in the
-// background; until then the game shows the built-in figure.
+// The player: a hero from the KayKit Adventurers pack by Kay Lousberg (CC0,
+// public/models/*.glb). Every hero shares one skeleton and the same idle,
+// run, attack, dodge, jump and hit animations, so any of them can be picked.
+// The chosen one loads in the background; until then the game shows the
+// built-in figure.
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 
 const HEIGHT = 1.95; // metres, to the top of the head
-let source = null;
-let fit = 1;
 
 // The pack paints every part from one small palette image. Repainting a few of
 // its colours gives the hero natural materials: tanned hide instead of blue
@@ -78,46 +77,97 @@ function naturalColours(map) {
   return next;
 }
 
+export const CHARACTERS = [
+  { id: 'barbarian', name: 'Barbarian', file: 'Barbarian.glb', weapon: '1H_Axe', great: '2H_Axe', hat: 'Barbarian_Hat', hide: ['1H_Axe_Offhand', 'Barbarian_Round_Shield', 'Mug'], natural: true, noBeard: true },
+  { id: 'rogue', name: 'Ranger', file: 'Rogue.glb', weapon: 'Knife', great: '2H_Crossbow', hide: ['Knife_Offhand', '1H_Crossbow', 'Throwable'] },
+  { id: 'hooded', name: 'Hooded ranger', file: 'Rogue_Hooded.glb', weapon: 'Knife', great: '2H_Crossbow', hide: ['Knife_Offhand', '1H_Crossbow', 'Throwable'] },
+  { id: 'knight', name: 'Knight', file: 'Knight.glb', weapon: '1H_Sword', great: '2H_Sword', hat: 'Knight_Helmet', hide: ['1H_Sword_Offhand', 'Badge_Shield', 'Rectangle_Shield', 'Spike_Shield', 'Round_Shield'] },
+  { id: 'mage', name: 'Mage', file: 'Mage.glb', weapon: '1H_Wand', great: '2H_Staff', hat: 'Mage_Hat', hide: ['Spellbook', 'Spellbook_open'] },
+];
+const byId = (id) => CHARACTERS.find((c) => c.id === id) || CHARACTERS[0];
+
 const loader = new GLTFLoader();
-export const avatarReady = loader.loadAsync('/game/models/Barbarian.glb').then((gltf) => {
-  gltf.scene.updateMatrixWorld(true);
-  const box = new THREE.Box3();
-  gltf.scene.traverse((o) => { if (o.isSkinnedMesh && /Body|Head|Leg/.test(o.name)) box.expandByObject(o); });
-  fit = HEIGHT / Math.max(0.5, box.max.y - Math.min(0, box.min.y));
-  // No beard: drop the head's triangles painted from the beard swatch (second
-  // swatch of the top row of the palette), leaving the face under it.
+const loaded = new Map(); // id -> Promise<{ gltf, fit, mouth }>
+let current = null; // { char, gltf, fit, mouth }
+
+/** The Barbarian's mouth was painted under his beard, so it goes when the beard does. Returns where to put a new one, in head-bone space. */
+function dropBeard(gltf) {
+  let mouth = null;
   gltf.scene.traverse((o) => {
-    if (!o.isMesh || o.name !== 'Barbarian_Head' || !o.geometry.index) return;
+    if (!o.isMesh || !/_Head$/.test(o.name) || !o.geometry.index) return;
     const g = o.geometry;
     const uv = g.attributes.uv;
+    const pos = g.attributes.position;
     const index = g.index.array;
     const keep = [];
+    const box = new THREE.Box3();
+    const v = new THREE.Vector3();
     for (let t = 0; t < index.length; t += 3) {
       const u = (uv.getX(index[t]) + uv.getX(index[t + 1]) + uv.getX(index[t + 2])) / 3;
-      const v = (uv.getY(index[t]) + uv.getY(index[t + 1]) + uv.getY(index[t + 2])) / 3;
-      if (u >= 0.125 && u < 0.25 && v < 0.25) continue;
+      const w = (uv.getY(index[t]) + uv.getY(index[t + 1]) + uv.getY(index[t + 2])) / 3;
+      if (u >= 0.125 && u < 0.25 && w < 0.25) {
+        for (let k = 0; k < 3; k++) box.expandByPoint(v.fromBufferAttribute(pos, index[t + k]));
+        continue;
+      }
       keep.push(index[t], index[t + 1], index[t + 2]);
     }
     g.setIndex(keep);
+    if (box.isEmpty()) return;
+    // The face sits just behind where the beard was: find the head's front
+    // surface at mouth height (near the top of the beard).
+    const size = box.getSize(new THREE.Vector3());
+    const at = new THREE.Vector3((box.min.x + box.max.x) / 2, box.max.y - size.y * 0.2, -Infinity);
+    for (let t = 0; t < keep.length; t++) {
+      v.fromBufferAttribute(pos, keep[t]);
+      if (Math.abs(v.x - at.x) < size.x * 0.25 && Math.abs(v.y - at.y) < size.y * 0.25) at.z = Math.max(at.z, v.z);
+    }
+    if (!Number.isFinite(at.z)) at.z = box.min.z;
+    const head = gltf.scene.getObjectByName('head');
+    if (!head) return;
+    o.localToWorld(at);
+    head.worldToLocal(at);
+    mouth = { at, width: size.x * 0.32 };
   });
-  const repainted = new Map();
-  const done = new Set();
-  gltf.scene.traverse((o) => {
-    if (!o.isMesh || !o.material.map?.image) return;
-    // Parts share one material; repaint its texture once, not once per part.
-    if (done.has(o.material.map)) return;
-    if (!repainted.has(o.material.map)) repainted.set(o.material.map, naturalColours(o.material.map));
-    o.material.map = repainted.get(o.material.map);
-    done.add(o.material.map);
-  });
-  source = gltf;
-  return true;
-}).catch((error) => {
-  console.warn('Avatar model did not load; using the built-in figure.', error);
-  return false;
-});
+  return mouth;
+}
 
-export const hasAvatar = () => Boolean(source);
+function load(char) {
+  if (!loaded.has(char.id)) {
+    loaded.set(char.id, loader.loadAsync(`/game/models/${char.file}`).then((gltf) => {
+      gltf.scene.updateMatrixWorld(true);
+      const box = new THREE.Box3();
+      gltf.scene.traverse((o) => { if (o.isSkinnedMesh && /Body|Head|Leg/.test(o.name)) box.expandByObject(o); });
+      const fit = HEIGHT / Math.max(0.5, box.max.y - Math.min(0, box.min.y));
+      const mouth = char.noBeard ? dropBeard(gltf) : null;
+      if (char.natural) {
+        const repainted = new Map();
+        gltf.scene.traverse((o) => {
+          if (!o.isMesh || !o.material.map?.image) return;
+          // Parts share one material; repaint its texture once, not once per part.
+          if (!repainted.has(o.material.map)) repainted.set(o.material.map, naturalColours(o.material.map));
+          o.material.map = repainted.get(o.material.map);
+        });
+      }
+      return { char, gltf, fit, mouth };
+    }));
+  }
+  return loaded.get(char.id);
+}
+
+/** Switches the hero to a character (by id). Resolves true once it can be drawn. */
+export function useCharacter(id) {
+  const char = byId(id);
+  return load(char).then((entry) => {
+    if (byId(id) === char) current = entry;
+    return true;
+  }).catch((error) => {
+    console.warn('Avatar model did not load; using the built-in figure.', error);
+    return false;
+  });
+}
+
+export const hasAvatar = () => Boolean(current);
+export const characterId = () => current?.char.id || null;
 
 const SWINGS = ['1H_Melee_Attack_Chop', '1H_Melee_Attack_Slice_Diagonal', '1H_Melee_Attack_Slice_Horizontal'];
 const ONCE = [...SWINGS, 'Dodge_Forward', 'Hit_A'];
@@ -129,6 +179,7 @@ const ONCE = [...SWINGS, 'Dodge_Forward', 'Hit_A'];
  * object is given: 0 the hand axe, 1 the great axe.
  */
 export function createAvatar({ tint, hat, weapon, weaponLook = 0 }) {
+  const { char, gltf: source, fit, mouth } = current;
   const model = cloneSkinned(source.scene);
   const root = new THREE.Group();
   root.add(model);
@@ -144,11 +195,19 @@ export function createAvatar({ tint, hat, weapon, weaponLook = 0 }) {
     if (tint) o.material.color.lerp(new THREE.Color(tint), 0.3);
   });
   const part = (name) => model.getObjectByName(name);
-  for (const name of ['1H_Axe_Offhand', 'Barbarian_Round_Shield', 'Mug']) if (part(name)) part(name).visible = false;
+  for (const name of char.hide) if (part(name)) part(name).visible = false;
   const great = !weapon && weaponLook >= 1;
-  if (part('1H_Axe')) part('1H_Axe').visible = !weapon && !great;
-  if (part('2H_Axe')) part('2H_Axe').visible = great;
-  if (part('Barbarian_Hat')) part('Barbarian_Hat').visible = !hat;
+  if (part(char.weapon)) part(char.weapon).visible = !weapon && !great;
+  if (part(char.great)) part(char.great).visible = great;
+  if (char.hat && part(char.hat)) part(char.hat).visible = !hat;
+  if (mouth && part('head')) {
+    // A small closed smile where the beard used to be.
+    const smile = new THREE.Mesh(new THREE.TorusGeometry(mouth.width * 0.42, mouth.width * 0.1, 6, 14, Math.PI * 0.8), new THREE.MeshStandardMaterial({ color: 0x4a2418, roughness: 0.7 }));
+    smile.rotation.z = Math.PI + Math.PI * 0.1;
+    smile.position.copy(mouth.at).add(new THREE.Vector3(0, -mouth.width * 0.4, mouth.width * 0.3));
+    smile.name = 'mouth';
+    part('head').add(smile);
+  }
 
   // Anything pinned to a bone is built in metres; undo the model's own scale.
   const pin = (to, object, place) => {

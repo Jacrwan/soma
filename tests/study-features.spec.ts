@@ -104,9 +104,11 @@ test('syllabus: Find dates reads the uploaded document through the importer and 
 
 // ── Cost, on the server ─────────────────────────────────────────────────────
 
-test('the server refuses a study request: Soma writes no study material', async () => {
+test('the server takes only known purposes: triage, and practice questions for the game', async () => {
   expect(validateChatInput({ messages: [{ role: 'user', content: 'Course: Biology' }], systemPrompt: 'Write questions', purpose: 'study' })).toBe('invalid_purpose');
   expect(validateChatInput({ messages: [{ role: 'user', content: 'hi' }], purpose: 'triage' })).toBeNull();
+  expect(validateChatInput({ messages: [{ role: 'user', content: 'Course: Biology' }], systemPrompt: 'Write questions', purpose: 'practice' })).toBeNull();
+  expect(validateChatInput({ messages: [{ role: 'user', content: 'Course: Biology' }], purpose: 'practice', model: 'sonnet' })).toBe('invalid_model');
 });
 
 test('reading a course site or syllabus stops at the budget, and is counted when it runs', async () => {

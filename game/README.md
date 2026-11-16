@@ -16,7 +16,8 @@ render loop stay out of Soma's.
 
 Files in `public/game/models`:
 
-- `Barbarian.glb`: the hero. KayKit Adventurers pack by Kay Lousberg
+- `Barbarian.glb`, `Knight.glb`, `Mage.glb`, `Rogue.glb`, `Rogue_Hooded.glb`:
+  the heroes you can pick. KayKit Adventurers pack by Kay Lousberg
   (kaylousberg.com), CC0.
 - `nature/`: trees and clouds from the KayKit Medieval Hexagon pack by Kay
   Lousberg, CC0.

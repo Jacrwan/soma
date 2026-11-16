@@ -73,10 +73,10 @@ export function newState(now = Date.now()) {
     wonders: [],
     relics: [],
     tokens: 0,
-    cosmetics: { owned: ['hat:none', 'color:clay'], hat: 'hat:none', color: 'color:clay' },
+    cosmetics: { owned: ['hat:none', 'color:clay'], hat: 'hat:none', color: 'color:clay', character: 'barbarian' },
     school: { source: 'none', items: {}, seen: {}, chests: [], ignored: {}, penalty: {}, warned: {} },
     explore: { day: null, done: {}, shrines: {} },
-    study: { active: null, minutes: {}, courses: {}, log: [], streak: 0, lastDay: null, chestDay: null, chestsToday: 0, total: 0 },
+    study: { active: null, minutes: {}, courses: {}, log: [], practice: {}, streak: 0, lastDay: null, chestDay: null, chestsToday: 0, total: 0 },
     hero: { level: 1, xp: 0, points: 0, skills: {}, gear: { weapon: null, armor: null, charm: null }, bag: [], nextId: 1 },
     quest: { step: 0 },
     stats: { collected: 0, raidersBeaten: 0, bossesBeaten: 0, chestsOpened: 0, handedIn: 0, campsCleared: 0, treasures: 0, realmBosses: {} },
@@ -534,6 +534,41 @@ export function finishStudy(state, now = Date.now()) {
     result.chest = grantChest(state, a.minutes >= STUDY_LENGTHS[0].minutes ? length.rarity : 'common', `${a.minutes} minutes of ${item ? item.name : 'study'}`);
   }
   return result;
+}
+
+// --- Practice questions (written by Soma's AI from the course notes) ----------
+// A right answer counts as a few minutes of study for that item, so practice
+// strips an exam's armor too. Capped per item per day, so it can't be farmed.
+export const PRACTICE_RIGHT_MINUTES = 5;
+export const PRACTICE_WRONG_MINUTES = 1; // a wrong answer still teaches something
+export const PRACTICE_DAILY_MINUTES = 40;
+export const PRACTICE_XP = 8; // per right answer
+
+/** Minutes of study credit practice can still give this item today. */
+export function practiceRoom(state, itemId, now = Date.now()) {
+  const p = state.study.practice?.[itemId];
+  return Math.max(0, PRACTICE_DAILY_MINUTES - (p && p.day === dayOf(now) ? p.minutes : 0));
+}
+
+/** Pays for one practice round. Returns { minutes, xp, levels, prepared, capped }. */
+export function finishPractice(state, itemId, right, wrong, now = Date.now()) {
+  const item = itemId ? state.school.items[itemId] || null : null;
+  const room = item ? practiceRoom(state, itemId, now) : 0;
+  const minutes = Math.min(room, right * PRACTICE_RIGHT_MINUTES + wrong * PRACTICE_WRONG_MINUTES);
+  const result = { minutes, prepared: false, capped: Boolean(item) && minutes < right * PRACTICE_RIGHT_MINUTES + wrong * PRACTICE_WRONG_MINUTES };
+  if (item && minutes > 0) {
+    const before = studyProgress(state, item);
+    const study = state.study;
+    study.practice = study.practice || {};
+    const p = study.practice[itemId] && study.practice[itemId].day === dayOf(now) ? study.practice[itemId] : { day: dayOf(now), minutes: 0 };
+    p.minutes += minutes;
+    study.practice[itemId] = p;
+    study.minutes[item.id] = (study.minutes[item.id] || 0) + minutes;
+    study.courses[item.courseId] = (study.courses[item.courseId] || 0) + minutes;
+    study.log = [...(study.log || []), { at: now, itemId: item.id, courseId: item.courseId, minutes }].slice(-400);
+    result.prepared = before < 1 && studyProgress(state, item) >= 1;
+  }
+  return Object.assign(result, addXp(state, right * PRACTICE_XP * heroStats(state).studyXp));
 }
 
 /** What the gate looks like right now: who is marching, who is sieging. */

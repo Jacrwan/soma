@@ -7,8 +7,9 @@ import * as A from './art.js';
 import * as W from './world.js';
 import { createUI, timeLeft } from './ui.js';
 import { createFx, createAudio } from './fx.js';
-import { avatarReady, hasAvatar, createAvatar } from './avatar.js';
+import { useCharacter, hasAvatar, createAvatar, CHARACTERS } from './avatar.js';
 import { createRealms } from './realm.js';
+import { makePractice } from './practice.js';
 import { focusView } from './nature.js';
 import { enemiesReady, hasEnemy, createEnemy } from './enemies.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -138,7 +139,12 @@ function dressPlayer() {
   } else player.model = A.makeCharacter(state.cosmetics.color, hat);
   player.object.add(player.model);
 }
-avatarReady.then((ok) => { if (ok) dressPlayer(); });
+useCharacter(state.cosmetics.character).then((ok) => { if (ok) dressPlayer(); });
+function pickCharacter(id) {
+  state.cosmetics.character = id;
+  save();
+  useCharacter(id).then((ok) => { if (ok && state.cosmetics.character === id) { dressPlayer(); fx.burst(player.object.position.clone().add(new THREE.Vector3(0, 1, 0)), A.C.gold, 18, 5, 5); } });
+}
 const CAM_MIN = 4.5;
 const CAM_MAX = 60;
 const cam = { yaw: 0.6, pitch: 0.62, dist: 26, want: 26, idle: 0 };
@@ -862,6 +868,8 @@ function openHero() {
     onSell: (id) => { if (S.sellGear(state, id)) { audio.coin(); reopen(); } },
     onSkill: (id) => { if (S.spendSkill(state, id)) { audio.build(); reopen(); } },
     onWardrobe: () => { ui.close(); openWardrobe(); },
+    characters: CHARACTERS.map(({ id, name }) => ({ id, name })), character: state.cosmetics.character,
+    onCharacter: (id) => { pickCharacter(id); ui.close(); openHero(); },
     onStudy: () => { ui.close(); openStudy(); },
   });
 }
@@ -878,6 +886,7 @@ function openQuests() {
       bossLevel: item.kind === 'boss' ? S.bossLevel(item) : null,
     })),
     onStudy: (id) => { ui.close(); openStudy(id); },
+    onPractice: (id) => { ui.close(); openPractice(id); },
   });
 }
 
@@ -909,6 +918,34 @@ function openStudy(selected = null) {
     items, selected: selected ?? items[0]?.id ?? null, lengths: S.STUDY_LENGTHS, chestsLeft: S.studyChestsLeft(state, now), streak: state.study.streak,
     xpRate: S.XP_PER_MINUTE * S.XP_FULL_SESSION * S.heroStats(state).studyXp,
     onStart: (id, minutes) => beginStudy(id, minutes),
+    onPractice: (id) => openPractice(id),
+  });
+}
+
+/** A round of AI practice questions on an item; defaults to the most urgent exam, then anything due. */
+function openPractice(id = null) {
+  if (fight || ui.isOpen()) return;
+  const now = Date.now();
+  const list = S.threats(state, now).map((t) => t.item);
+  const item = (id && state.school.items[id]) || list.filter((a) => a.kind === 'boss').sort((a, b) => a.dueAt - b.dueAt)[0] || list[0];
+  if (!item) return void ui.toast('Nothing to practice for yet. Exams and assignments from Canvas show up here.', 'bad');
+  ui.practice({
+    name: item.name, course: item.courseName || 'your course', armor: item.kind === 'boss' ? S.examArmor(state, item) : null,
+    load: () => makePractice(item),
+    finish: (right, wrong) => {
+      const r = S.finishPractice(state, item.id, right, wrong);
+      gainedXp(r);
+      syncInvaders(Date.now());
+      refreshHud();
+      save();
+      if (right) audio.coin();
+      const armor = item.kind === 'boss' ? ` ${item.name} has ${Math.round(S.examArmor(state, item) * 100)}% armor left.` : '';
+      const toast = `Practice: ${right} right. +${r.xp} XP${r.minutes ? `, ${r.minutes} min of study credit` : ''}.${armor}`;
+      ui.toast(toast, 'good');
+      if (r.prepared) ui.toast(item.kind === 'boss' ? `${item.name} has no armor left. Your gate will hold on exam day.` : `${item.name} is fully studied: handing it in pays 50% more.`, 'gold');
+      return `+${r.xp} XP${r.minutes ? ` and ${r.minutes} minutes of study credit` : ''}.${armor}${r.capped ? ' Practice credit for this one is used up today; more rounds still pay XP.' : ''}`;
+    },
+    again: () => openPractice(item.id),
   });
 }
 
@@ -1319,6 +1356,7 @@ window.addEventListener('keydown', (event) => {
   else if (key === 'q') dodge();
   else if (key === 'r') slam();
   else if (key === 't') openStudy();
+  else if (key === 'p') openPractice();
   else if (key === 'h') ui.help({ first: false });
   else if (key === 'm') {
     state.settings.muted = !state.settings.muted;
@@ -1727,6 +1765,7 @@ window.epoch = {
   },
   quality(n) { setQuality(n); },
   exams: checkExams,
+  character: pickCharacter,
   armor(id) { const inv = invaders.get(id); return inv && inv.object.userData.armor?.filter((p) => p.visible).length; },
   info: () => ({ quality, calls: renderer.info.render.calls, tris: renderer.info.render.triangles }),
   reset() { localStorage.removeItem(SAVE_KEY); location.reload(); },

@@ -326,6 +326,24 @@ test('study chests run out for the day', () => {
   assert.strictEqual(S.examArmor(s, s.school.items.m), 0);
 });
 
+test('practice answers strip exam armor, capped per day, and pay XP', () => {
+  const s = rich();
+  S.syncSchool(s, [{ id: 'm', name: 'Midterm exam', courseId: 'c', courseName: 'Physics', dueAt: NOW + 2 * DAY, pointsPossible: 100, weight: 30, submitted: false }], NOW, { source: 'soma' });
+  const exam = s.school.items.m;
+  const xp = s.hero.xp;
+  const r = S.finishPractice(s, 'm', 4, 1, NOW);
+  assert.strictEqual(r.minutes, 21);
+  assert.ok(r.xp > 0 && s.hero.xp + s.hero.level > xp);
+  assert.ok(Math.abs(S.examArmor(s, exam) - (1 - 21 / 120)) < 1e-9);
+  S.finishPractice(s, 'm', 5, 0, NOW + 1000);
+  const capped = S.finishPractice(s, 'm', 5, 0, NOW + 2000);
+  assert.strictEqual(capped.minutes, 0);
+  assert.ok(capped.capped);
+  assert.strictEqual(S.practiceRoom(s, 'm', NOW + DAY), S.PRACTICE_DAILY_MINUTES);
+  // Free practice (no item) pays XP only.
+  assert.strictEqual(S.finishPractice(s, null, 3, 0, NOW).minutes, 0);
+});
+
 test('camps and treasure come back the next day, shrines pay once ever', () => {
   const s = rich(0);
   assert.ok(!S.exploreDone(s, 'wilds:camp:0', NOW));

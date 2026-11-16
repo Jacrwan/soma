@@ -125,6 +125,7 @@ kbd { font: inherit; font-weight: 900; font-size: 13px; min-width: 26px; height:
 .x:hover { background: rgba(255, 255, 255, 0.08); }
 
 .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.cards.characters { grid-template-columns: repeat(5, 1fr); }
 .card { text-align: left; padding: 13px 13px 12px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.04); display: flex; flex-direction: column; gap: 4px; transition: transform 0.1s ease, border-color 0.15s ease, background 0.15s ease; }
 .card:hover:not(:disabled) { transform: translateY(-2px); border-color: rgba(242, 193, 78, 0.7); background: rgba(242, 193, 78, 0.08); }
 .card:disabled { opacity: 0.45; cursor: default; }
@@ -578,3 +579,21 @@ select, input { font: inherit; }
 #alert .alert-main { flex: 1; flex-wrap: wrap; row-gap: 2px; padding: 7px 11px; }
 #alert .alert-name { max-width: 150px; }
 #alert .alert-text { flex-basis: 100%; white-space: normal; font-size: 12px; }
+
+/* AI practice */
+.practice .loading { animation: pulse 1.2s ease-in-out infinite alternate; }
+@keyframes pulse { from { opacity: 0.55; } to { opacity: 1; } }
+.practice-count { display: block; opacity: 0.7; margin-bottom: 6px; }
+.panel .practice-q, .practice-q { font-size: 19px; line-height: 1.4; margin: 4px 0 14px; text-transform: none; letter-spacing: 0; color: #fff; font-weight: 600; }
+.choices { display: grid; gap: 8px; }
+.choice { display: flex; align-items: center; gap: 12px; text-align: left; padding: 12px 14px; border-radius: 14px; border: 2px solid rgba(255, 255, 255, 0.12); background: rgba(255, 255, 255, 0.06); color: inherit; font: inherit; font-size: 15px; cursor: pointer; transition: transform 0.08s, background 0.15s; }
+.choice:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); transform: translateY(-1px); }
+.choice:disabled { cursor: default; }
+.choice i { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border-radius: 9px; background: rgba(255, 255, 255, 0.12); font-style: normal; font-weight: 700; }
+.choice.right { border-color: #5fd17a; background: rgba(95, 209, 122, 0.18); }
+.choice.right i { background: #5fd17a; color: #10261a; }
+.choice.wrong { border-color: #ef6b5e; background: rgba(239, 107, 94, 0.18); }
+.choice.wrong i { background: #ef6b5e; color: #2a0f0c; }
+.practice .why { margin-top: 12px; }
+.practice-score { display: flex; align-items: baseline; gap: 10px; margin: 6px 0 4px; }
+.practice-score b { font-size: 44px; color: var(--gold); }
