@@ -211,113 +211,145 @@ function dropFangs(gltf) {
   });
 }
 
-// --- A cuter face, made in the model itself ----------------------------------------
-// The KayKit heads paint their eyes from one dark palette swatch and the mouth
-// from a light grey one, with a big nose jutting out of a flat face. Here the
-// old eyes and mouth are cut out of the head mesh and the nose is pressed down
-// to a little button; then a chibi face is drawn flat on it: tall glossy eyes
-// with two highlights, soft cheeks and a small smile. The head is a touch
-// bigger on the body. Everything rides on the head bone, so it moves with
-// every animation. Villagers get the same face.
-const EYE = [0.25, 0.375], MOUTH = [0.375, 0.5]; // u ranges of the swatches (row 0)
-const HEAD_SCALE = 1.1;
-const FACE = {
-  eye: 0x2b1b17, iris: 0x6b3a2a, shine: 0xffffff, blush: 0xff9aa8, mouth: 0x6b2c24,
-};
-function cuteFace(gltf, char) {
+// --- A new head ----------------------------------------------------------------------
+// The pack's heads are blocky with a big nose and small painted eyes. Each hero
+// gets a head of its own instead: a soft round chibi head the same size as the
+// old one (so hats and helmets still fit), with the face painted into its own
+// skin texture: big glossy eyes, rosy cheeks, a small smile. Hair and ears are
+// part of it too. It rides on the head bone, so it moves with every animation.
+// Villagers get the same head.
+const SKIN = '#f6c3a0', SKIN_SHADE = '#e9a988', HAIR = 0x5b3a26;
+let faceTexture = null;
+function paintFace() {
+  if (faceTexture) return faceTexture;
+  const c = document.createElement('canvas');
+  c.width = 1024; c.height = 512;
+  const g = c.getContext('2d');
+  g.fillStyle = SKIN;
+  g.fillRect(0, 0, 1024, 512);
+  // The front of a sphere's texture is a quarter of the way across.
+  const cx = 256, eyeY = 282, gap = 62;
+  // Soft shading under the face so it isn't flat.
+  const under = g.createRadialGradient(cx, 360, 10, cx, 360, 200);
+  under.addColorStop(0, 'rgba(233,169,136,0)'); under.addColorStop(1, 'rgba(233,169,136,0.35)');
+  g.fillStyle = under; g.fillRect(0, 0, 1024, 512);
+  // Cheeks.
+  for (const side of [-1, 1]) {
+    const b = g.createRadialGradient(cx + side * 96, eyeY + 44, 2, cx + side * 96, eyeY + 44, 34);
+    b.addColorStop(0, 'rgba(255,128,150,0.65)'); b.addColorStop(1, 'rgba(255,128,150,0)');
+    g.fillStyle = b;
+    g.beginPath(); g.ellipse(cx + side * 96, eyeY + 44, 36, 22, 0, 0, Math.PI * 2); g.fill();
+  }
+  // Eyes: tall dark ovals, a warm iris low down, two highlights.
+  for (const side of [-1, 1]) {
+    const x = cx + side * gap;
+    g.fillStyle = '#2a1a16';
+    g.beginPath(); g.ellipse(x, eyeY, 21, 30, 0, 0, Math.PI * 2); g.fill();
+    const iris = g.createLinearGradient(0, eyeY - 6, 0, eyeY + 30);
+    iris.addColorStop(0, 'rgba(120,70,48,0)'); iris.addColorStop(1, 'rgba(150,90,60,0.95)');
+    g.fillStyle = iris;
+    g.beginPath(); g.ellipse(x, eyeY + 8, 16, 20, 0, 0, Math.PI * 2); g.fill();
+    g.fillStyle = '#ffffff';
+    g.beginPath(); g.ellipse(x + side * 7, eyeY - 11, 8.5, 9.5, 0, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.arc(x - side * 7, eyeY + 12, 4, 0, Math.PI * 2); g.fill();
+    // Tiny lashes at the outer corner.
+    g.strokeStyle = '#2a1a16'; g.lineWidth = 4; g.lineCap = 'round';
+    g.beginPath(); g.moveTo(x + side * 18, eyeY - 18); g.lineTo(x + side * 27, eyeY - 25); g.stroke();
+  }
+  // Soft brows.
+  g.strokeStyle = 'rgba(90,58,38,0.75)'; g.lineWidth = 5;
+  for (const side of [-1, 1]) { g.beginPath(); g.arc(cx + side * gap, eyeY - 18, 26, Math.PI * 1.3, Math.PI * 1.7); g.stroke(); }
+  // A small smile.
+  g.strokeStyle = '#7a3428'; g.lineWidth = 5;
+  g.beginPath(); g.arc(cx, eyeY + 46, 12, Math.PI * 0.15, Math.PI * 0.85); g.stroke();
+  faceTexture = new THREE.CanvasTexture(c);
+  faceTexture.colorSpace = THREE.SRGBColorSpace;
+  faceTexture.anisotropy = 4;
+  return faceTexture;
+}
+
+function newHead(gltf, char) {
   gltf.scene.updateMatrixWorld(true);
   const bone = gltf.scene.getObjectByName('head');
   if (!bone) return;
-  const heads = [];
-  gltf.scene.traverse((o) => { if (o.isSkinnedMesh && /_Head$/.test(o.name)) heads.push(o); });
-  const hats = [];
-  if (char.hat) gltf.scene.getObjectByName(char.hat)?.traverse((o) => { if (o.isMesh) hats.push(o); });
-  const flat = (color, opts = {}) => new THREE.MeshBasicMaterial({ color, ...opts });
-  for (const head of heads) {
-    const geo = head.geometry = head.geometry.clone();
-    const pos = geo.attributes.position, uv = geo.attributes.uv, index = geo.index?.array;
-    if (!index || !uv) continue;
-    const eyes = new Set(), mouth = new Set();
-    const keep = [];
+  const old = [], hooded = [];
+  gltf.scene.traverse((o) => { if (o.isSkinnedMesh && /_Head$/.test(o.name)) old.push(o); else if (o.isSkinnedMesh && /_Head_/.test(o.name)) hooded.push(o); });
+  if (!old.length && !hooded.length) return;
+  const box = new THREE.Box3();
+  for (const o of old) box.expandByObject(o);
+  for (const o of old) o.parent.remove(o);
+  // A head with its hood in the same mesh: keep the hood, cut out the face and skin
+  // (the skin, eye and mouth swatches), and size the new head to the hole.
+  for (const o of hooded) {
+    const geo = o.geometry = o.geometry.clone();
+    const pos = geo.attributes.position, uv = geo.attributes.uv, index = geo.index.array;
+    const keep = [], v = new THREE.Vector3();
     for (let t = 0; t < index.length; t += 3) {
       const u = (uv.getX(index[t]) + uv.getX(index[t + 1]) + uv.getX(index[t + 2])) / 3;
-      const v = (uv.getY(index[t]) + uv.getY(index[t + 1]) + uv.getY(index[t + 2])) / 3;
-      const into = v < 0.25 && u >= EYE[0] && u < EYE[1] ? eyes : v < 0.25 && u >= MOUTH[0] && u < MOUTH[1] ? mouth : null;
-      if (into) for (let k = 0; k < 3; k++) into.add(index[t + k]);
+      const w = (uv.getY(index[t]) + uv.getY(index[t + 1]) + uv.getY(index[t + 2])) / 3;
+      const col = Math.floor(u * 8);
+      if (w < 0.25 && (col === 0 || col === 2 || col === 3)) {
+        for (let k = 0; k < 3; k++) box.expandByPoint(v.fromBufferAttribute(pos, index[t + k]).applyMatrix4(o.matrixWorld));
+        continue;
+      }
       keep.push(index[t], index[t + 1], index[t + 2]);
     }
-    const centre = (set, side = 0) => {
-      const c = new THREE.Vector3(); let n = 0;
-      for (const i of set) { if (side && Math.sign(pos.getX(i)) !== side) continue; c.x += pos.getX(i); c.y += pos.getY(i); c.z += pos.getZ(i); n++; }
-      return n ? c.divideScalar(n) : null;
-    };
-    const eyeL = centre(eyes, -1), eyeR = centre(eyes, 1), mouthAt = centre(mouth);
-    // The face's front plane: the cheeks beside the eyes.
-    let faceZ = 0, nz = 0;
-    for (let i = 0; i < pos.count; i++) { const x = Math.abs(pos.getX(i)), y = pos.getY(i); if (eyeL && x > 0.12 && x < 0.3 && Math.abs(y - eyeL.y) < 0.08 && pos.getZ(i) > 0.3) { faceZ += pos.getZ(i); nz++; } }
-    faceZ = nz ? faceZ / nz : 0.5;
-    // Paint the old eyes, brows and mouth over with skin (no holes, no ridges of
-    // colour), and press the nose flat into the face.
-    const SKIN_U = 0.06, SKIN_V = 0.12;
-    if (eyeL) {
-      const top = eyeL.y + 0.17, bottom = (mouthAt ? mouthAt.y : eyeL.y - 0.25) - 0.07;
-      for (let t = 0; t < index.length; t += 3) {
-        let cx = 0, cy = 0, cz = 0;
-        for (let k = 0; k < 3; k++) { cx += pos.getX(index[t + k]); cy += pos.getY(index[t + k]); cz += pos.getZ(index[t + k]); }
-        cx /= 3; cy /= 3; cz /= 3;
-        if (Math.abs(cx) > 0.34 || cy > top || cy < bottom || cz < faceZ - 0.08) continue;
-        for (let k = 0; k < 3; k++) uv.setXY(index[t + k], SKIN_U, SKIN_V);
-      }
-      uv.needsUpdate = true;
-      for (let i = 0; i < pos.count; i++) {
-        const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-        if (Math.abs(x) < 0.2 && y < eyeL.y + 0.17 && y > bottom && z > faceZ) pos.setZ(i, faceZ);
-      }
-    }
-    // A bigger head on the same body, grown from the neck.
-    const pivot = bone.getWorldPosition(new THREE.Vector3()).applyMatrix4(new THREE.Matrix4().copy(head.matrixWorld).invert());
-    for (let i = 0; i < pos.count; i++) pos.setXYZ(i, pivot.x + (pos.getX(i) - pivot.x) * HEAD_SCALE, pivot.y + (pos.getY(i) - pivot.y) * HEAD_SCALE, pivot.z + (pos.getZ(i) - pivot.z) * HEAD_SCALE);
-    pos.needsUpdate = true;
-    geo.computeVertexNormals();
-    geo.computeBoundingSphere();
-    if (!eyeL || !eyeR) continue;
-    const toWorld = (x, y, z) => new THREE.Vector3(pivot.x + (x - pivot.x) * HEAD_SCALE, pivot.y + (y - pivot.y) * HEAD_SCALE, pivot.z + (z - pivot.z) * HEAD_SCALE).applyMatrix4(head.matrixWorld);
-    const add = (mesh, x, y, z, turn = 0) => {
-      mesh.position.copy(toWorld(x, y, z));
-      mesh.userData.keepColor = true;
-      gltf.scene.add(mesh);
-      bone.attach(mesh);
-      mesh.rotateY(turn);
-      mesh.scale.multiplyScalar(HEAD_SCALE / gltf.scene.getWorldScale(new THREE.Vector3()).x);
-      return mesh;
-    };
-    const disc = (r, mat, sx = 1, sy = 1) => { const m = new THREE.Mesh(new THREE.CircleGeometry(r, 28), mat); m.scale.set(sx, sy, 1); m.renderOrder = 3; return m; };
-    for (const e of [eyeL, eyeR]) {
-      const side = Math.sign(e.x);
-      const x = e.x * 0.95, y = e.y - 0.005, z = faceZ + 0.012, turn = side * 0.16;
-      add(disc(0.074, flat(FACE.eye), 0.84, 1.18), x, y, z, turn);
-      add(disc(0.048, flat(FACE.iris), 0.84, 0.72), x, y - 0.042, z + 0.002, turn);
-      add(disc(0.027, flat(FACE.shine)), x + side * 0.022, y + 0.036, z + 0.004, turn);
-      add(disc(0.012, flat(FACE.shine)), x - side * 0.024, y - 0.036, z + 0.004, turn);
-      add(disc(0.07, flat(FACE.blush, { transparent: true, opacity: 0.4, depthWrite: false }), 1, 0.55), e.x * 1.32, e.y - 0.12, faceZ - 0.01, side * 0.5);
-    }
-    // A small smile just under the button nose.
-    const mid = (eyeL.y + eyeR.y) / 2;
-    const smile = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.008, 6, 18, Math.PI), flat(FACE.mouth));
-    smile.rotation.z = Math.PI;
-    add(smile, 0, (mouthAt ? mouthAt.y + 0.05 : mid - 0.18), faceZ + 0.006);
+    geo.setIndex(keep);
   }
-  // Hats grow with the head so they still fit.
-  for (const hat of hats) {
-    if (hat.userData.grown) continue;
-    hat.userData.grown = true;
-    hat.geometry = hat.geometry.clone();
-    const pivot = bone.getWorldPosition(new THREE.Vector3()).applyMatrix4(new THREE.Matrix4().copy(hat.matrixWorld).invert());
-    const p = hat.geometry.attributes.position;
-    for (let i = 0; i < p.count; i++) p.setXYZ(i, pivot.x + (p.getX(i) - pivot.x) * HEAD_SCALE, pivot.y + (p.getY(i) - pivot.y) * HEAD_SCALE, pivot.z + (p.getZ(i) - pivot.z) * HEAD_SCALE);
-    p.needsUpdate = true;
-    hat.geometry.computeBoundingSphere();
+  const size = box.getSize(new THREE.Vector3()), centre = box.getCenter(new THREE.Vector3());
+  // Under a hat, helmet or hood the head is a little smaller, so nothing pokes through.
+  const covered = Boolean(char.hat) || hooded.length > 0;
+  const R = Math.max(size.x, size.z) * 0.5 * (covered ? 0.92 : 1);
+  if (covered) centre.z += R * 0.04;
+  const head = new THREE.Group();
+  head.position.copy(centre);
+  // The skull: a sphere a little wider than tall, fuller at the cheeks.
+  const skin = new THREE.MeshStandardMaterial({ map: paintFace(), roughness: 0.75 });
+  const skullGeo = new THREE.SphereGeometry(R, 48, 32);
+  const p = skullGeo.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const y = p.getY(i) / R;
+    // Rounder cheeks below the middle, a softer chin.
+    const k = y < 0 ? 1 + 0.06 * Math.sin(-y * Math.PI) : 1;
+    p.setXYZ(i, p.getX(i) * k, p.getY(i) * (y < 0 ? 0.9 : 0.97), p.getZ(i) * k);
   }
+  skullGeo.computeVertexNormals();
+  const skull = new THREE.Mesh(skullGeo, skin);
+  skull.castShadow = true;
+  head.add(skull);
+  // Ears.
+  const earMat = new THREE.MeshStandardMaterial({ color: SKIN_SHADE, roughness: 0.8 });
+  for (const side of [-1, 1]) {
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(R * 0.2, 16, 12), earMat);
+    ear.scale.set(0.55, 1, 0.8);
+    ear.position.set(side * R * 1.0, -R * 0.08, -R * 0.05);
+    head.add(ear);
+  }
+  // Hair, unless a helmet or hat covers the head anyway: a cap over the top and
+  // back, and rounded bangs over the forehead.
+  // Hair shows under open hats too (not under a closed helmet or a hood).
+  if (!hooded.length && char.id !== 'knight') {
+    const hair = new THREE.MeshStandardMaterial({ color: HAIR, roughness: 0.7 });
+    // Under a hat only the back and sides show; bare-headed, a full cap with bangs.
+    const cap = covered
+      ? new THREE.Mesh(new THREE.SphereGeometry(R * 1.04, 40, 24, Math.PI * 0.78, Math.PI * 1.44, 0, Math.PI * 0.58), hair)
+      : new THREE.Mesh(new THREE.SphereGeometry(R * 1.05, 40, 24, 0, Math.PI * 2, 0, Math.PI * 0.52), hair);
+    cap.castShadow = true;
+    head.add(cap);
+    const back = new THREE.Mesh(new THREE.SphereGeometry(R * 1.045, 32, 20, Math.PI * 1.15, Math.PI * 0.7, Math.PI * 0.45, Math.PI * 0.35), hair);
+    head.add(back);
+    for (let i = 0; i < (covered ? 0 : 5); i++) {
+      const a = (i - 2) * 0.32;
+      const lock = new THREE.Mesh(new THREE.SphereGeometry(R * 0.24, 16, 12), hair);
+      lock.scale.set(1, 0.62, 0.55);
+      lock.position.set(Math.sin(a) * R * 0.92, R * (0.6 - Math.abs(i - 2) * 0.05), Math.cos(a) * R * 0.8);
+      lock.rotation.set(-0.3, a, (i - 2) * 0.2);
+      head.add(lock);
+    }
+  }
+  head.traverse((o) => { if (o.isMesh) { o.userData.keepColor = true; o.receiveShadow = true; } });
+  gltf.scene.add(head);
+  bone.attach(head);
 }
 
 function load(char, palette = null) {
@@ -348,7 +380,7 @@ function load(char, palette = null) {
       }
       // Repainted first, so the borrowed head keeps its own colours.
       if (char.head) swapHead(gltf, await loader.loadAsync(`/models/${char.head.file}`), char.head.mesh, `${char.name}_Head`, char.head.trim);
-      cuteFace(gltf, char);
+      newHead(gltf, char);
       return { char, gltf, fit, palette };
     }));
   }
