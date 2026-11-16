@@ -268,8 +268,8 @@ export function schedule(input: ScheduleInput): ScheduleResult {
   /** Minutes `st` may still put on day d. */
   const roomOn = (st: State, d: number) => d !== today || forcedToday(st) ? Infinity : Math.max(0, todayRoom);
 
-  /** Sittings that stay as they are whatever the count: done, pinned or started ahead, and missed ones (re-placed whole). */
-  const sittingsSettled = (st: State) => st.task.sittings.filter(s => s.done || (s.end > now && (s.pinned || s.started || s.start < now))).length + st.pool.filter(p => p.asap).length;
+  /** Sittings that stay as they are whatever the count: done, started (even if over), pinned ahead, and missed ones (re-placed whole). */
+  const sittingsSettled = (st: State) => st.task.sittings.filter(s => s.done || s.started || (s.end > now && (s.pinned || s.start < now))).length + st.pool.filter(p => p.asap).length;
 
   // 1. Keep what can stay. Higher tasks claim first where two overlap.
   for (const st of states) {
@@ -482,7 +482,10 @@ export function schedule(input: ScheduleInput): ScheduleResult {
     // The rest: spread over the days up to the finish day, one sitting a day where there's room.
     const pieces: number[] = [];
     // The student's number of sittings, less the ones that already stay.
-    const setCount = st.task.count ? Math.max(1, st.task.count - (settledOf.get(st) ?? 0) - st.movable.length) : 0;
+    const slots = st.task.count ? st.task.count - (settledOf.get(st) ?? 0) - st.movable.length : null;
+    // Every sitting the student asked for is already on the plan: what's still owed is reported, not added as another.
+    if (slots !== null && slots <= 0) { if (short >= 5) atRisk.push({ taskId: st.task.id, short }); continue; }
+    const setCount = slots ?? 0;
     if (!setCount && short <= Math.max(60, prefs.usual) && short <= prefs.longest) pieces.push(short);
     else {
       const n = setCount || Math.ceil(short / prefs.usual), size = round5(short / n);
@@ -526,8 +529,29 @@ export function schedule(input: ScheduleInput): ScheduleResult {
     });
     short = leftovers.reduce((a, b) => a + b, 0);
 
+    // A number of sittings the student set is a limit, not a first cut (4h in
+    // 2 sittings became 2h + 75 min + 45 min on a crowded day, 2026-11-15):
+    // the sittings still owed take the largest open stretches, one each, and
+    // what doesn't fit in that many is reported, not split further.
+    let picks = setCount ? leftovers.length : Infinity;
+    const cap = setCount ? Infinity : prefs.longest;
+    if (setCount) {
+      const windowDays = new Set(Array.from({ length: span + 1 }, (_, k) => startDay + k));
+      while (picks > 0 && short > 0) {
+        const options = [...windowDays, ...before].flatMap(d => segsOn(d, lastT).map(([a, z]) => {
+          const room = prefs.maxPerDay ? prefs.maxPerDay - (used.get(d) ?? 0) : Infinity;
+          return { a, len: Math.min(short, z - a, room, roomOn(st, d)), early: !windowDays.has(d) };
+        })).filter(o => o.len >= Math.min(short, prefs.shortest) && o.len >= 5 && safe(st, o.a, o.a + o.len))
+          // The window before earlier days; then the longest; then the earliest.
+          .sort((x, y) => Number(x.early) - Number(y.early) || y.len - x.len || x.a - y.a);
+        if (!options.length) break;
+        const len = Math.floor(options[0].len / 5) * 5 || options[0].len;
+        commit(st, options[0].a, options[0].a + len, false); short -= len; picks--;
+      }
+    }
+
     // Tight: whatever open time is left, in pieces from the shortest to the longest allowed.
-    for (const d of [...Array.from({ length: span + 1 }, (_, k) => startDay + k), ...before]) {
+    for (const d of setCount ? [] : [...Array.from({ length: span + 1 }, (_, k) => startDay + k), ...before]) {
       if (short <= 0) break;
       for (const [a, z] of segsOn(d, lastT)) {
         if (short <= 0) break;
@@ -541,13 +565,13 @@ export function schedule(input: ScheduleInput): ScheduleResult {
     // Still short: a lower task's slot, if that task still fits before its own finish day.
     const swaps = bumpable(st);
     for (const { owner, s } of [...swaps.filter(x => x.s.start >= st.startT), ...(st.task.from !== undefined ? [] : swaps.filter(x => x.s.start < st.startT).reverse())]) {
-      if (short <= 0) break;
-      const len0 = Math.min(short, prefs.longest, s.end - s.start, dayOf(s.start) === today ? roomOn(st, today) + (s.end - s.start) : Infinity);
+      if (short <= 0 || picks <= 0) break;
+      const len0 = Math.min(short, cap, s.end - s.start, dayOf(s.start) === today ? roomOn(st, today) + (s.end - s.start) : Infinity);
       if (len0 < Math.min(short, prefs.shortest) || !capOk(s.start, 0) || !safe(st, s.start, s.start + len0, { owner, s })) continue;
       bump(owner, s);
       const seg = segAt(s.start);
-      const len = Math.min(short, prefs.longest, (seg ? Math.min(seg[1], lastT) : s.end) - s.start, roomOn(st, dayOf(s.start)));
-      commit(st, s.start, s.start + len, false); short -= len;
+      const len = Math.min(short, cap, (seg ? Math.min(seg[1], lastT) : s.end) - s.start, roomOn(st, dayOf(s.start)));
+      commit(st, s.start, s.start + len, false); short -= len; picks--;
     }
 
     if (short >= 5) atRisk.push({ taskId: st.task.id, short });

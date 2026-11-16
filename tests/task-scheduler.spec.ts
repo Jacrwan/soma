@@ -263,3 +263,17 @@ test('changing the number of sittings re-cuts the ones already on the plan', () 
   expect(pinned.place.map(p => p.end - p.start)).toEqual([90]);
   expect(pinned.remove).toHaveLength(1);
 });
+
+test('a set number of sittings holds on a crowded day: no extra pieces', () => {
+  // 4h in 2 sittings, finish day 1, whose open stretches are 75 min, 2h30 and 1h.
+  const busy = [[8, 0, 12, 45], [14, 0, 15, 0], [17, 30, 22, 0]].map(([a, b, c, d]) => ({ start: at(1, a, b), end: at(1, c, d) }));
+  const r = run({ tasks: [task('hw', { total: 240, due: at(2, 23, 59), count: 2 })], busy });
+  // Two sittings: the 2h one, and the largest stretch left (the 75 minutes); the rest is reported.
+  expect(r.place.map(p => p.end - p.start).sort((a, b) => b - a)).toEqual([120, 75]);
+  expect(r.atRisk).toEqual([{ taskId: 'hw', short: 45 }]);
+  // Run again with those on the plan: nothing moves, nothing is added.
+  const kept = r.place.map((p, i) => ({ id: `k${i}`, start: p.start, end: p.end }));
+  const again = run({ tasks: [task('hw', { total: 240, due: at(2, 23, 59), count: 2, sittings: kept })], busy });
+  expect(again.place).toEqual([]);
+  expect(again.remove).toEqual([]);
+});

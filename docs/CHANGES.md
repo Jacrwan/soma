@@ -9,6 +9,22 @@ still needed.
 
 ---
 
+## 2026-11-15 (a set number of sittings is a hard limit)
+
+- **Why:** the owner set HW9.5 to 4h in 2 sittings and the card said "0 of 3
+  sittings done". Reproduced: with one open 2-hour stretch before the finish
+  day, the second 2h piece didn't fit whole, and the "fill what's left" pass
+  split it into 75 + 45 minutes. The count was only the first cut.
+- **What:** in `schedule()` (src/lib/taskScheduler.ts), with `count` set:
+  sittings still owed take the largest open stretches, one each (window days
+  before earlier ones; not capped by the longest-sitting setting); the
+  generic tight pass is skipped; bumping is limited to the sittings left;
+  and when the count is already on the plan, minutes still owed are reported
+  as at risk, never added as another sitting. Sittings that were started,
+  even if over, count toward the number.
+- **Tests:** tests/task-scheduler.spec.ts ("a set number of sittings holds on
+  a crowded day": 120 + 75 placed, 45 reported, stable on the next run).
+
 ## 2026-11-15 (a finished due card looks like a completed block)
 
 - **Why:** the owner: "why's the check mark like this, we had one working
