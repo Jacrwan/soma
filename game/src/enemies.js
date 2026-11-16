@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import { MODELS } from './paths.js';
 
 const KINDS = {
   fox: { file: 'Fox.glb', height: 1.15, yaw: 0, idle: 'Survey', walk: 'Walk', run: 'Run' },
@@ -16,7 +17,7 @@ const KINDS = {
 const sources = {};
 const loader = new GLTFLoader();
 export const enemiesReady = Promise.all(Object.entries(KINDS).map(([kind, info]) =>
-  loader.loadAsync(`/game/models/${info.file}`).then((gltf) => {
+  loader.loadAsync(`${MODELS}/${info.file}`).then((gltf) => {
     gltf.scene.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(gltf.scene);
     sources[kind] = { gltf, fit: info.height / Math.max(0.001, box.max.y - box.min.y), floor: box.min.y };

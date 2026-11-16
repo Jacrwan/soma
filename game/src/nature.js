@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { surfaceTexture, noise3 } from './tex.js';
+import { MODELS } from './paths.js';
 
 export const wind = { value: 0 };
 
@@ -248,7 +249,7 @@ export function treeVariants() {
 const KIT_FILES = ['tree_single_A', 'tree_single_B', 'cloud_big', 'cloud_small'];
 export const kit = {};
 const kitLoader = new GLTFLoader();
-export const natureReady = Promise.all(KIT_FILES.map((name) => kitLoader.loadAsync(`/models/nature/${name}.gltf`).then((gltf) => {
+export const natureReady = Promise.all(KIT_FILES.map((name) => kitLoader.loadAsync(`${MODELS}/nature/${name}.gltf`).then((gltf) => {
   gltf.scene.updateMatrixWorld(true);
   gltf.scene.traverse((o) => {
     if (!o.isMesh || kit[name]) return;

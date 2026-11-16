@@ -7,6 +7,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import { MODELS } from './paths.js';
 
 const HEIGHT = 1.95; // metres, to the top of the head
 
@@ -351,7 +352,7 @@ function newHead(gltf, char) {
 function load(char, palette = null) {
   const key = palette ? `${char.id}:${palette}` : char.id;
   if (!loaded.has(key)) {
-    loaded.set(key, loader.loadAsync(`/models/${char.file}`).then(async (gltf) => {
+    loaded.set(key, loader.loadAsync(`${MODELS}/${char.file}`).then(async (gltf) => {
       gltf.scene.updateMatrixWorld(true);
       const box = new THREE.Box3();
       gltf.scene.traverse((o) => { if (o.isSkinnedMesh && /Body|Head|Leg/.test(o.name)) box.expandByObject(o); });
@@ -375,8 +376,8 @@ function load(char, palette = null) {
         });
       }
       // Repainted first, so the borrowed head keeps its own colours.
-      if (char.head) swapHead(gltf, await loader.loadAsync(`/models/${char.head.file}`), char.head.mesh, `${char.name}_Head`, char.head.trim);
-      // newHead(gltf, char); — the original KayKit head (bear hat and all) is kept
+      if (char.head) swapHead(gltf, await loader.loadAsync(`${MODELS}/${char.head.file}`), char.head.mesh, `${char.name}_Head`, char.head.trim);
+      // (newHead is off: the original KayKit head, bear hat and all, is kept)
       return { char, gltf, fit, palette };
     }));
   }
