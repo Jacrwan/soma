@@ -974,3 +974,5 @@ body.in-realm .tracker #quest { display: block; }
 .label.npc.talk.taunt::after { border-top-color: #ff5d8f; }
 .label.npc.talk.taunt.boss { background: #3a0f14; border-color: #ff4a3a; color: #fff0e8; font-size: 1.05em; }
 .label.npc.talk.taunt.boss::after { border-top-color: #ff4a3a; }
+
+.label { will-change: transform; }

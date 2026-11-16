@@ -67,12 +67,15 @@ export function createFx(scene, camera) {
       node.className = `label ${kind}`;
       node.innerHTML = html;
       layer.append(node);
-      const entry = { node, object, height };
+      // html and kind are compared with what was last set, not with node.innerHTML
+      // (the browser rewrites HTML its own way, so that never matched and every
+      // call rebuilt the label and measured it again).
+      const entry = { node, object, height, html, kind: `label ${kind}`, shown: false };
       labels.add(entry);
       return {
         set(next, nextKind) {
-          if (node.innerHTML !== next) { node.innerHTML = next; entry.size = null; }
-          if (nextKind !== undefined && node.className !== `label ${nextKind}`) { node.className = `label ${nextKind}`; entry.size = null; }
+          if (entry.html !== next) { entry.html = next; node.innerHTML = next; entry.size = null; }
+          if (nextKind !== undefined && entry.kind !== `label ${nextKind}`) { entry.kind = `label ${nextKind}`; node.className = entry.kind; entry.size = null; }
         },
         remove() {
           node.remove();
@@ -164,19 +167,27 @@ export function createFx(scene, camera) {
         const pos = v.clone();
         let shown = Boolean(entry.object.parent);
         for (let o = entry.object; o && shown; o = o.parent) shown = o.visible;
-        if (!shown || !project(pos, entry.node, entry.height, false)) { if (entry.node.style.display !== 'none') entry.node.style.display = 'none'; continue; }
+        if (!shown || !project(pos, entry.node, entry.height, false)) { if (entry.node.style.display !== 'none') entry.node.style.display = 'none'; entry.shown = false; continue; }
         order.push({ entry, x: ((v.x + 1) / 2) * innerWidth, y: ((1 - v.y) / 2) * innerHeight, depth: v.z, boss: entry.node.classList.contains('boss') });
       }
-      order.sort((a, b) => (b.boss - a.boss) || (a.depth - b.depth));
+      // Labels already on screen keep their place before new ones get a turn, so two
+      // overlapping labels don't take turns hiding each other every frame.
+      order.sort((a, b) => (b.boss - a.boss) || (b.entry.shown - a.entry.shown) || (a.depth - b.depth));
       for (const it of order) {
         const e = it.entry;
-        if (!e.size) e.size = { w: e.node.offsetWidth, h: e.node.offsetHeight };
+        if (!e.size) {
+          if (e.node.style.display === 'none') e.node.style.display = '';
+          const w = e.node.offsetWidth, h = e.node.offsetHeight;
+          if (w) e.size = { w, h }; // a hidden label measures 0: try again next frame
+        }
+        if (!e.size) continue;
         const box = { l: it.x - e.size.w / 2 - 3, r: it.x + e.size.w / 2 + 3, t: it.y - e.size.h - 3, b: it.y + 3 };
         const area = (box.r - box.l) * (box.b - box.t);
         const under = hud.some((p) => Math.max(0, Math.min(box.r, p.r) - Math.max(box.l, p.l)) * Math.max(0, Math.min(box.b, p.b) - Math.max(box.t, p.t)) > area * 0.5);
         const hit = under || placed.some((p) => box.l < p.r && box.r > p.l && box.t < p.b && box.b > p.t);
         const want = hit ? 'none' : '';
         if (e.node.style.display !== want) e.node.style.display = want;
+        e.shown = !hit;
         if (!hit) placed.push(box);
       }
       for (let i = rings.length - 1; i >= 0; i--) {

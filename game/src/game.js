@@ -283,9 +283,10 @@ function updateTaunts(dt) {
   tauntClock = 0.5;
   const p = player.object.position, now = Date.now(), t = performance.now() / 1000;
   // Only the nearest one speaks, so they don't talk over each other.
+  // Whoever is talking keeps talking until another is clearly closer or you walk off.
   let speaker = null, best = 13;
   if (!inRealm() && state.scene === 'earth') for (const inv of invaders.values()) {
-    const d = Math.hypot(inv.object.position.x - p.x, inv.object.position.z - p.z);
+    const d = Math.hypot(inv.object.position.x - p.x, inv.object.position.z - p.z) - (inv.taunt?.shown ? 2.5 : 0);
     if (d < best) { best = d; speaker = inv; }
   }
   for (const inv of invaders.values()) {
@@ -3046,7 +3047,9 @@ function moveVillagers(dt, time) {
     const f = folk.get(person.name);
     if (!f) continue;
     const o = f.object.position;
-    const near = Math.hypot(p.x - o.x, p.z - o.z) < 4.8 && state.scene === 'earth' && !inRealm();
+    // Starts talking within 4.8 m, keeps talking out to 6.5 m, so walking villagers don't blink.
+    const near = Math.hypot(p.x - o.x, p.z - o.z) < (f.talking ? 6.5 : 4.8) && state.scene === 'earth' && !inRealm();
+    f.talking = near;
     f.cheer = Math.max(0, f.cheer - dt);
     let mode = 'idle';
     // Late at night everyone goes home to bed, except Wren, who keeps the fire.
