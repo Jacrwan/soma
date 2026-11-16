@@ -117,9 +117,11 @@ function guessQuality() {
     const cores = navigator.hardwareConcurrency || 4;
     const memory = navigator.deviceMemory || 8;
     if (/intel|uhd|iris|hd graphics|mali|adreno|powervr|videocore/.test(gpu)) return cores <= 4 || memory <= 4 ? 2 : 1;
+    // High (bloom, big shadows, tree shadows) stutters when turning even on
+    // fast laptops in some browsers, so auto never picks it; it's in Settings.
     if (cores <= 4 || memory <= 4) return 1;
-  } catch { /* no hint: start high and let the pace check step down */ }
-  return 0;
+  } catch { /* no hint: start on medium and let the pace check step down */ }
+  return 1;
 }
 function watchPace(dt) {
   if (state.settings.quality !== 'auto') return; // the player picked a level in Settings
@@ -145,6 +147,8 @@ function setQuality(level) {
   for (const rt of [composer.renderTarget1, composer.renderTarget2]) { if (rt.samples !== (level === 0 ? 4 : 0)) { rt.samples = level === 0 ? 4 : 0; rt.dispose(); } }
   world.setQuality(level);
   resize();
+  // Turning shadows on or off rebuilds shaders: do it now, not mid-turn.
+  setTimeout(warmShaders, 0);
 }
 
 const root = () => (state.scene === 'moon' ? world.moon : world.earth);
@@ -890,11 +894,31 @@ setTimeout(warmShaders, 0);
 /** The start of a new age: a fresh, empty town in a new landscape. */
 // Shaders compile the first time something new is drawn, which stalls that
 // frame (the country, a new age, the moon). Compile them all up front instead.
+// compile() misses shadow shaders and whatever the camera hasn't faced yet,
+// so after that, take one quick look all the way around (a single frame's
+// work, while the screen is fading or just loaded) to build the rest.
 function warmShaders() {
   try {
     const job = renderer.compileAsync ? renderer.compileAsync(scene, camera) : renderer.compile(scene, camera);
     job?.catch?.(() => {});
   } catch { /* the first draw will compile whatever is left */ }
+  setTimeout(lookAround, 120);
+}
+function lookAround() {
+  try {
+    const keep = camera.position.clone(), keepQ = camera.quaternion.clone();
+    const p = player.object.position;
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      camera.position.set(p.x + Math.sin(a) * 18, p.y + 9, p.z + Math.cos(a) * 18);
+      camera.lookAt(p.x, p.y + 1, p.z);
+      camera.updateMatrixWorld();
+      renderer.render(scene, camera);
+    }
+    camera.position.copy(keep);
+    camera.quaternion.copy(keepQ);
+    camera.updateMatrixWorld();
+  } catch { /* nothing to warm */ }
 }
 
 function moveToNewLand(done) {
@@ -1905,8 +1929,10 @@ function turn(dx, dy) {
   // Browsers sometimes report a huge jump on the first locked move; drop it.
   if (Math.abs(dx) > 250 || Math.abs(dy) > 250) return;
   const k = LOOK_SPEED * (state.settings.sensitivity || 1);
-  cam.yaw -= dx * k;
-  cam.pitch = Math.max(0.05, Math.min(1.45, cam.pitch + dy * k * 0.8));
+  // Queued and eased in over a couple of frames (see updateCamera), so uneven
+  // mouse events don't make the view judder.
+  cam.pendYaw = (cam.pendYaw || 0) - dx * k;
+  cam.pendPitch = (cam.pendPitch || 0) + dy * k * 0.8;
   cam.idle = 0;
 }
 // Some browsers (or an embedding page) refuse pointer lock; that must never throw.
@@ -2162,6 +2188,16 @@ let shake = 0;
 const camFocus = Object.assign(new THREE.Vector3(), { ready: false });
 function updateCamera(dt) {
   const p = player.object.position;
+  if (cam.pendYaw || cam.pendPitch) {
+    const ease = 1 - Math.exp(-dt * 32);
+    const dyaw = (cam.pendYaw || 0) * ease, dpitch = (cam.pendPitch || 0) * ease;
+    cam.yaw += dyaw;
+    cam.pitch = Math.max(0.05, Math.min(1.45, cam.pitch + dpitch));
+    cam.pendYaw -= dyaw;
+    cam.pendPitch -= dpitch;
+    if (Math.abs(cam.pendYaw) < 1e-4) cam.pendYaw = 0;
+    if (Math.abs(cam.pendPitch) < 1e-4) cam.pendPitch = 0;
+  }
   cam.dist += (cam.want - cam.dist) * Math.min(1, dt * 10);
   cam.idle += dt;
   // The view follows a smoothed point on the hero, but turning is applied at
@@ -3721,6 +3757,8 @@ if (state.tutorial && !state.tutorial.done) {
 }
 loadStoredSnapshots();
 askSoma();
+// Once everything is in place (Canvas items, chests, villagers), build any shaders still missing.
+setTimeout(warmShaders, 2500);
 // The morning report waits a moment so Canvas has synced.
 setTimeout(() => { dailyTick(); if (state.settings.seenHelp && state.daily.reported !== state.daily.day) openMorning(); }, 3500);
 checkDeadlines(true);

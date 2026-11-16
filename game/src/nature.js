@@ -197,14 +197,12 @@ const CUTAWAY = `
         float focusDepth = -uFocusView.z;
         // Anything right in front of the camera dissolves, so walking through
         // a grove never puts a wall of leaves over the screen.
-        float nearDither = fract(sin(dot(gl_FragCoord.xy, vec2(39.346, 11.135))) * 24634.6345);
-        if (fragDepth < 6.0 + nearDither * 5.0) discard;
+        if (fragDepth < 7.0) discard;
         if (fragDepth < focusDepth - 0.8) {
           vec2 off = vViewPosition.xy / fragDepth + uFocusView.xy / focusDepth;
           off.y -= 0.035;
           float hole = length(off * vec2(1.0, 1.25));
-          float grainDither = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
-          if (hole < 0.2 + grainDither * 0.06) discard;
+          if (hole < 0.22) discard;
         }
       }`;
 function sway(material, strength, from) {
