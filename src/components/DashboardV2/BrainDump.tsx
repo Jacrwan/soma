@@ -81,6 +81,9 @@ export default function BrainDump({ userId, onPlan, onMakeTask }: Props) {
   const marker = useRef<HTMLDivElement>(null);
   /** A drag on the calendar: moving the block (offset from its start) or stretching its end. */
   const drag = useRef<{ mode: 'move' | 'resize'; offset: number } | null>(null);
+  // The calendar's hours stay put while dragging: widening them under the
+  // pointer, and scrolling to the block, made it shake (2026-11-17).
+  const frozen = useRef<{ to: number } | null>(null);
   const titleId = useId();
   const current = useRef(items);
   // true: the account's list; false: no table yet, browser only; null: not known yet.
@@ -190,17 +193,20 @@ export default function BrainDump({ userId, onPlan, onMakeTask }: Props) {
   const suggestion = adding && adding.planner.estimate(adding.course && adding.course !== PERSONAL ? adding.course : null);
   const shown = adding ? adding.days[adding.day] : undefined;
   const end = adding ? adding.start + adding.minutes : 0;
-  // The calendar's hours: 7 AM to 11 PM, widened to whatever is on the day and to the block.
-  const from = shown && adding ? Math.max(0, Math.floor(Math.min(7 * 60, adding.start, ...shown.busy.map(b => b.start)) / 60) * 60) : 0;
-  const to = shown && adding ? Math.min(DAY + LONGEST, Math.ceil(Math.max(23 * 60, end, ...shown.busy.map(b => b.end)) / 60) * 60) : 0;
+  // The whole day, midnight to midnight (and on, for a block that runs past
+  // it), scrolled to the block: hours that never shift under the pointer.
+  const from = 0;
+  const to = Math.max(frozen.current?.to ?? 0, shown && adding ? Math.min(DAY + LONGEST, Math.ceil(Math.max(DAY, end, ...shown.busy.map(b => b.end)) / 60) * 60) : 0);
   const px = (m: number) => ((m - from) / 60) * HOUR_PX;
   const minuteAt = (y: number) => { const rect = track.current?.getBoundingClientRect(); return rect ? from + ((y - rect.top) / HOUR_PX) * 60 : 0; };
   // It may start any time of the day and run past midnight, as a block can.
-  const moveTo = (a: Adding, start: number): Adding => ({ ...a, start: clamp(snap(start), 0, DAY - SNAP) });
-  const resizeTo = (a: Adding, endAt: number): Adding => ({ ...a, picked: true, minutes: clamp(snap(endAt) - a.start, SHORTEST, LONGEST) });
+  // Unchanged when the snapped time is the same, so a drag only redraws on a new 5-minute step.
+  const moveTo = (a: Adding, start: number): Adding => { const next = clamp(snap(start), 0, DAY - SNAP); return next === a.start ? a : { ...a, start: next }; };
+  const resizeTo = (a: Adding, endAt: number): Adding => { const next = clamp(snap(endAt) - a.start, SHORTEST, LONGEST); return next === a.minutes ? a : { ...a, picked: true, minutes: next }; };
   function pointerDown(e: PointerEvent<HTMLDivElement>) {
     if (!adding) return;
     e.currentTarget.setPointerCapture?.(e.pointerId);
+    frozen.current = { to };
     const m = minuteAt(e.clientY), edge = (10 / HOUR_PX) * 60;
     if (m >= adding.start && m <= end) {
       // The grab point stays put under the pointer, for the edge as for the block.
@@ -219,7 +225,8 @@ export default function BrainDump({ userId, onPlan, onMakeTask }: Props) {
   const stepDay = (by: number) => setAdding(a => a && { ...a, day: clamp(a.day + by, 0, a.days.length - 1) });
   const typeStart = (v: string) => { const m = fromInput(v); if (m !== null) setAdding(a => a && moveTo(a, m)); };
   const typeEnd = (v: string) => { const m = fromInput(v); if (m !== null) setAdding(a => a && resizeTo(a, m <= a.start ? m + DAY : m)); };
-  useEffect(() => { marker.current?.scrollIntoView?.({ block: 'nearest' }); }, [adding?.day, adding?.start]);
+  // To the block when it opens, changes day or gets a typed time; never mid-drag.
+  useEffect(() => { if (!drag.current) marker.current?.scrollIntoView?.({ block: 'center', behavior: 'instant' }); }, [adding?.day, adding?.start]);
   // Guides, never limits: what it overlaps, and whether it's outside the usual hours.
   const overlaps = shown && adding ? shown.busy.filter(b => b.start < end && b.end > adding.start).map(b => b.title) : [];
   const outside = adding?.planner.window && (adding.start < adding.planner.window[0] || end > adding.planner.window[1]);
@@ -267,7 +274,7 @@ export default function BrainDump({ userId, onPlan, onMakeTask }: Props) {
               <div className={styles.calendar}>
                 <div ref={track} data-day-track="" className={styles.track} style={{ height: px(to) }} title="Drag the block to move it, its bottom edge to change the length"
                   onPointerDown={pointerDown} onPointerMove={pointerMove}
-                  onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}>
+                  onPointerUp={() => { drag.current = null; frozen.current = null; setAdding(a => a && { ...a }); }} onPointerCancel={() => { drag.current = null; frozen.current = null; setAdding(a => a && { ...a }); }}>
                   {Array.from({ length: (to - from) / 60 + 1 }, (_, i) => <div key={i} className={styles.hour} style={{ top: px(from + i * 60) }}><span>{formatHourLabel((from / 60 + i) % 24)}</span></div>)}
                   {shown.free.map(([a, z]) => <div key={a} className={styles.open} style={{ top: px(a), height: px(z) - px(a) }} />)}
                   {shown.busy.map((b, i) => <div key={i} className={`${styles.busy}${b.suggested ? ` ${styles.busySuggested}` : ''}${b.external ? ` ${styles.busyEvent}` : ''}`} style={{ top: px(b.start), height: Math.max(14, px(b.end) - px(b.start)) }}><span>{b.title}</span></div>)}
@@ -281,7 +288,7 @@ export default function BrainDump({ userId, onPlan, onMakeTask }: Props) {
                 <label><span>Start</span><input type="time" step={300} value={asInput(adding.start)} onChange={e => typeStart(e.target.value)} /></label>
                 <label><span>End</span><input type="time" step={300} value={asInput(end)} onChange={e => typeEnd(e.target.value)} /></label>
               </div>
-              <p className={styles.hint}>
+              <p className={`${styles.hint} ${styles.calendarHint}`}>
                 {[overlaps.length ? `Overlaps ${overlaps.join(', ')}` : '', outside ? 'Outside your usual study hours' : '', passed ? 'That time has passed' : ''].filter(Boolean).join(' · ')
                   || `Drag it anywhere; drag its bottom edge for the length. Soma suggests ${hm(suggestion!.minutes)}, ${suggestion!.basis}.`}
               </p>

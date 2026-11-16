@@ -623,7 +623,8 @@ export default function LiveDashboard({userId}:{userId:string}) {
   }
   await save({...card,bumps:undefined,keepBoth:true,note:card.note?.replace(/(^|\s·\s)Moves [^·]* to make room/,'').replace(/^\s·\s/,'') || undefined},true);
  },duePanel:(id,close)=>{
-  const linked=typeof id==='string' ? snapshot.todos.find(t=>t.id===id) : snapshot.todos.find(t=>t.assignmentId===id && t.status!=='done');
+  // A checked-off one opens too: its own task, done (2026-11-17).
+  const linked=typeof id==='string' ? snapshot.todos.find(t=>t.id===id) : snapshot.todos.find(t=>t.assignmentId===id && t.status!=='done') ?? snapshot.todos.find(t=>t.assignmentId===id);
   const x=due.find(d=>d.id===id);
   const target:TaskDetailTarget|null=linked ? {todo:linked} : x ? {seed:{title:x.title,subjectId:x.subjectId,dueDate:x.dueAt,assignmentId:x.id}} : null;
   if(!target)return null;

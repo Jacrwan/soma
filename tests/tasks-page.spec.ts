@@ -53,18 +53,24 @@ const task = (id: string, text: string, due: string, extra: Row = {}): Row => ({
 test('Tasks: adding a task places its sittings right away, before it is due', async ({ page }) => {
   const state = await setup(page);
   await page.goto('/tasks');
-  await page.getByRole('textbox', { name: 'New task' }).fill('Essay draft');
-  await page.getByRole('combobox', { name: 'Course' }).selectOption({ label: 'HIST 10' });
-  await page.getByLabel('Due date').fill(dateOf(4));
-  await page.getByRole('combobox', { name: 'How long' }).selectOption({ label: '2h' });
-  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  // "+ Add task" opens Task details, empty (2026-11-17: it replaced the add row).
+  await page.getByRole('button', { name: 'Add task' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Add a task' });
+  await dialog.getByRole('textbox', { name: 'Name' }).fill('Essay draft');
+  await dialog.getByRole('combobox', { name: 'Course' }).selectOption({ label: 'HIST 10' });
+  await dialog.getByLabel('Due day').fill(dateOf(4));
+  await dialog.getByLabel('Due time').fill('23:59');
+  await dialog.getByRole('textbox', { name: 'How long, in all' }).fill('2h');
+  await dialog.getByRole('textbox', { name: 'How long, in all' }).blur();
+  await dialog.getByRole('button', { name: 'Schedule it' }).click();
+  await expect(dialog).toHaveCount(0);
 
   const row = page.getByRole('listitem').filter({ hasText: 'Essay draft' });
   await expect(row).toBeVisible();
   // Today is already planned: new work starts tomorrow, not in today's open time.
   await expect(row.getByText(/^Next: Tomorrow/)).toBeVisible();
   const todo = state.tables.todos.find(t => t.text === 'Essay draft')!;
-  expect(todo).toMatchObject({ auto_schedule: true, estimated_minutes: 120, due_date: dateOf(4) });
+  expect(todo).toMatchObject({ auto_schedule: true, estimated_minutes: 120, due_date: `${dateOf(4)}T23:59` });
   const sittings = state.tables.todo_sessions.filter(s => s.todo_id === todo.id);
   // Two hours in sittings of about 50 minutes: three of 40, on different days, all before the due day.
   expect(sittings).toHaveLength(3);
@@ -441,4 +447,42 @@ test('dashboard: a sitting not started on time moves, with the dashboard left op
   await expect.poll(() => String(state.tables.todo_sessions.find(s => s.id === 'm')!.start_time) >= at(0, '09:50')).toBe(true);
   expect(state.tables.todo_sessions.find(s => s.id === 'm')!.date).toBe(dateOf(0));
   await expect(page.getByText('Moved a sitting that had to move')).toBeVisible();
+});
+
+// ── 2026-11-17 follow-ups ──
+
+test('dashboard: a step’s sitting leads with the step; the task’s name is under it, by Planned', async ({ page }) => {
+  await setup(page, {
+    todos: [task('quiz', 'Physics 5A Quiz 12', dateOf(1), { steps: [{ id: 'a', title: 'Practice Quiz 12', minutes: 60 }] })],
+    todo_sessions: [{ id: 'qa', user_id: account.id, todo_id: 'quiz', date: dateOf(0), start_time: at(0, '15:00'), end_time: at(0, '16:00'), step_id: 'a' }],
+  });
+  await page.goto('/dashboard');
+  const card = page.locator('article[data-kind="study"]').filter({ hasText: 'Practice Quiz 12' });
+  await expect(card.getByRole('heading', { name: 'Practice Quiz 12' })).toBeVisible();
+  await expect(card.getByText('Planned · Physics 5A Quiz 12')).toBeVisible();
+});
+
+test('dashboard: a checked-off due card still opens its details, and due cards have no Plan it', async ({ page }) => {
+  const state = await setup(page, {
+    todos: [task('lab', 'Lab 10: SQL', dateOf(2), { kind: 'lab', auto_schedule: null, date: dateOf(0) })],
+    todo_sessions: [{ id: 'l1', user_id: account.id, todo_id: 'lab', date: dateOf(1), start_time: at(1, '15:00'), end_time: at(1, '16:00') }],
+  });
+  await page.goto('/dashboard');
+  await page.getByRole('button', { name: /Wed\s*18/ }).first().click();
+  await expect(page.getByRole('button', { name: /^Plan it/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Done: Lab 10: SQL' }).click();
+  await expect.poll(() => state.tables.todos.find(t => t.id === 'lab')!.status).toBe('done');
+  const done = page.locator('article[data-kind="due-done"]').filter({ hasText: 'Lab 10: SQL' });
+  await done.getByRole('button', { name: 'Details: Lab 10: SQL' }).click();
+  await expect(page.getByRole('region', { name: 'Task details' })).toBeVisible();
+});
+
+test('dashboard: a completed block still opens Edit block', async ({ page }) => {
+  await setup(page, {
+    todos: [{ id: 'read', user_id: account.id, text: 'Reading 4.1', subject_id: 'hist', status: 'done', date: dateOf(0) }],
+    todo_sessions: [{ id: 'r1', user_id: account.id, todo_id: 'read', date: dateOf(0), start_time: at(0, '10:00'), end_time: at(0, '11:00') }],
+  });
+  await page.goto('/dashboard');
+  await page.getByRole('button', { name: 'Edit: Reading 4.1' }).click();
+  await expect(page.getByRole('region', { name: 'Block editor' })).toBeVisible();
 });

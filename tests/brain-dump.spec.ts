@@ -245,6 +245,7 @@ test('brain dump: the block goes anywhere: over what is planned, past study hour
   await expect(add.getByText('Today, 10:00 AM–10:30 AM', { exact: true })).toBeVisible();
 
   // Dragging the block up onto the 9 AM block: it goes there, and only says so.
+  await page.waitForTimeout(400);   // the dialog's opening animation
   const track = add.locator('[data-day-track]'), marker = track.locator('strong', { hasText: 'Call home' });
   const nine = add.locator('[data-day-track] span', { hasText: /^9 AM$/ });
   const m = (await marker.boundingBox())!, n = (await nine.boundingBox())!;
@@ -303,4 +304,29 @@ test('edit mode: a block dragged by its grip onto another block takes that time,
   await expect.poll(() => writes.some(w => JSON.stringify(w.body).includes(new Date(at(0, '15:00')).toISOString()))).toBe(true);
   await expect.poll(() => writes.some(w => JSON.stringify(w.body).includes('"pinned":true'))).toBe(true);
   void state;
+});
+
+test('brain dump: dragging the block is steady: it follows the pointer, even into the early morning', async ({ page }) => {
+  await setup(page);
+  await page.goto('/dashboard');
+  const dump = page.getByRole('region', { name: 'Brain dump' });
+  const input = dump.getByRole('textbox', { name: 'Add to your brain dump' });
+  await input.fill('Call home'); await input.press('Enter');
+  await dump.getByRole('button', { name: 'Add “Call home” to your plan' }).click();
+  const add = page.getByRole('dialog', { name: 'Add to your plan' });
+  await add.getByRole('combobox', { name: 'Course' }).selectOption({ label: 'Personal (not for a course)' });
+  const marker = add.locator('[data-day-track] strong', { hasText: 'Call home' });
+  await page.waitForTimeout(400);   // the dialog's opening animation
+  await expect(add.getByLabel('Start')).toHaveValue('09:00');
+  const m = (await marker.boundingBox())!;
+  await page.mouse.move(m.x + 20, m.y + 4);
+  await page.mouse.down();
+  // Up two and a half hours, in small steps: the block's top stays with the pointer all the way.
+  const hour = 44;
+  for (let i = 1; i <= 10; i++) {
+    await page.mouse.move(m.x + 20, m.y + 4 - (i * hour) / 4);
+    await expect.poll(async () => Math.abs((await marker.boundingBox())!.y - (m.y - (i * hour) / 4))).toBeLessThan(3);
+  }
+  await page.mouse.up();
+  await expect(add.getByLabel('Start')).toHaveValue('06:30');
 });

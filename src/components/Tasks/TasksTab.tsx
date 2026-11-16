@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import TaskDetail from './TaskDetail';
 import { deadlineOf } from '../../lib/taskDetails';
-import { GripVertical, Pin, PinOff, ChevronDown, ChevronRight } from 'lucide-react';
+import { GripVertical, Pin, PinOff, ChevronDown, ChevronRight, Plus } from 'lucide-react';
 import { storage } from '../../lib/storage';
 import { dateAt, localDate, readPlan, setTaskStatus, type Snapshot } from '../DashboardV2/liveData';
 import { clearFutureSittings, lastSchedule, rescheduleTasks, setSittingPinned, tasksFrom, TASKS_CHANGED, type RescheduleResult, type TaskInfo } from '../../lib/taskSchedule';
-import { estimate, kindOf } from '../../lib/planIt';
+import { estimate } from '../../lib/planIt';
 import { rankBetween } from '../../lib/taskScheduler';
 import { formatClock, useTimeFormat } from '../../lib/timeFormat';
-import { asTodoKind, type Todo } from '../../types';
+import type { Todo } from '../../types';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
 import styles from './TasksTab.module.css';
 
@@ -20,7 +20,6 @@ import styles from './TasksTab.module.css';
  */
 
 const hours = (m: number) => m < 60 ? `${m} min` : `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}`;
-const LENGTHS = [30, 45, 60, 90, 120, 180, 240];
 const hm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 
 function dueLabel(due: string, timeFormat: '12h' | '24h') {
@@ -48,12 +47,8 @@ export default function TasksTab({ userId }: { userId: string }) {
   const [details, setDetails] = useState<Todo | null>(null);
   // The task just checked off, as it was, for Undo.
   const [undo, setUndo] = useState<Todo | null>(null);
-  // The add row.
-  const [title, setTitle] = useState('');
-  const [course, setCourse] = useState('');
-  const [due, setDue] = useState(() => localDate(dateAt(new Date(), 3)));
-  const [length, setLength] = useState<number | null>(null);
-  const titleRef = useRef<HTMLInputElement>(null);
+  // "+ Add task": the Task details popup, empty (2026-11-17, replacing the add row).
+  const [adding, setAdding] = useState(false);
 
   const load = useCallback(async () => {
     const data = await readPlan(userId, dateAt(new Date(), 0), 0, 1);
@@ -88,12 +83,7 @@ export default function TasksTab({ userId }: { userId: string }) {
   const today = localDate(new Date());
   const tasks = tasksFrom(snapshot, userId).filter(t => t.managed || t.todo.dueDate!.slice(0, 10) >= today);
   const subjectOf = (t: TaskInfo) => snapshot.subjects.find(s => s.id === t.todo.subjectId);
-  const guess = (() => {
-    const s = subjects.find(x => x.id === course);
-    if (!title.trim()) return null;
-    if (!s || !kindOf(title)) return { minutes: 60, basis: 'a guess' };
-    return estimate({ key: 'new', title, subject: s.name, subjectId: s.id, color: '', due }, snapshot.history);
-  })();
+  const lengthGuess = (text: string, subjectId?: string) => { const sb = subjects.find(x => x.id === subjectId); return sb && text.trim() ? estimate({ key: 'detail', title: text, subject: sb.name, subjectId: sb.id, color: '', due: '' }, snapshot.history).minutes : 60; };
 
   async function act(work: () => Promise<void>, message?: string) {
     if (busy) return;
@@ -102,16 +92,6 @@ export default function TasksTab({ userId }: { userId: string }) {
     catch (e) { setError(e instanceof Error ? e.message : 'Could not save. Please retry.'); }
     finally { setBusy(false); }
   }
-
-  const add = () => act(async () => {
-    const text = title.trim();
-    if (!text) throw new Error('Name the task first.');
-    if (!due) throw new Error('Give it a due date.');
-    const minutes = length ?? guess?.minutes ?? 60;
-    await storage.saveTodo({ id: crypto.randomUUID(), text, status: 'nothing', subjectId: course || undefined, dueDate: due, estimatedMinutes: minutes, autoSchedule: true, kind: asTodoKind(kindOf(text)), date: localDate(new Date()) });
-    setTitle(''); setLength(null);
-    titleRef.current?.focus();
-  }, `Added “${title.trim()}”.`);
 
   /** Drop `id` at position `to` in the list: its rank goes between its new neighbours. */
   const moveTo = (id: string, to: number) => {
@@ -146,24 +126,13 @@ export default function TasksTab({ userId }: { userId: string }) {
       <header className={styles.header}>
         <div>
           <h1>Tasks</h1>
-          <p>Soma fits these into your open study time in the days before they're due, finishing a day early, and moves a sitting when you miss it. Top of the list goes first. Drag to change the order.</p>
+          <p>Soma fits these into your open study time in the days before they're due, aiming to finish a day early, and moves a sitting when you miss it. Top of the list goes first. Drag to change the order.</p>
         </div>
       </header>
 
-      <form className={styles.add} data-tour="tasks" onSubmit={e => { e.preventDefault(); void add(); }}>
-        <input ref={titleRef} className={styles.addTitle} aria-label="New task" placeholder="Add a task, e.g. History essay draft" value={title} onChange={e => setTitle(e.target.value)} />
-        <select aria-label="Course" value={course} onChange={e => setCourse(e.target.value)}>
-          <option value="">Personal</option>
-          {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-        <label className={styles.addDue}><span>Due</span><input type="date" aria-label="Due date" min={localDate(new Date())} value={due} onChange={e => setDue(e.target.value)} /></label>
-        <select aria-label="How long" value={length ?? ''} onChange={e => setLength(e.target.value ? Number(e.target.value) : null)}>
-          <option value="">{guess ? `~${hours(guess.minutes)} (guess)` : 'How long'}</option>
-          {LENGTHS.map(m => <option key={m} value={m}>{hours(m)}</option>)}
-        </select>
-        <button type="submit" disabled={busy || !title.trim()}>Add</button>
-      </form>
-      {guess && length === null && <p className={styles.hint}>Guess: {hours(guess.minutes)}, {guess.basis}.</p>}
+      <div className={styles.addBar}>
+        <button type="button" className={styles.addButton} data-tour="tasks" onClick={() => setAdding(true)}><Plus size={15} /> Add task</button>
+      </div>
 
       <div className={styles.live} aria-live="polite">
         {error && <p role="alert" className={styles.error}>{error}</p>}
@@ -171,7 +140,7 @@ export default function TasksTab({ userId }: { userId: string }) {
         {busy && <p className={styles.status}>Scheduling…</p>}
       </div>
 
-      {!tasks.length ? <p className={styles.empty}>No tasks with a due date yet. Add one above, or press Plan it on anything on Deadlines.</p> : (
+      {!tasks.length ? <p className={styles.empty}>No tasks with a due date yet. Add one with + Add task.</p> : (
         <ol className={styles.list} aria-label="Tasks, most important first" onDragOver={e => e.preventDefault()}>
           {tasks.map((t, i) => {
             const subject = subjectOf(t);
@@ -251,9 +220,10 @@ export default function TasksTab({ userId }: { userId: string }) {
             onDrop={e => { e.preventDefault(); if (dragId) moveTo(dragId, tasks.length); setDragId(null); setOverIndex(null); }} />
         </ol>
       )}
-      {details && <TaskDetail userId={userId} target={{ todo: details }} subjects={subjects} sessions={snapshot.sessions}
-        guess={(text, subjectId) => { const sb = subjects.find(x => x.id === subjectId); return sb ? estimate({ key: 'detail', title: text, subject: sb.name, subjectId: sb.id, color: '', due: '' }, snapshot.history).minutes : 60; }}
+      {details && <TaskDetail userId={userId} target={{ todo: details }} subjects={subjects} sessions={snapshot.sessions} guess={lengthGuess}
         onClose={saved => { setDetails(null); if (saved) void after('Saved. Soma placed it again.'); }} />}
+      {adding && <TaskDetail userId={userId} target={{ seed: { title: '' } }} subjects={subjects} sessions={snapshot.sessions} guess={lengthGuess}
+        onClose={saved => { setAdding(false); if (saved) void after('Added. Soma placed it.'); }} />}
     </div>
   );
 }

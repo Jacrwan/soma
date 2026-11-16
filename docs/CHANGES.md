@@ -9,6 +9,38 @@ still needed.
 
 ---
 
+## 2026-11-17 (step-named sittings, done cards open, no Plan it, Add task button, steady drag, steps re-placed)
+
+- **Why:** the owner's review of the 2026-11-16 release, and Physics 5A Quiz
+  12 still had a step "not on your plan" beside an open hour before its due
+  time.
+- **What:**
+  - Scheduler (`taskScheduler.ts` `placeSteps` / `trySteps`): when a step
+    finds no room after the one before it, the task's movable step sittings
+    are placed again, in order, from a saved state. Quiz 12's first step had
+    kept 3–4 PM (1–2 PM was held by a suggestion when it was placed), so the
+    second had nowhere before 4 PM; now they go 1–2 and 3–4.
+  - Due cards: no "Plan it" button. Imported work is scheduled on its own, and
+    the card's own click opens Task details (Deadlines still opens Plan it).
+  - A step's sitting leads with the step's name; "Planned · <task>" under it
+    (`step` on the block, from liveData). The title stays the task's, so Focus
+    logging and Insights don't change.
+  - A checked-off due card opens its details like an open one; a done Canvas
+    assignment opens its own task (`duePanel`). Completed blocks already did.
+  - Tasks page: "+ Add task" opens Task details, empty ("Add a task"), in place
+    of the add row; a new task gets its kind from the title as before.
+    "Finish a day early" copy now says it's an aim.
+  - Add popup: it no longer shook while dragging. Its note changed length as
+    the block moved, so the centred popup moved under the pointer. The popup
+    now sits at the top and the note has room for two lines. The calendar is
+    the whole day, scrolled to the block, so its hours never shift.
+- **Tests:** task-scheduler.spec.ts (a later step with no room re-places the
+  steps; fails on the old code), tasks-page.spec.ts (step heading; a done due
+  card opens details, no Plan it; a completed block opens Edit block; Add task
+  through the dialog), brain-dump.spec.ts (the block stays under the pointer
+  through a drag into the early morning; fails on the old code).
+  ai-make-room.spec.ts reads the card instead of the removed time list.
+
 ## 2026-11-16 (your words first: chat, scheduler, add popup, drag to move)
 
 - **Why:** the owner asked Ask Soma for physics until the 4 PM discussion,

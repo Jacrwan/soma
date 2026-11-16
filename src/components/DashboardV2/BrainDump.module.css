@@ -117,7 +117,9 @@
 .dialog {
   width: min(440px, calc(100vw - 32px));
   max-height: calc(100vh - 48px);
-  margin: auto;
+  /* Held at the top, not centred: a note changing length under the calendar
+     moved the whole popup under the pointer mid-drag (2026-11-17). */
+  margin: 24px auto auto;
   padding: 20px;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -457,4 +459,9 @@
 
 .linkButton:hover {
   text-decoration: underline;
+}
+
+/* Room for two lines, so the note can change while dragging without moving anything. */
+.calendarHint {
+  min-height: calc(2 * 1.5em);
 }

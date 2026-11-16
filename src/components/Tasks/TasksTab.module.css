@@ -377,3 +377,29 @@
     padding-left: 34px;
   }
 }
+
+/* "+ Add task": opens Task details, empty (replaced the add row, 2026-11-17). */
+.addBar {
+  display: flex;
+  margin-top: 20px;
+}
+
+.addButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 7px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.addButton:hover {
+  background: color-mix(in oklch, var(--accent), #000 10%);
+}

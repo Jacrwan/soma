@@ -116,7 +116,7 @@ export default function TaskDetail({ userId, target, subjects, sessions, guess, 
       const assignmentId = todo?.assignmentId ?? seed?.assignmentId;
       const base: Todo = todo ?? {
         id: crypto.randomUUID(), text: title.trim(), status: 'nothing', date: today,
-        ...(assignmentId ? { assignmentId, kind: asTodoKind(kindOf(title)) ?? 'homework' } : {}),
+        ...(assignmentId ? { assignmentId, kind: asTodoKind(kindOf(title)) ?? 'homework' } : { kind: asTodoKind(kindOf(title)) }),
       };
       const cleanSteps = steps.map(s => ({ id: s.id, title: s.title.trim(), minutes: s.minutes, ...(s.done ? { done: true } : {}) }));
       const next: Todo = {
@@ -176,7 +176,7 @@ export default function TaskDetail({ userId, target, subjects, sessions, guess, 
             <label className={styles.inline}>until <input type="date" aria-label="Latest day to work on it" value={until} min={from || today} max={dueDay || undefined} onChange={e => setUntil(e.target.value)} /></label>
             {(from || until) && <button type="button" className={styles.link} onClick={() => { setFrom(''); setUntil(''); }}>Clear</button>}
           </div>
-          <p className={styles.hint}>{from || until ? 'Sittings stay between these days.' : 'Empty: it starts a few days before and finishes a day early, by your Scheduling settings. No AI.'}</p>
+          <p className={styles.hint}>{from || until ? 'Sittings stay between these days.' : 'Empty: it starts a few days before and aims to finish a day early (still by the due date if that doesn’t fit), by your Scheduling settings. No AI.'}</p>
         </fieldset>
 
         <fieldset className={styles.field}>
@@ -207,7 +207,7 @@ export default function TaskDetail({ userId, target, subjects, sessions, guess, 
 
   </>;
 
-  const heading = todo ? 'Task details' : 'Make it a task';
+  const heading = todo ? 'Task details' : seed?.title ? 'Make it a task' : 'Add a task';
   if (variant === 'panel') return (
     <section className={`${panelStyles.editor} ${styles.panel}`} aria-label={heading}>
       <div className={panelStyles.sectionHeading}><h2>{heading}</h2><button type="button" onClick={() => close(false)} disabled={busy} aria-label="Close task details">Close</button></div>

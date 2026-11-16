@@ -36,7 +36,8 @@ test('a move that fails keeps its slot: nothing else is offered on top of it', a
   await ask(page, 'move my reviews later');
   await expect(page.getByRole('log')).toContainText('Moving both.');
   // A goes after C, which stays where it is; it isn't offered 9 PM over C.
-  await expect(page.getByRole('log')).toContainText(/Review A: \w+ 10:20 PM–11:00 PM/);
+  // The card says where (the reply no longer lists times, 2026-11-16).
+  await expect(page.getByText(/Soma suggests moving this to 10:20 PM–11:00 PM|10:20 PM–11:00 PM/).first()).toBeVisible();
   await page.getByRole('button', { name: 'Accept', exact: true }).first().click();
   await expect.poll(() => startOf(db, 's-a')).toBe(at('22:20'));
   expect(startOf(db, 's-c')).toBe(at('21:30'));

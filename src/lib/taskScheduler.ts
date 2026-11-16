@@ -429,6 +429,30 @@ export function schedule(input: ScheduleInput): ScheduleResult {
    * earliest open time; the rest spread over the window like any task.
    */
   function placeSteps(st: State) {
+    // A step that finds no room after the one before it: the task's movable
+    // step sittings are placed again, in order, so a kept early step doesn't
+    // block the rest (2026-11-16: Quiz 12's first step kept 3–4 PM, its
+    // second had nowhere before 4 PM, and 1–2 PM was open).
+    const saved = { free, used: new Map(used), todayRoom, place: place.length, covered: st.covered, days: new Set(st.days), stepEnd: new Map(st.stepEnd), pool: [...st.pool], movable: [...st.movable], placedN: st.placedN };
+    let short = trySteps(st);
+    const movableSteps = st.movable.filter(s => s.stepId);
+    if (short >= 5 && movableSteps.length) {
+      free = saved.free; used.clear(); saved.used.forEach((v, k) => used.set(k, v)); todayRoom = saved.todayRoom; place.length = saved.place;
+      Object.assign(st, { covered: saved.covered, days: saved.days, stepEnd: saved.stepEnd, pool: saved.pool, movable: saved.movable, placedN: saved.placedN });
+      for (const s of st.movable.filter(x => x.stepId)) {
+        const len = s.end - s.start;
+        release(s.start, s.end + brk); use(s.start, -len);
+        if (dayOf(s.start) === today) todayRoom += len;
+        st.covered -= len; st.stepEnd.delete(s.stepId!);
+        st.pool.push({ id: s.id, len, asap: false, removable: true, stepId: s.stepId });
+      }
+      st.movable = st.movable.filter(x => !x.stepId);
+      short = trySteps(st);
+    }
+    if (short >= 5) atRisk.push({ taskId: st.task.id, short });
+  }
+  /** Each open step without a sitting gets one, in order; returns the minutes that found no room. */
+  function trySteps(st: State): number {
     const steps = st.task.steps!, lastT = st.lastT;
     const firstDay = dayOf(now), lastDay = dayOf(lastT - 1);
     const startDay = Math.max(firstDay, dayOf(st.startT));
@@ -458,7 +482,7 @@ export function schedule(input: ScheduleInput): ScheduleResult {
       commit(st, at, at + len, asap, step.id);
       after = at + len;
     });
-    if (short >= 5) atRisk.push({ taskId: st.task.id, short });
+    return short;
   }
 
   // 2. Place what each task still needs, most important first. Against

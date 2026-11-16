@@ -338,3 +338,15 @@ test('a pinned sitting holds its time until it passes unstarted, then it moves l
   const moved = run({ now: at(0, 9), tasks: [task('hw', { due: at(1, 23, 59), sittings: [pinnedMissed] })] });
   expect(moved.place).toEqual([{ taskId: 'hw', id: 'p2', start: at(0, 9), end: at(0, 10) }]);
 });
+
+test('a later step with no room after the earlier one: the steps are placed again, in order, so both fit', async () => {
+  // Nov 16, 12:30: Quiz 12's first step kept 3–4 PM (1–2 PM was held by a suggestion then);
+  // the second must follow it, before the 4 PM due time, so it had no room. 1–2 PM is open now.
+  const busy = [{ start: at(0, 14), end: at(0, 14, 59) }, { start: at(0, 16), end: at(0, 17, 59) }];
+  const quiz = task('quiz12', { total: 120, due: at(0, 16), steps: [{ id: 'a', minutes: 60 }, { id: 'b', minutes: 60 }], sittings: [{ id: 'sa', start: at(0, 15), end: at(0, 16), stepId: 'a' }] });
+  const r = run({ now: at(0, 12, 59), busy, tasks: [quiz] });
+  const after = (id: string) => r.place.find(p => p.stepId === id);
+  expect([after('a')?.start, after('a')?.end]).toEqual([at(0, 13), at(0, 14)]);
+  expect([after('b')?.start, after('b')?.end]).toEqual([at(0, 15), at(0, 16)]);
+  expect(r.atRisk).toEqual([]);
+});
