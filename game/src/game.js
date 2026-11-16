@@ -141,10 +141,13 @@ let usePost = true; // bloom and grading; off on low, where the scene is drawn s
 function setQuality(level) {
   quality = level;
   const dpr = window.devicePixelRatio || 1;
-  pixelRatio = [Math.min(dpr, 1.5), Math.min(dpr, 1), Math.min(dpr, 1) * 0.85][level];
-  bloom.enabled = level === 0;
+  // Medium keeps what you notice (smooth edges, full sharpness, the glow) and
+  // drops what you don't (tree shadows far off, extra grass, big shadow map).
+  pixelRatio = [Math.min(dpr, 1.5), Math.min(dpr, 1.5), Math.min(dpr, 1) * 0.85][level];
+  bloom.enabled = level < 2;
   usePost = level < 2;
-  for (const rt of [composer.renderTarget1, composer.renderTarget2]) { if (rt.samples !== (level === 0 ? 4 : 0)) { rt.samples = level === 0 ? 4 : 0; rt.dispose(); } }
+  const samples = level < 2 ? 4 : 0;
+  for (const rt of [composer.renderTarget1, composer.renderTarget2]) { if (rt.samples !== samples) { rt.samples = samples; rt.dispose(); } }
   world.setQuality(level);
   resize();
   // Turning shadows on or off rebuilds shaders: do it now, not mid-turn.
