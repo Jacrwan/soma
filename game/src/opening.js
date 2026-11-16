@@ -354,7 +354,8 @@ export function createOpening() {
   }
 
   function skip() {
-    if (!run || run.done || run.t < 0.3) return;
+    // The reel always plays out: skipping only hurries the cards after it lands.
+    if (!run || run.done || run.t < run.landAt + 0.2) return;
     run.silent = true;
     run.t = Math.max(run.t, run.doneAt);
     root.classList.add('op-skipped');
@@ -415,7 +416,7 @@ export function createOpening() {
       root.hidden = false;
       rarityText.textContent = rarity;
       fromText.textContent = percent != null ? `${from} · ${percent}%` : from;
-      hint.textContent = 'Click to skip';
+      hint.textContent = '';
       claim.disabled = true;
       cards.replaceChildren(...loot.map((item) => card(item, { names, colors, rarityColor, collectibles, thumb })));
       // A legendary or mythic find gets its own moment.
@@ -465,6 +466,7 @@ export function createOpening() {
           at: landAt,
           fn: () => {
             root.classList.add('op-landed');
+            hint.textContent = 'Click to skip';
             winTile.classList.add('win');
             const rank = TIER_ORDER.indexOf(winTier);
             say(() => audio.burst(Math.max(0, rank)));
@@ -497,7 +499,7 @@ export function createOpening() {
           },
         },
       ];
-      run = { t: 0, last: performance.now(), raf: 0, events, rattles, rattleAt, burstAt, doneAt, confetti: [], done: false, silent: false, closing: false, onDone, audio,
+      run = { t: 0, last: performance.now(), raf: 0, events, rattles, rattleAt, burstAt, doneAt, landAt, confetti: [], done: false, silent: false, closing: false, onDone, audio,
         reel: { start: reelStart, jitter: (Math.random() - 0.5) * 0.7, measured: false, under: -1, lastTick: 0 } };
       void flash.offsetWidth;
       run.raf = requestAnimationFrame(frame);
