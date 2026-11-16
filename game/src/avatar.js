@@ -213,12 +213,17 @@ function dropFangs(gltf) {
 
 // --- A cuter face, made in the model itself ----------------------------------------
 // The KayKit heads paint their eyes from one dark palette swatch and the mouth
-// from a light grey one. Those triangles are reshaped here: eyes much bigger and
-// rounder, the smirk shrunk to a small centred smile, and the whole head a bit
-// bigger on the body. A sparkle in each eye and soft cheeks ride on the head
-// bone, so they move with every animation. Villagers get the same face.
+// from a light grey one, with a big nose jutting out of a flat face. Here the
+// old eyes and mouth are cut out of the head mesh and the nose is pressed down
+// to a little button; then a chibi face is drawn flat on it: tall glossy eyes
+// with two highlights, soft cheeks and a small smile. The head is a touch
+// bigger on the body. Everything rides on the head bone, so it moves with
+// every animation. Villagers get the same face.
 const EYE = [0.25, 0.375], MOUTH = [0.375, 0.5]; // u ranges of the swatches (row 0)
-const HEAD_SCALE = 1.14;
+const HEAD_SCALE = 1.1;
+const FACE = {
+  eye: 0x2b1b17, iris: 0x6b3a2a, shine: 0xffffff, blush: 0xff9aa8, mouth: 0x6b2c24,
+};
 function cuteFace(gltf, char) {
   gltf.scene.updateMatrixWorld(true);
   const bone = gltf.scene.getObjectByName('head');
@@ -227,75 +232,80 @@ function cuteFace(gltf, char) {
   gltf.scene.traverse((o) => { if (o.isSkinnedMesh && /_Head$/.test(o.name)) heads.push(o); });
   const hats = [];
   if (char.hat) gltf.scene.getObjectByName(char.hat)?.traverse((o) => { if (o.isMesh) hats.push(o); });
+  const flat = (color, opts = {}) => new THREE.MeshBasicMaterial({ color, ...opts });
   for (const head of heads) {
     const geo = head.geometry = head.geometry.clone();
     const pos = geo.attributes.position, uv = geo.attributes.uv, index = geo.index?.array;
     if (!index || !uv) continue;
-    // Which vertices belong to the eyes and to the mouth.
     const eyes = new Set(), mouth = new Set();
+    const keep = [];
     for (let t = 0; t < index.length; t += 3) {
       const u = (uv.getX(index[t]) + uv.getX(index[t + 1]) + uv.getX(index[t + 2])) / 3;
       const v = (uv.getY(index[t]) + uv.getY(index[t + 1]) + uv.getY(index[t + 2])) / 3;
-      if (v >= 0.25) continue;
-      const into = u >= EYE[0] && u < EYE[1] ? eyes : u >= MOUTH[0] && u < MOUTH[1] ? mouth : null;
+      const into = v < 0.25 && u >= EYE[0] && u < EYE[1] ? eyes : v < 0.25 && u >= MOUTH[0] && u < MOUTH[1] ? mouth : null;
       if (into) for (let k = 0; k < 3; k++) into.add(index[t + k]);
+      keep.push(index[t], index[t + 1], index[t + 2]);
     }
     const centre = (set, side = 0) => {
       const c = new THREE.Vector3(); let n = 0;
       for (const i of set) { if (side && Math.sign(pos.getX(i)) !== side) continue; c.x += pos.getX(i); c.y += pos.getY(i); c.z += pos.getZ(i); n++; }
       return n ? c.divideScalar(n) : null;
     };
-    const eyeCentres = [];
-    for (const side of [-1, 1]) {
-      const c = centre(eyes, side);
-      if (!c) continue;
-      eyeCentres.push(c);
-      for (const i of eyes) {
-        if (Math.sign(pos.getX(i)) !== side) continue;
-        const dx = pos.getX(i) - c.x, dy = pos.getY(i) - c.y;
-        // Bigger and taller, and nudged out so the edges stay on the curve of the face.
-        pos.setXYZ(i, c.x + dx * 1.45, c.y + dy * 1.75 - 0.012, pos.getZ(i) + 0.012 - (dx * dx) * 0.8);
+    const eyeL = centre(eyes, -1), eyeR = centre(eyes, 1), mouthAt = centre(mouth);
+    // The face's front plane: the cheeks beside the eyes.
+    let faceZ = 0, nz = 0;
+    for (let i = 0; i < pos.count; i++) { const x = Math.abs(pos.getX(i)), y = pos.getY(i); if (eyeL && x > 0.12 && x < 0.3 && Math.abs(y - eyeL.y) < 0.08 && pos.getZ(i) > 0.3) { faceZ += pos.getZ(i); nz++; } }
+    faceZ = nz ? faceZ / nz : 0.5;
+    // Paint the old eyes, brows and mouth over with skin (no holes, no ridges of
+    // colour), and press the nose flat into the face.
+    const SKIN_U = 0.06, SKIN_V = 0.12;
+    if (eyeL) {
+      const top = eyeL.y + 0.17, bottom = (mouthAt ? mouthAt.y : eyeL.y - 0.25) - 0.07;
+      for (let t = 0; t < index.length; t += 3) {
+        let cx = 0, cy = 0, cz = 0;
+        for (let k = 0; k < 3; k++) { cx += pos.getX(index[t + k]); cy += pos.getY(index[t + k]); cz += pos.getZ(index[t + k]); }
+        cx /= 3; cy /= 3; cz /= 3;
+        if (Math.abs(cx) > 0.34 || cy > top || cy < bottom || cz < faceZ - 0.08) continue;
+        for (let k = 0; k < 3; k++) uv.setXY(index[t + k], SKIN_U, SKIN_V);
       }
-    }
-    // The old smirk goes; a small round smile replaces it (below, on the bone).
-    const m = centre(mouth);
-    if (m) {
-      const keep = [];
-      for (let t = 0; t < index.length; t += 3) if (!(mouth.has(index[t]) && mouth.has(index[t + 1]) && mouth.has(index[t + 2]))) keep.push(index[t], index[t + 1], index[t + 2]);
-      geo.setIndex(keep);
+      uv.needsUpdate = true;
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+        if (Math.abs(x) < 0.2 && y < eyeL.y + 0.17 && y > bottom && z > faceZ) pos.setZ(i, faceZ);
+      }
     }
     // A bigger head on the same body, grown from the neck.
     const pivot = bone.getWorldPosition(new THREE.Vector3()).applyMatrix4(new THREE.Matrix4().copy(head.matrixWorld).invert());
-    const grow = (g) => { const p = g.attributes.position; for (let i = 0; i < p.count; i++) p.setXYZ(i, pivot.x + (p.getX(i) - pivot.x) * HEAD_SCALE, pivot.y + (p.getY(i) - pivot.y) * HEAD_SCALE, pivot.z + (p.getZ(i) - pivot.z) * HEAD_SCALE); p.needsUpdate = true; g.computeBoundingSphere(); };
-    grow(geo);
+    for (let i = 0; i < pos.count; i++) pos.setXYZ(i, pivot.x + (pos.getX(i) - pivot.x) * HEAD_SCALE, pivot.y + (pos.getY(i) - pivot.y) * HEAD_SCALE, pivot.z + (pos.getZ(i) - pivot.z) * HEAD_SCALE);
     pos.needsUpdate = true;
     geo.computeVertexNormals();
-    // Sparkles and cheeks, pinned to the head bone.
-    const sparkle = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const blush = new THREE.MeshBasicMaterial({ color: 0xff8fa3, transparent: true, opacity: 0.55, depthWrite: false });
-    const toWorld = (v) => {
-      const g = new THREE.Vector3(pivot.x + (v.x - pivot.x) * HEAD_SCALE, pivot.y + (v.y - pivot.y) * HEAD_SCALE, pivot.z + (v.z - pivot.z) * HEAD_SCALE);
-      return g.applyMatrix4(head.matrixWorld);
+    geo.computeBoundingSphere();
+    if (!eyeL || !eyeR) continue;
+    const toWorld = (x, y, z) => new THREE.Vector3(pivot.x + (x - pivot.x) * HEAD_SCALE, pivot.y + (y - pivot.y) * HEAD_SCALE, pivot.z + (z - pivot.z) * HEAD_SCALE).applyMatrix4(head.matrixWorld);
+    const add = (mesh, x, y, z, turn = 0) => {
+      mesh.position.copy(toWorld(x, y, z));
+      mesh.userData.keepColor = true;
+      gltf.scene.add(mesh);
+      bone.attach(mesh);
+      mesh.rotateY(turn);
+      mesh.scale.multiplyScalar(HEAD_SCALE / gltf.scene.getWorldScale(new THREE.Vector3()).x);
+      return mesh;
     };
-    const add = (mesh, at) => { mesh.position.copy(at); mesh.userData.keepColor = true; mesh.castShadow = false; gltf.scene.add(mesh); bone.attach(mesh); };
-    if (eyeCentres.length === 2) {
-      const m = centre(mouth);
-      const mid = eyeCentres[0].clone().add(eyeCentres[1]).multiplyScalar(0.5);
-      const smile = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.014, 6, 16, Math.PI), new THREE.MeshBasicMaterial({ color: 0x5a2a22 }));
-      // Where the old mouth was, a touch higher: a small cup-shaped smile.
-      add(smile, toWorld(new THREE.Vector3(0, m ? m.y + 0.04 : mid.y - 0.2, (m ? m.z : mid.z) + 0.02)));
-      smile.rotation.set(0, 0, Math.PI);
+    const disc = (r, mat, sx = 1, sy = 1) => { const m = new THREE.Mesh(new THREE.CircleGeometry(r, 28), mat); m.scale.set(sx, sy, 1); m.renderOrder = 3; return m; };
+    for (const e of [eyeL, eyeR]) {
+      const side = Math.sign(e.x);
+      const x = e.x * 0.95, y = e.y - 0.005, z = faceZ + 0.012, turn = side * 0.16;
+      add(disc(0.074, flat(FACE.eye), 0.84, 1.18), x, y, z, turn);
+      add(disc(0.048, flat(FACE.iris), 0.84, 0.72), x, y - 0.042, z + 0.002, turn);
+      add(disc(0.027, flat(FACE.shine)), x + side * 0.022, y + 0.036, z + 0.004, turn);
+      add(disc(0.012, flat(FACE.shine)), x - side * 0.024, y - 0.036, z + 0.004, turn);
+      add(disc(0.07, flat(FACE.blush, { transparent: true, opacity: 0.4, depthWrite: false }), 1, 0.55), e.x * 1.32, e.y - 0.12, faceZ - 0.01, side * 0.5);
     }
-    for (const c of eyeCentres) {
-      const big = new THREE.Mesh(new THREE.SphereGeometry(0.028, 10, 8), sparkle);
-      add(big, toWorld(new THREE.Vector3(c.x + 0.025 * Math.sign(c.x), c.y + 0.035, c.z + 0.03)));
-      const small = new THREE.Mesh(new THREE.SphereGeometry(0.013, 8, 6), sparkle);
-      add(small, toWorld(new THREE.Vector3(c.x - 0.02 * Math.sign(c.x), c.y - 0.04, c.z + 0.03)));
-      const cheek = new THREE.Mesh(new THREE.CircleGeometry(0.075, 18), blush);
-      cheek.scale.y = 0.6;
-      add(cheek, toWorld(new THREE.Vector3(c.x * 1.3, c.y - 0.13, c.z - 0.005)));
-      cheek.rotation.set(0, Math.sign(c.x) * 0.45, 0);
-    }
+    // A small smile just under the button nose.
+    const mid = (eyeL.y + eyeR.y) / 2;
+    const smile = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.008, 6, 18, Math.PI), flat(FACE.mouth));
+    smile.rotation.z = Math.PI;
+    add(smile, 0, (mouthAt ? mouthAt.y + 0.05 : mid - 0.18), faceZ + 0.006);
   }
   // Hats grow with the head so they still fit.
   for (const hat of hats) {

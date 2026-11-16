@@ -59,6 +59,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPrefere
 let pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
 renderer.setPixelRatio(pixelRatio);
 renderer.shadowMap.enabled = true;
+renderer.shadowMap.autoUpdate = false; // redrawn every other frame (see frame)
 renderer.info.autoReset = false; // counted per frame (the post passes would otherwise reset it)
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 // Neutral keeps the cartoon colours as painted; ACES would mute them.
@@ -144,7 +145,7 @@ function setQuality(level) {
   const dpr = window.devicePixelRatio || 1;
   // Medium keeps what you notice (smooth edges, full sharpness, the glow) and
   // drops what you don't (tree shadows far off, extra grass, big shadow map).
-  pixelRatio = [Math.min(dpr, 1.5), Math.min(dpr, 1.5), Math.min(dpr, 1) * 0.85][level];
+  pixelRatio = [Math.min(dpr, 1.5), Math.min(dpr, 1.25), Math.min(dpr, 1) * 0.85][level];
   bloom.enabled = level < 2;
   usePost = level < 2;
   const samples = level < 2 ? 4 : 0;
@@ -2390,7 +2391,21 @@ let hudTimer = 0;
 let slowTimer = 0;
 let saveTimer = 0;
 
+// Battery and heat: nobody needs 60 frames a second of a town standing still.
+// After a couple of seconds with no input the game draws 30 a second, and 20
+// after a longer while (a study timer running, say); any key, click or mouse
+// move brings it straight back to full speed. Shadows redraw every other frame.
+let lastInput = performance.now();
+for (const type of ['keydown', 'mousedown', 'mousemove', 'wheel', 'touchstart']) window.addEventListener(type, () => { lastInput = performance.now(); }, { passive: true, capture: true });
+function frameBudget(now) {
+  const idle = now - lastInput;
+  if (keys.size || drag || build.painting) return 0;
+  return idle > 20000 ? 1000 / 20 : idle > 2500 ? 1000 / 30 : 0;
+}
+let shadowFrame = 0;
 function frame(nowMs) {
+  const budget = frameBudget(nowMs);
+  if (budget && nowMs - last < budget - 2) { requestAnimationFrame(frame); return; }
   const cpuStart = performance.now();
   const rawDt = (nowMs - last) / 1000;
   const dt = Math.min(0.05, rawDt);
@@ -2471,6 +2486,8 @@ function frame(nowMs) {
     save();
   }
   renderer.info.reset();
+  shadowFrame = (shadowFrame + 1) % 2;
+  renderer.shadowMap.needsUpdate = shadowFrame === 0 || budget > 0;
   if (usePost) composer.render();
   else renderer.render(scene, camera);
   pace.cpu = (pace.cpu || 0) * 0.95 + (performance.now() - cpuStart) * 0.05;
