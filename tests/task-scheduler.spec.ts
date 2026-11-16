@@ -88,8 +88,9 @@ test('logged time and checked sittings count: the rest shrinks or goes', () => {
   expect(done.remove).toEqual([{ taskId: 'a', id: 'z' }]);
 });
 
-test('what does not fit is reported at risk, not crammed past the finish day', () => {
-  const busy = [{ start: at(0, 9), end: at(0, 22) }];
+test('what does not fit before the deadline is reported at risk, not crammed past it', () => {
+  // Finishing a day early is a guide (2026-11-16): only what misses the real deadline is at risk.
+  const busy = [{ start: at(0, 9), end: at(0, 22) }, { start: at(1, 8), end: at(1, 11) }];
   const r = run({ now: at(0, 9), busy, tasks: [task('a', { total: 180, due: at(1, 12) })] });
   const placed = r.place.reduce((n, p) => n + p.end - p.start, 0);
   expect(r.place.every(p => p.end <= at(1, 12))).toBe(true);
@@ -182,9 +183,9 @@ test('missed work and work due tonight may still use today', () => {
 });
 
 test('a task that only fits with today is offered today, not crammed in', () => {
-  // Due day 2 (finish day 1), but day 1 is full.
+  // Due day 2 (finish day 1), but days 1 and 2 are full.
   const t = task('t', { total: 60, due: at(2, 23, 59) });
-  const r = run({ tasks: [t], busy: [{ start: at(1, 0), end: at(2, 0) }] });
+  const r = run({ tasks: [t], busy: [{ start: at(1, 0), end: at(3, 0) }] });
   expect(r.place).toEqual([]);
   expect(r.atRisk).toEqual([{ taskId: 't', short: 60 }]);
   expect(r.ahead).toEqual({ taskId: 't', start: at(0, 9), end: at(0, 10) });
@@ -289,4 +290,51 @@ test('a missed sitting still counts as work owed, so a task with no length keeps
   expect(plannedOn([{ ...missed, started: true }, ahead], 45, +now)).toBe(105);
   // Weeks old: history, not owed.
   expect(plannedOn([{ ...missed, start: h(1, 9), end: h(1, 10) }, ahead], 0, +now)).toBe(60);
+});
+
+// ── 2026-11-16: the student's words and the real deadline come first ──
+
+test('finishing a day early is a guide: work that misses it still goes before the real deadline, not at risk', () => {
+  // Day 0 is today; days 1–2 are full. Due day 3 at 23:59: finishing a day early means by day 2, which has no room.
+  const busy = [{ start: at(0, 8), end: at(0, 23) }, { start: at(1, 8), end: at(1, 23) }, { start: at(2, 8), end: at(2, 23) }];
+  const r = run({ busy, tasks: [task('essay', { total: 60, due: at(3, 23, 59) })] });
+  expect(days(r, 'essay')).toEqual([3]);
+  expect(r.atRisk).toEqual([]);
+});
+
+test('with a set number of sittings, one sitting moving leaves the fine one alone', () => {
+  // Two sittings: one tonight is fine, the other sits after its own deadline and has to move.
+  const fine = { id: 'tonight', start: at(0, 19, 45), end: at(0, 20, 45) };
+  const bad = { id: 'late', start: at(4, 12), end: at(4, 13) };
+  const r = run({ now: at(0, 11), tasks: [task('oral', { total: 120, count: 2, due: at(2, 10), sittings: [fine, bad] })] });
+  expect(r.place.find(p => p.id === 'tonight')).toBeUndefined();
+  expect(r.place.find(p => p.id === 'late')).toBeDefined();
+});
+
+test('a task due today at 4 PM with two 1-hour steps takes the two open hours before it', () => {
+  // Nov 16: classes 10–10:59, 12–12:59, 2–2:59 and 4–5:59; HW9.5's sitting 11–12; it's 11:30.
+  const busy = [
+    { start: at(0, 10), end: at(0, 10, 59) }, { start: at(0, 12), end: at(0, 12, 59) },
+    { start: at(0, 14), end: at(0, 14, 59) }, { start: at(0, 16), end: at(0, 17, 59) }, { start: at(0, 18), end: at(0, 19) },
+  ];
+  const hw = task('hw95', { rank: 5, total: 180, logged: 125, due: at(1, 23, 59), sittings: [{ id: 'hw', start: at(0, 11), end: at(0, 12) }] });
+  // Lower tasks whose "finish a day early" guide is tonight: by that guide they
+  // need today's open time, though their real deadlines are tomorrow and later.
+  const oral = task('oral', { rank: 6, total: 120, count: 2, due: at(2, 10), sittings: [{ id: 'o', start: at(0, 19, 30), end: at(0, 20, 30) }] });
+  const quiz7 = task('quiz7', { rank: 7, total: 120, due: at(1, 23, 59) });
+  const quiz12 = task('quiz12', { rank: 1, total: 120, due: at(0, 16), steps: [{ id: 'a', minutes: 60 }, { id: 'b', minutes: 60 }] });
+  const evening = resolvePrefs({ studyWindow: { start: '08:00', end: '21:00' }, chunks: { min: 30 } });
+  const r = schedule({ tasks: [hw, oral, quiz7, quiz12], busy, prefs: evening, now: at(0, 11, 30), days: 14, weekday0: 1 });
+  const mine = r.place.filter(p => p.taskId === 'quiz12').sort((a, b) => a.start - b.start);
+  expect(mine.map(p => [p.start, p.end, p.stepId])).toEqual([[at(0, 13), at(0, 14), 'a'], [at(0, 15), at(0, 16), 'b']]);
+  expect(r.atRisk.find(x => x.taskId === 'quiz12')).toBeUndefined();
+});
+
+test('a pinned sitting holds its time until it passes unstarted, then it moves like any miss', () => {
+  const pinnedAhead = { id: 'p1', start: at(1, 15), end: at(1, 16), pinned: true };
+  const kept = run({ tasks: [task('hw', { due: at(0, 23, 59) + D * 3, sittings: [pinnedAhead] })] });
+  expect(kept.place).toEqual([]);
+  const pinnedMissed = { id: 'p2', start: at(0, 7), end: at(0, 8), pinned: true };
+  const moved = run({ now: at(0, 9), tasks: [task('hw', { due: at(1, 23, 59), sittings: [pinnedMissed] })] });
+  expect(moved.place).toEqual([{ taskId: 'hw', id: 'p2', start: at(0, 9), end: at(0, 10) }]);
 });

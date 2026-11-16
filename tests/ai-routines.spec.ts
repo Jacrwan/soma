@@ -53,5 +53,5 @@ test('a month-old task naming other sections doesn\'t rename a new block', async
   await ask(page, 'plan the math homework');
   await expect(page.getByRole('log')).toContainText("Here's the plan");
   await expect(page.getByRole('log')).not.toContainText('9.3–9.6');
-  await expect(page.getByRole('log')).toContainText('Math homework');
+  await expect(page.getByRole('heading', { name: 'Math homework', exact: true })).toBeVisible();
 });

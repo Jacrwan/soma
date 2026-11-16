@@ -93,7 +93,8 @@ test('a chat carried past midnight reads yesterday as yesterday', async ({ page 
   const all = (g: Record<string, string[]>) => Object.values(g).flat();
   expect(all(ctx.plan).some(l => l.includes('Math 53 Practice Midterm'))).toBe(false);
   // Planned, nothing logged: no state, no did, no log on its line.
-  expect(ctx.lastWeek['Sat 2026-10-03']).toContain('20:50–22:00 Math 53 Practice Midterm · MATH 53-LEC-002');
+  // Yesterday's missed block carries its id now, so it can be moved (2026-11-16).
+  expect(ctx.lastWeek['Sat 2026-10-03'].some((l: string) => /^b[0-9a-z]{6} 20:50–22:00 Math 53 Practice Midterm · MATH 53-LEC-002$/.test(l))).toBe(true);
   expect(ctx.lastWeek['Sat 2026-10-03']).toContain('14:00–15:00 CS 61A Missed Lectures Catch-up (5 of 6) · CS 61A · Completed · did 56m · log Sat 10-03 14:02–14:58 56m');
 
   // Late work says so; the dashboard shows Sunday.

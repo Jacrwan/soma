@@ -42,6 +42,8 @@ export type RescheduleResult = {
   created: number;
   removed: number;
   atRisk: Record<string, number>;
+  /** The names of the tasks in atRisk, for the dashboard note. */
+  atRiskTitles?: string[];
   finishBy: Record<string, Date>;
   skipped?: string;
   /**
@@ -258,8 +260,12 @@ async function run(userId: string): Promise<RescheduleResult> {
       ...(t.workUntil ? { until: dayStart(t.workUntil) + 1440 } : {}),
     };
   });
-  // Everything else on the plan holds its time, and so do Soma's suggestions still waiting.
-  const waiting = getProposals(userId).filter(p => p.time && p.replaces === undefined);
+  // Everything else on the plan holds its time, and so do Soma's suggestions
+  // still waiting: new blocks, moves (the time the student asked for), and
+  // every piece of a split one (2026-11-16: a sitting landed in a waiting
+  // move's slot, and Accept failed with "That time overlaps").
+  const waiting = getProposals(userId).filter(p => p.time)
+    .flatMap(p => [p, ...(p.extra ?? []).filter(x => x.time).map(x => ({ ...p, day: x.day, time: x.time }))]);
   const busy = [...snapshot.blocks.filter(b => b.time && !(b.todoId && ids.has(b.todoId))), ...waiting]
     .map(b => { const [a, z] = rangeOf(b.time); return { start: b.day * 1440 + a, end: b.day * 1440 + z, study: !b.external }; });
 
@@ -301,6 +307,7 @@ async function run(userId: string): Promise<RescheduleResult> {
       start: moment(offer.start), end: moment(offer.end),
     } } : {}),
     atRisk: Object.fromEntries(result.atRisk.map(r => [r.taskId, r.short])),
+    atRiskTitles: result.atRisk.map(r => info.get(r.taskId)?.todo.text ?? '').filter(Boolean),
     finishBy: Object.fromEntries(Object.entries(result.finishBy).map(([id, m]) => [id, moment(m)])),
   };
   last = out;

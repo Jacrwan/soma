@@ -210,7 +210,10 @@ export function startDayOf(remaining: number, lastT: number, now: number, prefs:
 type State = {
   task: SchedTask;
   order: number;
+  /** Soma's finish line: a day early (Settings), or "work on it until". A guide. */
   lastT: number;
+  /** The real deadline. Work that misses the guide still goes before this. */
+  dueT: number;
   /** The task's window opens here (absolute minutes; never before now). */
   startT: number;
   remaining: number;
@@ -222,6 +225,8 @@ type State = {
   days: Set<number>;
   /** Steps with a sitting kept where it is: step id → that sitting's end. */
   stepEnd: Map<string, number>;
+  /** Sittings placed by this run (a set number counts them). */
+  placedN: number;
 };
 
 export function schedule(input: ScheduleInput): ScheduleResult {
@@ -255,9 +260,12 @@ export function schedule(input: ScheduleInput): ScheduleResult {
     const doneMin = task.sittings.filter(s => s.done).reduce((n, s) => n + s.end - s.start, 0);
     const lastT = task.until !== undefined ? Math.max(task.until, Math.min(now + prefs.shortest, task.due)) : finishByOf(task.due, now, prefs.finishEarly, prefs.shortest);
     finishBy[task.id] = lastT;
+    // "Work on it until" is the student's own choice and holds; only Soma's
+    // finish-a-day-early guide gives way to the real deadline.
+    const dueT = task.until !== undefined ? lastT : Math.max(lastT, finishByOf(task.due, now, 0, prefs.shortest));
     const remaining = task.steps ? task.steps.reduce((n, x) => n + x.minutes, 0) : Math.max(0, task.total - Math.max(task.logged, doneMin));
     const startT = task.from !== undefined ? Math.max(now, task.from) : Math.max(now, startDayOf(remaining, lastT, now, prefs, task.steps?.length || task.count) * DAY);
-    return { task, order, lastT, startT, remaining, covered: 0, movable: [], pool: [], days: new Set(), stepEnd: new Map() };
+    return { task, order, lastT, dueT, startT, remaining, covered: 0, movable: [], pool: [], days: new Set(), stepEnd: new Map(), placedN: 0 };
   });
 
   // Today's task time can only shrink: what was planned on today (missed bits
@@ -284,8 +292,9 @@ export function schedule(input: ScheduleInput): ScheduleResult {
         continue;
       }
       if (s.end <= now) {
-        // Missed (never started): moved, unless pinned or long gone.
-        if (!s.started && !s.pinned && s.start >= now - MISSED_LOOKBACK) st.pool.push({ id: s.id, len, asap: true, removable: false, ...(open && s.stepId ? { stepId: s.stepId } : {}) });
+        // Missed (never started): moved, unless long gone. A pin holds a time
+        // until it passes unstarted, then it moves like any miss (2026-11-16).
+        if (!s.started && s.start >= now - MISSED_LOOKBACK) st.pool.push({ id: s.id, len, asap: true, removable: false, ...(open && s.stepId ? { stepId: s.stepId } : {}) });
         continue;
       }
       if (s.pinned || s.started || s.start < now) {
@@ -296,8 +305,9 @@ export function schedule(input: ScheduleInput): ScheduleResult {
         if (open && stepOk && s.stepId) st.stepEnd.set(s.stepId, s.end);
         continue;
       }
-      // Fine where it is: open, before the finish day, and not before the task's window.
-      if (s.end <= st.lastT && s.start >= dayOf(st.startT) * DAY && isFree(s.start, s.end)) {
+      // Fine where it is: open, before the deadline, and not before the task's
+      // window. The finish day is a guide for new sittings, not a reason to move one.
+      if (s.end <= st.dueT && s.start >= dayOf(st.startT) * DAY && isFree(s.start, s.end)) {
         reserve(s.start, s.end); use(s.start, len);
         if (dayOf(s.start) === today) todayRoom -= len;
         st.covered += len; st.movable.push(s); st.days.add(dayOf(s.start));
@@ -328,7 +338,9 @@ export function schedule(input: ScheduleInput): ScheduleResult {
     // move are cut again. Done, pinned, started and missed ones count as they are.
     if (st.task.count) {
       const settled = sittingsSettled(st);
-      if (st.movable.length && settled + st.movable.length !== st.task.count) {
+      // Only too many: with too few, the fine ones stay and the missing ones
+      // are added (2026-11-16: one sitting moving re-cut the other, which was fine).
+      if (st.movable.length && settled + st.movable.length > st.task.count) {
         for (const s of st.movable) {
           release(s.start, s.end); use(s.start, -(s.end - s.start));
           if (dayOf(s.start) === today) todayRoom += s.end - s.start;
@@ -367,21 +379,24 @@ export function schedule(input: ScheduleInput): ScheduleResult {
    * lower task enough open time before its own finish day.
    */
   const safe = (st: State, a: number, z: number, bumped?: { owner: State; s: SchedSitting }) => {
+    // Due today: the more important task gets today's time.
+    if (dayOf(st.dueT - 1) <= today) return true;
     for (const low of states) {
       if (low.order <= st.order) continue;
       const bumpedLen = bumped?.owner === low ? bumped.s.end - bumped.s.start : 0;
       const n = need(low) + bumpedLen;
       if (!n) continue;
-      const regained = bumped && bumped.s.start < low.lastT ? Math.min(bumped.s.end, low.lastT) - bumped.s.start : 0;
-      const taken = Math.max(0, Math.min(z + brk, low.lastT) - a);
-      if (freeBefore(low.lastT) + regained - taken < n) return false;
+      // Judged against its real deadline: finishing a day early is only a guide (2026-11-16).
+      const regained = bumped && bumped.s.start < low.dueT ? Math.min(bumped.s.end, low.dueT) - bumped.s.start : 0;
+      const taken = Math.max(0, Math.min(z + brk, low.dueT) - a);
+      if (freeBefore(low.dueT) + regained - taken < n) return false;
     }
     return true;
   };
   const commit = (st: State, start: number, end: number, asap: boolean, stepId?: string) => {
     reserve(start, end); use(start, end - start);
     if (dayOf(start) === today) todayRoom -= end - start;
-    st.covered += end - start; st.days.add(dayOf(start));
+    st.covered += end - start; st.days.add(dayOf(start)); st.placedN++;
     const same = stepId ? st.pool.findIndex(p => p.stepId === stepId) : -1;
     const at = same >= 0 ? same : st.pool.findIndex(p => p.asap === asap && (!stepId || !p.stepId));
     const reuse = at >= 0 ? at : st.pool.findIndex(p => !stepId || !p.stepId);
@@ -446,13 +461,26 @@ export function schedule(input: ScheduleInput): ScheduleResult {
     if (short >= 5) atRisk.push({ taskId: st.task.id, short });
   }
 
-  // 2. Place what each task still needs, most important first.
+  // 2. Place what each task still needs, most important first. Against
+  // Soma's finish day first; what doesn't fit by then still goes before the
+  // real deadline, and only what misses that is at risk (2026-11-16: "finish
+  // a day early" is a guide, and a task showed as not fitting when it did).
   for (const st of states) {
+    const before = atRisk.length;
+    placeRest(st);
+    const mine = atRisk.findIndex((r, k) => k >= before && r.taskId === st.task.id);
+    if (mine < 0 || st.dueT <= st.lastT) continue;
+    atRisk.splice(mine, 1);
+    st.lastT = st.dueT;
+    placeRest(st);
+  }
+
+  function placeRest(st: State) {
     const { lastT } = st;
     const lastDay = dayOf(lastT - 1), firstDay = dayOf(now);
-    if (st.task.steps) { placeSteps(st); continue; }
+    if (st.task.steps) { placeSteps(st); return; }
     let short = need(st);
-    if (!short) continue;
+    if (!short) return;
 
     // Missed work: the earliest time there is, taking a lower task's slot if that comes first.
     let asapLeft = Math.min(short, st.pool.filter(p => p.asap).reduce((n, p) => n + p.len, 0));
@@ -477,14 +505,14 @@ export function schedule(input: ScheduleInput): ScheduleResult {
         asapLeft -= len; short -= len;
       }
     }
-    if (!short) continue;
+    if (!short) return;
 
     // The rest: spread over the days up to the finish day, one sitting a day where there's room.
     const pieces: number[] = [];
     // The student's number of sittings, less the ones that already stay.
-    const slots = st.task.count ? st.task.count - (settledOf.get(st) ?? 0) - st.movable.length : null;
+    const slots = st.task.count ? st.task.count - (settledOf.get(st) ?? 0) - st.movable.length - st.placedN : null;
     // Every sitting the student asked for is already on the plan: what's still owed is reported, not added as another.
-    if (slots !== null && slots <= 0) { if (short >= 5) atRisk.push({ taskId: st.task.id, short }); continue; }
+    if (slots !== null && slots <= 0) { if (short >= 5) atRisk.push({ taskId: st.task.id, short }); return; }
     const setCount = slots ?? 0;
     if (!setCount && short <= Math.max(60, prefs.usual) && short <= prefs.longest) pieces.push(short);
     else {

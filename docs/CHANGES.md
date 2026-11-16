@@ -9,6 +9,64 @@ still needed.
 
 ---
 
+## 2026-11-16 (your words first: chat, scheduler, add popup, drag to move)
+
+- **Why:** the owner asked Ask Soma for physics until the 4 PM discussion,
+  the 1–2 PM oral presentation sitting pushed to tomorrow, and yesterday's
+  missed math homework after tonight's 7:45–8:45 sitting. The scheduler
+  pulled the oral sitting back to today 3 PM and pushed tonight's to Tue;
+  math was refused ("study hours end at 9 PM"); Accept hit "That time
+  overlaps a scheduled session"; "2 tasks don't fit" showed for work that
+  fit by its real due date; a task due 4 PM today with two 1 h steps stayed
+  unscheduled beside two open hours; Quiz 7, moved to Tue, had no Due card
+  there. The owner also wanted the brain-dump add popup free of presets and
+  slots, and drag to move in edit mode. Study hours and "finish a day early"
+  are guides for Soma's own placing, never limits on the student's.
+- **What:**
+  - Scheduler (`src/lib/taskScheduler.ts`): each task has `dueT`, its real
+    deadline. Placement tries Soma's finish day first, then spills to `dueT`;
+    only what misses `dueT` is at risk. A sitting already placed is fine up to
+    `dueT`. `safe()` judges lower tasks by their real deadlines, and work due
+    today wins today's time. "Work on it until" stays hard (the student's own
+    choice). A set number of sittings re-cuts only when there are too many;
+    one moving no longer releases the others (`placedN` counts this run's). A
+    pinned sitting holds until it passes unstarted, then moves like any miss.
+  - Runner (`src/lib/taskSchedule.ts`): waiting chat moves, and every piece of
+    a split one, hold their time; at-risk task names are passed to the note.
+  - Ask Soma (`src/lib/assistant.ts`, `statedTime.ts`): "after" a plan entry
+    the student named (`afterNamed`) goes right when it ends, as a stated time:
+    past study hours, moving what's in the way. Chained moves stay bounds. A
+    typed range that is exactly a block's time names that block, not the new
+    work's time. Yesterday's missed blocks carry ids (`missedYesterday`) and
+    can be moved; "yesterday" no longer counts as another day. Every move the
+    student asked for is pinned, in the browser and on the sitting row. The
+    "Review the suggested changes…" and "Times from your open slots" lines are
+    gone; the prompt caps a proposal reply at three short sentences and never
+    refuses over study hours.
+  - Dashboard: a "Planning" bubble in the chat and Send off while a message
+    is in flight (`thinking`, `sending`). Due cards for scheduled or moved
+    work show at the top of their day even with a same-named sitting there.
+    MoveNote names the tasks that don't fit, spaced from the moves list.
+  - Add popup (`BrainDump.tsx`, `planDump`): no length or day chips. The
+    day's calendar is the picker: drag the block anywhere (over events, past
+    study hours, past midnight), drag its bottom edge for the length, tap to
+    start it elsewhere, or type Start/End; arrows step through 14 days.
+    Overlaps and "outside your usual study hours" are notes, never blocks.
+    "No set time" and "Make it a task" are checkboxes at the bottom.
+  - Edit mode (`DashboardV2.tsx`): a grip on each editable timed block drags
+    it to a new start on the same day, onto open time or any block (5-minute
+    steps, live "Move to …" label, Escape cancels). Saved like an edit, which
+    pins; a sitting moved by hand is also pinned on its row (`LiveDashboard`).
+- **Tests:** tests/task-scheduler.spec.ts (finish-early spills to the due
+  date; the count re-cut leaves a fine sitting; the Nov 16 Quiz 12 case gets
+  1–2 and 3–4 PM, fails on the old code; a pin holds until missed),
+  tests/ai-follow-your-words.spec.ts (math to 8:45–10:45 PM past a 9 PM study
+  end, pinned; the Planning bubble and Send), tests/brain-dump.spec.ts (the
+  popup's drag, edge, typed times, next day past study hours; drag in edit
+  mode pins). Tests that read the removed reply lines now read the cards.
+- **Not done:** `claude-connector.spec.ts:440` failed once in a full run and
+  passes alone, before and after these changes.
+
 ## 2026-11-15 (blocks not started on time move again)
 
 - **Why:** the owner noticed blocks they didn't start on time had stopped

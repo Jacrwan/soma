@@ -78,7 +78,7 @@ test('work given a day and a length is placed in order, around classes, on round
   ] });
   await ask(page, 'plan the reading and then the problem set tomorrow');
   const log = page.getByRole('log');
-  await expect(log).toContainText('Times from your open slots');
+  await expect(page.getByRole('button', { name: 'Accept', exact: true }).first()).toBeVisible();
   await expect(log).not.toContainText("Couldn't place");
   expect(state.prompt).toContain('the app picks the clock time');
   await page.getByRole('button', { name: /^Accept all/ }).click();
@@ -151,7 +151,8 @@ test('"in the gaps" splits one task across them, and Accept saves both sessions'
   await ask(page, 'do the homework in the gaps between classes before discussion');
   const log = page.getByRole('log');
   await expect(log).not.toContainText("Couldn't place");
-  await expect(log).toContainText('Physics HW 4: Mon 1:00 PM–1:46 PM, Mon 3:00 PM–3:30 PM'.replace(/Mon/g, new Date(`${TOMORROW}T12:00`).toLocaleDateString('en-US', { weekday: 'short' })));
+  // The card says where it goes (the reply no longer lists times, 2026-11-16).
+  await expect(page.getByText(/In 2 pieces: also 3:00 PM–3:30 PM/)).toBeVisible();
   expect(state.prompt).toContain('"split":true');
   await page.getByRole('button', { name: 'Accept', exact: true }).click();
   await expect.poll(() => state.db.todo_sessions.filter(s => s.todo_id === 't-hw').length).toBe(2);
@@ -346,7 +347,7 @@ test('with a larger smallest piece, a split that would leave a scrap goes whole 
   await expect(page.getByRole('log')).toContainText('Trying.');
   await expect(page.getByRole('log')).not.toContainText('Needs your call');
   // No 30-minute scrap: one 76-minute block.
-  await expect(page.getByRole('log')).toContainText(/Physics HW 4: \w+ \d{1,2}:\d{2} [AP]M–\d{1,2}:\d{2} [AP]M$/m);
+  await expect(page.getByText(/In \d pieces/)).toHaveCount(0);
   await expect(page.getByText(/Didn't fit before 4:00 PM/)).toBeVisible();
 });
 

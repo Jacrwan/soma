@@ -12,6 +12,8 @@ type Props = {
   onDismiss: () => void;
   /** Tasks that don't fit before they're due (reason 'tasks'). */
   atRisk?: number;
+  /** Their names, when known. */
+  atRiskTitles?: string[];
   onTasks?: () => void;
 };
 
@@ -23,10 +25,15 @@ const start = (range: string) => formatClock(range.split('–')[0]);
  * line above the page, "Moved 2 blocks that hadn't been started.", gone after
  * eight seconds, with no way back.)
  */
-export default function MoveNote({ reason, moves, busy, onUndo, onDismiss, atRisk = 0, onTasks }: Props) {
+export default function MoveNote({ reason, moves, busy, onUndo, onDismiss, atRisk = 0, atRiskTitles = [], onTasks }: Props) {
   if (!moves.length && !atRisk) return null;
+  // Which tasks (2026-11-16: "A task doesn't fit" didn't say which).
+  const named = atRiskTitles.length === atRisk && atRisk > 0;
+  const riskLine = named
+    ? atRisk === 1 ? `${atRiskTitles[0]} doesn’t fit before it’s due` : `These don’t fit before they’re due: ${atRiskTitles.join(', ')}`
+    : `${atRisk === 1 ? 'A task doesn’t' : `${atRisk} tasks don’t`} fit before ${atRisk === 1 ? 'it’s' : 'they’re'} due`;
   const heading = reason === 'tasks'
-    ? moves.length ? `Moved ${moves.length === 1 ? 'a sitting' : `${moves.length} sittings`} that had to move` : `${atRisk === 1 ? 'A task doesn’t' : `${atRisk} tasks don’t`} fit before ${atRisk === 1 ? 'it’s' : 'they’re'} due`
+    ? moves.length ? `Moved ${moves.length === 1 ? 'a sitting' : `${moves.length} sittings`} that had to move` : riskLine
     : reason === 'overrun'
     ? 'You finished late, so the rest of today moved'
     : `Moved ${moves.length === 1 ? 'a block' : `${moves.length} blocks`} you hadn’t started`;
@@ -44,7 +51,7 @@ export default function MoveNote({ reason, moves, busy, onUndo, onDismiss, atRis
           </li>
         ))}
       </ul>
-      {reason === 'tasks' && moves.length > 0 && atRisk > 0 && <p className={styles.moveNoteHeading}>{atRisk === 1 ? 'A task doesn’t' : `${atRisk} tasks don’t`} fit before {atRisk === 1 ? 'it’s' : 'they’re'} due.</p>}
+      {reason === 'tasks' && moves.length > 0 && atRisk > 0 && <p className={`${styles.moveNoteHeading} ${styles.moveNoteRisk}`}>{riskLine}.</p>}
       <div className={styles.moveNoteActions}>
         {onUndo && <button type="button" onClick={onUndo} disabled={busy}>Undo</button>}
         {onTasks && <button type="button" onClick={onTasks}>See tasks</button>}

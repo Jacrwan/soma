@@ -74,12 +74,14 @@ export function statedRange(text: string, nowMinute: number): { start: number; e
  * Asking for work off today counts too ("some other day", "a different day",
  * "not today", "off today"): Soma kept those blocks on today. "I'm not going
  * to lecture today" doesn't count; it's a skip, and the work stays today.
- * A false positive only means Soma's own choice of day stands.
+ * A false positive only means Soma's own choice of day stands. "Yesterday"
+ * doesn't count: work can't go there, so "the homework I missed yesterday"
+ * is work for today (2026-11-16).
  */
 export function namesOtherDay(text: string): boolean {
   return /\b(an?other|different|other|later|next|future|separate)\s+(day|days|date)\b/i.test(text)
     || /\b(off|out of|away from|other than|besides|except|but)\s+today\b|\bnot\s+today\b|\btoday\s+(doesn'?t|won'?t|isn'?t|is not)\s+work/i.test(text)
-    || /\b(tomorrow|tmrw|tmr|yesterday|mon(day)?|tues?(day)?|wed(nes)?(day)?|thu(rs?)?(day)?|fri(day)?|sat(urday)?|sun(day)?|weekend|week|weekdays?|day after)\b/i.test(text)
+    || /\b(tomorrow|tmrw|tmr|mon(day)?|tues?(day)?|wed(nes)?(day)?|thu(rs?)?(day)?|fri(day)?|sat(urday)?|sun(day)?|weekend|week|weekdays?|day after)\b/i.test(text)
     || /\b\d{1,2}\/\d{1,2}\b/.test(text)
     || /\b(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b/i.test(text)
     || /\bthe\s+\d{1,2}(st|nd|rd|th)\b/i.test(text);

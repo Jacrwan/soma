@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type PointerEvent } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type PointerEvent } from 'react';
 import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import { formatHourLabel } from '../../lib/timeFormat';
 import { addDump, loadDump, removeDump } from '../../lib/brainDump';
@@ -7,53 +7,58 @@ import styles from './BrainDump.module.css';
 /**
  * Brain dump: a list for getting everything out of your head, with no AI.
  * Enter adds a line (pasting several lines adds each). + opens "Add to your
- * plan": the course, how long, and when, each filled in with Soma's guess
- * (LiveDashboard's `onPlan`, no AI) so Add is one tap, and each can be
- * changed. "When" is the day's calendar: what's already on it, the open
- * time, and a marker for this line that can be tapped or dragged into place. A course has to be picked when none is named in the words. The list
- * is saved to the student's account (lib/brainDump.ts) and read again when
- * the tab comes back into view, so every device shows the same one; this
- * browser keeps a copy to show at once. Until the table exists it lives in
- * the browser only. The first time a browser reaches the table, the lines it
- * kept on its own are added to the account's list.
+ * plan": the course, and when, filled in with Soma's guess (LiveDashboard's
+ * `onPlan`, no AI) so Add is one tap. "When" is a day's calendar, and the
+ * line's block on it is the picker (2026-11-16, the owner: "stop it with
+ * these preset hours and dates, let the user choose"): drag it anywhere,
+ * over anything already planned and past study hours, drag its bottom edge
+ * for the length, tap to start it somewhere else, or type the times. What's
+ * on the day and the open study time are drawn behind it as a guide; nothing
+ * there blocks it. A course has to be picked when none is named in the
+ * words. The list is saved to the student's account (lib/brainDump.ts) and
+ * read again when the tab comes back into view, so every device shows the
+ * same one; this browser keeps a copy to show at once. Until the table exists
+ * it lives in the browser only. The first time a browser reaches the table,
+ * the lines it kept on its own are added to the account's list.
  */
 
 type Item = { id: string; text: string };
-/** A start on one of the next seven days, in minutes from that day's midnight. */
+/** A start on a coming day, in minutes from that day's midnight. */
 export type DumpSlot = { day: number; start: number };
-/** One day of the calendar: what's on it, and the open stretches that fit the length asked for (minutes from midnight). */
+/** One day of the calendar: what's on it, and its open study time (minutes from midnight). */
 export type DumpDay = { day: number; name: string; busy: { title: string; start: number; end: number; external: boolean; suggested: boolean }[]; free: [number, number][] };
-/** What + needs for one line: the courses and Soma's guesses, the week's calendar, and saving the choice (it says where it went). */
+/** What + needs for one line: the courses and Soma's guesses, the coming days' calendar, and saving the choice (it says where it went). */
 export type DumpPlanner = {
   courses: { id: string; name: string }[];
   guess: string | null;
   estimate: (courseId: string | null) => { minutes: number; basis: string };
-  days: (minutes: number) => DumpDay[];
+  days: () => DumpDay[];
+  /** Minutes past midnight now, for today. */
+  now: number;
+  /** The usual study hours [open, close], or null when they're off. A guide only. */
+  window: [number, number] | null;
   clock: (minutes: number) => string;
   add: (choice: { courseId: string | null; minutes: number; slot: DumpSlot | null }) => Promise<string>;
 };
 /** `onMakeTask`: open it as a task with a due date and details instead; true once it's saved. */
 type Props = { userId: string; onPlan: (text: string) => Promise<DumpPlanner>; onMakeTask?: (text: string, courseId: string | null) => Promise<boolean> };
-/** `day` null: no set time, because the student chose that (`untimed`) or nothing this week fits. */
-type Adding = { item: Item; planner: DumpPlanner; course: string; minutes: number; picked: boolean; untimed: boolean; day: number | null; start: number | null };
+type Adding = { item: Item; planner: DumpPlanner; days: DumpDay[]; course: string; minutes: number; picked: boolean; untimed: boolean; asTask: boolean; day: number; start: number };
 
-const STEP = 15, HOUR_PX = 44;
-/** Every start a length can take on a day: each open stretch's own start, then each quarter hour that still fits. */
-const startsOf = (d: DumpDay | undefined, minutes: number) => {
-  const out: number[] = [];
-  for (const [a, z] of d?.free ?? []) for (let s = a; s + minutes <= z; s = Math.floor(s / STEP) * STEP + STEP) out.push(s);
-  return out;
-};
-const nearest = (starts: number[], to: number) => starts.reduce((best, s) => Math.abs(s - to) < Math.abs(best - to) ? s : best, starts[0]);
-/** The start on `day` nearest `near` (else its first); with no day, or none there, the week's first open time. */
-function pick(days: DumpDay[], minutes: number, day: number | null, near?: number): { day: number | null; start: number | null } {
-  const there = day === null ? [] : startsOf(days[day], minutes);
-  if (there.length) return { day, start: near === undefined ? there[0] : nearest(there, near) };
-  for (const d of days) { const s = startsOf(d, minutes); if (s.length) return { day: d.day, start: s[0] }; }
-  return { day: null, start: null };
+const SNAP = 5, HOUR_PX = 44, SHORTEST = 15, DAY = 1440, LONGEST = 12 * 60;
+const snap = (m: number) => Math.round(m / SNAP) * SNAP;
+const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
+/** Where it starts: the first open study time that fits, from now; else the next hour today (or tomorrow morning, late at night). */
+function firstFit(days: DumpDay[], minutes: number, now: number): { day: number; start: number } {
+  for (const d of days) for (const [a, z] of d.free) {
+    const from = d.day === 0 ? Math.max(a, Math.ceil(now / SNAP) * SNAP) : a;
+    if (z - from >= minutes) return { day: d.day, start: from };
+  }
+  const next = Math.ceil((now + 1) / 60) * 60;
+  return next + minutes <= DAY ? { day: 0, start: next } : { day: Math.min(1, days.length - 1), start: 9 * 60 };
 }
+const asInput = (m: number) => `${String(Math.floor((m % DAY) / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+const fromInput = (v: string) => { const [h, m] = v.split(':').map(Number); return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null; };
 
-const LENGTHS = [15, 30, 45, 60, 90, 120];
 const PERSONAL = 'personal';
 const hm = (m: number) => m < 60 ? `${m} min` : `${Math.floor(m / 60)} hr${m % 60 ? ` ${m % 60} min` : ''}`;
 
@@ -74,7 +79,8 @@ export default function BrainDump({ userId, onPlan, onMakeTask }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const track = useRef<HTMLDivElement>(null);
   const marker = useRef<HTMLDivElement>(null);
-  const placing = useRef(false);
+  /** A drag on the calendar: moving the block (offset from its start) or stretching its end. */
+  const drag = useRef<{ mode: 'move' | 'resize'; offset: number } | null>(null);
   const titleId = useId();
   const current = useRef(items);
   // true: the account's list; false: no table yet, browser only; null: not known yet.
@@ -144,23 +150,21 @@ export default function BrainDump({ userId, onPlan, onMakeTask }: Props) {
     setBusy(item.id); setError(''); setStatus('');
     try {
       const planner = await onPlan(item.text);
-      const course = planner.guess ?? '', minutes = planner.estimate(planner.guess).minutes;
-      setAdding({ item, planner, course, minutes, picked: false, untimed: false, ...pick(planner.days(minutes), minutes, null) });
+      const course = planner.guess ?? '', minutes = planner.estimate(planner.guess).minutes, days = planner.days();
+      setAdding({ item, planner, days, course, minutes, picked: false, untimed: false, asTask: false, ...firstFit(days, minutes, planner.now) });
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not find open times. Please retry.'); }
     finally { setBusy(null); }
   }
-  // A new length keeps the day and the time as near as it can; a new course re-suggests the length, unless the student chose one.
-  const relength = (a: Adding, minutes: number): Adding =>
-    a.untimed ? { ...a, minutes } : { ...a, minutes, ...pick(a.planner.days(minutes), minutes, a.day, a.start ?? undefined) };
-  const pickCourse = (course: string) => setAdding(a => a && (a.picked ? { ...a, course } : relength({ ...a, course }, a.planner.estimate(course === PERSONAL ? null : course || null).minutes)));
-  const pickLength = (minutes: number) => setAdding(a => a && { ...relength(a, minutes), picked: true });
+  // A new course re-suggests the length, unless the student set one; the start stays where it is.
+  const pickCourse = (course: string) => setAdding(a => a && (a.picked ? { ...a, course } : { ...a, course, minutes: clamp(a.planner.estimate(course === PERSONAL ? null : course || null).minutes, SHORTEST, LONGEST) }));
 
   async function confirm() {
+    if (adding?.asTask) { await makeTask(); return; }
     if (!adding || !adding.course) return;
-    const { item, planner, course, minutes, day, start } = adding;
+    const { item, planner, course, minutes, day, start, untimed } = adding;
     setBusy(item.id); setError('');
     try {
-      const where = await planner.add({ courseId: course === PERSONAL ? null : course, minutes, slot: day !== null && start !== null ? { day, start } : null });
+      const where = await planner.add({ courseId: course === PERSONAL ? null : course, minutes, slot: untimed ? null : { day, start } });
       close();
       const at = current.current.findIndex(i => i.id === item.id);
       keep(current.current.filter(i => i.id !== item.id));
@@ -184,21 +188,42 @@ export default function BrainDump({ userId, onPlan, onMakeTask }: Props) {
   }
 
   const suggestion = adding && adding.planner.estimate(adding.course && adding.course !== PERSONAL ? adding.course : null);
-  const days = useMemo(() => adding ? adding.planner.days(adding.minutes) : [], [adding?.planner, adding?.minutes]); // eslint-disable-line react-hooks/exhaustive-deps
-  const shown = adding?.day != null ? days[adding.day] : undefined;
-  const starts = shown ? startsOf(shown, adding!.minutes) : [];
-  // The calendar's hours: 8 AM to 10 PM, widened to whatever is on the day.
-  const from = shown ? Math.max(0, Math.floor(Math.min(8 * 60, ...shown.free.map(f => f[0]), ...shown.busy.map(b => b.start)) / 60) * 60) : 0;
-  const to = shown ? Math.ceil(Math.max(22 * 60, ...shown.free.map(f => f[1]), ...shown.busy.map(b => b.end)) / 60) * 60 : 0;
+  const shown = adding ? adding.days[adding.day] : undefined;
+  const end = adding ? adding.start + adding.minutes : 0;
+  // The calendar's hours: 7 AM to 11 PM, widened to whatever is on the day and to the block.
+  const from = shown && adding ? Math.max(0, Math.floor(Math.min(7 * 60, adding.start, ...shown.busy.map(b => b.start)) / 60) * 60) : 0;
+  const to = shown && adding ? Math.min(DAY + LONGEST, Math.ceil(Math.max(23 * 60, end, ...shown.busy.map(b => b.end)) / 60) * 60) : 0;
   const px = (m: number) => ((m - from) / 60) * HOUR_PX;
-  const step = (by: number) => setAdding(a => a && a.start !== null ? { ...a, start: starts[starts.indexOf(a.start) + by] ?? a.start } : a);
-  function placeAt(e: PointerEvent<HTMLDivElement>) {
-    const rect = track.current?.getBoundingClientRect(); if (!rect || !starts.length || !adding) return;
-    const want = from + ((e.clientY - rect.top) / HOUR_PX) * 60 - adding.minutes / 2;
-    setAdding(a => a && { ...a, start: nearest(starts, want) });
+  const minuteAt = (y: number) => { const rect = track.current?.getBoundingClientRect(); return rect ? from + ((y - rect.top) / HOUR_PX) * 60 : 0; };
+  // It may start any time of the day and run past midnight, as a block can.
+  const moveTo = (a: Adding, start: number): Adding => ({ ...a, start: clamp(snap(start), 0, DAY - SNAP) });
+  const resizeTo = (a: Adding, endAt: number): Adding => ({ ...a, picked: true, minutes: clamp(snap(endAt) - a.start, SHORTEST, LONGEST) });
+  function pointerDown(e: PointerEvent<HTMLDivElement>) {
+    if (!adding) return;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    const m = minuteAt(e.clientY), edge = (10 / HOUR_PX) * 60;
+    if (m >= adding.start && m <= end) {
+      // The grab point stays put under the pointer, for the edge as for the block.
+      drag.current = m >= end - edge ? { mode: 'resize', offset: end - m } : { mode: 'move', offset: m - adding.start };
+      return;
+    }
+    // A tap on the calendar starts the block there.
+    drag.current = { mode: 'move', offset: adding.minutes / 2 };
+    setAdding(a => a && moveTo(a, m - a.minutes / 2));
   }
+  function pointerMove(e: PointerEvent<HTMLDivElement>) {
+    const d = drag.current; if (!d) return;
+    const m = minuteAt(e.clientY);
+    setAdding(a => a && (d.mode === 'move' ? moveTo(a, m - d.offset) : resizeTo(a, m + d.offset)));
+  }
+  const stepDay = (by: number) => setAdding(a => a && { ...a, day: clamp(a.day + by, 0, a.days.length - 1) });
+  const typeStart = (v: string) => { const m = fromInput(v); if (m !== null) setAdding(a => a && moveTo(a, m)); };
+  const typeEnd = (v: string) => { const m = fromInput(v); if (m !== null) setAdding(a => a && resizeTo(a, m <= a.start ? m + DAY : m)); };
   useEffect(() => { marker.current?.scrollIntoView?.({ block: 'nearest' }); }, [adding?.day, adding?.start]);
-  const lengths = adding ? [...new Set([...LENGTHS, suggestion!.minutes, adding.minutes])].sort((a, b) => a - b) : [];
+  // Guides, never limits: what it overlaps, and whether it's outside the usual hours.
+  const overlaps = shown && adding ? shown.busy.filter(b => b.start < end && b.end > adding.start).map(b => b.title) : [];
+  const outside = adding?.planner.window && (adding.start < adding.planner.window[0] || end > adding.planner.window[1]);
+  const passed = adding && adding.day === 0 && adding.start < adding.planner.now;
 
   return (
     <section className={styles.dump} aria-labelledby="brain-dump-title">
@@ -223,10 +248,8 @@ export default function BrainDump({ userId, onPlan, onMakeTask }: Props) {
         <form method="dialog" onSubmit={e => { e.preventDefault(); void confirm(); }}>
           <h3 id={titleId}>Add to your plan</h3>
           <p className={styles.what}>{adding.item.text}</p>
-          {onMakeTask && <p className={styles.hint}>Has a due date? <button type="button" className={styles.linkButton} onClick={() => void makeTask()}>Make it a task</button> and Soma schedules it, with your own steps if you like.</p>}
-
           <label className={styles.field}><span>Course</span>
-            <select value={adding.course} onChange={e => pickCourse(e.target.value)} required>
+            <select value={adding.course} onChange={e => pickCourse(e.target.value)} required={!adding.asTask}>
               <option value="" disabled>Choose a course</option>
               {adding.planner.courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               <option value={PERSONAL}>Personal (not for a course)</option>
@@ -234,45 +257,46 @@ export default function BrainDump({ userId, onPlan, onMakeTask }: Props) {
           </label>
           {!adding.planner.guess && !adding.course && <p className={styles.hint}>Soma couldn’t tell which course this is for.</p>}
 
-          <fieldset className={styles.field}><legend>How long</legend>
-            <div className={styles.chips}>{lengths.map(m => <button key={m} type="button" aria-pressed={adding.minutes === m} onClick={() => pickLength(m)}>{hm(m)}</button>)}</div>
-            <p className={styles.hint}>Suggested: {hm(suggestion!.minutes)}, {suggestion!.basis}.</p>
-          </fieldset>
-
-          <fieldset className={styles.field}><legend>When</legend>
-            <div className={styles.chips}>
-              {days.map(d => <button key={d.day} type="button" aria-pressed={adding.day === d.day} disabled={!startsOf(d, adding.minutes).length}
-                onClick={() => setAdding(a => a && { ...a, untimed: false, ...pick(days, a.minutes, d.day) })}>{d.name}</button>)}
-              <button type="button" aria-pressed={adding.day === null} onClick={() => setAdding(a => a && { ...a, untimed: true, day: null, start: null })}>No set time</button>
+          {!adding.asTask && <fieldset className={styles.field} disabled={adding.untimed}><legend>When</legend>
+            <div className={styles.picked}>
+              <button type="button" aria-label="Previous day" title="Previous day" disabled={adding.day <= 0} onClick={() => stepDay(-1)}><ChevronLeft size={15} /></button>
+              <p aria-live="polite">{adding.untimed ? 'No set time' : `${shown?.name}, ${adding.planner.clock(adding.start)}–${adding.planner.clock(end % DAY)}`}</p>
+              <button type="button" aria-label="Next day" title="Next day" disabled={adding.day >= adding.days.length - 1} onClick={() => stepDay(1)}><ChevronRight size={15} /></button>
             </div>
-            {!days.some(d => startsOf(d, adding.minutes).length) && <p className={styles.hint}>No open time this week fits {hm(adding.minutes)}. Pick a shorter length, or add it with no set time.</p>}
-            {adding.day === null ? <p className={styles.hint}>It goes on today’s list with no time; you can give it one later.</p> : shown && adding.start !== null && <>
-              <div className={styles.picked}>
-                <button type="button" aria-label="Earlier" title="Earlier" disabled={starts.indexOf(adding.start) <= 0} onClick={() => step(-1)}><ChevronLeft size={15} /></button>
-                <p aria-live="polite">{shown.name}, {adding.planner.clock(adding.start)}–{adding.planner.clock(adding.start + adding.minutes)}</p>
-                <button type="button" aria-label="Later" title="Later" disabled={starts.indexOf(adding.start) >= starts.length - 1} onClick={() => step(1)}><ChevronRight size={15} /></button>
-              </div>
+            {!adding.untimed && shown && <>
               <div className={styles.calendar}>
-                <div ref={track} data-day-track="" className={styles.track} style={{ height: px(to) }} title="Tap or drag to pick a time"
-                  onPointerDown={e => { placing.current = true; e.currentTarget.setPointerCapture?.(e.pointerId); placeAt(e); }}
-                  onPointerMove={e => { if (placing.current) placeAt(e); }}
-                  onPointerUp={() => { placing.current = false; }} onPointerCancel={() => { placing.current = false; }}>
+                <div ref={track} data-day-track="" className={styles.track} style={{ height: px(to) }} title="Drag the block to move it, its bottom edge to change the length"
+                  onPointerDown={pointerDown} onPointerMove={pointerMove}
+                  onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}>
                   {Array.from({ length: (to - from) / 60 + 1 }, (_, i) => <div key={i} className={styles.hour} style={{ top: px(from + i * 60) }}><span>{formatHourLabel((from / 60 + i) % 24)}</span></div>)}
                   {shown.free.map(([a, z]) => <div key={a} className={styles.open} style={{ top: px(a), height: px(z) - px(a) }} />)}
                   {shown.busy.map((b, i) => <div key={i} className={`${styles.busy}${b.suggested ? ` ${styles.busySuggested}` : ''}${b.external ? ` ${styles.busyEvent}` : ''}`} style={{ top: px(b.start), height: Math.max(14, px(b.end) - px(b.start)) }}><span>{b.title}</span></div>)}
-                  <div ref={marker} className={styles.marker} style={{ top: px(adding.start), height: px(adding.start + adding.minutes) - px(adding.start) }}>
-                    <strong>{adding.item.text}</strong><span>{adding.planner.clock(adding.start)}–{adding.planner.clock(adding.start + adding.minutes)}</span>
+                  <div ref={marker} className={styles.marker} style={{ top: px(adding.start), height: px(end) - px(adding.start) }}>
+                    <strong>{adding.item.text}</strong><span>{adding.planner.clock(adding.start)}–{adding.planner.clock(end % DAY)}</span>
+                    <i className={styles.handle} aria-hidden="true" />
                   </div>
                 </div>
               </div>
-              <p className={styles.hint}>Open time is shaded. Tap or drag on the calendar to move it.</p>
+              <div className={styles.times}>
+                <label><span>Start</span><input type="time" step={300} value={asInput(adding.start)} onChange={e => typeStart(e.target.value)} /></label>
+                <label><span>End</span><input type="time" step={300} value={asInput(end)} onChange={e => typeEnd(e.target.value)} /></label>
+              </div>
+              <p className={styles.hint}>
+                {[overlaps.length ? `Overlaps ${overlaps.join(', ')}` : '', outside ? 'Outside your usual study hours' : '', passed ? 'That time has passed' : ''].filter(Boolean).join(' · ')
+                  || `Drag it anywhere; drag its bottom edge for the length. Soma suggests ${hm(suggestion!.minutes)}, ${suggestion!.basis}.`}
+              </p>
             </>}
-          </fieldset>
+          </fieldset>}
+
+          <div className={styles.options}>
+            <label><input type="checkbox" checked={adding.untimed} disabled={adding.asTask} onChange={e => setAdding(a => a && { ...a, untimed: e.target.checked })} /> No set time</label>
+            {onMakeTask && <label><input type="checkbox" checked={adding.asTask} onChange={e => setAdding(a => a && { ...a, asTask: e.target.checked })} /> Make it a task <span className={styles.optionNote}>with a due date; Soma schedules it</span></label>}
+          </div>
 
           {error && <p role="alert" className={styles.error}>{error}</p>}
           <div className={styles.dialogActions}>
             <button type="button" onClick={close} disabled={busy !== null}>Cancel</button>
-            <button type="submit" className={styles.confirm} disabled={busy !== null || !adding.course}>{busy ? 'Adding…' : 'Add'}</button>
+            <button type="submit" className={styles.confirm} disabled={busy !== null || (!adding.course && !adding.asTask)}>{busy ? 'Adding…' : adding.asTask ? 'Continue' : 'Add'}</button>
           </div>
         </form>
       </dialog>}

@@ -26,10 +26,12 @@ import DayCompare from './DayCompare';
 import { useProposals, updateProposals, getProposals } from '../../lib/proposalStore';
 import { estimate as planEstimate, isSittingOf, kindOf, type PlanTarget } from '../../lib/planIt';
 import { freeTime } from '../../lib/aiPlanning';
-import { clockOf, rangeOf } from '../../lib/clockRange';
+import { clockOf, rangeOf, windowOf } from '../../lib/clockRange';
+/** How many days the brain-dump calendar can step through. */
+const DUMP_DAYS = 14;
 import { dashboardDayFor } from '../../lib/calendarView';
 import { coveredBy, finishThrough, rangeLabel, renameLoggedTime, retitle } from '../../lib/courseItems';
-import { acceptAhead, clearFutureSittings, declineAhead, rescheduleTasks, setSittingDone, type AheadOffer, type RescheduleResult } from '../../lib/taskSchedule';
+import { acceptAhead, clearFutureSittings, declineAhead, rescheduleTasks, setSittingDone, setSittingPinned, type AheadOffer, type RescheduleResult } from '../../lib/taskSchedule';
 import { dueMoment, isManaged } from '../../lib/taskScheduler';
 import { deadlineOf } from '../../lib/taskDetails';
 import { asTodoKind, type Todo } from '../../types';
@@ -158,7 +160,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
  // What the reclaim last moved, kept on today's plan until dismissed or undone.
  const [moveNote,setMoveNote]=useState<{reason:'reclaim'|'overrun';moves:MovedBlock[]}|null>(null);
  // What the task scheduler last moved, and how many tasks don't fit before they're due.
- const [taskNote,setTaskNote]=useState<{moves:MovedBlock[];atRisk:number}|null>(null);
+ const [taskNote,setTaskNote]=useState<{moves:MovedBlock[];atRisk:number;atRiskTitles:string[]}|null>(null);
  const [ahead,setAhead]=useState<AheadOffer|null>(null);
  // Task details open (Tasks/TaskDetail.tsx), and the brain dump waiting to hear whether it was saved.
  const [detail,setDetail]=useState<TaskDetailTarget|null>(null);
@@ -220,7 +222,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
    const clock=(d:Date)=>`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
    const moves:MovedBlock[]=result.moved.map((m,i)=>({id:`${m.todoId}-${i}`,todoId:m.todoId,title:m.title,from:m.from ? clock(m.from) : '',to:clock(m.to),fromLabel:m.from ? `${day(m.from)} ${formatClock(clock(m.from))}` : 'new',toLabel:`${day(m.to)} ${formatClock(clock(m.to))}`}));
    const atRisk=Object.keys(result.atRisk).length;
-   if(moves.length || atRisk)setTaskNote({moves,atRisk});else setTaskNote(n=>n && null);
+   if(moves.length || atRisk)setTaskNote({moves,atRisk,atRiskTitles:result.atRiskTitles ?? []});else setTaskNote(n=>n && null);
    if(result.ahead)setAhead(result.ahead);
    if(result.moved.length || result.created || result.removed)void reload().catch(()=>{});
   };
@@ -260,7 +262,11 @@ export default function LiveDashboard({userId}:{userId:string}) {
    const todoId=await savePlanBlock(userId,origin,block,fresh);
    // A time set by hand is the student's: Soma won't move it to make room.
    const was=fresh.blocks.find(b=>b.id===block.id);
-   if(block.time && (!was || was.time!==block.time || was.day!==block.day))pinBlock(userId,pinKey(todoId,localDate(dateAt(origin,block.day)),block.time.split('–')[0]));
+   if(block.time && (!was || was.time!==block.time || was.day!==block.day)){
+    pinBlock(userId,pinKey(todoId,localDate(dateAt(origin,block.day)),block.time.split('–')[0]));
+    // A sitting moved by hand is pinned on every device; until the migration, this browser's pin holds it.
+    if(was?.sessionId)await setSittingPinned(userId,was.sessionId,true).catch(()=>undefined);
+   }
    try{await reload();}catch{throw new Error('Your change saved, but refreshing failed. Refresh the page before making another change.');}
   }catch(e){setError(e instanceof Error ? e.message : 'Could not save. Please retry.');throw e;}
   finally{writing.current=false;setBusy(false);}
@@ -479,7 +485,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   const words=text.toLowerCase(), live=snapshot.subjects.filter(s=>!s.archived), history=snapshot.history;
   const guess=live.find(s=>words.includes(s.name.toLowerCase())) ?? live.find(s=>{const w=s.name.split(/\s+/)[0].toLowerCase();return w.length>=3 && /^[a-z]+$/.test(w) && new RegExp(`\\b${w}\\b`).test(words);});
   // Suggestions already waiting count as taken, as Plan it counts them.
-  const plan=await readPlan(userId,origin,0,7);
+  const plan=await readPlan(userId,origin,0,DUMP_DAYS);
   const waiting=getProposals(userId).filter(p=>p.time && p.replaces===undefined);
   const taken={...plan,blocks:[...plan.blocks,...waiting as unknown as Snapshot['blocks']]}, settings=storage.getSomaSettings(), at=new Date();
   const dayName=(day:number)=>day===0 ? 'Today' : day===1 ? 'Tomorrow' : dateAt(origin,day).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'});
@@ -492,17 +498,17 @@ export default function LiveDashboard({userId}:{userId:string}) {
     const e=planEstimate({key:text,title:text,subject:s.name,subjectId:s.id,color:'',due:''},history);
     return e.minutes>120 ? {minutes:120,basis:`${e.basis}; one sitting is up to 2 hours`} : e;
    },
-   // The week as a calendar: what's already on each day, and the open stretches that fit this length.
-   days:minutes=>{
-    const open=freeTime(taken,origin,settings,at,7,minutes);
-    return open.map((d,day)=>({day,name:dayName(day),
+   // The coming days as a calendar: what's already on each, and its open study
+   // time. Both are a guide; the student can put it anywhere (2026-11-16).
+   days:()=>freeTime(taken,origin,settings,at,DUMP_DAYS,5).map((d,day)=>({day,name:dayName(day),
      busy:taken.blocks.filter(b=>b.day===day && b.time && b.changeKind!=='remove').map(b=>{const [start,end]=rangeOf(b.time);return {title:b.title,start,end,external:!!b.external,suggested:b.state==='Proposal'};}).sort((a,b)=>a.start-b.start),
-     free:d.free.map(f=>rangeOf(f)).filter(([a,z])=>z-a>=minutes)}));
-   },
+     free:d.free.map(f=>rangeOf(f))})),
+   now:at.getHours()*60+at.getMinutes(),
+   window:settings.studyWindow.off ? null : windowOf(settings.studyWindow),
    clock:minutes=>formatClock(clockOf(minutes)),
    add:async({courseId,minutes,slot})=>{
     const s=live.find(x=>x.id===courseId);
-    const time=slot ? `${clockOf(slot.start)}–${clockOf(slot.start+minutes)}` : '';
+    const time=slot ? `${clockOf(slot.start)}–${clockOf((slot.start+minutes)%1440)}` : '';
     await save({id:Date.now(),title:text,subject:s?.name ?? 'Personal',time,minutes:slot ? minutes : 0,color:s ? toneOf(s.color) : 'blue',state:'Planned',day:slot?.day ?? 0,manual:true,...(slot ? {} : {estimatedMinutes:minutes})});
     return slot ? `for ${dayName(slot.day).replace(/^Today/,'today').replace(/^Tomorrow/,'tomorrow')}, ${formatClockRange(time)}` : 'to today’s list, with no set time';
    },
@@ -551,7 +557,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
  })();
  const guessLength=(text:string,subjectId?:string)=>{const sb=snapshot.subjects.find(x=>x.id===subjectId);return sb ? planEstimate({key:'detail',title:text,subject:sb.name,subjectId:sb.id,color:'',due:''},snapshot.history).minutes : 60;};
  const pulseDays=Array.from({length:7},(_,i)=>snapshot.history.filter(h=>h.date===localDate(dateAt(origin,i-6))).reduce((n,h)=>n+Math.max(0,h.duration_seconds||0),0));
- return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{onEditingChange,initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,planNotice:moveNote || taskNote || ahead ? <>{ahead && <AheadNote title={ahead.title} opened={ahead.opened} from={ahead.from} start={ahead.start} end={ahead.end} busy={busy} onAccept={()=>{const offer=ahead;setAhead(null);void (async()=>{try{await acceptAhead(userId,offer);await reload();runSchedule(300);}catch(e){setError(e instanceof Error ? e.message : 'Could not move it.');}})();}} onDecline={()=>{declineAhead(userId);setAhead(null);}}/>}{moveNote && <MoveNote reason={moveNote.reason} moves={moveNote.moves} busy={busy} onUndo={()=>void undoMoves()} onDismiss={()=>setMoveNote(null)}/>}{taskNote && <MoveNote reason="tasks" moves={taskNote.moves} atRisk={taskNote.atRisk} busy={busy} onTasks={()=>navigate('/tasks')} onDismiss={()=>setTaskNote(null)}/>}</> : null,compare:{shown:compareOn,toggle:()=>setCompareOn(v=>!v),panel:<DayCompare current={toVersionBlocks(snapshot.blocks)} versions={versions} selectedId={compareId || versions[0]?.id || ''} onSelect={setCompareId}/>},rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<CatchUp key={localDate(origin)} userId={userId} origin={origin} onApply={applyBatch}>{catchUp=><AgentBrief catchUp={catchUp}/>}</CatchUp>,dump:<BrainDump userId={userId} onPlan={planDump} onMakeTask={(text,courseId)=>new Promise<boolean>(resolve=>{detailDone.current=resolve;setDetail({seed:{title:text,...(courseId ? {subjectId:courseId} : {})}});})}/>,habits:<Habits/>,layout,onLayout:saveLayout,due:[...taskDues,...due.flatMap((raw):DueCard[]=>{
+ return <><div className={styles.liveNotice} aria-live="polite">{error && <p role="alert">{error} <button disabled={busy} onClick={()=>{setError('');void reload().catch(e=>setError(e.message));}}>Refresh plan</button></p>}{snapshot.calendarError && <p role="alert">{snapshot.calendarError}</p>}{busy && <span>Saving your plan…</span>}</div><DashboardV2 key={localDate(origin)} runtime={{onEditingChange,initialConversation:memory.ui,onConversationChange:items=>{memory.ui=items;},blocks:[...blocks,...proposals],activeId:active?.id??null,timerActive:!!timer.activeSession,onSave:b=>save(b,b.state==='Proposal'),onState:change,onDismiss:id=>dismissProposal(userId,id),onStoppedAt:stoppedAt,onDelete:remove,onAcceptAll:acceptAll,planNotice:moveNote || taskNote || ahead ? <>{ahead && <AheadNote title={ahead.title} opened={ahead.opened} from={ahead.from} start={ahead.start} end={ahead.end} busy={busy} onAccept={()=>{const offer=ahead;setAhead(null);void (async()=>{try{await acceptAhead(userId,offer);await reload();runSchedule(300);}catch(e){setError(e instanceof Error ? e.message : 'Could not move it.');}})();}} onDecline={()=>{declineAhead(userId);setAhead(null);}}/>}{moveNote && <MoveNote reason={moveNote.reason} moves={moveNote.moves} busy={busy} onUndo={()=>void undoMoves()} onDismiss={()=>setMoveNote(null)}/>}{taskNote && <MoveNote reason="tasks" moves={taskNote.moves} atRisk={taskNote.atRisk} atRiskTitles={taskNote.atRiskTitles} busy={busy} onTasks={()=>navigate('/tasks')} onDismiss={()=>setTaskNote(null)}/>}</> : null,compare:{shown:compareOn,toggle:()=>setCompareOn(v=>!v),panel:<DayCompare current={toVersionBlocks(snapshot.blocks)} versions={versions} selectedId={compareId || versions[0]?.id || ''} onSelect={setCompareId}/>},rangeStart,initialDay:picked?.day,onRange:setRangeStart,onPropose:propose,brief:<CatchUp key={localDate(origin)} userId={userId} origin={origin} onApply={applyBatch}>{catchUp=><AgentBrief catchUp={catchUp}/>}</CatchUp>,dump:<BrainDump userId={userId} onPlan={planDump} onMakeTask={(text,courseId)=>new Promise<boolean>(resolve=>{detailDone.current=resolve;setDetail({seed:{title:text,...(courseId ? {subjectId:courseId} : {})}});})}/>,habits:<Habits/>,layout,onLayout:saveLayout,due:[...taskDues,...due.flatMap((raw):DueCard[]=>{
   // Shown under the course its task is filed in, with that course's colour, like its sittings.
   const filed=snapshot.todos.find(t=>t.assignmentId===raw.id && t.status!=='done');
   const course=filed?.subjectId ? snapshot.subjects.find(sb=>sb.id===filed.subjectId) : undefined;

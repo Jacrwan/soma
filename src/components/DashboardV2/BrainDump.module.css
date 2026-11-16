@@ -329,6 +329,68 @@
   font-size: 11px;
   line-height: 1.35;
   pointer-events: none;
+  cursor: grab;
+}
+
+/* The bottom edge: drag it for the length. */
+.handle {
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  width: 24px;
+  height: 3px;
+  margin-left: -12px;
+  border-radius: 2px;
+  background: color-mix(in oklch, #fff, transparent 35%);
+}
+
+/* Exact times, kept in step with the block. */
+.times {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.times label {
+  display: grid;
+  gap: 3px;
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.dialog .times input {
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+}
+
+/* No set time / Make it a task, above Cancel and Add. */
+.options {
+  display: grid;
+  gap: 6px;
+  margin-top: 16px;
+  font-size: 12px;
+}
+
+.options label {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  cursor: pointer;
+}
+
+.options input {
+  accent-color: var(--accent);
+}
+
+.optionNote {
+  color: var(--text-secondary);
 }
 
 .marker strong {

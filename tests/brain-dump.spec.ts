@@ -78,13 +78,11 @@ test('brain dump: lines are kept, + puts one on today’s plan in open time, and
   await expect(add.getByRole('button', { name: 'Add', exact: true })).toBeDisabled();
   await add.getByRole('combobox', { name: 'Course' }).selectOption({ label: 'Personal (not for a course)' });
   // A quick task: 30 minutes, at the first open time (after the 9–10 block).
-  await expect(add.getByRole('button', { name: '30 min', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(add.getByText('Suggested: 30 min, a guess for a quick task.')).toBeVisible();
-  await expect(add.getByRole('button', { name: 'Today', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(add.getByText(/Soma suggests 30 min, a guess for a quick task\.$/)).toBeVisible();
   await expect(add.getByText('Today, 10:00 AM–10:30 AM', { exact: true })).toBeVisible();
   // The day's calendar shows what's already on it.
   await expect(add.locator('[data-day-track]')).toContainText('Lab 7 report');
-  await expect(add.getByRole('button', { name: 'Earlier' })).toBeDisabled();
+  await expect(add.getByRole('button', { name: 'Previous day' })).toBeDisabled();
   await add.getByRole('button', { name: 'Add', exact: true }).click();
   await expect(add).toHaveCount(0);
   await expect(dump.getByRole('status')).toContainText('Added “Email TA about the lab grade” for today');
@@ -112,18 +110,11 @@ test('brain dump: pasting a list adds each line, and a course named in the words
   const add = page.getByRole('dialog', { name: 'Add to your plan' });
   await expect(add.getByRole('combobox', { name: 'Course' })).toHaveValue('math');
   // A problem set in a course with no history yet: an hour, said as a guess.
-  await expect(add.getByRole('button', { name: '1 hr', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(add.getByText(/^Suggested: 1 hr, a guess/)).toBeVisible();
-  // The student picks a shorter length and a later time.
-  await add.getByRole('button', { name: '45 min', exact: true }).click();
-  // Tapping the calendar just under 10 AM moves the marker there (its middle goes where you tap).
-  const day = add.locator('[data-day-track]'), ten = add.locator('[data-day-track] span', { hasText: /^10 AM$/ });
-  const trackBox = (await day.boundingBox())!, tenBox = (await ten.boundingBox())!;
-  await day.click({ position: { x: trackBox.width - 40, y: tenBox.y + tenBox.height / 2 - trackBox.y + 16 } });
+  await expect(add.getByText(/Soma suggests 1 hr, a guess/)).toBeVisible();
+  // The student types a time and a shorter length.
+  await add.getByLabel('Start').fill('10:00');
+  await add.getByLabel('End').fill('10:45');
   await expect(add.getByText('Today, 10:00 AM–10:45 AM', { exact: true })).toBeVisible();
-  await add.getByRole('button', { name: 'Later' }).click();
-  await expect(add.getByText('Today, 10:15 AM–11:00 AM', { exact: true })).toBeVisible();
-  await add.getByRole('button', { name: 'Earlier' }).click();
   await add.getByRole('button', { name: 'Add', exact: true }).click();
   await expect(dump.getByRole('status')).toContainText('Added “math pset 4” for today, 10:00');
   const todo = state.tables.todos.find(t => t.text === 'math pset 4')!;
@@ -148,7 +139,7 @@ test('brain dump: Add to your plan can be cancelled, and can add with no set tim
 
   await dump.getByRole('button', { name: 'Add “Call home” to your plan' }).click();
   await add.getByRole('combobox', { name: 'Course' }).selectOption({ label: 'Personal (not for a course)' });
-  await add.getByRole('button', { name: 'No set time' }).click();
+  await add.getByRole('checkbox', { name: 'No set time' }).check();
   await expect(add.locator('[data-day-track]')).toHaveCount(0);
   await add.getByRole('button', { name: 'Add', exact: true }).click();
   await expect(dump.getByRole('status')).toContainText('Added “Call home” to today’s list, with no set time');
@@ -236,4 +227,80 @@ test('brain dump: a line that couldn’t be saved comes off the list and says so
   await input.fill('Buy a poster board'); await input.press('Enter');
   await expect(dump.getByRole('alert')).toHaveText('Couldn’t save “Buy a poster board”. Please add it again.');
   await expect(dump.getByRole('listitem')).toHaveCount(0);
+});
+
+test('brain dump: the block goes anywhere: over what is planned, past study hours, any length, any day', async ({ page }) => {
+  // 9:00–10:00 is taken; study hours end at 11 PM.
+  const state = await setup(page, {
+    todos: [{ id: 'lab', user_id: account.id, text: 'Lab 7 report', subject_id: 'math', status: 'nothing', date: dateOf(0), estimated_minutes: 60 }],
+    todo_sessions: [{ id: 'lab-slot', user_id: account.id, todo_id: 'lab', date: dateOf(0), start_time: at(0, '09:00'), end_time: at(0, '10:00') }],
+  });
+  await page.goto('/dashboard');
+  const dump = page.getByRole('region', { name: 'Brain dump' });
+  const input = dump.getByRole('textbox', { name: 'Add to your brain dump' });
+  await input.fill('Call home'); await input.press('Enter');
+  await dump.getByRole('button', { name: 'Add “Call home” to your plan' }).click();
+  const add = page.getByRole('dialog', { name: 'Add to your plan' });
+  await add.getByRole('combobox', { name: 'Course' }).selectOption({ label: 'Personal (not for a course)' });
+  await expect(add.getByText('Today, 10:00 AM–10:30 AM', { exact: true })).toBeVisible();
+
+  // Dragging the block up onto the 9 AM block: it goes there, and only says so.
+  const track = add.locator('[data-day-track]'), marker = track.locator('strong', { hasText: 'Call home' });
+  const nine = add.locator('[data-day-track] span', { hasText: /^9 AM$/ });
+  const m = (await marker.boundingBox())!, n = (await nine.boundingBox())!;
+  await page.mouse.move(m.x + 20, m.y + 4);
+  await page.mouse.down();
+  await page.mouse.move(m.x + 20, n.y + n.height / 2 + 4 + 22, { steps: 8 });   // the block's top to 9:30
+  await page.mouse.up();
+  await expect(add.getByText('Today, 9:30 AM–10:00 AM', { exact: true })).toBeVisible();
+  await expect(add.getByText('Overlaps Lab 7 report')).toBeVisible();
+
+  // Its bottom edge sets the length: drag it down half an hour.
+  const box = (await track.locator('i').boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + 1);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y + 1 + 22, { steps: 6 });
+  await page.mouse.up();
+  await expect(add.getByText('Today, 9:30 AM–10:30 AM', { exact: true })).toBeVisible();
+
+  // Tomorrow, past the 11 PM end of study hours: allowed, with a note.
+  await add.getByRole('button', { name: 'Next day' }).click();
+  await add.getByLabel('Start').fill('23:15');
+  await add.getByLabel('End').fill('23:45');
+  await expect(add.getByText('Outside your usual study hours')).toBeVisible();
+  await add.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(dump.getByRole('status')).toContainText('Added “Call home” for tomorrow');
+  const todo = state.tables.todos.find(t => t.text === 'Call home')!;
+  const session = state.tables.todo_sessions.find(x => x.todo_id === todo.id)!;
+  expect(session.date).toBe(dateOf(1));
+  expect(new Date(String(session.start_time)).getTime()).toBe(new Date(at(1, '23:15')).getTime());
+  expect((new Date(String(session.end_time)).getTime() - new Date(String(session.start_time)).getTime()) / 60000).toBe(30);
+});
+
+test('edit mode: a block dragged by its grip onto another block takes that time, and is pinned', async ({ page }) => {
+  const state = await setup(page, {
+    todos: [
+      { id: 'lab', user_id: account.id, text: 'Lab 7 report', subject_id: 'math', status: 'nothing', date: dateOf(0), estimated_minutes: 60 },
+      { id: 'essay', user_id: account.id, text: 'Essay draft', subject_id: 'math', status: 'nothing', date: dateOf(0), estimated_minutes: 60 },
+    ],
+    todo_sessions: [
+      { id: 'lab-slot', user_id: account.id, todo_id: 'lab', date: dateOf(0), start_time: at(0, '10:00'), end_time: at(0, '11:00') },
+      { id: 'essay-slot', user_id: account.id, todo_id: 'essay', date: dateOf(0), start_time: at(0, '15:00'), end_time: at(0, '16:00') },
+    ],
+  });
+  const writes: { method: string; body: unknown }[] = [];
+  page.on('request', r => { if (r.url().includes('/todo_sessions') && ['POST', 'PATCH'].includes(r.method())) writes.push({ method: r.method(), body: r.postDataJSON() }); });
+  await page.goto('/dashboard');
+  await page.getByRole('button', { name: 'Edit plan' }).click();
+  const grip = page.getByRole('button', { name: 'Drag to move: Lab 7 report' });
+  const target = page.locator('article', { hasText: 'Essay draft' });
+  const g = (await grip.boundingBox())!, t = (await target.boundingBox())!;
+  await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(t.x + t.width / 2, t.y + 1, { steps: 10 });
+  await expect(page.getByText(/^Move to 3:00 PM–4:00 PM$/)).toBeVisible();
+  await page.mouse.up();
+  await expect.poll(() => writes.some(w => JSON.stringify(w.body).includes(new Date(at(0, '15:00')).toISOString()))).toBe(true);
+  await expect.poll(() => writes.some(w => JSON.stringify(w.body).includes('"pinned":true'))).toBe(true);
+  void state;
 });

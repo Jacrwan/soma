@@ -40,7 +40,7 @@ test('a block with no start or end is proposed as unscheduled', async ({ page })
  await ask(page,'remind me to sign up for RUF Fall Retreat, no particular time');
  await expect(page.getByRole('log')).toContainText('Suggested: add it.');
  await expect(page.getByRole('log')).not.toContainText('came back incomplete');
- await expect(page.getByRole('log')).toContainText('Review the proposed blocks');
+ await expect(page.getByRole('button', { name: 'Accept', exact: true }).first()).toBeVisible();
 
  await page.getByRole('button',{name:'Accept',exact:true}).click();
  await expect.poll(()=>st.todoWrites.length).toBeGreaterThan(0);

@@ -46,7 +46,7 @@ test('a block starting at the current minute is placed, not refused', async ({ p
   await page.goto('/dashboard');
   await ask(page, 'do physics from now until 4');
   await expect(page.getByRole('log')).not.toContainText('start time has passed');
-  await expect(page.getByRole('log')).toContainText('Review the proposed blocks');
+  await expect(page.getByRole('button', { name: 'Accept', exact: true }).first()).toBeVisible();
 });
 
 test('a start a few minutes into the past is still placed', async ({ page }) => {
@@ -54,7 +54,7 @@ test('a start a few minutes into the past is still placed', async ({ page }) => 
   await page.goto('/dashboard');
   await ask(page, 'physics from now til 4');
   await expect(page.getByRole('log')).not.toContainText('start time has passed');
-  await expect(page.getByRole('log')).toContainText('Review the proposed blocks');
+  await expect(page.getByRole('button', { name: 'Accept', exact: true }).first()).toBeVisible();
 });
 
 test('a start well into the past is still refused', async ({ page }) => {
@@ -68,7 +68,7 @@ test('accepting a proposal still works after the grace window has elapsed', asyn
   const state = await setup(page, plan('13:55', '16:00'));
   await page.goto('/dashboard');
   await ask(page, 'physics from now until 4');
-  await expect(page.getByRole('log')).toContainText('Review the proposed blocks');
+  await expect(page.getByRole('button', { name: 'Accept', exact: true }).first()).toBeVisible();
 
   // The student reads the proposal for half an hour. Its start is now well
   // outside the grace window, but they are deliberately confirming it.

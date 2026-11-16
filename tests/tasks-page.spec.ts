@@ -267,7 +267,9 @@ test('brain dump: a line with a due date becomes a task with details, and leaves
   const state = await setup(page, { brain_dump_items: [{ id: 'd1', user_id: account.id, text: 'Lab report', created_at: '2026-11-16T08:00:00Z' }] });
   await page.goto('/dashboard');
   await page.getByRole('button', { name: 'Add “Lab report” to your plan' }).click();
-  await page.getByRole('button', { name: 'Make it a task' }).click();
+  // "Make it a task" is a choice at the bottom of the popup, then Continue (2026-11-16).
+  await page.getByRole('checkbox', { name: /Make it a task/ }).check();
+  await page.getByRole('button', { name: 'Continue' }).click();
   const dialog = page.getByRole('dialog', { name: 'Make it a task' });
   await dialog.getByLabel('Due day').fill(dateOf(3));
   await dialog.getByRole('button', { name: 'Schedule it' }).click();

@@ -83,7 +83,7 @@ test('the same title on a different day is a real repeat, not a duplicate', asyn
   await page.goto('/dashboard');
   await ask(page, 'do calsol onboarding again the day after tomorrow');
   await settled(page);
-  await expect(page.getByRole('log')).toContainText('Review the proposed blocks');
+  await expect(page.getByRole('button', { name: 'Accept', exact: true }).first()).toBeVisible();
   await expect(page.getByText('Moves from')).toHaveCount(0);
   await expect(page.getByRole('log')).not.toContainText("Couldn't place");
 });
