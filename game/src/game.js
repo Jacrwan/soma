@@ -213,21 +213,15 @@ function refreshPad(sceneName, i) {
   const custom = state.padSpots?.[sceneName]?.[i];
   const spot = custom || W.padPosition(sceneName, i);
   const b = state.pads[sceneName][i];
-  const unlocked = i < S.padsUnlocked(state, sceneName) && Boolean(spot) && (Boolean(b) || !custom);
+  // No plots: an empty slot shows nothing; you build wherever you like in build mode.
+  const unlocked = i < S.padsUnlocked(state, sceneName) && Boolean(spot) && Boolean(b);
   pad.group.clear();
-  pad.building = pad.marker = pad.bubble = null;
+  pad.building = pad.marker = pad.bubble = pad.slab = null;
   pad.group.visible = unlocked;
   if (!unlocked) return;
   pad.group.position.set(spot.x, world.groundHeight(sceneName, spot.x, spot.z), spot.z);
-  pad.slab = A.makePad(b ? b.tier : S.tierFor(state, sceneName));
-  pad.group.add(pad.slab);
-  if (!b) {
-    pad.marker = A.makePadMarker();
-    pad.group.add(pad.marker);
-    return;
-  }
   pad.building = A.makeBuilding(b.type, b.tier, b.level, b.golden);
-  pad.building.position.y = 0.12;
+  pad.building.position.y = 0.02;
   // Face the plaza, or the way it was turned when placed.
   pad.building.rotation.y = custom ? custom.rot : Math.atan2(-pad.group.position.x, -pad.group.position.z);
   pad.group.add(pad.building);
@@ -596,6 +590,7 @@ const ui = createUI({
   help: () => ui.help({ first: false, onTutorial: replayTutorial }),
   sound: () => toggleMute(),
   map: () => openMap(),
+  build: () => toggleBuild(),
   settings: () => openSettings(),
   pass: () => openPass(),
   interact: () => interact(),
@@ -945,6 +940,7 @@ function moveToNewLand(done) {
     refreshAllPads();
     refreshWonders();
     syncDecor();
+    world.setFelled(state.felled || []);
     syncPaths();
     for (const r of raiders.splice(0)) r.object.parent?.remove(r.object);
     player.object.position.set(0, 0, 9);
@@ -1534,7 +1530,6 @@ function findTarget() {
     const b = state.pads[sceneName][i];
     const d = Math.hypot(p.x - pad.group.position.x, p.z - pad.group.position.z);
     if (b) offer(d, 5, { text: `${S.buildingName(b)}: upgrade`, run: () => openBuilding(i) });
-    else offer(d, 4, { text: 'Build here', run: () => openBuild(i) });
   }
   const wonder = S.nextWonder(state);
   if (wonder && wonder.scene === sceneName) {
@@ -1612,13 +1607,13 @@ const TUTORIAL = [
     target: () => nearestInvader(), done: () => { const t = nearestInvader(); return !t || Math.hypot(t.x - player.object.position.x, t.z - player.object.position.z) < 8; } },
   { title: 'Study to level up', text: 'Press T to open a study session. A real timer runs while you do the work, and it is the only way your hero levels up. Open it now; you can start one or close it.', keys: ['T'], glow: 'btnStudy',
     done: () => tut.flags.study },
-  { title: 'Build a home', text: 'Walk to an empty plot (the gold + circle) and press E to build a Home. Homes make coins.', keys: ['E'],
+  { title: 'Build a home', text: 'Press B (or the blue Build button), pick a home, and click anywhere on the ground to put it there. You can build anywhere you can walk.', keys: ['B', 'Click'], glow: 'btnBuild',
     enter: () => {
       tut.built = S.buildingCount(state).used;
       const cost = S.buildCost('home', S.tierFor(state));
       if (state.coins < cost) { S.addCoins(state, cost - state.coins); refreshHud(); }
     },
-    target: () => nearestEmptyPad(), done: () => S.buildingCount(state).used > tut.built },
+    done: () => S.buildingCount(state).used > tut.built },
   { title: 'Collect coins', text: 'Your town makes a small allowance, even while you are away. Walk past a building to collect. Studying pays far more.',
     enter: () => {
       tut.collected = state.stats.collected;
@@ -1740,6 +1735,19 @@ function openCacheAt(i) {
 }
 
 // --- Landmarks and the map ------------------------------------------------------------
+// The fight buttons (swing, dodge, slam) only show when there's something to fight.
+let combatClock = 0;
+function updateCombatHud(dt) {
+  combatClock -= dt;
+  if (combatClock > 0) return;
+  combatClock = 0.4;
+  const p = player.object.position;
+  let near = inRealm() || Boolean(fight) || raiders.length > 0;
+  if (!near) for (const inv of invaders.values()) if (Math.hypot(inv.object.position.x - p.x, inv.object.position.z - p.z) < 8) { near = true; break; }
+  document.body.classList.toggle('combat', near);
+  document.body.classList.toggle('in-realm', inRealm());
+}
+
 // Characters far from you skip the shadow pass (each one is many draw calls).
 let shadowClock = 0;
 function trimShadows(dt) {
@@ -2341,6 +2349,7 @@ function frame(nowMs) {
   updateTutorial(time);
   updateExploring(dt);
   trimShadows(dt);
+  updateCombatHud(dt);
   world.spinCountry(dt);
   for (const c of cacheObjects) if (!c.done) { c.object.userData.beam.material.opacity = 0.16 + Math.sin(time * 2) * 0.06; c.object.userData.chest.position.y = Math.sin(time * 1.5) * 0.06; }
   if (!inRealm()) { moveInvaders(dt, time); updateTown(dt, time); }
@@ -2542,14 +2551,16 @@ function onTownRoad(x, z) {
 }
 function buildBlocked(x, z, big = false) {
   const r = Math.hypot(x, z);
-  // Buildings stay in town; decorations go anywhere you can walk, but not in water.
-  if ((big ? r > W.BUILD_R - 3 : r > W.ISLAND_RADIUS - 3) || r < 3.2) return true;
-  if (!big && world.groundHeight('earth', x, z) < -0.2) return true;
+  // Build anywhere you can walk: not in water, and buildings need fairly flat ground.
+  if (r > W.ISLAND_RADIUS - (big ? 5 : 3) || r < 3.2) return true;
+  const h = world.groundHeight('earth', x, z);
+  if (h < -0.2) return true;
+  if (big) for (const [dx, dz] of [[2.5, 0], [-2.5, 0], [0, 2.5], [0, -2.5]]) if (Math.abs(world.groundHeight('earth', x + dx, z + dz) - h) > 1.1) return true;
   if (big) for (const d of state.decor) if (Math.hypot(x - d.x, z - d.z) < 3) return true;
   const near = (p, r) => Math.hypot(x - p.x, z - p.z) < r + (big ? 1.4 : 0);
   for (let i = 0; i < S.EARTH_PADS; i++) {
     const spot = state.padSpots.earth[i] || (i < S.FIXED_EARTH_PADS ? W.padPosition('earth', i) : null);
-    if (spot && near(spot, state.pads.earth[i] ? 4.4 : 3.3)) return true;
+    if (spot && state.pads.earth[i] && near(spot, 4.4)) return true;
   }
   for (let i = 0; i < 7; i++) if (W.wonderPosition(i) && near(W.wonderPosition(i), 5)) return true;
   if (near(MARKET_POS, 3.6) || near(BOARD_POS, 2.4) || near(W.GATE, 4) || near(W.DOCK_POS, 4)) return true;
@@ -2564,10 +2575,16 @@ const isPath = (type) => type.startsWith('path:');
 const pathMaterial = (type) => Number(type.slice(5));
 const buildingType = (type) => type.slice(2);
 function pieceCost(type) {
-  if (isPath(type)) return 0;
+  if (isPath(type) || type.startsWith('tool:')) return 0;
   return isBuilding(type) ? S.buildCost(buildingType(type), S.tierFor(state, 'earth')) : S.decorCost(state, type);
 }
 function makeGhost(type) {
+  if (type === 'tool:remove') {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(1.3, 1.6, 32), new THREE.MeshBasicMaterial({ color: 0xff5a4a, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide }));
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.15;
+    return A.group(ring);
+  }
   if (isPath(type)) {
     // The brush: a square outline the size of what one dab paints.
     const ring = new THREE.Mesh(new THREE.RingGeometry(1.45, 1.75, 4, 1), new THREE.MeshBasicMaterial({ color: 0xffd04a, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }));
@@ -2598,7 +2615,7 @@ function setGhost(type) {
 const BUILD_TABS = [{ id: 'buildings', name: 'Buildings' }, ...S.DECOR_SETS, { id: 'paths', name: 'Paths' }];
 function drawBuildBar() {
   if (!build.bar) return;
-  if (!build.tab) build.tab = isBuilding(build.type) ? 'buildings' : isPath(build.type) ? 'paths' : S.DECOR[build.type]?.set || 'nature';
+  if (!build.tab) build.tab = isBuilding(build.type) || build.type.startsWith('tool:') ? 'buildings' : isPath(build.type) ? 'paths' : S.DECOR[build.type]?.set || 'nature';
   const count = S.buildingCount(state);
   const hours = S.studyHours(state);
   const rating = S.townRating(state);
@@ -2613,9 +2630,10 @@ function drawBuildBar() {
   }
   const head = document.createElement('div');
   head.className = 'build-head';
-  head.innerHTML = `<button class="build-rating" title="What makes a lovely town">${'<i class="on">★</i>'.repeat(rating.stars)}${'<i>★</i>'.repeat(5 - rating.stars)}<small>${rating.next ? `${rating.points}/${rating.next}` : 'top rating'}</small></button><span>${hours.toFixed(1)} h studied</span><button class="build-photo" title="Photo mode (Z)">Photo</button>`;
+  head.innerHTML = `<button class="build-rating" title="What makes a lovely town">${'<i class="on">★</i>'.repeat(rating.stars)}${'<i>★</i>'.repeat(5 - rating.stars)}<small>${rating.next ? `${rating.points}/${rating.next}` : 'top rating'}</small></button><span>${hours.toFixed(1)} h studied</span><button class="build-remove ${build.type === 'tool:remove' ? 'on' : ''}" title="Remove a decoration or cut down a tree (X)">Remove / cut trees</button><button class="build-photo" title="Photo mode (Z)">Photo</button>`;
   head.querySelector('.build-rating').onclick = (e) => { e.stopPropagation(); openRating(); };
   head.querySelector('.build-photo').onclick = (e) => { e.stopPropagation(); togglePhoto(true); };
+  head.querySelector('.build-remove').onclick = (e) => { e.stopPropagation(); setGhost(build.type === 'tool:remove' ? 'b:home' : 'tool:remove'); };
   const items = document.createElement('div');
   items.className = 'build-items';
   const card = (type, name, priceText, locked, lockText) => {
@@ -2643,7 +2661,7 @@ function drawBuildBar() {
       items.append(card(k, S.DECOR[k].name, coin(pieceCost(k)), !lock.ok, `🔒 ${why}`));
     }
   }
-  const help = Object.assign(document.createElement('p'), { className: 'build-help', textContent: isPath(build.type) ? 'Hold the left mouse button and drag to paint · B or Esc when done' : `Click to place · R rotate · X remove (half back) · B or Esc when done · buildings ${count.used}/${count.room} · decorations ${state.decor.length}/${S.DECOR_MAX}` });
+  const help = Object.assign(document.createElement('p'), { className: 'build-help', textContent: build.type === 'tool:remove' ? 'Click a decoration to take it back (half the coins back), or a tree to cut it down · B or Esc when done' : isPath(build.type) ? 'Hold the left mouse button and drag to paint · B or Esc when done' : `Click to place · R rotate · X remove (half back) · B or Esc when done · buildings ${count.used}/${count.room} · decorations ${state.decor.length}/${S.DECOR_MAX}` });
   build.bar.replaceChildren(head, tabs, items, help);
 }
 
@@ -2789,6 +2807,7 @@ function updateBuild() {
   at.x = Math.round(at.x * 2) / 2;
   at.z = Math.round(at.z * 2) / 2;
   build.at = at;
+  if (build.type === 'tool:remove') { build.ok = true; onGround(build.ghost, at.x, at.z); return; }
   if (isPath(build.type)) {
     build.ok = Math.hypot(at.x, at.z) < W.ISLAND_RADIUS - 2 && world.groundHeight('earth', at.x, at.z) > -0.2;
     onGround(build.ghost, Math.round(at.x), Math.round(at.z));
@@ -2808,6 +2827,7 @@ function updateBuild() {
 }
 function placeBuild() {
   if (!build.on || !build.at) return;
+  if (build.type === 'tool:remove') return void removeBuild();
   if (isPath(build.type)) { build.painting = true; return; }
   if (!build.ok) {
     audio.deny();
@@ -2842,7 +2862,18 @@ function removeBuild() {
     const dd = Math.hypot(d.x - build.at.x, d.z - build.at.z);
     if (dd < dist) { dist = dd; best = d; }
   }
-  if (!best) return;
+  if (!best) {
+    // No decoration there: cut down a tree instead.
+    const tree = world.nearestTree(build.at.x, build.at.z);
+    if (!tree || !S.fellTree(state, tree.key)) return void audio.deny();
+    world.setFelled(state.felled);
+    audio.hit();
+    const y = world.groundHeight('earth', tree.x, tree.z);
+    fx.burst(new THREE.Vector3(tree.x, y + 2.5, tree.z), 0x5fa052, 26, 6, 6);
+    fx.burst(new THREE.Vector3(tree.x, y + 0.5, tree.z), 0x7a5536, 10, 4, 4);
+    save();
+    return;
+  }
   const back = S.removeDecor(state, best.id);
   syncDecor();
   audio.pop();
@@ -3424,10 +3455,16 @@ const thumbCam = new THREE.PerspectiveCamera(30, 1, 0.1, 200);
 thumbScene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
 thumbScene.environmentIntensity = 0.8;
 const thumbTarget = new THREE.WebGLRenderTarget(256, 256, { samples: 4 });
-function renderThumb(object, angle = 0.6) {
+function renderThumb(object, angle = 0.6, core = 0) {
   thumbScene.add(object);
   object.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(object);
+  let box = new THREE.Box3().setFromObject(object);
+  // core: frame only the parts within this many metres of the middle (a building, not its yard).
+  if (core) {
+    const tight = new THREE.Box3(), part = new THREE.Box3(), c = new THREE.Vector3();
+    object.traverse((o) => { if (!o.isMesh) return; part.setFromObject(o); part.getCenter(c); if (Math.hypot(c.x, c.z) < core && part.max.y - part.min.y > 0.3 && part.max.x - part.min.x < core * 2.2) tight.union(part); });
+    if (!tight.isEmpty()) box = tight;
+  }
   const sphere = box.getBoundingSphere(new THREE.Sphere());
   const d = sphere.radius / Math.sin((thumbCam.fov * Math.PI) / 360) * 1.05;
   thumbCam.position.set(sphere.center.x + Math.sin(angle) * d, sphere.center.y + d * 0.35, sphere.center.z + Math.cos(angle) * d);
@@ -3497,7 +3534,7 @@ function thumbFor(reward) {
     }
     else if (reward.kind === 'look') object = reward.id.startsWith('color:') ? A.makePaintPot(A.SKIN_COLORS[reward.id] || 0xd9785a) : (() => { const h = A.makeHat(reward.id); h.scale.setScalar(1.5); return h; })();
     else if (reward.kind === 'tea') object = A.makeTeaCup();
-    job = Promise.resolve(renderThumb(object, reward.kind === 'decor' || reward.kind === 'collectible' || reward.kind === 'building' ? 0.7 : 0.4));
+    job = Promise.resolve(renderThumb(object, reward.kind === 'decor' || reward.kind === 'collectible' || reward.kind === 'building' ? 0.7 : 0.4, reward.kind === 'building' ? 2.6 : 0));
   }
   thumbCache.set(key, job);
   return job;
@@ -3966,6 +4003,7 @@ syncChests();
 syncInvaders(Date.now());
 syncHalls();
 syncDecor();
+world.setFelled(state.felled || []);
 syncPaths();
 state.stats.stars = S.townRating(state).stars;
 syncReview();
@@ -4057,7 +4095,7 @@ window.epoch = {
   invaders: () => [...invaders.values()].map((i) => ({ name: i.item.name, mode: i.mode, x: +i.object.position.x.toFixed(1), z: +i.object.position.z.toFixed(1), inScene: Boolean(i.object.parent) })),
   armor(id) { const inv = invaders.get(id); return inv && inv.object.userData.armor?.filter((p) => p.visible).length; },
   info: () => ({ quality, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, cpuMs: Math.round((pace.cpu || 0) * 10) / 10 }),
-  debug: { scene, renderer, bloom, world, composer },
+  debug: { scene, renderer, bloom, world, composer, camera },
   reset() { localStorage.removeItem(SAVE_KEY); location.reload(); },
 };
 

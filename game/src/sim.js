@@ -92,6 +92,7 @@ export function newState(now = Date.now()) {
     decorNext: 1,
     decorUnlocked: [],
     paths: {}, // 'x,z' -> path material index
+    felled: [], // trees cut down in this land, by position key
     villagers: { list: [], away: {}, lastArrival: 0, day: null },
     daily: { day: null, quests: [], streak: 0, best: 0, lastFull: null, bonus: false, reported: null },
     critters: { lures: 3, caught: {}, pet: null },
@@ -392,6 +393,7 @@ export function newLand(state) {
   for (const d of state.decor) decorBack += Math.floor((d.paid || 0) / 2);
   state.decor = [];
   state.paths = {}; // a new land starts unpaved
+  state.felled = []; // and with its own trees
   const tier = tierFor(state, 'earth');
   const purse = buildCost('home', tier) * 2 + buildCost('work', tier);
   addCoins(state, purse + decorBack);
@@ -1551,6 +1553,15 @@ export function townRating(state) {
   // What would help most: the parts furthest from full.
   const tips = parts.filter((p) => p.points < p.max).sort((a, b) => a.points / a.max - b.points / b.max).slice(0, 3).map((p) => p.label);
   return { points, stars, next, parts, tips };
+}
+
+/** Cuts down a tree (by the world's position key). Returns true if it was standing. */
+export const FELL_MAX = 3000;
+export function fellTree(state, key) {
+  const list = state.felled || (state.felled = []);
+  if (list.includes(key) || list.length >= FELL_MAX) return false;
+  list.push(key);
+  return true;
 }
 
 /** Takes a decoration back for half what it cost. */

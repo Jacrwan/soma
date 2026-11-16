@@ -50,6 +50,12 @@ export function createUI(on) {
 
   $('btnSchool').addEventListener('click', () => on.school());
   $('btnStudy').addEventListener('click', () => on.study(null));
+  $('btnBuild')?.addEventListener('click', () => on.build?.());
+  // The menu folds the less-used buttons away: Menu opens them, picking one closes it.
+  const more = $('menuMore');
+  $('btnMore')?.addEventListener('click', (e) => { e.stopPropagation(); more.hidden = !more.hidden; });
+  more?.addEventListener('click', () => { more.hidden = true; });
+  document.addEventListener('pointerdown', (e) => { if (more && !more.hidden && !e.target.closest('.menu')) more.hidden = true; });
   $('focusEnd').addEventListener('click', () => on.endStudy());
   $('btnHero').addEventListener('click', () => on.hero());
   $('heroPlate').addEventListener('click', () => on.hero());
@@ -119,6 +125,7 @@ export function createUI(on) {
       $('xpText').textContent = capped ? 'Max level' : `${xp} / ${need} XP`;
       $('heroPlate').classList.toggle('points', points > 0);
       badge('heroDot', points);
+      badge('moreDot', points);
       $('hpBar').style.width = `${Math.max(0, Math.min(100, (hp / max) * 100))}%`;
       $('hpText').textContent = `${Math.max(0, Math.ceil(hp))} / ${max}`;
       $('vitals').classList.toggle('low', hp / max < 0.35);
@@ -170,10 +177,10 @@ export function createUI(on) {
       const from = { none: 'not connected', demo: 'sample semester', soma: 'your classes', manual: 'your list' }[source];
       $('threats').replaceChildren(
         el('button', { class: 'threats-head', onclick: () => on.school() }, el('b', { text: 'Canvas' }), el('span', { text: list.length ? `${list.length} due · ${from}` : from })),
-        ...list.slice(0, 4).map((t) =>
+        ...list.slice(0, 3).map((t) =>
           el('button', { class: `threat ${t.kind === 'boss' ? 'boss' : ''} ${t.overdue ? 'overdue' : t.soon ? 'soon' : ''} ${t.level || ''} ${t.studying ? 'studying' : ''}`, title: 'Study for this', onclick: () => on.study(t.id) },
             el('i'), el('span', {}, t.name, el('small', { text: `${t.studying ? 'Studying now' : t.kind === 'boss' ? 'Exam' : 'Assignment'} · ${t.course}${t.kind === 'boss' ? ` · ${Math.round((1 - t.studied) * 100)}% armor` : t.studied > 0 ? ` · ${Math.round(t.studied * 100)}% studied` : ''}` })), el('time', { text: t.time }))),
-        ...(list.length > 4 ? [el('div', { class: 'threat more', text: `+${list.length - 4} more marching in` })] : []),
+        ...(list.length > 3 ? [el('div', { class: 'threat more', text: `+${list.length - 3} more · open Canvas (G)` })] : []),
       );
     },
 

@@ -421,6 +421,7 @@ export function createWorld(scene, renderer) {
   let grass = null;
   let wildGrass = null; // grass out in the country
   let countryTrees = null; // the forest past the walls
+  let countrySlopes = null, countryList = [];
   let caches = []; // [{ x, y, z }] hidden caches in this land
   let treeSolids = []; // trees and landmarks you can bump into, out in the country
   let country = { landmarks: [], roads: [], fields: [], spin: [], mask: () => 0 };
@@ -560,7 +561,9 @@ export function createWorld(scene, renderer) {
         list.push({ x, y: y - 0.3, z, kind: pick(land.slope.kinds, r()), scale, turn: r() * 6.28 });
         if (d < ISLAND_RADIUS + 3) treeSolids.push({ x, z, r: 0.35 + scale * 0.22 });
       }
-      slopes.place(list);
+      countrySlopes = slopes;
+      countryList = list;
+      slopes.place(list.filter((t) => !felled.has(treeKey(t))));
       landParts.add(slopes.object);
       countryTrees = slopes.object;
       applyTreeShadows();
@@ -627,7 +630,7 @@ export function createWorld(scene, renderer) {
     const r = Math.hypot(x, z);
     if (r > TOWN_R - 4 || onRoad(x, z, 0.25)) return false;
     if (Math.abs(x) < 9 && z > GATE.z + 1.5) return false;
-    for (const p of EARTH_PAD_POS) if (Math.hypot(x - p.x, z - p.z) < 3.3) return false;
+
     for (const p of WONDER_POS.slice(0, 6)) if (Math.hypot(x - p.x, z - p.z) < 5.2) return false;
     return true;
   }
@@ -675,7 +678,7 @@ export function createWorld(scene, renderer) {
     }
     // Worn earth where things stand and where the fight happens.
     const worn = stamp(P.worn);
-    for (const p of EARTH_PAD_POS) dab(worn, p.x, p.z, 4.6, 0.75);
+
     for (const p of WONDER_POS.slice(0, 6)) dab(worn, p.x, p.z, 6.6, 0.6);
     dab(worn, ARENA.x, ARENA.z, 10.5, 0.75);
     // Shade under the trees.
@@ -778,8 +781,31 @@ export function createWorld(scene, renderer) {
   // Trees step aside for buildings placed by hand.
   let townTrees = [];
   let clearings = [];
+  // Trees the player has cut down, by rounded position ('x,z' to one decimal).
+  let felled = new Set();
+  const treeKey = (t) => `${t.x.toFixed(1)},${t.z.toFixed(1)}`;
   function placeTownTrees() {
-    forest.place(townTrees.filter((t) => clearings.every((c) => Math.hypot(t.x - c.x, t.z - c.z) > 4.2)));
+    forest.place(townTrees.filter((t) => !felled.has(treeKey(t)) && clearings.every((c) => Math.hypot(t.x - c.x, t.z - c.z) > 4.2)));
+  }
+  function placeCountryTrees() {
+    if (!countryTrees) return;
+    countrySlopes.place(countryList.filter((t) => !felled.has(treeKey(t))));
+    applyTreeShadows();
+  }
+  /** Which trees are cut down (a Set of keys from nearestTree). */
+  function setFelled(keys) {
+    felled = new Set(keys);
+    placeTownTrees();
+    placeCountryTrees();
+  }
+  /** The closest standing tree within reach of x, z: { key, x, z } or null. */
+  function nearestTree(x, z, reach = 2.2) {
+    let best = null, bestD = reach;
+    for (const t of [...townTrees, ...countryList]) {
+      const d = Math.hypot(t.x - x, t.z - z);
+      if (d < bestD && !felled.has(treeKey(t)) && clearings.every((c) => Math.hypot(t.x - c.x, t.z - c.z) > 4.2)) { bestD = d; best = { key: treeKey(t), x: t.x, z: t.z }; }
+    }
+    return best;
   }
   function setClearings(list) {
     const key = JSON.stringify(list.map((c) => [c.x, c.z]));
@@ -1137,7 +1163,7 @@ export function createWorld(scene, renderer) {
   function spinCountry(dt) {
     for (const o of country.spin) o.rotation[o.userData.spin || o.userData.axis || 'z'] += dt * (o.userData.speed ?? 0.9);
   }
-  return { earth, moon, landName, trimGrass, caches: () => caches, treeSolids: () => treeSolids, landmarks: () => country.landmarks, roads: () => country.roads, fields: () => country.fields, mapColor, spinCountry, landIndex: () => landIndex, setEra, setClearings, setScene, showRealm, update, setQuality, setDaylight, get daylight() { return daylight; }, groundHeight: (name, x, z) => (name === 'moon' ? moonHeight(x, z, Math.hypot(x, z)) : hillHeight(x, z)) };
+  return { earth, moon, landName, trimGrass, setFelled, nearestTree, caches: () => caches, treeSolids: () => (felled.size ? treeSolids.filter((t) => !felled.has(`${t.x.toFixed(1)},${t.z.toFixed(1)}`)) : treeSolids), landmarks: () => country.landmarks, roads: () => country.roads, fields: () => country.fields, mapColor, spinCountry, landIndex: () => landIndex, setEra, setClearings, setScene, showRealm, update, setQuality, setDaylight, get daylight() { return daylight; }, groundHeight: (name, x, z) => (name === 'moon' ? moonHeight(x, z, Math.hypot(x, z)) : hillHeight(x, z)) };
 }
 
 export { EARTH_PADS };
