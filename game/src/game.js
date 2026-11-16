@@ -1440,6 +1440,31 @@ function updateRaiders(dt) {
 
 // --- Attacking ----------------------------------------------------------------------------
 // Three swings in a row make a combo: the third hits twice as hard, in a full circle.
+// Trees can be chopped down: a few swings and it falls (the same as cutting it in build mode).
+const TREE_HITS = 3;
+const chops = new Map(); // tree key -> hits so far
+function chopTree(p, fwd, finisher) {
+  if (inRealm() || state.scene !== 'earth') return false;
+  const tree = world.nearestTree(p.x + fwd.x * 1.4, p.z + fwd.z * 1.4, 1.9);
+  if (!tree) return false;
+  const y = world.groundHeight('earth', tree.x, tree.z);
+  const hits = (chops.get(tree.key) || 0) + (finisher ? 2 : 1);
+  audio.hit();
+  shake = Math.max(shake, 0.12);
+  fx.burst(new THREE.Vector3(tree.x, y + 1, tree.z), 0x7a5536, 8, 4, 4);
+  fx.burst(new THREE.Vector3(tree.x, y + 3, tree.z), 0x5fa052, 10, 3, 2);
+  if (hits < TREE_HITS) { chops.set(tree.key, hits); return true; }
+  chops.delete(tree.key);
+  if (!S.fellTree(state, tree.key)) return true;
+  world.setFelled(state.felled);
+  audio.build();
+  fx.burst(new THREE.Vector3(tree.x, y + 2.5, tree.z), 0x5fa052, 30, 7, 7);
+  fx.burst(new THREE.Vector3(tree.x, y + 0.6, tree.z), 0x7a5536, 14, 5, 5);
+  fx.float(new THREE.Vector3(tree.x, y + 3, tree.z), 'Timber!', 'hit');
+  save();
+  return true;
+}
+
 function attack() {
   if (player.cooldown > 0 || ui.isOpen() || player.down) return;
   const time = performance.now() / 1000;
@@ -1461,6 +1486,7 @@ function attack() {
   const mult = finisher ? hero.finisher : 1;
   let landed = hitTownEnemies(inArc, mult);
   if (shoveInvaders(inArc)) landed = true;
+  if (!landed && chopTree(p, fwd, finisher)) landed = true;
   if (realms.strike({ from: p, facing: player.facing, reach: 3.3 * reachMult, wide: finisher, damage: S.playerPower(state) * mult, knock: finisher ? 13 : 5, crit: hero.crit }) > 0) landed = true;
   // A small step into the swing, so hits feel like they carry weight.
   if (!fight) {
