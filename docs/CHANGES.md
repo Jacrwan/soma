@@ -9,6 +9,33 @@ still needed.
 
 ---
 
+## 2026-11-15 (walkthrough, landing page and legal pages catch up with task scheduling)
+
+- **Why:** the owner asked for the tour, the landing page and the legal notes
+  to reflect the task scheduler and task details.
+- **What:**
+  - Walkthrough: a new Tasks stop after Deadlines (`data-tour="tasks"` on the
+    Tasks add row, fallback the sidebar item); Today's plan mentions due
+    cards opening task details; Brain dump mentions "Make it a task"; Due
+    soon's Plan it says what it does now; Settings mentions Scheduling; the
+    last stop mentions Tasks.
+  - Landing: "Nothing moves until you accept it" was no longer true and now
+    says AI suggestions wait, scheduled sittings move only when they must;
+    step 2 is "Your work schedules itself"; the sittings feature drops Plan
+    it and the "1 of 3" names for named steps; FAQ: free list includes
+    self-scheduling tasks, "How does the plan adapt?" corrected, new "Do I
+    need the AI to get a schedule?".
+  - Legal (in-app LegalPage.tsx and the static public/privacy.html,
+    public/terms.html, which tests/legal-pages.spec.ts keeps identical):
+    Privacy lists task details and the brain dump list among stored data;
+    Terms' free tier includes tasks and automatic scheduling (no AI), and the
+    warranty disclaimer covers automatically scheduled study times; Billing's
+    free-tier line likewise; the AI page says scheduling uses no AI and sends
+    nothing to Anthropic; Data deletion lists task details and the brain dump
+    list. Dates: November 15, 2026 on privacy, terms, ai, data-deletion.
+    No new third party, no new kind of data sent anywhere.
+- **Tests:** tests/walkthrough.spec.ts (Tasks stop), tests/legal-pages.spec.ts.
+
 ## 2026-11-15 (a set number of sittings is a hard limit)
 
 - **Why:** the owner set HW9.5 to 4h in 2 sittings and the card said "0 of 3

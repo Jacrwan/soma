@@ -15,7 +15,7 @@ export type LegalType =
 
 // Per page, so an edit to one policy doesn't restamp the others. The static
 // /privacy.html and /terms.html carry the same dates.
-const UPDATED: Partial<Record<LegalType, string>> = { privacy: 'October 28, 2026', 'data-deletion': 'October 28, 2026', ai: 'September 27, 2026' };
+const UPDATED: Partial<Record<LegalType, string>> = { privacy: 'November 15, 2026', 'data-deletion': 'November 15, 2026', ai: 'November 15, 2026', terms: 'November 15, 2026' };
 const UPDATED_DEFAULT = 'September 24, 2026';
 
 function Privacy() {
@@ -53,7 +53,7 @@ function Privacy() {
           </li>
           <li>
             <strong>App data stored on our servers</strong> — your courses, reading lists and
-            progress, grades you enter and how each course is graded, tasks, planned study sessions, timed study sessions, app settings, saved AI chats, and AI memory. These are
+            progress, grades you enter and how each course is graded, tasks and the details you set on them (your own deadlines, steps, and scheduling choices), your brain dump list, planned study sessions, timed study sessions, app settings, saved AI chats, and AI memory. These are
             linked to your account and stored in Supabase.
           </li>
           <li>
@@ -461,7 +461,8 @@ function Terms() {
         <h2>3. Free tier and Soma Premium</h2>
         <p>
           Soma has a free tier that includes the dashboard, Canvas sync, the calendar, documents,
-          insights, and the focus timer. AI features require <strong>Soma Premium</strong>,
+          insights, tasks and automatic scheduling (which follows your settings and uses no AI),
+          and the focus timer. AI features require <strong>Soma Premium</strong>,
           available at <strong>{MONTHLY_PRICE} USD per month</strong> or{' '}
           <strong>{SEMESTER_PRICE} USD every 4 months</strong> ({SEMESTER_PER_MONTH}/mo).
           Soma Premium begins with a <strong>{TRIAL_DAYS}-day free trial</strong>. Starting the trial
@@ -557,8 +558,8 @@ function Terms() {
           Soma is provided "as is" and "as available" without warranties of any kind, either
           express or implied, including but not limited to warranties of merchantability, fitness
           for a particular purpose, or non-infringement. Soma does not warrant that the service
-          will be uninterrupted, error-free, or that AI-generated content will be accurate,
-          complete, or current. You are solely responsible for verifying academic deadlines,
+          will be uninterrupted, error-free, or that AI-generated content or automatically
+          scheduled study times will be accurate, complete, or current. You are solely responsible for verifying academic deadlines,
           grades, and requirements in your school's official systems.
         </div>
       </div>
@@ -640,7 +641,8 @@ function Billing() {
         <h2>Free tier and Soma Premium</h2>
         <p>
           Soma has a <strong>free tier</strong> that includes the dashboard, Canvas sync, the
-          calendar, documents, insights, manual tasks and scheduling, and the focus timer.{' '}
+          calendar, documents, insights, tasks and automatic scheduling (which follows your
+          settings and uses no AI), and the focus timer.{' '}
           <strong>AI features</strong> (Ask Soma, AI planning, AI task generation, and importing
           deadlines from a course site) require <strong>Soma Premium</strong>.
         </p>
@@ -875,7 +877,7 @@ function DataDeletion() {
         </p>
         <ul>
           <li>Your Soma account (email, authentication credentials) and profile details</li>
-          <li>Your courses, reading lists and progress, grades you entered, tasks, planned sessions, and study time records</li>
+          <li>Your courses, reading lists and progress, grades you entered, tasks and their details, your brain dump list, planned sessions, and study time records</li>
           <li>Saved AI chats, AI memory, and AI usage records</li>
           <li>Documents you uploaded, including the files themselves</li>
           <li>Google Calendar connections and their stored tokens</li>
@@ -985,7 +987,10 @@ function AiDisclaimer() {
         <h2>Opting out</h2>
         <p>
           AI features are optional. If you prefer not to send data to Anthropic, don't use Ask Soma,
-          the AI tab, or course-site import. Every other Soma feature works without them. You can
+          the AI tab, or course-site import. Every other Soma feature works without them.
+          Automatic task scheduling (the Tasks page, and study sittings Soma places and moves for
+          work that is due) follows fixed rules and your Scheduling settings. It uses no AI and
+          sends nothing to Anthropic. You can
           review or delete what Soma remembers about you in Settings.
         </p>
       </div>

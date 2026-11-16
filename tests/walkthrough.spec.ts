@@ -56,11 +56,11 @@ test('the tour walks through every page and spotlights each one', async ({ page 
 
   const seen = await walk(page);
   const pages = [...new Set(seen.map(s => s.path))];
-  expect(pages).toEqual(['/dashboard', '/deadlines', '/grades', '/documents', '/calendar', '/ai', '/insights', '/settings']);
+  expect(pages).toEqual(['/dashboard', '/deadlines', '/tasks', '/grades', '/documents', '/calendar', '/ai', '/insights', '/settings']);
 
   // Each page's stop is lit, on that page's own part or its sidebar item.
   const byTitle = Object.fromEntries(seen.map(s => [s.title, s]));
-  for (const title of ['Today’s plan', 'Ask Soma', 'Brain dump', 'Due soon', 'Make it yours', 'Everything that’s due', 'Grades', 'Documents', 'Calendar', 'The full Soma chat', 'Insights', 'Settings']) {
+  for (const title of ['Today’s plan', 'Ask Soma', 'Brain dump', 'Due soon', 'Make it yours', 'Everything that’s due', 'Tasks schedule themselves', 'Grades', 'Documents', 'Calendar', 'The full Soma chat', 'Insights', 'Settings']) {
     expect(byTitle[title], title).toBeTruthy();
     expect(byTitle[title].lit, `${title} is spotlit`).toBe(true);
   }
@@ -94,8 +94,8 @@ test('Back returns to the previous page, and Skip tour ends it on the dashboard'
   }
   await expect(page).toHaveURL(/\/deadlines$/);
   await page.keyboard.press('ArrowRight');
-  await expect(card(page)).toContainText('Grades');
-  await expect(page).toHaveURL(/\/grades$/);
+  await expect(card(page)).toContainText('Tasks schedule themselves');
+  await expect(page).toHaveURL(/\/tasks$/);
 
   await card(page).getByRole('button', { name: 'Back' }).click();
   await expect(card(page)).toContainText('Everything that’s due');

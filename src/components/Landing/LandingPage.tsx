@@ -1491,7 +1491,8 @@ export default function LandingPage() {
             <p className="ln-lead">
               Soma doesn't hand you a schedule and walk away. It plans around your real week,
               learns how long things take you, and reworks the day when something changes.
-              Nothing moves until you accept it.
+              What Soma's AI suggests waits for your OK; a scheduled sitting moves by itself
+              only when it has to, and tells you when it did.
             </p>
           </div>
 
@@ -1560,13 +1561,14 @@ export default function LandingPage() {
               <div className="ln-step-body">
                 <div className="ln-step-hd">
                   <span className="ln-step-n">2</span>
-                  <h3 className="ln-step-t">Ask Soma to plan</h3>
+                  <h3 className="ln-step-t">Your work schedules itself</h3>
                 </div>
                 <p className="ln-step-b">
-                  One message builds the whole day around your classes and deadlines. A big
-                  assignment gets split into sittings that finish before it's due.
+                  Anything with a due date is split into sittings and placed in your open time,
+                  finished a day early, with no AI needed. Or ask Soma, and one message builds
+                  the whole day around your classes and deadlines.
                 </p>
-                <p className="ln-step-note">Every change arrives as a proposal you accept or dismiss.</p>
+                <p className="ln-step-note">What the AI suggests arrives as a proposal you accept or dismiss.</p>
               </div>
             </div>
 
@@ -1650,9 +1652,10 @@ export default function LandingPage() {
             <div className="ln-feat-text">
               <h3 className="ln-feat-t">Big assignments, broken into sittings</h3>
               <p className="ln-feat-b">
-                Press Plan it on anything due. Soma guesses how long it'll take from your past work
-                in that class, splits it into sittings, and finds open time for each one before the
-                due date.
+                Soma guesses how long an assignment takes from your past work in that class, splits
+                it into sittings, and places each one in open time before the due date. Miss one and
+                it moves. Open the assignment to set your own deadline, how many sittings, or name
+                each step. It runs on your settings, not on AI, so it's free.
               </p>
             </div>
             <div className="ln-feat-vis">
@@ -1662,9 +1665,9 @@ export default function LandingPage() {
               </div>
               <div className="ln-assigns">
                 {[
-                  { n: 'Essay 2 · 1 of 3', s: 'Tue, 4:00 PM · 50 min', done: true },
-                  { n: 'Essay 2 · 2 of 3', s: 'Wed, 7:00 PM · 50 min', done: false },
-                  { n: 'Essay 2 · 3 of 3', s: 'Thu, 3:00 PM · 50 min', done: false },
+                  { n: 'Outline', s: 'Tue, 4:00 PM · 50 min', done: true },
+                  { n: 'Body paragraphs', s: 'Wed, 7:00 PM · 50 min', done: false },
+                  { n: 'Revise and cite', s: 'Thu, 3:00 PM · 50 min', done: false },
                 ].map((r, i) => (
                   <div className="ln-assign" data-d={i * 130} key={r.n}>
                     <i className={`ln-done${r.done ? ' on' : ''}`}>✓</i>
@@ -1798,10 +1801,11 @@ export default function LandingPage() {
           <h2 className="ln-h2">Questions students ask</h2>
           <div className="ln-faq-grid">
             {[
-              ['Is Soma free?', `The core features (your dashboard, Canvas sync, calendar, the focus timer, documents, and insights) are free forever. The AI features have a ${TRIAL_DAYS}-day free trial, then ${MONTHLY_PRICE} a month or ${SEMESTER_PRICE} every 4 months. Signing up takes no card; starting the trial does.`],
+              ['Is Soma free?', `The core features (your dashboard, Canvas sync, tasks that schedule themselves, calendar, the focus timer, documents, and insights) are free forever. The AI features have a ${TRIAL_DAYS}-day free trial, then ${MONTHLY_PRICE} a month or ${SEMESTER_PRICE} every 4 months. Signing up takes no card; starting the trial does.`],
               ["Does it work with my school's Canvas?", 'Yes. Soma works with any school that uses Canvas LMS. Add the Soma for Canvas extension and your assignments sync automatically.'],
               ['What about Gradescope, or a class that is not on Canvas?', "Paste the course site's schedule page and Soma reads the dated homework, labs, projects and exams off it, then asks which ones to add. For Gradescope or any other gradebook, paste the scores table or import a spreadsheet, and the scores count toward that course's grade."],
-              ['How does the plan adapt?', "It plans around your classes and anything on Google Calendar, keeps the times you choose, and estimates how long work takes from the sessions you have logged. When Canvas moves a due date, adds work or posts a grade, Soma notices, and one message reworks the day. Every change is a suggestion you accept."],
+              ['How does the plan adapt?', "It plans around your classes and anything on Google Calendar, keeps the times you choose, and estimates how long work takes from the sessions you have logged. When Canvas moves a due date, adds work or posts a grade, Soma notices, and one message reworks the day. What the AI suggests waits for you to accept it. Sittings Soma scheduled move by themselves only when they must (you missed one, or an event landed on it), and it tells you what moved."],
+              ['Do I need the AI to get a schedule?', "No. Add a task with a due date, or let Canvas bring them in, and Soma places its sittings in your open study time, finishing a day early. It follows your Scheduling settings, not AI, so it is part of the free tier. You can set your own deadline, the number of sittings, or name the steps."],
               ['Can I use it in high school?', 'Yes. Soma is built for both high school and college, including AP classes, honors courses, and anything else running on Canvas.'],
               ['Will Soma do my homework?', "No. Soma organizes: what to work on, when, for how long, and what is done. It doesn't write answers, notes, summaries or practice questions."],
               ['What does the AI actually do?', "It reads your deadlines, your free hours and what is already on your plan, then builds or rearranges your day. It can add, move, rename and remove blocks, and it remembers lasting facts about how you work. Every change is a proposal you accept or dismiss before anything is saved."],

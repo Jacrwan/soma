@@ -150,7 +150,7 @@ export default function TasksTab({ userId }: { userId: string }) {
         </div>
       </header>
 
-      <form className={styles.add} onSubmit={e => { e.preventDefault(); void add(); }}>
+      <form className={styles.add} data-tour="tasks" onSubmit={e => { e.preventDefault(); void add(); }}>
         <input ref={titleRef} className={styles.addTitle} aria-label="New task" placeholder="Add a task, e.g. History essay draft" value={title} onChange={e => setTitle(e.target.value)} />
         <select aria-label="Course" value={course} onChange={e => setCourse(e.target.value)}>
           <option value="">Personal</option>
