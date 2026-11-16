@@ -482,6 +482,38 @@ export function createUI(on) {
       );
     },
 
+    /** The morning report: what happened, what's coming, and today's three quests. */
+    morning({ title, away, due, exam, reviews, people, sad, quests, streak, best, lures, onGo }) {
+      const lines = [];
+      if (away) lines.push(el('li', {}, `While you were away (${away.time}) your town made `, price(away.coins), '.'));
+      if (exam) lines.push(el('li', { class: exam.armor > 60 ? 'warn' : '' }, el('b', { text: exam.name }), ` (${exam.course}) reaches your gate in ${exam.time} with `, el('b', { text: `${exam.armor}% armor` }), exam.armor > 20 ? '. Study to break it.' : '. Your gate should hold.'));
+      for (const d of due) lines.push(el('li', { class: d.late ? 'warn' : '' }, el('b', { text: d.name }), ` · ${d.course} · ${d.late ? d.time : `due ${d.time}`}`));
+      if (reviews) lines.push(el('li', { text: `${reviews} missed question${reviews === 1 ? '' : 's'} waiting by the board.` }));
+      if (sad.length) lines.push(el('li', { class: 'warn', text: `${sad.join(' and ')} ${sad.length === 1 ? 'is' : 'are'} thinking of leaving town.` }));
+      else if (people) lines.push(el('li', { text: `${people} villager${people === 1 ? '' : 's'} in town, all doing fine.` }));
+      if (!lines.length) lines.push(el('li', { text: 'Nothing urgent. A good day to get ahead.' }));
+      panel({ title, subtitle: streak ? `🔥 ${streak}-day streak · best ${best}` : 'Finish all three quests to start a streak' },
+        el('ul', { class: 'report' }, lines),
+        el('h3', { text: 'Today’s quests' }),
+        el('div', { class: 'daily-list' }, quests.map((q) => el('div', { class: `daily-row big ${q.have >= q.need ? 'done' : ''}` }, el('i'), el('span', { text: q.text }), el('small', {}, q.have >= q.need ? '✓ ' : `${q.have}/${q.need} · `, price(q.reward))))),
+        el('p', { class: 'note', text: `All three keep your streak alive and drop a chest. Days 7, 14 and 30 pay big. You have ${lures} lure${lures === 1 ? '' : 's'} for catching creatures (K).` }),
+        el('div', { class: 'actions' }, el('button', { class: 'btn primary', style: 'justify-content:center', onclick: onGo }, el('span', { text: 'Let’s go' }))),
+      );
+    },
+
+    /** The creature book: what you've caught, hints for the rest, and your pet. */
+    collection({ lures, pet, list, onPet }) {
+      const found = list.filter((c) => c.count).length;
+      panel({ title: 'Creatures', subtitle: `${found} of ${list.length} found · ${lures} lure${lures === 1 ? '' : 's'} · every 10 minutes of study earns one`, wide: true },
+        el('div', { class: 'gear-row critters' }, list.map((c) => el('div', { class: `gear g-${c.rarity} ${c.count ? '' : 'unknown'} ${pet === c.id ? 'pet' : ''}` },
+          el('small', { text: `${c.rarity}${pet === c.id ? ' · your pet' : ''}` }),
+          el('b', { text: c.count ? c.name : '???' }),
+          el('span', { text: c.count ? `Caught ${c.count} · as a pet: +${c.bonus}% study XP` : c.hint }),
+          c.count ? el('div', { class: 'gear-do' }, pet === c.id ? el('button', { class: 'btn small', text: 'Put away', onclick: () => onPet(null) }) : el('button', { class: 'btn small primary', text: 'Make pet', onclick: () => onPet(c.id) })) : null))),
+        el('p', { class: 'note', text: 'Find them in the Wilds. Walk up slowly (running scares them) and press E. Owls, moths and the star fox only come out at night, on your real clock.' }),
+      );
+    },
+
     /** The market: today's stock, plus selling what you don't need. */
     market({ coins, offers, junk, onBuy, onSellJunk }) {
       const label = (o) => o.kind === 'gear' ? o.item.name : o.kind === 'look' ? o.name : o.kind === 'tea' ? 'Study tea' : o.name;
@@ -553,6 +585,7 @@ export function createUI(on) {
           el('span', { class: 'k' }, el('kbd', { text: 'T' })), el('span', { text: 'Start a study session. This is the only way to level up.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'C' }), el('kbd', { text: 'J' })), el('span', { text: 'Your hero (gear and skills) and your quests.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'E' })), el('span', { text: 'Talk to villagers: they move in as your town grows, give a small favour each day, and leave if the town keeps getting wrecked.' }),
+          el('span', { class: 'k' }, el('kbd', { text: 'K' })), el('span', { text: 'Creatures: catch them in the Wilds with lures you earn by studying. Pick one as a pet for bonus study XP.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'B' })), el('span', { text: 'Build mode: place fences, lamps, trees and more anywhere in town. The market sells rare pieces.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'P' })), el('span', { text: 'Practice questions from Soma AI, written from your course notes. Right answers break exam armor.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'E' })), el('span', { text: 'Build, upgrade, open chests, pick what to study.' }),

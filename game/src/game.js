@@ -1039,6 +1039,7 @@ function openPractice(id = null) {
     onAnswer: (q, right) => { if (!right) S.addReview(state, item, q); },
     finish: (right, wrong) => {
       const r = S.finishPractice(state, item.id, right, wrong);
+      if (r.lures) setTimeout(() => ui.toast('Good round: +1 lure for the Wilds', 'good'), 600);
       gainedXp(r);
       syncInvaders(Date.now());
       refreshHud();
@@ -1056,6 +1057,7 @@ function openPractice(id = null) {
 
 function beginStudy(id, minutes) {
   if (!S.startStudy(state, id, minutes)) return;
+  if (dayPhase().sleeping) setTimeout(() => ui.toast('The town is asleep. Wren stays up by the fire with you.', 'good'), 1500);
   const item = id ? state.school.items[id] : null;
   audio.build();
   ui.banner('Study session', item ? item.name : `${minutes} minutes`);
@@ -1091,6 +1093,7 @@ function endStudy() {
     else if (result.complete) bits.push('no more study chests today');
     if (result.complete && result.streak > 1) bits.push(`${result.streak} day streak`);
     ui.toast(bits.join(' · '), 'gold');
+    if (result.lures) ui.toast(`+${result.lures} lure${result.lures === 1 ? '' : 's'} for catching creatures in the Wilds (you have ${state.critters.lures})`, 'good');
     if (result.prepared) ui.toast(result.item.kind === 'boss' ? `${result.item.name} has no armor left. Your gate will hold on exam day.` : `${result.item.name} is fully studied: handing it in pays 50% more.`, 'good');
   }
   syncChests();
@@ -1374,6 +1377,7 @@ function findTarget() {
   };
   if (inRealm()) {
     realms.findTarget(p, offer);
+    for (const c of critters) if (!c.gone) offer(Math.hypot(p.x - c.object.position.x, p.z - c.object.position.z), 2.8, { text: `Catch the ${S.CRITTERS[c.species].name.toLowerCase()} · 1 lure (${state.critters.lures} left)`, run: () => catchCritter(c) });
     return best;
   }
   for (const [id, entry] of chests) {
@@ -1478,6 +1482,7 @@ window.addEventListener('keydown', (event) => {
   else if (key === 'h') ui.help({ first: false });
   else if (key === 'm') toggleMute();
   else if (key === 'o') openSettings();
+  else if (key === 'k') openCollection();
 });
 window.addEventListener('keyup', (event) => keys.delete(event.key.toLowerCase()));
 window.addEventListener('blur', () => keys.clear());
@@ -1785,6 +1790,8 @@ function frame(nowMs) {
   if (!inRealm()) { moveInvaders(dt, time); updateTown(dt, time); }
   updateBuild();
   if (!inRealm() && state.scene === 'earth') moveVillagers(dt, time);
+  updateCritters(dt, time);
+  updatePet(dt, time);
   ghosts.forEach((g, i) => { g.object.position.y = 0.5 + Math.sin(time * 1.6 + i) * 0.25; g.object.rotation.y = Math.sin(time * 0.5 + i) * 0.6; });
   updateRaiders(dt);
   realms.update(dt, time, player.object.position, !player.down);
@@ -1817,6 +1824,8 @@ function frame(nowMs) {
     syncHalls();
     syncReview();
     villagerTick(Date.now());
+    applyTimeOfDay();
+    dailyTick();
     if (build.on) drawBuildBar();
     checkDeadlines();
     checkStory();
@@ -2149,6 +2158,16 @@ function moveVillagers(dt, time) {
     const near = Math.hypot(p.x - o.x, p.z - o.z) < 4.8 && state.scene === 'earth' && !inRealm();
     f.cheer = Math.max(0, f.cheer - dt);
     let mode = 'idle';
+    // Late at night everyone goes home to bed, except Wren, who keeps the fire.
+    const bedtime = phase.sleeping && person.name !== 'Wren';
+    if (bedtime && !f.target && f.object.visible) {
+      const home = f.spots[3];
+      if (Math.hypot(home.x - o.x, home.z - o.z) < 0.4) f.object.visible = false;
+      else f.target = home;
+    }
+    if (!phase.sleeping && !f.object.visible) { f.object.visible = true; f.wait = 2; }
+    if (person.name === 'Wren' && phase.sleeping && !f.target && !f.sitting) f.target = f.spots[0];
+    if (!f.object.visible) { f.label.set('', 'npc empty'); continue; }
     if (f.cheer > 0) mode = 'cheer';
     else if (near) {
       // Stops to chat: turns to face you.
@@ -2170,7 +2189,7 @@ function moveVillagers(dt, time) {
     } else {
       f.wait -= dt;
       if (f.sitting) mode = 'sit';
-      if (f.wait <= 0) {
+      if (f.wait <= 0 && !(phase.sleeping && person.name === 'Wren')) {
         f.sitting = false;
         f.target = f.spots[hash(person.name + Math.floor(time / 7)) % f.spots.length];
       }
@@ -2215,6 +2234,227 @@ function openVillager(name) {
       ui.toast(g.tea ? `${name} gave you a cup of study tea: your next session pays 50% more XP.` : `${name} slipped you ${S.fmt(g.coins)} coins.`, 'gold');
       refreshHud(); save(); ui.close(); openVillager(name);
     },
+  });
+}
+
+
+// --- Time of day: the game follows your real clock ------------------------------------
+let clockOverride = null; // hours, for testing (window.epoch.hour)
+function dayPhase(date = new Date()) {
+  const h = clockOverride ?? date.getHours() + date.getMinutes() / 60;
+  let light = 1, warm = 0;
+  if (h >= 18 && h < 20.5) light = 1 - (h - 18) / 2.5;
+  else if (h >= 20.5 || h < 5) light = 0;
+  else if (h >= 5 && h < 7) light = (h - 5) / 2;
+  if (h >= 17.5 && h < 21) warm = Math.max(0, 1 - Math.abs(h - 19.2) / 1.6);
+  else if (h >= 4.8 && h < 7.5) warm = Math.max(0, 1 - Math.abs(h - 6) / 1.2);
+  return { h, light, warm, night: light < 0.35, sleeping: h >= 23 || h < 6 };
+}
+let phase = dayPhase();
+function applyTimeOfDay() {
+  phase = dayPhase();
+  const space = state.scene === 'moon' || (inRealm() && realms.active !== 'wilds');
+  if (!space) world.setDaylight(phase.light, phase.warm);
+  // Lamps, hall windows and the fire matter more after dark.
+  const dark = 1 - phase.light;
+  const brighten = (o) => {
+    if (!o.isMesh || !o.material.emissive || (o.name !== 'glow' && o.name !== 'window')) return;
+    // Materials are shared between meshes, so the daytime glow is kept on the
+    // material itself; keeping it per mesh multiplied the same material over and over.
+    const m = o.material;
+    if (m.userData.baseGlow === undefined) m.userData.baseGlow = m.emissiveIntensity;
+    // Windows warm up a lot; lamps already glow, so only a little (bloom does the rest).
+    m.emissiveIntensity = m.userData.baseGlow * (o.name === 'window' ? 1 + 2 * dark : 0.7 + 0.3 * dark);
+  };
+  for (const o of decorObjects.values()) o.traverse(brighten);
+  for (const h of halls.values()) h.object.traverse(brighten);
+}
+
+// --- Daily quests and the morning report ------------------------------------------------
+const dailyEl = document.getElementById('daily');
+dailyEl?.addEventListener('click', () => openDaily());
+function drawDaily() {
+  if (!dailyEl) return;
+  const d = state.daily;
+  const done = d.quests.filter((q) => S.dailyProgress(state, q) >= q.target).length;
+  dailyEl.replaceChildren();
+  const head = document.createElement('div');
+  head.className = 'daily-head';
+  head.innerHTML = `<b>Today</b><span>${done}/${d.quests.length}</span>${d.streak ? `<em>🔥 ${d.streak} day${d.streak === 1 ? '' : 's'}</em>` : ''}`;
+  dailyEl.append(head);
+  for (const q of d.quests) {
+    const row = document.createElement('div');
+    const have = S.dailyProgress(state, q);
+    row.className = `daily-row ${have >= q.target ? 'done' : ''}`;
+    row.innerHTML = `<i></i><span>${escapeHtml(q.text)}</span><small>${have >= q.target ? '✓' : `${have}/${q.target}`}</small>`;
+    dailyEl.append(row);
+  }
+}
+function dailyTick(startup = false) {
+  const fresh = S.dailyRefresh(state);
+  const r = S.claimDaily(state);
+  if (r.claimed) {
+    audio.coin();
+    ui.toast(`Daily quest${r.claimed === 1 ? '' : 's'} done: +${S.fmt(r.coins)} coins`, 'good');
+  }
+  if (r.chest) {
+    audio.era();
+    ui.banner(r.milestone ? `${r.streak}-day streak!` : `Day ${r.streak} streak`, r.milestone ? `A ${r.milestone} chest and 5 lures` : 'All three done: a chest is on your plaza');
+    syncChests();
+  }
+  if (fresh || r.claimed) save();
+  drawDaily();
+  if (fresh && !startup && state.daily.reported !== state.daily.day) openMorning();
+}
+function openDaily() { openMorning(true); }
+function openMorning(manual = false) {
+  if (ui.isOpen()) return;
+  state.daily.reported = state.daily.day;
+  save();
+  const now = Date.now();
+  const next = S.threats(state, now).map((t) => t.item).sort((a, b) => a.dueAt - b.dueAt);
+  const exam = next.find((a) => a.kind === 'boss');
+  const greeting = phase.h < 12 && phase.h >= 4 ? 'Good morning' : phase.h < 18 ? 'Good afternoon' : 'Good evening';
+  ui.morning({
+    title: manual ? 'Today' : greeting,
+    away: !manual && awayMs > 60000 ? { time: timeLeft(awayMs), coins: awayEarned } : null,
+    due: next.filter((a) => a.kind !== 'boss' && a.dueAt - now < 2 * 86400000).slice(0, 4).map((a) => ({ name: a.name, course: a.courseName, time: a.dueAt < now ? `${timeLeft(now - a.dueAt)} late` : `in ${timeLeft(a.dueAt - now)}`, late: a.dueAt < now })),
+    exam: exam ? { name: exam.name, course: exam.courseName, armor: Math.round(S.examArmor(state, exam) * 100), time: timeLeft(exam.dueAt - now) } : null,
+    reviews: S.dueReviews(state, now).length,
+    people: state.villagers.list.length,
+    sad: state.villagers.list.filter((p) => p.mood < 30).map((p) => p.name),
+    quests: state.daily.quests.map((q) => ({ text: q.text, have: S.dailyProgress(state, q), need: q.target, reward: q.reward })),
+    streak: state.daily.streak, best: state.daily.best || 0,
+    lures: state.critters.lures,
+    onGo: () => ui.close(),
+  });
+}
+
+// --- Creatures in the Wilds, lures, the collection book and your pet ------------------
+const critters = []; // { species, object, target, wait, flee, gone }
+let critterSpawn = 0;
+function clearCritters() {
+  for (const c of critters) c.object.parent?.remove(c.object);
+  critters.length = 0;
+}
+function spawnCritter() {
+  const group = realms.group;
+  if (!group) return;
+  const species = S.rollCritter(phase.night);
+  const object = A.makeCritter(species);
+  const p = player.object.position;
+  for (let tries = 0; tries < 20; tries++) {
+    const a = Math.random() * Math.PI * 2, r = 14 + Math.random() * 30;
+    const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
+    if (Math.hypot(x, z) > realms.radius - 5) continue;
+    object.position.set(x, 0, z);
+    object.rotation.y = Math.random() * 6.28;
+    group.add(object);
+    critters.push({ species, object, target: null, wait: 1 + Math.random() * 3, flee: 0, gone: false, phase: Math.random() * 6 });
+    return;
+  }
+}
+function updateCritters(dt, time) {
+  if (realms.active !== 'wilds') { if (critters.length) clearCritters(); return; }
+  critterSpawn -= dt;
+  if (critterSpawn <= 0 && critters.filter((c) => !c.gone).length < 6) { spawnCritter(); critterSpawn = 4; }
+  const p = player.object.position;
+  for (let i = critters.length - 1; i >= 0; i--) {
+    const c = critters[i];
+    const o = c.object.position;
+    const dPlayer = Math.hypot(p.x - o.x, p.z - o.z);
+    // Running at them scares them off; walking up slowly works.
+    if (!c.gone && dPlayer < 3.2 && keys.has('shift')) c.flee = Math.max(c.flee, 2.5);
+    let speed = 0, tx = o.x, tz = o.z;
+    if (c.flee > 0 || c.gone) {
+      c.flee -= dt;
+      const away = Math.atan2(o.x - p.x, o.z - p.z);
+      tx = o.x + Math.sin(away) * 5; tz = o.z + Math.cos(away) * 5;
+      speed = 7;
+      if (c.gone && dPlayer > 30) { c.object.parent?.remove(c.object); critters.splice(i, 1); continue; }
+    } else if (c.target) {
+      tx = c.target.x; tz = c.target.z; speed = c.object.userData.flies ? 1.4 : 1.8;
+      if (Math.hypot(tx - o.x, tz - o.z) < 0.3) { c.target = null; c.wait = 2 + Math.random() * 4; }
+    } else {
+      c.wait -= dt;
+      if (c.wait <= 0) {
+        const a = Math.random() * Math.PI * 2;
+        c.target = { x: o.x + Math.cos(a) * (3 + Math.random() * 6), z: o.z + Math.sin(a) * (3 + Math.random() * 6) };
+        if (Math.hypot(c.target.x, c.target.z) > realms.radius - 5) c.target = { x: o.x * 0.8, z: o.z * 0.8 };
+      }
+    }
+    const dx = tx - o.x, dz = tz - o.z, d = Math.hypot(dx, dz);
+    const body = c.object.userData.body;
+    if (speed && d > 0.05) {
+      o.x += (dx / d) * Math.min(d, speed * dt);
+      o.z += (dz / d) * Math.min(d, speed * dt);
+      c.object.rotation.y = Math.atan2(dx, dz);
+      // Bunnies and frogs hop; the rest trot.
+      const hop = c.species === 'bunny' || c.species === 'frog';
+      body.position.y = hop ? Math.abs(Math.sin(time * 9 + c.phase)) * 0.35 : Math.abs(Math.sin(time * 12 + c.phase)) * 0.06;
+    } else {
+      body.position.y = 0;
+      if (dPlayer < 6) c.object.rotation.y += (Math.atan2(p.x - o.x, p.z - o.z) - c.object.rotation.y) * Math.min(1, dt * 3);
+    }
+    if (c.object.userData.flies) body.position.y = 0.4 + Math.sin(time * 2 + c.phase) * 0.25;
+    for (const w of c.object.userData.wings || []) w.rotation.z = Math.sin(time * (c.species === 'moth' ? 14 : 3) + c.phase) * (c.species === 'moth' ? 0.7 : 0.15) * (w.position.x < 0 ? 1 : -1);
+  }
+}
+function catchCritter(c) {
+  if (c.gone) return;
+  if (state.critters.lures < 1) return void ui.toast('No lures left. Every 10 minutes of studying earns one.', 'bad');
+  const info = S.CRITTERS[c.species];
+  const r = S.tryCatch(state, c.species);
+  if (!r) return;
+  if (r.ok) {
+    fx.burst(c.object.position.clone().add(new THREE.Vector3(0, 0.6, 0)), A.C.gold, 22, 6, 6);
+    audio.chest();
+    ui.toast(r.first ? `New creature: ${info.name}! +${S.fmt(r.coins)} coins. Open the collection with K.` : `Caught another ${info.name}.`, 'gold');
+    if (r.first && state.critters.pet === c.species) { ui.toast(`${info.name} is following you now. It boosts study XP.`, 'good'); dressPet(); }
+    c.object.parent?.remove(c.object);
+    critters.splice(critters.indexOf(c), 1);
+  } else {
+    audio.deny();
+    fx.burst(c.object.position.clone().add(new THREE.Vector3(0, 0.6, 0)), A.C.white, 10, 5, 5);
+    ui.toast(`The ${info.name.toLowerCase()} got away. (${state.critters.lures} lure${state.critters.lures === 1 ? '' : 's'} left)`, 'bad');
+    c.gone = true;
+  }
+  save();
+}
+let petObject = null;
+function dressPet() {
+  if (petObject) petObject.parent?.remove(petObject);
+  petObject = null;
+  const id = state.critters.pet;
+  if (!id) return;
+  petObject = A.makeCritter(id);
+  petObject.scale.setScalar(id === 'stag' ? 0.55 : 0.85);
+  petObject.position.copy(player.object.position).add(new THREE.Vector3(1.4, 0, -1.4));
+  scene.add(petObject);
+}
+function updatePet(dt, time) {
+  if (!petObject) return;
+  const p = player.object.position, o = petObject.position;
+  const behind = new THREE.Vector3(p.x - Math.sin(player.facing) * 1.6 + Math.cos(player.facing) * 0.9, p.y, p.z - Math.cos(player.facing) * 1.6 - Math.sin(player.facing) * 0.9);
+  const dx = behind.x - o.x, dz = behind.z - o.z, d = Math.hypot(dx, dz);
+  if (d > 25) o.copy(behind);
+  const body = petObject.userData.body;
+  if (d > 0.4) {
+    const step = Math.min(d, Math.max(3, d * 3) * dt);
+    o.x += (dx / d) * step; o.z += (dz / d) * step;
+    petObject.rotation.y = Math.atan2(dx, dz);
+    body.position.y = Math.abs(Math.sin(time * 10)) * 0.2;
+  } else body.position.y *= 0.8;
+  o.y = inRealm() ? p.y * 0.0 : (state.scene === 'earth' ? world.groundHeight('earth', o.x, o.z) : p.y);
+  if (petObject.userData.flies) body.position.y = 0.6 + Math.sin(time * 2) * 0.2;
+  for (const w of petObject.userData.wings || []) w.rotation.z = Math.sin(time * 12) * 0.5 * (w.position.x < 0 ? 1 : -1);
+}
+function openCollection() {
+  if (ui.isOpen()) return;
+  ui.collection({
+    lures: state.critters.lures, pet: state.critters.pet,
+    list: Object.entries(S.CRITTERS).map(([id, c]) => ({ id, ...c, count: state.critters.caught[id] || 0, bonus: { common: 2, rare: 4, epic: 7, legendary: 12 }[c.rarity] })),
+    onPet: (id) => { S.setPet(state, id); dressPet(); save(); ui.close(); openCollection(); },
   });
 }
 
@@ -2287,6 +2527,9 @@ syncHalls();
 syncDecor();
 syncReview();
 villagerTick(Date.now());
+applyTimeOfDay();
+dressPet();
+dailyTick(true);
 applySettings();
 refreshHud();
 if (S.dueReviews(state).length) setTimeout(() => ui.toast(`${S.dueReviews(state).length} missed questions are back for review. Find the pale books by the Canvas board.`, 'gold'), 3000);
@@ -2298,6 +2541,8 @@ if (!state.settings.seenHelp) {
 }
 loadStoredSnapshots();
 askSoma();
+// The morning report waits a moment so Canvas has synced.
+setTimeout(() => { dailyTick(); if (state.settings.seenHelp && state.daily.reported !== state.daily.day) openMorning(); }, 3500);
 checkDeadlines(true);
 // No Canvas data after a moment: show a sample semester so the gate isn't empty.
 setTimeout(() => {
@@ -2332,6 +2577,16 @@ window.epoch = {
   exams: checkExams,
   character: pickCharacter,
   folk: () => [...folk].map(([name, f]) => ({ name, x: +f.object.position.x.toFixed(1), z: +f.object.position.z.toFixed(1), mode: f.mode, loaded: Boolean(f.model) })),
+  hour(h) { clockOverride = h; applyTimeOfDay(); return dayPhase(); },
+  critters: () => critters.map((c) => ({ species: c.species, x: +c.object.position.x.toFixed(1), z: +c.object.position.z.toFixed(1), gone: c.gone })),
+  morning: () => openMorning(),
+  collection: () => openCollection(),
+  hideMarket(v = false) { market.visible = v; },
+  pick(fx, fy) {
+    const r = new THREE.Raycaster();
+    r.setFromCamera(new THREE.Vector2(fx * 2 - 1, -(fy * 2 - 1)), camera);
+    return r.intersectObjects(scene.children, true).slice(0, 4).map((h) => { const names = []; for (let o = h.object; o; o = o.parent) if (o.name) names.push(o.name); return { d: +h.distance.toFixed(1), names, type: h.object.type, emissive: h.object.material?.emissive?.getHexString?.(), glow: h.object.material?.emissiveIntensity, color: h.object.material?.color?.getHexString?.() }; });
+  },
   invaders: () => [...invaders.values()].map((i) => ({ name: i.item.name, mode: i.mode, x: +i.object.position.x.toFixed(1), z: +i.object.position.z.toFixed(1), inScene: Boolean(i.object.parent) })),
   armor(id) { const inv = invaders.get(id); return inv && inv.object.userData.armor?.filter((p) => p.visible).length; },
   info: () => ({ quality, calls: renderer.info.render.calls, tris: renderer.info.render.triangles }),

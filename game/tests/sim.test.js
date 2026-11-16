@@ -490,6 +490,57 @@ test('villagers talk about your real situation', () => {
   assert.ok(S.villagerLine(s, p, NOW, 0).includes('packing'));
 });
 
+test('daily quests: three a day, all three grow the streak, a missed day resets it', () => {
+  const s = rich();
+  S.syncSchool(s, [item({ id: 'a', courseId: 'p', courseName: 'Physics', dueAt: NOW + 3 * DAY })], NOW, { source: 'soma' });
+  assert.ok(S.dailyRefresh(s, NOW));
+  assert.ok(!S.dailyRefresh(s, NOW + 1000));
+  assert.strictEqual(s.daily.quests.length, 3);
+  const finishAll = (t) => {
+    for (const q of s.daily.quests) {
+      if (q.type === 'studyAny' || q.type === 'study') s.study.courses[q.courseId] = (s.study.courses[q.courseId] || 0) + q.target, s.study.total += q.target;
+      else if (q.type === 'handin') s.stats.handedIn += 1;
+      else if (q.type === 'practice') s.stats.practiceRight = (s.stats.practiceRight || 0) + q.target;
+      else if (q.type === 'review') s.stats.reviewed = (s.stats.reviewed || 0) + q.target;
+      else if (q.type === 'catch') s.stats.caught = (s.stats.caught || 0) + 1;
+      else if (q.type === 'camp') s.stats.campsCleared += 1;
+      else if (q.type === 'talk') s.stats.talks = (s.stats.talks || 0) + 2;
+    }
+    return S.claimDaily(s, t);
+  };
+  const first = finishAll(NOW);
+  assert.strictEqual(first.claimed, 3);
+  assert.strictEqual(first.streak, 1);
+  assert.ok(first.chest);
+  assert.strictEqual(S.claimDaily(s, NOW).claimed, 0);
+  S.dailyRefresh(s, NOW + DAY);
+  assert.strictEqual(finishAll(NOW + DAY).streak, 2);
+  S.dailyRefresh(s, NOW + 3 * DAY); // skipped a day
+  assert.strictEqual(s.daily.streak, 0);
+  s.daily.streak = 6; s.daily.lastFull = null;
+  const seventh = finishAll(NOW + 3 * DAY);
+  assert.strictEqual(seventh.milestone, 'epic');
+});
+
+test('studying earns lures; catching spends them, fills the book, and a pet boosts study XP', () => {
+  const s = rich();
+  const start = s.critters.lures;
+  S.startStudy(s, null, 25, NOW);
+  const r = S.finishStudy(s, NOW + 25 * 60_000);
+  assert.strictEqual(r.lures, 2);
+  assert.strictEqual(s.critters.lures, start + 2);
+  assert.strictEqual(S.tryCatch(s, 'stag', () => 0.9).ok, false); // legendary missed
+  const got = S.tryCatch(s, 'stag', () => 0.01);
+  assert.ok(got.ok && got.first && got.coins > 0);
+  assert.strictEqual(s.critters.pet, 'stag');
+  assert.ok(Math.abs(S.heroStats(s).studyXp - 1.12) < 1e-9);
+  assert.ok(!S.setPet(s, 'owl'));
+  s.critters.lures = 0;
+  assert.strictEqual(S.tryCatch(s, 'frog'), null);
+  for (let i = 0; i < 50; i++) assert.notStrictEqual(S.CRITTERS[S.rollCritter(true)].time, 'day');
+  for (let i = 0; i < 50; i++) assert.notStrictEqual(S.CRITTERS[S.rollCritter(false)].time, 'night');
+});
+
 test('camps and treasure come back the next day, shrines pay once ever', () => {
   const s = rich(0);
   assert.ok(!S.exploreDone(s, 'wilds:camp:0', NOW));

@@ -682,6 +682,57 @@ export function createWorld(scene, renderer) {
     }
   }
 
+  // --- Day and night (the game follows your real clock) ---
+  // light: 1 full day, 0 deep night. warm: 0..1, how much sunset colour.
+  let daylight = { light: 1, warm: 0 };
+  let skyBase = null; // the place's own daytime look, which night is blended from
+  const nightStarGeo = new THREE.BufferGeometry();
+  {
+    const r = seeded(7), pos = [];
+    for (let i = 0; i < 700; i++) {
+      const a = r() * Math.PI * 2, y = 0.12 + r() * 0.88, rad = Math.sqrt(1 - y * y);
+      pos.push(Math.cos(a) * rad * 46, y * 46, Math.sin(a) * rad * 46);
+    }
+    nightStarGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  }
+  const nightStars = new THREE.Points(nightStarGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0, depthWrite: false, fog: false }));
+  nightStars.renderOrder = 1;
+  dome.add(nightStars);
+  const NIGHT = { zenith: new THREE.Color(0x0a1230), horizon: new THREE.Color(0x24325e), sun: new THREE.Color(0x9fb4ff), hemi: new THREE.Color(0x6a7fc4), ground: new THREE.Color(0x26324a) };
+  const DUSK = { horizon: new THREE.Color(0xffa36a), zenith: new THREE.Color(0x5b5fae), sun: new THREE.Color(0xffa060) };
+  const mixc = (a, b, t) => new THREE.Color(a).lerp(b, t);
+  function applyDaylight() {
+    if (!skyBase) return;
+    const { light, warm } = daylight;
+    const dark = 1 - light;
+    let zenith = mixc(skyBase.zenith, NIGHT.zenith, dark);
+    let horizon = mixc(skyBase.horizon, NIGHT.horizon, dark);
+    let sunc = mixc(skyBase.sun, NIGHT.sun, dark);
+    if (warm > 0) {
+      horizon = horizon.lerp(DUSK.horizon, warm * 0.75);
+      zenith = zenith.lerp(DUSK.zenith, warm * 0.35);
+      sunc = sunc.lerp(DUSK.sun, warm * 0.8);
+    }
+    skyUniforms.zenith.value.copy(zenith);
+    skyUniforms.horizon.value.copy(horizon);
+    // At night the sun's glow in the sky becomes a faint moon instead of a blinding disc.
+    skyUniforms.sunColor.value.copy(sunc).multiplyScalar(0.18 + 0.82 * light);
+    sun.color.copy(sunc);
+    // Moonlight: the sun fades to a dim blue key light, never to black.
+    sun.intensity = skyBase.sunPower * (0.12 + 0.88 * light);
+    hemi.intensity = skyBase.hemiPower * (0.38 + 0.62 * light);
+    hemi.color.copy(mixc(skyBase.hemi, NIGHT.hemi, dark));
+    hemi.groundColor.copy(mixc(skyBase.ground, NIGHT.ground, dark));
+    scene.environmentIntensity = skyBase.env * (0.3 + 0.7 * light);
+    if (scene.fog) scene.fog.color.copy(horizon);
+    nightStars.material.opacity = Math.max(0, (0.55 - light) / 0.55) * 0.9;
+  }
+  /** Sets the time of day. light 1 day .. 0 night; warm 0..1 for sunrise and sunset. */
+  function setDaylight(light, warm = 0) {
+    daylight = { light, warm };
+    applyDaylight();
+  }
+
   // --- Switching ---
   let current = 'earth';
   function applySky(era) {
@@ -701,6 +752,8 @@ export function createWorld(scene, renderer) {
     hemi.groundColor.set(0x7fa85a);
     sun.intensity = Math.min(era, 5) === 3 ? 2.6 : 2.9;
     sun.color.set(sky.sun);
+    skyBase = { zenith: new THREE.Color(sky.zenith), horizon: new THREE.Color(sky.horizon), sun: new THREE.Color(sky.sun), hemi: new THREE.Color(0xd6ecff), ground: new THREE.Color(0x7fa85a), sunPower: sun.intensity, hemiPower: 0.95, env: 0.85 };
+    applyDaylight();
     bakeEnvironment();
   }
   // A realm is a whole other place (the Wilds, the far planet) with its own ground.
@@ -727,6 +780,7 @@ export function createWorld(scene, renderer) {
       scene.environmentIntensity = look.env ?? 0.85;
     }
     scene.fog = new THREE.FogExp2(look ? look.horizon : SKIES[Math.min(era, 5)].horizon, look?.haze ?? 0.0085);
+    if (look) { skyBase = null; nightStars.material.opacity = 0; } else applyDaylight();
     bakeEnvironment();
   }
   function setScene(name, era) {
@@ -736,6 +790,8 @@ export function createWorld(scene, renderer) {
     moon.visible = name === 'moon';
     if (name === 'earth') applySky(era);
     else {
+      skyBase = null;
+      nightStars.material.opacity = 0;
       dome.visible = false;
       scene.background = new THREE.Color(0x020308);
       scene.fog = null;
@@ -788,7 +844,7 @@ export function createWorld(scene, renderer) {
     }
   }
 
-  return { earth, moon, setEra, setScene, showRealm, update, setQuality, groundHeight: (name, x, z) => (name === 'moon' ? moonHeight(x, z, Math.hypot(x, z)) : hillHeight(x, z)) };
+  return { earth, moon, setEra, setScene, showRealm, update, setQuality, setDaylight, get daylight() { return daylight; }, groundHeight: (name, x, z) => (name === 'moon' ? moonHeight(x, z, Math.hypot(x, z)) : hillHeight(x, z)) };
 }
 
 export { EARTH_PADS };

@@ -87,6 +87,8 @@ export function newState(now = Date.now()) {
     decorNext: 1,
     decorUnlocked: [],
     villagers: { list: [], away: {}, lastArrival: 0, day: null },
+    daily: { day: null, quests: [], streak: 0, best: 0, lastFull: null, bonus: false, reported: null },
+    critters: { lures: 3, caught: {}, pet: null },
     createdAt: now,
     lastTick: now,
   };
@@ -518,6 +520,11 @@ export function finishStudy(state, now = Date.now()) {
     result.prepared = before < 1 && studyProgress(state, item) >= 1;
   }
   study.total += minutes;
+  // Every 10 minutes studied earns a lure for catching creatures in the Wilds.
+  study.lureBank = (study.lureBank || 0) + minutes;
+  result.lures = Math.floor(study.lureBank / LURE_MINUTES);
+  study.lureBank -= result.lures * LURE_MINUTES;
+  state.critters.lures += result.lures;
   study.log = [...(study.log || []), { at: now, itemId: item ? item.id : null, courseId: item ? item.courseId : null, minutes }].slice(-400);
   result.coins = Math.round(Math.max(12 * minutes, baseIncome(state) * 20 * minutes));
   addCoins(state, result.coins);
@@ -566,6 +573,9 @@ export function finishPractice(state, itemId, right, wrong, now = Date.now()) {
   const minutes = Math.min(room, right * PRACTICE_RIGHT_MINUTES + wrong * PRACTICE_WRONG_MINUTES);
   const result = { minutes, prepared: false, capped: Boolean(item) && minutes < right * PRACTICE_RIGHT_MINUTES + wrong * PRACTICE_WRONG_MINUTES };
   state.stats.practiceRight = (state.stats.practiceRight || 0) + right;
+  // A good practice round (3+ right) also earns a lure.
+  result.lures = right >= 3 ? 1 : 0;
+  state.critters.lures += result.lures;
   if (item && minutes > 0) {
     const before = studyProgress(state, item);
     const study = state.study;
@@ -826,7 +836,7 @@ export function heroStats(state) {
     might: Math.round((10 + 3 * (level - 1) + sum('might')) * (1 + 0.08 * skillRank(state, 'heavy')) * (1 + 0.01 * masteryTotal(state))),
     health: Math.round((100 + 22 * (level - 1) + sum('health')) * (1 + 0.1 * skillRank(state, 'tough'))),
     crit: Math.min(0.6, 0.08 + 0.04 * skillRank(state, 'keen') + sum('crit') / 100),
-    studyXp: 1 + 0.06 * skillRank(state, 'worm'),
+    studyXp: (1 + 0.06 * skillRank(state, 'worm')) * (1 + petBonus(state)),
     finisher: 2 * (1 + 0.25 * skillRank(state, 'whirl')),
     regenDelay: 4 - skillRank(state, 'wind'),
     dodgeTime: 0.85 * (1 - 0.15 * skillRank(state, 'step')),
@@ -1318,6 +1328,7 @@ export function talkTo(state, name, now = Date.now()) {
   if (!p || p.talked === dayOf(now)) return false;
   p.talked = dayOf(now);
   p.friend = Math.min(100, p.friend + 2);
+  state.stats.talks = (state.stats.talks || 0) + 1;
   return true;
 }
 
@@ -1394,6 +1405,128 @@ export function villagerLine(state, person, now = Date.now(), k = 0) {
   return lines[((k % lines.length) + lines.length) % lines.length];
 }
 
+// --- Daily quests and the streak ---------------------------------------------
+// Three small quests a day. Finish all three to keep the streak; days 7, 14
+// and 30 pay big. Miss a day and the streak starts over.
+export const STREAK_MILESTONES = { 7: 'epic', 14: 'legendary', 30: 'legendary' };
+
+const dailyStat = {
+  ...statNow,
+  talk: (state) => state.stats.talks || 0,
+  catch: (state) => state.stats.caught || 0,
+};
+
+function dailyOptions(state, now) {
+  const next = threats(state, now).map((t) => t.item).sort((a, b) => a.dueAt - b.dueAt);
+  const exam = next.find((a) => a.kind === 'boss');
+  const study = exam
+    ? { type: 'study', courseId: exam.courseId, courseName: exam.courseName, target: 25, text: `Study ${exam.courseName} for 25 minutes` }
+    : { type: 'studyAny', target: 25, text: 'Study for 25 minutes' };
+  const school = [];
+  if (next.some((a) => a.kind !== 'boss')) school.push({ type: 'handin', target: 1, text: 'Hand in one thing on Canvas' });
+  if (state.review.cards.some((c) => c.due <= now + DAY)) school.push({ type: 'review', target: 5, text: 'Review 5 missed questions' });
+  school.push({ type: 'practice', target: 5, text: 'Get 5 practice questions right' });
+  const life = [{ type: 'catch', target: 1, text: 'Catch a creature in the Wilds' }, { type: 'camp', target: 1, text: 'Clear a camp in the Wilds' }];
+  if (state.villagers.list.length >= 2) life.push({ type: 'talk', target: 2, text: 'Talk to 2 villagers' });
+  return { study, school, life };
+}
+
+/** Starts a new day if needed: three fresh quests, and the streak checked. Returns true when a new day began. */
+export function dailyRefresh(state, now = Date.now()) {
+  const d = state.daily;
+  const today = dayOf(now);
+  if (d.day === today) return false;
+  if (d.lastFull !== dayOf(now - DAY) && d.lastFull !== today) d.streak = 0;
+  const { study, school, life } = dailyOptions(state, now);
+  const seed = [...today].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 11);
+  const pay = Math.round(Math.max(150, baseIncome(state) * 300));
+  d.quests = [study, school[seed % school.length], life[(seed >>> 3) % life.length]].map((q) => ({ ...q, base: dailyStat[q.type](state, q), reward: pay, claimed: false }));
+  d.day = today;
+  d.bonus = false;
+  return true;
+}
+
+export const dailyProgress = (state, q) => Math.max(0, Math.min(q.target, Math.floor(dailyStat[q.type](state, q) - q.base)));
+
+/**
+ * Pays any finished daily quests. When all three are done the streak grows
+ * and a chest drops (better on milestone days). Returns what was paid.
+ */
+export function claimDaily(state, now = Date.now()) {
+  const d = state.daily;
+  const out = { coins: 0, claimed: 0, streak: d.streak, chest: null, milestone: null };
+  for (const q of d.quests) {
+    if (q.claimed || dailyProgress(state, q) < q.target) continue;
+    q.claimed = true;
+    out.claimed += 1;
+    out.coins += q.reward;
+  }
+  addCoins(state, out.coins);
+  if (!d.bonus && d.quests.length && d.quests.every((q) => q.claimed)) {
+    d.bonus = true;
+    d.streak += 1;
+    d.lastFull = dayOf(now);
+    d.best = Math.max(d.best || 0, d.streak);
+    out.streak = d.streak;
+    out.milestone = STREAK_MILESTONES[d.streak] || null;
+    out.chest = grantChest(state, out.milestone || (d.streak >= 3 ? 'epic' : 'rare'), `Day ${d.streak} streak`);
+    state.critters.lures += out.milestone ? 5 : 1;
+  }
+  return out;
+}
+
+// --- Creatures: caught in the Wilds with lures earned by studying -------------
+export const LURE_MINUTES = 10;
+export const CRITTERS = {
+  bunny: { name: 'Meadow bunny', rarity: 'common', time: 'day', hint: 'Hops around the meadows in daylight' },
+  frog: { name: 'Pond frog', rarity: 'common', time: 'any', hint: 'Anywhere, any time' },
+  hedgehog: { name: 'Hedgehog', rarity: 'rare', time: 'any', hint: 'Rare, any time' },
+  fox: { name: 'Red fox', rarity: 'rare', time: 'day', hint: 'Rare, out in the day' },
+  owl: { name: 'Night owl', rarity: 'epic', time: 'night', hint: 'Only after dark' },
+  moth: { name: 'Glow moth', rarity: 'epic', time: 'night', hint: 'Only after dark, it glows' },
+  stag: { name: 'White stag', rarity: 'legendary', time: 'day', hint: 'Very rare, in daylight' },
+  starfox: { name: 'Star fox', rarity: 'legendary', time: 'night', hint: 'Very rare, only at night' },
+};
+export const CATCH_CHANCE = { common: 0.9, rare: 0.6, epic: 0.38, legendary: 0.22 };
+const SPAWN_WEIGHT = { common: 60, rare: 26, epic: 10, legendary: 3 };
+const PET_BONUS = { common: 0.02, rare: 0.04, epic: 0.07, legendary: 0.12 };
+
+/** Picks a species to spawn. night is true after dark. rng returns 0..1. */
+export function rollCritter(night, rng = Math.random) {
+  const pool = Object.entries(CRITTERS).filter(([, c]) => c.time === 'any' || (c.time === 'night') === night);
+  const total = pool.reduce((n, [, c]) => n + SPAWN_WEIGHT[c.rarity], 0);
+  let r = rng() * total;
+  for (const [id, c] of pool) { r -= SPAWN_WEIGHT[c.rarity]; if (r <= 0) return id; }
+  return pool[0][0];
+}
+
+/** Tries to catch one: spends a lure. Returns { ok, first, coins } or null with no lures. */
+export function tryCatch(state, species, rng = Math.random) {
+  const c = state.critters;
+  if (c.lures < 1 || !CRITTERS[species]) return null;
+  c.lures -= 1;
+  if (rng() >= CATCH_CHANCE[CRITTERS[species].rarity]) return { ok: false };
+  const first = !c.caught[species];
+  c.caught[species] = (c.caught[species] || 0) + 1;
+  state.stats.caught = (state.stats.caught || 0) + 1;
+  const coins = first ? Math.round(Math.max(300, baseIncome(state) * { common: 300, rare: 900, epic: 2400, legendary: 6000 }[CRITTERS[species].rarity])) : 0;
+  addCoins(state, coins);
+  if (first && !c.pet) c.pet = species;
+  return { ok: true, first, coins };
+}
+
+export function setPet(state, species) {
+  if (species && !state.critters.caught[species]) return false;
+  state.critters.pet = species || null;
+  return true;
+}
+
+/** Your pet's bonus to study XP, by rarity. */
+export function petBonus(state) {
+  const pet = state.critters?.pet;
+  return pet && CRITTERS[pet] ? PET_BONUS[CRITTERS[pet].rarity] : 0;
+}
+
 // --- Saving ---------------------------------------------------------------------
 
 export function serialize(state) {
@@ -1427,6 +1560,8 @@ export function deserialize(text, now = Date.now()) {
     state.review = { ...fresh.review, ...(saved.review || {}) };
     state.market = { ...fresh.market, ...(saved.market || {}) };
     state.villagers = { ...fresh.villagers, ...(saved.villagers || {}) };
+    state.daily = { ...fresh.daily, ...(saved.daily || {}) };
+    state.critters = { ...fresh.critters, ...(saved.critters || {}) };
     return state;
   } catch {
     return fresh;

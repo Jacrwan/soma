@@ -1190,6 +1190,7 @@ export function makeHall(floors, color) {
     g.add(at(box(w + 0.2, 0.18, w + 0.2, color), 0, y + h - 0.05, 0));
     for (const side of [0, 1, 2, 3]) {
       const win = at(box(0.5, 0.7, 0.06, 0x2a3550, { emissive: 0xffd27a, glow: i === shown - 1 ? 0.5 : 0.15 }), 0, y + 0.55, w / 2 + 0.02);
+      win.name = 'window';
       const holder = new THREE.Group();
       holder.add(win);
       holder.rotation.y = (side * Math.PI) / 2;
@@ -1301,5 +1302,100 @@ export function makeCampfire() {
   light.position.y = 1.3;
   light.name = 'firelight';
   g.add(light);
+  return g;
+}
+
+// --- Creatures to catch in the Wilds ------------------------------------------------
+/** A small animal. userData.body bobs or hops; userData.wings flap (owl, moth). */
+export function makeCritter(species) {
+  const g = new THREE.Group();
+  const body = new THREE.Group();
+  g.add(body);
+  const eye = (x, y, z, r = 0.045) => at(ball(r, C.ink, 0, { rough: 0.2 }), x, y, z);
+  const glowing = (c, glow = 1.4) => ({ emissive: c, glow });
+  switch (species) {
+    case 'bunny': {
+      const fur = 0xf2ebe0;
+      body.add(at(squash(ball(0.32, fur, 0), 1, 0.85, 1.15), 0, 0.3, 0), at(ball(0.22, fur, 0), 0, 0.55, 0.28));
+      for (const x of [-0.08, 0.08]) body.add(at(tilt(squash(ball(0.07, fur, 0), 1, 3.2, 0.6), 0, x < 0 ? 0.15 : -0.15), x, 0.86, 0.22), eye(x * 1.3, 0.6, 0.47));
+      body.add(at(ball(0.035, 0xf29aa8, 0), 0, 0.54, 0.5), at(ball(0.09, 0xffffff, 0), 0, 0.32, -0.36));
+      break;
+    }
+    case 'frog': {
+      const skin = 0x6cc04a;
+      body.add(at(squash(ball(0.3, skin, 0), 1.15, 0.7, 1), 0, 0.22, 0), at(squash(ball(0.24, 0xd9f2a8, 0), 1, 0.5, 1), 0, 0.14, 0.08));
+      for (const x of [-0.14, 0.14]) body.add(at(ball(0.1, skin, 0), x, 0.42, 0.12), at(ball(0.06, 0xffffff, 0), x, 0.46, 0.18), eye(x, 0.47, 0.23, 0.035));
+      for (const x of [-0.26, 0.26]) body.add(at(squash(ball(0.11, skin, 0), 1.4, 0.5, 1.6), x, 0.06, 0.12));
+      break;
+    }
+    case 'hedgehog': {
+      body.add(at(squash(ball(0.3, 0x7a5a40, 0), 1, 0.8, 1.2), 0, 0.26, -0.03));
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2;
+        const spike = at(cone(0.06, 0.2, 0x4a3426, 4), Math.cos(a) * 0.22, 0.33 + Math.sin(a * 2) * 0.05, Math.sin(a) * 0.2 - 0.06);
+        spike.rotation.set(Math.sin(a) * 0.9, 0, -Math.cos(a) * 0.9);
+        body.add(spike);
+      }
+      body.add(at(squash(ball(0.15, 0xe8c9a0, 0), 1, 0.9, 1.3), 0, 0.2, 0.28), at(ball(0.04, C.ink, 0), 0, 0.22, 0.47), eye(-0.07, 0.29, 0.38, 0.03), eye(0.07, 0.29, 0.38, 0.03));
+      break;
+    }
+    case 'fox':
+    case 'starfox': {
+      const star = species === 'starfox';
+      const coat = star ? 0x4a6fd8 : 0xe0753a;
+      const o = star ? glowing(0x3a5cff, 0.6) : {};
+      body.add(at(squash(ball(0.3, coat, 0, o), 0.9, 0.85, 1.4), 0, 0.42, 0), at(squash(ball(0.24, coat, 0, o), 1, 0.95, 1.05), 0, 0.62, 0.38));
+      body.add(at(squash(ball(0.13, 0xfff4e6, 0), 1, 0.8, 1.2), 0, 0.55, 0.55), at(ball(0.035, C.ink, 0), 0, 0.57, 0.68));
+      for (const x of [-0.12, 0.12]) body.add(at(cone(0.08, 0.2, coat, 4, o), x, 0.8, 0.36), eye(x * 0.9, 0.67, 0.56, 0.035));
+      for (const [x, z] of [[-0.12, 0.25], [0.12, 0.25], [-0.12, -0.25], [0.12, -0.25]]) body.add(at(cyl(0.05, 0.05, 0.3, star ? 0x22306a : 0x3a2418, 5), x, 0.05, z));
+      const tail = at(squash(ball(0.17, coat, 0, o), 0.8, 0.8, 1.8), 0, 0.5, -0.5);
+      tail.rotation.x = -0.6;
+      body.add(tail, at(ball(0.09, star ? 0xe8f0ff : 0xfff4e6, 0, star ? glowing(0xbfd4ff, 1.6) : {}), 0, 0.6, -0.78));
+      if (star) for (let i = 0; i < 5; i++) body.add(at(ball(0.03, 0xffffff, 0, glowing(0xffffff, 2)), Math.sin(i * 2.3) * 0.25, 0.5 + (i % 3) * 0.15, Math.cos(i * 1.7) * 0.35));
+      break;
+    }
+    case 'owl': {
+      const feather = 0x8a6a4e;
+      body.add(at(squash(ball(0.3, feather, 0), 1, 1.2, 0.95), 0, 0.42, 0), at(squash(ball(0.22, 0xe8d6b8, 0), 1, 1.1, 0.5), 0, 0.38, 0.17));
+      for (const x of [-0.11, 0.11]) body.add(at(ball(0.1, 0xfff4c8, 0, glowing(0xffd24a, 0.9)), x, 0.6, 0.22), eye(x, 0.6, 0.31, 0.05), at(cone(0.06, 0.14, feather, 4), x * 1.5, 0.82, 0));
+      body.add(at(tilt(cone(0.04, 0.09, 0xf2b84a, 4), Math.PI, 0), 0, 0.56, 0.31));
+      const wings = [-1, 1].map((sx) => { const w = at(squash(ball(0.17, 0x6e5238, 0), 0.4, 1.1, 0.9), sx * 0.29, 0.42, -0.02); body.add(w); return w; });
+      g.userData.wings = wings;
+      break;
+    }
+    case 'moth': {
+      const glow = glowing(0x9fe8ff, 1.8);
+      body.add(at(squash(ball(0.08, 0xd8f4ff, 0, glow), 1, 1, 2.6), 0, 0.9, 0));
+      const wings = [-1, 1].map((sx) => {
+        const w = new THREE.Group();
+        w.add(at(squash(ball(0.22, 0xbfeaff, 0, { emissive: 0x7fd3ff, glow: 1.2 }), 1.4, 0.12, 1), sx * 0.24, 0, 0.02));
+        w.position.set(0, 0.92, 0);
+        body.add(w);
+        return w;
+      });
+      for (const x of [-0.05, 0.05]) body.add(at(tilt(box(0.012, 0.22, 0.012, 0xd8f4ff), 0.5, x * 8), x, 1.02, 0.18));
+      g.userData.wings = wings;
+      g.userData.flies = true;
+      break;
+    }
+    case 'stag': {
+      const coat = 0xf5f2ea;
+      body.add(at(squash(ball(0.42, coat, 0), 0.75, 0.75, 1.5), 0, 0.95, 0), at(cyl(0.12, 0.16, 0.5, coat, 6), 0, 1.15, 0.45), at(squash(ball(0.2, coat, 0), 0.9, 0.9, 1.4), 0, 1.6, 0.62));
+      body.children[1].rotation.x = 0.5;
+      for (const [x, z] of [[-0.18, 0.35], [0.18, 0.35], [-0.18, -0.35], [0.18, -0.35]]) body.add(at(cyl(0.06, 0.05, 0.75, coat, 5), x, 0.15, z));
+      for (const x of [-1, 1]) {
+        const antler = new THREE.Group();
+        antler.add(at(tilt(cyl(0.025, 0.035, 0.55, C.gold, 5, { metal: 0.6, rough: 0.35 }), 0, x * 0.4), 0, 0, 0), at(tilt(cyl(0.02, 0.025, 0.28, C.gold, 5, { metal: 0.6 }), 0.5, x * 0.9), x * 0.12, 0.25, 0.05));
+        antler.position.set(x * 0.1, 1.72, 0.55);
+        body.add(antler);
+      }
+      body.add(eye(-0.1, 1.66, 0.82, 0.035), eye(0.1, 1.66, 0.82, 0.035), at(ball(0.04, C.ink, 0), 0, 1.58, 0.9));
+      break;
+    }
+    default:
+      body.add(ball(0.3, C.white, 0));
+  }
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  g.userData.body = body;
   return g;
 }

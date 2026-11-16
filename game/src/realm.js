@@ -623,6 +623,7 @@ export function createRealms(ctx) {
 
   return {
     get active() { return now ? now.name : null; },
+    get group() { return now ? now.group : null; },
     get title() { return now ? now.cfg.title : ''; },
     radius: RADIUS,
     ready: (name) => hasEnemy(REALMS[name].enemy),
