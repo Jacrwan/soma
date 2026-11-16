@@ -424,11 +424,8 @@ function moveInvaders(dt, time) {
     if (inv.mode === 'charge' && !studying && inv.bumpCd <= 0 && bumpAny <= 0 && Math.hypot(p.x - o.x, p.z - o.z) < 1.7) {
       inv.bumpCd = BUMP_EVERY;
       bumpAny = 1.5;
-      // Homework can't knock you out: it bumps you back and pinches some coins.
-      if (stealCoins(o)) {
-        fx.burst(o.clone().add(new THREE.Vector3(0, 1, 0)), A.C.purple, 10, 5, 5);
-        fx.float(o.clone().add(new THREE.Vector3(0, 2.6, 0)), 'Late!', 'hurt');
-      }
+      // Late homework never hits you: it just takes a few coins.
+      stealCoins(o);
     }
     if (!inv.boss) o.y = world.groundHeight('earth', o.x, o.z);
   }
@@ -694,21 +691,14 @@ function leaveRealm(knockedOut = false) {
   });
 }
 
-/** A bump from late homework: a shove and a few coins gone, never health. */
+/** Late homework near you quietly takes a few coins: no hit, no shove, no health lost. */
 function stealCoins(from) {
-  if (player.safe > 0 || player.down || ui.isOpen()) return false;
-  const p = player.object.position;
+  if (player.down || ui.isOpen()) return false;
   const take = Math.min(Math.floor(state.coins), Math.max(1, Math.round(S.wage(state) * 20)));
+  if (!take) return false;
   state.coins -= take;
-  player.stun = 0.25;
-  player.safe = 0.6;
-  shake = Math.max(shake, 0.18);
-  audio.hurt();
-  fx.float(p.clone().add(new THREE.Vector3(0, 2.4, 0)), take ? `-${S.fmt(take)} coins` : 'Late!', 'hurt');
-  if (from) {
-    const dx = p.x - from.x, dz = p.z - from.z, d = Math.hypot(dx, dz) || 1;
-    player.dashX = (dx / d) * 9; player.dashZ = (dz / d) * 9; player.dash = 0.12;
-  }
+  audio.deny();
+  fx.float(from.clone().add(new THREE.Vector3(0, 2.6, 0)), `-${S.fmt(take)} coins`, 'hurt');
   refreshHud();
   return true;
 }
