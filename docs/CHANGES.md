@@ -9,6 +9,17 @@ still needed.
 
 ---
 
+## 2026-11-15 (a finished due card looks like a completed block)
+
+- **Why:** the owner: "why's the check mark like this, we had one working
+  already". The done due card had a filled accent button, a struck title and
+  "Done"; completed blocks already show "Completed ✓" and a bare check.
+- **What:** DashboardV2 `dueCard`'s done card uses the same look: "Completed"
+  with the small check, and a bare 18px check in the actions. That check is
+  still a button ("Undo done: …"), styled by `.dueDoneCheck`. No strike, no
+  fade, no filled button.
+- **Tests:** tests/tasks-page.spec.ts (done card + undo) still covers it.
+
 ## 2026-11-15 (sitting count re-cuts; undo a check-off; finished assignments stay, checked) · merged to master with task-details
 
 - **Why:** the owner tested the preview. Oral Presentations set to 2 sittings

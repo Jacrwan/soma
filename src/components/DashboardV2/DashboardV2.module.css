@@ -498,18 +498,19 @@
   opacity: .85;
 }
 
-/* A due card checked off: it stays on its day, quieter, with the check filled. */
-.dueDone {
-  opacity: .7;
+/* A due card checked off looks like a completed block: same card, a bare
+   check (2026-11-15: a filled button and a struck title read as broken). The
+   check is still a button, so it can be undone. */
+.dueDone .actions .dueDoneCheck {
+  min-height: 0;
+  padding: 4px;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
 }
 
-.dueDone h3 {
-  text-decoration: line-through;
-  text-decoration-color: var(--text-muted);
-}
-
-.dueDone .actions button[aria-pressed=true] {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #fff;
+.dueDone .actions .dueDoneCheck:hover {
+  background: none;
+  opacity: .6;
 }
