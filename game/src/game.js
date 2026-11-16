@@ -136,8 +136,12 @@ function watchPace(dt) {
   pace.time = 0;
   pace.frames = 0;
   // Well under 40 drops a level at once; a bit under, after two checks in a row.
-  pace.slow = fps < 30 ? 2 : fps < 42 ? pace.slow + 1 : 0;
-  if (pace.slow >= 2 && quality < 2) { pace.slow = 0; pace.warm = 2; setQuality(quality + 1); }
+  // High to Medium after two slow checks; Medium to Low (no shadows, flat look)
+  // only if it's still really slow for three checks in a row, so a busy moment
+  // or a slow first load doesn't leave the game looking washed out for good.
+  if (quality === 0) pace.slow = fps < 42 ? pace.slow + 1 : 0;
+  else pace.slow = fps < 24 ? pace.slow + 1 : 0;
+  if (pace.slow >= (quality === 0 ? 2 : 3) && quality < 2) { pace.slow = 0; pace.warm = 4; setQuality(quality + 1); }
 }
 let usePost = true; // bloom and grading; off on low, where the scene is drawn straight to the screen
 function setQuality(level) {
