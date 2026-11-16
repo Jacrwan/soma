@@ -1580,7 +1580,15 @@ const crosshair = document.getElementById('crosshair');
 function showShiftLock() {
   lockButton?.classList.toggle('on', shiftLock);
   if (crosshair) crosshair.hidden = !shiftLock;
+  // No cursor in shift lock, even where the browser won't lock the mouse.
+  document.body.classList.toggle('shiftlock', shiftLock && !ui.isOpen());
 }
+let lockRefusedSaid = false;
+document.addEventListener('pointerlockerror', () => {
+  if (!shiftLock || lockRefusedSaid) return;
+  lockRefusedSaid = true;
+  ui.toast('This browser won\u2019t lock the mouse, so turning stops at the edge of the window. In Chrome it turns forever.', 'bad');
+});
 function toggleShiftLock(on = !shiftLock) {
   shiftLock = on;
   lookHeld = false;
@@ -1593,13 +1601,14 @@ lockButton?.addEventListener('click', (e) => { e.stopPropagation(); audio.unlock
 let shiftDownAt = 0;
 let shiftUsed = false;
 window.addEventListener('keydown', (event) => {
-  if (event.key === 'Shift' && !event.repeat) { shiftDownAt = performance.now(); shiftUsed = false; }
+  if (event.key === 'Shift' && !event.repeat) { shiftDownAt = event.timeStamp; shiftUsed = false; }
   else if (event.key !== 'Shift') shiftUsed = true;
 }, true);
 window.addEventListener('keyup', (event) => {
   // A quick tap toggles shift lock; holding Shift to run doesn't.
   if (event.key !== 'Shift' || ui.isOpen()) return;
-  if (performance.now() - shiftDownAt < 220 && !shiftUsed) toggleShiftLock();
+  // Timed from the keys themselves, so a slow frame can't turn a tap into a hold.
+  if (event.timeStamp - shiftDownAt < 250 && !shiftUsed) toggleShiftLock();
 }, true);
 
 document.addEventListener('pointerlockchange', () => {
@@ -1899,6 +1908,7 @@ function frame(nowMs) {
   updateBuild();
   // A panel needs the cursor back; a click on the game afterwards re-locks.
   if (locked() && ui.isOpen()) document.exitPointerLock();
+  if (shiftLock) document.body.classList.toggle('shiftlock', !ui.isOpen());
   if (!inRealm() && state.scene === 'earth') moveVillagers(dt, time);
   updateCritters(dt, time);
   if (!inRealm() && state.scene === 'earth') moveShadows(dt, time);
@@ -3091,6 +3101,7 @@ window.epoch = {
   theme(id) { state.cosmetics.theme = id; applyTheme(); },
   outfit(id) { state.cosmetics.outfit = id; return wearLook(); },
   pet(id) { state.critters.caught[id] = 1; S.setPet(state, id); dressPet(); },
+  uiOpen: () => ui.isOpen(),
   shiftLock: () => ({ on: shiftLock, locked: locked(), yaw: cam.yaw, facing: player.facing }),
   invaders: () => [...invaders.values()].map((i) => ({ name: i.item.name, mode: i.mode, x: +i.object.position.x.toFixed(1), z: +i.object.position.z.toFixed(1), inScene: Boolean(i.object.parent) })),
   armor(id) { const inv = invaders.get(id); return inv && inv.object.userData.armor?.filter((p) => p.visible).length; },

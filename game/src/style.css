@@ -749,3 +749,6 @@ select, input { font: inherit; }
 .slot.lock { cursor: pointer; pointer-events: auto; }
 #crosshair { position: fixed; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.9); box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35); pointer-events: none; z-index: 4; }
 #crosshair[hidden] { display: none; }
+
+/* Shift lock hides the cursor over the game (panels and the HUD buttons keep theirs). */
+body.shiftlock, body.shiftlock canvas, body.shiftlock #labels, body.shiftlock #labels * { cursor: none !important; }
