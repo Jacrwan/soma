@@ -273,10 +273,37 @@ let somaPresent = false;
 
 const hash = (text) => [...String(text)].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 7);
 
+// Homework and tests talk back when you come close: a speech bubble over the
+// monster, a new line every few seconds, nothing when you walk away.
+let tauntClock = 0;
+function updateTaunts(dt) {
+  tauntClock -= dt;
+  if (tauntClock > 0) return;
+  tauntClock = 0.5;
+  const p = player.object.position, now = Date.now(), t = performance.now() / 1000;
+  // Only the nearest one speaks, so they don't talk over each other.
+  let speaker = null, best = 13;
+  if (!inRealm() && state.scene === 'earth') for (const inv of invaders.values()) {
+    const d = Math.hypot(inv.object.position.x - p.x, inv.object.position.z - p.z);
+    if (d < best) { best = d; speaker = inv; }
+  }
+  for (const inv of invaders.values()) {
+    if (!inv.taunt) inv.taunt = { label: fx.label(inv.object, (inv.boss ? 4.4 : 1.7 + inv.item.size * 0.3), '', 'npc empty'), k: hash(inv.item.id) % 5, at: 0 };
+    if (inv !== speaker) { if (inv.taunt.shown) { inv.taunt.label.set('', 'npc empty'); inv.taunt.shown = false; } continue; }
+    if (!inv.taunt.shown || t - inv.taunt.at > 5) {
+      if (inv.taunt.shown) inv.taunt.k += 1;
+      inv.taunt.at = t;
+      inv.taunt.shown = true;
+      inv.taunt.label.set(escapeHtml(S.taunt(state, inv.item, now, inv.taunt.k)), `npc talk taunt ${inv.boss ? 'boss' : ''}`);
+    }
+  }
+}
+
 function despawnInvader(id, pop) {
   const inv = invaders.get(id);
   if (!inv) return null;
   const pos = inv.object.position.clone();
+  inv.taunt?.label.remove();
   if (pop) {
     fx.burst(pos, inv.boss ? A.C.red : A.C.purple, inv.boss ? 40 : 18, 8, 9);
     audio.pop();
@@ -2376,6 +2403,7 @@ function frame(nowMs) {
   updateExploring(dt);
   trimShadows(dt);
   updateCombatHud(dt);
+  updateTaunts(dt);
   world.spinCountry(dt);
   for (const c of cacheObjects) if (!c.done) { c.object.userData.beam.material.opacity = 0.16 + Math.sin(time * 2) * 0.06; c.object.userData.chest.position.y = Math.sin(time * 1.5) * 0.06; }
   if (!inRealm()) { moveInvaders(dt, time); updateTown(dt, time); }
@@ -4074,6 +4102,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 window.epoch = {
   state, S, cam,
   give(n) { S.addCoins(state, n); refreshHud(); },
+  goTo(kind) { const inv = [...invaders.values()].filter((i) => (kind === 'boss') === i.boss).sort((a, b) => a.object.position.distanceTo(player.object.position) - b.object.position.distanceTo(player.object.position))[0]; if (!inv) return null; const o = inv.object.position; player.object.position.set(o.x + 4, 0, o.z + 4); cam.yaw = Math.atan2(4, 4); cam.pitch = 0.32; cam.want = cam.dist = inv.boss ? 20 : 13; return inv.item.name; },
   tutorial: () => ({ ...state.tutorial, title: tutorialStep()?.title }), skipStep: () => nextTutorialStep(),
   caches: () => world.caches(), openCache: (i) => openCacheAt(i), landmarks: () => world.landmarks(), openMap: () => openMap(), reveal: (x, z) => S.revealMap(state, x, z),
   refresh() { world.setEra(state.era); world.setScene(state.scene, state.era); dressPlayer(); refreshAllPads(); refreshWonders(); syncChests(); syncInvaders(Date.now()); syncDecor(); syncPaths(); refreshHud(); },

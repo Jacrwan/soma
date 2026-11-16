@@ -919,3 +919,16 @@ test('the village builder: pieces unlock with hours studied, paths paint and era
   assert.strictEqual(empty.stars, 0);
   assert.ok(empty.tips.length > 0);
 });
+
+test('homework and tests talk back, depending on the clock and how much you studied', () => {
+  const s = S.newState(NOW);
+  S.syncSchool(s, [item({ id: 'hw', name: 'Problem Set 3', courseName: 'Physics', dueAt: NOW + 5 * DAY })], NOW, { source: 'demo' });
+  const hw = s.school.items.hw;
+  const lines = [0, 1, 2, 3, 4].map((k) => S.taunt(s, hw, NOW, k));
+  assert.ok(lines.every((l) => typeof l === 'string' && l.length > 10 && !/[{}]/.test(l)));
+  assert.notStrictEqual(lines[0], lines[1], 'more than one line');
+  assert.ok(lines.some((l) => l.includes('Physics') || l.includes('days')));
+  assert.ok(S.taunt(s, hw, NOW + 6 * DAY, 0).length > 10, 'overdue lines');
+  const exam = { ...hw, id: 'ex', kind: 'boss', name: 'Midterm' };
+  assert.ok(!/[{}]/.test(S.taunt(s, exam, NOW, 4)));
+});

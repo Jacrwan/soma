@@ -1737,6 +1737,82 @@ const ago = (ms) => (ms < 3600000 ? `${Math.max(1, Math.round(ms / 60000))} minu
  * Something this person would say right now, from your real school
  * situation. k picks among the things that apply, so lines vary.
  */
+// --- Homework and tests talk back ---------------------------------------------------
+// What an assignment or exam says when you get close. It knows the course, the
+// clock and how much you've studied, and it gets cockier the less you have.
+const TAUNTS = {
+  fresh: [
+    "Due in {time}. Plenty of time to forget I exist.",
+    "{course} sends its regards. I'll wait. I'm very patient.",
+    "Go on, scroll a bit more. I'll still be here.",
+    "Starting me early? Nobody does that. Prove me wrong.",
+    "I'm only {pts} points. What could go wrong?",
+  ],
+  soon: [
+    "{time} left. You've opened me zero times. Bold.",
+    "Tick tock. I'm due in {time} and I'm not getting shorter.",
+    "Tonight's plan: you, me, and a lot of regret.",
+    "I heard you say \"I'll do it later.\" It's later.",
+    "{course} is watching. So am I.",
+  ],
+  overdue: [
+    "Late. Again. I'm eating your coins while we chat.",
+    "Overdue by {late}. Still feeling brave?",
+    "Your grade called. It wants to talk.",
+    "Every hour you wait, I get a little more comfortable in your town.",
+  ],
+  studied: [
+    "Wait, you actually studied me? That's not fair.",
+    "{pct}% studied?! Who taught you that?",
+    "Okay, okay. You know your stuff. Hand me in and get it over with.",
+  ],
+  studying: [
+    "Hey! Stop reading me so closely!",
+    "This is harassment. I'm telling {course}.",
+    "Fine, focus. See if I care. (I care.)",
+  ],
+  exam: [
+    "{armor}% armor. You haven't touched my weak points.",
+    "Midterms don't care about your feelings. Neither do I.",
+    "See you on exam day. Bring a pencil and a prayer.",
+    "{course} final boss energy. And you're level {level}.",
+    "I've got {weak} weak points and you don't know a single one.",
+  ],
+  examWeak: [
+    "Wait. How do you know about {topic}?",
+    "My armor's down to {armor}%. This is... concerning.",
+    "Fine. You've been studying. I'll just... stand here.",
+  ],
+};
+/** One line from item, picked by k (bump k to change the line). */
+export function taunt(state, item, now = Date.now(), k = 0) {
+  const studied = studyProgress(state, item);
+  const exam = item.kind === 'boss';
+  const studying = state.study.active?.itemId === item.id;
+  const left = item.dueAt - now;
+  const armor = exam ? Math.round(examArmor(state, item) * 100) : 0;
+  const topics = state.topics?.[item.id] || [];
+  const weakLeft = exam && topics.length ? crystalsLeft(state, item) : null;
+  const pool = studying ? TAUNTS.studying
+    : exam ? (armor <= 40 ? TAUNTS.examWeak : TAUNTS.exam)
+    : left < 0 ? TAUNTS.overdue
+    : studied >= 0.6 ? TAUNTS.studied
+    : left < 24 * HOUR ? TAUNTS.soon : TAUNTS.fresh;
+  let line = pool[Math.abs(k) % pool.length];
+  if (line.includes('{weak}') && weakLeft === null) line = pool[(Math.abs(k) + 1) % pool.length];
+  if (line.includes('{topic}') && !topics.length) line = pool[(Math.abs(k) + 1) % pool.length];
+  const hours = (ms) => { const h = Math.abs(ms) / HOUR; return h < 1 ? `${Math.max(1, Math.round(h * 60))} min` : h < 48 ? `${Math.round(h)} hours` : `${Math.round(h / 24)} days`; };
+  return line
+    .replace('{time}', hours(left)).replace('{late}', hours(left))
+    .replace('{course}', item.courseName || 'Your course')
+    .replace('{pts}', String(item.pointsPossible || 'a few'))
+    .replace('{pct}', String(Math.round(studied * 100)))
+    .replace('{armor}', String(armor))
+    .replace('{weak}', String(weakLeft ?? 0))
+    .replace('{topic}', topics[Math.abs(k) % Math.max(1, topics.length)]?.name || 'that')
+    .replace('{level}', String(heroStats(state).level));
+}
+
 export function villagerLine(state, person, now = Date.now(), k = 0) {
   const lines = [];
   const late = lateItems(state, now);

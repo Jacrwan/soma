@@ -211,10 +211,109 @@ function dropFangs(gltf) {
   });
 }
 
+// --- A cuter face, made in the model itself ----------------------------------------
+// The KayKit heads paint their eyes from one dark palette swatch and the mouth
+// from a light grey one. Those triangles are reshaped here: eyes much bigger and
+// rounder, the smirk shrunk to a small centred smile, and the whole head a bit
+// bigger on the body. A sparkle in each eye and soft cheeks ride on the head
+// bone, so they move with every animation. Villagers get the same face.
+const EYE = [0.25, 0.375], MOUTH = [0.375, 0.5]; // u ranges of the swatches (row 0)
+const HEAD_SCALE = 1.14;
+function cuteFace(gltf, char) {
+  gltf.scene.updateMatrixWorld(true);
+  const bone = gltf.scene.getObjectByName('head');
+  if (!bone) return;
+  const heads = [];
+  gltf.scene.traverse((o) => { if (o.isSkinnedMesh && /_Head$/.test(o.name)) heads.push(o); });
+  const hats = [];
+  if (char.hat) gltf.scene.getObjectByName(char.hat)?.traverse((o) => { if (o.isMesh) hats.push(o); });
+  for (const head of heads) {
+    const geo = head.geometry = head.geometry.clone();
+    const pos = geo.attributes.position, uv = geo.attributes.uv, index = geo.index?.array;
+    if (!index || !uv) continue;
+    // Which vertices belong to the eyes and to the mouth.
+    const eyes = new Set(), mouth = new Set();
+    for (let t = 0; t < index.length; t += 3) {
+      const u = (uv.getX(index[t]) + uv.getX(index[t + 1]) + uv.getX(index[t + 2])) / 3;
+      const v = (uv.getY(index[t]) + uv.getY(index[t + 1]) + uv.getY(index[t + 2])) / 3;
+      if (v >= 0.25) continue;
+      const into = u >= EYE[0] && u < EYE[1] ? eyes : u >= MOUTH[0] && u < MOUTH[1] ? mouth : null;
+      if (into) for (let k = 0; k < 3; k++) into.add(index[t + k]);
+    }
+    const centre = (set, side = 0) => {
+      const c = new THREE.Vector3(); let n = 0;
+      for (const i of set) { if (side && Math.sign(pos.getX(i)) !== side) continue; c.x += pos.getX(i); c.y += pos.getY(i); c.z += pos.getZ(i); n++; }
+      return n ? c.divideScalar(n) : null;
+    };
+    const eyeCentres = [];
+    for (const side of [-1, 1]) {
+      const c = centre(eyes, side);
+      if (!c) continue;
+      eyeCentres.push(c);
+      for (const i of eyes) {
+        if (Math.sign(pos.getX(i)) !== side) continue;
+        const dx = pos.getX(i) - c.x, dy = pos.getY(i) - c.y;
+        // Bigger and taller, and nudged out so the edges stay on the curve of the face.
+        pos.setXYZ(i, c.x + dx * 1.45, c.y + dy * 1.75 - 0.012, pos.getZ(i) + 0.012 - (dx * dx) * 0.8);
+      }
+    }
+    // The old smirk goes; a small round smile replaces it (below, on the bone).
+    const m = centre(mouth);
+    if (m) {
+      const keep = [];
+      for (let t = 0; t < index.length; t += 3) if (!(mouth.has(index[t]) && mouth.has(index[t + 1]) && mouth.has(index[t + 2]))) keep.push(index[t], index[t + 1], index[t + 2]);
+      geo.setIndex(keep);
+    }
+    // A bigger head on the same body, grown from the neck.
+    const pivot = bone.getWorldPosition(new THREE.Vector3()).applyMatrix4(new THREE.Matrix4().copy(head.matrixWorld).invert());
+    const grow = (g) => { const p = g.attributes.position; for (let i = 0; i < p.count; i++) p.setXYZ(i, pivot.x + (p.getX(i) - pivot.x) * HEAD_SCALE, pivot.y + (p.getY(i) - pivot.y) * HEAD_SCALE, pivot.z + (p.getZ(i) - pivot.z) * HEAD_SCALE); p.needsUpdate = true; g.computeBoundingSphere(); };
+    grow(geo);
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();
+    // Sparkles and cheeks, pinned to the head bone.
+    const sparkle = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const blush = new THREE.MeshBasicMaterial({ color: 0xff8fa3, transparent: true, opacity: 0.55, depthWrite: false });
+    const toWorld = (v) => {
+      const g = new THREE.Vector3(pivot.x + (v.x - pivot.x) * HEAD_SCALE, pivot.y + (v.y - pivot.y) * HEAD_SCALE, pivot.z + (v.z - pivot.z) * HEAD_SCALE);
+      return g.applyMatrix4(head.matrixWorld);
+    };
+    const add = (mesh, at) => { mesh.position.copy(at); mesh.userData.keepColor = true; mesh.castShadow = false; gltf.scene.add(mesh); bone.attach(mesh); };
+    if (eyeCentres.length === 2) {
+      const m = centre(mouth);
+      const mid = eyeCentres[0].clone().add(eyeCentres[1]).multiplyScalar(0.5);
+      const smile = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.014, 6, 16, Math.PI), new THREE.MeshBasicMaterial({ color: 0x5a2a22 }));
+      // Where the old mouth was, a touch higher: a small cup-shaped smile.
+      add(smile, toWorld(new THREE.Vector3(0, m ? m.y + 0.04 : mid.y - 0.2, (m ? m.z : mid.z) + 0.02)));
+      smile.rotation.set(0, 0, Math.PI);
+    }
+    for (const c of eyeCentres) {
+      const big = new THREE.Mesh(new THREE.SphereGeometry(0.028, 10, 8), sparkle);
+      add(big, toWorld(new THREE.Vector3(c.x + 0.025 * Math.sign(c.x), c.y + 0.035, c.z + 0.03)));
+      const small = new THREE.Mesh(new THREE.SphereGeometry(0.013, 8, 6), sparkle);
+      add(small, toWorld(new THREE.Vector3(c.x - 0.02 * Math.sign(c.x), c.y - 0.04, c.z + 0.03)));
+      const cheek = new THREE.Mesh(new THREE.CircleGeometry(0.075, 18), blush);
+      cheek.scale.y = 0.6;
+      add(cheek, toWorld(new THREE.Vector3(c.x * 1.3, c.y - 0.13, c.z - 0.005)));
+      cheek.rotation.set(0, Math.sign(c.x) * 0.45, 0);
+    }
+  }
+  // Hats grow with the head so they still fit.
+  for (const hat of hats) {
+    if (hat.userData.grown) continue;
+    hat.userData.grown = true;
+    hat.geometry = hat.geometry.clone();
+    const pivot = bone.getWorldPosition(new THREE.Vector3()).applyMatrix4(new THREE.Matrix4().copy(hat.matrixWorld).invert());
+    const p = hat.geometry.attributes.position;
+    for (let i = 0; i < p.count; i++) p.setXYZ(i, pivot.x + (p.getX(i) - pivot.x) * HEAD_SCALE, pivot.y + (p.getY(i) - pivot.y) * HEAD_SCALE, pivot.z + (p.getZ(i) - pivot.z) * HEAD_SCALE);
+    p.needsUpdate = true;
+    hat.geometry.computeBoundingSphere();
+  }
+}
+
 function load(char, palette = null) {
   const key = palette ? `${char.id}:${palette}` : char.id;
   if (!loaded.has(key)) {
-    loaded.set(key, loader.loadAsync(`/game/models/${char.file}`).then(async (gltf) => {
+    loaded.set(key, loader.loadAsync(`/models/${char.file}`).then(async (gltf) => {
       gltf.scene.updateMatrixWorld(true);
       const box = new THREE.Box3();
       gltf.scene.traverse((o) => { if (o.isSkinnedMesh && /Body|Head|Leg/.test(o.name)) box.expandByObject(o); });
@@ -238,7 +337,8 @@ function load(char, palette = null) {
         });
       }
       // Repainted first, so the borrowed head keeps its own colours.
-      if (char.head) swapHead(gltf, await loader.loadAsync(`/game/models/${char.head.file}`), char.head.mesh, `${char.name}_Head`, char.head.trim);
+      if (char.head) swapHead(gltf, await loader.loadAsync(`/models/${char.head.file}`), char.head.mesh, `${char.name}_Head`, char.head.trim);
+      cuteFace(gltf, char);
       return { char, gltf, fit, palette };
     }));
   }
@@ -283,7 +383,7 @@ export function createAvatar({ tint, hat, weapon, weaponLook = 0 }) {
     o.material = o.material.clone();
     o.material.roughness = 0.85;
     o.material.metalness = 0;
-    if (tint) o.material.color.lerp(new THREE.Color(tint), 0.3);
+    if (tint && !o.userData.keepColor) o.material.color.lerp(new THREE.Color(tint), 0.3);
   });
   const part = (name) => model.getObjectByName(name);
   for (const name of char.hide) if (part(name)) part(name).visible = false;
@@ -382,7 +482,7 @@ export function createVillager(lookId, { tint = null, scale = 0.88 } = {}) {
       o.material = o.material.clone();
       o.material.roughness = 0.85;
       o.material.metalness = 0;
-      if (tint) o.material.color.lerp(new THREE.Color(tint), 0.35);
+      if (tint && !o.userData.keepColor) o.material.color.lerp(new THREE.Color(tint), 0.35);
     });
     for (const name of [...char.hide, char.weapon, char.great]) {
       const part = model.getObjectByName(name);
