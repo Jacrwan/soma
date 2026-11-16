@@ -1070,7 +1070,102 @@ const CHEST_LOOK = {
   rare: { wood: 0x6b4a33, dark: 0x3f2b1e, band: 0x6f9fd8, bandMetal: 0.8, gem: 0x7fd0ff, glow: 1.2 },
   epic: { wood: 0x4a2f3f, dark: 0x2f1d29, band: 0xe0b04a, bandMetal: 0.9, gem: 0xa35be0, glow: 1.6 },
   legendary: { wood: 0x3a2618, dark: 0x24170e, band: 0xf2c14e, bandMetal: 0.95, gem: 0xff8a2a, glow: 2.2 },
+  mythic: { wood: 0x1c1030, dark: 0x0e0718, band: 0xe8d8ff, bandMetal: 1, gem: 0xff4fd8, glow: 2.6 },
 };
+// The aura around each rarity: a glow on the ground, motes circling, a rune
+// ring, wings and floating crystals for the rarest. More of it the rarer it is.
+const AURA = {
+  common: { motes: 0, halo: 0.18, ring: false },
+  rare: { motes: 6, halo: 0.35, ring: false },
+  epic: { motes: 10, halo: 0.5, ring: true },
+  legendary: { motes: 16, halo: 0.65, ring: true, wings: true },
+  mythic: { motes: 24, halo: 0.8, ring: true, wings: true, crystals: true },
+};
+const additive = (color, opacity) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+function glowTexture() {
+  if (glowTexture.t) return glowTexture.t;
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const r = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.35, 'rgba(255,255,255,0.45)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = r; g.fillRect(0, 0, 128, 128);
+  glowTexture.t = new THREE.CanvasTexture(c);
+  return glowTexture.t;
+}
+function makeChestAura(rarity, trim) {
+  const a = AURA[rarity] || AURA.common;
+  const aura = new THREE.Group();
+  aura.name = 'aura';
+  const parts = { motes: [], ring: null, halo: null, crystals: [], wings: [], hue: rarity === 'mythic' };
+  // Ground glow.
+  const halo = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 3.4), new THREE.MeshBasicMaterial({ map: glowTexture(), color: trim, transparent: true, opacity: a.halo, blending: THREE.AdditiveBlending, depthWrite: false }));
+  halo.rotation.x = -Math.PI / 2;
+  halo.position.y = 0.03;
+  aura.add(halo);
+  parts.halo = halo;
+  // Motes that circle and bob.
+  for (let i = 0; i < a.motes; i++) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.035 + (i % 3) * 0.012, 8, 6), additive(i % 4 === 0 ? 0xffffff : trim, 0.9));
+    m.userData = { r: 0.9 + (i % 5) * 0.12, speed: 0.5 + (i % 4) * 0.18, phase: (i / a.motes) * Math.PI * 2, y: 0.2 + (i % 6) * 0.22 };
+    aura.add(m);
+    parts.motes.push(m);
+  }
+  // A rune ring turning around the chest.
+  if (a.ring) {
+    const ring = new THREE.Group();
+    const band = new THREE.Mesh(new THREE.TorusGeometry(1.15, 0.018, 6, 64), additive(trim, 0.8));
+    ring.add(band);
+    for (let i = 0; i < 12; i++) {
+      const rune = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.03, 0.03), additive(trim, 0.9));
+      const t = (i / 12) * Math.PI * 2;
+      rune.position.set(Math.cos(t) * 1.15, Math.sin(t) * 1.15, 0);
+      rune.rotation.z = t;
+      ring.add(rune);
+    }
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 0.12;
+    aura.add(ring);
+    parts.ring = ring;
+  }
+  // Floating crystals over a mythic chest.
+  if (a.crystals) {
+    for (let i = 0; i < 3; i++) {
+      const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.16, 0), new THREE.MeshStandardMaterial({ color: [0xff4fd8, 0x7fd3ff, 0xfff2a0][i], emissive: [0xff4fd8, 0x7fd3ff, 0xffd84a][i], emissiveIntensity: 1.4, metalness: 0.3, roughness: 0.15 }));
+      c.scale.y = 1.6;
+      c.userData = { phase: (i / 3) * Math.PI * 2 };
+      aura.add(c);
+      parts.crystals.push(c);
+    }
+  }
+  aura.userData.parts = parts;
+  return aura;
+}
+/** Moves a chest's aura: motes circle, the ring turns, crystals float, mythic colours shift. */
+export function animateChest(chest, time) {
+  const aura = chest?.userData?.aura;
+  if (!aura) return;
+  const p = aura.userData.parts;
+  for (const m of p.motes) {
+    const u = m.userData, t = time * u.speed + u.phase;
+    m.position.set(Math.cos(t) * u.r, u.y + ((time * 0.35 + u.phase) % 1.4), Math.sin(t) * u.r);
+    m.material.opacity = 0.9 * (1 - ((time * 0.35 + u.phase) % 1.4) / 1.4);
+  }
+  if (p.ring) { p.ring.rotation.z = time * 0.6; p.ring.position.y = 0.12 + Math.sin(time * 1.4) * 0.05; }
+  if (p.halo) p.halo.material.opacity = p.halo.userData.base ?? (p.halo.userData.base = p.halo.material.opacity), p.halo.material.opacity = p.halo.userData.base * (0.8 + Math.sin(time * 2.2) * 0.2);
+  p.crystals.forEach((c, i) => {
+    const t = time * 0.7 + c.userData.phase;
+    c.position.set(Math.cos(t) * 0.55, 1.55 + Math.sin(time * 1.6 + i) * 0.12, Math.sin(t) * 0.55);
+    c.rotation.y = time * 1.5 + i;
+  });
+  for (const w of p.wings) w.rotation.y = w.userData.base + Math.sin(time * 2.4) * 0.12 * w.userData.side;
+  if (p.hue) {
+    const c = new THREE.Color().setHSL((time * 0.08) % 1, 0.85, 0.62);
+    for (const m of p.motes) m.material.color.copy(c);
+    if (p.ring) p.ring.children.forEach((r) => r.material.color.copy(c));
+    p.halo.material.color.copy(c);
+  }
+}
 export function makeChest(rarity) {
   const look = CHEST_LOOK[rarity] || CHEST_LOOK.common;
   const trim = RARITY_COLORS[rarity] ?? look.gem;
@@ -1123,13 +1218,42 @@ export function makeChest(rarity) {
   seam.castShadow = false;
   g.add(at(seam, 0, H - 0.005, 0));
   g.add(at(lid, 0, H, -R));
-  if (rarity === 'legendary' || rarity === 'epic') {
-    // A crest on top of the lid.
+  if (rarity === 'legendary' || rarity === 'epic' || rarity === 'mythic') {
+    // A crest on top of the lid: a gem on gold for legendary and mythic.
     const crest = ball(0.09, look.band, 0, band);
     crest.scale.set(1, 0.6, 1);
     lid.add(at(crest, 0, R + 0.02, R));
+    if (rarity !== 'epic') {
+      const top = new THREE.Mesh(new THREE.OctahedronGeometry(0.1, 0), mat(look.gem, { emissive: look.gem, glow: 1.2 }));
+      top.scale.y = 1.5;
+      lid.add(at(top, 0, R + 0.17, R));
+      // Spikes along the lid like a crown.
+      for (const x of [-0.42, -0.21, 0.21, 0.42]) lid.add(at(cone(0.05, 0.16, look.band, 4, band), x, R - 0.02, R));
+    }
   }
-  const beam = mesh(new THREE.CylinderGeometry(0.55, 0.3, 4.5, 20, 1, true), trim, { emissive: trim, glow: 0.7, opacity: 0.13 });
+  const aura = makeChestAura(rarity, trim);
+  g.add(aura);
+  g.userData.aura = aura;
+  // Wings on the sides of legendary and mythic chests.
+  if (AURA[rarity]?.wings) {
+    for (const side of [-1, 1]) {
+      const wing = new THREE.Group();
+      for (let i = 0; i < 4; i++) {
+        const f = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.62 - i * 0.1, 4), mat(rarity === 'mythic' ? 0xf5ecff : look.band, rarity === 'mythic' ? { emissive: 0xc8a8ff, glow: 0.5 } : band));
+        f.rotation.z = side * (0.9 + i * 0.28);
+        f.position.set(side * (0.12 + i * 0.1), 0.18 + i * 0.05, 0);
+        f.scale.z = 0.35;
+        wing.add(f);
+      }
+      wing.position.set(side * (W / 2 + 0.04), H * 0.55, -0.05);
+      wing.userData = { side, base: side * 0.25 };
+      wing.rotation.y = wing.userData.base;
+      aura.userData.parts.wings.push(wing);
+      g.add(wing);
+    }
+  }
+  const beamGlow = { common: 0.08, rare: 0.12, epic: 0.16, legendary: 0.2, mythic: 0.26 }[rarity] ?? 0.13;
+  const beam = mesh(new THREE.CylinderGeometry(0.55, 0.3, 4.5 + (rarity === 'mythic' ? 2 : 0), 20, 1, true), trim, { emissive: trim, glow: 0.7, opacity: beamGlow });
   beam.material.side = THREE.DoubleSide;
   beam.castShadow = false;
   beam.position.y = 2.8;
@@ -1137,6 +1261,8 @@ export function makeChest(rarity) {
   beam.name = 'beam';
   g.add(beam);
   g.userData.lid = lid;
+  g.userData.wings = g.userData.aura.userData.parts.wings; // kept apart from merging, so they can flap
+  if (rarity === 'mythic') g.scale.setScalar(1.15);
   return g;
 }
 

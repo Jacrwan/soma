@@ -63,6 +63,7 @@ export function createUI(on) {
   $('quest').addEventListener('click', () => questOpen && questOpen());
   $('btnHelp').addEventListener('click', () => on.help());
   $('btnMap')?.addEventListener('click', () => on.map?.());
+  $('btnChests')?.addEventListener('click', () => on.chests?.());
   $('btnSound').addEventListener('click', () => on.sound());
   $('btnSettings')?.addEventListener('click', () => on.settings());
   $('btnPass')?.addEventListener('click', () => on.pass());
@@ -831,6 +832,21 @@ export function createUI(on) {
           el('span', { text: p.label }), el('div', { class: 'bar' }, el('i', { style: `width:${Math.round((p.points / p.max) * 100)}%` })), el('small', { text: `${p.points}/${p.max}` })))),
         tips.length ? el('p', { class: 'note', text: `Next, try: ${tips.join(', ').toLowerCase()}.` }) : null,
       );
+    },
+
+    chests({ tiers }) {
+      panel({ title: 'Chests', subtitle: 'Every chest, rarest last. Each one holds coins, gear and a rare find.', wide: true },
+        el('div', { class: 'chest-tiers' }, tiers.map((t) => {
+          const img = el('img', { class: 'thumb', alt: '' });
+          t.picture.then((src) => { img.src = src; }).catch(() => {});
+          return el('div', { class: `chest-tier t-${t.id}` },
+            el('div', { class: 'chest-pic' }, img),
+            el('b', { text: t.name }),
+            t.have ? el('em', { text: `${t.have} waiting on your plaza` }) : null,
+            el('div', { class: 'chest-odds' }, t.odds.map((o) => el('span', { class: `odd o-${o.tier}` }, el('i', { style: `width:${Math.max(4, o.pct)}%` }), el('small', { text: `${o.tier} ${o.pct}%` })))),
+            el('p', { text: t.from }));
+        })),
+        el('p', { class: 'note', text: 'Odds are for the rare find inside. Every chest also has coins, and better chests add gear, relics, tokens and looks.' }));
     },
 
     map({ title, subtitle, canvas, legend }) {

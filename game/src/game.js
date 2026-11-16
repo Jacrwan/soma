@@ -634,6 +634,7 @@ const ui = createUI({
   help: () => ui.help({ first: false, onTutorial: replayTutorial }),
   sound: () => toggleMute(),
   map: () => openMap(),
+  chests: () => openChests(),
   build: () => toggleBuild(),
   settings: () => openSettings(),
   pass: () => openPass(),
@@ -1894,6 +1895,18 @@ function terrainImage() {
   return c;
 }
 
+function openChests() {
+  if (ui.isOpen()) return;
+  const have = {};
+  for (const c of state.school.chests) have[c.rarity] = (have[c.rarity] || 0) + 1;
+  ui.chests({
+    tiers: S.CHEST_TIERS.map((t) => {
+      const drop = S.DROP_TABLE[t.id];
+      return { ...t, have: have[t.id] || 0, odds: S.TIERS.filter((k) => drop.odds[k] > 0).map((k) => ({ tier: k, pct: drop.odds[k] })), picture: thumbFor({ kind: 'chest', rarity: t.id }) };
+    }),
+  });
+}
+
 function openMap() {
   if (inRealm() || state.scene !== 'earth') return void ui.toast('The map shows your home land. Head back to use it.', 'bad');
   S.revealMap(state, player.object.position.x, player.object.position.z);
@@ -2400,9 +2413,11 @@ function updateTown(dt, time) {
     const beam = entry.object.getObjectByName('beam');
     if (beam) {
       beam.rotation.y = time * 0.8;
-      beam.material.opacity = 0.16 + Math.sin(time * 3) * 0.06;
+      beam.material.opacity = (beam.userData.base ?? (beam.userData.base = beam.material.opacity)) * (1 + Math.sin(time * 3) * 0.35);
     }
-    entry.object.scale.setScalar(1 + Math.sin(time * 3 + entry.object.position.x) * 0.03);
+    const base = entry.chest.rarity === 'mythic' ? 1.15 : 1;
+    entry.object.scale.setScalar(base * (1 + Math.sin(time * 3 + entry.object.position.x) * 0.03));
+    A.animateChest(entry.object, time + entry.object.position.x);
   }
   for (const inv of invaders.values()) {
     if (fight && fight.id === inv.item.id) continue;
@@ -3619,7 +3634,7 @@ function thumbFor(reward) {
     if (reward.kind === 'decor') object = makePiece(reward.id);
     else if (reward.kind === 'building') object = A.makeBuilding(reward.id, S.tierFor(state, 'earth'), 1, false);
     else if (reward.kind === 'pet') object = A.makeCritter(reward.id);
-    else if (reward.kind === 'chest') { object = A.makeChest(reward.rarity); object.getObjectByName('beam')?.removeFromParent(); }
+    else if (reward.kind === 'chest') { object = A.makeChest(reward.rarity); object.getObjectByName('beam')?.removeFromParent(); A.animateChest(object, 1.7); }
     else if (reward.kind === 'lures') object = makeLure();
     else if (reward.kind === 'coins') {
       // A little stack with one coin standing on its edge.
@@ -3636,7 +3651,7 @@ function thumbFor(reward) {
     }
     else if (reward.kind === 'look') object = reward.id.startsWith('color:') ? A.makePaintPot(A.SKIN_COLORS[reward.id] || 0xd9785a) : (() => { const h = A.makeHat(reward.id); h.scale.setScalar(1.5); return h; })();
     else if (reward.kind === 'tea') object = A.makeTeaCup();
-    job = Promise.resolve(renderThumb(object, reward.kind === 'decor' || reward.kind === 'collectible' || reward.kind === 'building' ? 0.7 : 0.4, reward.kind === 'building' ? 2.6 : 0));
+    job = Promise.resolve(renderThumb(object, reward.kind === 'decor' || reward.kind === 'collectible' || reward.kind === 'building' ? 0.7 : 0.4, reward.kind === 'building' ? 2.6 : reward.kind === 'chest' ? 1.6 : 0));
   }
   thumbCache.set(key, job);
   return job;
@@ -4150,6 +4165,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 window.epoch = {
   state, S, cam,
   give(n) { S.addCoins(state, n); refreshHud(); },
+  chests: () => openChests(),
   thumb: (r) => thumbFor(r),
   character: (id) => pickCharacter(id),
   goTo(kind) { const inv = [...invaders.values()].filter((i) => (kind === 'boss') === i.boss).sort((a, b) => a.object.position.distanceTo(player.object.position) - b.object.position.distanceTo(player.object.position))[0]; if (!inv) return null; const o = inv.object.position; player.object.position.set(o.x + 4, 0, o.z + 4); cam.yaw = Math.atan2(4, 4); cam.pitch = 0.32; cam.want = cam.dist = inv.boss ? 20 : 13; return inv.item.name; },

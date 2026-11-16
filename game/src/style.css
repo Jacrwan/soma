@@ -978,3 +978,21 @@ body.in-realm .tracker #quest { display: block; }
 .label { will-change: transform; }
 
 .segmented.tracks { flex-wrap: wrap; justify-content: flex-end; max-width: 300px; }
+
+/* --- Chests showcase --- */
+.chest-tiers { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.chest-tier { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 10px 12px; border-radius: 16px; background: rgba(255, 255, 255, 0.05); border: 2px solid var(--tc, rgba(255,255,255,0.1)); text-align: center; }
+.chest-tier .chest-pic { width: 100%; aspect-ratio: 1; display: grid; place-items: center; border-radius: 12px; background: radial-gradient(circle at 50% 60%, color-mix(in srgb, var(--tc) 45%, transparent), transparent 70%); }
+.chest-tier .chest-pic img { width: 92%; filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.5)); }
+.chest-tier b { font-size: 17px; color: var(--tc); text-shadow: 0 0 12px color-mix(in srgb, var(--tc) 60%, transparent); }
+.chest-tier em { font-style: normal; font-size: 11px; font-weight: 800; color: #3ec45a; }
+.chest-tier p { margin: 2px 0 0; font-size: 11.5px; color: var(--muted); line-height: 1.35; }
+.chest-odds { display: grid; gap: 4px; width: 100%; }
+.chest-odds .odd { position: relative; display: block; height: 16px; border-radius: 6px; background: rgba(255, 255, 255, 0.06); overflow: hidden; }
+.chest-odds .odd i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--oc); opacity: 0.55; }
+.chest-odds .odd small { position: relative; display: block; padding-left: 6px; font-size: 10.5px; font-weight: 800; text-align: left; line-height: 16px; text-transform: capitalize; }
+.t-common { --tc: #b9c0c9; } .t-rare { --tc: #4a90e2; } .t-epic { --tc: #a35be0; } .t-legendary { --tc: #f2c14e; }
+.t-mythic { --tc: #ff4fd8; animation: mythic-edge 4s linear infinite; }
+@keyframes mythic-edge { 0% { border-color: #ff4fd8; } 33% { border-color: #7fd3ff; } 66% { border-color: #fff2a0; } 100% { border-color: #ff4fd8; } }
+.o-common { --oc: #b9c0c9; } .o-rare { --oc: #4a90e2; } .o-epic { --oc: #a35be0; } .o-legendary { --oc: #f2c14e; } .o-mythic { --oc: #ff4fd8; }
+@media (max-width: 900px) { .chest-tiers { grid-template-columns: repeat(2, 1fr); } }

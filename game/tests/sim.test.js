@@ -932,3 +932,14 @@ test('homework and tests talk back, depending on the clock and how much you stud
   const exam = { ...hw, id: 'ex', kind: 'boss', name: 'Midterm' };
   assert.ok(!/[{}]/.test(S.taunt(s, exam, NOW, 4)));
 });
+
+test('mythic chests open with legendary pools and more inside; the weekly streak reaches one at twelve', () => {
+  const s = rich(0);
+  S.grantChest(s, 'mythic', 'test');
+  const tokens = s.tokens;
+  const { loot } = S.openChest(s, s.school.chests[0].id, () => 0.1, NOW);
+  assert.ok(loot.some((l) => l.kind === 'collectible' && ['epic', 'legendary', 'mythic'].includes(l.tier)));
+  assert.ok(loot.some((l) => l.kind === 'gear' && l.item.rarity === 'legendary'));
+  assert.strictEqual(s.tokens - tokens, 3);
+  assert.deepStrictEqual(S.CHEST_TIERS.map((t) => t.id), ['common', 'rare', 'epic', 'legendary', 'mythic']);
+});

@@ -6,15 +6,15 @@
 
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { makeChest, makeCoin, RARITY_COLORS, C } from './art.js';
+import { makeChest, makeCoin, RARITY_COLORS, C, animateChest } from './art.js';
 import { fmt } from './sim.js';
 
-const RATTLES = { common: 2, rare: 2, epic: 2, legendary: 2 };
+const RATTLES = { common: 2, rare: 2, epic: 2, legendary: 2, mythic: 3 };
 const REEL_TILES = 48; // tiles on the strip
 const REEL_WIN = 40; // the winning tile's place
 const SPIN = 5.4; // seconds the reel rolls
 const TIER_ORDER = ['common', 'rare', 'epic', 'legendary', 'mythic'];
-const CONFETTI = { common: 50, rare: 80, epic: 110, legendary: 170 };
+const CONFETTI = { common: 50, rare: 80, epic: 110, legendary: 170, mythic: 260 };
 const ICONS = {
   relic: '<svg viewBox="0 0 48 48"><path d="M14 8h20l9 12-19 21L5 20z" fill="currentColor" opacity=".9"/><path d="M5 20h38M14 8l5 12 5 21 5-21 5-12M19 20l5-12 5 12" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width="1.6" stroke-linejoin="round"/></svg>',
   hat: '<svg viewBox="0 0 48 48"><path d="M15 31c0-11 3-19 9-19s9 8 9 19z" fill="currentColor"/><ellipse cx="24" cy="32" rx="19" ry="5.5" fill="currentColor"/><path d="M15 27c5 2 13 2 18 0v4c-5 2-13 2-18 0z" fill="#000" fill-opacity=".3"/></svg>',
@@ -304,6 +304,7 @@ export function createOpening() {
       tilt = Math.sin(t * 1.6) * 0.025;
       y += Math.sin(t * 2.2) * 0.04;
     }
+    animateChest(chest, t);
     chest.position.y = y;
     chest.rotation.z = tilt;
     chest.rotation.y = -0.38 + Math.sin(t * 0.9) * 0.06 + tilt * 0.6;

@@ -722,7 +722,7 @@ export const COSMETICS = [
   'hat:straw', 'hat:crown', 'hat:helm', 'hat:top', 'hat:cap', 'hat:astro',
   'color:moss', 'color:ocean', 'color:plum', 'color:ember', 'color:snow', 'color:gold',
 ];
-export const CHEST_COINS = { common: 0.004, rare: 0.01, epic: 0.025, legendary: 0.06 }; // shares of this age's wonder: loot is mostly the items, not the coins
+export const CHEST_COINS = { common: 0.004, rare: 0.01, epic: 0.025, legendary: 0.06, mythic: 0.15 }; // shares of this age's wonder: loot is mostly the items, not the coins
 
 /** Opens a chest: returns what was inside and applies it to the state. rng returns 0..1. */
 export function openChest(state, chestId, rng = Math.random, now = Date.now()) {
@@ -730,18 +730,21 @@ export function openChest(state, chestId, rng = Math.random, now = Date.now()) {
   if (i < 0) return null;
   const [chest] = state.school.chests.splice(i, 1);
   const loot = [];
+  // A mythic chest draws from the legendary pools, and gives more of everything.
+  const tier = chest.rarity === 'mythic' ? 'legendary' : chest.rarity;
+  const mythic = chest.rarity === 'mythic';
   const coins = Math.round(ageCost(state) * agePace(state) * CHEST_COINS[chest.rarity]);
   addCoins(state, coins);
   loot.push({ kind: 'coins', amount: coins });
 
-  const relicChance = { common: 0, rare: 0.35, epic: 1, legendary: 1 }[chest.rarity];
+  const relicChance = { common: 0, rare: 0.35, epic: 1, legendary: 1 }[tier];
   if (rng() < relicChance) {
-    const pool = RELICS[chest.rarity];
+    const pool = RELICS[tier];
     const [name, bonus] = pool[Math.floor(rng() * pool.length) % pool.length];
     state.relics.push({ name, bonus });
     loot.push({ kind: 'relic', name, bonus });
   }
-  const cosmeticChance = { common: 0.1, rare: 0.25, epic: 0.5, legendary: 1 }[chest.rarity];
+  const cosmeticChance = { common: 0.1, rare: 0.25, epic: 0.5, legendary: 1 }[tier];
   if (rng() < cosmeticChance) {
     const missing = COSMETICS.filter((c) => !state.cosmetics.owned.includes(c));
     if (missing.length) {
@@ -750,12 +753,12 @@ export function openChest(state, chestId, rng = Math.random, now = Date.now()) {
       loot.push({ kind: 'cosmetic', id });
     }
   }
-  if (chest.rarity === 'legendary' || (chest.rarity === 'epic' && rng() < 0.3)) {
-    state.tokens += 1;
+  if (tier === 'legendary' || (tier === 'epic' && rng() < 0.3)) {
+    state.tokens += mythic ? 3 : 1;
     loot.push({ kind: 'token' });
   }
-  if (rng() < { common: 0.6, rare: 1, epic: 1, legendary: 1 }[chest.rarity]) {
-    const got = addGear(state, rollGear(state, chest.rarity, rng));
+  if (rng() < { common: 0.6, rare: 1, epic: 1, legendary: 1 }[tier]) {
+    const got = addGear(state, rollGear(state, tier, rng));
     loot.push({ kind: 'gear', item: got.item, equipped: got.equipped });
   }
   const found = rollCollectible(state, chest.rarity, rng);
@@ -763,6 +766,15 @@ export function openChest(state, chestId, rng = Math.random, now = Date.now()) {
   state.stats.chestsOpened += 1;
   return { chest, loot, best: found ? found.tier : null };
 }
+
+/** Every chest rarity, rarest last, with how you get one. */
+export const CHEST_TIERS = [
+  { id: 'common', name: 'Common', from: 'Hidden caches, study sessions, homework steps' },
+  { id: 'rare', name: 'Rare', from: 'Good grades, practice rounds, caches (1 in 5), the market' },
+  { id: 'epic', name: 'Epic', from: 'Clearing your week, great grades, exam weak points, the market' },
+  { id: 'legendary', name: 'Legendary', from: 'Top grades, every fourth week in a row, the market (rarely)' },
+  { id: 'mythic', name: 'Mythic', from: 'Every twelfth week in a row, or a 1-in-80 market day' },
+];
 
 export function grantChest(state, rarity, from) {
   const chest = { id: `bonus:${Date.now()}:${Math.floor(Math.random() * 1e6)}`, rarity, from };
@@ -866,7 +878,8 @@ export function claimWeek(state, now = Date.now()) {
   const w = state.week || (state.week = { claimed: null, streak: 0 });
   w.streak = w.claimed === dayOf(weekStart(now) - 7 * DAY) ? w.streak + 1 : 1;
   w.claimed = status.id;
-  const rarity = w.streak % 4 === 0 ? 'legendary' : 'epic';
+  // Every fourth week in a row: legendary. Every twelfth: mythic.
+  const rarity = w.streak % 12 === 0 ? 'mythic' : w.streak % 4 === 0 ? 'legendary' : 'epic';
   const chest = grantChest(state, rarity, w.streak > 1 ? `Week cleared · ${w.streak} in a row` : 'Week cleared');
   return { chest, streak: w.streak };
 }
@@ -1348,10 +1361,10 @@ export function marketStock(state, now = Date.now()) {
 // One chest a day, bought with coins (which only come from playing and
 // studying, never from real money). Most days rare, some epic, now and then legendary.
 // Priced well above the coins inside (CHEST_COINS), so buying chests never pays for itself.
-export const CHEST_PRICE = { rare: 0.05, epic: 0.12, legendary: 0.3 };
+export const CHEST_PRICE = { rare: 0.05, epic: 0.12, legendary: 0.3, mythic: 0.75 };
 function marketChest(state, day) {
   const r = seededRng([...day].reduce((h, ch) => (h * 33 + ch.charCodeAt(0)) >>> 0, 5))();
-  const rarity = r < 0.06 ? 'legendary' : r < 0.32 ? 'epic' : 'rare';
+  const rarity = r < 0.012 ? 'mythic' : r < 0.06 ? 'legendary' : r < 0.32 ? 'epic' : 'rare';
   return { kind: 'chest', rarity, price: share(state, CHEST_PRICE[rarity]), sold: false };
 }
 
@@ -2215,6 +2228,7 @@ export const DROP_TABLE = {
   rare: { chance: 1, odds: { common: 45, rare: 38, epic: 13, legendary: 3.5, mythic: 0.5 } },
   epic: { chance: 1, odds: { common: 20, rare: 40, epic: 28, legendary: 10, mythic: 2 } },
   legendary: { chance: 1, odds: { common: 0, rare: 30, epic: 40, legendary: 25, mythic: 5 } },
+  mythic: { chance: 1, odds: { common: 0, rare: 0, epic: 35, legendary: 45, mythic: 20 } },
 };
 export const PITY_EPIC = 10; // a collectible of epic or better at least this often
 export const PITY_MYTHIC = 120; // and a mythic at least this often
