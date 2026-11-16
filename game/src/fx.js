@@ -67,8 +67,8 @@ export function createFx(scene, camera) {
       labels.add(entry);
       return {
         set(next, nextKind) {
-          if (node.innerHTML !== next) node.innerHTML = next;
-          if (nextKind !== undefined) node.className = `label ${nextKind}`;
+          if (node.innerHTML !== next) { node.innerHTML = next; entry.size = null; }
+          if (nextKind !== undefined && node.className !== `label ${nextKind}`) { node.className = `label ${nextKind}`; entry.size = null; }
         },
         remove() {
           node.remove();
@@ -141,13 +141,32 @@ export function createFx(scene, camera) {
           floats.splice(i, 1);
         }
       }
+      // Labels never pile up: exam labels and the nearest ones go first, and a
+      // label that would overlap one already placed waits until there's room.
+      // A label mostly hidden under a HUD card is dropped rather than shown cut off.
+      const hud = [...document.querySelectorAll('#hud .unit, #hud .era-card, #hud .hud-left > :not([hidden]), #hud .tracker, #hud .hud-center, #hud .menu, #hud .hotbar')]
+        .map((n) => n.getBoundingClientRect()).filter((r) => r.width && r.height)
+        .map((r) => ({ l: r.left, r: r.right, t: r.top, b: r.bottom }));
+      const placed = [];
+      const order = [];
       for (const entry of labels) {
         entry.object.getWorldPosition(v);
         const pos = v.clone();
-        project(pos, entry.node, entry.height);
         let shown = Boolean(entry.object.parent);
         for (let o = entry.object; o && shown; o = o.parent) shown = o.visible;
-        if (!shown) entry.node.style.display = 'none';
+        if (!shown || !project(pos, entry.node, entry.height)) { entry.node.style.display = 'none'; continue; }
+        order.push({ entry, x: ((v.x + 1) / 2) * innerWidth, y: ((1 - v.y) / 2) * innerHeight, depth: v.z, boss: entry.node.classList.contains('boss') });
+      }
+      order.sort((a, b) => (b.boss - a.boss) || (a.depth - b.depth));
+      for (const it of order) {
+        const e = it.entry;
+        if (!e.size) e.size = { w: e.node.offsetWidth, h: e.node.offsetHeight };
+        const box = { l: it.x - e.size.w / 2 - 3, r: it.x + e.size.w / 2 + 3, t: it.y - e.size.h - 3, b: it.y + 3 };
+        const area = (box.r - box.l) * (box.b - box.t);
+        const under = hud.some((p) => Math.max(0, Math.min(box.r, p.r) - Math.max(box.l, p.l)) * Math.max(0, Math.min(box.b, p.b) - Math.max(box.t, p.t)) > area * 0.5);
+        const hit = under || placed.some((p) => box.l < p.r && box.r > p.l && box.t < p.b && box.b > p.t);
+        e.node.style.display = hit ? 'none' : '';
+        if (!hit) placed.push(box);
       }
       for (let i = rings.length - 1; i >= 0; i--) {
         const r = rings[i];

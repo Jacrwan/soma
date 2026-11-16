@@ -139,6 +139,25 @@ function dropBeard(gltf) {
   return mouth;
 }
 
+/** The bear hat's two white fangs hang over the face like tears; drop them. */
+function dropFangs(gltf) {
+  const hat = gltf.scene.getObjectByName('Barbarian_Hat');
+  if (!hat) return;
+  hat.traverse((o) => {
+    if (!o.isMesh || !o.geometry.index) return;
+    const uv = o.geometry.attributes.uv;
+    const index = o.geometry.index.array;
+    const keep = [];
+    for (let t = 0; t < index.length; t += 3) {
+      const u = (uv.getX(index[t]) + uv.getX(index[t + 1]) + uv.getX(index[t + 2])) / 3;
+      const w = (uv.getY(index[t]) + uv.getY(index[t + 1]) + uv.getY(index[t + 2])) / 3;
+      if (u >= 0.25 && u < 0.375 && w >= 0.25 && w < 0.5) continue;
+      keep.push(index[t], index[t + 1], index[t + 2]);
+    }
+    o.geometry.setIndex(keep);
+  });
+}
+
 function load(char) {
   if (!loaded.has(char.id)) {
     loaded.set(char.id, loader.loadAsync(`/game/models/${char.file}`).then((gltf) => {
@@ -147,6 +166,7 @@ function load(char) {
       gltf.scene.traverse((o) => { if (o.isSkinnedMesh && /Body|Head|Leg/.test(o.name)) box.expandByObject(o); });
       const fit = HEIGHT / Math.max(0.5, box.max.y - Math.min(0, box.min.y));
       const mouth = char.noBeard ? dropBeard(gltf) : null;
+      if (char.noBeard) dropFangs(gltf);
       if (char.natural) {
         const repainted = new Map();
         gltf.scene.traverse((o) => {
