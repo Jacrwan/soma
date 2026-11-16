@@ -258,18 +258,22 @@ function syncInvaders(now) {
     }
     if (!inv) {
       const object = A.makeCreature(isBoss ? 'boss' : 'invader', item.size);
+      // New arrivals start at the far end of the road and march in.
+      object.position.set(((hash(item.id) % 5) - 2) * 1.5, 0, W.PATH_START_Z + 6);
+      object.rotation.y = Math.PI;
       world.earth.add(object);
       inv = { object, boss: isBoss, item, label: fx.label(object, isBoss ? 6.6 : 2.3 + item.size * 0.5, '') };
       invaders.set(item.id, inv);
     }
     inv.item = item;
     if (fight && fight.id === item.id) continue;
-    // A boss walks the same road as everything else, a step closer every day.
+    // Its place on the road: a step closer to the gate every day. Work due
+    // within a day leaves the road and comes after you (moveInvaders).
     const lane = isBoss ? (hash(item.id) % 2 ? -4.5 : 4.5) : ((hash(item.id) % 5) - 2) * 1.5;
     const z = W.PATH_START_Z + (W.PATH_END_Z - W.PATH_START_Z) * t + (isBoss ? 2.5 : 0);
-    inv.object.position.set(lane, 0, z);
-    inv.object.rotation.y = Math.PI;
+    inv.home = { x: lane, z };
     inv.overdue = overdue;
+    inv.mode = isBoss ? 'road' : overdue ? 'charge' : item.dueAt - now < CHASE_HOURS * 3600000 ? 'follow' : 'road';
     if (isBoss) showArmor(inv, S.examArmor(state, item));
     const time = timeLeft(item.dueAt - now);
     const name = item.name.length > 26 ? `${item.name.slice(0, 25)}…` : item.name;
@@ -282,6 +286,106 @@ function syncInvaders(now) {
     inv.label.set(`<em>${isBoss ? 'Exam' : 'Assignment'} · ${escapeHtml(item.courseName || 'Canvas')}</em>${escapeHtml(name)}${bossMeter}<small>${isBoss ? `at your gate in ${time}` : overdue ? `overdue ${time}` : `due in ${time}`}${note}</small>`, `${isBoss ? 'boss' : ''} ${overdue ? 'overdue' : ''} ${studied >= 1 || studying ? 'studied' : ''}`);
   }
   for (const id of [...invaders.keys()]) if (!live.has(id) && !(fight && fight.id === id)) despawnInvader(id, false);
+  // Only the most urgent few come into town; the rest wait at the gate.
+  const chasers = [...invaders.values()].filter((inv) => inv.mode !== 'road').sort((a, b) => a.item.dueAt - b.item.dueAt);
+  chasers.slice(MAX_CHASERS).forEach((inv) => { inv.mode = 'road'; inv.home = { x: inv.home.x, z: W.PATH_END_Z }; });
+}
+
+// --- Assignments on the move ------------------------------------------------------------
+const CHASE_HOURS = 24; // due within this long: it comes into town after you
+const MAX_CHASERS = 5;
+const BUMP_EVERY = 2.5; // seconds between bumps from late work
+let shooNote = 0;
+let bumpAny = 0; // one bump at a time, however many are late
+
+function moveInvaders(dt, time) {
+  const p = player.object.position;
+  const studying = S.isStudying(state);
+  const list = [...invaders.values()].filter((inv) => !(fight && fight.id === inv.item.id) && inv.home);
+  for (const inv of list) {
+    const o = inv.object.position;
+    inv.bumpCd = Math.max(0, (inv.bumpCd || 0) - dt);
+    // Knocked back by a swing: slide, then come again.
+    if (inv.knock && inv.knock.t > 0) {
+      inv.knock.t -= dt;
+      o.x += inv.knock.x * dt;
+      o.z += inv.knock.z * dt;
+    } else {
+      let tx = inv.home.x, tz = inv.home.z, speed = inv.boss ? 1.6 : 2.4, stop = 0.05;
+      if (inv.mode === 'follow' || (inv.mode === 'charge' && studying)) {
+        // Hangs around you, a few steps off, so you can't forget it.
+        const a = (hash(inv.item.id) % 360) * (Math.PI / 180) + time * 0.15;
+        tx = p.x + Math.sin(a) * 4.2;
+        tz = p.z + Math.cos(a) * 4.2;
+        speed = 5.2;
+        stop = 0.6;
+      } else if (inv.mode === 'charge') {
+        tx = p.x;
+        tz = p.z;
+        speed = 6.2;
+        stop = 1.1;
+      }
+      const dx = tx - o.x, dz = tz - o.z, d = Math.hypot(dx, dz);
+      // Far behind (you ran off, or it just arrived)? It hurries.
+      const step = Math.min(d - stop, speed * (d > 25 ? 2.2 : 1) * dt);
+      if (d > stop && step > 0) {
+        o.x += (dx / d) * step;
+        o.z += (dz / d) * step;
+        inv.walking = true;
+        inv.object.rotation.y = Math.atan2(dx, dz);
+      } else {
+        inv.walking = false;
+        if (inv.mode === 'road') inv.object.rotation.y = Math.PI;
+        else inv.object.rotation.y = Math.atan2(p.x - o.x, p.z - o.z);
+      }
+    }
+    // Late work bumps into you until it's handed in. Never while you study.
+    if (inv.mode === 'charge' && !studying && inv.bumpCd <= 0 && bumpAny <= 0 && Math.hypot(p.x - o.x, p.z - o.z) < 1.7) {
+      inv.bumpCd = BUMP_EVERY;
+      bumpAny = 1.5;
+      if (hurtPlayer(Math.max(1, Math.round(S.heroStats(state).health * 0.04)), o)) {
+        fx.burst(o.clone().add(new THREE.Vector3(0, 1, 0)), A.C.purple, 10, 5, 5);
+        fx.float(o.clone().add(new THREE.Vector3(0, 2.6, 0)), 'Late!', 'hurt');
+      }
+    }
+    if (!inv.boss) o.y = world.groundHeight('earth', o.x, o.z);
+  }
+  // Chasers keep a little space between them instead of stacking.
+  for (let i = 0; i < list.length; i++) {
+    for (let j = i + 1; j < list.length; j++) {
+      const a = list[i].object.position, b = list[j].object.position;
+      const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz);
+      const room = list[i].boss || list[j].boss ? 3.2 : 1.5;
+      if (d > 0.001 && d < room) {
+        const push = (room - d) * 0.5;
+        a.x -= (dx / d) * push; a.z -= (dz / d) * push;
+        b.x += (dx / d) * push; b.z += (dz / d) * push;
+      }
+    }
+  }
+  shooNote = Math.max(0, shooNote - dt);
+  bumpAny = Math.max(0, bumpAny - dt);
+}
+
+/** A swing knocks assignments back; only handing them in on Canvas gets rid of them. */
+function shoveInvaders(inArc) {
+  let landed = false;
+  const p = player.object.position;
+  for (const inv of invaders.values()) {
+    if (inv.boss || !inv.home || (fight && fight.id === inv.item.id)) continue;
+    const o = inv.object.position;
+    if (!inArc(o, 3.2)) continue;
+    landed = true;
+    const dx = o.x - p.x, dz = o.z - p.z, d = Math.hypot(dx, dz) || 1;
+    inv.knock = { x: (dx / d) * 14, z: (dz / d) * 14, t: 0.35 };
+    inv.bumpCd = Math.max(inv.bumpCd || 0, 1.2);
+    fx.burst(o.clone().add(new THREE.Vector3(0, 1, 0)), A.C.white, 8, 5, 4);
+    if (shooNote <= 0) {
+      shooNote = 4;
+      fx.float(o.clone().add(new THREE.Vector3(0, 2.8, 0)), 'Hand it in to beat it', 'hit');
+    }
+  }
+  return landed;
 }
 
 /** Shows as many armor pieces as the exam has armor left; pieces that just came off fly away. */
@@ -1212,6 +1316,7 @@ function attack() {
   const hero = S.heroStats(state);
   const mult = finisher ? hero.finisher : 1;
   let landed = hitTownEnemies(inArc, mult);
+  if (shoveInvaders(inArc)) landed = true;
   if (realms.strike({ from: p, facing: player.facing, reach: 3.3 * reachMult, wide: finisher, damage: S.playerPower(state) * mult, knock: finisher ? 13 : 5, crit: hero.crit }) > 0) landed = true;
   // A small step into the swing, so hits feel like they carry weight.
   if (!fight) {
@@ -1640,7 +1745,7 @@ function updateTown(dt, time) {
   for (const inv of invaders.values()) {
     if (fight && fight.id === inv.item.id) continue;
     const feet = inv.object.userData.feet;
-    const pace = inv.overdue ? 9 : inv.boss ? 3 : 5;
+    const pace = !inv.walking ? 1.5 : inv.mode === 'charge' ? 11 : inv.boss ? 3 : 7;
     feet[0].position.y = 0.12 + Math.max(0, Math.sin(time * pace)) * 0.16;
     feet[1].position.y = 0.12 + Math.max(0, -Math.sin(time * pace)) * 0.16;
     inv.object.userData.body.position.y = 0.75 + Math.abs(Math.sin(time * pace)) * (inv.overdue ? 0.14 : 0.05);
@@ -1660,7 +1765,7 @@ function frame(nowMs) {
   const time = nowMs / 1000;
   S.tick(state);
   updatePlayer(dt, time);
-  if (!inRealm()) updateTown(dt, time);
+  if (!inRealm()) { moveInvaders(dt, time); updateTown(dt, time); }
   updateRaiders(dt);
   realms.update(dt, time, player.object.position, !player.down);
   if (fight) updateExamDay(dt);
@@ -1766,6 +1871,7 @@ window.epoch = {
   quality(n) { setQuality(n); },
   exams: checkExams,
   character: pickCharacter,
+  invaders: () => [...invaders.values()].map((i) => ({ name: i.item.name, mode: i.mode, x: +i.object.position.x.toFixed(1), z: +i.object.position.z.toFixed(1), inScene: Boolean(i.object.parent) })),
   armor(id) { const inv = invaders.get(id); return inv && inv.object.userData.armor?.filter((p) => p.visible).length; },
   info: () => ({ quality, calls: renderer.info.render.calls, tris: renderer.info.render.triangles }),
   reset() { localStorage.removeItem(SAVE_KEY); location.reload(); },
