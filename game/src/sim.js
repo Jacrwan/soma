@@ -6,13 +6,13 @@ export const SAVE_KEY = 'epoch-save-v1';
 // era: the age your civilization is in. Building wonder N moves you from
 // era N to era N + 1. Era 6 is reached by launching the rocket.
 export const ERAS = [
-  { name: 'Stone Age', short: 'Stone', wonder: 'Stone Circle', wonderCost: 4000 },
-  { name: 'Bronze Age', short: 'Bronze', wonder: 'Great Pyramid', wonderCost: 120000 },
-  { name: 'Medieval Age', short: 'Medieval', wonder: 'Grand Cathedral', wonderCost: 3.2e6 },
-  { name: 'Industrial Age', short: 'Industrial', wonder: 'Iron Tower', wonderCost: 9e7 },
-  { name: 'Modern Age', short: 'Modern', wonder: 'Sky Spire', wonderCost: 2.6e9 },
-  { name: 'Space Age', short: 'Space', wonder: 'Moon Rocket', wonderCost: 8e10 },
-  { name: 'Lunar Age', short: 'Lunar', wonder: 'Star Gate', wonderCost: 6e12 },
+  { name: 'Stone Age', short: 'Stone', wonder: 'Stone Circle', wonderCost: 16000 },
+  { name: 'Bronze Age', short: 'Bronze', wonder: 'Great Pyramid', wonderCost: 600000 },
+  { name: 'Medieval Age', short: 'Medieval', wonder: 'Grand Cathedral', wonderCost: 2e7 },
+  { name: 'Industrial Age', short: 'Industrial', wonder: 'Iron Tower', wonderCost: 5.4e8 },
+  { name: 'Modern Age', short: 'Modern', wonder: 'Sky Spire', wonderCost: 1.6e10 },
+  { name: 'Space Age', short: 'Space', wonder: 'Moon Rocket', wonderCost: 4.8e11 },
+  { name: 'Lunar Age', short: 'Lunar', wonder: 'Star Gate', wonderCost: 3.6e13 },
   { name: 'Interstellar Age', short: 'Interstellar', wonder: null, wonderCost: Infinity },
 ];
 export const LAST_EARTH_TIER = 5;
@@ -223,11 +223,22 @@ export function buildingCap(state, b) {
   return buildingIncome(state, b) * STORE_HOURS * 3600;
 }
 
-/** Coins per second from every building, ignoring any siege. Rewards are sized from this. */
+/** Coins per second from every building, ignoring any siege. */
 export function baseIncome(state) {
   let sum = 0;
   for (const scene of ['earth', 'moon']) for (const b of state.pads[scene]) sum += buildingIncome(state, b);
   return sum;
+}
+
+/**
+ * What a second is worth in coins right now. Every reward and market price is
+ * counted in seconds of this. It is the town's income, but never less than a
+ * fresh town in your age makes (a home and a works), so prices and pay don't
+ * crash when a new age starts with an empty town and full pockets.
+ */
+export function wage(state) {
+  const fresh = (BUILDINGS.home.income + BUILDINGS.work.income) * INCOME_PER_TIER ** tierFor(state, state.era >= MOON_TIER ? 'moon' : 'earth');
+  return Math.max(baseIncome(state), fresh);
 }
 
 export function totalIncome(state, now = Date.now()) {
@@ -480,7 +491,7 @@ export function syncSchool(state, items, now = Date.now(), { source = state.scho
         // An exam's grade is the big payday: double XP and coins on top of the chest.
         const exam = item.kind === 'boss';
         if (exam && !first) {
-          chest.coins = Math.round(Math.max(300, baseIncome(state) * 900) * (percent / 100));
+          chest.coins = Math.round(Math.max(300, wage(state) * 900) * (percent / 100));
           addCoins(state, chest.coins);
         }
         events.push({ type: 'chest', chest, exam, ...addXp(state, first ? 0 : (40 + percent) * (exam ? 2 : 1)) });
@@ -493,11 +504,12 @@ export function syncSchool(state, items, now = Date.now(), { source = state.scho
 
 export function handInReward(state, item) {
   const seconds = [0, 120, 300, 900][item.size || 1];
-  return Math.round(Math.max(60 * (item.size || 1), baseIncome(state) * seconds) * (1 + STUDIED_BONUS * studyProgress(state, item)));
+  return Math.round(Math.max(60 * (item.size || 1), wage(state) * seconds) * (1 + STUDIED_BONUS * studyProgress(state, item)));
 }
 
 // --- Studying: a real timer you run while you do the work ---------------------------
 
+export const STUDY_PAY = 90; // each minute studied pays this many seconds of town income
 export const FOCUS_MULT = 2; // the town earns this much more while a session runs
 export const STUDY_LENGTHS = [{ minutes: 10, rarity: 'common' }, { minutes: 25, rarity: 'rare' }, { minutes: 45, rarity: 'epic' }];
 export const STUDY_GOAL = [0, 30, 60, 120]; // minutes that fully prepare an item, by size
@@ -585,7 +597,7 @@ export function finishStudy(state, now = Date.now()) {
   study.lureBank -= result.lures * LURE_MINUTES;
   state.critters.lures += result.lures;
   study.log = [...(study.log || []), { at: now, itemId: item ? item.id : null, courseId: item ? item.courseId : null, minutes }].slice(-400);
-  result.coins = Math.round(Math.max(12 * minutes, baseIncome(state) * 20 * minutes));
+  result.coins = Math.round(wage(state) * STUDY_PAY * minutes);
   passPoints(state, minutes);
   addCoins(state, result.coins);
   // A cup of study tea from the market makes this session pay half again.
@@ -682,7 +694,7 @@ export const COSMETICS = [
   'hat:straw', 'hat:crown', 'hat:helm', 'hat:top', 'hat:cap', 'hat:astro',
   'color:moss', 'color:ocean', 'color:plum', 'color:ember', 'color:snow', 'color:gold',
 ];
-const COIN_MINUTES = { common: 10, rare: 30, epic: 75, legendary: 180 };
+export const CHEST_COINS = { common: 0.008, rare: 0.02, epic: 0.05, legendary: 0.12 }; // shares of this age's wonder
 
 /** Opens a chest: returns what was inside and applies it to the state. rng returns 0..1. */
 export function openChest(state, chestId, rng = Math.random, now = Date.now()) {
@@ -690,7 +702,7 @@ export function openChest(state, chestId, rng = Math.random, now = Date.now()) {
   if (i < 0) return null;
   const [chest] = state.school.chests.splice(i, 1);
   const loot = [];
-  const coins = Math.max({ common: 150, rare: 500, epic: 1500, legendary: 5000 }[chest.rarity], Math.round(baseIncome(state) * COIN_MINUTES[chest.rarity] * 60));
+  const coins = Math.round(ageCost(state) * CHEST_COINS[chest.rarity]);
   addCoins(state, coins);
   loot.push({ kind: 'coins', amount: coins });
 
@@ -759,7 +771,7 @@ export function useShrine(state, key, name) {
 
 /** Coins for beating a wild enemy. tier: 0 normal, 1 elite, 2 boss. */
 export function killReward(state, tier = 0) {
-  const reward = Math.round(Math.max([15, 45, 600][tier], baseIncome(state) * [25, 80, 900][tier]));
+  const reward = Math.round(Math.max([15, 45, 600][tier], wage(state) * [25, 80, 900][tier]));
   addCoins(state, reward);
   return reward;
 }
@@ -812,7 +824,7 @@ export function resolveExams(state, now = Date.now()) {
     const event = { type: 'exam', item, outcome, armor, coins: 0, chest: null, wrecked: null };
     if (outcome === 'held') {
       state.stats.bossesBeaten += 1;
-      event.coins = Math.max(500, Math.round(baseIncome(state) * 1200));
+      event.coins = Math.max(500, Math.round(wage(state) * 1200));
       addCoins(state, event.coins);
       event.chest = grantChest(state, 'epic', `Held the gate: ${item.name}`);
     } else {
@@ -1176,7 +1188,19 @@ function seededRng(seed) {
   };
 }
 
-const price = (state, seconds, floor) => Math.round(Math.max(floor, baseIncome(state) * seconds));
+const price = (state, seconds) => Math.round(wage(state) * seconds);
+
+/**
+ * The market prices everything as a share of this age's wonder, so a chest
+ * is always a real choice against moving on: a rare chest is a twentieth of
+ * the wonder, a legendary one nearly a third. (Hours of income would not
+ * work: income grows so fast inside an age that it outruns the wonder.)
+ */
+export function ageCost(state) {
+  const era = ERAS[state.era];
+  return Number.isFinite(era?.wonderCost) ? era.wonderCost : ERAS[MOON_TIER].wonderCost * 30;
+}
+const share = (state, part) => Math.round(ageCost(state) * part);
 export const TEA_BOOST = 0.5; // the next study session pays 50% more XP
 
 /** Today's stock. Rolled once a day and kept, so it doesn't change on reload. */
@@ -1194,16 +1218,16 @@ export function marketStock(state, now = Date.now()) {
   for (const slot of SLOTS) {
     const rarity = gearRarity();
     const item = rollGear(state, rarity, rng, slot);
-    offers.push({ kind: 'gear', item, price: price(state, { rare: 900, epic: 2400, legendary: 6000 }[rarity], { rare: 400, epic: 1500, legendary: 6000 }[rarity]), sold: false });
+    offers.push({ kind: 'gear', item, price: share(state, { rare: 0.025, epic: 0.06, legendary: 0.15 }[rarity]), sold: false });
   }
   const looks = COSMETICS.filter((c) => !state.cosmetics.owned.includes(c));
   for (let k = 0; k < 2 && looks.length; k++) {
     const id = looks.splice(Math.floor(rng() * looks.length), 1)[0];
-    offers.push({ kind: 'look', id, price: price(state, 1200, 600), sold: false });
+    offers.push({ kind: 'look', id, price: share(state, 0.03), sold: false });
   }
-  offers.push({ kind: 'tea', price: price(state, 300, 150), sold: false });
+  offers.push({ kind: 'tea', price: share(state, 0.01), sold: false });
   const rare = Object.keys(DECOR).filter((k) => DECOR[k].market && !state.decorUnlocked.includes(k));
-  if (rare.length) offers.push({ kind: 'decor', id: rare[Math.floor(rng() * rare.length)], price: price(state, 3000, 2500), sold: false });
+  if (rare.length) offers.push({ kind: 'decor', id: rare[Math.floor(rng() * rare.length)], price: share(state, 0.04), sold: false });
   offers.push(marketChest(state, day));
   m.day = day;
   m.offers = offers;
@@ -1212,11 +1236,12 @@ export function marketStock(state, now = Date.now()) {
 
 // One chest a day, bought with coins (which only come from playing and
 // studying, never from real money). Most days rare, some epic, now and then legendary.
-const CHEST_PRICE = { rare: [1500, 800], epic: [4000, 3000], legendary: [12000, 12000] };
+// Priced well above the coins inside (CHEST_COINS), so buying chests never pays for itself.
+export const CHEST_PRICE = { rare: 0.05, epic: 0.12, legendary: 0.3 };
 function marketChest(state, day) {
   const r = seededRng([...day].reduce((h, ch) => (h * 33 + ch.charCodeAt(0)) >>> 0, 5))();
   const rarity = r < 0.06 ? 'legendary' : r < 0.32 ? 'epic' : 'rare';
-  return { kind: 'chest', rarity, price: price(state, CHEST_PRICE[rarity][0], CHEST_PRICE[rarity][1]), sold: false };
+  return { kind: 'chest', rarity, price: share(state, CHEST_PRICE[rarity]), sold: false };
 }
 
 /** Buys offer i. Returns what was bought, or null if it can't be. */
@@ -1248,7 +1273,7 @@ export function sellJunk(state) {
 }
 
 // --- Decorations: build mode, placed anywhere in town ------------------------
-// cost is in seconds of town income (with a floor); market ones are unlocked
+// cost is in seconds of town income (see wage); market ones are unlocked
 // by buying them once at the market.
 export const DECOR = {
   fence: { name: 'Fence', seconds: 20, floor: 20, solid: 0.6 },
@@ -1288,7 +1313,7 @@ export const DECOR = {
 };
 export const DECOR_MAX = 160;
 
-export const decorCost = (state, type) => price(state, DECOR[type].seconds, DECOR[type].floor);
+export const decorCost = (state, type) => price(state, DECOR[type].seconds);
 export const decorAvailable = (state) => Object.keys(DECOR).filter((k) => !(DECOR[k].market || DECOR[k].pass) || state.decorUnlocked.includes(k));
 
 /** Places a decoration; costs coins. Returns the piece, or null. */
@@ -1399,7 +1424,7 @@ export function makeVillagerQuest(state, person, now = Date.now()) {
   const next = threats(state, now).map((t) => t.item).sort((a, b) => a.dueAt - b.dueAt);
   const exam = next.find((a) => a.kind === 'boss');
   const work = next.find((a) => a.kind !== 'boss');
-  const pay = Math.round(Math.max(120, baseIncome(state) * 240));
+  const pay = Math.round(Math.max(120, wage(state) * 240));
   const options = [];
   if (exam) options.push({ type: 'study', courseId: exam.courseId, courseName: exam.courseName, target: 25, text: `Study ${exam.courseName} for 25 minutes. ${exam.name} is coming.` });
   if (work) options.push({ type: 'study', courseId: work.courseId, courseName: work.courseName, target: 20, text: `Put 20 minutes into ${work.courseName}.` });
@@ -1455,7 +1480,7 @@ export function villagerGift(state, name, now = Date.now()) {
     state.study.tea = (state.study.tea || 0) + 1;
     return { tea: 1 };
   }
-  const coins = Math.round(Math.max(200, baseIncome(state) * 600));
+  const coins = Math.round(Math.max(200, wage(state) * 600));
   addCoins(state, coins);
   return { coins };
 }
@@ -1543,7 +1568,7 @@ export function dailyRefresh(state, now = Date.now()) {
   if (d.lastFull !== dayOf(now - DAY) && d.lastFull !== today) d.streak = 0;
   const { study, school, life } = dailyOptions(state, now);
   const seed = [...today].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 11);
-  const pay = Math.round(Math.max(150, baseIncome(state) * 300));
+  const pay = Math.round(Math.max(150, wage(state) * 300));
   d.quests = [study, school[seed % school.length], life[(seed >>> 3) % life.length]].map((q) => ({ ...q, base: dailyStat[q.type](state, q), reward: pay, claimed: false }));
   d.day = today;
   d.bonus = false;
@@ -1617,7 +1642,7 @@ export function tryCatch(state, species, rng = Math.random) {
   const first = !c.caught[species];
   c.caught[species] = (c.caught[species] || 0) + 1;
   state.stats.caught = (state.stats.caught || 0) + 1;
-  const coins = first ? Math.round(Math.max(300, baseIncome(state) * { common: 300, rare: 900, epic: 2400, legendary: 6000 }[CRITTERS[species].rarity])) : 0;
+  const coins = first ? Math.round(Math.max(300, wage(state) * { common: 300, rare: 900, epic: 2400, legendary: 6000 }[CRITTERS[species].rarity])) : 0;
   addCoins(state, coins);
   if (first && !c.pet) c.pet = species;
   return { ok: true, first, coins };
@@ -1660,7 +1685,7 @@ export function applyPlanQuests(state, now = Date.now()) {
   if (!todays.length) return false;
   if (d.day !== today) dailyRefresh(state, now);
   const kept = new Map(d.quests.filter((q) => q.type === 'plan').map((q) => [q.id, q]));
-  const pay = Math.round(Math.max(150, baseIncome(state) * 300));
+  const pay = Math.round(Math.max(150, wage(state) * 300));
   d.quests = todays.map((t) => kept.get(t.id) || { type: 'plan', id: t.id, text: t.text, target: 1, base: 0, reward: pay, claimed: false, minutes: t.minutes });
   d.fromPlan = true;
   return true;
@@ -1677,7 +1702,7 @@ export function readingDone(state, id) {
   if (i < 0) return null;
   soma.readings.splice(i, 1);
   state.stats.readings = (state.stats.readings || 0) + 1;
-  const coins = Math.round(Math.max(80, baseIncome(state) * 120));
+  const coins = Math.round(Math.max(80, wage(state) * 120));
   addCoins(state, coins);
   passPoints(state, 10);
   return { coins, ...addXp(state, 15) };
@@ -1724,7 +1749,7 @@ export function claimPass(state, tier, track) {
   list.push(tier);
   const out = { ...reward };
   if (reward.kind === 'lures') state.critters.lures += reward.n;
-  else if (reward.kind === 'coins') { out.coins = Math.round(Math.max(200, baseIncome(state) * reward.seconds)); addCoins(state, out.coins); }
+  else if (reward.kind === 'coins') { out.coins = Math.round(Math.max(200, wage(state) * reward.seconds)); addCoins(state, out.coins); }
   else if (reward.kind === 'chest') out.chest = grantChest(state, reward.rarity, `Semester Pass tier ${tier}`);
   else if (reward.kind === 'decor') { if (!state.decorUnlocked.includes(reward.id)) state.decorUnlocked.push(reward.id); }
   else if (reward.kind === 'pet') { state.critters.caught[reward.id] = (state.critters.caught[reward.id] || 0) + 1; }
@@ -1914,7 +1939,7 @@ export function rollCollectible(state, chestRarity, rng = Math.random) {
     if (c.kind === 'trophy' && v.showcase.length < 8) v.showcase.push(id);
   }
   // A duplicate is still worth something.
-  const coins = dupe ? Math.round(Math.max(100, baseIncome(state) * 120) * (1 + TIERS.indexOf(tier) * 2)) : 0;
+  const coins = dupe ? Math.round(Math.max(100, wage(state) * 120) * (1 + TIERS.indexOf(tier) * 2)) : 0;
   if (coins) addCoins(state, coins);
   return { id, tier, dupe, coins, pity };
 }

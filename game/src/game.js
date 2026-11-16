@@ -1411,7 +1411,7 @@ function hitTownEnemies(inArc, mult = 1) {
     r.enemy?.hurt();
     fx.float(r.object.position.clone().add(new THREE.Vector3(0, 2, 0)), String(dmg), 'hit');
     if (r.hp <= 0) {
-      const bounty = Math.max(12, Math.round(S.baseIncome(state) * 20)) + r.carry;
+      const bounty = Math.round(S.wage(state) * 20) + r.carry;
       S.addCoins(state, bounty);
       state.stats.raidersBeaten += 1;
       fx.burst(r.object.position, A.C.teal, 16, 7, 7);

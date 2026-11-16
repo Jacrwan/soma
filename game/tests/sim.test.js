@@ -139,7 +139,7 @@ test('chests pay coins and richer chests give relics, cosmetics and tokens', () 
   const { loot } = S.openChest(s, s.school.chests[0].id, () => 0, NOW);
   assert.deepStrictEqual(loot.map((l) => l.kind), ['collectible', 'coins', 'relic', 'cosmetic', 'token', 'gear']);
   assert.strictEqual(s.hero.gear.weapon.rarity, 'legendary');
-  assert.strictEqual(s.coins, 5000);
+  assert.strictEqual(s.coins, 0.12 * 16000); // 12% of the Stone Circle
   assert.strictEqual(s.tokens, 1);
   assert.strictEqual(S.relicMult(s), 1.25);
   assert.strictEqual(s.school.chests.length, 0);
@@ -810,4 +810,24 @@ test('work found already late on the first sync costs nothing, and paper work is
   S.setIgnored(s, 'paper', false, NOW + 2 * 3600_000);
   assert.deepStrictEqual(S.lateItems(s, NOW + 2 * 3600_000).map((a) => a.id).sort(), ['old', 'paper']);
   assert.strictEqual(S.fromSomaSnapshot({ kind: 'canvas', host: 'h', courses: [], groups: [], assignments: [{ id: 1, courseId: 1, name: 'Lab', submissionTypes: ['on_paper'] }] })[0].noSubmit, true);
+});
+
+test('market prices follow the age, study pay follows income, and neither crashes in a new age', () => {
+  const s = S.newState(NOW);
+  assert.strictEqual(S.wage(s), 6); // an empty Stone Age town still counts as a home and a works
+  s.coins = 1e9;
+  S.buildWonder(s);
+  assert.strictEqual(s.era, 1);
+  assert.strictEqual(S.baseIncome(s), 0);
+  assert.strictEqual(S.wage(s), 36); // the floor rises with the age, even with an empty town
+  const chest = S.marketStock(s, NOW).find((o) => o.kind === 'chest');
+  assert.strictEqual(chest.price, Math.round(S.ERAS[1].wonderCost * S.CHEST_PRICE[chest.rarity]));
+  // A bought chest always costs more than the coins inside it.
+  for (const r of ['rare', 'epic', 'legendary']) assert.ok(S.CHEST_PRICE[r] > 2 * S.CHEST_COINS[r]);
+  // A 25 minute study session pays 90 seconds of income per minute.
+  const t = S.newState(NOW);
+  const before = t.coins;
+  S.startStudy(t, null, 25, NOW);
+  S.finishStudy(t, NOW + 25 * 60000);
+  assert.strictEqual(t.coins - before, 25 * 90 * 6);
 });
