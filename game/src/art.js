@@ -964,6 +964,18 @@ export function makeCreature(variant = 'invader', size = 1) {
       ];
       for (const piece of armor) body.add(piece);
       g.userData.armor = armor;
+      // Weak points: one glowing crystal per exam topic (shown by the game).
+      const crystalSpots = [[-w / 2 + 0.05, h / 2 - 0.05, d / 2 + 0.12, -0.5], [w / 2 - 0.05, h / 2 - 0.05, d / 2 + 0.12, 0.5], [-w / 2 - 0.18, -0.25, 0.1, -1.2], [w / 2 + 0.18, -0.25, 0.1, 1.2], [-0.35, h / 2 + 0.25, -0.15, -0.3], [0.35, h / 2 + 0.25, -0.15, 0.3]];
+      const crystals = crystalSpots.map(([x, y, z, tiltZ]) => {
+        const c = new THREE.Mesh(new THREE.OctahedronGeometry(0.2, 0), new THREE.MeshStandardMaterial({ color: 0x9fe8ff, emissive: 0x4fc8ff, emissiveIntensity: 1.4, roughness: 0.15, metalness: 0.1, flatShading: true }));
+        c.scale.set(0.7, 1.5, 0.7);
+        c.position.set(x, y, z);
+        c.rotation.z = tiltZ;
+        c.visible = false;
+        body.add(c);
+        return c;
+      });
+      g.userData.crystals = crystals;
     } else {
       // Assignments carry a pencil like a spear.
       const pencil = group(cyl(0.045, 0.045, 1.1, C.gold, 6, { kind: 'fine' }), at(cone(0.045, 0.14, C.cream, 6), 0, 1.1, 0), at(cone(0.018, 0.05, C.ink, 6), 0, 1.2, 0), at(cyl(0.048, 0.048, 0.09, C.red, 6), 0, -0.08, 0));
@@ -1773,5 +1785,36 @@ export function makeLanternScene() {
     const l = at(squash(ball(0.3, c, 0, { emissive: c, glow: 1.6 }), 1, 1.25, 1), p.x, p.y - 0.75, 0);
     g.add(l, at(cyl(0.15, 0.15, 0.07, 0x2a1a12, 8), p.x, p.y - 0.4, 0), at(cyl(0.15, 0.15, 0.07, 0x2a1a12, 8), p.x, p.y - 1.15, 0));
   });
+  return g;
+}
+
+// --- A course's lair: where that class's work comes from --------------------------
+/** A rocky arch around a glowing rift in the course's colour, with its banner. userData.rift pulses. */
+export function makeLair(color) {
+  const g = new THREE.Group();
+  g.add(at(squash(cyl(4.2, 4.6, 0.25, 0x6a5f58, 12), 1, 1, 0.8), 0, 0, 0));
+  // The arch: stacked boulders.
+  const rocks = [[-2.2, 0, 0.9], [-2.4, 1.1, 0.8], [-2.1, 2.2, 0.7], [-1.4, 3.1, 0.65], [-0.45, 3.5, 0.6], [0.5, 3.5, 0.6], [1.45, 3.1, 0.65], [2.1, 2.2, 0.7], [2.4, 1.1, 0.8], [2.2, 0, 0.9]];
+  rocks.forEach(([x, y, r], i) => g.add(at(squash(ball(r, i % 2 ? C.rockDark : 0x6f6a72, 0), 1, 0.85, 0.9), x, y + 0.3, 0)));
+  // The rift, in the course's colour.
+  const rift = new THREE.Mesh(new THREE.CircleGeometry(1.75, 32), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, side: THREE.DoubleSide, toneMapped: false }));
+  rift.position.set(0, 1.9, 0);
+  rift.scale.set(1, 1.15, 1);
+  const swirl = new THREE.Mesh(new THREE.RingGeometry(0.4, 1.6, 32, 1, 0, Math.PI * 1.4), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35, side: THREE.DoubleSide, toneMapped: false }));
+  swirl.position.set(0, 1.9, 0.02);
+  swirl.name = 'swirl';
+  g.add(rift, swirl);
+  // Loose pages blown out of the rift.
+  for (let i = 0; i < 9; i++) {
+    const page = at(box(0.32, 0.01, 0.42, i % 3 ? C.cream : 0xfff8e8), Math.sin(i * 2.3) * 2.8, 0.14, 1.2 + Math.cos(i * 1.7) * 1.4);
+    page.rotation.y = i;
+    g.add(page);
+  }
+  // A banner in the course's colour, and a pile of books.
+  g.add(at(cyl(0.07, 0.09, 3.4, C.woodDark, 6), 3.2, 0, 1.0), at(box(0.9, 1.3, 0.04, color, { kind: 'fabric' }), 3.67, 2.3, 1.0), at(box(0.5, 0.3, 0.05, C.white), 3.67, 2.6, 1.03));
+  [[C.red, 0], [0x2f6f9e, 0.24], [0x5b3fa0, 0.48]].forEach(([c, y], i) => g.add(at(box(0.7, 0.22, 0.5, c), -3.1 + i * 0.08, y + 0.12, 1.1, i * 0.4)));
+  g.userData.rift = rift;
+  g.userData.swirl = swirl;
+  g.traverse((o) => { if (o.isMesh && o !== rift && o !== swirl) { o.castShadow = true; o.receiveShadow = true; } });
   return g;
 }

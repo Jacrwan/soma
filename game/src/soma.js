@@ -72,14 +72,15 @@ export async function loadPlan(now = Date.now()) {
   if (mock) return { todos: mock.todos || [], readings: mock.readings || [] };
   const from = day(now - 86400000), to = day(now + 7 * 86400000);
   const [todos, items, subjects] = await Promise.all([
-    rest(`todos?select=id,text,status,date,estimated_minutes,subject_id&date=gte.${from}&date=lte.${to}&order=date`),
-    rest('course_items?select=id,subject_id,label,title,due_date,done_at,exam_id&done_at=is.null&exam_id=is.null&due_date=not.is.null&order=due_date&limit=200'),
+    rest(`todos?select=id,text,status,date,estimated_minutes,subject_id,assignment_id&or=(and(date.gte.${from},date.lte.${to}),assignment_id.not.is.null)&order=date&limit=400`),
+    rest('course_items?select=id,subject_id,label,title,due_date,done_at,exam_id&done_at=is.null&order=due_date&limit=300'),
     rest('subjects?select=id,name,canvas_course_id'),
   ]);
   const names = new Map(subjects.map((s) => [s.id, { name: s.name, canvas: s.canvas_course_id }]));
   return {
-    todos: todos.map((t) => ({ id: t.id, text: t.text, date: t.date, minutes: t.estimated_minutes || null, done: t.status === 'done', course: names.get(t.subject_id)?.name || '' })),
-    readings: items.map((i) => ({ id: i.id, label: i.label, title: i.title || '', due: i.due_date, course: names.get(i.subject_id)?.name || 'Course', courseId: i.subject_id, canvasCourse: names.get(i.subject_id)?.canvas ?? null })),
+    todos: todos.map((t) => ({ id: t.id, text: t.text, date: t.date, minutes: t.estimated_minutes || null, done: t.status === 'done', course: names.get(t.subject_id)?.name || '', assignmentId: t.assignment_id ?? null })),
+    // Readings with a due date march as shadows; exam study-list rows (exam_id) become exam topics.
+    readings: items.filter((i) => i.due_date || i.exam_id).map((i) => ({ exam: Boolean(i.exam_id), id: i.id, label: i.label, title: i.title || '', due: i.due_date, course: names.get(i.subject_id)?.name || 'Course', courseId: i.subject_id, canvasCourse: names.get(i.subject_id)?.canvas ?? null })),
   };
 }
 

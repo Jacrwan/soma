@@ -97,12 +97,12 @@ const ERRORS = {
 };
 
 /** Asks Soma's AI for a round of questions on an item (or on a course when item is free study). */
-export async function makePractice(item, count = 5) {
+export async function makePractice(item, count = 5, topic = null) {
   const s = session();
   if (!s) throw new Error(practiceStatus().reason);
   let notes = { text: '', files: [] };
-  try { notes = await courseNotes(item, s.token); } catch { /* questions without notes still work */ }
-  const ask = `${notes.text ? `Course notes:\n${notes.text}\n\n` : ''}Write ${count} practice questions for "${item.name}" in ${item.courseName || 'this course'}.`;
+  try { notes = await courseNotes(topic ? { ...item, name: `${topic} ${topic} ${item.name}` } : item, s.token); } catch { /* questions without notes still work */ }
+  const ask = `${notes.text ? `Course notes:\n${notes.text}\n\n` : ''}Write ${count} practice questions ${topic ? `on the topic "${topic}" ` : ''}for "${item.name}" in ${item.courseName || 'this course'}.`;
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'content-type': 'application/json', Authorization: `Bearer ${s.token}` },

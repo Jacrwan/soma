@@ -612,6 +612,44 @@ test('the Semester Pass fills only from studying and pays each reward once', () 
   for (let i = 0; i < 200; i++) assert.notStrictEqual(S.rollCritter(i % 2 === 0), 'ghostowl');
 });
 
+test('assignments split into steps, from a template or from the Soma plan', () => {
+  const s = rich();
+  S.syncSchool(s, [item({ id: 'h:42', name: 'Essay 2 Draft', groupName: 'Essays', pointsPossible: 60 }), item({ id: 'h:7', name: 'Problem Set 7', pointsPossible: 30 })], NOW, { source: 'soma' });
+  const steps = S.breakDown(s, 'h:42');
+  assert.strictEqual(steps[1].text, 'Outline');
+  assert.strictEqual(S.breakDown(s, 'h:7').length, 4);
+  const r = S.finishStep(s, 'h:42', steps[0].id);
+  assert.ok(r.coins > 0 && r.left === 4);
+  assert.strictEqual(S.finishStep(s, 'h:42', steps[0].id), null);
+  // Soma plan tasks for assignment 7 replace its template steps and follow Soma's done state.
+  S.setSomaPlan(s, { status: 'plus', todos: [{ id: 'a', text: 'Problems 1-4', date: '2099-01-01', assignmentId: 7, done: true }, { id: 'b', text: 'Problems 5-8', date: '2099-01-02', assignmentId: 7, done: false }] }, NOW);
+  assert.deepStrictEqual(s.steps['h:7'].map((x) => [x.text, x.done]), [['Problems 1-4', true], ['Problems 5-8', false]]);
+  S.finishStep(s, 'h:7', s.steps['h:7'][1].id);
+  assert.strictEqual(s.soma.done.b, true);
+});
+
+test('exam topics are crystals: study, practice and review on a topic break it', () => {
+  const s = rich();
+  S.syncSchool(s, [{ id: 'm', name: 'Midterm exam', courseId: 'c', courseName: 'Physics', dueAt: NOW + 5 * DAY, pointsPossible: 100, weight: 30, submitted: false }], NOW, { source: 'soma' });
+  const exam = s.school.items.m;
+  S.setTopics(s, 'm', ['Momentum', 'Energy', 'momentum', '']);
+  assert.deepStrictEqual(s.topics.m.map((t) => t.name), ['Momentum', 'Energy']);
+  assert.strictEqual(S.crystalsLeft(s, exam), 2);
+  assert.strictEqual(S.examArmor(s, exam), 1);
+  S.startStudy(s, 'm', 25, NOW, 'Momentum');
+  S.finishStudy(s, NOW + 25 * 60_000);
+  assert.strictEqual(S.crystalsLeft(s, exam), 1);
+  // 25 of 120 general minutes and 1 of 2 crystals: armor 1 - (0.5*25/120 + 0.5*0.5)
+  assert.ok(Math.abs(S.examArmor(s, exam) - (1 - (0.5 * 25 / 120 + 0.25))) < 1e-9);
+  S.finishPractice(s, 'm', 3, 0, NOW + DAY, 'Energy');
+  const card = S.addReview(s, exam, { q: 'E?', choices: ['a', 'b', 'c', 'd'], answer: 0, topic: 'Energy' }, NOW);
+  S.answerReview(s, card.id, true, NOW + DAY);
+  assert.strictEqual(s.topics.m.find((t) => t.name === 'Energy').minutes, 25);
+  assert.strictEqual(S.crystalsLeft(s, exam), 0);
+  S.setTopics(s, 'm', ['Energy', 'Waves']);
+  assert.strictEqual(s.topics.m[0].minutes, 25); // kept when the list is edited
+});
+
 test('camps and treasure come back the next day, shrines pay once ever', () => {
   const s = rich(0);
   assert.ok(!S.exploreDone(s, 'wilds:camp:0', NOW));

@@ -276,37 +276,39 @@ function syncInvaders(now) {
     }
     if (!inv) {
       const object = A.makeCreature(isBoss ? 'boss' : 'invader', item.size);
-      // New arrivals start at the far end of the road and march in.
-      object.position.set(((hash(item.id) % 5) - 2) * 1.5, 0, W.PATH_START_Z + 6);
-      object.rotation.y = Math.PI;
+      // New arrivals step out of their course's lair and march in.
+      const lair = frontFor(item.courseId);
+      object.position.set(lair.x, 0, lair.z);
+      object.rotation.y = Math.atan2(-lair.x, -lair.z);
       world.earth.add(object);
       inv = { object, boss: isBoss, item, label: fx.label(object, isBoss ? 6.6 : 2.3 + item.size * 0.5, '') };
       invaders.set(item.id, inv);
     }
     inv.item = item;
     if (fight && fight.id === item.id) continue;
-    // Its place on the road: a step closer to the gate every day. Work due
-    // within a day leaves the road and comes after you (moveInvaders).
-    const lane = isBoss ? (hash(item.id) % 2 ? -4.5 : 4.5) : ((hash(item.id) % 5) - 2) * 1.5;
-    const z = W.PATH_START_Z + (W.PATH_END_Z - W.PATH_START_Z) * t + (isBoss ? 2.5 : 0);
-    inv.home = { x: lane, z };
+    // Its place on its course's front: a step closer to town every day. Work
+    // due within a day leaves the front and comes after you (moveInvaders).
+    inv.home = frontSpot(item, t, isBoss);
     inv.overdue = overdue;
     inv.mode = isBoss ? 'road' : overdue ? 'charge' : item.dueAt - now < CHASE_HOURS * 3600000 ? 'follow' : 'road';
-    if (isBoss) showArmor(inv, S.examArmor(state, item));
+    if (isBoss) { showArmor(inv, S.examArmor(state, item)); showCrystals(inv, item); }
     const time = timeLeft(item.dueAt - now);
     const name = item.name.length > 26 ? `${item.name.slice(0, 25)}…` : item.name;
     const studied = S.studyProgress(state, item);
     const studying = state.study.active?.itemId === item.id;
     const meter = studied > 0 || studying ? `<span class="meter"><b style="width:${Math.round(studied * 100)}%"></b></span>` : '';
     const armor = isBoss ? Math.round(S.examArmor(state, item) * 100) : 0;
-    const note = studying ? ' · studying now' : isBoss ? (armor ? ` · armor ${armor}%` : ' · no armor left') : studied >= 1 ? ' · fully studied' : '';
+    const weak = isBoss && state.topics[item.id]?.length ? S.crystalsLeft(state, item) : null;
+    const packLeft = !isBoss && state.steps[item.id] ? state.steps[item.id].filter((x) => !x.done).length : null;
+    const note = studying ? ' · studying now' : isBoss ? (weak !== null ? ` · ${weak ? `${weak} weak point${weak === 1 ? '' : 's'} left` : 'no weak points left'}` : armor ? ` · armor ${armor}%` : ' · no armor left') : packLeft !== null ? ` · ${packLeft ? `${packLeft} step${packLeft === 1 ? '' : 's'} left` : 'all steps done, hand it in'}` : studied >= 1 ? ' · fully studied' : '';
     const bossMeter = isBoss ? `<span class="meter armor"><b style="width:${armor}%"></b></span>` : meter;
-    inv.label.set(`<em>${isBoss ? 'Exam' : 'Assignment'} · ${escapeHtml(item.courseName || 'Canvas')}</em>${escapeHtml(name)}${bossMeter}<small>${isBoss ? `at your gate in ${time}` : overdue ? `overdue ${time}` : `due in ${time}`}${note}</small>`, `${isBoss ? 'boss' : ''} ${overdue ? 'overdue' : ''} ${studied >= 1 || studying ? 'studied' : ''}`);
+    inv.label.set(`<em>${isBoss ? 'Exam' : 'Assignment'} · ${escapeHtml(item.courseName || 'Canvas')}</em>${escapeHtml(name)}${bossMeter}<small>${isBoss ? `reaches town in ${time}` : overdue ? `overdue ${time}` : `due in ${time}`}${note}</small>`, `${isBoss ? 'boss' : ''} ${overdue ? 'overdue' : ''} ${studied >= 1 || studying ? 'studied' : ''}`);
   }
   for (const id of [...invaders.keys()]) if (!live.has(id) && !(fight && fight.id === id)) despawnInvader(id, false);
   // Only the most urgent few come into town; the rest wait at the gate.
   const chasers = [...invaders.values()].filter((inv) => inv.mode !== 'road').sort((a, b) => a.item.dueAt - b.item.dueAt);
-  chasers.slice(MAX_CHASERS).forEach((inv) => { inv.mode = 'road'; inv.home = { x: inv.home.x, z: W.PATH_END_Z }; });
+  chasers.slice(MAX_CHASERS).forEach((inv) => { inv.mode = 'road'; inv.home = frontSpot(inv.item, 1, inv.boss); });
+  syncPacks();
 }
 
 // --- Assignments on the move ------------------------------------------------------------
@@ -353,7 +355,7 @@ function moveInvaders(dt, time) {
         inv.object.rotation.y = Math.atan2(dx, dz);
       } else {
         inv.walking = false;
-        if (inv.mode === 'road') inv.object.rotation.y = Math.PI;
+        if (inv.mode === 'road') inv.object.rotation.y = Math.atan2(-o.x, -o.z);
         else inv.object.rotation.y = Math.atan2(p.x - o.x, p.z - o.z);
       }
     }
@@ -1080,7 +1082,7 @@ function openStudy(selected = null) {
 }
 
 /** A round of AI practice questions on an item; defaults to the most urgent exam, then anything due. */
-function openPractice(id = null) {
+function openPractice(id = null, topic = null) {
   if (fight || ui.isOpen()) return;
   const now = Date.now();
   const list = S.threats(state, now).map((t) => t.item);
@@ -1088,10 +1090,10 @@ function openPractice(id = null) {
   if (!item) return void ui.toast('Nothing to practice for yet. Exams and assignments from Canvas show up here.', 'bad');
   ui.practice({
     name: item.name, course: item.courseName || 'your course', armor: item.kind === 'boss' ? S.examArmor(state, item) : null,
-    load: () => makePractice(item),
-    onAnswer: (q, right) => { if (!right) S.addReview(state, item, q); },
+    load: () => makePractice(item, 5, topic),
+    onAnswer: (q, right) => { if (!right) S.addReview(state, item, topic ? { ...q, topic } : q); },
     finish: (right, wrong) => {
-      const r = S.finishPractice(state, item.id, right, wrong);
+      const r = S.finishPractice(state, item.id, right, wrong, Date.now(), topic);
       if (r.lures) setTimeout(() => ui.toast('Good round: +1 lure for the Wilds', 'good'), 600);
       gainedXp(r);
       syncInvaders(Date.now());
@@ -1108,12 +1110,12 @@ function openPractice(id = null) {
   });
 }
 
-function beginStudy(id, minutes) {
-  if (!S.startStudy(state, id, minutes)) return;
+function beginStudy(id, minutes, topic = null) {
+  if (!S.startStudy(state, id, minutes, Date.now(), topic)) return;
   if (dayPhase().sleeping) setTimeout(() => ui.toast('The town is asleep. Wren stays up by the fire with you.', 'good'), 1500);
   const item = id ? state.school.items[id] : null;
   audio.build();
-  ui.banner('Study session', item ? item.name : `${minutes} minutes`);
+  ui.banner('Study session', item ? `${item.name}${topic ? ` · ${topic}` : ''}` : `${minutes} minutes`);
   ui.toast('Timer running. Go do the work: the town earns double until it ends.', 'gold');
   boltIn = 0.6;
   studyTick();
@@ -1227,10 +1229,11 @@ function startExamDay(event) {
   const inv = invaders.get(event.item.id);
   if (!inv || state.scene !== 'earth' || inRealm()) return finishExamDay(event, null);
   fight = { id: event.item.id, item: event.item, inv, event, t: 0, slams: 0 };
-  inv.object.position.set(0, 0, W.PATH_END_Z + 2.2);
-  inv.object.rotation.y = Math.PI;
+  const stop = frontSpot(event.item, 1, true);
+  inv.object.position.set(stop.x, 0, stop.z);
+  inv.object.rotation.y = Math.atan2(-stop.x, -stop.z);
   inv.label.set(`<em>Exam day · ${escapeHtml(event.item.courseName || 'Canvas')}</em>${escapeHtml(event.item.name)}<span class="meter armor"><b style="width:${Math.round(event.armor * 100)}%"></b></span><small>at the gate · armor ${Math.round(event.armor * 100)}%</small>`, 'boss overdue');
-  ui.banner('Exam day', `${event.item.name} reached the gate`);
+  ui.banner('Exam day', `${event.item.name} reached the town`);
   audio.alarm();
 }
 
@@ -1244,8 +1247,10 @@ function updateExamDay(dt) {
   if (fight.slams < 3 && beat >= 0) {
     fight.slams += 1;
     shake = Math.max(shake, event.outcome === 'held' ? 0.25 : 0.6);
-    fx.ring(new THREE.Vector3(0, 0, W.GATE.z + 1.5), 4, 0.6);
-    fx.burst(new THREE.Vector3(0, 2, W.GATE.z + 1), event.outcome === 'held' ? 0x8e99a8 : A.C.red, 12, 6, 6);
+    const at = inv.object.position;
+    const toward = new THREE.Vector3(-at.x, 0, -at.z).normalize().multiplyScalar(3);
+    fx.ring(at.clone().add(toward), 4, 0.6);
+    fx.burst(at.clone().add(toward).add(new THREE.Vector3(0, 2, 0)), event.outcome === 'held' ? 0x8e99a8 : A.C.red, 12, 6, 6);
     audio.thud();
   }
   if (fight.t > 5) {
@@ -1476,8 +1481,12 @@ function findTarget() {
   if (sceneName === 'earth' && !state.study.active) {
     for (const inv of invaders.values()) {
       if (fight && fight.id === inv.item.id) continue;
-      offer(p.distanceTo(inv.object.position), inv.boss ? 8 : 4.5, { text: `Study for ${inv.item.name}`, run: () => openStudy(inv.item.id) });
+      const steps = state.steps[inv.item.id];
+      offer(p.distanceTo(inv.object.position), inv.boss ? 8 : 4.5, inv.boss
+        ? { text: `${inv.item.name}: weak points and study`, run: () => openExam(inv.item.id) }
+        : { text: steps ? `${inv.item.name}: steps and study` : `Break ${inv.item.name} into steps`, run: () => openSteps(inv.item.id) });
     }
+    for (const [itemId, pack] of packs) for (const m of pack.values()) offer(Math.hypot(p.x - m.object.position.x, p.z - m.object.position.z), 2.6, { text: `Done: ${m.step.text}`, run: () => doneStep(itemId, m.step.id) });
   }
   return best;
 }
@@ -1911,7 +1920,7 @@ function frame(nowMs) {
   if (shiftLock) document.body.classList.toggle('shiftlock', !ui.isOpen());
   if (!inRealm() && state.scene === 'earth') moveVillagers(dt, time);
   updateCritters(dt, time);
-  if (!inRealm() && state.scene === 'earth') moveShadows(dt, time);
+  if (!inRealm() && state.scene === 'earth') { moveShadows(dt, time); movePacks(dt, time); animateLairs(time); }
   watchtower.userData.beam.rotation.y += dt * 0.6;
   updatePet(dt, time);
   updateTheme(dt, time);
@@ -1952,6 +1961,7 @@ function frame(nowMs) {
     audio.setMusic(S.isStudying(state) ? 'study' : 'town');
     syncInvaders(Date.now());
     syncHalls();
+    syncFronts();
     syncReview();
     villagerTick(Date.now());
     applyTimeOfDay();
@@ -2663,6 +2673,7 @@ function syncShadows() {
   const wanted = new Map();
   if (state.scene === 'earth' && !inRealm()) {
     for (const r of state.soma.readings) {
+      if (r.exam || !r.due) continue;
       const due = Date.parse(`${r.due}T23:59:00`);
       if (!Number.isFinite(due) || due - now > 10 * 86400000 || now - due > 7 * 86400000) continue;
       wanted.set(r.id, { r, due });
@@ -2740,8 +2751,8 @@ function openWatchtower() {
   }
   ui.watchtower({
     status: st.status,
-    readings: st.readings.slice(0, 12).map((r) => ({ id: r.id, name: `${r.label}${r.title ? ` ${r.title}` : ''}`, course: r.course, due: r.due, late: Date.parse(`${r.due}T23:59:00`) < now })),
-    hidden: st.readings.length,
+    readings: st.readings.filter((r) => !r.exam && r.due).slice(0, 12).map((r) => ({ id: r.id, name: `${r.label}${r.title ? ` ${r.title}` : ''}`, course: r.course, due: r.due, late: Date.parse(`${r.due}T23:59:00`) < now })),
+    hidden: st.readings.filter((r) => !r.exam && r.due).length,
     plan: [...days].sort(([a], [b]) => (a < b ? -1 : 1)).slice(0, 7).map(([date, list]) => ({ date, label: new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' }), list })),
     upgrade: Soma.UPGRADE_URL,
     onRead: (id) => { ui.close(); readShadow(id); },
@@ -2962,6 +2973,170 @@ function updateTrail(dt) {
   if (Math.random() < 0.5) fx.burst(p.clone().add(new THREE.Vector3(0, 0.2, 0)), 0xdff4ff, 3, 1.5, 2);
 }
 
+
+// --- Course fronts: each class's work comes from its own lair ----------------------------
+const lairs = new Map(); // courseId -> { object, label }
+function courseOrder() {
+  return S.courseHalls(state).map((h) => h.id);
+}
+function frontIndex(courseId) {
+  const i = courseOrder().indexOf(courseId);
+  return (i < 0 ? hash(String(courseId)) : i) % W.FRONT_ANGLES.length;
+}
+function frontFor(courseId) { return W.FRONT_POS[frontIndex(courseId)]; }
+/** Where an item stands on its front: t 0 at the lair, 1 at the edge of town. */
+function frontSpot(item, t, boss = false) {
+  const a = (W.FRONT_ANGLES[frontIndex(item.courseId)] * Math.PI) / 180;
+  const r = W.FRONT_R - 3 - (W.FRONT_R - 3 - W.FRONT_STOP) * t;
+  const lane = boss ? 0 : ((hash(item.id) % 5) - 2) * 1.6;
+  return { x: Math.cos(a) * r - Math.sin(a) * lane, z: Math.sin(a) * r + Math.cos(a) * lane };
+}
+const COURSE_COLORS = [0x4a78d0, 0xd9534f, 0x3fb8a8, 0xf08a3c, 0x7a56c2, 0xc9a227];
+function syncFronts() {
+  const ids = state.scene === 'earth' && !inRealm() ? courseOrder().slice(0, W.FRONT_ANGLES.length) : [];
+  for (const [id, l] of lairs) if (!ids.includes(id)) { l.object.parent?.remove(l.object); l.label.remove(); lairs.delete(id); }
+  const names = new Map(S.courseHalls(state).map((h) => [h.id, h.name]));
+  const now = Date.now();
+  ids.forEach((id) => {
+    let l = lairs.get(id);
+    if (!l) {
+      const at = frontFor(id);
+      const object = A.makeLair(COURSE_COLORS[hash(id) % COURSE_COLORS.length]);
+      onGround(object, at.x, at.z);
+      faceCentre(object);
+      world.earth.add(object);
+      l = { object, label: fx.label(object, 5.2, '', 'board') };
+      lairs.set(id, l);
+    }
+    const coming = S.threats(state, now).filter((x) => x.item.courseId === id).length;
+    l.label.set(`<em>${escapeHtml(names.get(id) || 'Course')} front</em>${coming ? `${coming} on the way` : 'Quiet for now'}`, 'board');
+  });
+}
+function animateLairs(time) {
+  for (const l of lairs.values()) {
+    const { rift, swirl } = l.object.userData;
+    rift.material.opacity = 0.7 + Math.sin(time * 2) * 0.12;
+    swirl.rotation.z = -time * 1.2;
+  }
+}
+
+// --- Packs: an assignment's steps follow it as minions --------------------------------------
+const packs = new Map(); // itemId -> Map(stepId -> { object, step })
+function syncPacks() {
+  for (const [itemId, pack] of packs) {
+    const inv = invaders.get(itemId);
+    const live = new Set((state.steps[itemId] || []).filter((x) => !x.done).map((x) => x.id));
+    for (const [stepId, m] of pack) {
+      if (inv && live.has(stepId)) continue;
+      if (inv) for (let k = 0; k < 2; k++) fx.burst(m.object.position.clone().add(new THREE.Vector3(0, 0.5 + k * 0.4, 0)), [A.C.gold, A.C.white][k], 10, 4, 5);
+      m.object.parent?.remove(m.object);
+      m.label?.remove();
+      pack.delete(stepId);
+    }
+    if (!inv) packs.delete(itemId);
+  }
+  for (const inv of invaders.values()) {
+    if (inv.boss) continue;
+    const steps = (state.steps[inv.item.id] || []).filter((x) => !x.done);
+    if (!steps.length) continue;
+    let pack = packs.get(inv.item.id);
+    if (!pack) { pack = new Map(); packs.set(inv.item.id, pack); }
+    steps.forEach((step, i) => {
+      if (pack.has(step.id)) return;
+      const object = A.makeCreature('invader', 0);
+      object.scale.multiplyScalar(0.78);
+      object.position.copy(inv.object.position);
+      world.earth.add(object);
+      pack.set(step.id, { object, step, slot: i });
+    });
+  }
+}
+function movePacks(dt, time) {
+  const p = player.object.position;
+  for (const [itemId, pack] of packs) {
+    const inv = invaders.get(itemId);
+    if (!inv) continue;
+    const lead = inv.object.position;
+    let i = 0;
+    const n = pack.size;
+    for (const m of pack.values()) {
+      // Minions trail their leader in a loose fan.
+      const a = inv.object.rotation.y + Math.PI + ((i - (n - 1) / 2) * 0.62);
+      const tx = lead.x + Math.sin(a) * 2.6, tz = lead.z + Math.cos(a) * 2.6;
+      const o = m.object.position;
+      const dx = tx - o.x, dz = tz - o.z, d = Math.hypot(dx, dz);
+      if (d > 0.05) { o.x += (dx / d) * Math.min(d, Math.max(2.5, d * 3) * dt); o.z += (dz / d) * Math.min(d, Math.max(2.5, d * 3) * dt); m.object.rotation.y = Math.atan2(dx, dz); }
+      o.y = world.groundHeight('earth', o.x, o.z);
+      const feet = m.object.userData.feet;
+      const pace = d > 0.2 ? 12 : 2;
+      feet[0].position.y = 0.12 + Math.max(0, Math.sin(time * pace + i)) * 0.16;
+      feet[1].position.y = 0.12 + Math.max(0, -Math.sin(time * pace + i)) * 0.16;
+      // Its step shows when you're close.
+      const near = Math.hypot(p.x - o.x, p.z - o.z) < 4.5;
+      if (near && !m.label) m.label = fx.label(m.object, 1.6, `<em>Step</em>${escapeHtml(m.step.text)}`, 'step');
+      else if (!near && m.label) { m.label.remove(); m.label = null; }
+      i += 1;
+    }
+  }
+}
+async function doneStep(itemId, stepId) {
+  const r = S.finishStep(state, itemId, stepId);
+  if (!r) return;
+  audio.coin();
+  gainedXp(r);
+  if (r.step.somaId) Soma.setTodoDone(r.step.somaId, true).catch(() => ui.toast('Could not reach Soma; it will catch up.', 'bad'));
+  ui.toast(r.left ? `Step done: ${r.step.text}. +${S.fmt(r.coins)} coins · ${r.left} to go` : `Last step done! Hand ${state.school.items[itemId]?.name || 'it'} in on Canvas to finish it off.`, 'good');
+  syncPacks();
+  syncInvaders(Date.now());
+  drawDaily();
+  save();
+}
+function openSteps(itemId) {
+  const item = state.school.items[itemId];
+  if (!item || ui.isOpen()) return;
+  ui.steps({
+    name: item.name, course: item.courseName, due: timeLeft(item.dueAt - Date.now()), late: item.dueAt < Date.now(),
+    steps: (state.steps[itemId] || []).map((x) => ({ ...x })),
+    fromSoma: (state.steps[itemId] || []).some((x) => x.somaId),
+    template: S.stepTemplate(item),
+    onBreak: (texts) => { S.breakDown(state, itemId, texts); syncPacks(); syncInvaders(Date.now()); save(); ui.close(); openSteps(itemId); },
+    onDone: (stepId) => { ui.close(); doneStep(itemId, stepId); },
+    onStudy: () => { ui.close(); openStudy(itemId); },
+  });
+}
+
+// --- Exam weak points ----------------------------------------------------------------------
+function showCrystals(inv, item) {
+  const crystals = inv.object.userData.crystals || [];
+  const topics = state.topics[item.id] || [];
+  const left = topics.filter((t) => t.minutes < S.TOPIC_GOAL).length;
+  crystals.forEach((c, i) => {
+    const on = i < left;
+    if (c.visible && !on && inv.crystalsShown !== undefined) {
+      const at = new THREE.Vector3();
+      c.getWorldPosition(at);
+      fx.burst(at, 0x9fe8ff, 22, 8, 8);
+      fx.float(at.clone().add(new THREE.Vector3(0, 1.4, 0)), 'Weak point broken!', 'hit');
+      audio.hit();
+    }
+    c.visible = on;
+  });
+  inv.crystalsShown = left;
+}
+function openExam(itemId) {
+  const item = state.school.items[itemId];
+  if (!item || ui.isOpen()) return;
+  ui.exam({
+    name: item.name, course: item.courseName, time: timeLeft(item.dueAt - Date.now()), armor: Math.round(S.examArmor(state, item) * 100),
+    topics: (state.topics[itemId] || []).map((t) => ({ name: t.name, pct: Math.min(100, Math.round((t.minutes / S.TOPIC_GOAL) * 100)) })),
+    suggestions: S.suggestTopics(state, item),
+    plus: state.soma.status === 'plus',
+    onTopics: (names) => { S.setTopics(state, itemId, names); syncInvaders(Date.now()); save(); ui.close(); openExam(itemId); },
+    onStudy: (topic, minutes) => { ui.close(); beginStudy(itemId, minutes, topic); },
+    onPractice: (topic) => { ui.close(); openPractice(itemId, topic); },
+  });
+}
+
 // --- Settings ------------------------------------------------------------------------------
 function toggleMute() {
   state.settings.muted = !state.settings.muted;
@@ -3034,6 +3209,7 @@ villagerTick(Date.now());
 applyTimeOfDay();
 dressPet();
 dailyTick(true);
+syncFronts();
 somaRefresh(true);
 applyTheme();
 applySettings();
@@ -3103,6 +3279,7 @@ window.epoch = {
   pet(id) { state.critters.caught[id] = 1; S.setPet(state, id); dressPet(); },
   uiOpen: () => ui.isOpen(),
   shiftLock: () => ({ on: shiftLock, locked: locked(), yaw: cam.yaw, facing: player.facing }),
+  exam: (id) => openExam(id), steps: (id) => openSteps(id),
   invaders: () => [...invaders.values()].map((i) => ({ name: i.item.name, mode: i.mode, x: +i.object.position.x.toFixed(1), z: +i.object.position.z.toFixed(1), inScene: Boolean(i.object.parent) })),
   armor(id) { const inv = invaders.get(id); return inv && inv.object.userData.armor?.filter((p) => p.visible).length; },
   info: () => ({ quality, calls: renderer.info.render.calls, tris: renderer.info.render.triangles }),

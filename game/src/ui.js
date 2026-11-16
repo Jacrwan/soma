@@ -656,6 +656,58 @@ export function createUI(on) {
       document.body.append(bar);
     },
 
+    /** An assignment's steps: its minions. Finish them one by one. */
+    steps({ name, course, due, late, steps, fromSoma, template, onBreak, onDone, onStudy }) {
+      const done = steps.filter((x) => x.done).length;
+      if (!steps.length) {
+        // Not split yet: offer the template, editable.
+        const rows = template.map((t) => el('input', { type: 'text', value: t, maxlength: 80 }));
+        const list = el('div', { class: 'step-edit' }, rows);
+        panel({ title: name, subtitle: `${course} · ${late ? `${due} late` : `due in ${due}`}` },
+          el('p', { class: 'note', text: 'Split it into steps. Each step joins it as a small monster; finish a step and that monster goes down. The big one only falls when you hand it in on Canvas.' }),
+          list,
+          el('div', { class: 'actions', style: 'gap:8px' },
+            el('button', { class: 'btn small', text: '+ step', onclick: () => { if (list.children.length < 8) list.append(el('input', { type: 'text', value: '', placeholder: 'Another step', maxlength: 80 })); } }),
+            el('button', { class: 'btn primary', onclick: () => onBreak([...list.querySelectorAll('input')].map((i) => i.value.trim()).filter(Boolean)) }, el('span', { text: 'Split it' })),
+            el('button', { class: 'btn', onclick: onStudy }, el('span', { text: 'Just study for it' }))));
+        return;
+      }
+      panel({ title: name, subtitle: `${course} · ${late ? `${due} late` : `due in ${due}`} · ${done} of ${steps.length} steps done${fromSoma ? ' · from your Soma plan' : ''}` },
+        el('div', { class: 'step-list' }, steps.map((x, i) => el('div', { class: `step-row ${x.done ? 'done' : ''}` },
+          el('em', { text: String(i + 1) }), el('span', { text: x.text }),
+          x.done ? el('small', { text: 'Done' }) : el('button', { class: 'btn small primary', text: 'Done', onclick: () => onDone(x.id) })))),
+        el('div', { class: 'actions', style: 'margin-top:10px' }, el('button', { class: 'btn', onclick: onStudy }, el('span', { text: 'Start a study session on it' }))),
+      );
+    },
+
+    /** An exam's weak points: one crystal per topic. */
+    exam({ name, course, time, armor, topics, suggestions, plus, onTopics, onStudy, onPractice }) {
+      const editing = el('div', { class: 'topic-edit' });
+      const drawEdit = () => {
+        const field = el('input', { type: 'text', placeholder: 'A topic on this exam, e.g. "Eigenvectors"', maxlength: 60 });
+        const add = () => { const v = field.value.trim(); if (v) onTopics([...topics.map((t) => t.name), v]); };
+        field.addEventListener('keydown', (e) => { if (e.key === 'Enter') add(); });
+        const unused = suggestions.filter((sg) => !topics.some((t) => t.name.toLowerCase() === sg.toLowerCase()));
+        editing.replaceChildren(...[
+          el('div', { class: 'oracle-ask' }, field, el('button', { class: 'btn small primary', text: 'Add', onclick: add })),
+          unused.length ? el('div', { class: 'chips' }, el('small', { text: 'From your syllabus:' }), unused.map((sg) => el('button', { class: 'chip', text: `+ ${sg}`, onclick: () => onTopics([...topics.map((t) => t.name), sg]) }))) : null,
+        ].filter(Boolean));
+      };
+      drawEdit();
+      panel({ title: name, subtitle: `${course} · reaches town in ${time} · armor ${armor}%`, wide: true },
+        topics.length ? el('p', { class: 'note', text: 'Each topic is a glowing crystal on the boss. Study, practice or review a topic to break its crystal (25 minutes each). Topics you skip stay as weak points on exam day.' })
+          : el('p', { class: 'note', text: 'What’s on this exam? Add its topics and each becomes a crystal on the boss, so you can see exactly what you haven’t studied yet.' }),
+        el('div', { class: 'topic-list' }, topics.map((t) => el('div', { class: `topic-row ${t.pct >= 100 ? 'broken' : ''}` },
+          el('i', { class: 'crystal' }),
+          el('div', {}, el('b', { text: t.name }), el('div', { class: 'bar' }, el('i', { style: `width:${t.pct}%` }))),
+          t.pct >= 100 ? el('small', { text: 'Broken' }) : el('div', { class: 'topic-do' },
+            [10, 25].map((m) => el('button', { class: 'btn small', text: `Study ${m}m`, onclick: () => onStudy(t.name, m) })),
+            el('button', { class: 'btn small primary', text: 'Practice', title: plus ? 'AI questions on this topic' : 'Needs Soma Plus', onclick: () => onPractice(t.name) })),
+          el('button', { class: 'x-small', title: 'Remove', text: '×', onclick: () => onTopics(topics.filter((o) => o.name !== t.name).map((o) => o.name)) })))),
+        topics.length < 6 ? editing : null,
+      );
+    },
+
     /** The market: today's stock, plus selling what you don't need. */
     market({ coins, offers, junk, onBuy, onSellJunk }) {
       const label = (o) => o.kind === 'gear' ? o.item.name : o.kind === 'look' ? o.name : o.kind === 'tea' ? 'Study tea' : o.name;

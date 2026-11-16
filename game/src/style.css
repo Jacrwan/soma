@@ -752,3 +752,27 @@ select, input { font: inherit; }
 
 /* Shift lock hides the cursor over the game (panels and the HUD buttons keep theirs). */
 body.shiftlock, body.shiftlock canvas, body.shiftlock #labels, body.shiftlock #labels * { cursor: none !important; }
+
+/* Steps and exam weak points */
+.label.step { background: rgba(255, 248, 225, 0.94); color: #3a2a10; font-size: 11.5px; }
+.label.step em { color: #b07a10; }
+.step-edit { display: grid; gap: 6px; }
+.step-edit input, .topic-edit input { padding: 9px 12px; border-radius: 10px; border: 2px solid rgba(255, 255, 255, 0.12); background: rgba(255, 255, 255, 0.06); color: inherit; font: inherit; }
+.step-list { display: grid; gap: 6px; }
+.step-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.06); }
+.step-row em { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 8px; background: rgba(255, 255, 255, 0.12); font-style: normal; font-weight: 700; font-size: 12px; }
+.step-row span { flex: 1; }
+.step-row.done { opacity: 0.55; }
+.step-row.done span { text-decoration: line-through; }
+.step-row.done em { background: #5fd17a; color: #10261a; }
+.topic-list { display: grid; gap: 8px; margin: 8px 0 12px; }
+.topic-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; background: linear-gradient(135deg, rgba(79, 200, 255, 0.14), rgba(255, 255, 255, 0.04)); }
+.topic-row > div:nth-child(2) { flex: 1; display: flex; flex-direction: column; gap: 5px; }
+.topic-row .bar i { background: linear-gradient(90deg, #4fc8ff, #9fe8ff); }
+.topic-row.broken { opacity: 0.6; }
+.topic-do { display: flex; gap: 6px; }
+.crystal { flex: none; width: 16px; height: 22px; background: linear-gradient(160deg, #e6faff, #4fc8ff); clip-path: polygon(50% 0, 100% 40%, 50% 100%, 0 40%); box-shadow: 0 0 10px #4fc8ff; }
+.topic-row.broken .crystal { background: rgba(255, 255, 255, 0.25); }
+.x-small { width: 26px; height: 26px; border-radius: 8px; border: none; background: rgba(255, 255, 255, 0.08); color: inherit; cursor: pointer; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+.chip { padding: 5px 10px; border-radius: 99px; border: 1px solid rgba(79, 200, 255, 0.45); background: rgba(79, 200, 255, 0.12); color: inherit; font: inherit; font-size: 12px; cursor: pointer; }

@@ -92,6 +92,8 @@ export function newState(now = Date.now()) {
     daily: { day: null, quests: [], streak: 0, best: 0, lastFull: null, bonus: false, reported: null },
     critters: { lures: 3, caught: {}, pet: null },
     soma: { status: 'offline', todos: [], readings: [], done: {} },
+    steps: {}, // itemId -> [{ id, text, done, somaId? }]
+    topics: {}, // exam itemId -> [{ name, minutes }]
     pass: { season: 'Fall 2026', points: 0, premium: false, freeClaimed: [], premiumClaimed: [] },
     createdAt: now,
     lastTick: now,
@@ -533,16 +535,22 @@ export function studyProgress(state, item) {
 }
 
 /** 0 to 1: the armor an exam boss still wears. Studying strips it. */
-export const examArmor = (state, item) => 1 - studyProgress(state, item);
+export const examArmor = (state, item) => {
+  // With topics set, half the armor is general study and half is the topics'
+  // crystals, so studying the wrong things leaves weak points standing.
+  const topics = state.topics?.[item.id];
+  if (!topics || !topics.length) return 1 - studyProgress(state, item);
+  return 1 - Math.min(1, 0.5 * studyProgress(state, item) + 0.5 * topicProgress(state, item));
+};
 
 export function studyChestsLeft(state, now = Date.now()) {
   return state.study.chestDay === dayOf(now) ? Math.max(0, STUDY_CHESTS_PER_DAY - state.study.chestsToday) : STUDY_CHESTS_PER_DAY;
 }
 
 /** Starts a session on an item (or on nothing in particular, with itemId null). */
-export function startStudy(state, itemId, minutes, now = Date.now()) {
+export function startStudy(state, itemId, minutes, now = Date.now(), topic = null) {
   if (state.study.active || !(minutes > 0)) return null;
-  state.study.active = { itemId: itemId ?? null, minutes, startedAt: now, endsAt: now + minutes * 60000 };
+  state.study.active = { itemId: itemId ?? null, minutes, startedAt: now, endsAt: now + minutes * 60000, ...(topic ? { topic } : {}) };
   return state.study.active;
 }
 
@@ -569,6 +577,7 @@ export function finishStudy(state, now = Date.now()) {
     result.prepared = before < 1 && studyProgress(state, item) >= 1;
   }
   study.total += minutes;
+  if (item && a.topic) addTopicMinutes(state, item.id, a.topic, minutes);
   // Every 10 minutes studied earns a lure for catching creatures in the Wilds.
   study.lureBank = (study.lureBank || 0) + minutes;
   result.lures = Math.floor(study.lureBank / LURE_MINUTES);
@@ -617,12 +626,14 @@ export function practiceRoom(state, itemId, now = Date.now()) {
 }
 
 /** Pays for one practice round. Returns { minutes, xp, levels, prepared, capped }. */
-export function finishPractice(state, itemId, right, wrong, now = Date.now()) {
+export function finishPractice(state, itemId, right, wrong, now = Date.now(), topic = null) {
   const item = itemId ? state.school.items[itemId] || null : null;
   const room = item ? practiceRoom(state, itemId, now) : 0;
   const minutes = Math.min(room, right * PRACTICE_RIGHT_MINUTES + wrong * PRACTICE_WRONG_MINUTES);
   const result = { minutes, prepared: false, capped: Boolean(item) && minutes < right * PRACTICE_RIGHT_MINUTES + wrong * PRACTICE_WRONG_MINUTES };
   state.stats.practiceRight = (state.stats.practiceRight || 0) + right;
+  // Practice on one topic chips that topic's crystal, outside the daily practice cap.
+  if (itemId && topic) addTopicMinutes(state, itemId, topic, right * PRACTICE_RIGHT_MINUTES);
   passPoints(state, right * 3);
   // A good practice round (3+ right) also earns a lure.
   result.lures = right >= 3 ? 1 : 0;
@@ -1087,7 +1098,7 @@ export const REVIEW_MAX = 150;
 export function addReview(state, item, q, now = Date.now()) {
   const cards = state.review.cards;
   if (cards.some((c) => c.q === q.q)) return null;
-  const card = { id: `r${state.review.nextId++}`, itemId: item?.id || null, courseId: item?.courseId || null, course: item?.courseName || '', from: item?.name || '', q: q.q, choices: q.choices, answer: q.answer, why: q.why || '', box: 0, due: now + REVIEW_GAPS[0] * DAY };
+  const card = { id: `r${state.review.nextId++}`, itemId: item?.id || null, courseId: item?.courseId || null, course: item?.courseName || '', from: item?.name || '', q: q.q, choices: q.choices, answer: q.answer, why: q.why || '', box: 0, due: now + REVIEW_GAPS[0] * DAY, ...(q.topic ? { topic: q.topic } : {}) };
   cards.push(card);
   if (cards.length > REVIEW_MAX) cards.splice(0, cards.length - REVIEW_MAX);
   return card;
@@ -1124,6 +1135,7 @@ export function answerReview(state, cardId, right, now = Date.now()) {
       study.courses[item.courseId] = (study.courses[item.courseId] || 0) + out.minutes;
       study.log = [...(study.log || []), { at: now, itemId: item.id, courseId: item.courseId, minutes: out.minutes }].slice(-400);
       out.prepared = before < 1 && studyProgress(state, item) >= 1;
+      if (card.topic) addTopicMinutes(state, item.id, card.topic, REVIEW_RIGHT_MINUTES);
     } else if (card.courseId) {
       state.study.courses[card.courseId] = (state.study.courses[card.courseId] || 0) + REVIEW_RIGHT_MINUTES;
     }
@@ -1606,6 +1618,7 @@ export function setSomaPlan(state, { status, todos = [], readings = [] }, now = 
   soma.todos = todos;
   soma.readings = readings;
   for (const t of todos) soma.done[t.id] = Boolean(t.done);
+  stepsFromSoma(state, todos);
   applyPlanQuests(state, now);
 }
 
@@ -1702,6 +1715,99 @@ export function passClaimable(state) {
   return out;
 }
 
+// --- Steps: big work split into pieces you can finish one at a time -----------
+// An assignment arrives as a pack: the leader is the assignment itself (it
+// only goes when it's handed in on Canvas), and each step is a minion.
+// Steps come from Soma's plan when it has tasks for that assignment;
+// otherwise the student splits it from a template that fits the work.
+export function stepTemplate(item) {
+  const name = `${item.name} ${item.groupName || ''}`.toLowerCase();
+  if (/essay|paper|response|draft|report|reflection|write/.test(name)) return ['Read the prompt and plan', 'Outline', 'First draft', 'Sources and citations', 'Edit and proofread'];
+  if (/lab/.test(name)) return ['Pre-lab reading', 'Collect the data', 'Analysis', 'Write it up'];
+  if (/problem|homework|hw|set|worksheet|webassign|exercise/.test(name)) {
+    const n = Math.max(3, Math.min(6, Math.round((item.pointsPossible || 20) / 8)));
+    return Array.from({ length: n }, (_, i) => `Problems, part ${i + 1} of ${n}`);
+  }
+  if (/project|presentation|poster/.test(name)) return ['Pick the topic', 'Research', 'Build it', 'Practice and polish'];
+  if (/read|chapter/.test(name)) return ['First half', 'Second half', 'Notes'];
+  return ['Get started', 'Do the main part', 'Check it over'];
+}
+
+/** Splits an item into steps (from a template or a given list). Returns the steps. */
+export function breakDown(state, itemId, texts = null) {
+  const item = state.school.items[itemId];
+  if (!item) return null;
+  const list = (texts && texts.length ? texts : stepTemplate(item)).slice(0, 8);
+  state.steps[itemId] = list.map((text, i) => ({ id: `${itemId}#${i}`, text, done: false }));
+  return state.steps[itemId];
+}
+
+/** Soma's plan tasks for an assignment become its steps (done state follows Soma). */
+export function stepsFromSoma(state, todos) {
+  const byAssignment = new Map();
+  for (const t of todos) if (t.assignmentId != null) {
+    if (!byAssignment.has(t.assignmentId)) byAssignment.set(t.assignmentId, []);
+    byAssignment.get(t.assignmentId).push(t);
+  }
+  for (const item of Object.values(state.school.items)) {
+    const canvasId = String(item.id).split(':').pop();
+    const tasks = byAssignment.get(Number(canvasId)) || byAssignment.get(canvasId);
+    if (!tasks || !tasks.length) continue;
+    state.steps[item.id] = tasks.slice(0, 8).map((t) => ({ id: `soma:${t.id}`, somaId: t.id, text: t.text, done: Boolean(state.soma.done[t.id] ?? t.done) }));
+  }
+}
+
+/** Finishes one step: a little pay now, and the pack visibly shrinks. */
+export function finishStep(state, itemId, stepId) {
+  const step = state.steps[itemId]?.find((x) => x.id === stepId);
+  const item = state.school.items[itemId];
+  if (!step || step.done || !item) return null;
+  step.done = true;
+  if (step.somaId) state.soma.done[step.somaId] = true;
+  state.stats.steps = (state.stats.steps || 0) + 1;
+  const coins = Math.round(handInReward(state, item) * 0.2);
+  addCoins(state, coins);
+  passPoints(state, 5);
+  return { step, coins, left: state.steps[itemId].filter((x) => !x.done).length, ...addXp(state, 8) };
+}
+
+// --- Exam weak points: one crystal per topic --------------------------------------
+// Each topic on an exam is a glowing crystal on the boss. Study sessions,
+// practice and reviews aimed at a topic chip its crystal; 25 minutes breaks it.
+export const TOPIC_GOAL = 25;
+export const TOPIC_MAX = 6;
+
+export function setTopics(state, itemId, names) {
+  const old = new Map((state.topics[itemId] || []).map((t) => [t.name.toLowerCase(), t]));
+  const seen = new Set();
+  const clean = names.map((n) => String(n).trim()).filter((n) => n && !seen.has(n.toLowerCase()) && seen.add(n.toLowerCase())).slice(0, TOPIC_MAX);
+  state.topics[itemId] = clean.map((name) => old.get(name.toLowerCase()) || { name, minutes: 0 });
+  return state.topics[itemId];
+}
+
+export function addTopicMinutes(state, itemId, topic, minutes) {
+  const t = (state.topics[itemId] || []).find((x) => x.name === topic);
+  if (!t || !(minutes > 0)) return null;
+  const before = t.minutes;
+  t.minutes += minutes;
+  return { topic: t, broke: before < TOPIC_GOAL && t.minutes >= TOPIC_GOAL };
+}
+
+export function topicProgress(state, item) {
+  const list = state.topics[item.id] || [];
+  if (!list.length) return 0;
+  return list.reduce((sum, t) => sum + Math.min(1, t.minutes / TOPIC_GOAL), 0) / list.length;
+}
+export const crystalsLeft = (state, item) => (state.topics[item.id] || []).filter((t) => t.minutes < TOPIC_GOAL).length;
+
+/** Topic ideas for an exam: Soma's exam study list, else syllabus readings before it. */
+export function suggestTopics(state, item) {
+  const readings = (state.soma.readings || []).filter((r) => r.course && item.courseName && r.course.toLowerCase() === item.courseName.toLowerCase());
+  const exams = readings.filter((r) => r.exam);
+  const pick = (exams.length ? exams : readings.filter((r) => !item.dueAt || Date.parse(`${r.due}T12:00:00`) <= item.dueAt)).slice(-TOPIC_MAX);
+  return pick.map((r) => (r.title ? r.title : r.label));
+}
+
 // --- Saving ---------------------------------------------------------------------
 
 export function serialize(state) {
@@ -1740,6 +1846,8 @@ export function deserialize(text, now = Date.now()) {
     state.critters = { ...fresh.critters, ...(saved.critters || {}) };
     state.soma = { ...fresh.soma, ...(saved.soma || {}), status: 'offline' };
     state.pass = { ...fresh.pass, ...(saved.pass || {}) };
+    state.steps = saved.steps || {};
+    state.topics = saved.topics || {};
     return state;
   } catch {
     return fresh;
