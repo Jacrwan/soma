@@ -953,6 +953,23 @@ export function makeCreature(variant = 'invader', size = 1) {
       // Graduation cap with a tassel.
       const cap = group(cyl(0.34, 0.38, 0.2, C.ink, 10, { kind: 'fabric' }), at(box(1.05, 0.05, 1.05, C.ink, { kind: 'fabric' }), 0, 0.2, 0, 0.5), at(cyl(0.05, 0.05, 0.04, C.gold, 8, trim), 0, 0.25, 0), at(box(0.03, 0.34, 0.03, C.gold, trim), 0.42, -0.08, 0.3), at(cone(0.06, 0.14, C.gold, 8, trim), 0.42, -0.2, 0.3));
       body.add(at(cap, 0, h / 2 - 0.02, 0));
+      // Steel armor bolted on. Studying for the exam knocks it off piece by piece.
+      const steel = { metal: 0.85, rough: 0.35 };
+      const plate = (pw, ph, pd, x, y, z, rz = 0) => {
+        const m = at(group(box(pw, ph, pd, 0x8e99a8, steel), at(box(pw * 0.86, 0.05, pd + 0.02, 0x5d6774, steel), 0, ph * 0.3, 0)), x, y, z);
+        m.rotation.z = rz;
+        return m;
+      };
+      const armor = [
+        plate(0.5, 0.42, 0.12, -w / 2 - 0.02, h / 2 - 0.2, 0, 0.5), // shoulders
+        plate(0.5, 0.42, 0.12, w / 2 + 0.02, h / 2 - 0.2, 0, -0.5),
+        plate(w * 0.82, 0.3, 0.06, 0, -h / 2 + 0.1, d / 2 + 0.06), // belly plate under the mouth
+        plate(0.1, h * 0.7, d * 0.8, -w / 2 - 0.08, -0.1, 0), // sides
+        plate(0.1, h * 0.7, d * 0.8, w / 2 + 0.08, -0.1, 0),
+        plate(w * 0.9, h * 0.8, 0.08, 0, -0.05, -d / 2 - 0.07), // back
+      ];
+      for (const piece of armor) body.add(piece);
+      g.userData.armor = armor;
     } else {
       // Assignments carry a pencil like a spear.
       const pencil = group(cyl(0.045, 0.045, 1.1, C.gold, 6, { kind: 'fine' }), at(cone(0.045, 0.14, C.cream, 6), 0, 1.1, 0), at(cone(0.018, 0.05, C.ink, 6), 0, 1.2, 0), at(cyl(0.048, 0.048, 0.09, C.red, 6), 0, -0.08, 0));

@@ -169,7 +169,7 @@ export function createUI(on) {
         el('button', { class: 'threats-head', onclick: () => on.school() }, el('b', { text: 'Canvas' }), el('span', { text: list.length ? `${list.length} due · ${from}` : from })),
         ...list.slice(0, 4).map((t) =>
           el('button', { class: `threat ${t.kind === 'boss' ? 'boss' : ''} ${t.overdue ? 'overdue' : t.soon ? 'soon' : ''} ${t.level || ''} ${t.studying ? 'studying' : ''}`, title: 'Study for this', onclick: () => on.study(t.id) },
-            el('i'), el('span', {}, t.name, el('small', { text: `${t.studying ? 'Studying now' : t.kind === 'boss' ? 'Test (boss)' : 'Assignment'} · ${t.course}${t.studied > 0 ? ` · ${Math.round(t.studied * 100)}% studied` : ''}` })), el('time', { text: t.time }))),
+            el('i'), el('span', {}, t.name, el('small', { text: `${t.studying ? 'Studying now' : t.kind === 'boss' ? 'Exam' : 'Assignment'} · ${t.course}${t.kind === 'boss' ? ` · ${Math.round((1 - t.studied) * 100)}% armor` : t.studied > 0 ? ` · ${Math.round(t.studied * 100)}% studied` : ''}` })), el('time', { text: t.time }))),
         ...(list.length > 4 ? [el('div', { class: 'threat more', text: `+${list.length - 4} more marching in` })] : []),
       );
     },
@@ -257,17 +257,6 @@ export function createUI(on) {
       panel({ title, subtitle }, el('div', { class: 'actions' }, el('button', { class: 'btn primary', onclick: () => { close(); onGo(); } }, el('span', { text: label }))));
     },
 
-    bossIntro({ name, course, level, heroLevel, hp, power, time, studied, onFight, onStudy }) {
-      panel({ title: `${name} · level ${level}`, subtitle: `${course} · due in ${time} · you are level ${heroLevel}` },
-        el('div', { class: 'stats' },
-          el('div', { class: 'stat' }, el('small', { text: 'Boss health' }), el('b', { text: fmt(hp) })),
-          el('div', { class: 'stat' }, el('small', { text: 'Your hit' }), el('b', { text: fmt(power) })),
-          el('div', { class: 'stat' }, el('small', { text: 'Your hearts' }), el('b', { text: '5' }))),
-        el('div', { class: 'actions' }, el('button', { class: 'btn primary', onclick: () => { close(); onFight(); } }, el('span', {}, 'Fight', el('small', { text: 'Step out of the red circles. Hit with F or a click.' })))),
-        el('div', { class: 'actions', style: 'margin-top:8px' }, el('button', { class: 'btn', onclick: () => { close(); onStudy(); } }, el('span', {}, 'Study for it first', el('small', { text: `Studied ${Math.round(studied * 100)}%. Study time cuts its health, down to half.` })))),
-        el('p', { class: 'note', text: `About ${Math.max(1, Math.ceil(hp / Math.max(1, power)))} hits to win. Studying levels you up, and work handed in for this course makes your hits stronger. Losing costs nothing, and you can try again.` }),
-      );
-    },
 
     loot({ onDone, ...reveal }) {
       opening.play({ ...reveal, onDone });
@@ -294,7 +283,7 @@ export function createUI(on) {
             a.ignored ? null : el('button', { class: 'btn small', text: a.studied >= 1 ? 'Study more' : 'Study', onclick: () => onStudy(a.id) }),
             el('button', { class: 'btn small', title: a.ignored ? 'Count this assignment again' : 'Nothing to hand in for this one? Stop its warnings and losses.', text: a.ignored ? 'Unignore' : 'Ignore', onclick: () => onIgnore(a.id, !a.ignored) })))),
       ]);
-      panel({ title: 'Canvas', subtitle: `${describe}${connected ? ' · extension found' : ''}. Every assignment is a walking book marching on your gate; hand it in on Canvas and it's gone. Late work costs 1% of your coins and some XP every hour until it's in. Ignore anything with nothing to submit. Tests are bosses, and each posted grade drops a chest.`, wide: true },
+      panel({ title: 'Canvas', subtitle: `${describe}${connected ? ' · extension found' : ''}. Every assignment is a walking book marching on your gate; hand it in on Canvas and it's gone. Late work costs 1% of your coins and some XP every hour until it's in. Ignore anything with nothing to submit. Exams are armored bosses: study to break their armor before exam day. Each posted grade drops a chest.`, wide: true },
         el('p', { class: 'note sync', text: source === 'soma'
           ? 'This is the Canvas data Soma already has for your account. Hand-ins and grades show up here by themselves; there is nothing to type in.'
           : 'This is a sample semester. Connect Canvas in Soma (Deadlines, then Soma for Canvas) and your real due dates, hand-ins and grades replace it by themselves. Nothing to type in.' }),
@@ -310,7 +299,7 @@ export function createUI(on) {
     /** The character sheet: level, stats, gear, bag and skills. */
     hero({ level, xp, need, capped, points, stats, gear, bag, bagSize, skills, masteries, onEquip, onSell, onSkill, onWardrobe, onStudy }) {
       const branches = [...new Set(skills.map((k) => k.branch))];
-      panel({ title: `Level ${level} hero`, subtitle: 'Experience only comes from school: study sessions, handing work in, grades and test bosses. Fighting pays coins and gear.', wide: true },
+      panel({ title: `Level ${level} hero`, subtitle: 'Experience only comes from school: study sessions, handing work in, grades and exams. Fighting pays coins and gear.', wide: true },
         el('div', { class: 'xp-row' },
           el('div', { class: 'bar xp' }, el('i', { style: `width:${capped ? 100 : Math.min(100, (xp / need) * 100)}%` })),
           el('span', { text: capped ? 'Max level' : `${xp} / ${need} XP to level ${level + 1}` }),
@@ -357,12 +346,12 @@ export function createUI(on) {
           : el('p', { class: 'note', text: 'The story is finished. You beat the last guardian.' }),
         el('h3', { text: 'School quests' }),
         school.length ? school.map((a) => el('div', { class: `quest-card ${a.overdue ? 'late' : ''}` },
-          el('div', {}, el('b', {}, a.name, a.kind === 'boss' ? el('span', { class: 'tag', text: `Boss · level ${a.bossLevel}` }) : null),
+          el('div', {}, el('b', {}, a.name, a.kind === 'boss' ? el('span', { class: 'tag', text: 'Exam' }) : null),
             el('small', { text: `${a.course} · ${a.overdue ? a.time : `due in ${a.time}`}` }),
             el('div', { class: 'bar study' }, el('i', { style: `width:${Math.round(a.studied * 100)}%` }))),
           el('div', { class: 'quest-pay' },
             el('small', { text: `Study ${a.goal} min: +${a.studyXp} XP` }),
-            el('small', { text: a.kind === 'boss' ? 'Beat it: +250 XP, epic chest' : `Hand in: +${a.handInXp} XP` }),
+            el('small', { text: a.kind === 'boss' ? `Armor ${Math.round((1 - a.studied) * 100)}%: break it before exam day` : `Hand in: +${a.handInXp} XP` }),
             el('small', { text: 'Grade posted: chest + XP' }),
             el('button', { class: 'btn small primary', text: 'Study', onclick: () => onStudy(a.id) }))))
           : el('p', { class: 'note', text: 'Nothing due right now. Free study still gives XP.' }),
@@ -373,7 +362,7 @@ export function createUI(on) {
     study({ items, selected, lengths, chestsLeft, streak, xpRate = 5, onStart }) {
       let length = lengths[1] || lengths[0];
       const pick = el('select', {}, el('option', { value: '', text: 'Something else (free study)' }),
-        items.map((a) => el('option', { value: a.id, selected: a.id === selected, text: `${a.kind === 'boss' ? 'Test: ' : ''}${a.name} · ${a.course}` })));
+        items.map((a) => el('option', { value: a.id, selected: a.id === selected, text: `${a.kind === 'boss' ? 'Exam: ' : ''}${a.name} · ${a.course}` })));
       const info = el('p', { class: 'note study-info' });
       const cards = el('div', { class: 'cards' });
       const go = el('button', { class: 'btn primary', style: 'justify-content:center', onclick: () => { const id = pick.value || null; close(); onStart(id, length.minutes); } });
@@ -381,7 +370,7 @@ export function createUI(on) {
         const a = items.find((x) => x.id === pick.value);
         info.textContent = !a ? 'Free study still pays XP, coins and a chest. Pick an assignment to wear it down too.'
           : a.studied >= 1 ? 'Fully studied. Extra sessions still pay coins and chests.'
-            : a.kind === 'boss' ? `Studied ${Math.round(a.minutes)} of ${a.goal} minutes. Every minute shrinks this boss before you fight it, down to half health.`
+            : a.kind === 'boss' ? `Armor left: ${Math.round((1 - a.studied) * 100)}%. Studying for it breaks its armor, and other study for ${a.course} counts half. Get it under 20% by exam day and your gate holds.`
               : `Studied ${Math.round(a.minutes)} of ${a.goal} minutes. Fully studied work pays 50% more when you hand it in.`;
         cards.replaceChildren(...lengths.map((l) => el('button', { class: `card ${l === length ? 'on' : ''}`, onclick: () => { length = l; draw(); } },
           el('b', { text: `${l.minutes} min` }),
@@ -416,10 +405,10 @@ export function createUI(on) {
       panel({ title: first ? 'Welcome to Epoch' : 'How to play', subtitle: 'An RPG where your hero is as strong as your studying.', onClose: onStart },
         el('div', { class: 'keys' },
           el('span', { class: 'k' }, el('kbd', { text: 'W' }), el('kbd', { text: 'A' }), el('kbd', { text: 'S' }), el('kbd', { text: 'D' })), el('span', { text: 'Walk. Hold Shift to run, Space to jump.' }),
-          el('span', { class: 'k' }, el('kbd', { text: 'Drag' })), el('span', { text: 'Look around with either mouse button. Scroll to zoom in and out. V locks the mouse to the view.' }),
+          el('span', { class: 'k' }, el('kbd', { text: 'Right drag' })), el('span', { text: 'Hold right click and move the mouse to look around. Left click swings. Scroll to zoom. V locks the mouse to the view.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'T' })), el('span', { text: 'Start a study session. This is the only way to level up.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'C' }), el('kbd', { text: 'J' })), el('span', { text: 'Your hero (gear and skills) and your quests.' }),
-          el('span', { class: 'k' }, el('kbd', { text: 'E' })), el('span', { text: 'Build, upgrade, open chests, start a boss fight.' }),
+          el('span', { class: 'k' }, el('kbd', { text: 'E' })), el('span', { text: 'Build, upgrade, open chests, pick what to study.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'F' })), el('span', { text: 'Swing (or click). Three swings in a row end in a combo hit.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'Q' })), el('span', { text: 'Dodge. Nothing can hit you mid-dash.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'R' })), el('span', { text: 'Ground slam: hits everything around you.' })),
@@ -431,7 +420,7 @@ export function createUI(on) {
           el('li', { text: 'Your Canvas assignments are the walking books marching on the gate. Hand one in on Canvas and it is gone, with a coin reward. Late ones halve your income.' }),
           el('li', { text: 'Walk up to a book and start a study session, then go do the work. The town fires on the book while the timer runs, earns double, and a chest drops when you finish.' }),
           el('li', { text: 'Take the trail through the eastern pass to the Wilds: clear monster camps for chests, dig up treasure, find shrines and hunt the Alpha. After the Moon, the Star Gate opens a whole new world.' }),
-          el('li', { text: 'Tests are giant book bosses you can fight. Every grade posted on Canvas drops a chest on your plaza: the better the grade, the rarer the chest.' })),
+          el('li', { text: 'Exams are giant armored books that march on your gate for days. Study to break their armor; on exam day, the armor left decides whether your gate holds or a building gets wrecked. Every grade posted on Canvas drops a chest on your plaza: the better the grade, the rarer the chest.' })),
         el('div', { class: 'actions' }, el('button', { class: 'btn primary', style: 'justify-content:center', onclick: close }, el('span', { text: first ? 'Start' : 'Back to the game' }))),
       );
     },

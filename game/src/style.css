@@ -316,6 +316,8 @@ button.threat:hover { border-color: rgba(242, 193, 78, 0.7); transform: translat
 #quest b { color: var(--gold); font-weight: 900; }
 #quest span { color: var(--cream); }
 .label .meter.hp { width: 72px; height: 6px; }
+.label .meter.armor { height: 6px; }
+.label .meter.armor b { background: linear-gradient(90deg, #8e99a8, #c9d2dc); }
 .label .meter.hp b { background: linear-gradient(90deg, #e5483d, #ff8a6a); }
 .float.hurt { color: #ff6b5e; }
 #prompt { bottom: 74px; }
@@ -576,6 +578,3 @@ select, input { font: inherit; }
 #alert .alert-main { flex: 1; flex-wrap: wrap; row-gap: 2px; padding: 7px 11px; }
 #alert .alert-name { max-width: 150px; }
 #alert .alert-text { flex-basis: 100%; white-space: normal; font-size: 12px; }
-
-a.menu-btn { text-decoration: none; }
-#btnSoma { background: linear-gradient(180deg, #46b38a, #2d8a66); }

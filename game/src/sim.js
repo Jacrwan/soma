@@ -76,7 +76,7 @@ export function newState(now = Date.now()) {
     cosmetics: { owned: ['hat:none', 'color:clay'], hat: 'hat:none', color: 'color:clay' },
     school: { source: 'none', items: {}, seen: {}, chests: [], ignored: {}, penalty: {}, warned: {} },
     explore: { day: null, done: {}, shrines: {} },
-    study: { active: null, minutes: {}, courses: {}, streak: 0, lastDay: null, chestDay: null, chestsToday: 0, total: 0 },
+    study: { active: null, minutes: {}, courses: {}, log: [], streak: 0, lastDay: null, chestDay: null, chestsToday: 0, total: 0 },
     hero: { level: 1, xp: 0, points: 0, skills: {}, gear: { weapon: null, armor: null, charm: null }, bag: [], nextId: 1 },
     quest: { step: 0 },
     stats: { collected: 0, raidersBeaten: 0, bossesBeaten: 0, chestsOpened: 0, handedIn: 0, campsCleared: 0, treasures: 0, realmBosses: {} },
@@ -110,7 +110,8 @@ export const LATE_MAX_HOURS = 48; // after two days late, an assignment stops co
  */
 export function isIgnored(state, item) {
   const choice = state.school.ignored?.[item.id];
-  return typeof choice === 'boolean' ? choice : Boolean(item.noSubmit);
+  // Exams are usually sat in person, so Canvas's "on paper" says nothing about them.
+  return typeof choice === 'boolean' ? choice : Boolean(item.noSubmit) && item.kind !== 'boss';
 }
 
 export function setIgnored(state, id, on, now = Date.now()) {
@@ -122,14 +123,15 @@ export function setIgnored(state, id, on, now = Date.now()) {
 
 /** Work that is past due, not handed in, and not ignored. */
 export function lateItems(state, now = Date.now()) {
-  return Object.values(state.school.items).filter((a) => !a.submitted && !a.excused && a.dueAt && a.dueAt < now && !isIgnored(state, a));
+  // An exam is never "late": exam day settles it instead (resolveExams).
+  return Object.values(state.school.items).filter((a) => a.kind !== 'boss' && !a.submitted && !a.excused && a.dueAt && a.dueAt < now && !isIgnored(state, a));
 }
 
 /** 'late', 'critical', 'urgent' or null. */
 export function deadlineLevel(state, item, now = Date.now()) {
   if (item.submitted || item.excused || !item.dueAt || isIgnored(state, item)) return null;
   const left = item.dueAt - now;
-  if (left < 0) return 'late';
+  if (left < 0) return item.kind === 'boss' ? null : 'late';
   if (left < CRITICAL_HOURS * HOUR) return 'critical';
   if (left < URGENT_HOURS * HOUR) return 'urgent';
   return null;
@@ -415,7 +417,13 @@ export function syncSchool(state, items, now = Date.now(), { source = state.scho
         const percent = (item.score / item.pointsPossible) * 100;
         const chest = { id: `grade:${item.id}`, rarity: rarityForGrade(percent), from: item.name, percent: Math.round(percent) };
         school.chests.push(chest);
-        events.push({ type: 'chest', chest, ...addXp(state, first ? 0 : 40 + percent) });
+        // An exam's grade is the big payday: double XP and coins on top of the chest.
+        const exam = item.kind === 'boss';
+        if (exam && !first) {
+          chest.coins = Math.round(Math.max(300, baseIncome(state) * 900) * (percent / 100));
+          addCoins(state, chest.coins);
+        }
+        events.push({ type: 'chest', chest, exam, ...addXp(state, first ? 0 : (40 + percent) * (exam ? 2 : 1)) });
       }
     }
   }
@@ -435,7 +443,6 @@ export const STUDY_LENGTHS = [{ minutes: 10, rarity: 'common' }, { minutes: 25, 
 export const STUDY_GOAL = [0, 30, 60, 120]; // minutes that fully prepare an item, by size
 export const STUDY_CHESTS_PER_DAY = 3;
 export const STUDIED_BONUS = 0.5; // extra hand-in reward for a fully studied item
-export const BOSS_STUDY_CUT = 0.5; // share of a boss's health that full study removes
 const MIN_SESSION = 5; // minutes; shorter than this earns nothing
 
 const dayOf = (now) => {
@@ -448,11 +455,28 @@ export function isStudying(state, now = Date.now()) {
   return Boolean(a && now < a.endsAt);
 }
 
-/** 0 to 1: how prepared you are for this item. */
+export const EXAM_COURSE_SHARE = 0.5; // other study for the same course counts half toward an exam
+export const EXAM_PREP_DAYS = 10; // ...if it was done in this many days before the exam
+
+/**
+ * 0 to 1: how prepared you are for this item. For an exam, sessions on the
+ * exam itself count in full and other sessions for the same course in the
+ * days before it count half.
+ */
 export function studyProgress(state, item) {
   if (!item) return 0;
-  return Math.min(1, (state.study?.minutes[item.id] || 0) / STUDY_GOAL[item.size || 1]);
+  let minutes = state.study?.minutes[item.id] || 0;
+  if (item.kind === 'boss' && item.dueAt) {
+    for (const s of state.study?.log || []) {
+      if (s.itemId !== item.id && s.courseId === item.courseId && s.at <= item.dueAt && s.at > item.dueAt - EXAM_PREP_DAYS * DAY) minutes += s.minutes * EXAM_COURSE_SHARE;
+    }
+  }
+  if (item.kind === 'boss') minutes *= 1 + 0.15 * skillRank(state, 'exam');
+  return Math.min(1, minutes / STUDY_GOAL[item.size || 1]);
 }
+
+/** 0 to 1: the armor an exam boss still wears. Studying strips it. */
+export const examArmor = (state, item) => 1 - studyProgress(state, item);
 
 export function studyChestsLeft(state, now = Date.now()) {
   return state.study.chestDay === dayOf(now) ? Math.max(0, STUDY_CHESTS_PER_DAY - state.study.chestsToday) : STUDY_CHESTS_PER_DAY;
@@ -488,6 +512,7 @@ export function finishStudy(state, now = Date.now()) {
     result.prepared = before < 1 && studyProgress(state, item) >= 1;
   }
   study.total += minutes;
+  study.log = [...(study.log || []), { at: now, itemId: item ? item.id : null, courseId: item ? item.courseId : null, minutes }].slice(-400);
   result.coins = Math.round(Math.max(12 * minutes, baseIncome(state) * 20 * minutes));
   addCoins(state, result.coins);
   Object.assign(result, addXp(state, minutes * XP_PER_MINUTE * (complete ? XP_FULL_SESSION : 1) * heroStats(state).studyXp));
@@ -516,6 +541,8 @@ export function threats(state, now = Date.now()) {
   const out = [];
   for (const item of Object.values(state.school.items)) {
     if (item.submitted || item.excused || isIgnored(state, item)) continue;
+    const seen = state.school.seen[item.id];
+    if (item.kind === 'boss' && seen && (seen.exam || seen.boss)) continue;
     const t = approach(item, now);
     if (t === null) continue;
     out.push({ item, t, overdue: item.dueAt < now });
@@ -625,23 +652,68 @@ export function playerPower(state, courseId = null, now = Date.now()) {
       if (item.courseId === courseId && item.submitted && item.dueAt && now - item.dueAt < 14 * DAY) prep += 1;
     }
   }
-  // Every hour studied for the course is worth one more hand-in of prep.
   if (courseId !== null) prep += (state.study?.courses[courseId] || 0) / 60;
-  return Math.round(heroStats(state).might * (1 + Math.min(prep, 8) * 0.1) * (courseId !== null ? 1 + 0.15 * skillRank(state, 'exam') : 1));
+  return Math.round(heroStats(state).might * (1 + Math.min(prep, 8) * 0.1));
 }
 
-export function bossHp(state, item) {
-  return Math.round(enemyStats(bossLevel(item), 2).hp * (1 - BOSS_STUDY_CUT * studyProgress(state, item)));
+// --- Exam day -------------------------------------------------------------------
+// An exam marches on the town for days. Nobody fights it: studying strips its
+// armor, and on exam day it reaches the gate and the armor left decides what
+// happens. The real grade, when it comes in, pays the reward (syncSchool).
+
+export const EXAM_HELD = 0.2; // armor at or under this: the gate holds
+export const EXAM_DENTED = 0.6; // at or under this: the walls take a hit; over it, a building is wrecked
+
+export function examOutcome(armor) {
+  return armor <= EXAM_HELD ? 'held' : armor <= EXAM_DENTED ? 'dented' : 'wrecked';
 }
 
-export function bossWon(state, item) {
-  const seen = state.school.seen[item.id] || (state.school.seen[item.id] = { submitted: false, graded: false, boss: false });
-  if (seen.boss) return null;
-  seen.boss = true;
-  state.stats.bossesBeaten += 1;
-  const reward = Math.max(500, Math.round(baseIncome(state) * 1200));
-  addCoins(state, reward);
-  return { reward, chest: grantChest(state, 'epic', `Beat ${item.name}`), ...addXp(state, XP_BOSS) };
+/**
+ * Settles every exam whose day has come (or that was handed in online).
+ * Returns one event per exam: { type: 'exam', item, outcome, armor, coins, chest, wrecked }.
+ * An exam first seen after its date is settled quietly, with nothing lost.
+ */
+export function resolveExams(state, now = Date.now()) {
+  const events = [];
+  for (const item of Object.values(state.school.items)) {
+    if (item.kind !== 'boss' || !item.dueAt) continue;
+    const seen = state.school.seen[item.id];
+    if (!seen || seen.exam || seen.boss) continue;
+    if (item.excused || isIgnored(state, item)) continue;
+    if (!(item.dueAt <= now || item.submitted)) continue;
+    const armor = examArmor(state, item);
+    if ((seen.at || now) >= item.dueAt) {
+      seen.exam = { outcome: 'unseen', armor, at: now };
+      continue;
+    }
+    const outcome = examOutcome(armor);
+    const event = { type: 'exam', item, outcome, armor, coins: 0, chest: null, wrecked: null };
+    if (outcome === 'held') {
+      state.stats.bossesBeaten += 1;
+      event.coins = Math.max(500, Math.round(baseIncome(state) * 1200));
+      addCoins(state, event.coins);
+      event.chest = grantChest(state, 'epic', `Held the gate: ${item.name}`);
+    } else {
+      event.coins = -Math.floor(state.coins * (outcome === 'dented' ? 0.05 : 0.1));
+      state.coins += event.coins;
+      if (outcome === 'wrecked') event.wrecked = wreckBuilding(state);
+    }
+    seen.exam = { outcome, armor, at: now };
+    events.push(event);
+  }
+  return events;
+}
+
+/** The town's best building loses a level (or its stored coins at level 1). Returns { scene, index } or null. */
+function wreckBuilding(state) {
+  let best = null;
+  state.pads.earth.forEach((b, index) => {
+    if (b && (!best || buildingIncome(state, b) > buildingIncome(state, best.b))) best = { b, index };
+  });
+  if (!best) return null;
+  if (best.b.level > 1) best.b.level -= 1;
+  best.b.stored = 0;
+  return { scene: 'earth', index: best.index };
 }
 
 // --- The hero: an RPG character whose levels come from school ----------------------
@@ -651,7 +723,6 @@ export function bossWon(state, item) {
 export const XP_PER_MINUTE = 4;
 export const XP_FULL_SESSION = 1.25; // a session that runs its full length pays this much more
 export const XP_HAND_IN = [0, 40, 80, 160]; // by assignment size
-export const XP_BOSS = 250;
 export const MAX_HERO_LEVEL = 40;
 export const BAG_SIZE = 18;
 export const SLOTS = ['weapon', 'armor', 'charm'];
@@ -666,7 +737,7 @@ export const SKILLS = {
   step: { branch: 'Guard', name: 'Quick Step', max: 3, text: 'Dodge ready 15% sooner' },
   worm: { branch: 'Scholar', name: 'Bookworm', max: 5, text: '+6% experience from studying' },
   quake: { branch: 'Scholar', name: 'Aftershock', max: 3, text: 'Ground slam ready 1 second sooner' },
-  exam: { branch: 'Scholar', name: 'Exam Nerves', max: 3, text: '+15% damage to test bosses' },
+  exam: { branch: 'Scholar', name: 'Exam Nerves', max: 3, text: 'Study counts 15% more toward exams' },
 };
 
 export const skillRank = (state, id) => state.hero.skills[id] || 0;
@@ -817,7 +888,7 @@ export const STORY = [
   { title: 'Trained', text: 'Spend 3 skill points', need: 3, have: (s) => Object.values(s.hero.skills).reduce((a, b) => a + b, 0), reward: { coins: 800 } },
   { title: 'Hand it in', text: 'Hand in 3 assignments on Canvas', need: 3, have: (s) => s.stats.handedIn, reward: { gear: 'epic', slot: 'weapon' } },
   { title: 'Pack leader', text: 'Reach level 8, then beat the Alpha in the Wilds', need: 1, have: (s) => (s.stats.realmBosses.wilds ? 1 : 0), reward: { gear: 'epic', slot: 'armor' } },
-  { title: 'Exam season', text: 'Beat a test boss at your gate', need: 1, have: (s) => s.stats.bossesBeaten, reward: { gear: 'epic', slot: 'charm' } },
+  { title: 'Exam season', text: 'Study enough that an exam boss breaks on your gate', need: 1, have: (s) => s.stats.bossesBeaten, reward: { gear: 'epic', slot: 'charm' } },
   { title: 'Honor roll', text: 'Reach level 14', need: 14, have: (s) => s.hero.level, reward: { gear: 'legendary', slot: 'weapon' } },
   { title: 'To the stars', text: 'Build the Star Gate on the Moon', need: 1, have: (s) => (s.wonders.includes(6) ? 1 : 0), reward: { gear: 'legendary', slot: 'armor' } },
   { title: 'The last guardian', text: 'Beat the Core Guardian on Kepler Reach', need: 1, have: (s) => (s.stats.realmBosses.nova ? 1 : 0), reward: { gear: 'legendary', slot: 'charm', coins: 50000 } },

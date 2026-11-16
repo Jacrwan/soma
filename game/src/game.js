@@ -214,9 +214,8 @@ function refreshWonders() {
 const invaders = new Map(); // assignment id -> { object, label, boss }
 const chests = new Map(); // chest id -> { object, opening }
 const raiders = [];
-let fight = null;
+let fight = null; // exam day playing out at the gate: { id, item, inv, event, t, slams }
 let nextRaid = 80;
-let bossCooldown = 0;
 const somaSnapshots = new Map();
 let somaPresent = false;
 
@@ -258,23 +257,43 @@ function syncInvaders(now) {
       invaders.set(item.id, inv);
     }
     inv.item = item;
-    const waiting = isBoss && t >= 0.7;
-    inv.waiting = waiting;
     if (fight && fight.id === item.id) continue;
-    const lane = isBoss ? -6.5 : ((hash(item.id) % 5) - 2) * 1.5;
-    const z = waiting ? W.BOSS_SPOT.z : W.PATH_START_Z + (W.PATH_END_Z - W.PATH_START_Z) * t + (isBoss ? 3 : 0);
-    inv.object.position.set(waiting ? W.BOSS_SPOT.x : lane, 0, z);
-    inv.object.rotation.y = waiting ? Math.PI / 2 : Math.PI;
+    // A boss walks the same road as everything else, a step closer every day.
+    const lane = isBoss ? (hash(item.id) % 2 ? -4.5 : 4.5) : ((hash(item.id) % 5) - 2) * 1.5;
+    const z = W.PATH_START_Z + (W.PATH_END_Z - W.PATH_START_Z) * t + (isBoss ? 2.5 : 0);
+    inv.object.position.set(lane, 0, z);
+    inv.object.rotation.y = Math.PI;
     inv.overdue = overdue;
+    if (isBoss) showArmor(inv, S.examArmor(state, item));
     const time = timeLeft(item.dueAt - now);
     const name = item.name.length > 26 ? `${item.name.slice(0, 25)}…` : item.name;
     const studied = S.studyProgress(state, item);
     const studying = state.study.active?.itemId === item.id;
     const meter = studied > 0 || studying ? `<span class="meter"><b style="width:${Math.round(studied * 100)}%"></b></span>` : '';
-    const note = studying ? ' · studying now' : studied >= 1 ? ' · fully studied' : waiting ? ' · ready to fight' : '';
-    inv.label.set(`<em>${isBoss ? 'Test' : 'Assignment'} · ${escapeHtml(item.courseName || 'Canvas')}</em>${escapeHtml(name)}${meter}<small>${overdue ? `overdue ${time}` : `due in ${time}`}${note}</small>`, `${isBoss ? 'boss' : ''} ${overdue ? 'overdue' : ''} ${studied >= 1 || studying ? 'studied' : ''}`);
+    const armor = isBoss ? Math.round(S.examArmor(state, item) * 100) : 0;
+    const note = studying ? ' · studying now' : isBoss ? (armor ? ` · armor ${armor}%` : ' · no armor left') : studied >= 1 ? ' · fully studied' : '';
+    const bossMeter = isBoss ? `<span class="meter armor"><b style="width:${armor}%"></b></span>` : meter;
+    inv.label.set(`<em>${isBoss ? 'Exam' : 'Assignment'} · ${escapeHtml(item.courseName || 'Canvas')}</em>${escapeHtml(name)}${bossMeter}<small>${isBoss ? `at your gate in ${time}` : overdue ? `overdue ${time}` : `due in ${time}`}${note}</small>`, `${isBoss ? 'boss' : ''} ${overdue ? 'overdue' : ''} ${studied >= 1 || studying ? 'studied' : ''}`);
   }
   for (const id of [...invaders.keys()]) if (!live.has(id) && !(fight && fight.id === id)) despawnInvader(id, false);
+}
+
+/** Shows as many armor pieces as the exam has armor left; pieces that just came off fly away. */
+function showArmor(inv, armor) {
+  const pieces = inv.object.userData.armor || [];
+  const keep = Math.ceil(armor * pieces.length - 1e-9);
+  pieces.forEach((piece, i) => {
+    const on = i < keep;
+    if (piece.visible && !on && inv.armorShown !== undefined) {
+      const at = new THREE.Vector3();
+      piece.getWorldPosition(at);
+      fx.burst(at, 0x8e99a8, 14, 7, 7);
+      fx.float(at.clone().add(new THREE.Vector3(0, 1.5, 0)), 'Armor broken', 'hit');
+      audio.hit();
+    }
+    piece.visible = on;
+  });
+  inv.armorShown = keep;
 }
 
 function escapeHtml(text) {
@@ -310,8 +329,8 @@ function handleSchoolEvents(events) {
       if (state.scene === 'earth') fx.coinsTo(pos, player.object, 10, () => audio.coin());
       ui.toast(`Handed in: ${event.item.name}  +${S.fmt(event.reward)} coins, +${event.xp} XP`, 'good');
       gainedXp(event);
-      if (fight && fight.id === event.item.id) endFight('gone');
     } else if (event.type === 'chest') {
+      if (event.exam && event.chest.coins) ui.banner(`Exam graded: ${event.chest.percent}%`, `${event.chest.from}  +${event.xp} XP, +${S.fmt(event.chest.coins)} coins`);
       ui.toast(`A ${event.chest.rarity} chest dropped: ${event.chest.from}${event.chest.percent != null ? ` (${event.chest.percent}%)` : ''}${event.xp ? `, +${event.xp} XP` : ''}`, 'gold');
       gainedXp(event);
       audio.chest();
@@ -601,6 +620,7 @@ function ignoreItem(id, on) {
 // --- Deadlines: warnings and what late work costs ------------------------------------
 let lateShown = { coins: 0, xp: 0, at: 0 };
 function checkDeadlines(startup = false) {
+  checkExams();
   const now = Date.now();
   const lost = S.chargeLate(state, now);
   lateShown.coins += lost.coins;
@@ -929,7 +949,7 @@ function endStudy() {
     else if (result.complete) bits.push('no more study chests today');
     if (result.complete && result.streak > 1) bits.push(`${result.streak} day streak`);
     ui.toast(bits.join(' · '), 'gold');
-    if (result.prepared) ui.toast(result.item.kind === 'boss' ? `${result.item.name} is fully studied: the boss is at half health.` : `${result.item.name} is fully studied: handing it in pays 50% more.`, 'good');
+    if (result.prepared) ui.toast(result.item.kind === 'boss' ? `${result.item.name} has no armor left. Your gate will hold on exam day.` : `${result.item.name} is fully studied: handing it in pays 50% more.`, 'good');
   }
   syncChests();
   syncInvaders(Date.now());
@@ -994,96 +1014,79 @@ function updateStudy(dt, time) {
   }
 }
 
-// --- Bosses -----------------------------------------------------------------------------
-function startFight(inv) {
-  const item = inv.item;
-  ui.bossIntro({
-    name: item.name, course: item.courseName, level: S.bossLevel(item), heroLevel: state.hero.level, hp: S.bossHp(state, item), power: S.playerPower(state, item.courseId), time: timeLeft(item.dueAt - Date.now()),
-    studied: S.studyProgress(state, item), onStudy: () => openStudy(item.id),
-    onFight: () => {
-      fight = { id: item.id, item, inv, hp: S.bossHp(state, item), max: S.bossHp(state, item), hearts: 5, maxHearts: 5, slamIn: 1.6, rings: [], flash: 0 };
-      audio.alarm();
-      ui.boss({ name: item.name, hp: fight.hp, max: fight.max, hearts: 5, maxHearts: 5 });
-    },
-  });
+// --- Exam day -----------------------------------------------------------------------------
+// Nobody fights an exam. Studying strips its armor while it marches; on exam
+// day it reaches the gate, slams it a few times, and the armor left decides
+// what happens (S.resolveExams). The grade, when it posts, pays the reward.
+const examQueue = [];
+function checkExams() {
+  for (const event of S.resolveExams(state, Date.now())) examQueue.push(event);
+  if (examQueue.length) save();
+  if (!fight && examQueue.length) startExamDay(examQueue.shift());
 }
 
-function endFight(result) {
-  if (!fight) return;
-  const { inv, item } = fight;
-  const pos = inv.object.position.clone();
-  fight = null;
-  ui.boss(null);
-  if (result === 'won') {
-    const win = S.bossWon(state, item);
-    for (let k = 0; k < 4; k++) fx.burst(pos.clone().add(new THREE.Vector3(0, k * 1.5, 0)), [A.C.red, A.C.gold, A.C.white, A.C.orange][k], 30, 11, 10);
-    fx.coinsTo(pos, player.object, 14, () => audio.coin());
-    audio.era();
-    ui.banner('Boss defeated', item.name);
-    if (win) {
-      ui.toast(`+${win.xp} XP, +${S.fmt(win.reward)} coins and an epic chest on your plaza`, 'gold');
-      gainedXp(win);
-    }
-    despawnInvader(item.id, false);
-  } else if (result === 'lost') {
-    audio.hurt();
-    bossCooldown = 8;
-    ui.fade(() => {
-      player.object.position.set(0, 0, 9);
-      ui.toast('Knocked out. Nothing lost. Try again when you are ready.', 'bad');
-    });
-  } else if (result === 'fled') {
-    ui.toast('You left the fight. The boss recovers.', 'bad');
-    bossCooldown = 3;
+function startExamDay(event) {
+  const inv = invaders.get(event.item.id);
+  if (!inv || state.scene !== 'earth' || inRealm()) return finishExamDay(event, null);
+  fight = { id: event.item.id, item: event.item, inv, event, t: 0, slams: 0 };
+  inv.object.position.set(0, 0, W.PATH_END_Z + 2.2);
+  inv.object.rotation.y = Math.PI;
+  inv.label.set(`<em>Exam day · ${escapeHtml(event.item.courseName || 'Canvas')}</em>${escapeHtml(event.item.name)}<span class="meter armor"><b style="width:${Math.round(event.armor * 100)}%"></b></span><small>at the gate · armor ${Math.round(event.armor * 100)}%</small>`, 'boss overdue');
+  ui.banner('Exam day', `${event.item.name} reached the gate`);
+  audio.alarm();
+}
+
+function updateExamDay(dt) {
+  const { inv, event } = fight;
+  fight.t += dt;
+  const arms = inv.object.userData.arms || [];
+  // Three slams on the gate, then the verdict.
+  const beat = fight.t - 1.2 - fight.slams * 1.1;
+  for (const arm of arms) arm.position.y = beat > -0.35 && beat < 0 ? 1.6 : 0.8;
+  if (fight.slams < 3 && beat >= 0) {
+    fight.slams += 1;
+    shake = Math.max(shake, event.outcome === 'held' ? 0.25 : 0.6);
+    fx.ring(new THREE.Vector3(0, 0, W.GATE.z + 1.5), 4, 0.6);
+    fx.burst(new THREE.Vector3(0, 2, W.GATE.z + 1), event.outcome === 'held' ? 0x8e99a8 : A.C.red, 12, 6, 6);
+    audio.thud();
   }
-  syncInvaders(Date.now());
+  if (fight.t > 5) {
+    const pos = inv.object.position.clone();
+    fight = null;
+    finishExamDay(event, pos);
+  }
+}
+
+function finishExamDay(event, pos) {
+  const { item, outcome, coins, chest, wrecked } = event;
+  if (pos) {
+    despawnInvader(item.id, false);
+    const colors = outcome === 'held' ? [A.C.gold, A.C.white, A.C.gold] : [A.C.red, 0x1a1420, A.C.red];
+    for (let k = 0; k < 3; k++) fx.burst(pos.clone().add(new THREE.Vector3(0, k * 1.6, 0)), colors[k], 28, 10, 9);
+  }
+  if (outcome === 'held') {
+    if (pos) fx.coinsTo(pos, player.object, 14, () => audio.coin());
+    audio.era();
+    ui.banner('The gate held', `Your studying broke ${item.name}`);
+    ui.toast(`+${S.fmt(coins)} coins and an epic chest. Your grade will pay more when it posts.`, 'gold');
+  } else if (outcome === 'dented') {
+    audio.hurt();
+    ui.banner('The walls took a hit', `${item.name} still had ${Math.round(event.armor * 100)}% armor`);
+    ui.toast(`Repairs cost ${S.fmt(-coins)} coins. Study earlier next time to break its armor first.`, 'bad');
+  } else {
+    audio.hurt();
+    if (wrecked) {
+      refreshPad(wrecked.scene, wrecked.index);
+      const at = pads[wrecked.scene][wrecked.index]?.group.position;
+      if (at && state.scene === wrecked.scene) for (let k = 0; k < 3; k++) fx.burst(at.clone().add(new THREE.Vector3(0, 1 + k, 0)), [A.C.red, 0x6b5a48, A.C.orange][k], 30, 9, 9);
+    }
+    ui.banner('A building was wrecked', `${item.name} hit the gate with ${Math.round(event.armor * 100)}% armor`);
+    ui.toast(`Lost ${S.fmt(-coins)} coins${wrecked ? ' and a level on your best building' : ''}. Your grade still pays when it posts.`, 'bad');
+  }
   syncChests();
+  syncInvaders(Date.now());
   refreshHud();
   save();
-}
-
-function updateFight(dt) {
-  const boss = fight.inv.object;
-  const p = player.object.position;
-  const dx = p.x - boss.position.x;
-  const dz = p.z - boss.position.z;
-  const dist = Math.hypot(dx, dz);
-  if (Math.hypot(p.x - W.ARENA.x, p.z - W.ARENA.z) > W.ARENA.r + 9) return endFight('fled');
-  boss.rotation.y = Math.atan2(dx, dz);
-  if (dist > 3.6) {
-    boss.position.x += (dx / dist) * 2.3 * dt;
-    boss.position.z += (dz / dist) * 2.3 * dt;
-  }
-  fight.flash = Math.max(0, fight.flash - dt * 5);
-  const base = 3.2 * (1 + fight.flash * 0.08);
-  boss.scale.set(base, 3.2 * (1 - fight.flash * 0.06 + Math.sin(performance.now() / 260) * 0.02), base);
-  fight.slamIn -= dt;
-  if (fight.slamIn <= 0) {
-    const enraged = fight.hp < fight.max / 2;
-    fight.slamIn = enraged ? 1.7 : 2.5;
-    const spots = [p.clone()];
-    if (enraged) spots.push(p.clone().add(new THREE.Vector3((Math.random() - 0.5) * 9, 0, (Math.random() - 0.5) * 9)));
-    for (const spot of spots) fight.rings.push({ ring: fx.ring(new THREE.Vector3(spot.x, 0, spot.z), 3.4, 1.05), spot });
-    for (const arm of boss.userData.arms || []) arm.position.y = 1.5;
-  }
-  for (let i = fight.rings.length - 1; i >= 0; i--) {
-    const r = fight.rings[i];
-    if (!r.ring.done) continue;
-    fight.rings.splice(i, 1);
-    for (const arm of boss.userData.arms || []) arm.position.y = 0.8;
-    fx.burst(new THREE.Vector3(r.spot.x, 0, r.spot.z), A.C.red, 16, 7, 6);
-    audio.hit();
-    shake = 0.35;
-    if (Math.hypot(p.x - r.spot.x, p.z - r.spot.z) < 3.4 && player.stun <= 0) {
-      fight.hearts -= 1;
-      player.stun = 0.9;
-      player.vy = 7;
-      fx.float(p.clone().add(new THREE.Vector3(0, 2.4, 0)), '-1', 'hurt');
-      audio.hurt();
-      ui.boss({ name: fight.item.name, hp: fight.hp, max: fight.max, hearts: fight.hearts, maxHearts: fight.maxHearts });
-      if (fight.hearts <= 0) return endFight('lost');
-    }
-  }
 }
 
 // --- Raiders ----------------------------------------------------------------------------
@@ -1212,17 +1215,6 @@ function hitTownEnemies(inArc, mult = 1) {
       raiders.splice(i, 1);
     }
   }
-  if (fight && inArc(fight.inv.object.position, 5.2)) {
-    landed = true;
-    const crit = Math.random() < S.heroStats(state).crit;
-    const dmg = Math.round(S.playerPower(state, fight.item.courseId) * (0.85 + Math.random() * 0.3) * (crit ? 2 : 1) * mult);
-    fight.hp -= dmg;
-    fight.flash = 1;
-    fx.float(fight.inv.object.position.clone().add(new THREE.Vector3((Math.random() - 0.5) * 2, 5.5, 0)), crit ? `${dmg}!` : String(dmg), 'hit');
-    fx.burst(fight.inv.object.position.clone().add(new THREE.Vector3(0, 2, 0)), A.C.white, 5, 5, 4);
-    ui.boss({ name: fight.item.name, hp: fight.hp, max: fight.max, hearts: fight.hearts, maxHearts: fight.maxHearts });
-    if (fight.hp <= 0) endFight('won');
-  }
   return landed;
 }
 
@@ -1269,15 +1261,9 @@ function findTarget() {
     offer(Math.hypot(p.x - W.LANDER_POS.x, p.z - W.LANDER_POS.z), 5.5, { text: 'Return to Earth', run: () => ui.travel({ title: 'Lander', subtitle: 'Your town keeps earning while you are away.', label: 'Fly home', onGo: () => travel('earth') }) });
   }
   if (sceneName === 'earth') offer(Math.hypot(p.x - BOARD_POS.x, p.z - BOARD_POS.z), 4, { text: 'Canvas board: your assignments and grades', run: openSchool });
-  if (sceneName === 'earth' && bossCooldown <= 0) {
-    for (const inv of invaders.values()) {
-      if (!inv.boss || !inv.waiting) continue;
-      offer(p.distanceTo(inv.object.position), 9, { text: `Fight ${inv.item.name}`, run: () => startFight(inv) });
-    }
-  }
   if (sceneName === 'earth' && !state.study.active) {
     for (const inv of invaders.values()) {
-      if (inv.boss && inv.waiting) continue;
+      if (fight && fight.id === inv.item.id) continue;
       offer(p.distanceTo(inv.object.position), inv.boss ? 8 : 4.5, { text: `Study for ${inv.item.name}`, run: () => openStudy(inv.item.id) });
     }
   }
@@ -1342,47 +1328,65 @@ window.addEventListener('keydown', (event) => {
 window.addEventListener('keyup', (event) => keys.delete(event.key.toLowerCase()));
 window.addEventListener('blur', () => keys.clear());
 
-// Looking around: drag with either mouse button, scroll to zoom, or press V
-// to lock the mouse so the view follows it without holding anything.
-let drag = null;
+// Looking around, like most RPGs: hold the right mouse button and move the
+// mouse to turn the view (the cursor hides while you hold it). Left click
+// only swings, it never turns the view. V locks the mouse for hands-free
+// looking; scroll zooms. Only real mouse movement turns the view, so it
+// never drifts on its own.
+let drag = null; // set while the right button is held
+let lookHeld = false; // pointer lock taken for a right-button hold, not V
 const locked = () => document.pointerLockElement === canvas;
+const LOOK_SPEED = 0.0042;
 function turn(dx, dy) {
-  cam.yaw -= dx * 0.0055;
-  cam.pitch = Math.max(0.05, Math.min(1.45, cam.pitch + dy * 0.004));
+  // Browsers sometimes report a huge jump on the first locked move; drop it.
+  if (Math.abs(dx) > 250 || Math.abs(dy) > 250) return;
+  cam.yaw -= dx * LOOK_SPEED;
+  cam.pitch = Math.max(0.05, Math.min(1.45, cam.pitch + dy * LOOK_SPEED * 0.8));
   cam.idle = 0;
 }
 function toggleMouseLook() {
+  lookHeld = false;
   if (locked()) document.exitPointerLock();
   else canvas.requestPointerLock?.();
 }
 document.addEventListener('pointerlockchange', () => {
-  ui.toast(locked() ? 'Mouse look on: move the mouse to look. V or Esc to let go.' : 'Mouse look off. Drag to look around.', 'good');
+  if (lookHeld) {
+    if (!locked()) lookHeld = false;
+    return;
+  }
+  ui.toast(locked() ? 'Mouse look on: move the mouse to look. V or Esc to let go.' : 'Mouse look off. Hold right click to look around.', 'good');
 });
 document.addEventListener('mousemove', (event) => {
-  if (locked() && !ui.isOpen()) turn(event.movementX, event.movementY);
+  if (ui.isOpen()) return;
+  if (locked()) turn(event.movementX, event.movementY);
+  else if (drag) turn(event.clientX - drag.x, event.clientY - drag.y);
+  if (drag) { drag.x = event.clientX; drag.y = event.clientY; }
 });
 canvas.addEventListener('contextmenu', (event) => event.preventDefault());
-canvas.addEventListener('pointerdown', (event) => {
+canvas.addEventListener('mousedown', (event) => {
   audio.unlock();
-  if (locked()) return void (event.button === 0 && attack());
-  drag = { x: event.clientX, y: event.clientY, moved: 0, button: event.button };
-  canvas.setPointerCapture(event.pointerId);
+  if (event.button === 0) return void attack();
+  if (event.button !== 2) return;
+  event.preventDefault();
+  drag = { x: event.clientX, y: event.clientY };
+  if (!locked()) {
+    lookHeld = true;
+    try {
+      const asked = canvas.requestPointerLock?.({ unadjustedMovement: true });
+      asked?.catch?.(() => canvas.requestPointerLock?.()?.catch?.(() => { lookHeld = false; }));
+    } catch { lookHeld = false; }
+  }
 });
-canvas.addEventListener('pointermove', (event) => {
-  if (!drag) return;
-  const dx = event.clientX - drag.x;
-  const dy = event.clientY - drag.y;
-  drag.moved += Math.abs(dx) + Math.abs(dy);
-  drag.x = event.clientX;
-  drag.y = event.clientY;
-  turn(dx, dy);
-});
-const endDrag = () => {
-  if (drag && drag.moved < 6 && drag.button === 0) attack();
+const endLook = (event) => {
+  if (event && event.button !== 2) return;
   drag = null;
+  if (lookHeld) {
+    lookHeld = false;
+    if (locked()) document.exitPointerLock();
+  }
 };
-canvas.addEventListener('pointerup', endDrag);
-canvas.addEventListener('pointercancel', () => { drag = null; });
+window.addEventListener('mouseup', endLook);
+window.addEventListener('blur', () => endLook());
 canvas.addEventListener('wheel', (event) => {
   event.preventDefault();
   // Mice send big steps and trackpads many small ones; pinch arrives with ctrlKey.
@@ -1521,25 +1525,31 @@ function updatePlayer(dt, time) {
 }
 
 let shake = 0;
+const camFocus = Object.assign(new THREE.Vector3(), { ready: false });
 function updateCamera(dt) {
   const p = player.object.position;
   cam.dist += (cam.want - cam.dist) * Math.min(1, dt * 10);
-  // During a study session the view drifts around the town once it has been left alone.
   cam.idle += dt;
-  if (S.isStudying(state) && cam.idle > 6 && !drag) cam.yaw += dt * 0.07;
+  // The view follows a smoothed point on the hero, but turning is applied at
+  // once: the camera sits exactly where yaw and pitch say, so it never lags
+  // behind the mouse or keeps sliding after you stop.
+  if (!camFocus.ready) { camFocus.copy(p); camFocus.ready = true; }
+  camFocus.lerp(p, Math.min(1, dt * 14));
+  if (camFocus.distanceTo(p) > 12) camFocus.copy(p);
+  const f = camFocus;
   const flat = Math.cos(cam.pitch) * cam.dist;
   // Up close the view sits over the shoulder and looks at the head; far out it looks at the feet.
   const near = 1 - Math.min(1, (cam.dist - CAM_MIN) / 14);
-  const want = new THREE.Vector3(p.x + Math.sin(cam.yaw) * flat, p.y + Math.sin(cam.pitch) * cam.dist + 1.5, p.z + Math.cos(cam.yaw) * flat);
+  const want = new THREE.Vector3(f.x + Math.sin(cam.yaw) * flat, f.y + Math.sin(cam.pitch) * cam.dist + 1.5, f.z + Math.cos(cam.yaw) * flat);
   // In the valley the view stays out of the wooded slopes.
   if (!inRealm() && state.scene === 'earth') {
-    for (let k = 0; k < 12 && Math.hypot(want.x, want.z) > 50; k++) { want.x += (p.x - want.x) * 0.12; want.z += (p.z - want.z) * 0.12; }
+    for (let k = 0; k < 12 && Math.hypot(want.x, want.z) > 50; k++) { want.x += (f.x - want.x) * 0.12; want.z += (f.z - want.z) * 0.12; }
   }
   want.y = Math.max(want.y, (inRealm() ? 0 : world.groundHeight(state.scene, want.x, want.z)) + 0.7);
-  camera.position.lerp(want, Math.min(1, dt * 12));
+  camera.position.copy(want);
   shake = Math.max(0, shake - dt * 1.6);
   if (shake > 0) camera.position.add(new THREE.Vector3((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake));
-  camera.lookAt(p.x, p.y + 1.6 + near * 0.5, p.z);
+  camera.lookAt(f.x, f.y + 1.6 + near * 0.5, f.z);
   camera.updateMatrixWorld();
   focusView.value.set(p.x, p.y + 1, p.z).applyMatrix4(camera.matrixWorldInverse);
 }
@@ -1592,7 +1602,7 @@ function updateTown(dt, time) {
   for (const inv of invaders.values()) {
     if (fight && fight.id === inv.item.id) continue;
     const feet = inv.object.userData.feet;
-    const pace = inv.overdue ? 9 : inv.waiting ? 2 : 5;
+    const pace = inv.overdue ? 9 : inv.boss ? 3 : 5;
     feet[0].position.y = 0.12 + Math.max(0, Math.sin(time * pace)) * 0.16;
     feet[1].position.y = 0.12 + Math.max(0, -Math.sin(time * pace)) * 0.16;
     inv.object.userData.body.position.y = 0.75 + Math.abs(Math.sin(time * pace)) * (inv.overdue ? 0.14 : 0.05);
@@ -1615,9 +1625,8 @@ function frame(nowMs) {
   if (!inRealm()) updateTown(dt, time);
   updateRaiders(dt);
   realms.update(dt, time, player.object.position, !player.down);
-  if (fight) updateFight(dt);
+  if (fight) updateExamDay(dt);
   updateStudy(dt, time);
-  bossCooldown = Math.max(0, bossCooldown - dt);
   if (!ui.isOpen() && !inRealm() && document.visibilityState === 'visible') {
     nextRaid -= dt;
     if (nextRaid <= 0) {
@@ -1698,7 +1707,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 
 // A handle for testing from the browser console.
 window.epoch = {
-  state, S,
+  state, S, cam,
   give(n) { S.addCoins(state, n); refreshHud(); },
   refresh() { world.setEra(state.era); world.setScene(state.scene, state.era); dressPlayer(); refreshAllPads(); refreshWonders(); syncChests(); syncInvaders(Date.now()); refreshHud(); },
   look(yaw, pitch, dist) { Object.assign(cam, { yaw, pitch, dist, want: dist }); },
@@ -1717,6 +1726,8 @@ window.epoch = {
     openChest(id);
   },
   quality(n) { setQuality(n); },
+  exams: checkExams,
+  armor(id) { const inv = invaders.get(id); return inv && inv.object.userData.armor?.filter((p) => p.visible).length; },
   info: () => ({ quality, calls: renderer.info.render.calls, tris: renderer.info.render.triangles }),
   reset() { localStorage.removeItem(SAVE_KEY); location.reload(); },
 };

@@ -4,6 +4,7 @@ import * as S from '../src/sim.js';
 
 const NOW = 1_800_000_000_000;
 const DAY = 86400000;
+const HOUR = 3600000;
 const rich = (coins = 1e15) => Object.assign(S.newState(NOW), { coins });
 
 test('a new game can afford its first home and nothing more expensive', () => {
@@ -140,20 +141,66 @@ test('chests pay coins and richer chests give relics, cosmetics and tokens', () 
   assert.deepStrictEqual(S.openChest(s, s.school.chests[0].id, () => 0.99, NOW).loot.map((l) => l.kind), ['coins']);
 });
 
-test('power grows with recent hand-ins for that course, not with the age; a boss pays out once', () => {
+test('power grows with recent hand-ins for that course, not with the age', () => {
   const s = rich(0);
   assert.strictEqual(S.playerPower(s, null, NOW), 10);
-  S.syncSchool(s, [item({ id: 'p1', submitted: true, dueAt: NOW - DAY }), item({ id: 'p2', submitted: true, dueAt: NOW - 2 * DAY }), item({ id: 'boss', name: 'Midterm', dueAt: NOW + DAY, weight: 30 })], NOW, { source: 'demo' });
+  S.syncSchool(s, [item({ id: 'p1', submitted: true, dueAt: NOW - DAY }), item({ id: 'p2', submitted: true, dueAt: NOW - 2 * DAY })], NOW, { source: 'demo' });
   assert.strictEqual(S.playerPower(s, 'c', NOW), 12);
   s.era = 2;
   assert.strictEqual(S.playerPower(s, 'other', NOW), 10);
-  const boss = s.school.items.boss;
-  assert.strictEqual(boss.kind, 'boss');
-  assert.ok(S.bossHp(s, boss) > 400);
-  const win = S.bossWon(s, boss);
-  assert.strictEqual(win.chest.rarity, 'epic');
-  assert.ok(win.reward >= 500);
-  assert.strictEqual(S.bossWon(s, boss), null);
+});
+
+test('exam day: study strips armor, and the armor left decides the gate', () => {
+  const exam = (id, dueAt, courseId = 'c') => ({ id, name: 'Midterm exam', courseId, courseName: 'Physics', dueAt, pointsPossible: 100, weight: 30, submitted: false, noSubmit: true });
+  const s = rich();
+  S.syncSchool(s, [exam('ready', NOW + 2 * DAY), exam('lazy', NOW + 2 * DAY, 'z'), exam('share', NOW + 2 * DAY), exam('half', NOW + 2 * DAY, 'other'), item({ id: 'hw', dueAt: NOW + DAY })], NOW, { source: 'soma' });
+  const items = s.school.items;
+  // On paper, but an exam still marches.
+  assert.ok(!S.isIgnored(s, items.ready));
+  assert.strictEqual(S.examArmor(s, items.ready), 1);
+  S.startStudy(s, 'ready', 45, NOW); S.finishStudy(s, NOW + 45 * 60_000);
+  S.startStudy(s, 'ready', 45, NOW + HOUR); S.finishStudy(s, NOW + HOUR + 45 * 60_000);
+  assert.ok(S.examArmor(s, items.ready) < 0.3);
+  // Every other session for the course (other exams too) counts half.
+  S.startStudy(s, 'hw', 45, NOW + 2 * HOUR); S.finishStudy(s, NOW + 2 * HOUR + 45 * 60_000);
+  assert.ok(Math.abs(S.examArmor(s, items.share) - (1 - (45 + 22.5) / 120)) < 1e-9);
+  assert.ok(S.examArmor(s, items.ready) <= S.EXAM_HELD);
+  S.startStudy(s, 'half', 60, NOW + 3 * HOUR); S.finishStudy(s, NOW + 4 * HOUR);
+  assert.strictEqual(S.examOutcome(S.examArmor(s, items.half)), 'dented');
+
+  assert.deepStrictEqual(S.resolveExams(s, NOW + DAY), []);
+  assert.strictEqual(S.lateItems(s, NOW + 3 * DAY).some((a) => a.kind === 'boss'), false);
+  s.pads.earth[0] = { type: Object.keys(S.BUILDINGS)[0], tier: 0, level: 3, golden: false, stored: 50 };
+  const coins = s.coins;
+  const events = S.resolveExams(s, NOW + 2 * DAY + 1);
+  const by = Object.fromEntries(events.map((e) => [e.item.id, e]));
+  assert.strictEqual(by.ready.outcome, 'held');
+  assert.strictEqual(by.ready.chest.rarity, 'epic');
+  assert.strictEqual(by.half.outcome, 'dented');
+  assert.strictEqual(by.lazy.outcome, 'wrecked');
+  assert.deepStrictEqual(by.lazy.wrecked, { scene: 'earth', index: 0 });
+  assert.strictEqual(s.pads.earth[0].level, 2);
+  assert.ok(by.half.coins < 0 && by.lazy.coins < 0);
+  assert.ok(s.coins < coins + by.ready.coins);
+  assert.strictEqual(s.stats.bossesBeaten, 1);
+  // Settled once, and gone from the march.
+  assert.deepStrictEqual(S.resolveExams(s, NOW + 3 * DAY), []);
+  assert.ok(!S.threats(s, NOW + 2 * DAY + 2).some((x) => x.item.kind === 'boss'));
+});
+
+test('an exam first seen after its date costs nothing; its grade pays double', () => {
+  const s = rich();
+  S.syncSchool(s, [item({ id: 'x', dueAt: NOW - DAY })], NOW, { source: 'soma' });
+  const exam = { id: 'm', name: 'Final exam', courseId: 'c', courseName: 'Physics', dueAt: NOW - HOUR, pointsPossible: 100, weight: 30, submitted: false };
+  S.syncSchool(s, [exam], NOW, { source: 'soma' });
+  const coins = s.coins;
+  assert.deepStrictEqual(S.resolveExams(s, NOW), []);
+  assert.strictEqual(s.coins, coins);
+  const xp = s.hero.xp + s.hero.level * 1000;
+  const [event] = S.syncSchool(s, [{ ...exam, score: 90 }], NOW, { source: 'soma' }).filter((e) => e.type === 'chest');
+  assert.strictEqual(event.exam, true);
+  assert.strictEqual(event.xp, 260);
+  assert.ok(event.chest.coins > 0);
 });
 
 test('Soma snapshots become assignments', () => {
@@ -264,12 +311,9 @@ test('quitting a session early pays for the minutes done but drops no chest, and
   assert.strictEqual(S.finishStudy(s, NOW), null);
 });
 
-test('studying for a test shrinks the boss and study chests run out for the day', () => {
+test('study chests run out for the day', () => {
   const s = rich();
   S.syncSchool(s, [{ id: 'm', name: 'Midterm exam', courseId: 'c', courseName: 'Physics', dueAt: NOW + 2 * DAY, pointsPossible: 100, weight: 30, submitted: false }], NOW, { source: 'soma' });
-  const boss = s.school.items.m;
-  const full = S.bossHp(s, boss);
-  const power = S.playerPower(s, 'c', NOW);
   let t = NOW;
   const chests = [];
   for (let i = 0; i < 4; i++) {
@@ -278,9 +322,8 @@ test('studying for a test shrinks the boss and study chests run out for the day'
     chests.push(S.finishStudy(s, t).chest);
   }
   assert.deepStrictEqual(chests.map((c) => c && c.rarity), ['epic', 'epic', 'epic', null]);
-  assert.strictEqual(S.studyProgress(s, boss), 1);
-  assert.strictEqual(S.bossHp(s, boss), Math.round(full * (1 - S.BOSS_STUDY_CUT)));
-  assert.ok(S.playerPower(s, 'c', t) > power);
+  assert.strictEqual(S.studyProgress(s, s.school.items.m), 1);
+  assert.strictEqual(S.examArmor(s, s.school.items.m), 0);
 });
 
 test('camps and treasure come back the next day, shrines pay once ever', () => {
