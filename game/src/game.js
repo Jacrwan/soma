@@ -879,6 +879,7 @@ function openWonder(wonder) {
       world.setEra(state.era);
       dressPlayer();
       refreshAllPads();
+setTimeout(warmShaders, 0);
       refreshWonders();
       refreshHud();
       save();
@@ -887,6 +888,15 @@ function openWonder(wonder) {
 }
 
 /** The start of a new age: a fresh, empty town in a new landscape. */
+// Shaders compile the first time something new is drawn, which stalls that
+// frame (the country, a new age, the moon). Compile them all up front instead.
+function warmShaders() {
+  try {
+    const job = renderer.compileAsync ? renderer.compileAsync(scene, camera) : renderer.compile(scene, camera);
+    job?.catch?.(() => {});
+  } catch { /* the first draw will compile whatever is left */ }
+}
+
 function moveToNewLand(done) {
   if (build.on) toggleBuild(false);
   audio.launch();
@@ -907,6 +917,7 @@ function moveToNewLand(done) {
     applyTimeOfDay();
     refreshHud();
     ui.banner(eraName(), `A new land: ${world.landName()}`);
+    warmShaders();
     setTimeout(() => ui.toast(`Your old town stays behind. A settler's purse of ${S.fmt(done.purse)} coins${done.decorBack ? ` (+${S.fmt(done.decorBack)} for your decorations)` : ''} gets the first homes built.`, 'gold'), 2600);
     save();
   });
@@ -918,6 +929,7 @@ function travel(to) {
   ui.fade(() => {
     state.scene = to;
     world.setScene(to, state.era);
+    setTimeout(warmShaders, 50);
     dressPlayer();
     const spawn = to === 'moon' ? W.MOON_SPAWN : W.wonderPosition(5).clone().add(new THREE.Vector3(0, 0, 9));
     player.object.position.set(spawn.x, 0, spawn.z);
