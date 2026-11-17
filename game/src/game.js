@@ -21,6 +21,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createCoach } from './tutorial.js';
 import { makePiece } from './catalog.js';
+import { createOwl } from './owl.js';
 
 // --- State ----------------------------------------------------------------------
 // Inside Soma the save belongs to the signed-in student, so two accounts in
@@ -1773,8 +1774,7 @@ function replayTutorial() {
 }
 
 // --- Owl, your guide, and the story ---------------------------------------------------
-const owl = { object: A.makeOwl(), t: 0 };
-owl.object.scale.setScalar(1.25);
+const owl = createOwl();
 world.earth.add(owl.object);
 function updateOwl(dt, time) {
   const o = owl.object;
@@ -1788,8 +1788,8 @@ function updateOwl(dt, time) {
   want.y = p.y + 2.0 + Math.sin(time * 2.2) * 0.12;
   if (o.position.distanceTo(want) > 25) o.position.copy(want);
   o.position.lerp(want, Math.min(1, dt * 4));
-  o.rotation.y = Math.atan2(-back.x, -back.z) + Math.PI + Math.sin(time * 0.7) * 0.25;
-  for (const w of o.userData.wings) w.rotation.z = w.userData.side * (0.15 + Math.sin(time * 7) * 0.22);
+  const moving = o.position.distanceTo(want) > 0.6;
+  owl.update(dt, time, world.groundHeight('earth', o.position.x, o.position.z), moving);
 }
 /** Plays a story moment once, then calls after (even if it was already seen). */
 function playStory(id, after) {
@@ -4228,7 +4228,6 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 window.epoch = {
   state, S, cam,
   give(n) { S.addCoins(state, n); refreshHud(); },
-  owlThumb: () => Promise.resolve(renderThumb(A.makeOwl(), 0.35)),
   chests: () => openChests(),
   thumb: (r) => thumbFor(r),
   character: (id) => pickCharacter(id),

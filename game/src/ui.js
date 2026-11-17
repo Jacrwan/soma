@@ -3,6 +3,7 @@
 
 import { fmt } from './sim.js';
 import { createOpening } from './opening.js';
+import { owlSvg } from './owl.js';
 
 const $ = (id) => document.getElementById(id);
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
@@ -50,7 +51,7 @@ export function createUI(on) {
 
   // Story dialogue: one line at a time, typed out. Space, E, Enter or a click moves on.
   const SPEAKERS = {
-    owl: { name: 'Owl', icon: '<svg viewBox="0 0 48 48"><ellipse cx="24" cy="28" rx="15" ry="16" fill="#8a6248"/><ellipse cx="24" cy="32" rx="9" ry="10" fill="#f1dfc0"/><circle cx="17" cy="22" r="7" fill="#f1dfc0"/><circle cx="31" cy="22" r="7" fill="#f1dfc0"/><circle cx="17" cy="22" r="4" fill="#1b1410"/><circle cx="31" cy="22" r="4" fill="#1b1410"/><circle cx="18.3" cy="20.6" r="1.3" fill="#fff"/><circle cx="32.3" cy="20.6" r="1.3" fill="#fff"/><path d="M22 26l2 4 2-4z" fill="#e0a02a"/><path d="M11 13l4 6-6-1zM37 13l-4 6 6-1z" fill="#5e402e"/></svg>' },
+    owl: { name: 'Owl', icon: owlSvg() },
     pro: { name: 'The Procrastinator', icon: '<svg viewBox="0 0 48 48"><circle cx="24" cy="26" r="17" fill="#3a2a5c"/><path d="M8 24c4-12 28-12 32 0-6-4-26-4-32 0z" fill="#241a3a"/><path d="M14 25q4-3 8 0M26 25q4-3 8 0" stroke="#c8b8ff" stroke-width="2.4" fill="none" stroke-linecap="round"/><path d="M17 33q7 5 14 0" stroke="#c8b8ff" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="37" cy="12" r="3" fill="#c8b8ff" opacity=".7"/><circle cx="41" cy="6" r="2" fill="#c8b8ff" opacity=".5"/></svg>' },
   };
   const talkBox = document.createElement('div');
