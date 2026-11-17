@@ -333,10 +333,10 @@ export function placeBuilding(state, type, x, z, rot = 0, scene = 'earth') {
 }
 
 // --- Land that opens through projects ----------------------------------------------
-// The valley starts small: the town and the meadow outside the gate. The rest of the
-// country opens one area at a time when you finish the Librarian's expansion projects
-// (like Animal Crossing's bridges and inclines). Locked land shows blurred, and you
-// can't walk into it. Later lands (Chapter 2 on) come fully open.
+// The valley starts small: the town and the meadow outside the gate. The other areas sit
+// across creeks you can see over but not cross (world.js CREEK), like Animal Crossing's
+// rivers. Each of the Librarian's bridge projects builds the bridge to one of them.
+// Later lands (Chapter 2 on) come fully open.
 export const LAND_AREAS = [
   { zone: 'meadow', name: 'The Meadow', project: null },
   { zone: 'orchard', name: 'The Orchard', project: 'the-orchard-path' },
@@ -1314,10 +1314,10 @@ const bestFriend = (s) => Math.max(0, ...s.villagers.list.map((p) => p.friend ||
 export const STORY = [
   { id: 'a-roof-over-your-head', chapter: 0, from: 'The Librarian', title: 'A roof over your head', text: 'Every newcomer needs a hut. Build your first one (B).', need: 1, have: built, reward: { coins: 200 } },
   { id: 'first-lesson', chapter: 0, from: 'The Librarian', title: 'First lesson', text: 'The valley runs on studying. Finish a study session of 10 minutes or more (T).', need: 1, have: (s) => (s.study.total >= 10 ? 1 : 0), reward: { gear: 'rare', slot: 'weapon' } },
-  { id: 'the-orchard-path', chapter: 0, from: 'The Librarian', opens: 'orchard', title: 'The orchard path', text: 'The path to the orchard is overgrown. Study 30 minutes in total and I\u2019ll have it cleared.', need: 30, have: (s) => s.study.total, reward: { coins: 300 } },
+  { id: 'the-orchard-path', chapter: 0, from: 'The Librarian', opens: 'orchard', title: 'A bridge to the orchard', text: 'The orchard is just across the creek. Study 30 minutes in total and I\u2019ll have the timber for a bridge.', need: 30, have: (s) => s.study.total, reward: { coins: 300 } },
   { id: 'start-a-creature-log', chapter: 0, from: 'Mira, the herbalist', title: 'Start a creature log', text: 'Catch a creature out in the country. Walk up slowly, then press E.', need: 1, have: caughtTotal, reward: { coins: 300 } },
   { id: 'send-the-homework-home', chapter: 0, from: 'Bram, the guard', title: 'Send the homework home', text: 'Your homework keeps wandering into town. Hand in 3 assignments.', need: 3, have: (s) => s.stats.handedIn, reward: { gear: 'rare', slot: 'armor' } },
-  { id: 'a-bridge-to-the-pond', chapter: 0, from: 'The Librarian', opens: 'pond', title: 'A bridge to the pond', text: 'Three buildings and the town can spare the timber for a bridge to the pond.', need: 3, have: built, reward: { coins: 500 } },
+  { id: 'a-bridge-to-the-pond', chapter: 0, from: 'The Librarian', opens: 'pond', title: 'A bridge to the pond', text: 'Put up 3 buildings, and the town can spare the planks for a bridge over to the pond.', need: 3, have: built, reward: { coins: 500 } },
   { id: 'fox-trouble', chapter: 0, from: 'Tobin, the smith', title: 'Fox trouble', text: 'Foxes ran off with my tools. Clear a fox camp, would you?', need: 1, have: (s) => s.stats.campsCleared, reward: { coins: 300, gear: 'common', slot: 'armor' } },
   { id: 'getting-stronger', chapter: 0, from: 'Odo, the scholar', title: 'Getting stronger', text: 'Reach level 3. Studying is how you level up.', need: 3, have: (s) => s.hero.level, reward: { gear: 'rare', slot: 'armor' } },
   { id: 'a-proper-neighbourhood', chapter: 0, from: 'Rook, the builder', title: 'A proper neighbourhood', text: 'Three buildings make a neighbourhood. Build 3.', need: 3, have: built, reward: { coins: 600 } },
@@ -1325,9 +1325,9 @@ export const STORY = [
   { id: 'a-fuller-log', chapter: 0, from: 'Mira, the herbalist', title: 'A fuller log', text: 'Catch 4 different kinds of creature. Some only come out at night.', need: 4, have: caughtKinds, reward: { coins: 800 } },
   { id: 'good-neighbours', chapter: 0, from: 'Juna, the baker', title: 'Good neighbours', text: 'Become friends with someone: reach 50 friendship by doing their daily favours.', need: 50, have: bestFriend, reward: { gear: 'rare', slot: 'weapon' } },
   { id: 'a-lovely-valley', chapter: 0, from: 'Ivy, the gardener', title: 'A lovely valley', text: 'Decorate until the valley is rated 2 stars. Paths and flowers help.', need: 2, have: (s) => townRating(s).stars, reward: { gear: 'epic', slot: 'charm' } },
-  { id: 'lanterns-for-the-woods', chapter: 0, from: 'The Librarian', opens: 'woods', title: 'Lanterns for the woods', text: 'The woods are too dark to walk. Study 2 hours in total and I\u2019ll hang lanterns all the way in.', need: 120, have: (s) => s.study.total, reward: { gear: 'rare', slot: 'charm' } },
+  { id: 'lanterns-for-the-woods', chapter: 0, from: 'The Librarian', opens: 'woods', title: 'A bridge into the woods', text: 'The woods are across the creek too. Study 2 hours in total and we\u2019ll build a bridge (and hang a lantern on it).', need: 120, have: (s) => s.study.total, reward: { gear: 'rare', slot: 'charm' } },
   { id: 'a-study-habit', chapter: 0, from: 'The Librarian', title: 'A study habit', text: 'Study 5 hours in total. Small sessions add up.', need: 300, have: (s) => s.study.total, reward: { gear: 'epic', slot: 'weapon' } },
-  { id: 'the-highland-road', chapter: 0, from: 'The Librarian', opens: 'highlands', title: 'The highland road', text: 'The road to the highlands is rough going. Reach level 5 and you\u2019ll be ready for it.', need: 5, have: (s) => s.hero.level, reward: { coins: 800 } },
+  { id: 'the-highland-road', chapter: 0, from: 'The Librarian', opens: 'highlands', title: 'A bridge to the highlands', text: 'The highlands are rough country, with the Alpha up there. Reach level 5 and I\u2019ll build you the bridge.', need: 5, have: (s) => s.hero.level, reward: { coins: 800 } },
   { id: 'the-alpha', chapter: 0, from: 'Bram, the guard', title: 'The Alpha', text: 'The big fox in the rock ring. Reach level 6 or so first, then beat the Alpha.', need: 1, have: (s) => (s.stats.realmBosses.wilds ? 1 : 0), reward: { gear: 'epic', slot: 'armor' } },
   { id: 'a-page-for-the-atlas', chapter: 0, from: 'The Librarian', title: 'A page for the Atlas', text: 'Find a landmark out in the country for my guidebook.', need: 1, have: (s) => foundCount(s, 0), reward: { coins: 400 } },
   { id: 'the-whole-valley', chapter: 0, from: 'The Librarian', title: 'The whole valley', text: 'Find all 4 landmarks, and my Atlas gets its first finished chapter.', need: 4, have: (s) => foundCount(s, 0), reward: { coins: 1000 } },

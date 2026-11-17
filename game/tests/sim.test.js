@@ -1079,7 +1079,7 @@ test('the country opens one area at a time through the Librarian\'s expansion pr
   s.coins = 1e9;
   assert.deepStrictEqual(S.openAreas(s), ['meadow']);
   assert.strictEqual(S.nextArea(s).zone, 'orchard');
-  assert.strictEqual(S.areaProject('orchard').title, 'The orchard path');
+  assert.strictEqual(S.areaProject('orchard').title, 'A bridge to the orchard');
   // Work through the Librarian's list: a hut, a first lesson, then the orchard path.
   const next = () => S.projectFrom(s, 'Librarian');
   S.acceptProject(s, next().id); S.placeBuilding(s, 'home', 30, 30); S.turnInProject(s, next().id, () => 0);

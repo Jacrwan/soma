@@ -419,6 +419,8 @@ const SECTORS = (() => {
     return { name: z.name, from: z.at - gapPrev / 2, to: z.at + gapNext / 2 };
   });
 })();
+/** The areas' angular ranges (degrees; from may be negative), for creeks and bridges. */
+export const AREA_SECTORS = SECTORS;
 export function sectorOf(x, z) {
   const a = ((Math.atan2(z, x) * 180) / Math.PI + 360) % 360;
   for (const s of SECTORS) {

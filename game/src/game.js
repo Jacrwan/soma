@@ -30,7 +30,7 @@ import * as Lore from './lore.js';
 import { startTelemetry, track } from './telemetry.js';
 import { sendFeedback } from './feedback.js';
 import { loadCloud, saveCloud } from './cloudsave.js';
-import { sectorOf, createFogWalls, LockedBlurPass } from './scenery.js';
+import { sectorOf, AREA_SECTORS } from './scenery.js';
 
 // --- State ----------------------------------------------------------------------
 // Inside Soma the save belongs to the signed-in student, so two accounts in
@@ -135,14 +135,8 @@ const fx = createFx(scene, camera);
 const audio = createAudio(() => state.settings);
 
 // Finishing: soft glow on bright things, a slight vignette and warmth, then tone mapping.
-// The scene's depth is kept so land that hasn't opened yet can be blurred (LockedBlurPass).
-const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4, depthTexture: new THREE.DepthTexture(1, 1) }));
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
 composer.addPass(new RenderPass(scene, camera));
-// Each buffer needs its own depth texture: a cloned one shares the GPU texture, and on low
-// graphics (no anti-aliasing) reading one while drawing into the other turned the screen black.
-composer.renderTarget2.depthTexture = new THREE.DepthTexture(1, 1);
-const lockedBlur = new LockedBlurPass(camera, W.TOWN_R);
-composer.addPass(lockedBlur);
 const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.32, 0.7, 0.92);
 composer.addPass(bloom);
 composer.addPass(new ShaderPass({
@@ -754,52 +748,92 @@ const outdoors = () => !inRealm() && state.scene === 'earth';
 let openSet = new Set(['meadow']);
 /** Can the player be here? The town is always open; out in the country it depends on the area. */
 const areaOpen = (x, z) => Math.hypot(x, z) <= W.TOWN_R + 0.8 || openSet.has(sectorOf(x, z));
-let fogWalls = null, fogLand = -1;
+// Each locked area sits across a creek (world.js CREEK). Finishing the Librarian's project
+// for it builds a bridge over the creek from town; until then a signpost stands there.
+let landSites = null, landSitesFor = -1;
+const bridges = []; // walkable decks: { x, z, dx, dz }
 let fogBumpAt = 0;
-/** Walking into the fog says why it's there and how to open it (at most every few seconds). */
+/** Bumping a creek you can't cross yet says what's over there and how to get across. */
 function fogBump(zone) {
   const now = performance.now();
   if (now - fogBumpAt < 4000) return;
   fogBumpAt = now;
-  const a = S.LAND_AREAS.find((x) => x.zone === zone) || S.nextArea(state);
+  const a = S.LAND_AREAS.find((x) => x.zone === zone && !openSet.has(x.zone)) || null;
   if (!a) return;
   const pj = S.areaProject(a.zone);
   const lib = S.projectFrom(state, 'Librarian');
-  ui.toast(`${a.name} isn't open yet. ${pj ? (lib?.id === pj.id ? `The Librarian's project "${pj.title}" opens it. Go talk to her by the board.` : `It opens with the Librarian's project "${pj.title}". Keep doing her projects and she'll get to it.`) : ''}`, 'bad');
+  ui.toast(`${a.name} is across the creek. ${pj ? (lib?.id === pj.id ? `The Librarian's project "${pj.title}" builds the bridge: go talk to her by the board.` : `The Librarian's project "${pj.title}" builds the bridge. Keep doing her projects and she'll get to it.`) : ''}`, 'bad');
 }
-const fogLabels = new Map();
+/** A wooden footbridge, about 7 m long, running along +Z. */
+function makeBridge() {
+  const g = new THREE.Group();
+  for (let i = 0; i < 9; i++) g.add(A.at(A.box(3.2, 0.16, 0.7, i % 2 ? A.C.wood : A.C.woodDark), 0, 0.22, -3.2 + i * 0.8));
+  for (const x of [-1.5, 1.5]) {
+    g.add(A.at(A.box(0.14, 0.12, 7.4, A.C.woodDark), x, 1.05, 0));
+    for (let k = 0; k < 4; k++) g.add(A.at(A.box(0.16, 1.0, 0.16, A.C.woodDark), x, 0.2, -3.3 + k * 2.2));
+  }
+  g.add(A.at(A.box(0.5, 0.5, 7.6, A.C.woodDark), -1.2, -0.3, 0), A.at(A.box(0.5, 0.5, 7.6, A.C.woodDark), 1.2, -0.3, 0));
+  return A.bake ? A.bake(g) : g;
+}
+/** A signpost by the creek where a bridge will go. */
+function makeSignpost() {
+  const g = new THREE.Group();
+  g.add(A.at(A.box(0.16, 1.7, 0.16, A.C.woodDark), 0, 0, 0));
+  const board = A.at(A.box(1.3, 0.6, 0.1, A.C.wood), 0, 1.35, 0.06);
+  g.add(board);
+  return A.bake ? A.bake(g) : g;
+}
+const onBridge = (x, z) => bridges.some((b) => { const rx = x - b.x, rz = z - b.z; return Math.abs(rx * b.dx + rz * b.dz) <= 3.7 && Math.abs(-rx * b.dz + rz * b.dx) <= 1.45; });
 function refreshLand(animate = false) {
-  if (fogLand !== world.landIndex()) {
-    if (fogWalls) fogWalls.object.parent?.remove(fogWalls.object);
-    for (const l of fogLabels.values()) l.remove();
-    fogLabels.clear();
-    fogWalls = createFogWalls({ height: (x, z) => world.groundHeight('earth', x, z), townR: W.TOWN_R, outerR: W.ISLAND_RADIUS + 18 });
-    world.earth.add(fogWalls.object);
-    fogLand = world.landIndex();
+  const valley = state.era === 0 && state.scene === 'earth';
+  if (landSitesFor !== world.landIndex()) {
+    if (landSites) for (const site of landSites.values()) { site.group.parent?.remove(site.group); site.label?.remove(); }
+    landSites = new Map();
+    bridges.length = 0;
+    landSitesFor = world.landIndex();
     animate = false;
+    if (valley) for (const sec of AREA_SECTORS) {
+      if (sec.name === 'meadow') continue;
+      // Halfway along the area's edge with the town.
+      const mid = ((sec.from + sec.to) / 2) * (Math.PI / 180);
+      const dx = Math.cos(mid), dz = Math.sin(mid);
+      const site = { zone: sec.name, x: dx * W.CREEK.r, z: dz * W.CREEK.r, dx, dz, group: new THREE.Group(), bridge: null, sign: null, label: null };
+      site.group.position.set(site.x, 0, site.z);
+      site.group.rotation.y = Math.atan2(dx, dz);
+      world.earth.add(site.group);
+      landSites.set(sec.name, site);
+    }
   }
   const fresh = S.updateLandOpen(state);
   openSet = new Set(S.openAreas(state));
-  fogWalls.setOpen([...openSet], false);
-  // No fog to look at: the walls only hold the signs. Locked land is blurred on screen instead.
-  fogWalls.object.traverse((o) => { if (o.isMesh) o.visible = false; });
-  lockedBlur.setOpen([...openSet]);
-  // A sign on each fog wall: what it is and how to open it.
-  for (const a of S.LAND_AREAS) {
-    const w = fogWalls.walls.get(a.zone);
-    const locked = !openSet.has(a.zone);
-    let l = fogLabels.get(a.zone);
-    if (locked && !l) { l = fx.label(w.userData.anchor, 0, '', 'step fog'); fogLabels.set(a.zone, l); }
-    if (locked) { const pj = S.areaProject(a.zone); l.set(`<em>${a.name} · not open yet</em>${pj ? `Opens with the Librarian\u2019s project \u201c${pj.title}\u201d` : 'Opens later'}`); }
-    else if (l) { l.remove(); fogLabels.delete(a.zone); }
+  bridges.length = 0;
+  for (const site of landSites.values()) {
+    const open = openSet.has(site.zone);
+    if (open) {
+      if (!site.bridge) { site.bridge = makeBridge(); site.group.add(site.bridge); }
+      if (site.sign) { site.group.remove(site.sign); site.sign = null; }
+      site.label?.remove(); site.label = null;
+      bridges.push({ x: site.x, z: site.z, dx: site.dx, dz: site.dz });
+    } else {
+      if (!site.sign) {
+        site.sign = makeSignpost();
+        site.sign.position.set(1.8, 0, -4.6); // on the town side of the creek
+        site.sign.rotation.y = Math.PI;
+        site.group.add(site.sign);
+      }
+      const a = S.LAND_AREAS.find((x) => x.zone === site.zone);
+      const pj = S.areaProject(site.zone);
+      if (!site.label) site.label = fx.label(site.sign, 2.4, '', 'step fog');
+      site.label.set(`<em>${a.name} · across the creek</em>${pj ? `A bridge goes here: the Librarian’s project “${pj.title}”` : 'A bridge goes here one day'}`);
+    }
   }
   if (animate) for (const a of fresh) {
-    audio.era();
-    ui.banner('New land opened', a.name);
+    const site = landSites.get(a.zone);
+    if (site) { for (let k = 0; k < 3; k++) fx.burst(new THREE.Vector3(site.x, 1 + k, site.z), [A.C.white, A.C.gold, A.C.wood][k], 18, 6, 6); }
+    audio.build();
+    ui.banner('Bridge built', a.name);
     const next = S.nextArea(state);
-    const nextPj = next && S.areaProject(next.zone);
-    setTimeout(() => ui.toast(next ? `${a.name} is open! Next, ${next.name}: the Librarian will have a project for it.` : 'The whole valley is open.', 'gold'), 1800);
-    void nextPj;
+    setTimeout(() => ui.toast(next ? `The bridge to ${a.name} is up! The Librarian will have a bridge project for ${next.name} next.` : 'Every bridge is built. The whole valley is open.', 'gold'), 1800);
     track('land_opened', { zone: a.zone });
   }
   if (fresh.length) save();
@@ -2796,7 +2830,11 @@ function updatePlayer(dt, time) {
     p.z *= limit / r;
   }
   // No walking into lakes, rivers or the sea.
-  if (!inRealm() && !moon && world.groundHeight('earth', p.x, p.z) < -0.45) { p.x = fromX; p.z = fromZ; }
+  if (!inRealm() && !moon && world.groundHeight('earth', p.x, p.z) < -0.45 && !onBridge(p.x, p.z)) {
+    // Water: a creek you can't cross yet explains itself.
+    if (state.scene === 'earth' && Math.hypot(p.x, p.z) > W.TOWN_R - 2) fogBump(sectorOf(p.x * 1.08, p.z * 1.08));
+    p.x = fromX; p.z = fromZ;
+  }
   // The fog: nothing gets you into land that hasn't opened yet: not walking, not dashing,
   // not being knocked back. Anyone who ends up inside is put back at the town's edge.
   if (!inRealm() && !moon && state.scene === 'earth' && !areaOpen(p.x, p.z)) {
@@ -2806,7 +2844,7 @@ function updatePlayer(dt, time) {
     player.dash = 0;
     fogBump(lockedZone);
   }
-  const ground = inRealm() ? 0 : world.groundHeight(state.scene, p.x, p.z);
+  const ground = inRealm() ? 0 : bridges.length && state.scene === 'earth' && onBridge(p.x, p.z) ? 0.34 : world.groundHeight(state.scene, p.x, p.z);
   player.jumpBuf = Math.max(0, (player.jumpBuf || 0) - dt);
   if (player.grounded && (keys.has(' ') || player.jumpBuf > 0) && !ui.isOpen()) {
     player.jumpBuf = 0;
@@ -3008,7 +3046,6 @@ function frame(nowMs) {
   if (shiftLock) document.body.classList.toggle('shiftlock', !ui.isOpen());
   if (!inRealm() && state.scene === 'earth') moveVillagers(dt, time);
   wild.setActive(outdoors());
-  if (fogWalls && state.scene === 'earth') fogWalls.update(dt, time);
   wild.update(dt, time, player.object.position, !player.down);
   updateCritters(dt, time);
   if (!inRealm() && state.scene === 'earth') { moveShadows(dt, time); movePacks(dt, time); animateLairs(time); }
@@ -3073,7 +3110,7 @@ function frame(nowMs) {
   renderer.info.reset();
   shadowFrame = (shadowFrame + 1) % 2;
   renderer.shadowMap.needsUpdate = shadowFrame === 0 || budget > 0;
-  if (usePost || (lockedBlur.enabled && state.scene === 'earth' && !inRealm())) composer.render();
+  if (usePost) composer.render();
   else renderer.render(scene, camera);
   pace.cpu = (pace.cpu || 0) * 0.95 + (performance.now() - cpuStart) * 0.05;
   requestAnimationFrame(frame);

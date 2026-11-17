@@ -7,7 +7,7 @@ import { C, mat, at, makeRock, makeTownCenter, makeGate, makeLander } from './ar
 import { noiseTexture, rippleNormals, fbm, noise3 } from './tex.js';
 import { createForest, createGrass, createClouds, wind } from './nature.js';
 import { EARTH_PADS, MOON_PADS } from './sim.js';
-import { installHorizonBend, bendGlsl, POND, STREAM, ZONES, zoneWeights, tintByZone, zoneFade, createCover, createLife, addCloudShadows, clouds } from './scenery.js';
+import { installHorizonBend, bendGlsl, POND, STREAM, ZONES, zoneWeights, tintByZone, zoneFade, createCover, createLife, addCloudShadows, clouds, AREA_SECTORS } from './scenery.js';
 
 // The world bends away like a rolling log (see scenery.js); must be set before any shader compiles.
 installHorizonBend();
@@ -100,8 +100,36 @@ function meadow(x, z, r, amp = 1) {
   const n = noise2(x * 0.045 + 11, z * 0.045 - 5) * 0.6 + noise2(x * 0.11, z * 0.11) * 0.4;
   return smooth((r - TOWN_R) / 16) * amp * (2.2 + 2 * n) * (0.35 + 0.65 * passOpen(x, z, r));
 }
+// Creeks around the areas of the Stone Age valley, Animal Crossing style: you can see
+// across, but can't cross until a bridge is built. One arc along the town's edge in front
+// of every area except the meadow, and a creek along every border between two areas.
+export const CREEK = { r: TOWN_R + 3, half: 1.7, bank: 2.6, outer: RISE_R + 14 };
+const RAD = Math.PI / 180;
+function creekDistance(x, z, r = Math.hypot(x, z)) {
+  if (r < CREEK.r - 6) return Infinity;
+  const a = ((Math.atan2(z, x) / RAD) + 360) % 360;
+  let best = Infinity;
+  for (const s of AREA_SECTORS) {
+    // The border with the next area: a straight creek out to the mountains.
+    const ex = Math.cos(s.to * RAD), ez = Math.sin(s.to * RAD);
+    const along = Math.max(CREEK.r, Math.min(CREEK.outer, x * ex + z * ez));
+    best = Math.min(best, Math.hypot(x - ex * along, z - ez * along));
+    if (s.name === 'meadow') continue;
+    // The arc in front of the area, along the town's edge.
+    const into = ((a - s.from) % 360 + 360) % 360;
+    if (into <= s.to - s.from) best = Math.min(best, Math.abs(r - CREEK.r));
+  }
+  return best;
+}
+/** Carves a creek into a height (the valley only). */
+const withCreeks = (x, z, r, h) => {
+  const d = creekDistance(x, z, r);
+  if (d > CREEK.half + CREEK.bank) return h;
+  const s = smooth((d - CREEK.half) / CREEK.bank);
+  return h * s + (1 - s) * -1.25;
+};
 function valleyHeight(x, z, r) {
-  if (r < TOWN_R) return 0;
+  if (r < TOWN_R) return r > CREEK.r - CREEK.half - CREEK.bank ? withCreeks(x, z, r, 0) : 0;
   const open = passOpen(x, z, r);
   const up = (rise(r) / 12) ** 1.55 * 4.4 * (0.75 + 0.45 * noise2(x * 0.35, z * 0.35));
   const h = meadow(x, z, r) + Math.min(74, up * (0.05 + 0.95 * open * open));
@@ -113,7 +141,7 @@ function valleyHeight(x, z, r) {
   const sd = Math.hypot(x - (STREAM.a.x + sx * t) - wob * 0.6, z - (STREAM.a.z + sz * t) + wob * 0.4);
   const stream = smooth((sd - STREAM.w) / 3);
   const wet = Math.min(pond, stream);
-  return h * wet + (1 - wet) * -1.4;
+  return withCreeks(x, z, r, h * wet + (1 - wet) * -1.4);
 }
 // Bronze Age: low dunes, sandstone mesas far out, and a river behind the town.
 function duneHeight(x, z, r) {
@@ -530,6 +558,35 @@ export function createWorld(scene, renderer) {
       creek.position.set(STREAM.a.x + sx / 2, -0.45, STREAM.a.z + sz / 2);
       creek.renderOrder = 2;
       landParts.add(creek);
+      // The creeks around the areas: a strip of water along each one.
+      const ribbon = (pts, width) => {
+        const pos = [], idx = [];
+        pts.forEach((p, i) => {
+          const q = pts[Math.min(pts.length - 1, i + 1)], o = pts[Math.max(0, i - 1)];
+          let tx = q.x - o.x, tz = q.z - o.z;
+          const tl = Math.hypot(tx, tz) || 1;
+          tx /= tl; tz /= tl;
+          pos.push(p.x - tz * width, -0.45, p.z + tx * width, p.x + tz * width, -0.45, p.z - tx * width);
+          if (i) { const k = (i - 1) * 2; idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); } // facing up
+        });
+        const g = new THREE.BufferGeometry();
+        g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        g.setIndex(idx);
+        g.computeVertexNormals();
+        const m = new THREE.Mesh(g, water.material);
+        m.renderOrder = 2;
+        return m;
+      };
+      const w = CREEK.half + 1.4;
+      for (const sec of AREA_SECTORS) {
+        const line = [];
+        for (let r = CREEK.r - 1; r <= CREEK.outer; r += 3) line.push({ x: Math.cos(sec.to * RAD) * r, z: Math.sin(sec.to * RAD) * r });
+        landParts.add(ribbon(line, w));
+        if (sec.name === 'meadow') continue;
+        const arc = [];
+        for (let d = sec.from; d <= sec.to + 0.01; d += 2) arc.push({ x: Math.cos(d * RAD) * CREEK.r, z: Math.sin(d * RAD) * CREEK.r });
+        landParts.add(ribbon(arc, w));
+      }
     } else if (land.water?.kind === 'lake') {
       const lake = new THREE.Mesh(new THREE.CircleGeometry(17, 40), water.material);
       lake.rotation.x = -Math.PI / 2;
