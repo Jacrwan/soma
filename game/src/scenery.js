@@ -298,13 +298,13 @@ export function createCover({ height, free, townR, riseR, green = true, pond = f
   };
 
   const flowers = green ? [0xffffff, 0xffd34d, 0xff8fb1, 0xb69cff, 0xff7a59, 0x7fc8ff] : [0xffd34d, 0xff7a59, 0xffffff];
-  add('flowers', flowerClump(), windy(vcMat(), 0.12, 'flowers'), 1700, [green ? 1 : 0.25, 0.5, 0.35, 0.08, 0.15], { colors: flowers, scale: [2.0, 3.2] });
+  add('flowers', flowerClump(), windy(vcMat(), 0.12, 'flowers'), 1100, [green ? 1 : 0.25, 0.5, 0.35, 0.08, 0.15], { colors: flowers, scale: [2.0, 3.2] });
   add('reeds', reedClump(green ? 0x6fa64a : 0xa8a058), windy(vcMat(), 0.16, 'reeds'), 520, [0.18, 0.15, 0.3, 0.35, 0.25], { scale: [0.8, 1.4] });
   add('mushrooms', mushroomClump(), vcMat({ roughness: 0.7 }), 300, [0.02, 0.06, 0.12, 0.9, 0.05], { scale: [1.2, 2.2] });
   add('logs', logGeo(), vcMat(), 46, [0.03, 0.08, 0.1, 0.7, 0.4], { scale: [0.7, 1.2], shadow: true, maxH: 9 });
   add('stumps', stumpGeo(), vcMat(), 70, [0.05, 0.15, 0.15, 0.8, 0.3], { scale: [0.7, 1.3], shadow: true });
-  add('bushes', bushGeo(), vcMat({ roughness: 1, flatShading: true }), 300, [0.25, 0.5, 0.45, 0.6, 0.3], { colors: green ? [0x5e9e44, 0x6aaa4c, 0x4f8c3c, 0x76b257] : [0x9a9a58, 0x8a8c4e], scale: [0.6, 1.4], sink: 0.12 });
-  add('rocks', painted(rockGeometry(false).clone(), 0xffffff), vcMat({ roughness: 1 }), 460, [0.05, 0.05, 0.1, 0.12, 1], { colors: [0x9a9c9e, 0x8a8c8e, 0xa8a49a], scale: [0.3, 2.4], sink: 0.25, maxH: 30, tiltMax: 0.6, shadow: true });
+  add('bushes', bushGeo(), vcMat({ roughness: 1, flatShading: true }), 220, [0.25, 0.5, 0.45, 0.6, 0.3], { colors: green ? [0x5e9e44, 0x6aaa4c, 0x4f8c3c, 0x76b257] : [0x9a9a58, 0x8a8c4e], scale: [0.6, 1.4], sink: 0.12 });
+  add('rocks', painted(rockGeometry(false).clone(), 0xffffff), vcMat({ roughness: 1 }), 320, [0.05, 0.05, 0.1, 0.12, 1], { colors: [0x9a9c9e, 0x8a8c8e, 0xa8a49a], scale: [0.3, 2.4], sink: 0.25, maxH: 30, tiltMax: 0.6, shadow: true });
   if (green) add('fruit', fruitGeo(), vcMat({ roughness: 0.5 }), 160, [0, 1, 0.02, 0, 0], { colors: [0xd8402e, 0xe8642c, 0xf2b631], scale: [0.9, 1.3] });
   if (pond) {
     add('lilies', padGeo(), vcMat({ roughness: 0.6 }), 42, [1, 1, 1, 1, 1], { near: { x: POND.x, z: POND.z, r0: 1, r1: POND.r - 1 }, minH: -9, maxH: -0.3, scale: [0.7, 1.4] })
@@ -403,6 +403,117 @@ export function createLife({ height, townR }) {
           butterflies.setMatrixAt(i, dummy.matrix);
         });
         butterflies.instanceMatrix.needsUpdate = true;
+      }
+    },
+  };
+}
+
+// --- Land behind the fog -----------------------------------------------------------------
+// Which area of the country a spot is in, by clean angle (no wobble, so walls and
+// collision agree). Each area runs halfway to its neighbours.
+const SECTORS = (() => {
+  const list = ZONES.map((z) => ({ name: z.name, at: z.at })).sort((a, b) => a.at - b.at);
+  return list.map((z, i) => {
+    const prev = list[(i + list.length - 1) % list.length], next = list[(i + 1) % list.length];
+    const gapPrev = ((z.at - prev.at) + 360) % 360, gapNext = ((next.at - z.at) + 360) % 360;
+    return { name: z.name, from: z.at - gapPrev / 2, to: z.at + gapNext / 2 };
+  });
+})();
+export function sectorOf(x, z) {
+  const a = ((Math.atan2(z, x) * 180) / Math.PI + 360) % 360;
+  for (const s of SECTORS) {
+    const from = (s.from + 360) % 360, span = s.to - s.from;
+    if (((a - from + 360) % 360) < span) return s.name;
+  }
+  return 'meadow';
+}
+
+const FOG_VERT = `
+  varying vec2 vUv; varying vec3 vWorld;
+  void main() { vUv = uv; vec4 w = modelMatrix * vec4(position, 1.0); vWorld = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`;
+const FOG_FRAG = `
+  uniform float uTime; uniform float uFade; uniform vec3 uColor;
+  varying vec2 vUv; varying vec3 vWorld;
+  float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float n(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
+  void main() {
+    vec2 q = vec2(vWorld.x + vWorld.z, vWorld.y) * 0.08;
+    float drift = n(q + vec2(uTime * 0.05, 0.0)) * 0.6 + n(q * 2.3 - vec2(0.0, uTime * 0.03)) * 0.4;
+    float top = 1.0 - smoothstep(0.45, 1.0, vUv.y);
+    float a = top * (0.78 + 0.22 * drift) * uFade;
+    gl_FragColor = vec4(mix(uColor, vec3(1.0), drift * 0.25), a);
+  }`;
+
+/**
+ * Fog walls around the areas still locked. opts: { height(x,z), townR, outerR }.
+ * Returns { object, setOpen(names, animate), update(dt, time) }.
+ */
+export function createFogWalls({ height, townR, outerR }) {
+  const group = new THREE.Group();
+  group.name = 'fogWalls';
+  const walls = new Map();
+  const inner = townR + 1.5, tall = 30;
+  const strip = (pts) => {
+    const pos = [], uv = [], idx = [];
+    pts.forEach((p, i) => {
+      const y = height(p.x, p.z) - 1.5;
+      pos.push(p.x, y, p.z, p.x, y + tall, p.z);
+      uv.push(i / (pts.length - 1), 0, i / (pts.length - 1), 1);
+      if (i) { const k = (i - 1) * 2; idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); }
+    });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    return g;
+  };
+  for (const s of SECTORS) {
+    const mat = new THREE.ShaderMaterial({
+      vertexShader: FOG_VERT, fragmentShader: FOG_FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false,
+      uniforms: { uTime: { value: 0 }, uFade: { value: 1 }, uColor: { value: new THREE.Color(0xdfe9f2) } },
+    });
+    const w = new THREE.Group();
+    const arc = [];
+    for (let d = s.from; d <= s.to + 0.01; d += 2) arc.push({ x: Math.cos((d * Math.PI) / 180) * inner, z: Math.sin((d * Math.PI) / 180) * inner });
+    w.add(new THREE.Mesh(strip(arc), mat));
+    // The two sides, from the town edge out to the mountains.
+    for (const d of [s.from, s.to]) {
+      const side = [];
+      for (let r = inner; r <= outerR; r += 3) side.push({ x: Math.cos((d * Math.PI) / 180) * r, z: Math.sin((d * Math.PI) / 180) * r });
+      w.add(new THREE.Mesh(strip(side), mat));
+    }
+    w.children.forEach((m) => { m.renderOrder = 3; m.frustumCulled = false; });
+    // Where the label sits: the middle of the arc.
+    const mid = ((s.from + s.to) / 2) * (Math.PI / 180);
+    w.userData = { mat, fading: 0, anchor: new THREE.Object3D() };
+    w.userData.anchor.position.set(Math.cos(mid) * (inner + 0.5), height(Math.cos(mid) * inner, Math.sin(mid) * inner) + 4.5, Math.sin(mid) * (inner + 0.5));
+    w.add(w.userData.anchor);
+    walls.set(s.name, w);
+    group.add(w);
+  }
+  return {
+    object: group,
+    walls,
+    /** names: areas that are open. animate: fade the newly opened ones out instead of popping. */
+    setOpen(names, animate = false) {
+      const open = new Set(names);
+      for (const [name, w] of walls) {
+        if (open.has(name)) {
+          if (animate && w.visible) w.userData.fading = 1;
+          else { w.visible = false; w.userData.fading = 0; }
+        } else { w.visible = true; w.userData.fading = 0; w.userData.mat.uniforms.uFade.value = 1; }
+      }
+    },
+    update(dt, time) {
+      for (const w of walls.values()) {
+        if (!w.visible) continue;
+        w.userData.mat.uniforms.uTime.value = time;
+        if (w.userData.fading > 0) {
+          w.userData.fading = Math.max(0, w.userData.fading - dt / 2.5);
+          w.userData.mat.uniforms.uFade.value = w.userData.fading;
+          if (!w.userData.fading) w.visible = false;
+        }
       }
     },
   };

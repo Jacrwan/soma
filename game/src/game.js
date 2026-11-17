@@ -30,6 +30,7 @@ import * as Lore from './lore.js';
 import { startTelemetry, track } from './telemetry.js';
 import { sendFeedback } from './feedback.js';
 import { loadCloud, saveCloud } from './cloudsave.js';
+import { sectorOf, createFogWalls } from './scenery.js';
 
 // --- State ----------------------------------------------------------------------
 // Inside Soma the save belongs to the signed-in student, so two accounts in
@@ -736,8 +737,50 @@ const wild = createWildlands({
   open: (x, z) => world.openGround(x, z),
   trees: () => world.treeSolids(),
   track: (name, props) => track(name, props),
+  reachable: (x, z) => areaOpen(x, z),
+  sector: (x, z) => sectorOf(x, z),
 });
 const outdoors = () => !inRealm() && state.scene === 'earth';
+
+// --- Land that opens as the town grows (S.LAND_AREAS) ----------------------------------
+// The town and the meadow are open from the start; every building opens the next area.
+// Locked areas sit behind a soft fog wall you can't walk through.
+let openSet = new Set(['meadow']);
+/** Can the player be here? The town is always open; out in the country it depends on the area. */
+const areaOpen = (x, z) => Math.hypot(x, z) <= W.TOWN_R + 0.8 || openSet.has(sectorOf(x, z));
+let fogWalls = null, fogLand = -1;
+const fogLabels = new Map();
+function refreshLand(animate = false) {
+  if (fogLand !== world.landIndex()) {
+    if (fogWalls) fogWalls.object.parent?.remove(fogWalls.object);
+    for (const l of fogLabels.values()) l.remove();
+    fogLabels.clear();
+    fogWalls = createFogWalls({ height: (x, z) => world.groundHeight('earth', x, z), townR: W.TOWN_R, outerR: W.ISLAND_RADIUS + 18 });
+    world.earth.add(fogWalls.object);
+    fogLand = world.landIndex();
+    animate = false;
+  }
+  const fresh = S.updateLandOpen(state);
+  openSet = new Set(S.openAreas(state));
+  fogWalls.setOpen([...openSet], animate);
+  // A sign on each fog wall: what it is and how to open it.
+  for (const a of S.LAND_AREAS) {
+    const w = fogWalls.walls.get(a.zone);
+    const locked = !openSet.has(a.zone);
+    let l = fogLabels.get(a.zone);
+    if (locked && !l) { l = fx.label(w.userData.anchor, 0, '', 'board'); fogLabels.set(a.zone, l); }
+    if (locked) l.set(`<em>${a.name}</em>Opens when your town has ${a.buildings} buildings`);
+    else if (l) { l.remove(); fogLabels.delete(a.zone); }
+  }
+  if (animate) for (const a of fresh) {
+    audio.era();
+    ui.banner('New land opened', a.name);
+    const next = S.nextArea(state);
+    setTimeout(() => ui.toast(next ? `The fog lifted. Next: ${next.name}, at ${next.buildings} buildings.` : 'The fog is gone. The whole valley is open.', 'gold'), 1800);
+    track('land_opened', { zone: a.zone });
+  }
+  if (fresh.length) save();
+}
 
 function enterRealm(name) {
   if (build.on) toggleBuild(false);
@@ -1914,7 +1957,7 @@ const nearestEmptyPad = () => nearestOf(state.pads.earth.map((b, i) => (!b && i 
 const nearestBuilding = () => nearestOf(state.pads.earth.map((b, i) => (b ? pads.earth[i].group.position : null)).filter(Boolean));
 const nearestCache = () => nearestOf(cacheObjects.filter((c) => !c.done).map((c) => c.object.position));
 
-const unfoundLandmark = () => nearestOf(world.landmarks().filter((l) => !state.found[S.landmarkKey(state.era, l.id)]));
+const unfoundLandmark = () => nearestOf(world.landmarks().filter((l) => !state.found[S.landmarkKey(state.era, l.id)] && areaOpen(l.x, l.z)));
 // Spawned ahead and to the right: the Librarian walks on your left, so the bubble never hides them.
 // A practice foe for the tutorial: a loose page-wraith (a small walking book) that
 // stands still and bobs. It lives in `raiders` so swings, slams, damage numbers and
@@ -2018,7 +2061,7 @@ const TUTORIAL = [
     done: () => tut.flags.map && !ui.isOpen() },
   { text: 'Exploring clears the fog. Out there: landmarks for my Atlas, wild creatures, and fox camps guarding chests. Follow my lantern!', keys: ['Shift', 'Q'], reveal: 'menu',
     enter: () => { tut.found = S.foundCount(state, state.era); },
-    target: () => unfoundLandmark(), done: () => S.foundCount(state, state.era) > tut.found },
+    target: () => unfoundLandmark() || W.GATE.clone().add(new THREE.Vector3(0, 0, 26)), done: () => S.foundCount(state, state.era) > tut.found || (Math.hypot(player.object.position.x, player.object.position.z) > W.TOWN_R + 9 && areaOpen(player.object.position.x, player.object.position.z)) },
   { text: '', manual: true, reveal: 'all', target: () => { const w = S.nextWonder(state); return w && w.scene === 'earth' ? W.wonderPosition(w.index) : null; } },
 ];
 // The screen starts nearly empty and fills in as Owl teaches each part.
@@ -2730,6 +2773,8 @@ function updatePlayer(dt, time) {
   }
   // No walking into lakes, rivers or the sea.
   if (!inRealm() && !moon && world.groundHeight('earth', p.x, p.z) < -0.45) { p.x = fromX; p.z = fromZ; }
+  // The fog: no walking into land that hasn't opened yet (unless you're somehow already in it).
+  if (!inRealm() && !moon && state.scene === 'earth' && !areaOpen(p.x, p.z) && areaOpen(fromX, fromZ)) { p.x = fromX; p.z = fromZ; }
   const ground = inRealm() ? 0 : world.groundHeight(state.scene, p.x, p.z);
   player.jumpBuf = Math.max(0, (player.jumpBuf || 0) - dt);
   if (player.grounded && (keys.has(' ') || player.jumpBuf > 0) && !ui.isOpen()) {
@@ -2932,6 +2977,7 @@ function frame(nowMs) {
   if (shiftLock) document.body.classList.toggle('shiftlock', !ui.isOpen());
   if (!inRealm() && state.scene === 'earth') moveVillagers(dt, time);
   wild.setActive(outdoors());
+  if (fogWalls && state.scene === 'earth') fogWalls.update(dt, time);
   wild.update(dt, time, player.object.position, !player.down);
   updateCritters(dt, time);
   if (!inRealm() && state.scene === 'earth') { moveShadows(dt, time); movePacks(dt, time); animateLairs(time); }
@@ -2986,6 +3032,7 @@ function frame(nowMs) {
     checkDeadlines();
     checkStory();
     checkLore();
+    if (state.scene === 'earth' && !inRealm()) refreshLand(true); // a new building may open land
   }
   saveTimer -= dt;
   if (saveTimer <= 0) {
@@ -3784,7 +3831,7 @@ const critterGround = (x, z) => (inRealm() ? 0 : world.groundHeight('earth', x, 
 function critterSpot(x, z) {
   const r = Math.hypot(x, z);
   if (inRealm()) return r < realms.radius - 5;
-  return r > CRITTER_HOME.min && r < CRITTER_HOME.max && world.groundHeight('earth', x, z) > 0.15;
+  return r > CRITTER_HOME.min && r < CRITTER_HOME.max && world.groundHeight('earth', x, z) > 0.15 && areaOpen(x, z);
 }
 function spawnCritter() {
   const group = inRealm() ? realms.group : world.earth;
@@ -4735,6 +4782,7 @@ const debugApi = {
 };
 if (import.meta.env?.DEV) window.epoch = debugApi;
 
+refreshLand(false);
 requestAnimationFrame(frame);
 markBooted();
 startTelemetry();

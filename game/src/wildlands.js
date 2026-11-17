@@ -68,11 +68,12 @@ export function createWildlands(ctx) {
     const taken = [];
     const trees = ctx.trees();
     // A spot out in the country: open ground, clear of trees and of what's already placed.
-    const find = (minR, maxR, clear, spacing) => {
+    const find = (minR, maxR, clear, spacing, area = null) => {
       for (let tries = 0; tries < 900; tries++) {
         const a = r() * Math.PI * 2, d = minR + r() * (maxR - minR);
         const x = Math.cos(a) * d, z = Math.sin(a) * d;
         if (!ctx.open(x, z)) continue;
+        if (area && ctx.sector && ctx.sector(x, z) !== area) continue;
         let ok = true;
         for (let k = 0; k < 8 && ok; k++) { const q = polar(clear, k * Math.PI / 4); if (!ctx.open(x + q.x, z + q.z)) ok = false; }
         if (!ok || taken.some((t) => Math.hypot(x - t.x, z - t.z) < t.r + spacing)) continue;
@@ -84,17 +85,17 @@ export function createWildlands(ctx) {
       return null;
     };
     const inner = townR + 10, outer = walkR - 8;
-    const boss = find(inner + 18, outer, 11, 30);
+    const boss = find(inner + 18, outer, 11, 30, 'highlands') || find(inner + 18, outer, 11, 30);
     const camps = [];
     const sizes = [[3, 'rare', -1], [3, 'rare', 0], [4, 'rare', 1], [5, 'epic', 2]];
     sizes.forEach(([count, rarity, lv], i) => {
-      const s = find(inner, outer, 7, 14);
+      const s = (i === 0 ? find(inner, outer, 7, 14, 'meadow') : null) || find(inner, outer, 7, 14);
       if (s) camps.push({ ...s, count, rarity, lv, key: `land${index}:camp:${i}`, alive: 0, awake: false, chest: null });
     });
     const shrines = [];
-    for (let i = 0; i < 2; i++) { const s = find(inner - 4, outer, 3.5, 12); if (s) shrines.push({ ...s, key: `land${index}:shrine:${i}`, name: ['Moss Stones', 'Hunter Stones'][i], orb: null }); }
+    for (let i = 0; i < 2; i++) { const s = (i === 0 ? find(inner - 4, outer, 3.5, 12, 'meadow') : null) || find(inner - 4, outer, 3.5, 12); if (s) shrines.push({ ...s, key: `land${index}:shrine:${i}`, name: ['Moss Stones', 'Hunter Stones'][i], orb: null }); }
     const treasures = [];
-    for (let i = 0; i < 6; i++) { const s = find(inner - 6, outer, 1.6, 12); if (s) treasures.push({ ...s, key: `land${index}:treasure:${i}`, rarity: r() < 0.3 ? 'rare' : 'common', object: null }); }
+    for (let i = 0; i < 6; i++) { const s = (i < 2 ? find(inner - 6, outer, 1.6, 12, 'meadow') : null) || find(inner - 6, outer, 1.6, 12); if (s) treasures.push({ ...s, key: `land${index}:treasure:${i}`, rarity: r() < 0.3 ? 'rare' : 'common', object: null }); }
 
     const solids = [];
     for (const camp of camps) {
@@ -165,6 +166,8 @@ export function createWildlands(ctx) {
 
   // --- Foxes -------------------------------------------------------------------------
   const heroLevel = () => ctx.state().hero.level;
+  // Behind the fog (land that hasn't opened yet): nothing wakes, shows a label or can be used.
+  const reach = (p) => !ctx.reachable || ctx.reachable(p.x, p.z);
   function spawn(x, z, tier, level, camp = null) {
     const scale = tier === 2 ? CFG.bossScale : tier === 1 ? 1.35 : 1;
     const m = createEnemy(CFG.enemy, { scale, tint: tier === 2 ? CFG.bossTint : tier === 1 ? CFG.eliteTint : null });
@@ -340,13 +343,13 @@ export function createWildlands(ctx) {
     if (!land) return;
     const state = ctx.state();
     for (const camp of land.camps) {
-      if (!camp.chest.visible || Math.hypot(p.x - camp.x, p.z - camp.z) > LABEL_R) continue;
+      if (!camp.chest.visible || !reach(camp) || Math.hypot(p.x - camp.x, p.z - camp.z) > LABEL_R) continue;
       const lv = Math.max(1, heroLevel() + camp.lv);
       labels.push(fx.label(camp.chest, 3.4, camp.alive || !camp.awake ? `<em>Level ${lv} fox camp</em>${camp.awake ? camp.alive : camp.count} guarding a ${camp.rarity} chest` : `<em>Camp cleared</em>${camp.rarity} chest`, camp.alive || !camp.awake ? 'boss' : 'studied'));
     }
-    for (const s of land.shrines) if (s.orb.visible && Math.hypot(p.x - s.x, p.z - s.z) < LABEL_R) labels.push(fx.label(s.orb, 1.4, `<em>Shrine</em>${s.name}`, 'studied'));
+    for (const s of land.shrines) if (s.orb.visible && reach(s) && Math.hypot(p.x - s.x, p.z - s.z) < LABEL_R) labels.push(fx.label(s.orb, 1.4, `<em>Shrine</em>${s.name}`, 'studied'));
     const b = land.boss;
-    if (b && !S.exploreDone(state, b.key) && !b.awake && Math.hypot(p.x - b.x, p.z - b.z) < LABEL_R + 20) labels.push(fx.label(b.chestLabelAnchor, 6, '<em>Lair</em>The Alpha sleeps here', 'boss'));
+    if (b && reach(b) && !S.exploreDone(state, b.key) && !b.awake && Math.hypot(p.x - b.x, p.z - b.z) < LABEL_R + 20) labels.push(fx.label(b.chestLabelAnchor, 6, '<em>Lair</em>The Alpha sleeps here', 'boss'));
   }
 
   function ensureLand() {
@@ -389,13 +392,13 @@ export function createWildlands(ctx) {
       // Wake camps (and the Alpha) you walk up to; put far ones to sleep.
       for (const camp of land.camps) {
         const d = Math.hypot(p.x - camp.x, p.z - camp.z);
-        if (!camp.awake && d < WAKE && camp.chest.visible) { wakeCamp(camp); labelTick = 0; } else if (camp.awake && d > SLEEP) { sleepCamp(camp); labelTick = 0; }
+        if (!camp.awake && d < WAKE && camp.chest.visible && reach(camp)) { wakeCamp(camp); labelTick = 0; } else if (camp.awake && d > SLEEP) { sleepCamp(camp); labelTick = 0; }
         if (camp.chest.visible && !camp.alive && camp.awake) camp.chest.scale.setScalar(1 + Math.sin(time * 5) * 0.05);
       }
       const b = land.boss;
       if (b) {
         const d = Math.hypot(p.x - b.x, p.z - b.z);
-        if (!b.awake && d < WAKE) { wakeBoss(b); labelTick = 0; } else if (b.awake && d > SLEEP + 10) { sleepBoss(b); labelTick = 0; }
+        if (!b.awake && d < WAKE && reach(b)) { wakeBoss(b); labelTick = 0; } else if (b.awake && d > SLEEP + 10) { sleepBoss(b); labelTick = 0; }
       }
       enemies = enemies.filter((e) => { const keep = updateEnemy(e, dt, p, alive); if (!keep) e.m.object.parent?.remove(e.m.object); return keep; });
       for (let i = 0; i < enemies.length; i++) {
@@ -416,7 +419,7 @@ export function createWildlands(ctx) {
       for (const s of land.shrines) if (s.orb.visible) s.orb.position.y = s.y + 1.9 + Math.sin(time * 1.8 + s.x) * 0.2;
       for (const t of land.treasures) {
         if (!t.object.visible) continue;
-        const near = Math.hypot(p.x - t.x, p.z - t.z) < 30;
+        const near = Math.hypot(p.x - t.x, p.z - t.z) < 30 && reach(t);
         t.gem.visible = t.beam.visible = near;
         if (near) { t.gem.rotation.y = time * 3; t.gem.position.y = 1.1 + Math.sin(time * 3 + t.x) * 0.15; }
       }

@@ -108,6 +108,7 @@ export function newState(now = Date.now()) {
     story: {}, // story beats seen: id -> true
     week: { claimed: null, streak: 0 }, // the weekly goal: last week claimed, weeks in a row
     found: {}, // landmarks discovered: 'lm:<era>:<id>' -> true
+    landOpen: {}, // 'e<era>' -> areas of the country opened so far (see LAND_AREAS)
     mapSeen: {}, // era -> string of '0'/'1', one per map cell walked near
     createdAt: now,
     lastTick: now,
@@ -329,6 +330,37 @@ export function placeBuilding(state, type, x, z, rot = 0, scene = 'earth') {
   if (!build(state, index, type, scene)) return -1;
   state.padSpots[scene][index] = { x: Math.round(x * 100) / 100, z: Math.round(z * 100) / 100, rot: Math.round(rot * 100) / 100 };
   return index;
+}
+
+// --- Land that opens as the town grows -------------------------------------------
+// A new land starts small: the town and the meadow outside the gate. Each building you
+// put up opens the next area of the country; locked areas sit behind a wall of fog.
+// Once an area is open it stays open (selling a building doesn't close it again).
+export const LAND_AREAS = [
+  { zone: 'meadow', name: 'The Meadow', buildings: 0 },
+  { zone: 'orchard', name: 'The Orchard', buildings: 2 },
+  { zone: 'pond', name: 'The Pond', buildings: 3 },
+  { zone: 'woods', name: 'The Woods', buildings: 4 },
+  { zone: 'highlands', name: 'The Highlands', buildings: 5 },
+];
+/** Areas open in the current land (zone names). */
+export function openAreas(state) {
+  return state.landOpen?.[`e${state.era}`] || ['meadow'];
+}
+/** Opens any areas the town has grown enough for. Returns the newly opened ones. */
+export function updateLandOpen(state) {
+  const key = `e${state.era}`;
+  const open = new Set(openAreas(state));
+  const used = buildingCount(state, 'earth').used;
+  const fresh = [];
+  for (const a of LAND_AREAS) if (!open.has(a.zone) && used >= a.buildings) { open.add(a.zone); fresh.push(a); }
+  (state.landOpen || (state.landOpen = {}))[key] = LAND_AREAS.map((a) => a.zone).filter((z) => open.has(z));
+  return fresh;
+}
+/** The next area still locked, and how many buildings it needs, or null. */
+export function nextArea(state) {
+  const open = new Set(openAreas(state));
+  return LAND_AREAS.find((a) => !open.has(a.zone)) || null;
 }
 
 /** How many buildings are standing, and how many this age allows. */

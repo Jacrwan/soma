@@ -1073,3 +1073,23 @@ test('selling a building gives back half of everything spent on it, plus what is
   // Old saves (no record of what was paid) still sell for half the build plus upgrades.
   assert.strictEqual(S.buildingPaid({ type: 'home', tier: 0, level: 2 }), S.buildCost('home', 0) * 3);
 });
+
+test('the country opens one area at a time as the town grows, and stays open', () => {
+  const s = S.newState();
+  s.coins = 1e9;
+  assert.deepStrictEqual(S.openAreas(s), ['meadow']);
+  assert.deepStrictEqual(S.updateLandOpen(s), []);
+  assert.strictEqual(S.nextArea(s).zone, 'orchard');
+  S.placeBuilding(s, 'home', 30, 30);
+  S.placeBuilding(s, 'home', 34, 30);
+  assert.deepStrictEqual(S.updateLandOpen(s).map((a) => a.zone), ['orchard']);
+  S.placeBuilding(s, 'home', 38, 30);
+  S.placeBuilding(s, 'home', 42, 30);
+  assert.deepStrictEqual(S.updateLandOpen(s).map((a) => a.zone), ['pond', 'woods']);
+  const i = s.pads.earth.findIndex(Boolean);
+  S.sellBuilding(s, i);
+  S.updateLandOpen(s);
+  assert.ok(S.openAreas(s).includes('woods'), 'selling does not close land again');
+  s.era = 1;
+  assert.deepStrictEqual(S.openAreas(s), ['meadow'], 'a new land starts small again');
+});
