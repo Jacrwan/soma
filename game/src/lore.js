@@ -287,7 +287,7 @@ export const BEATS = {
 
   // When an assignment is due within 24 hours and has 0% study progress / not opened.
   proDeadline: [
-    ['pro', "Psst. That one's due tomorrow. Have you considered: not thinking about it?"],
+    ['pro', "Psst. That one's due in less than a day. Have you considered: not thinking about it?"],
     ['pro', "Look how nice the clouds are. Those clouds won't be here later. The assignment will."],
     ['owl', "Twenty minutes on it now. Just twenty. Watch how much smaller it gets."],
   ],

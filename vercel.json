@@ -5,6 +5,7 @@
     { "source": "/.well-known/oauth-protected-resource/:path*", "destination": "/api/import-schedule?connector=resource" },
     { "source": "/.well-known/oauth-authorization-server", "destination": "/api/import-schedule?connector=server" },
     { "source": "/.well-known/oauth-authorization-server/:path*", "destination": "/api/import-schedule?connector=server" },
+    { "source": "/api/practice/:op(stream|source)", "destination": "/api/practice?op=:op" },
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/game", "destination": "/game.html" },
     { "source": "/privacy", "destination": "/privacy.html" },

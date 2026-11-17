@@ -1024,3 +1024,17 @@ test('setKind: the student overrides the guess, and old saves still load', () =>
   delete old.school.kinds;
   assert.deepStrictEqual(S.deserialize(JSON.stringify(old), NOW).school.kinds, {});
 });
+
+test('the sample semester never costs anything: open work rolls a week on, and sample exams never hit the gate', () => {
+  const s = S.newState();
+  const t0 = Date.UTC(2026, 10, 16, 12);
+  S.syncSchool(s, S.demoSemester(t0), t0, { source: 'demo' });
+  const coins = (s.coins = 1000);
+  const later = t0 + 3 * 86400000;
+  assert.ok(S.rollDemo(s, later));
+  assert.strictEqual(S.lateItems(s, later).length, 0);
+  assert.strictEqual(S.chargeLate(s, later).coins, 0);
+  assert.strictEqual(s.coins, coins);
+  for (const a of Object.values(s.school.items)) if (!a.submitted) assert.ok(a.dueAt > later + 2 * 3600000, `${a.name} moved past now`);
+  assert.deepStrictEqual(S.resolveExams(s, later + 30 * 86400000).filter((e) => S.isSample(e.item)), []);
+});

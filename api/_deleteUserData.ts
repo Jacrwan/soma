@@ -15,6 +15,7 @@ export const USER_TABLES = [
   'grade_books',
   'brain_dump_items',
   'canvas_snapshots',
+  'epoch_saves',
   'todo_sessions',
   'timer_sessions',
   'active_timer',

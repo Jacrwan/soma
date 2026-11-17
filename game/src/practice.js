@@ -1,59 +1,67 @@
 // Practice questions and study sets written by Claude, always on a server.
 // Inside Soma (somastudy.app/game) the game shares the student's sign-in, so it
-// can read their course notes from Supabase and ask Soma's /api/chat (the
-// 'practice' purpose: no memory, nothing learned, billed to the student's AI
-// budget). In dev, the Epoch/Soma vite server answers /api/practice itself
-// (server/practice-api.js), so studying works with no sign-in on localhost.
+// can read their course notes from Supabase and ask Soma's /api/practice (a
+// Vercel function: signed-in students only, billed to their AI budget, no memory,
+// nothing learned). In dev, the Epoch/Soma vite server answers /api/practice
+// itself (server/practice-api.js), so studying works with no sign-in on localhost.
+// Both answer the same URLs with the same shapes; GET /api/practice says which
+// one is there ({ signin: true } on Soma's).
+
+import { getSession, readSession } from './auth.js';
 
 const SUPABASE_URL = import.meta.env?.VITE_SUPABASE_URL || '';
 const SUPABASE_KEY = import.meta.env?.VITE_SUPABASE_ANON_KEY || '';
 const NOTES_CHARS = 14000; // course material sent with each request
 const STOP = new Set('the and for with from that this into your are was were will exam midterm final test quiz unit part chapter week'.split(' '));
 
-/** The signed-in Soma session, or null. */
-function session() {
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (!/^sb-.+-auth-token$/.test(key)) continue;
-      const data = JSON.parse(localStorage.getItem(key));
-      const s = data?.currentSession || data;
-      if (s?.access_token) return { token: s.access_token, expiresAt: (s.expires_at || 0) * 1000 };
-    }
-  } catch { /* no session */ }
-  return null;
-}
-
-// Where the AI lives. In dev (standalone Epoch, or Soma's local vite) the dev
-// server answers /api/practice with its own server-side key, no sign-in. In
-// production there is no such route, so the game uses Soma's signed-in /api/chat.
-let probe = null; // { at, local }
-async function localAI() {
-  if (probe && (probe.local?.ready || Date.now() - probe.at < 15000)) return probe.local;
-  let local = null;
+// Where the AI lives, asked once per page: GET /api/practice answers
+// { service:'epoch-practice', ready, model, signin? }. A missing endpoint (an
+// older Soma deploy) is remembered for the session, and the game falls back to
+// Soma's /api/chat. Only a network failure, or a dev endpoint without a key
+// yet, is asked again (after 15 s).
+let probe = null; // { at, endpoint, final }
+async function endpoint() {
+  if (probe && (probe.final || Date.now() - probe.at < 15000)) return probe.endpoint;
+  let found = null, final = false;
   try {
     const res = await fetch('/api/practice', { headers: { accept: 'application/json' } });
+    final = true;
     if (res.ok && (res.headers.get('content-type') || '').includes('json')) {
       const data = await res.json();
-      if (data?.service === 'epoch-practice') local = data;
+      if (data?.service === 'epoch-practice') { found = data; final = Boolean(data.ready || data.signin); }
     }
-  } catch { /* no dev endpoint */ }
-  probe = { at: Date.now(), local };
-  return local;
+  } catch { /* offline, or no server: ask again later */ }
+  probe = { at: Date.now(), endpoint: found, final };
+  return found;
 }
 
+const MB = 1024 * 1024;
+const fileLimit = (ep) => (Number(ep?.maxFileBytes) > 0 ? Number(ep.maxFileBytes) : 20 * MB);
+const tooLarge = (limit) => `That file is over ${Math.round(limit / MB)} MB. Try a smaller file, or split it.`;
+
 /**
- * Whether AI studying can run here: { ok, via: 'local'|'soma', label } or
+ * Whether AI studying can run here: { ok, via: 'local'|'soma'|'chat', label } or
  * { ok: false, reason } with a sentence a student can act on.
+ * local: the dev server (no sign-in). soma: Soma's /api/practice. chat: an older
+ * Soma deploy without it, through /api/chat (short sets only, no uploads).
  */
 export async function practiceStatus() {
-  const local = await localAI();
-  if (local?.ready) return { ok: true, via: 'local', label: 'Claude, running on this computer' };
-  const s = session();
-  if (s && !(s.expiresAt && s.expiresAt < Date.now() + 30_000)) return { ok: true, via: 'soma', label: 'Soma AI' };
-  if (local) return { ok: false, reason: 'The AI isn’t set up on this computer yet: the dev server found no EPOCH_ANTHROPIC_API_KEY. Add it to .env.development.local and restart the server.' };
-  if (s) return { ok: false, reason: 'Your Soma sign-in has expired. Open Soma once to refresh it, then come back.' };
+  const ep = await endpoint();
+  if (ep && !ep.signin) {
+    if (ep.ready) return { ok: true, via: 'local', label: 'Claude, running on this computer' };
+    return { ok: false, reason: 'The AI isn’t set up on this computer yet: the dev server found no EPOCH_ANTHROPIC_API_KEY. Add it to .env.development.local and restart the server.' };
+  }
+  if (ep && !ep.ready) return { ok: false, reason: 'The AI isn’t set up on the server yet.' };
+  const s = await getSession();
+  if (s) return { ok: true, via: ep ? 'soma' : 'chat', label: 'Soma AI' };
+  if (readSession()) return { ok: false, reason: 'Your Soma sign-in has expired. Open Soma once to refresh it, then come back.' };
   return { ok: false, reason: 'AI studying runs through Soma. Open Epoch from Soma (somastudy.app/game) while signed in.' };
+}
+
+/** Request headers for an AI call: the Soma token when the route needs it. */
+async function aiHeaders(via, json = true) {
+  const s = via === 'local' ? null : await getSession();
+  return { ...(json ? { 'content-type': 'application/json' } : {}), ...(s ? { Authorization: `Bearer ${s.token}` } : {}) };
 }
 
 const words = (text) => (String(text).toLowerCase().match(/[a-z0-9]{3,}/g) || []).filter((w) => !STOP.has(w));
@@ -121,12 +129,17 @@ const ERRORS = {
   overloaded: 'The AI is busy right now. Wait a minute and try again.',
   request_timeout: 'The AI took too long to answer. Try again, maybe with fewer items.',
   offline: 'Couldn’t reach the AI. Check your internet connection and try again.',
-  bad_key: 'The AI key on this computer was rejected. Check EPOCH_ANTHROPIC_API_KEY and restart the dev server.',
+  bad_key: 'The AI key was rejected. Locally: check EPOCH_ANTHROPIC_API_KEY and restart the dev server.',
+  auth_service_unavailable: 'Couldn’t check your Soma sign-in just now. Try again in a moment.',
+  service_unavailable: 'The AI couldn’t do that right now. Try again in a moment.',
+  upstream_unavailable: 'The AI couldn’t do that right now. Try again in a moment.',
+  invalid_ai_response: 'The AI came back empty. Try again.',
+  invalid_request: 'That request was too big or incomplete. Try again with less text.',
   server_not_configured: 'The AI isn’t set up on the server yet.',
   context_too_long: 'That’s too much text for one go. Paste fewer notes and try again.',
   response_incomplete: 'The answer got cut off. Try again with fewer items.',
   refused: 'The AI wouldn’t write material on that. Try wording the topic differently.',
-  file_too_large: 'That file is over 20 MB. Try a smaller file, or split it.',
+  file_too_large: 'That file is too big to upload. Try a smaller file, or split it.',
   image_too_large: 'That photo is over 5 MB. Try a smaller photo or a screenshot.',
   video_file: 'Video files can’t be read yet. Paste a YouTube link instead, or paste the transcript as text.',
   bad_video_link: 'That doesn’t look like a YouTube link. Copy the link from the video’s Share button.',
@@ -136,29 +149,27 @@ const ERRORS = {
   old_format: 'That’s an older file format. Save it as PDF (or .docx / .pptx) and upload that.',
   empty_source: 'There wasn’t enough text in that to study from. Try another file, or paste your notes.',
   unreadable_file: 'Couldn’t read that file. If it’s a PDF, try exporting it again, or paste the text.',
-  local_only: 'Uploads work on the local build for now. Paste your notes as text instead.',
+  local_only: 'Uploads aren’t available here yet. Paste your notes as text instead.',
 };
 const NO_REPLY = 'Couldn’t reach the AI. Check your connection and try again.';
 const UNREADABLE = 'The AI sent back something unreadable. Try again.';
 
-/** One call to the AI (local dev endpoint or Soma's /api/chat). Returns the parsed JSON it wrote. */
+/** One call to the AI (/api/practice, or /api/chat on an older Soma). Returns the parsed JSON it wrote. */
 async function askAI(system, content) {
   const status = await practiceStatus();
   if (!status.ok) throw new Error(status.reason);
-  const local = status.via === 'local';
-  const s = local ? null : session();
   let res;
   try {
-    res = await fetch(local ? '/api/practice' : '/api/chat', {
+    res = await fetch(status.via === 'chat' ? '/api/chat' : '/api/practice', {
       method: 'POST',
-      headers: { 'content-type': 'application/json', ...(s ? { Authorization: `Bearer ${s.token}` } : {}) },
+      headers: await aiHeaders(status.via),
       body: JSON.stringify({ messages: [{ role: 'user', content }], systemPrompt: system, purpose: 'practice' }),
     });
   } catch { throw new Error(NO_REPLY); }
   let data = null;
   try { data = await res.json(); } catch { /* not JSON */ }
   if (!res.ok) {
-    if (local && res.status === 404) probe = null; // dev server restarted without the endpoint
+    if (status.via !== 'chat' && res.status === 404) probe = null; // the endpoint went away (dev server restarted without it)
     throw new Error(ERRORS[data?.error] || (res.status === 401 ? ERRORS.auth_required : 'The AI couldn’t do that right now. Try again in a moment.'));
   }
   const text = (data?.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
@@ -167,7 +178,7 @@ async function askAI(system, content) {
 
 /** Asks the AI for a round of questions on an item (or on a course when item is free study). */
 export async function makePractice(item, count = 5, topic = null) {
-  const s = session();
+  const s = await getSession();
   let notes = { text: '', files: [] };
   if (s) try { notes = await courseNotes(topic ? { ...item, name: `${topic} ${topic} ${item.name}` } : item, s.token); } catch { /* questions without notes still work */ }
   const ask = `${notes.text ? `Course notes:\n${notes.text}\n\n` : ''}Write ${count} practice questions ${topic ? `on the topic "${topic}" ` : ''}for "${item.name}" in ${item.courseName || 'this course'}.`;
@@ -178,8 +189,8 @@ export async function makePractice(item, count = 5, topic = null) {
 }
 
 // --- Study Hall: sets built from what the student wants to study ----------------------
-// Every set comes from the AI on a server (askAI: the dev server's /api/practice,
-// or Soma's /api/chat with the 'practice' purpose); the browser never sees a key.
+// Every set comes from the AI on a server (askAI: /api/practice, from the dev
+// server or Soma); the browser never sees a key.
 // The student's own notes ride along: whatever they pasted, plus (when signed in
 // to Soma) the Soma documents that best match the topic.
 
@@ -202,7 +213,7 @@ ${SET_PROMPTS[mode]}`;
  * cards | explain | problems. Returns { title, files, ...items } with bad entries dropped.
  */
 export async function makeStudySet({ topic = '', course = '', item = null, notes = '' }, mode = 'quiz', count = 8, level = 'mixed') {
-  const s = session();
+  const s = await getSession();
   let found = { text: '', files: [] };
   const lookup = item || { name: topic, courseName: course, courseId: '' };
   if (s) try { found = await courseNotes(topic ? { ...lookup, name: `${topic} ${topic} ${lookup.name || ''}` } : lookup, s.token); } catch { /* without notes is fine */ }
@@ -247,16 +258,18 @@ const toBase64 = (file) => new Promise((resolve, reject) => {
 export async function readMaterial({ file = null, url = '' }) {
   const status = await practiceStatus();
   if (!status.ok) throw new Error(status.reason);
-  if (status.via !== 'local') throw new Error(ERRORS.local_only);
-  if (file && file.size > 20 * 1024 * 1024) throw new Error(ERRORS.file_too_large);
+  if (status.via === 'chat') throw new Error(ERRORS.local_only);
+  const limit = fileLimit(probe?.endpoint);
+  if (file && file.size > limit) throw new Error(tooLarge(limit));
   const body = file ? { kind: 'file', name: file.name, data: await toBase64(file) } : { kind: 'video', url };
   let res;
   try {
-    res = await fetch('/api/practice/source', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    res = await fetch('/api/practice/source', { method: 'POST', headers: await aiHeaders(status.via), body: JSON.stringify(body) });
   } catch { throw new Error(NO_REPLY); }
   let data = null;
   try { data = await res.json(); } catch { /* not JSON */ }
-  if (!res.ok || data?.error) throw new Error(ERRORS[data?.error] || (res.status === 413 ? ERRORS.file_too_large : 'Couldn’t read that. Try again in a moment.'));
+  if (res.status === 413 || data?.error === 'file_too_large') throw new Error(tooLarge(limit));
+  if (!res.ok || data?.error) throw new Error(ERRORS[data?.error] || (res.status === 401 ? ERRORS.auth_required : 'Couldn’t read that. Try again in a moment.'));
   return data;
 }
 
@@ -317,9 +330,10 @@ export function parseLine(line) {
 }
 
 /**
- * Streams one kit request. onLine(obj) gets each JSON line as it arrives.
- * Locally it uses /api/practice/stream; inside Soma (signed in) it falls back to
- * one /api/chat call and replays the lines. signal: an AbortSignal.
+ * Streams one kit request from /api/practice/stream (the dev server, or Soma's
+ * signed-in route). onLine(obj) gets each JSON line as it arrives. On an older
+ * Soma deploy without that route it falls back to one /api/chat call and
+ * replays the lines. signal: an AbortSignal.
  */
 async function streamKit(text, ask, onLine, { speed = 'best', signal } = {}) {
   const status = await practiceStatus();
@@ -327,20 +341,20 @@ async function streamKit(text, ask, onLine, { speed = 'best', signal } = {}) {
   const material = String(text).slice(0, KIT_TEXT);
   let error = null;
   const take = (line) => { const o = parseLine(line); if (!o) return; if (o.__error) error = o.__error; else onLine(o); };
-  if (status.via !== 'local') {
+  if (status.via === 'chat') {
     const out = await askAIText(KIT_SYSTEM, `<material>\n${material}\n</material>\n\n${ask}`);
     out.split('\n').forEach(take);
     return;
   }
   let res;
   try {
-    res = await fetch('/api/practice/stream', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ purpose: 'practice', systemPrompt: KIT_SYSTEM, material, ask, speed }) });
+    res = await fetch('/api/practice/stream', { method: 'POST', signal, headers: await aiHeaders(status.via), body: JSON.stringify({ purpose: 'practice', systemPrompt: KIT_SYSTEM, material, ask, speed }) });
   } catch (err) { if (err?.name === 'AbortError') throw err; throw new Error(NO_REPLY); }
   if (!res.ok || !res.body) {
     let data = null;
     try { data = await res.json(); } catch { /* not JSON */ }
     if (res.status === 404) probe = null;
-    throw new Error(ERRORS[data?.error] || 'The AI couldn’t do that right now. Try again in a moment.');
+    throw new Error(ERRORS[data?.error] || (res.status === 401 ? ERRORS.auth_required : 'The AI couldn’t do that right now. Try again in a moment.'));
   }
   const reader = res.body.getReader();
   const dec = new TextDecoder();
@@ -355,12 +369,11 @@ async function streamKit(text, ask, onLine, { speed = 'best', signal } = {}) {
   take(buf);
   if (error && error !== 'cancelled') throw new Error(ERRORS[error] || 'The AI stopped partway. Try again.');
 }
-/** Soma's /api/chat (signed in), returning the raw text. */
+/** Soma's /api/chat (signed in; older deploys only), returning the raw text. */
 async function askAIText(system, content) {
-  const s = session();
   let res;
   try {
-    res = await fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json', ...(s ? { Authorization: `Bearer ${s.token}` } : {}) }, body: JSON.stringify({ messages: [{ role: 'user', content }], systemPrompt: system, purpose: 'practice' }) });
+    res = await fetch('/api/chat', { method: 'POST', headers: await aiHeaders('chat'), body: JSON.stringify({ messages: [{ role: 'user', content }], systemPrompt: system, purpose: 'practice' }) });
   } catch { throw new Error(NO_REPLY); }
   let data = null;
   try { data = await res.json(); } catch { /* not JSON */ }

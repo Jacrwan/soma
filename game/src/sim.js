@@ -148,10 +148,32 @@ export function setIgnored(state, id, on, now = Date.now()) {
   if (p) p.at = now;
 }
 
-/** Work that is past due, not handed in, and not ignored. */
+/** Work that is past due, not handed in, and not ignored. The sample semester never counts. */
 export function lateItems(state, now = Date.now()) {
   // An exam is never "late": exam day settles it instead (resolveExams).
-  return Object.values(state.school.items).filter((a) => a.kind !== 'boss' && !a.submitted && !a.excused && a.dueAt && a.dueAt < now && !isIgnored(state, a));
+  return Object.values(state.school.items).filter((a) => a.kind !== 'boss' && !a.submitted && !a.excused && a.dueAt && a.dueAt < now && !isIgnored(state, a) && !isSample(a));
+}
+export const isSample = (item) => String(item?.id || '').startsWith('demo:');
+
+/**
+ * The sample semester can't be handed in on Canvas, so it must never cost
+ * anything: work still open that's within two hours of due slides a week
+ * later (a fresh week of practice), and any old warnings or penalties go.
+ * Returns true when something moved.
+ */
+export function rollDemo(state, now = Date.now()) {
+  const school = state.school;
+  if (school.source !== 'demo') return false;
+  let moved = false;
+  for (const item of Object.values(school.items)) {
+    if (!isSample(item) || item.submitted || !item.dueAt || item.dueAt > now + 2 * HOUR) continue;
+    item.dueAt += Math.max(1, Math.ceil((now + 2 * HOUR - item.dueAt) / (7 * DAY))) * 7 * DAY;
+    delete school.penalty[item.id];
+    delete school.warned[item.id];
+    if (school.seen[item.id]) delete school.seen[item.id].exam;
+    moved = true;
+  }
+  return moved;
 }
 
 /** 'late', 'critical', 'urgent' or null. */
@@ -1006,7 +1028,7 @@ export function examOutcome(armor) {
 export function resolveExams(state, now = Date.now()) {
   const events = [];
   for (const item of Object.values(state.school.items)) {
-    if (item.kind !== 'boss' || !item.dueAt) continue;
+    if (item.kind !== 'boss' || !item.dueAt || isSample(item)) continue;
     const seen = state.school.seen[item.id];
     if (!seen || seen.exam || seen.boss) continue;
     if (item.excused || isIgnored(state, item)) continue;
@@ -1221,8 +1243,9 @@ export const STORY = [
   { title: 'Pack leader', text: 'Reach level 8, then beat the Alpha in its lair out in the country', need: 1, have: (s) => (s.stats.realmBosses.wilds ? 1 : 0), reward: { gear: 'epic', slot: 'armor' } },
   { title: 'Exam season', text: 'Study enough that an exam boss breaks on your gate', need: 1, have: (s) => s.stats.bossesBeaten, reward: { gear: 'epic', slot: 'charm' } },
   { title: 'Honor roll', text: 'Reach level 14', need: 14, have: (s) => s.hero.level, reward: { gear: 'legendary', slot: 'weapon' } },
-  { title: 'To the stars', text: 'Build the Star Gate on the Moon', need: 1, have: (s) => (s.wonders.includes(6) ? 1 : 0), reward: { gear: 'legendary', slot: 'armor' } },
-  { title: 'The last guardian', text: 'Beat the Core Guardian on Kepler Reach', need: 1, have: (s) => (s.stats.realmBosses.nova ? 1 : 0), reward: { gear: 'legendary', slot: 'charm', coins: 50000 } },
+  // Season 1 ends with the Bronze Age, so the story does too (the Moon and the Star Gate come in a later season).
+  { title: 'Scholar', text: 'Study 50 hours in total', need: 3000, have: (s) => s.study.total, reward: { gear: 'legendary', slot: 'armor' } },
+  { title: 'Season 1 complete', text: 'Raise the Great Pyramid and finish Season 1', need: 1, have: (s) => (seasonDone(s) ? 1 : 0), reward: { gear: 'legendary', slot: 'charm', coins: 50000 } },
 ];
 
 export function storyStatus(state) {

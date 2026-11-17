@@ -996,11 +996,11 @@ export function createWorld(scene, renderer) {
     skyUniforms.sunColor.value.copy(sunc).multiplyScalar(0.18 + 0.82 * light);
     sun.color.copy(sunc);
     // Moonlight: the sun fades to a dim blue key light, never to black.
-    sun.intensity = skyBase.sunPower * (0.12 + 0.88 * light);
-    hemi.intensity = skyBase.hemiPower * (0.38 + 0.62 * light);
+    sun.intensity = skyBase.sunPower * (0.24 + 0.76 * light); // bright enough at night to play: moonlit, not black
+    hemi.intensity = skyBase.hemiPower * (0.62 + 0.38 * light);
     hemi.color.copy(mixc(skyBase.hemi, NIGHT.hemi, dark));
     hemi.groundColor.copy(mixc(skyBase.ground, NIGHT.ground, dark));
-    scene.environmentIntensity = skyBase.env * (0.3 + 0.7 * light);
+    scene.environmentIntensity = skyBase.env * (0.5 + 0.5 * light);
     if (scene.fog) scene.fog.color.copy(horizon);
     nightStars.material.opacity = Math.max(0, (0.55 - light) / 0.55) * 0.9;
   }

@@ -291,6 +291,7 @@ export function createStudyHall() {
   addEventListener('keydown', (e) => {
     if (root.hidden) return;
     if (e.key === 'Escape') { e.preventDefault(); close(); }
+    else if (keyHandler && !(e.target instanceof HTMLTextAreaElement) && !(e.target instanceof HTMLInputElement) && !e.repeat) keyHandler(e);
     e.stopImmediatePropagation();
   }, true);
 
@@ -406,6 +407,7 @@ export function createStudyHall() {
       w.stop();
       if (!w.live()) return;
       const kit = addKit(ctx.state, { ...info, source: { kind: src.kind, name: tab === 'file' ? draft.file.name : src.title }, chars: src.text.length, cut: Boolean(src.cut) }, src.text);
+      ctx.track?.('kit_made', { kind: src.kind });
       ctx.save();
       Object.assign(draft, { file: null, text: '', url: '' });
       openKit(kit.id);
@@ -421,7 +423,7 @@ export function createStudyHall() {
     if (!kit) return home();
     kit.opened = Date.now();
     const text = kitText(kit.id);
-    const deck = kit.deckId && ctx.state.decks?.[kit.deckId];
+    const deck = kit.deckId && ctx.state.decks?.[kit.deckId]?.cards.length ? ctx.state.decks[kit.deckId] : null;
     const due = deck ? dueCards(ctx.state, Date.now(), deck.id).length : 0;
     const part = (icon, name, made, info, buttons) => h('div', { class: `sh-part ${made ? 'made' : ''}` }, h('i', { text: icon }), h('b', { text: name }), h('small', { text: info }), buttons);
     const missing = !text;
@@ -464,8 +466,9 @@ export function createStudyHall() {
     const live = { items: [], done: false, error: null, wake: null };
     const mine = openCount;
     const wake = () => { const w = live.wake; live.wake = null; if (w && mine === openCount && !root.hidden) w(); };
-    live.push = (x) => { live.items.push(x); wake(); };
-    live.finish = (err = null) => { live.done = true; live.error = err; wake(); };
+    const tick = () => { if (mine === openCount && !root.hidden) live.tick?.(); };
+    live.push = (x) => { live.items.push(x); tick(); wake(); };
+    live.finish = (err = null) => { live.done = true; live.error = err; tick(); wake(); };
     return live;
   }
   /** Shows a "writing the next one" screen until item i exists (or the stream ends). */
@@ -479,6 +482,7 @@ export function createStudyHall() {
 
   async function makePart(kit, part) {
     const c = ctx; // the stream may outlive this screen (or the Study Hall being open)
+    c.track?.('kit_part', { part });
     const ac = new AbortController();
     const names = { cards: '12 flashcards', questions: '10 practice questions', guide: 'your study guide' };
     const w = waiting(kit.title, `Claude is writing ${names[part]}…`, 'Straight from your material. The first one shows up in a couple of seconds.', () => { ac.abort(); openKit(kit.id); });
@@ -507,11 +511,18 @@ export function createStudyHall() {
         } else if (part === 'questions') { kit.questions.push(item); live.push(item); }
         else if (item.kind === 'summary') { kit.guide.summary = item.text; live.push(item); } else { const { kind, ...t } = item; void kind; kit.guide.topics.push(t); live.push(item); }
         if (part !== 'guide' || item.kind === 'topic' || live.items.length > 1) begin();
+        if (live.items.length % 3 === 1) c.save(); // keep what has arrived if the page goes away
       });
       c.save();
       live.finish();
       begin();
     } catch (err) {
+      // Nothing arrived: don't leave an empty deck, question set or guide behind.
+      if (!live.items.length) {
+        if (part === 'cards' && !deck0 && kit.deckId) { deleteDeck(c.state, kit.deckId); kit.deckId = null; }
+        if (part === 'questions') kit.questions = null;
+        if (part === 'guide') kit.guide = null;
+      }
       c.save();
       if (err?.name === 'AbortError') return;
       live.finish(err);
@@ -615,6 +626,7 @@ export function createStudyHall() {
         next.hidden = false;
         ctx.onAnswer?.(source, q, ok);
       } })));
+      if (live) live.tick = () => { const el = root.querySelector('.sh-head small'); if (el) el.textContent = `Question ${i + 1} of ${total()} · ${right} right`; };
       frame(kit.title, `Question ${i + 1} of ${total()} · ${right} right`, bar(i, Math.max(list.length, 1)),
         h('div', { class: 'sh-tags' }, tag(q.level, q.level), tag(q.topic), tag(q.src, 'src')),
         h('div', { class: 'sh-q', html: q.q }), choices, why, next);
@@ -651,7 +663,7 @@ export function createStudyHall() {
       const { deck, card } = entry;
       let flipped = false;
       const face = h('div', { class: 'sh-flip', onclick: () => flip() });
-      const paint = () => face.replaceChildren(h('small', { text: flipped ? 'Back' : 'Front · tap to flip' }), h('div', { class: 'sh-face', html: flipped ? card.back : card.front }), flipped && card.src ? tag(card.src, 'src') : null);
+      const paint = () => face.replaceChildren(...[h('small', { text: flipped ? 'Back' : 'Front · tap to flip' }), h('div', { class: 'sh-face', html: flipped ? card.back : card.front }), flipped && card.src ? tag(card.src, 'src') : null].filter(Boolean));
       paint();
       const rate = h('div', { class: 'sh-rate', hidden: true },
         h('button', { class: 'again', text: 'Again', onclick: () => grade('again') }),
@@ -664,8 +676,9 @@ export function createStudyHall() {
         i += 1;
         step();
       };
-      const more = live && !live.done ? ' · more coming' : '';
-      frame(title, `Card ${i + 1} of ${size()}${more}`, bar(i, Math.max(size(), 1)), card.topic ? h('div', { class: 'sh-tags' }, tag(card.topic)) : null, face, rate,
+      const sub = () => `Card ${i + 1} of ${size()}${live && !live.done ? ' · more coming' : ''}`;
+      if (live) live.tick = () => { const el = root.querySelector('.sh-head small'); if (el) el.textContent = sub(); };
+      frame(title, sub(), bar(i, Math.max(size(), 1)), card.topic ? h('div', { class: 'sh-tags' }, tag(card.topic)) : null, face, rate,
         h('div', { class: 'sh-row' }, h('p', { class: 'sh-note', style: 'flex:1', text: 'Space flips · 1 Again · 2 Good · 3 Easy' }), h('button', { class: 'sh-ghost', text: 'Stop', onclick: () => { ctx.save(); back(); } })));
       keyHandler = (e) => { if (e.key === ' ') { e.preventDefault(); flip(); } else if (flipped && '123'.includes(e.key)) grade(['again', 'good', 'easy'][Number(e.key) - 1]); };
     };
@@ -679,7 +692,6 @@ export function createStudyHall() {
     step();
   }
   let keyHandler = null;
-  addEventListener('keydown', (e) => { if (!root.hidden && keyHandler && !(e.target instanceof HTMLTextAreaElement) && !(e.target instanceof HTMLInputElement)) keyHandler(e); });
 
   return {
     isOpen: () => !root.hidden,

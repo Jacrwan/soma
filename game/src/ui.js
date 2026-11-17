@@ -36,6 +36,25 @@ export function timeLeft(ms) {
   return ms < 0 ? `${text} late` : text;
 }
 
+const toastQ = [];
+const recentToasts = new Map();
+let toastBusy = false;
+function pumpToasts() {
+  if (toastBusy || !toastQ.length) return;
+  const box = document.getElementById('toasts');
+  if (!box) return;
+  if (box.children.length >= 2) { setTimeout(pumpToasts, 600); return; }
+  const { text, kind } = toastQ.shift();
+  const node = document.createElement('div');
+  node.className = `toast ${kind}`;
+  node.textContent = text;
+  box.append(node);
+  setTimeout(() => node.classList.add('out'), 3600);
+  setTimeout(() => node.remove(), 4000);
+  toastBusy = true;
+  setTimeout(() => { toastBusy = false; pumpToasts(); }, 900);
+}
+
 export function createUI(on) {
   let open = null;
   let lastCoins = null;
@@ -249,12 +268,13 @@ export function createUI(on) {
       }
     },
 
+    // Toasts queue up: two on screen at most, a beat apart, and repeats within a few seconds are dropped.
     toast(text, kind = '') {
-      const node = el('div', { class: `toast ${kind}`, text });
-      $('toasts').append(node);
-      while ($('toasts').children.length > 4) $('toasts').firstChild.remove();
-      setTimeout(() => node.classList.add('out'), 3600);
-      setTimeout(() => node.remove(), 4000);
+      const now = performance.now();
+      if (toastQ.some((t) => t.text === text) || recentToasts.get(text) > now - 6000) return;
+      recentToasts.set(text, now);
+      toastQ.push({ text, kind });
+      pumpToasts();
     },
 
     banner(small, big) {
@@ -340,7 +360,7 @@ export function createUI(on) {
         el('h3', { text: 'Colour' }), section('color:', color), el('h3', { text: 'Hat' }), section('hat:', hat));
     },
 
-    school({ source, connected, groups, chests, synced, onDemo, onClear, onStudy, onIgnore }) {
+    school({ source, connected, groups, chests, synced, onDemo, onClear, onStudy, onIgnore, onHandIn }) {
       const describe = { none: 'Not connected', demo: 'Sample semester', soma: 'Soma for Canvas', manual: 'Your own list' }[source];
       const rows = groups.flatMap((g) => [
         el('div', { class: 'course', text: g.course }),
@@ -350,7 +370,8 @@ export function createUI(on) {
             a.submitted ? null : el('div', { class: 'bar study', title: 'Studied' }, el('i', { style: `width:${Math.round(a.studied * 100)}%` }))),
           a.submitted ? null : el('div', { class: 'do' },
             a.ignored ? null : el('button', { class: 'btn small', text: a.studied >= 1 ? 'Study more' : 'Study', onclick: () => onStudy(a.id) }),
-            el('button', { class: 'btn small', title: a.ignored ? 'Count this assignment again' : 'Nothing to hand in for this one? Stop its warnings and losses.', text: a.ignored ? 'Unignore' : 'Ignore', onclick: () => onIgnore(a.id, !a.ignored) })))),
+            a.sample && onHandIn ? el('button', { class: 'btn small primary', title: 'Sample work: pretend you handed it in on Canvas', text: 'Hand in', onclick: () => onHandIn(a.id) })
+              : el('button', { class: 'btn small', title: a.ignored ? 'Count this assignment again' : 'Nothing to hand in for this one? Stop its warnings and losses.', text: a.ignored ? 'Unignore' : 'Ignore', onclick: () => onIgnore(a.id, !a.ignored) })))),
       ]);
       panel({ title: 'Canvas', subtitle: `${describe}${connected ? ' · extension found' : ''}. Every assignment is a walking book marching on your gate; hand it in on Canvas and it's gone. Late work costs 1% of your coins and some XP every hour until it's in. Ignore anything with nothing to submit. Exams are armored bosses: study to break their armor before exam day. Each posted grade drops a chest.`, wide: true },
         el('p', { class: 'note sync', text: source === 'soma'
@@ -414,7 +435,7 @@ export function createUI(on) {
           el('div', {}, el('b', { text: story.title }), el('small', { text: story.text }),
             el('div', { class: 'bar' }, el('i', { style: `width:${Math.round((story.have / story.need) * 100)}%` }))),
           el('div', { class: 'quest-pay' }, el('em', { text: `${story.have} / ${story.need}` }), el('small', { text: `Reward: ${reward(story.reward)}` })))
-          : el('p', { class: 'note', text: 'The story is finished. You beat the last guardian.' }),
+          : el('p', { class: 'note', text: 'Season 1’s story is finished. New ages and a new chapter come next season.' }),
         el('h3', { text: 'School quests' }),
         school.length ? school.map((a) => el('div', { class: `quest-card ${a.overdue ? 'late' : ''}` },
           el('div', {}, el('b', {}, a.name, a.kind === 'boss' ? el('span', { class: 'tag', text: 'Exam' }) : null),
@@ -480,7 +501,7 @@ export function createUI(on) {
     },
 
     /** Settings: sound, music, controls and graphics. Changes apply as you make them. */
-    settings({ values, onChange, onHelp }) {
+    settings({ values, onChange, onHelp, onFeedback }) {
       const v = { ...values };
       const toggle = (key, label, hint) => {
         const b = el('button', { class: `switch ${v[key] !== false ? 'on' : ''}`, role: 'switch', 'aria-checked': String(v[key] !== false), onclick: () => {
@@ -530,12 +551,34 @@ export function createUI(on) {
         slider('sfxVol', 'Effects volume', 0, 1, 0.05, pct),
         el('h3', { text: 'Controls' }),
         slider('sensitivity', 'Mouse look speed', 0.3, 2.5, 0.1, (x) => `${x.toFixed(1)}×`),
-        el('p', { class: 'note', text: 'Hold right click to look around · scroll to zoom · V locks the mouse' }),
+        el('p', { class: 'note', text: 'Hold right click to look around · tap Ctrl to lock the camera · scroll to zoom · V locks the mouse' }),
         el('h3', { text: 'Display' }),
         el('div', { class: 'setting' }, el('div', {}, el('b', { text: 'Graphics' }), el('small', { text: 'Auto lowers detail if the game runs slow' })), quality),
         toggle('labels', 'Name tags', 'The labels over assignments, buildings and halls'),
-        el('div', { class: 'actions', style: 'margin-top:12px' }, el('button', { class: 'btn', onclick: onHelp }, el('span', { text: 'Controls and how to play' }))),
+        el('div', { class: 'actions', style: 'margin-top:12px' }, el('button', { class: 'btn', onclick: onHelp }, el('span', { text: 'Controls and how to play' })),
+          onFeedback ? el('button', { class: 'btn primary', onclick: onFeedback }, el('span', { text: 'Send feedback' })) : null),
       );
+    },
+
+    /** Beta feedback: how it's going, plus anything in words. onSend({ text, mood }) -> Promise<boolean>. */
+    feedback({ onSend }) {
+      let mood = null;
+      const moods = el('div', { class: 'segmented' }, [['love', 'Loving it'], ['ok', 'It’s OK'], ['meh', 'Not for me'], ['bug', 'Found a bug']].map(([val, text]) => {
+        const b = el('button', { text, onclick: () => { mood = val; moods.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); } });
+        return b;
+      }));
+      const box = el('textarea', { class: 'feedback-box', placeholder: 'What worked, what didn’t, what you wish it did. Bugs: what you did right before it happened.', maxlength: 4000, rows: 6 });
+      const note = el('p', { class: 'note', text: 'Goes straight to the person building Epoch. Thank you.' });
+      const send = el('button', { class: 'btn primary', onclick: async () => {
+        if (!box.value.trim()) { note.textContent = 'Write a few words first.'; return; }
+        send.disabled = true;
+        send.firstChild.textContent = 'Sending…';
+        const ok = await onSend({ text: box.value, mood });
+        if (ok) { note.textContent = 'Sent. Thank you, that really helps.'; box.value = ''; send.firstChild.textContent = 'Sent'; }
+        else { note.textContent = 'Couldn’t send it just now. Check your connection and try again.'; send.disabled = false; send.firstChild.textContent = 'Send'; }
+      } }, el('span', { text: 'Send' }));
+      panel({ title: 'Send feedback', subtitle: 'Epoch is in beta. Tell us anything.' }, moods, box, note, el('div', { class: 'actions' }, send));
+      setTimeout(() => box.focus(), 50);
     },
 
     /** Talking to a villager: what they say, how they feel, their quest for today. */
@@ -916,19 +959,19 @@ export function createUI(on) {
 
     help({ first, onStart, onTutorial }) {
       panel({ title: first ? 'Welcome to Epoch' : 'How to play', subtitle: 'An RPG where your hero is as strong as your studying.', onClose: onStart },
-        onTutorial ? el('div', { class: 'actions' }, el('button', { class: 'btn primary', onclick: onTutorial }, el('span', { text: 'Play the tutorial again' }), el('span', { class: 'cost', text: '10 steps' }))) : null,
+        onTutorial ? el('div', { class: 'actions' }, el('button', { class: 'btn primary', onclick: onTutorial }, el('span', { text: 'Play the tutorial again' }), el('span', { class: 'cost', text: 'about 3 minutes' }))) : null,
         el('div', { class: 'keys' },
           el('span', { class: 'k' }, el('kbd', { text: 'W' }), el('kbd', { text: 'A' }), el('kbd', { text: 'S' }), el('kbd', { text: 'D' })), el('span', { text: 'Walk. Hold Shift to run, Space to jump.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'Ctrl' })), el('span', { text: 'Tap for shift lock: the mouse turns the view without dragging, and your hero faces where you look. Hold Shift to run.' }),
-          el('span', { class: 'k' }, el('kbd', { text: 'Right drag' })), el('span', { text: 'Hold right click and move the mouse to look around. Left click swings. Scroll to zoom. V locks the mouse to the view.' }),
-          el('span', { class: 'k' }, el('kbd', { text: 'T' })), el('span', { text: 'Start a study session. This is the only way to level up.' }),
+          el('span', { class: 'k' }, el('kbd', { text: 'Right drag' })), el('span', { text: 'Hold right click and move the mouse to look around. Tap Ctrl to lock the camera behind you. Left click swings. Scroll to zoom. V locks the mouse to the view.' }),
+          el('span', { class: 'k' }, el('kbd', { text: 'T' })), el('span', { text: 'Start a study session: a real timer for real work, and the main way to level up.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'C' }), el('kbd', { text: 'J' })), el('span', { text: 'Your hero (gear and skills) and your quests.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'E' })), el('span', { text: 'Talk to villagers: they move in as your town grows, give a small favour each day, and leave if the town keeps getting wrecked.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'K' })), el('span', { text: 'Creatures: catch them out in the country with lures you earn by studying. Pick one as a pet for bonus study XP.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'B' })), el('span', { text: 'Build mode: place fences, lamps, trees and more anywhere in town. The market sells rare pieces.' }),
           el('span', { class: 'k' }, el('kbd', { text: '↗' })), el('span', { text: 'Explore past the town: walk out to the hills. Follow the light beams to hidden caches, each a chest a day.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'Z' })), el('span', { text: 'Photo mode: hide the screen clutter, pick a filter, and save a picture of your village.' }),
-          el('span', { class: 'k' }, el('kbd', { text: 'P' })), el('span', { text: 'Practice questions from Soma AI, written from your course notes. Right answers break exam armor.' }),
+          el('span', { class: 'k' }, el('kbd', { text: 'P' })), el('span', { text: 'The Study Hall: upload notes, slides or a video and Claude makes flashcards, practice questions and a study guide.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'E' })), el('span', { text: 'Build, upgrade, open chests, pick what to study.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'F' })), el('span', { text: 'Swing (or click). Three swings in a row end in a combo hit.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'Q' })), el('span', { text: 'Dodge. Nothing can hit you mid-dash.' }),
@@ -940,7 +983,7 @@ export function createUI(on) {
           el('li', { text: 'Walk past buildings to collect. Upgrade them, then build the wonder to reach the next age.' }),
           el('li', { text: 'Your Canvas assignments are the walking books marching on the gate. Hand one in on Canvas and it is gone, with a coin reward. Late ones halve your income.' }),
           el('li', { text: 'Walk up to a book and start a study session, then go do the work. The town fires on the book while the timer runs, earns double, and a chest drops when you finish.' }),
-          el('li', { text: 'Head out past the edge of town: clear fox camps for chests, dig up treasure, find shrines and hunt the Alpha in its lair. After the Moon, the Star Gate opens a whole new world.' }),
+          el('li', { text: 'Head out past the edge of town: clear fox camps for chests, dig up treasure, find shrines and hunt the Alpha in its lair. Raise the Great Pyramid to finish Season 1; new ages come next season.' }),
           el('li', { text: 'Exams are giant armored books that march on your gate for days. Study to break their armor; on exam day, the armor left decides whether your gate holds or a building gets wrecked. Every grade posted on Canvas drops a chest on your plaza: the better the grade, the rarer the chest.' })),
         el('div', { class: 'actions' }, el('button', { class: 'btn primary', style: 'justify-content:center', onclick: close }, el('span', { text: first ? 'Start' : 'Back to the game' }))),
       );

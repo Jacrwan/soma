@@ -233,6 +233,7 @@ export function createWildlands(ctx) {
       if (e.camp.alive === 0) {
         S.noteExplore(state, 'camp', 'wilds');
         ui.toast(`Camp cleared. Its ${e.camp.rarity} chest is yours.`, 'gold');
+        ctx.track?.('camp_cleared');
         audio.build();
       }
       labelTick = 0;
@@ -242,6 +243,7 @@ export function createWildlands(ctx) {
       S.noteExplore(state, 'boss', 'wilds');
       audio.era();
       ui.banner('The Alpha is down', 'It comes back tomorrow');
+      ctx.track?.('alpha_beaten');
       ctx.shake(0.5);
       setTimeout(() => { if (active) ctx.loot('legendary', 'Beat the Alpha', pos); }, 1300);
     }

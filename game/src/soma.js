@@ -7,6 +7,8 @@
 // Inside Soma (somastudy.app/game) the game shares the student's sign-in.
 // Anywhere else (or signed out) everything here reports "not connected".
 
+import { getSession } from './auth.js';
+
 const SUPABASE_URL = import.meta.env?.VITE_SUPABASE_URL || '';
 const SUPABASE_KEY = import.meta.env?.VITE_SUPABASE_ANON_KEY || '';
 const PLUS = new Set(['trialing', 'trial_extended', 'active']);
@@ -28,13 +30,15 @@ export function session() {
   return null;
 }
 
-const live = () => {
-  const s = session();
-  return s && SUPABASE_URL && SUPABASE_KEY && (!s.expiresAt || s.expiresAt > Date.now() + 30_000) ? s : null;
+// The signed-in session, refreshed first if it's about to expire (auth.js), so
+// Soma features keep working after the hour a Supabase token lasts.
+const live = async () => {
+  if (!SUPABASE_URL || !SUPABASE_KEY) return null;
+  try { return await getSession(); } catch { return null; }
 };
 
 async function rest(path, { method = 'GET', body, prefer } = {}) {
-  const s = live();
+  const s = await live();
   if (!s) throw new Error('not connected');
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     method,
@@ -53,7 +57,7 @@ const day = (d) => {
 /** 'plus' (trial or paid), 'free', or 'offline' when the game isn't inside Soma. */
 export async function planStatus() {
   if (mock) return mock.plus ? 'plus' : 'free';
-  const s = live();
+  const s = await live();
   if (!s) return 'offline';
   try {
     const res = await fetch('/api/stripe', { method: 'POST', headers: { 'content-type': 'application/json', Authorization: `Bearer ${s.token}` }, body: JSON.stringify({ action: 'get-subscription' }) });
@@ -92,7 +96,7 @@ export async function loadPlan(now = Date.now()) {
  */
 export async function loadCanvasSnapshots() {
   if (mock) return mock.snapshots || [];
-  if (!live()) return [];
+  if (!(await live())) return [];
   const rows = await rest('canvas_snapshots?select=host,payload,synced_at&order=synced_at.desc');
   return rows.map((r) => r.payload).filter((p) => p && p.kind === 'canvas' && typeof p.host === 'string' && Array.isArray(p.assignments));
 }
@@ -121,7 +125,7 @@ Rules:
 /** Asks Soma's planner for a week of study tasks. Returns { tasks, note }. */
 export async function askOracle({ due, planned, ask }) {
   if (mock) return mock.oracle || { tasks: [], note: '' };
-  const s = live();
+  const s = await live();
   if (!s) throw new Error('Open the game from Soma, signed in, to use the Oracle.');
   const today = day(Date.now());
   const content = `Today is ${today}.\n\nDue soon:\n${due.map((d) => `- ${d}`).join('\n') || '- nothing'}\n\nAlready planned:\n${planned.map((p) => `- ${p}`).join('\n') || '- nothing'}\n\n${ask ? `The student asks: ${ask}\n\n` : ''}Plan the next 7 days.`;
@@ -146,7 +150,7 @@ export async function askOracle({ due, planned, ask }) {
 /** Adds approved tasks to the student's Soma plan. */
 export async function addTasks(tasks, courses) {
   if (mock) { mock.todos.push(...tasks.map((t, i) => ({ id: `new${Date.now()}${i}`, text: t.text, date: t.date, minutes: t.minutes, done: false, course: t.course }))); return; }
-  const s = live();
+  const s = await live();
   const subjects = await rest('subjects?select=id,name');
   const byName = new Map(subjects.map((x) => [x.name.toLowerCase(), x.id]));
   const rows = tasks.map((t) => ({

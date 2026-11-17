@@ -1,6 +1,7 @@
 // Epoch: the playable game. Reads and changes the state through sim.js, and
 // shows it with the models from art.js in the world from world.js.
 
+import { reportError, showCrash, markBooted, webglOk } from './errors.js'; // first, so it catches errors while loading
 import * as THREE from 'three';
 import * as S from './sim.js';
 import * as A from './art.js';
@@ -26,6 +27,9 @@ import { createOwl, makeOwl3D } from './owl.js';
 import { createStudyHall } from './studyhall.js';
 import { practiceStatus, readMaterial, makeKit, streamKitPart } from './practice.js';
 import * as Lore from './lore.js';
+import { startTelemetry, track } from './telemetry.js';
+import { sendFeedback } from './feedback.js';
+import { loadCloud, saveCloud } from './cloudsave.js';
 
 // --- State ----------------------------------------------------------------------
 // Inside Soma the save belongs to the signed-in student, so two accounts in
@@ -44,23 +48,74 @@ function somaUserId() {
 const SOMA_USER = somaUserId();
 const SAVE_KEY = SOMA_USER ? `${S.SAVE_KEY}:${SOMA_USER}` : S.SAVE_KEY;
 let state;
+let hadLocal = false; // a save already existed on this computer
 try {
-  const saved = localStorage.getItem(SAVE_KEY);
+  let saved = localStorage.getItem(SAVE_KEY);
+  hadLocal = Boolean(saved);
+  // Signing in for the first time brings the guest save along.
+  if (!saved && SOMA_USER) {
+    const guest = localStorage.getItem(S.SAVE_KEY);
+    if (guest) { saved = guest; localStorage.setItem(SAVE_KEY, guest); localStorage.removeItem(S.SAVE_KEY); }
+  }
+  // A save this version can't read is set aside, never overwritten by a fresh start.
+  if (saved) {
+    let readable = false;
+    try { readable = JSON.parse(saved)?.v === 1; } catch { /* not JSON */ }
+    if (!readable) localStorage.setItem(`${SAVE_KEY}:unreadable:${Date.now()}`, saved);
+  }
   state = saved ? S.deserialize(saved) : S.newState();
 } catch {
   state = S.newState();
 }
+let saveWarned = false;
+let cloudReady = false; // the account's save was checked first, so this one can't overwrite a newer one
 const save = () => {
   try {
-    localStorage.setItem(SAVE_KEY, S.serialize(state));
-  } catch { /* private window or full storage: the game still runs */ }
+    const data = S.serialize(state);
+    if (cloudReady) saveCloud(data);
+    localStorage.setItem(SAVE_KEY, data);
+    saveWarned = false;
+  } catch {
+    // Private window or full storage: the game still runs, but say so once.
+    if (saveWarned) return;
+    saveWarned = true;
+    setTimeout(() => { try { ui.toast('Couldn’t save your progress: this browser’s storage is full or blocked. Delete old study kits, or allow site data for Soma.', 'bad'); } catch { /* too early */ } }, 0);
+  }
 };
+const localSavedAt = state.lastTick;
+// Signed in: the account keeps the save too, so progress follows the student to any computer.
+// A newer save on the account (or none on this computer yet) is loaded once, with a reload.
+if (SOMA_USER) {
+  loadCloud().then((cloud) => {
+    const newer = cloud?.data && (!hadLocal || (cloud.updatedAt > localSavedAt + 60000 && (cloud.data.lastTick || 0) > localSavedAt));
+    if (newer && sessionStorage.getItem('epoch-cloud-loaded') !== String(cloud.updatedAt)) {
+      try {
+        localStorage.setItem(SAVE_KEY, JSON.stringify(cloud.data));
+        sessionStorage.setItem('epoch-cloud-loaded', String(cloud.updatedAt));
+        location.reload();
+        return;
+      } catch { /* storage full: keep playing this one */ }
+    }
+    cloudReady = true;
+    save();
+  }).catch(() => { cloudReady = true; });
+}
 const awayMs = Date.now() - state.lastTick;
 const awayEarned = S.tick(state);
 
 // --- Renderer, camera, world ------------------------------------------------------
 const canvas = document.getElementById('view');
+if (!webglOk()) {
+  showCrash('Your browser can’t show 3D right now', 'Epoch needs WebGL. Turn on hardware acceleration in your browser’s settings (or try Chrome), then reload.');
+  throw new Error('no-webgl');
+}
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+canvas.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault();
+  reportError('webglcontextlost');
+  try { save(); } catch { /* best effort */ }
+  showCrash('The graphics stopped', 'Your computer reset the 3D graphics (this can happen after sleep or when memory runs low). Reload to keep playing: your progress is saved.');
+});
 let pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
 renderer.setPixelRatio(pixelRatio);
 renderer.shadowMap.enabled = true;
@@ -412,6 +467,9 @@ function moveInvaders(dt, time) {
         tz = p.z + Math.cos(a) * 4.2;
         speed = 5.2;
         stop = 0.6;
+        // Homework stays in town: out in the country it waits at the edge, where you left.
+        const pr = Math.hypot(p.x, p.z);
+        if (pr > W.TOWN_R - 4) { const k = (W.TOWN_R - 6) / pr; tx = p.x * k + Math.sin(a) * 3; tz = p.z * k + Math.cos(a) * 3; }
       } else if (inv.mode === 'charge') {
         tx = p.x;
         tz = p.z;
@@ -533,7 +591,7 @@ function handleSchoolEvents(events) {
       gainedXp(event);
     } else if (event.type === 'chest') {
       if (event.exam && event.chest.coins) ui.banner(`Exam graded: ${event.chest.percent}%`, `${event.chest.from}  +${event.xp} XP, +${S.fmt(event.chest.coins)} coins`);
-      ui.toast(`A ${event.chest.rarity} chest dropped: ${event.chest.from}${event.chest.percent != null ? ` (${event.chest.percent}%)` : ''}${event.xp ? `, +${event.xp} XP` : ''}`, 'gold');
+      ui.toast(`${/^[aeiou]/.test(event.chest.rarity) ? "An" : "A"} ${event.chest.rarity} chest dropped: ${event.chest.from}${event.chest.percent != null ? ` (${event.chest.percent}%)` : ''}${event.xp ? `, +${event.xp} XP` : ''}`, 'gold');
       gainedXp(event);
       audio.chest();
     } else if (event.type === 'new') {
@@ -677,6 +735,7 @@ const wild = createWildlands({
   height: (x, z) => world.groundHeight('earth', x, z),
   open: (x, z) => world.openGround(x, z),
   trees: () => world.treeSolids(),
+  track: (name, props) => track(name, props),
 });
 const outdoors = () => !inRealm() && state.scene === 'earth';
 
@@ -820,6 +879,11 @@ function slam() {
   void p;
 }
 
+/** Study time that would earn this many coins, as words ("3 h 20 min"). */
+function studyAway(coins) {
+  const min = Math.max(1, Math.ceil(coins / Math.max(1, S.studyRate(state))));
+  return min < 60 ? `${min} min` : `${Math.floor(min / 60)} h${min % 60 ? ` ${min % 60} min` : ''}`;
+}
 function refreshHud() {
   const now = Date.now();
   const wonder = S.nextWonder(state);
@@ -829,7 +893,8 @@ function refreshHud() {
     income: S.totalIncome(state, now),
     era: state.era,
     eraName: eraName(),
-    goal: wonder ? `Build the ${wonder.name}: ${S.fmt(Math.min(state.coins, wonder.cost))} / ${S.fmt(wonder.cost)}${wonder.scene !== state.scene ? ` (on ${wonder.scene === 'moon' ? 'the Moon' : 'Earth'})` : ''}` : S.seasonDone(state) ? `${S.SEASON.name} complete · new ages next season` : 'You reached the stars.',
+    // The goal says how much studying it is away, since studying is what pays for it.
+    goal: wonder ? (state.coins >= wonder.cost ? `Build the ${wonder.name}: you can afford it now` : `Build the ${wonder.name}: about ${studyAway(wonder.cost - state.coins)} of study away`) : S.seasonDone(state) ? `${S.SEASON.name} complete · new ages next season` : 'You reached the stars.',
     progress: wonder ? state.coins / wonder.cost : 1,
     siege: null,
     chests: state.school.chests.length,
@@ -880,6 +945,7 @@ function ignoreItem(id, on) {
 // --- Deadlines: warnings and what late work costs ------------------------------------
 let lateShown = { coins: 0, xp: 0, at: 0 };
 function checkDeadlines(startup = false) {
+  if (S.rollDemo(state)) { syncInvaders(Date.now()); save(); }
   checkExams();
   const now = Date.now();
   const lost = S.chargeLate(state, now);
@@ -965,6 +1031,7 @@ function openWonder(wonder) {
     onBuild: () => {
       const done = S.buildWonder(state);
       if (!done) return deny('Not enough coins yet.');
+      track('wonder_built', { index: done.index });
       const pos = W.wonderPosition(done.index);
       for (let k = 0; k < 6; k++) {
         setTimeout(() => {
@@ -1112,7 +1179,7 @@ function openSchool() {
       const cost = S.lateCost(state, a, now);
       status = `Late ${timeLeft(now - a.dueAt)}${cost.coins >= 1 || cost.xp ? ` · has cost ${S.fmt(cost.coins)} coins and ${cost.xp} XP` : ''}`;
     }
-    byCourse.get(a.courseName).push({ ...a, status, ignored, late: !ignored && !a.submitted && a.dueAt && a.dueAt < now, studied: S.studyProgress(state, a) });
+    byCourse.get(a.courseName).push({ ...a, status, ignored, sample: S.isSample(a), late: !ignored && !a.submitted && a.dueAt && a.dueAt < now, studied: S.studyProgress(state, a) });
   }
   const reopen = () => {
     ui.close();
@@ -1124,6 +1191,11 @@ function openSchool() {
     synced: lastSynced() ? timeLeft(Date.now() - lastSynced()) : null,
     onIgnore: (id, on) => {
       ignoreItem(id, on);
+      reopen();
+    },
+    // Sample work can't reach Canvas, so the board hands it in (same rewards as the real thing).
+    onHandIn: (id) => {
+      applySchool(Object.values(state.school.items).map((a) => (a.id === id ? { ...a, submitted: true } : a)), 'demo');
       reopen();
     },
     onStudy: (id) => {
@@ -1274,6 +1346,7 @@ function openStudyHall(prefill = {}) {
     state, save,
     upcoming, courses,
     ai: { readMaterial, makeKit, streamKitPart },
+    track,
     status: practiceStatus,
     onAnswer: (source, q, ok) => {
       const item = source.item && state.school.items[source.item.id];
@@ -1328,6 +1401,7 @@ function openPracticeOld(id = null, topic = null) {
 
 function beginStudy(id, minutes, topic = null) {
   if (!S.startStudy(state, id, minutes, Date.now(), topic)) return;
+  track('study_start', { minutes });
   if (new Date().getHours() < 4) setTimeout(() => playBeat('proLateNight'), 1200);
   if (dayPhase().sleeping) setTimeout(() => ui.toast('The town is asleep. Wren stays up by the fire with you.', 'good'), 1500);
   const item = id ? state.school.items[id] : null;
@@ -1346,6 +1420,7 @@ function endStudy() {
   const inv = active.itemId ? invaders.get(active.itemId) : null;
   const hoursBefore = S.studyHours(state);
   const result = S.finishStudy(state);
+  track('study_done', { minutes: Math.round(result?.minutes || 0) });
   // New village pieces unlocked by the hours just studied.
   const fresh = [];
   for (let h = Math.floor(hoursBefore) + 1; h <= Math.floor(S.studyHours(state)); h++) fresh.push(...S.decorAt(h).map((k) => S.DECOR[k].name), ...S.PATHS.filter((p) => p.hours === h).map((p) => p.name));
@@ -1809,10 +1884,14 @@ function updateDummy(r, dt) {
   o.rotation.z = r.hitFlash * Math.sin(r.t * 40) * 0.3;
 }
 // An open patch of grass near you where a hut fits, so the build step can point at it.
+// It looks ahead of the camera first, so the patch sits mid-screen and never under the build bar.
 function freeBuildSpot() {
   const p = player.object.position;
-  for (let r = 6; r <= 30; r += 2) for (let k = 0; k < 16; k++) {
-    const a = (k / 16) * Math.PI * 2, x = Math.round((p.x + Math.cos(a) * r) * 2) / 2, z = Math.round((p.z + Math.sin(a) * r) * 2) / 2;
+  const ahead = Math.atan2(-Math.cos(cam.yaw), -Math.sin(cam.yaw)); // the way the camera looks (x = -sin yaw, z = -cos yaw), as an angle
+  for (let r = 8; r <= 30; r += 2) for (let k = 0; k < 16; k++) {
+    const turn = (k % 2 ? 1 : -1) * Math.ceil(k / 2) * (Math.PI / 16); // 0, then fanning out to both sides
+    const a = Math.atan2(Math.sin(ahead), Math.cos(ahead)) + turn;
+    const x = Math.round((p.x + Math.cos(a) * r) * 2) / 2, z = Math.round((p.z + Math.sin(a) * r) * 2) / 2;
     if (!buildBlocked(x, z, true) && !onTownRoad(x, z) && world.groundHeight('earth', x, z) > -0.2) return new THREE.Vector3(x, world.groundHeight('earth', x, z), z);
   }
   return null;
@@ -1868,7 +1947,8 @@ const TUTORIAL = [
     },
     target: () => nearestBuilding(), done: () => state.stats.collected > tut.collected },
   { text: 'Beating the Drift drops chests. Here, this one’s on me. Walk up and press E.', keys: ['E'], reveal: 'coins',
-    enter: () => { tut.chestId = S.grantChest(state, 'rare', 'A gift from the Librarian').id; syncChests(); },
+    // Given once: reloading on this step finds the same chest (or, if it's opened, moves on).
+    enter: () => { const t = state.tutorial; if (!t.gift) { t.gift = S.grantChest(state, 'rare', 'A gift from the Librarian').id; save(); } tut.chestId = t.gift; syncChests(); },
     target: () => chests.get(tut.chestId)?.object.position, done: () => !state.school.chests.some((c) => c.id === tut.chestId) && !ui.isOpen() },
   { text: 'Press M for the map. See the grey? That’s fog: land nobody’s walked yet.', keys: ['M'], reveal: 'menu',
     done: () => tut.flags.map && !ui.isOpen() },
@@ -1913,6 +1993,7 @@ function startTutorialStep() {
 function nextTutorialStep() {
   if (!tutorialStep()) return;
   state.tutorial.step += 1;
+  track('tutorial_step', { step: state.tutorial.step });
   if (state.tutorial.step >= TUTORIAL.length) return finishTutorial(false);
   save();
   startTutorialStep();
@@ -1943,7 +2024,8 @@ function tutorialPayoff() {
   refreshHud();
 }
 function finishTutorial(early) {
-  state.tutorial = { step: TUTORIAL.length, done: true };
+  if (!state.tutorial.done) track('tutorial_done');
+  state.tutorial = { ...state.tutorial, step: TUTORIAL.length, done: true, doneAt: Date.now() };
   state.settings.seenHelp = true;
   coach.hide();
   applyTutHud();
@@ -2019,8 +2101,12 @@ function playBeat(id, lines = Lore.BEATS[id.split(':')[0]], after) {
   ui.story(lines, after);
 }
 // Moments that play when something first happens.
+const loadedAt = Date.now();
 function checkLore() {
   if (inRealm() || state.scene !== 'earth' || !state.tutorial?.done || ui.isOpen()) return;
+  // Let the player breathe: no story moments in the first minute of a visit or three minutes after the tutorial.
+  const now0 = Date.now();
+  if (now0 - loadedAt < 60000 || now0 - (state.tutorial.doneAt || 0) < 180000) return;
   if (!state.story.procrastinator && S.lateItems(state).length) return void playStory('procrastinator');
   const now = Date.now();
   const open = S.threats(state, now).map((t) => t.item);
@@ -2288,6 +2374,7 @@ function openLoot(id, pos) {
   const chest = state.school.chests.find((c) => c.id === id);
   const result = S.openChest(state, id);
   if (!result) return;
+  track('chest_opened', { rarity: result.chest.rarity });
   if (result.chest.rarity === 'mythic') setTimeout(() => playBeat('firstMythic'), 9000);
   fx.burst(pos, A.RARITY_COLORS[chest.rarity], 26, 8, 10);
   syncChests();
@@ -3693,6 +3780,7 @@ function catchCritter(c) {
   if (r.ok) {
     fx.burst(c.object.position.clone().add(new THREE.Vector3(0, 0.6, 0)), A.C.gold, 22, 6, 6);
     audio.chest();
+    track('creature_caught', { rarity: info.rarity });
     ui.toast(r.first ? `New creature: ${info.name}! +${S.fmt(r.coins)} coins. Open the collection with K.` : `Caught another ${info.name}.`, 'gold');
     if (r.first && state.critters.pet === c.species) { ui.toast(`${info.name} is following you now. It boosts study XP.`, 'good'); dressPet(); }
     c.object.parent?.remove(c.object);
@@ -4375,7 +4463,7 @@ function watchChests() {
   const n = state.school.chests.length;
   if (chestsSeen !== null && n > chestsSeen) {
     const newest = state.school.chests.slice(chestsSeen);
-    for (const c of newest.slice(-2)) ui.toast(`A ${c.rarity} chest landed on your plaza: ${c.from}`, c.rarity === 'legendary' || c.rarity === 'epic' ? 'gold' : 'good');
+    for (const c of newest.slice(-2)) ui.toast(`${/^[aeiou]/.test(c.rarity) ? "An" : "A"} ${c.rarity} chest landed on your plaza: ${c.from}`, c.rarity === 'legendary' || c.rarity === 'epic' ? 'gold' : 'good');
     syncChests();
     audio.chest();
   }
@@ -4399,6 +4487,16 @@ function applySettings() {
   else if (st.quality === 'auto' && !pace.guessed) { pace.guessed = true; setQuality(guessQuality()); }
   refreshHud();
 }
+function openFeedback() {
+  if (ui.isOpen()) return;
+  ui.feedback({
+    onSend: async ({ text, mood }) => {
+      const ok = await sendFeedback({ text, mood, context: { level: state.hero.level, era: state.era, tutorial: state.tutorial.step, source: state.school.source, signedIn: Boolean(SOMA_USER) } });
+      if (ok) track('feedback_sent', { mood: mood || 'none' });
+      return ok;
+    },
+  });
+}
 function openSettings() {
   if (ui.isOpen()) return;
   ui.settings({
@@ -4411,6 +4509,7 @@ function openSettings() {
       save();
     },
     onHelp: () => { ui.close(); ui.help({ first: false, onTutorial: replayTutorial }); },
+    onFeedback: () => { ui.close(); openFeedback(); },
   });
 }
 
@@ -4494,8 +4593,9 @@ setTimeout(() => {
 window.addEventListener('beforeunload', save);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') save(); });
 
-// A handle for testing from the browser console.
-window.epoch = {
+// A handle for testing from the browser console: dev builds only, so nobody can give()
+// themselves coins on the live site.
+const debugApi = {
   state, S, cam,
   give(n) { S.addCoins(state, n); refreshHud(); },
   owlThumb: (open) => { const o = makeOwl3D(); for (const w of o.userData.wings) w.rotation.z = w.userData.side * (open ? 1.1 : 0.18); return Promise.resolve(renderThumb(o, 0.1)); },
@@ -4553,5 +4653,13 @@ window.epoch = {
   debug: { scene, renderer, bloom, world, composer, camera, wild, critters, player },
   reset() { localStorage.removeItem(SAVE_KEY); location.reload(); },
 };
+if (import.meta.env?.DEV) window.epoch = debugApi;
 
 requestAnimationFrame(frame);
+markBooted();
+startTelemetry();
+track('game_open', { signedIn: Boolean(SOMA_USER), returning: Boolean(state.tutorial?.done) });
+// Phones and tablets: the game needs a keyboard and mouse for now. Say so, but let them look around.
+if (matchMedia('(pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches) {
+  showCrash('Epoch is made for a laptop', 'It needs a keyboard and mouse for now. On your phone, Soma still shows your deadlines and study plan. Open Epoch on a computer to play.', { reload: false, dismiss: true });
+}
