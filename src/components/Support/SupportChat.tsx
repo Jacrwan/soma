@@ -200,6 +200,16 @@ export default function SupportChat({ userId }: { userId: string }) {
                     </div>
                   );
                 })}
+                {/* Automatic reply while a student waits: shown here only, never
+                    saved, so it doesn't count as unread or reach the owner. */}
+                {!owner && !!messages?.length && messages[messages.length - 1].sender === 'user' && (
+                  <div className={`${styles.msg} ${styles.theirs}`} data-auto-reply>
+                    <p className={styles.bubbleText}>
+                      Got it, your message was sent. The developer reads every message and replies within 48 hours. The reply will show up right here.
+                    </p>
+                    <span className={styles.msgTime}>Automatic reply</span>
+                  </div>
+                )}
               </div>
               {error && <p role="alert" className={styles.error}>{error}</p>}
               <form className={styles.composer} onSubmit={e => { e.preventDefault(); void send(); }}>

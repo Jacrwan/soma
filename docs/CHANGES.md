@@ -9,6 +9,18 @@ still needed.
 
 ---
 
+## 2026-11-17 (Message the developer: an automatic reply)
+
+- **Why:** the owner asked for an automatic message telling students their
+  message was sent and the developer replies within 48 hours.
+- **What:** `SupportChat.tsx`: while a student's last message has no answer,
+  a bubble under it says "Got it, your message was sent. The developer reads
+  every message and replies within 48 hours…", marked "Automatic reply". It's
+  drawn in the chat only, never saved: no unread badge, nothing in the
+  owner's inbox or Discord. It goes away once the owner replies.
+- **Tests:** referrals-support.spec.ts ("a student messages the developer…":
+  shown after sending, gone after the reply, no row saved).
+
 ## 2026-11-17 (a free week takes 5 friends, not 3)
 
 - **Why:** the owner changed the rule: 5 friends within 2 months earn a free

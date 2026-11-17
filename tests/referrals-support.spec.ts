@@ -214,10 +214,16 @@ test('a student messages the developer from any page and sees the reply', async 
   await expect(chat.getByRole('textbox', { name: 'Message' })).toHaveValue('');
   await expect(chat.locator('p', { hasText: 'The calendar won’t load' })).toBeVisible();
   expect(state.api.find(a => a.action === 'support-send')).toMatchObject({ body: 'The calendar won’t load', page: '/tasks' });
+  // An automatic reply says it was sent and when to expect an answer; it isn't saved.
+  const auto = chat.getByText(/your message was sent.*within 48 hours/);
+  await expect(auto).toBeVisible();
+  expect(state.messages.filter(m => m.sender === 'owner')).toHaveLength(0);
 
   // The owner replies; the open chat picks it up and marks it read.
   state.messages.push({ id: 'r1', sender: 'owner', body: 'Fixed, try again!', created_at: new Date().toISOString(), read_at: null });
   await expect(chat.getByText('Fixed, try again!')).toBeVisible({ timeout: 12_000 });
+  // Answered: the automatic reply goes away.
+  await expect(auto).toHaveCount(0);
   await expect.poll(() => state.read).toBeGreaterThan(0);
 });
 
