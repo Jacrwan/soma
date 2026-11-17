@@ -21,6 +21,7 @@ export const LAST_EARTH_TIER = 5;
 export const MOON_TIER = 6;
 
 export const TYPES = ['home', 'work', 'trade'];
+const BUILDINGS_EARN = false; // the old idle-income model, switched off
 export const BUILDINGS = {
   home: {
     label: 'Homes',
@@ -259,7 +260,8 @@ export function buildingRole(b) {
 
 /** Coins per second for one building, before siege. */
 export function buildingIncome(state, b) {
-  if (!b) return 0;
+  // Buildings are homes and shops now: they earn nothing (studying and hand-ins do).
+  if (!b || !BUILDINGS_EARN) return 0;
   return BUILDINGS[b.type].income * INCOME_PER_TIER ** b.tier * LEVEL_MULT[b.level] * (b.golden ? GOLDEN_MULT : 1) * relicMult(state) * TOWN_SCALE;
 }
 

@@ -182,7 +182,7 @@ export function createUI(on) {
         wrap.classList.add('pop');
       }
       lastCoins = coins;
-      $('income').textContent = `+${fmt(income * 3600)} / hour`;
+      $('income').textContent = income > 0 ? `+${fmt(income * 3600)} / hour` : '';
       $('eraIndex').textContent = ROMAN[era] || String(era + 1);
       $('eraName').textContent = eraName;
       $('eraGoal').textContent = goal;
@@ -304,12 +304,12 @@ export function createUI(on) {
     },
 
     build({ eraName, options, onPick }) {
-      panel({ title: 'Build here', subtitle: `${eraName} buildings. Each one earns coins by itself, and you collect by walking past.` },
+      panel({ title: 'Build here', subtitle: `${eraName} buildings. Homes bring villagers; workshops and shops make the town nicer. Coins come from studying and handing work in.` },
         el('div', { class: 'cards' }, options.map((o) =>
           el('button', { class: 'card', disabled: !o.affordable, onclick: () => { close(); onPick(o.type); } },
             el('span', { class: 'glyph', html: ICONS[o.type] }),
             el('b', { text: o.name }),
-            el('small', { text: `+${fmt(o.income * 3600)} / hour` }),
+            el('small', { text: o.role || '' }),
             el('span', { class: `price ${o.affordable ? '' : 'no'}` }, price(o.cost))))),
       );
     },
@@ -625,7 +625,7 @@ export function createUI(on) {
     /** The morning report: what happened, what's coming, and today's three quests. */
     morning({ title, away, due, exam, reviews, people, sad, quests, streak, best, lures, onGo }) {
       const lines = [];
-      if (away) lines.push(el('li', {}, `While you were away (${away.time}) your town made `, price(away.coins), '.'));
+      if (away && away.coins >= 1) lines.push(el('li', {}, `While you were away (${away.time}) your town made `, price(away.coins), '.'));
       if (exam) lines.push(el('li', { class: exam.armor > 60 ? 'warn' : '' }, el('b', { text: exam.name }), ` (${exam.course}) reaches your gate in ${exam.time} with `, el('b', { text: `${exam.armor}% armor` }), exam.armor > 20 ? '. Study to break it.' : '. Your gate should hold.'));
       for (const d of due) lines.push(el('li', { class: d.late ? 'warn' : '' }, el('b', { text: d.name }), ` · ${d.course} · ${d.late ? d.time : `due ${d.time}`}`));
       if (reviews) lines.push(el('li', { text: `${reviews} missed question${reviews === 1 ? '' : 's'} waiting by the board.` }));
@@ -922,7 +922,6 @@ export function createUI(on) {
       panel({ title: 'Study session', subtitle: 'This is how your hero levels up. Start the timer, then go do the work: every minute is experience.' },
         el('div', { class: 'form one' }, pick), info, cards,
         el('div', { class: 'stats', style: 'margin-top:12px' },
-          el('div', { class: 'stat' }, el('small', { text: 'Town income' }), el('b', { text: '×2 while studying' })),
           el('div', { class: 'stat' }, el('small', { text: 'Study chests left today' }), el('b', { text: String(chestsLeft) })),
           el('div', { class: 'stat' }, el('small', { text: 'Streak' }), el('b', { text: `${streak} day${streak === 1 ? '' : 's'}` }))),
         el('div', { class: 'actions' }, go),
@@ -1000,7 +999,7 @@ export function createUI(on) {
           el('li', { text: 'Enemies have fixed levels. If they are too strong, study, then come back. Chests and elite enemies drop gear.' }),
           el('li', { text: 'Walk to a glowing pad and build. Buildings earn coins while you are away.' }),
           el('li', { text: 'Walk past buildings to collect. Upgrade them, then build the wonder to reach the next age.' }),
-          el('li', { text: 'Your Canvas assignments are the walking books marching on the gate. Hand one in on Canvas and it is gone, with a coin reward. Late ones halve your income.' }),
+          el('li', { text: 'Your Canvas assignments are the walking books marching on the gate. Hand one in on Canvas and it is sent home with a big coin reward and a chest. Late ones still pay; nothing is ever lost.' }),
           el('li', { text: 'Walk up to a book and start a study session, then go do the work. The town fires on the book while the timer runs, earns double, and a chest drops when you finish.' }),
           el('li', { text: 'Head out past the edge of town: clear fox camps for chests, dig up treasure, find shrines and hunt the Alpha in its lair. Raise the Great Pyramid to finish Season 1; new ages come next season.' }),
           el('li', { text: 'Exams are giant armored books that march on your gate for days. Study to break their armor; on exam day, break all its armor for a big bonus and an epic chest (nothing is ever lost). Every grade posted on Canvas drops a chest on your plaza: the better the grade, the rarer the chest.' })),

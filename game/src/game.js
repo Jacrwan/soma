@@ -1094,7 +1094,7 @@ function openBuild(i) {
     eraName: state.scene === 'moon' ? 'Lunar' : eraName(Math.min(state.era, S.LAST_EARTH_TIER)),
     options: S.TYPES.map((type) => ({
       type, name: S.BUILDINGS[type].names[tier], cost: S.buildCost(type, tier),
-      income: S.buildingIncome(state, { type, tier, level: 1, golden: false }), affordable: state.coins >= S.buildCost(type, tier),
+      role: { home: 'Room for one more villager', work: 'Villagers work here', trade: 'Villagers trade here' }[type], affordable: state.coins >= S.buildCost(type, tier),
     })),
     onPick: (type) => {
       if (!S.build(state, i, type)) return deny('Not enough coins yet.');
@@ -1543,7 +1543,7 @@ function beginStudy(id, minutes, topic = null) {
   const item = id ? state.school.items[id] : null;
   audio.build();
   ui.banner('Study session', item ? `${item.name}${topic ? ` · ${topic}` : ''}` : `${minutes} minutes`);
-  ui.toast('Timer running. Go do the work: the town earns double until it ends.', 'gold');
+  ui.toast('Timer running. Go do the work: every minute grows your valley.', 'gold');
   boltIn = 0.6;
   studyTick();
   refreshHud();
