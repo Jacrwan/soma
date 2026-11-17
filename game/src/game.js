@@ -710,6 +710,7 @@ const ui = createUI({
   wardrobe: openWardrobe,
   hero: () => openHero(),
   quests: () => openQuests(),
+  grades: () => openGrades(),
   ignore: (id) => ignoreItem(id, true),
   study: (id) => openStudy(id),
   endStudy: () => endStudy(),
@@ -1294,6 +1295,19 @@ function openWardrobe() {
   });
 }
 
+/** Course grades Canvas reports, from the Soma snapshots: courseId -> { score, grade, name }. */
+function canvasCourseGrades() {
+  const out = {};
+  for (const snap of somaSnapshots.values()) for (const c of snap.courses || []) {
+    if (c.currentScore == null && !c.currentGrade) continue;
+    out[`${snap.host}:${c.id}`] = { score: typeof c.currentScore === 'number' ? c.currentScore : null, grade: c.currentGrade || null, name: c.name };
+  }
+  return out;
+}
+function openGrades() {
+  if (ui.isOpen()) ui.close();
+  ui.grades({ courses: S.gradeReport(state, canvasCourseGrades()), sample: state.school.source === 'demo', onCanvas: () => openSchool() });
+}
 function openSchool() {
   tut.flags.school = true;
   const now = Date.now();
@@ -1315,6 +1329,7 @@ function openSchool() {
   };
   ui.school({
     source: state.school.source, connected: somaPresent, chests: state.school.chests.length,
+    onGrades: () => openGrades(),
     groups: [...byCourse].map(([course, items]) => ({ course, items })),
     synced: lastSynced() ? timeLeft(Date.now() - lastSynced()) : null,
     onIgnore: (id, on) => {
@@ -2531,6 +2546,7 @@ window.addEventListener('keydown', (event) => {
   else if (key === 'g') openSchool();
   else if (key === 'c') openHero();
   else if (key === 'j') openQuests();
+  else if (key === 'l') openGrades();
   else if (key === 'v') toggleMouseLook();
   else if (key === 'q') dodge();
   else if (key === 'r') { if (build.on) { build.rot += Math.PI / 4; } else slam(); }

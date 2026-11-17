@@ -1078,3 +1078,16 @@ body.study-scene #vitals, body.study-scene .era-card, body.study-scene .label { 
 /* ...but the countdown stays, a little bigger. */
 body.study-scene #focus { transform: scale(1.15); transition: transform 1.2s ease; }
 .tracker, .menu, .hud-center, #btnStudy, #btnBuild, #vitals, .era-card { transition: opacity 0.3s ease; }
+
+/* Grades */
+.grade-course { margin: 0 0 14px; padding: 12px 14px; border-radius: 14px; background: rgba(255,255,255,0.05); }
+.grade-head { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: baseline; }
+.grade-head small { grid-column: 1 / -1; opacity: .65; }
+.grade-big { display: flex; gap: 8px; align-items: baseline; font-weight: 800; font-size: 20px; }
+.grade-big em { font-style: normal; color: #ffd76a; }
+.grade-list { display: grid; gap: 4px; margin-top: 10px; }
+.grade-row { display: grid; grid-template-columns: 1fr auto auto; gap: 2px 12px; align-items: baseline; padding: 6px 8px; border-radius: 10px; background: rgba(0,0,0,0.18); }
+.grade-row small { grid-column: 1; opacity: .6; font-size: 11px; }
+.grade-row .grade-score { opacity: .7; font-size: 13px; }
+.grade-row b { min-width: 52px; text-align: right; }
+.grade-row.hi b { color: #7be38f; } .grade-row.lo b { color: #ff9b8a; }

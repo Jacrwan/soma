@@ -1471,6 +1471,51 @@ export function fromSomaSnapshot(snapshot) {
   });
 }
 
+// --- Grades: what Canvas has posted, by course ---------------------------------------
+const LETTERS = [[93, 'A'], [90, 'A-'], [87, 'B+'], [83, 'B'], [80, 'B-'], [77, 'C+'], [73, 'C'], [70, 'C-'], [67, 'D+'], [60, 'D'], [0, 'F']];
+export const letterFor = (pct) => (pct == null ? null : LETTERS.find(([min]) => pct >= min)[1]);
+/**
+ * Every course with a posted grade: the course grade Canvas reports when Soma has it
+ * (courseGrades: courseId -> { score, grade }), otherwise an estimate from the graded
+ * assignments (weighted by assignment group when the course weights them), and each
+ * graded assignment, newest first.
+ */
+export function gradeReport(state, courseGrades = {}) {
+  const by = new Map();
+  for (const a of Object.values(state.school.items)) {
+    if (a.excused || typeof a.score !== 'number' || !(a.pointsPossible > 0)) continue;
+    if (!by.has(a.courseId)) by.set(a.courseId, { courseId: a.courseId, courseName: a.courseName || 'Course', items: [] });
+    by.get(a.courseId).items.push({ id: a.id, name: a.name, score: a.score, points: a.pointsPossible, pct: (a.score / a.pointsPossible) * 100, at: a.dueAt || 0, kind: a.kind, group: a.groupName || '', weight: a.weight || 0 });
+  }
+  for (const [courseId, cg] of Object.entries(courseGrades)) {
+    if (cg?.score == null && !cg?.grade) continue;
+    if (!by.has(courseId)) by.set(courseId, { courseId, courseName: cg.name || 'Course', items: [] });
+  }
+  return [...by.values()].map((c) => {
+    c.items.sort((x, y) => y.at - x.at);
+    const canvas = courseGrades[c.courseId];
+    let estimate = null;
+    if (c.items.length) {
+      const groups = new Map();
+      for (const it of c.items) {
+        const g = groups.get(it.group) || { score: 0, points: 0, weight: it.weight };
+        g.score += it.score; g.points += it.points; groups.set(it.group, g);
+      }
+      const weighted = [...groups.values()].filter((g) => g.weight > 0);
+      if (weighted.length === groups.size) {
+        const total = weighted.reduce((n, g) => n + g.weight, 0);
+        estimate = weighted.reduce((n, g) => n + (g.score / g.points) * 100 * (g.weight / total), 0);
+      } else {
+        const score = c.items.reduce((n, it) => n + it.score, 0), points = c.items.reduce((n, it) => n + it.points, 0);
+        estimate = (score / points) * 100;
+      }
+    }
+    const fromCanvas = canvas && canvas.score != null;
+    const pct = fromCanvas ? canvas.score : estimate;
+    return { ...c, pct, letter: canvas?.grade || letterFor(pct), fromCanvas: Boolean(fromCanvas || canvas?.grade) };
+  }).sort((a, b) => a.courseName.localeCompare(b.courseName));
+}
+
 /** A made-up semester around "now", so the game can be played without connecting anything. */
 export function demoSemester(now = Date.now()) {
   const h = 3600000;

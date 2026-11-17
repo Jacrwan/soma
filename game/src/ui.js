@@ -135,6 +135,7 @@ export function createUI(on) {
   $('btnHero').addEventListener('click', () => on.hero());
   $('heroPlate').addEventListener('click', () => on.hero());
   $('btnQuests').addEventListener('click', () => on.quests());
+  $('btnGrades')?.addEventListener('click', () => on.grades?.());
   $('quest').addEventListener('click', () => questOpen && questOpen());
   $('btnHelp').addEventListener('click', () => on.help());
   $('btnMap')?.addEventListener('click', () => on.map?.());
@@ -363,7 +364,7 @@ export function createUI(on) {
         el('h3', { text: 'Colour' }), section('color:', color), el('h3', { text: 'Hat' }), section('hat:', hat));
     },
 
-    school({ source, connected, groups, chests, synced, onDemo, onClear, onStudy, onIgnore, onHandIn }) {
+    school({ source, connected, groups, chests, synced, onDemo, onClear, onStudy, onIgnore, onHandIn, onGrades }) {
       const describe = { none: 'Not connected', demo: 'Sample semester', soma: 'Soma for Canvas', manual: 'Your own list' }[source];
       const rows = groups.flatMap((g) => [
         el('div', { class: 'course', text: g.course }),
@@ -376,16 +377,36 @@ export function createUI(on) {
             a.sample && onHandIn ? el('button', { class: 'btn small primary', title: 'Sample work: pretend you handed it in on Canvas', text: 'Hand in', onclick: () => onHandIn(a.id) })
               : el('button', { class: 'btn small', title: a.ignored ? 'Count this assignment again' : 'Nothing to hand in for this one? Stop its warnings and losses.', text: a.ignored ? 'Unignore' : 'Ignore', onclick: () => onIgnore(a.id, !a.ignored) })))),
       ]);
-      panel({ title: 'Canvas', subtitle: `${describe}${connected ? ' · extension found' : ''}. Every assignment is a walking book marching on your gate; hand it in on Canvas and it's gone. Late work costs 1% of your coins and some XP every hour until it's in. Ignore anything with nothing to submit. Exams are armored bosses: study to break their armor before exam day. Each posted grade drops a chest.`, wide: true },
+      panel({ title: 'Canvas', subtitle: `${describe}${connected ? ' · extension found' : ''}. Every assignment is a walking book marching on your gate; hand it in on Canvas and it's sent home with a big payday. Late work still pays, so hand it in whenever you can. Ignore anything with nothing to submit. Exams are armored bosses: study to break their armor before exam day. Each posted grade drops a chest.`, wide: true },
         el('p', { class: 'note sync', text: source === 'soma'
           ? 'This is the Canvas data Soma already has for your account. Hand-ins and grades show up here by themselves; there is nothing to type in.'
           : 'This is a sample semester. Connect Canvas in Soma (Deadlines, then Soma for Canvas) and your real due dates, hand-ins and grades replace it by themselves. Nothing to type in.' }),
         chests ? el('p', { class: 'note', style: 'margin:0 0 6px', text: `${chests} chest${chests === 1 ? '' : 's'} waiting on your plaza.` }) : null,
         rows.length ? rows : el('p', { class: 'note', text: 'Nothing due right now.' }),
         el('div', { class: 'source', style: 'margin-top:14px' },
+          onGrades ? el('button', { class: 'btn small primary', text: 'See grades (L)', onclick: () => { close(); onGrades(); } }) : null,
           source === 'soma' ? null : el('button', { class: 'btn small', text: 'Restart the sample semester', onclick: onDemo }),
           source === 'soma' ? el('button', { class: 'btn small', text: 'Sync now', onclick: onClear }) : null,
           source === 'soma' && synced ? el('span', { class: 'synced', text: `Last synced ${synced} ago` }) : null),
+      );
+    },
+
+    /** Grades: each course's grade and every graded assignment. */
+    grades({ courses, sample, onCanvas }) {
+      const pct = (p) => (p == null ? '–' : `${Math.round(p * 10) / 10}%`);
+      panel({ title: 'Grades', subtitle: sample ? 'Sample semester: connect Canvas in Soma to see your real grades here.' : 'Straight from Canvas, through Soma. Every new grade also drops a chest on your plaza.', wide: true },
+        courses.length ? courses.map((c) => el('section', { class: 'grade-course' },
+          el('div', { class: 'grade-head' },
+            el('b', { text: c.courseName }),
+            el('span', { class: 'grade-big' }, c.letter ? el('em', { text: c.letter }) : null, el('span', { text: pct(c.pct) })),
+            el('small', { text: c.fromCanvas ? 'Course grade from Canvas' : c.items.length ? `Estimated from ${c.items.length} graded assignment${c.items.length === 1 ? '' : 's'}` : '' })),
+          c.items.length ? el('div', { class: 'grade-list' }, c.items.map((it) => el('div', { class: `grade-row ${it.pct >= 90 ? 'hi' : it.pct < 70 ? 'lo' : ''}` },
+            el('span', { class: 'grade-name', text: it.name }),
+            el('small', { text: [it.kind === 'boss' ? 'Exam' : null, it.group || null].filter(Boolean).join(' · ') }),
+            el('span', { class: 'grade-score', text: `${Math.round(it.score * 100) / 100} / ${it.points}` }),
+            el('b', { text: pct(it.pct) })))) : null))
+          : el('p', { class: 'note', text: 'No grades posted yet. They show up here by themselves as Canvas posts them.' }),
+        el('div', { class: 'actions', style: 'margin-top:12px' }, el('button', { class: 'btn small', text: 'Open Canvas (G)', onclick: () => { close(); onCanvas(); } })),
       );
     },
 
@@ -869,7 +890,7 @@ export function createUI(on) {
               it.count ? el('span', { text: it.text }) : null,
               it.count && it.kind !== 'trophy' && it.kind !== 'aura' ? el('button', { class: `btn small ${it.on ? '' : 'primary'}`, text: it.on ? offVerb[it.kind] : verb[it.kind], onclick: () => onUse(it.id) }) : null);
           })))),
-        el('p', { class: 'note', text: `How chests are earned: study sessions, every 3rd step you finish, hand-ins, grades, perfect practice rounds, learned reviews, broken weak points and streak days. A collectible's tier is rolled with the odds above; duplicates turn into coins. Nothing here can be bought.` }),
+        el('p', { class: 'note', text: `How chests are earned: study sessions, every 3rd step you finish, hand-ins, grades, a perfect practice round, broken weak points and streak days. No dice: each chest gives the next piece of its own tier. Nothing here can be bought.` }),
       );
     },
 
@@ -998,7 +1019,7 @@ export function createUI(on) {
           el('li', { text: 'Your hero levels up only from school: study sessions, handing work in, grades and beating tests. Each level makes you stronger and gives a skill point.' }),
           el('li', { text: 'Enemies have fixed levels. If they are too strong, study, then come back. Chests and elite enemies drop gear.' }),
           el('li', { text: 'Walk to a glowing pad and build. Buildings earn coins while you are away.' }),
-          el('li', { text: 'Walk past buildings to collect. Upgrade them, then build the wonder to reach the next age.' }),
+          el('li', { text: 'Homes bring villagers and nicer buildings raise your town rating. Coins come from studying and handing work in; save them for the wonder that starts the next age.' }),
           el('li', { text: 'Your Canvas assignments are the walking books marching on the gate. Hand one in on Canvas and it is sent home with a big coin reward and a chest. Late ones still pay; nothing is ever lost.' }),
           el('li', { text: 'Walk up to a book and start a study session, then go do the work. The town fires on the book while the timer runs, earns double, and a chest drops when you finish.' }),
           el('li', { text: 'Head out past the edge of town: clear fox camps for chests, dig up treasure, find shrines and hunt the Alpha in its lair. Raise the Great Pyramid to finish Season 1; new ages come next season.' }),

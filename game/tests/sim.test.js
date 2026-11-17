@@ -1044,3 +1044,19 @@ test('the country opens one area at a time through the Librarian\'s expansion pr
   s.era = 1;
   assert.strictEqual(S.openAreas(s).length, 5, 'later lands come fully open');
 });
+
+test('grades: Canvas course grade when Soma has it, otherwise a weighted estimate, newest assignment first', () => {
+  const s = S.newState(NOW);
+  const g = (id, course, score, points, weight, group, dueAt) => ({ id, name: id, courseId: course, courseName: course === 'a' ? 'Algebra' : 'Biology', dueAt, pointsPossible: points, weight, groupName: group, submitted: true, score });
+  S.syncSchool(s, [g('hw1', 'a', 9, 10, 40, 'Homework', NOW - 3 * DAY), g('q1', 'a', 15, 20, 60, 'Quizzes', NOW - DAY), g('lab', 'b', 18, 20, 0, '', NOW - DAY), { id: 'open', name: 'open', courseId: 'a', courseName: 'Algebra', dueAt: NOW + DAY, pointsPossible: 10, submitted: false, score: null }], NOW, { source: 'soma' });
+  const r = S.gradeReport(s, { b: { score: 91.2, grade: 'A-' } });
+  assert.deepStrictEqual(r.map((c) => c.courseName), ['Algebra', 'Biology']);
+  const alg = r[0];
+  assert.deepStrictEqual(alg.items.map((i) => i.id), ['q1', 'hw1'], 'graded only, newest first');
+  assert.ok(Math.abs(alg.pct - (90 * 0.4 + 75 * 0.6)) < 1e-9, 'weighted by group');
+  assert.strictEqual(alg.letter, 'B-');
+  assert.ok(!alg.fromCanvas);
+  assert.strictEqual(r[1].pct, 91.2);
+  assert.strictEqual(r[1].letter, 'A-');
+  assert.ok(r[1].fromCanvas);
+});
