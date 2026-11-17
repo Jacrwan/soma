@@ -2235,51 +2235,80 @@ export function bakeModel(root) {
 { const raw = makePedestal; makePedestal = (...args) => bakeModel(raw(...args)); }
 { const raw = makeTrophy; makeTrophy = (...args) => bakeModel(raw(...args)); }
 
-/** Owl, the old librarian spirit who guides you. About half a metre tall; userData.wings flap. */
+/** Owl, the old librarian spirit who guides you: one egg-shaped body (owls have
+ * no neck), a heart-shaped face, big amber eyes behind round gold spectacles,
+ * tucked wings, ear tufts and little feet. About 0.65 m tall; userData.wings flap. */
 export function makeOwl() {
   const g = new THREE.Group();
-  const brown = 0x8a6248, belly = 0xf1dfc0, dark = 0x5e402e;
-  const body = ball(0.24, brown, 1, { rough: 0.85 });
-  body.scale.set(1, 1.12, 0.92);
-  g.add(at(body, 0, 0.26, 0));
-  const front = ball(0.18, belly, 1, { rough: 0.9 });
-  front.scale.set(1, 1.15, 0.6);
-  g.add(at(front, 0, 0.22, 0.12));
-  const head = ball(0.2, brown, 1, { rough: 0.85 });
-  head.scale.set(1.12, 0.95, 0.95);
-  g.add(at(head, 0, 0.56, 0.02));
-  for (const s of [-1, 1]) {
-    const disc = ball(0.085, belly, 1);
-    disc.scale.set(1, 1, 0.45);
-    g.add(at(disc, s * 0.08, 0.58, 0.17));
-    const eye = ball(0.055, 0x1b1410, 1, { rough: 0.2 });
-    eye.scale.set(1, 1, 0.5);
-    g.add(at(eye, s * 0.08, 0.58, 0.205));
-    g.add(at(ball(0.017, 0xffffff, 0), s * 0.08 + 0.018, 0.6, 0.235));
-    const tuft = cone(0.05, 0.14, dark, 5);
-    tuft.rotation.z = -s * 0.45;
-    g.add(at(tuft, s * 0.15, 0.69, -0.02));
+  const brown = 0x9a6b4b, dark = 0x6b4630, face = 0xf3e2c6, belly = 0xead2ad, amber = 0xf0a72a;
+  const soft = { rough: 0.9 };
+  const egg = ball(0.3, brown, 1, soft);
+  egg.scale.set(1, 1.18, 0.92);
+  g.add(at(egg, 0, 0.36, 0));
+  // Belly with a few darker chevrons.
+  const front = ball(0.24, belly, 1, soft);
+  front.scale.set(0.95, 1.05, 0.5);
+  g.add(at(front, 0, 0.27, 0.15));
+  for (const [x, y] of [[-0.07, 0.3], [0.07, 0.3], [0, 0.22], [-0.1, 0.18], [0.1, 0.18], [0, 0.12]]) {
+    const v = cone(0.03, 0.04, 0xc9a77e, 3);
+    v.rotation.x = Math.PI / 2 + 0.2;
+    v.rotation.z = Math.PI;
+    g.add(at(v, x, y, 0.27));
   }
-  const beak = cone(0.035, 0.08, 0xe0a02a, 5);
-  beak.rotation.x = Math.PI;
-  g.add(at(beak, 0, 0.55, 0.22));
+  // The face: two overlapping pale discs make a heart shape.
+  for (const sx of [-1, 1]) {
+    const disc = ball(0.13, face, 1, soft);
+    disc.scale.set(1, 1.05, 0.38);
+    g.add(at(disc, sx * 0.085, 0.5, 0.2));
+  }
+  // Eyes: amber with a big pupil and a highlight, behind gold spectacles.
+  for (const sx of [-1, 1]) {
+    const iris = ball(0.068, amber, 1, { rough: 0.25 });
+    iris.scale.set(1, 1, 0.45);
+    g.add(at(iris, sx * 0.09, 0.51, 0.245));
+    const pupil = ball(0.045, 0x140d08, 1, { rough: 0.15 });
+    pupil.scale.set(1, 1, 0.4);
+    g.add(at(pupil, sx * 0.09, 0.51, 0.27));
+    g.add(at(ball(0.016, 0xffffff, 0), sx * 0.09 + 0.02, 0.535, 0.285));
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.012, 8, 28), mat(0xd9a640, { metal: 0.8, rough: 0.3 }));
+    rim.position.set(sx * 0.09, 0.51, 0.28);
+    g.add(rim);
+    // A soft brow over each eye, angled a little wise.
+    const brow = ball(0.06, dark, 0, soft);
+    brow.scale.set(1.35, 0.32, 0.5);
+    brow.rotation.z = sx * -0.08;
+    g.add(at(brow, sx * 0.1, 0.64, 0.21));
+    // Ear tufts.
+    const tuft = cone(0.055, 0.15, dark, 6);
+    tuft.rotation.z = -sx * 0.5;
+    g.add(at(tuft, sx * 0.19, 0.66, 0.0));
+  }
+  g.add(at(box(0.05, 0.014, 0.014, 0xd9a640, { metal: 0.8 }), 0, 0.53, 0.29));
+  const beak = cone(0.032, 0.075, 0xe8a53a, 6);
+  beak.rotation.x = Math.PI + 0.25;
+  g.add(at(beak, 0, 0.46, 0.3));
+  // Wings tucked along the sides, hinged at the shoulder.
   const wings = [];
-  for (const s of [-1, 1]) {
+  for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
-    const wing = ball(0.15, dark, 1, { rough: 0.85 });
-    wing.scale.set(0.35, 1, 0.75);
-    wing.position.set(s * 0.06, -0.08, 0);
+    const wing = ball(0.2, dark, 1, soft);
+    wing.scale.set(0.26, 0.92, 0.7);
+    wing.position.set(sx * 0.0, -0.14, -0.03);
     pivot.add(wing);
-    pivot.position.set(s * 0.21, 0.36, -0.01);
-    pivot.userData.side = s;
+    pivot.position.set(sx * 0.255, 0.42, -0.02);
+    pivot.userData.side = sx;
     g.add(pivot);
     wings.push(pivot);
   }
-  for (const s of [-1, 1]) g.add(at(cone(0.03, 0.06, 0xe0a02a, 4), s * 0.07, 0.0, 0.08));
-  // A small lantern hanging from one foot: the Atlas's light.
-  const lantern = ball(0.05, 0xfff1b0, 0, { emissive: 0xffd27a, glow: 1.6 });
-  lantern.name = 'glow';
-  g.add(at(lantern, 0.09, -0.06, 0.06));
+  // Tail and feet.
+  const tail = cone(0.12, 0.16, dark, 5);
+  tail.rotation.x = -2.3;
+  g.add(at(tail, 0, 0.1, -0.24));
+  for (const sx of [-1, 1]) for (const t of [-0.35, 0, 0.35]) {
+    const toe = cone(0.022, 0.07, amber, 4);
+    toe.rotation.set(Math.PI / 2, 0, t);
+    g.add(at(toe, sx * 0.08 + Math.sin(t) * 0.03, 0.02, 0.13));
+  }
   g.userData.wings = wings;
   return g;
 }

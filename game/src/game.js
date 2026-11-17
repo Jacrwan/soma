@@ -1774,7 +1774,7 @@ function replayTutorial() {
 
 // --- Owl, your guide, and the story ---------------------------------------------------
 const owl = { object: A.makeOwl(), t: 0 };
-owl.object.scale.setScalar(1.35);
+owl.object.scale.setScalar(1.25);
 world.earth.add(owl.object);
 function updateOwl(dt, time) {
   const o = owl.object;
@@ -1789,7 +1789,7 @@ function updateOwl(dt, time) {
   if (o.position.distanceTo(want) > 25) o.position.copy(want);
   o.position.lerp(want, Math.min(1, dt * 4));
   o.rotation.y = Math.atan2(-back.x, -back.z) + Math.PI + Math.sin(time * 0.7) * 0.25;
-  for (const w of o.userData.wings) w.rotation.z = w.userData.side * (0.35 + Math.sin(time * 9) * 0.45);
+  for (const w of o.userData.wings) w.rotation.z = w.userData.side * (0.15 + Math.sin(time * 7) * 0.22);
 }
 /** Plays a story moment once, then calls after (even if it was already seen). */
 function playStory(id, after) {
@@ -4228,6 +4228,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 window.epoch = {
   state, S, cam,
   give(n) { S.addCoins(state, n); refreshHud(); },
+  owlThumb: () => Promise.resolve(renderThumb(A.makeOwl(), 0.35)),
   chests: () => openChests(),
   thumb: (r) => thumbFor(r),
   character: (id) => pickCharacter(id),
