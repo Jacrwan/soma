@@ -127,42 +127,45 @@ export function makeOwl3D() {
     disc.scale.set(1, 1, 0.42);
     disc.position.set(sx * 0.11, 0.55, 0.24);
     root.add(disc);
+    // Big, friendly eyes: mostly dark, a thin amber ring, two bright highlights.
     const eye = new THREE.Group();
-    const iris = new THREE.Mesh(sphere(0.075), toon(amber));
-    iris.scale.set(1, 1, 0.35);
-    const pupil = new THREE.Mesh(sphere(0.054), new THREE.MeshBasicMaterial({ color: 0x1e120c }));
-    pupil.scale.set(1, 1, 0.35);
-    pupil.position.z = 0.012;
-    const shine = new THREE.Mesh(sphere(0.02, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-    shine.position.set(0.022, 0.024, 0.03);
-    const shine2 = new THREE.Mesh(sphere(0.01, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-    shine2.position.set(-0.02, -0.024, 0.03);
+    const iris = new THREE.Mesh(sphere(0.09), toon(amber));
+    iris.scale.set(1, 1.08, 0.3);
+    const pupil = new THREE.Mesh(sphere(0.075), new THREE.MeshBasicMaterial({ color: 0x1e120c }));
+    pupil.scale.set(1, 1.08, 0.3);
+    pupil.position.z = 0.008;
+    const shine = new THREE.Mesh(sphere(0.026, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    shine.position.set(sx * -0.024 + 0.0, 0.03, 0.03);
+    const shine2 = new THREE.Mesh(sphere(0.012, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    shine2.position.set(sx * 0.022, -0.028, 0.03);
     eye.add(iris, pupil, shine, shine2);
-    eye.position.set(sx * 0.11, 0.55, 0.29);
+    eye.position.set(sx * 0.105, 0.56, 0.29);
     root.add(eye);
     eyes.push(eye);
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.014, 10, 36), toon(gold, { emissive: 0x3a2808 }));
-    rim.position.set(sx * 0.11, 0.55, 0.305);
-    root.add(rim);
   }
-  const bridge = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.04, 8), toon(gold));
-  bridge.rotation.z = Math.PI / 2;
-  bridge.position.set(0, 0.57, 0.31);
-  root.add(bridge);
+  void gold;
   const beak = part(new THREE.ConeGeometry(0.04, 0.09, 12), 0xf2a33a, { outline: 0.012 });
   beak.rotation.x = Math.PI + 0.35;
   beak.position.set(0, 0.46, 0.32);
   root.add(beak);
-  // Wings, hinged at the shoulder.
+  // Wings: a fan of long feathers, hinged at the shoulder. They lie folded along
+  // the body at rest and spread out to beat when Owl flies.
   const wings = [];
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
-    const wing = part(sphere(0.2), dark, { outline: 0.018 });
-    wing.scale.set(0.3, 0.9, 0.7);
-    wing.position.set(sx * 0.02, -0.15, -0.02);
-    pivot.add(wing);
-    pivot.position.set(sx * 0.29, 0.46, 0);
-    pivot.userData.side = sx;
+    const fan = new THREE.Group();
+    const lens = [0.5, 0.45, 0.38, 0.3];
+    lens.forEach((len, i) => {
+      const f = part(sphere(0.5, 20, 12), i === 0 ? dark : i % 2 ? 0x7d5132 : dark, { outline: 0.014 });
+      f.scale.set(len, 0.06 + 0.012 * (3 - i), 0.05);
+      // Laid out along +x (outward), each feather a little further back and down.
+      f.position.set(sx * len * 0.5, -i * 0.035, -i * 0.04);
+      f.rotation.z = sx * -i * 0.12;
+      fan.add(f);
+    });
+    pivot.add(fan);
+    pivot.position.set(sx * 0.24, 0.5, -0.02);
+    pivot.userData = { side: sx, fan };
     root.add(pivot);
     wings.push(pivot);
   }
@@ -202,14 +205,24 @@ export function createOwl() {
   model.scale.setScalar(1.35);
   object.add(model);
   let nextBlink = 2;
+  let spread = 0;
   return {
     object,
     update(dt, time, ground = 0, moving = false) {
       // A gentle hover, wings beating while it keeps up with you, a blink now and then.
       model.position.y = Math.sin(time * 2.2) * 0.08;
       model.rotation.z = Math.sin(time * 1.1) * 0.05;
-      const beat = moving ? Math.sin(time * 16) * 0.7 + 0.5 : 0.08 + Math.sin(time * 1.6) * 0.05;
-      for (const w of model.userData.wings) w.rotation.z = w.userData.side * beat;
+      // Spread eases in while flying and out when Owl settles.
+      spread += ((moving ? 1 : 0) - spread) * Math.min(1, dt * 6);
+      const beat = Math.sin(time * 14);
+      for (const w of model.userData.wings) {
+        const s = w.userData.side;
+        // Folded: pointing down along the side, tucked back. Spread: out and beating up and down.
+        const folded = -1.35, open = 0.15 + beat * 0.65;
+        w.rotation.z = s * (folded + (open - folded) * spread);
+        w.rotation.y = s * (0.35 * (1 - spread));
+        w.rotation.x = 0.15 * (1 - spread);
+      }
       nextBlink -= dt;
       const shut = nextBlink < 0.12;
       if (nextBlink < 0) nextBlink = 2.5 + Math.random() * 3;

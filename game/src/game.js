@@ -4232,7 +4232,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 window.epoch = {
   state, S, cam,
   give(n) { S.addCoins(state, n); refreshHud(); },
-  owlThumb: () => Promise.resolve(renderThumb(makeOwl3D(), 0.4)),
+  owlThumb: (open) => { const o = makeOwl3D(); for (const w of o.userData.wings) { const sd = w.userData.side; w.rotation.z = sd * (open ? 0.5 : -1.35); w.rotation.y = open ? 0 : sd * 0.35; } return Promise.resolve(renderThumb(o, 0.4)); },
   chests: () => openChests(),
   thumb: (r) => thumbFor(r),
   character: (id) => pickCharacter(id),
