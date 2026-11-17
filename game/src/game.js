@@ -4397,15 +4397,12 @@ function syncPedestals() {
   });
 }
 
-// Auras circle the hero.
+// Auras are collectibles for the Vault only: nothing glows around the hero (Ted's call, Nov 17).
 let auraObject = null;
 function dressAura() {
   if (auraObject) auraObject.parent?.remove(auraObject);
   auraObject = null;
-  const id = state.vault.aura;
-  if (!id || !state.vault.owned[id]) return;
-  auraObject = A.makeAura(id);
-  player.object.add(auraObject);
+  state.vault.aura = null;
 }
 function updateAura(dt, time) {
   for (const p of pedestals) if (p.item) { p.item.rotation.y = time * 0.8; p.item.position.y = 1.3 + Math.sin(time * 1.5 + p.group.position.x) * 0.06; }
@@ -4436,14 +4433,14 @@ function openVault() {
       tier,
       items: Object.entries(S.COLLECTIBLES).filter(([, c]) => c.tier === tier).map(([id, c]) => ({
         id, ...c, count: v.owned[id] || 0,
-        on: (c.kind === 'hat' && state.cosmetics.hat === id) || (c.kind === 'aura' && v.aura === id) || (c.kind === 'pet' && state.critters.pet === id),
+        on: (c.kind === 'hat' && state.cosmetics.hat === id) || (c.kind === 'pet' && state.critters.pet === id),
       })),
     })),
     thumb: (id) => thumbFor({ kind: 'collectible', id }),
     onUse: (id) => {
       const c = S.COLLECTIBLES[id];
       if (c.kind === 'hat') { state.cosmetics.hat = state.cosmetics.hat === id ? 'hat:none' : id; dressPlayer(); }
-      if (c.kind === 'aura') { v.aura = v.aura === id ? null : id; dressAura(); }
+      if (c.kind === 'aura') return void ui.toast('Auras are kept in the Vault: set one on a pedestal to show it off.', 'good');
       if (c.kind === 'pet') { S.setPet(state, state.critters.pet === id ? null : id); dressPet(); }
       if (c.kind === 'decor') { ui.close(); toggleBuild(true); setGhost(id); return; }
       save(); ui.close(); openVault();
@@ -4646,7 +4643,7 @@ const debugApi = {
   uiOpen: () => ui.isOpen(),
   shiftLock: () => ({ on: shiftLock, locked: locked(), yaw: cam.yaw, facing: player.facing }),
   exam: (id) => openExam(id), steps: (id) => openSteps(id),
-  vault: () => openVault(), aura(id) { state.vault.owned[id] = 1; state.vault.aura = id; dressAura(); }, grant(id) { state.vault.owned[id] = (state.vault.owned[id] || 0) + 1; if (S.COLLECTIBLES[id].kind === 'hat' && !state.cosmetics.owned.includes(id)) state.cosmetics.owned.push(id); if (S.COLLECTIBLES[id].kind === 'pet') state.critters.caught[id] = 1; if (S.COLLECTIBLES[id].kind === 'decor' && !state.decorUnlocked.includes(id)) state.decorUnlocked.push(id); syncPedestals(); }, openTop() { const c = state.school.chests.at(-1); if (c) openLoot(c.id, player.object.position.clone()); },
+  vault: () => openVault(), grant(id) { state.vault.owned[id] = (state.vault.owned[id] || 0) + 1; if (S.COLLECTIBLES[id].kind === 'hat' && !state.cosmetics.owned.includes(id)) state.cosmetics.owned.push(id); if (S.COLLECTIBLES[id].kind === 'pet') state.critters.caught[id] = 1; if (S.COLLECTIBLES[id].kind === 'decor' && !state.decorUnlocked.includes(id)) state.decorUnlocked.push(id); syncPedestals(); }, openTop() { const c = state.school.chests.at(-1); if (c) openLoot(c.id, player.object.position.clone()); },
   invaders: () => [...invaders.values()].map((i) => ({ name: i.item.name, mode: i.mode, x: +i.object.position.x.toFixed(1), z: +i.object.position.z.toFixed(1), inScene: Boolean(i.object.parent) })),
   armor(id) { const inv = invaders.get(id); return inv && inv.object.userData.armor?.filter((p) => p.visible).length; },
   info: () => ({ quality, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, cpuMs: Math.round((pace.cpu || 0) * 10) / 10 }),

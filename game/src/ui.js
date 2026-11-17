@@ -850,7 +850,7 @@ export function createUI(on) {
               el('b', { text: it.count ? it.name : '???' }),
               el('small', { text: it.count ? `${it.kind}${it.count > 1 ? ` · ×${it.count}` : ''}` : it.kind }),
               it.count ? el('span', { text: it.text }) : null,
-              it.count && it.kind !== 'trophy' ? el('button', { class: `btn small ${it.on ? '' : 'primary'}`, text: it.on ? offVerb[it.kind] : verb[it.kind], onclick: () => onUse(it.id) }) : null);
+              it.count && it.kind !== 'trophy' && it.kind !== 'aura' ? el('button', { class: `btn small ${it.on ? '' : 'primary'}`, text: it.on ? offVerb[it.kind] : verb[it.kind], onclick: () => onUse(it.id) }) : null);
           })))),
         el('p', { class: 'note', text: `How chests are earned: study sessions, every 3rd step you finish, hand-ins, grades, perfect practice rounds, learned reviews, broken weak points and streak days. A collectible's tier is rolled with the odds above; duplicates turn into coins. Nothing here can be bought.` }),
       );
