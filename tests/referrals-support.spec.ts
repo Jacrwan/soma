@@ -227,10 +227,27 @@ test('a student messages the developer from any page and sees the reply', async 
   await expect.poll(() => state.read).toBeGreaterThan(0);
 });
 
-test('an unread reply shows on the closed bubble', async ({ page }) => {
-  await signIn(page, { messages: [{ id: 'r1', sender: 'owner', body: 'Hi!', created_at: new Date().toISOString(), read_at: null }] });
+test('an unread reply shows on the closed bubble, with a preview that opens the chat', async ({ page }) => {
+  await signIn(page, { messages: [{ id: 'r1', sender: 'owner', body: 'Hi! The fix is live now.', created_at: new Date().toISOString(), read_at: null }] });
   await page.goto('/settings');
   await expect(page.getByRole('button', { name: 'Messages, 1 unread' })).toBeVisible({ timeout: 8_000 });
+  const preview = page.getByRole('status').filter({ hasText: 'The developer replied' });
+  await expect(preview).toContainText('Hi! The fix is live now.');
+  await preview.getByRole('button', { name: /The developer replied/ }).click();
+  await expect(page.getByRole('dialog', { name: 'Message the developer' }).getByText('Hi! The fix is live now.')).toBeVisible();
+  // Read: the badge and the preview are gone once the chat closes.
+  await page.getByRole('button', { name: 'Close messages' }).first().click();
+  await expect(page.getByRole('button', { name: 'Message the developer' })).toBeVisible();
+  await expect(preview).toHaveCount(0);
+});
+
+test('closing the reply preview keeps it closed; the badge stays until it’s read', async ({ page }) => {
+  await signIn(page, { messages: [{ id: 'r1', sender: 'owner', body: 'Sure thing', created_at: new Date().toISOString(), read_at: null }] });
+  await page.goto('/settings');
+  await page.getByRole('button', { name: 'Hide reply preview' }).click({ timeout: 8_000 });
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Messages, 1 unread' })).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByText('The developer replied')).toHaveCount(0);
 });
 
 test('the owner’s bubble is an inbox; ?support=<id> opens that conversation and replies go to it', async ({ page }) => {

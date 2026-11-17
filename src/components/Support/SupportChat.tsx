@@ -15,7 +15,8 @@ import styles from './SupportChat.module.css';
  */
 
 const OPEN_POLL_MS = 8_000;
-const CLOSED_POLL_MS = 60_000;
+const CLOSED_POLL_MS = 30_000;
+const previewKey = (userId: string) => `soma_support_preview_${userId}`;
 
 const timeOf = (iso: string) => {
   const d = new Date(iso);
@@ -39,6 +40,9 @@ export default function SupportChat({ userId }: { userId: string }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notSetUp, setNotSetUp] = useState(false);
+  // A student's newest unread reply, shown as a card beside the closed bubble
+  // until they open the chat or close the card (remembered per reply).
+  const [preview, setPreview] = useState<SupportMessage | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -75,7 +79,7 @@ export default function SupportChat({ userId }: { userId: string }) {
       const next = await loadThread(activeThread);
       setMessages(next);
       const theirs = next.some(m => !m.readAt && m.sender !== (owner ? 'owner' : 'user'));
-      if (theirs) { await markRead(activeThread); if (!owner) setUnread(0); }
+      if (theirs) { await markRead(activeThread); if (!owner) { setUnread(0); setPreview(null); } }
       setNotSetUp(false);
     } catch (e) {
       if (e instanceof SupportNotSetUpError) setNotSetUp(true);
@@ -98,11 +102,19 @@ export default function SupportChat({ userId }: { userId: string }) {
       if (document.visibilityState !== 'visible') return;
       if (owner) {
         try { setUnread((await loadThreads()).reduce((n, t) => n + t.unread, 0)); } catch { /* not set up */ }
-      } else setUnread(await unreadReplies(userId));
+      } else {
+        const { count, latest } = await unreadReplies(userId);
+        setUnread(count);
+        let dismissed: string | null = null;
+        try { dismissed = localStorage.getItem(previewKey(userId)); } catch { /* blocked */ }
+        setPreview(latest && latest.id !== dismissed ? latest : null);
+      }
     };
     const first = window.setTimeout(check, 3_000);
     const id = window.setInterval(check, CLOSED_POLL_MS);
-    return () => { window.clearTimeout(first); window.clearInterval(id); };
+    // Coming back to the tab checks at once, not up to 30 s later.
+    document.addEventListener('visibilitychange', check);
+    return () => { window.clearTimeout(first); window.clearInterval(id); document.removeEventListener('visibilitychange', check); };
   }, [open, owner, userId]);
 
   useEffect(() => {
@@ -148,6 +160,22 @@ export default function SupportChat({ userId }: { userId: string }) {
 
   return (
     <>
+      {!open && preview && (
+        <div className={styles.preview} role="status">
+          <button className={styles.previewBody} onClick={() => setOpen(true)}>
+            <span className={styles.previewTitle}>The developer replied</span>
+            <span className={styles.previewText}>{preview.body}</span>
+          </button>
+          <button
+            className={styles.previewClose}
+            aria-label="Hide reply preview"
+            onClick={() => {
+              try { localStorage.setItem(previewKey(userId), preview.id); } catch { /* blocked */ }
+              setPreview(null);
+            }}
+          ><X size={13} /></button>
+        </div>
+      )}
       {open && (
         <section className={styles.panel} role="dialog" aria-label={title}>
           <header className={styles.head}>

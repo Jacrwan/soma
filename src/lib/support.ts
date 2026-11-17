@@ -41,11 +41,14 @@ export async function loadThread(threadUserId: string): Promise<SupportMessage[]
   return ((data ?? []) as Record<string, unknown>[]).map(toMessage);
 }
 
-/** Unread replies for a student (polled while the chat is closed). */
-export async function unreadReplies(userId: string): Promise<number> {
-  const { count, error } = await supabase.from(TABLE).select('id', { count: 'exact', head: true })
-    .eq('thread_user_id', userId).eq('sender', 'owner').is('read_at', null);
-  return error ? 0 : count ?? 0;
+/** Unread replies for a student (polled while the chat is closed): how many, and the newest, for the preview. */
+export async function unreadReplies(userId: string): Promise<{ count: number; latest: SupportMessage | null }> {
+  const { data, error } = await supabase.from(TABLE).select('id,sender,body,created_at,read_at')
+    .eq('thread_user_id', userId).eq('sender', 'owner').is('read_at', null)
+    .order('created_at', { ascending: false }).limit(20);
+  if (error) return { count: 0, latest: null };
+  const rows = ((data ?? []) as Record<string, unknown>[]).map(toMessage).filter(m => m.sender === 'owner' && !m.readAt);
+  return { count: rows.length, latest: rows[0] ?? null };
 }
 
 export async function markRead(threadUserId: string): Promise<void> {

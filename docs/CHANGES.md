@@ -9,6 +9,17 @@ still needed.
 
 ---
 
+## 2026-11-17 (Message the developer: a reply preview beside the bubble)
+
+- **Why:** the owner asked for a clear notification when a student gets a reply.
+- **What:** `SupportChat.tsx`: besides the red count on the bubble (it pops in
+  now), the newest unread reply shows as a card beside it ("The developer
+  replied" + two lines); clicking opens the chat, × hides it for that reply
+  (`soma_support_preview_<user id>`). Checked every 30 s (was 60) and at once
+  when the tab comes back. `unreadReplies` returns the count and the newest.
+- **Tests:** referrals-support.spec.ts (preview opens the chat and clears;
+  a hidden preview stays hidden, the badge stays until read).
+
 ## 2026-11-17 (Message the developer: an automatic reply)
 
 - **Why:** the owner asked for an automatic message telling students their
