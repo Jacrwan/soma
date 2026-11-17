@@ -157,9 +157,11 @@ export function createChatHandler(deps:{authorize?:(token:string)=>Promise<Autho
     const budget=await (deps.budget??defaultBudget)(auth.userId);
     if(budget && budget.used>=budget.available)return res.status(402).json({error:'ai_budget_used',resetsAt:budget.resetsAt,trial:budget.trial});
    }
-   const key=(deps.apiKey??(()=>process.env.ANTHROPIC_API_KEY))();
-   if(!key)return res.status(503).json({error:'server_not_configured'});
    const {messages,systemPrompt,context,model,effort,purpose,conversationId,stream}=req.body;
+   // The Epoch game (practice, the Study Hall, the week planner) can run on its own key, so its use is billed and tracked apart.
+   const game=purpose==='practice' || purpose==='oracle';
+   const key=(deps.apiKey??(()=>(game && process.env.EPOCH_ANTHROPIC_API_KEY) || process.env.ANTHROPIC_API_KEY))();
+   if(!key)return res.status(503).json({error:'server_not_configured'});
    // The first pass that sorts a message (and answers small talk) needs no
    // memory, and learning from the message is left to the reply proper.
    const triage=purpose==='triage';
