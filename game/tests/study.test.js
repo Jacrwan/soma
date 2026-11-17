@@ -58,3 +58,14 @@ test('study kits stay bounded', () => {
   for (let i = 0; i < KIT_MAX + 5; i++) addKit(s, { title: `Kit ${i}` }, `text ${i}`, NOW + i);
   assert.strictEqual(Object.keys(s.kits).length, KIT_MAX);
 });
+
+import { parseLine } from '../src/practice.js';
+
+test('kit lines: LaTeX survives whether or not the model doubled its backslashes', () => {
+  assert.strictEqual(parseLine(String.raw`{"front":"\\(\\frac{a}{b}\\)"}`).front, String.raw`\(\frac{a}{b}\)`);
+  const loose = parseLine(String.raw`{"front":"\(\frac{1}{2}\theta + \nabla \beta\)","back":"two\nlines \times \text{x} \ce{H2O}"}`);
+  assert.strictEqual(loose.front, String.raw`\(\frac{1}{2}\theta + \nabla \beta\)`);
+  assert.strictEqual(loose.back, 'two\nlines ' + String.raw`\times \text{x} \ce{H2O}`);
+  assert.strictEqual(parseLine('not json'), null);
+  assert.strictEqual(parseLine('```json'), null);
+});

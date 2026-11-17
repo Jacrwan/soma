@@ -55,8 +55,17 @@ async function youtube(url) {
   const cap = await fetch(capUrl);
   if (!cap.ok) return { error: 'no_captions' };
   const json = await cap.json().catch(() => null);
-  const lines = (json?.events || []).map((e) => (e.segs || []).map((s) => s.utf8 || '').join('')).filter((t) => t.trim());
-  const text = lines.join(' ').replace(/\s+/g, ' ').replace(/([.?!])\s+/g, '$1\n');
+  // A [m:ss] marker about every 30 seconds, so cards and questions can say where in the video they come from.
+  const stamp = (ms) => { const t = Math.floor(ms / 1000); return `[${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}]`; };
+  let next = 0;
+  const parts = [];
+  for (const e of json?.events || []) {
+    const t = (e.segs || []).map((x) => x.utf8 || '').join('').replace(/\s+/g, ' ').trim();
+    if (!t) continue;
+    if ((e.tStartMs || 0) >= next) { parts.push(`\n${stamp(e.tStartMs || 0)} `); next = (e.tStartMs || 0) + 30000; }
+    parts.push(`${t} `);
+  }
+  const text = parts.join('').trim();
   const desc = String(data.videoDetails?.shortDescription || '').slice(0, 1500);
   return done(title, `Video: ${title}\n${desc ? `Description: ${desc}\n` : ''}\nTranscript:\n${text}`, 'video');
 }

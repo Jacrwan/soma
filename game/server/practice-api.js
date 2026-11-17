@@ -28,6 +28,11 @@ import path from 'node:path';
 // writer and the grader get the strongest current model; low effort keeps a
 // set of 8 to a few seconds (measured in the Study Hall verification run).
 const MODEL = 'claude-opus-5-5';
+// Study kits: the topic map is extraction work, so the fast model does it (about
+// 3 s); cards, questions and guides stream from Opus (first item in about 1.3 s).
+// Measured on a lecture PDF, Nov 2026: Haiku 5.5 3.2 s total, Opus 5.5 low 10 s
+// total but 1.3 s to the first card, with the best math and answer keys.
+const FAST_MODEL = 'claude-haiku-5-5';
 const MAX_SYSTEM = 6000, MAX_CONTENT = 70000, MAX_OUT = 8000, PER_MINUTE = 20;
 const SOMA_DIR = path.join(os.homedir(), 'Desktop/soma/.claude/worktrees/gamify');
 
@@ -122,6 +127,67 @@ export function epochPractice() {
     if (out.status !== 200) return { error: out.body.error };
     return { text: out.body.content[0].text };
   }
+
+  // Streams one kit request as plain text (NDJSON from the model) to the browser.
+  // body: { purpose:'practice', systemPrompt, material, ask, speed:'fast'|'best' }.
+  // The material is the cached prefix, so a kit's later requests start faster and cost less;
+  // the system prompt is shared by every kit request so it never breaks that cache.
+  async function stream(req, res) {
+    if (req.method !== 'POST') return send(res, 405, { error: 'method_not_allowed' });
+    if (!client) return send(res, 503, { error: 'server_not_configured' });
+    let body;
+    try { body = JSON.parse(await readBody(req, MAX_SYSTEM + MAX_CONTENT + 8000)); } catch { return send(res, 400, { error: 'invalid_request' }); }
+    const ok = body && body.purpose === 'practice' && typeof body.systemPrompt === 'string' && body.systemPrompt.length <= MAX_SYSTEM
+      && typeof body.material === 'string' && body.material.trim() && body.material.length <= MAX_CONTENT
+      && typeof body.ask === 'string' && body.ask.trim() && body.ask.length <= 6000;
+    if (!ok) return send(res, 400, { error: 'invalid_request' });
+    const now = Date.now();
+    while (recent.length && recent[0] < now - 60_000) recent.shift();
+    if (recent.length >= PER_MINUTE) return send(res, 429, { error: 'rate_limit' });
+    recent.push(now);
+    const fast = body.speed === 'fast';
+    const params = {
+      model: fast ? FAST_MODEL : MODEL,
+      max_tokens: MAX_OUT,
+      output_config: { effort: 'low' },
+      system: body.systemPrompt,
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: `<material>\n${body.material}\n</material>`, cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: body.ask },
+      ] }],
+    };
+    if (fast) params.thinking = { type: 'disabled' };
+    let s;
+    try { s = client.messages.stream(params); } catch { return send(res, 502, { error: 'upstream_unavailable' }); }
+    let started = false;
+    const begin = () => {
+      if (started) return;
+      started = true;
+      res.statusCode = 200;
+      res.setHeader('content-type', 'text/plain; charset=utf-8');
+      res.setHeader('cache-control', 'no-store');
+      res.setHeader('x-accel-buffering', 'no');
+    };
+    req.on('close', () => { if (!res.writableEnded) s.abort(); });
+    try {
+      for await (const e of s) {
+        if (e.type === 'content_block_delta' && e.delta.type === 'text_delta') { begin(); res.write(e.delta.text); }
+      }
+      const msg = await s.finalMessage();
+      const end = msg.stop_reason === 'refusal' ? 'refused' : msg.stop_reason === 'max_tokens' ? 'response_incomplete' : null;
+      if (!started) return send(res, 502, { error: end || 'invalid_ai_response' });
+      if (end) res.write(`\n{"__error":"${end}"}\n`);
+      res.end();
+    } catch (err) {
+      if (res.writableEnded || req.destroyed) return;
+      const code = err instanceof Anthropic.RateLimitError ? 'rate_limit' : err instanceof Anthropic.APIConnectionTimeoutError ? 'request_timeout'
+        : err instanceof Anthropic.APIConnectionError ? 'offline' : (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) ? 'bad_key'
+          : err instanceof Anthropic.APIError && err.status === 529 ? 'overloaded' : err?.name === 'APIUserAbortError' ? 'cancelled' : 'upstream_unavailable';
+      if (code !== 'cancelled') logger?.warn(`Study Hall AI: stream error ${err?.status ?? err?.name ?? 'unknown'}`);
+      if (!started) return send(res, code === 'rate_limit' ? 429 : 502, { error: code });
+      res.end(`\n{"__error":"${code}"}\n`);
+    }
+  }
   async function source(req, res) {
     if (req.method !== 'POST') return send(res, 405, { error: 'method_not_allowed' });
     if (!client) return send(res, 503, { error: 'server_not_configured' });
@@ -152,6 +218,7 @@ export function epochPractice() {
       server.middlewares.use('/api/practice', async (req, res) => {
         if (!isLocal(req)) return send(res, 403, { error: 'local_only' });
         if ((req.url || '').startsWith('/source')) return source(req, res);
+        if ((req.url || '').startsWith('/stream')) return stream(req, res);
         // GET: lets the game know this endpoint exists (and whether it has a key).
         if (req.method === 'GET') return send(res, 200, { service: 'epoch-practice', ready, model: MODEL });
         if (req.method !== 'POST') return send(res, 405, { error: 'method_not_allowed' });

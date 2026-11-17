@@ -261,56 +261,161 @@ export async function readMaterial({ file = null, url = '' }) {
 }
 
 const KIT_TEXT = 50000; // characters of material sent with each request
-const material = (text) => `The student's material:\n<material>\n${String(text).slice(0, KIT_TEXT)}\n</material>`;
-const KIT_SYSTEM = `You set up a study kit from a student's material (notes, slides, a reading or a video transcript).
-Return only JSON: {"title":"short title for what this is about (not the file name)","overview":"2 or 3 plain sentences on what the material covers","topics":["main topic","..."]}
-- 3 to 8 topics, each 1 to 5 words, in the order the material covers them.`;
 
-/** Title, overview and topics for new material. */
+// One system prompt for every kit request, so the cached material is reused across
+// cards, questions and the guide. What to make goes in the request after the material.
+const KIT_SYSTEM = `You make study material from a student's own material (notes, slides, a reading or a video transcript).
+Output NDJSON: one complete JSON object per line, nothing else. No code fences, no commentary.
+Rules:
+- Use only what the material covers. Be exact; never invent facts, numbers or formulas.
+- Short and scannable: no padding, no "In this section...". Plain words a student would use.
+- Math, physics and stats: LaTeX inside \\( \\) for inline and \\[ \\] for display. Chemistry formulas and reactions: \\ce{...}. In JSON every backslash is doubled, e.g. "\\\\frac{a}{b}".
+- **bold** for the one key word in a line when it helps. \`code\` for code, and fenced code blocks for multi-line code.
+- "src": where in the material it comes from, using its markers ("p. 3" for [Page 3], "slide 4" for Slide 4, "4:12" for [4:12]). Leave it "" when the material has no markers.`;
+
+const ASKS = {
+  map: () => `Map this material for a study kit. Output exactly one line:
+{"title":"what it's about, under 8 words (not the file name)","overview":"2 sentences on what it covers","topics":[{"name":"1 to 5 words","src":"where it starts"}]}
+3 to 8 topics, in the order the material covers them.`,
+  cards: ({ count, topics, avoid }) => `Make ${count} flashcards${topics.length ? `, spread evenly over these topics: ${topics.join('; ')}` : ''}.
+One line per card: {"front":"a specific prompt","back":"the answer, under 25 words","topic":"one of the topics","src":"..."}
+Mix definitions, why/how, formulas, steps and examples. One idea per card.${avoid.length ? `\nDon't repeat these:\n${avoid.map((a) => `- ${a}`).join('\n')}` : ''}`,
+  questions: ({ count, topics, avoid }) => `Write ${count} test-style multiple-choice questions${topics.length ? `, spread over these topics: ${topics.join('; ')}` : ''}. Start easy and get harder.
+One line per question: {"q":"question","choices":["A","B","C","D"],"answer":0,"why":"why the right answer is right, under 20 words","more":"one or two sentences on the trap in the most tempting wrong choice","topic":"...","level":"easy|medium|hard","src":"..."}
+Exactly 4 choices, one right ("answer" is its index 0-3). Wrong choices are mistakes students really make. Test understanding and application; for math, include computation questions. No "all/none of the above".${avoid.length ? `\nDon't repeat these:\n${avoid.map((a) => `- ${a}`).join('\n')}` : ''}`,
+  guide: ({ topics }) => `Write a study guide as topic cards, one line each, in this order:
+First line: {"kind":"summary","text":"the big picture in 2 or 3 sentences"}
+Then one line per topic${topics.length ? ` (${topics.join('; ')})` : ''}:
+{"kind":"topic","name":"...","src":"...","points":["key idea, under 18 words","..."],"terms":[{"term":"...","def":"under 15 words"}],"table":{"cols":["",""],"rows":[["",""]]},"check":{"q":"one quick question","choices":["A","B","C","D"],"answer":0,"why":"under 20 words"}}
+3 to 5 points per topic. 0 to 4 terms. Add "table" only when a comparison or a list of steps/values reads better as a table; otherwise leave it out.`,
+};
+
+// A model writes LaTeX like \frac inside JSON strings; when it forgets to double the
+// backslash, JSON.parse fails or reads "\f" as a form feed. Escapes JSON really uses
+// are kept; a lone backslash before anything else (or before a LaTeX command that
+// starts with b/f/n/r/t/u) is doubled.
+const LATEX_BFNRTU = /^(b(eta|ar|inom|oxed|ig|igl|igr|ot|ullet|egin|f|m)|f(rac|orall|lat)|n(abla|eq|e|u|ot|i|ewline|cong|leq|geq|mid|parallel|subseteq)|r(ho|ight|angle|ceil|floor|m|Rightarrow)|t(heta|imes|ext|extbf|extit|au|an|o|op|frac|ilde|riangle|herefore)|u(nderline|parrow|psilon|nion))(?![a-zA-Z])/;
+export function repairJsonLine(line) {
+  let out = '';
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c !== '\\') { out += c; continue; }
+    const next = line[i + 1] ?? '';
+    if (next === '\\') { out += '\\\\'; i += 1; continue; }
+    if (next === '"' || next === '/') { out += c + next; i += 1; continue; }
+    if (next === 'u' && /^[0-9a-fA-F]{4}$/.test(line.slice(i + 2, i + 6))) { out += c; continue; }
+    if ('bfnrt'.includes(next) && next && !LATEX_BFNRTU.test(line.slice(i + 1))) { out += c; continue; }
+    out += '\\\\';
+  }
+  return out;
+}
+export function parseLine(line) {
+  const t = line.trim().replace(/^```(json)?$/, '').replace(/,$/, '');
+  if (!t.startsWith('{')) return null;
+  try { return JSON.parse(t); } catch { /* try the repair */ }
+  try { return JSON.parse(repairJsonLine(t)); } catch { return null; }
+}
+
+/**
+ * Streams one kit request. onLine(obj) gets each JSON line as it arrives.
+ * Locally it uses /api/practice/stream; inside Soma (signed in) it falls back to
+ * one /api/chat call and replays the lines. signal: an AbortSignal.
+ */
+async function streamKit(text, ask, onLine, { speed = 'best', signal } = {}) {
+  const status = await practiceStatus();
+  if (!status.ok) throw new Error(status.reason);
+  const material = String(text).slice(0, KIT_TEXT);
+  let error = null;
+  const take = (line) => { const o = parseLine(line); if (!o) return; if (o.__error) error = o.__error; else onLine(o); };
+  if (status.via !== 'local') {
+    const out = await askAIText(KIT_SYSTEM, `<material>\n${material}\n</material>\n\n${ask}`);
+    out.split('\n').forEach(take);
+    return;
+  }
+  let res;
+  try {
+    res = await fetch('/api/practice/stream', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ purpose: 'practice', systemPrompt: KIT_SYSTEM, material, ask, speed }) });
+  } catch (err) { if (err?.name === 'AbortError') throw err; throw new Error(NO_REPLY); }
+  if (!res.ok || !res.body) {
+    let data = null;
+    try { data = await res.json(); } catch { /* not JSON */ }
+    if (res.status === 404) probe = null;
+    throw new Error(ERRORS[data?.error] || 'The AI couldn’t do that right now. Try again in a moment.');
+  }
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf('\n')) >= 0) { take(buf.slice(0, nl)); buf = buf.slice(nl + 1); }
+  }
+  take(buf);
+  if (error && error !== 'cancelled') throw new Error(ERRORS[error] || 'The AI stopped partway. Try again.');
+}
+/** Soma's /api/chat (signed in), returning the raw text. */
+async function askAIText(system, content) {
+  const s = session();
+  let res;
+  try {
+    res = await fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json', ...(s ? { Authorization: `Bearer ${s.token}` } : {}) }, body: JSON.stringify({ messages: [{ role: 'user', content }], systemPrompt: system, purpose: 'practice' }) });
+  } catch { throw new Error(NO_REPLY); }
+  let data = null;
+  try { data = await res.json(); } catch { /* not JSON */ }
+  if (!res.ok) throw new Error(ERRORS[data?.error] || (res.status === 401 ? ERRORS.auth_required : 'The AI couldn’t do that right now. Try again in a moment.'));
+  return (data?.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
+}
+
+const str = (x) => typeof x === 'string' && x.trim();
+const clip = (x, n) => String(x).trim().slice(0, n);
+
+/** Title, overview and a topic map for new material (fast model). */
 export async function makeKit(text, fallbackTitle = 'Study kit') {
-  const out = await askAI(KIT_SYSTEM, material(text));
+  let map = null;
+  await streamKit(text, ASKS.map(), (o) => { if (!map && (o.title || o.topics)) map = o; }, { speed: 'fast' });
+  if (!map) throw new Error(UNREADABLE);
   return {
-    title: typeof out.title === 'string' && out.title.trim() ? out.title.trim().slice(0, 80) : fallbackTitle,
-    overview: typeof out.overview === 'string' ? out.overview.trim().slice(0, 600) : '',
-    topics: Array.isArray(out.topics) ? out.topics.filter((t) => typeof t === 'string' && t.trim()).map((t) => t.trim().slice(0, 40)).slice(0, 8) : [],
+    title: str(map.title) ? clip(map.title, 80) : fallbackTitle,
+    overview: str(map.overview) ? clip(map.overview, 600) : '',
+    topics: (Array.isArray(map.topics) ? map.topics : []).map((t) => (typeof t === 'string' ? { name: t } : t)).filter((t) => t && str(t.name)).map((t) => ({ name: clip(t.name, 64), src: str(t.src) ? clip(t.src, 12) : '' })).slice(0, 8),
   };
 }
 
-const PART_SYSTEM = {
-  cards: `You make flashcards from a student's material. Use only what the material covers.
-Return only JSON: {"cards":[{"front":"a term, question or prompt","back":"the answer, short and exact"}]}
-- One fact or idea per card. Mix definitions, why/how, formulas, steps and examples. Backs under 30 words.`,
-  questions: `You write practice questions from a student's material, like the ones on a real test. Use only what the material covers.
-Return only JSON: {"questions":[{"q":"question","choices":["A","B","C","D"],"answer":0,"why":"one or two sentences on why the answer is right"}]}
-- Exactly 4 choices each, exactly one right ("answer" is its index 0-3). Wrong choices are believable mistakes. No "all/none of the above".
-- Test understanding and application, not trivia about page numbers. Mix easy, medium and hard.`,
-  guide: `You write a study guide from a student's material: what they need to know, organised and short. Use only what the material covers.
-Return only JSON: {"summary":"3 to 5 sentences: the big picture","sections":[{"heading":"topic","points":["key idea, short and exact","..."]}],"terms":[{"term":"key term","def":"one-line definition"}],"watch":["a common mistake or thing tests like to ask"]}
-- 3 to 7 sections with 2 to 6 points each. Up to 12 terms. 2 to 5 watch-outs.`,
+const cleanCard = (c) => (c && str(c.front) && str(c.back) ? { front: clip(c.front, 400), back: clip(c.back, 500), topic: str(c.topic) ? clip(c.topic, 40) : '', src: str(c.src) ? clip(c.src, 12) : '' } : null);
+const cleanQuestion = (q) => (q && str(q.q) && Array.isArray(q.choices) && q.choices.length === 4 && q.choices.every((c) => str(c) || typeof c === 'number') && Number.isInteger(q.answer) && q.answer >= 0 && q.answer < 4
+  ? { q: clip(q.q, 600), choices: q.choices.map((c) => clip(c, 300)), answer: q.answer, why: str(q.why) ? clip(q.why, 300) : '', more: str(q.more) ? clip(q.more, 500) : '', topic: str(q.topic) ? clip(q.topic, 40) : '', level: ['easy', 'medium', 'hard'].includes(q.level) ? q.level : '', src: str(q.src) ? clip(q.src, 12) : '' } : null);
+const cleanTopic = (t) => {
+  if (!t || !str(t.name)) return null;
+  const table = t.table && Array.isArray(t.table.cols) && Array.isArray(t.table.rows) && t.table.cols.length && t.table.rows.length
+    ? { cols: t.table.cols.map((c) => clip(c, 80)).slice(0, 5), rows: t.table.rows.filter(Array.isArray).slice(0, 10).map((r) => r.map((c) => clip(c, 160)).slice(0, 5)) } : null;
+  return {
+    name: clip(t.name, 60), src: str(t.src) ? clip(t.src, 12) : '',
+    points: (t.points || []).filter(str).map((p) => clip(p, 300)).slice(0, 6),
+    terms: (t.terms || []).filter((x) => x && str(x.term) && str(x.def)).map((x) => ({ term: clip(x.term, 60), def: clip(x.def, 200) })).slice(0, 5),
+    table, check: cleanQuestion(t.check),
+  };
 };
 
-/** Makes one part of a kit on request. part: cards | questions | guide. avoid: fronts/questions already made. */
-export async function makeKitPart(text, part, { count = 12, avoid = [], kitTitle = '' } = {}) {
-  const ask = `${material(text)}\n\n${part === 'guide' ? `Write the study guide${kitTitle ? ` for "${kitTitle}"` : ''}.`
-    : `Make ${count} ${part === 'cards' ? 'flashcards' : 'practice questions'}${kitTitle ? ` for "${kitTitle}"` : ''}.${avoid.length ? ` Don't repeat these:\n${avoid.slice(-60).map((a) => `- ${String(a).slice(0, 120)}`).join('\n')}` : ''}`}`;
-  const out = await askAI(PART_SYSTEM[part], ask);
-  const str = (x) => typeof x === 'string' && x.trim();
-  if (part === 'cards') {
-    const cards = (out.cards || []).filter((c) => c && str(c.front) && str(c.back)).slice(0, count);
-    if (!cards.length) throw new Error(UNREADABLE);
-    return { cards };
-  }
-  if (part === 'questions') {
-    const questions = (out.questions || []).filter((q) => q && str(q.q) && Array.isArray(q.choices) && q.choices.length === 4 && q.choices.every(str) && Number.isInteger(q.answer) && q.answer >= 0 && q.answer < 4).slice(0, count);
-    if (!questions.length) throw new Error(UNREADABLE);
-    return { questions };
-  }
-  const sections = (out.sections || []).filter((x) => x && str(x.heading)).map((x) => ({ heading: x.heading.trim(), points: (x.points || []).filter(str) }));
-  if (!sections.length) throw new Error(UNREADABLE);
-  return {
-    summary: str(out.summary) ? out.summary.trim() : '',
-    sections,
-    terms: (out.terms || []).filter((t) => t && str(t.term) && str(t.def)).slice(0, 16),
-    watch: (out.watch || []).filter(str).slice(0, 6),
-  };
+/**
+ * Makes one part of a kit, streaming. part: cards | questions | guide.
+ * onItem(item) is called as each card / question / guide piece arrives
+ * (guide pieces: { kind:'summary', text } or { kind:'topic', ...topic }).
+ * Returns the number of items received.
+ */
+export async function streamKitPart(text, part, { count = 12, avoid = [], topics = [], signal } = {}, onItem) {
+  let n = 0;
+  const names = topics.map((t) => (typeof t === 'string' ? t : t.name)).filter(Boolean);
+  const ask = ASKS[part]({ count, topics: names, avoid: avoid.slice(-50).map((a) => String(a).slice(0, 120)) });
+  await streamKit(text, ask, (o) => {
+    let item = null;
+    if (part === 'cards') item = cleanCard(o);
+    else if (part === 'questions') item = cleanQuestion(o);
+    else if (o.kind === 'summary' && str(o.text)) item = { kind: 'summary', text: clip(o.text, 800) };
+    else if (o.kind === 'topic' || o.name) { const t = cleanTopic(o); if (t) item = { kind: 'topic', ...t }; }
+    if (item && (part === 'guide' || n < count)) { n += 1; onItem(item); }
+  }, { signal });
+  if (!n) throw new Error('The AI came back empty. Try again.');
+  return n;
 }

@@ -19,7 +19,7 @@ export function addDeck(state, { title, course = '', itemId = null, cards }, now
   if (ids.length >= DECK_MAX) delete decks[ids.sort((a, b) => decks[a].created - decks[b].created)[0]];
   const deck = {
     id: uid(), title: String(title || 'Deck').slice(0, 80), course, itemId, created: now,
-    cards: cards.slice(0, CARD_MAX).map((c) => ({ id: uid(), front: String(c.front).slice(0, 300), back: String(c.back).slice(0, 400), box: 0, due: now })),
+    cards: cards.slice(0, CARD_MAX).map((c) => ({ id: uid(), front: String(c.front).slice(0, 400), back: String(c.back).slice(0, 500), topic: c.topic || '', src: c.src || '', box: 0, due: now })),
   };
   decks[deck.id] = deck;
   return deck;
@@ -47,7 +47,7 @@ export function deleteDeck(state, deckId) { if (state.decks) delete state.decks[
 export function addCards(state, deckId, cards, now = Date.now()) {
   const deck = state.decks?.[deckId];
   if (!deck) return null;
-  for (const c of cards) if (deck.cards.length < CARD_MAX * 2) deck.cards.push({ id: uid(), front: String(c.front).slice(0, 300), back: String(c.back).slice(0, 400), box: 0, due: now });
+  for (const c of cards) if (deck.cards.length < CARD_MAX * 2) deck.cards.push({ id: uid(), front: String(c.front).slice(0, 400), back: String(c.back).slice(0, 500), topic: c.topic || '', src: c.src || '', box: 0, due: now });
   return deck;
 }
 
@@ -190,9 +190,53 @@ const CSS = `
 .sh-guide dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0; font-size: 14px; } .sh-guide dt { font-weight: 900; color: #cfe4ff; } .sh-guide dd { margin: 0; color: rgba(255,255,255,0.85); }
 .sh-guide .sh-why { font-size: 15px; }
 .sh-danger { margin-left: auto; padding: 9px 14px; border-radius: 12px; border: 0; background: transparent; color: #ff9d94; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
+.sh-tags { display: flex; flex-wrap: wrap; gap: 6px; min-height: 0; }
+.sh-tag { display: inline-block; padding: 3px 9px; border-radius: 999px; background: rgba(255,255,255,0.09); color: rgba(255,255,255,0.75); font-size: 11.5px; font-weight: 800; letter-spacing: .02em; }
+.sh-tag.src { background: rgba(120,170,255,0.16); color: #cfe0ff; } .sh-tag.easy { background: rgba(62,196,90,0.18); color: #bff0c9; } .sh-tag.medium { background: rgba(242,193,78,0.18); color: #ffe39a; } .sh-tag.hard { background: rgba(229,72,61,0.2); color: #ffc6c0; }
+.sh-flip .sh-tag.src { background: rgba(58,98,184,0.14); color: #3a62b8; margin-top: 10px; }
+.sh-face { line-height: 1.4; } .sh-flip { overflow-x: auto; }
+.sh-q.sm { font-size: 16px; }
+.sh-why.ok { border-left: 4px solid #3ec45a; } .sh-why.no { border-left: 4px solid #e5483d; }
+.sh-more-btn { justify-self: start; margin-top: 6px; padding: 6px 12px; border-radius: 999px; border: 0; background: rgba(255,255,255,0.08); color: #ffd878; font: inherit; font-size: 12.5px; font-weight: 800; cursor: pointer; }
+.sh-more-text { margin-top: 6px; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,0.04); font-size: 14px; line-height: 1.45; color: rgba(255,255,255,0.85); }
+.sh-big { padding: 14px 16px; border-radius: 14px; background: linear-gradient(135deg, rgba(75,123,216,0.25), rgba(242,193,78,0.12)); font-size: 15.5px; line-height: 1.5; font-weight: 700; }
+.sh-toc { display: grid; gap: 6px; }
+.sh-toc button { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; border: 0; background: rgba(255,255,255,0.06); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.sh-toc button:hover { background: rgba(255,255,255,0.1); } .sh-toc b { flex: 1; font-size: 14.5px; }
+.sh-toc em { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: rgba(255,255,255,0.1); font-style: normal; font-size: 12.5px; font-weight: 900; }
+.sh-toc button.done em { background: #3ec45a; color: #fff; }
+.sh-dots { display: flex; gap: 6px; align-items: center; }
+.sh-dots button { width: 12px; height: 12px; padding: 0; border-radius: 50%; border: 0; background: rgba(255,255,255,0.18); cursor: pointer; }
+.sh-dots button.done { background: #3ec45a; } .sh-dots button.on { outline: 2px solid #f2c14e; outline-offset: 2px; }
+.sh-dot-more { width: 12px; height: 12px; border-radius: 50%; border: 2px dashed rgba(255,255,255,0.35); animation: sh-pulse 1s ease-in-out infinite; }
+.sh-topichead { display: flex; align-items: center; gap: 10px; } .sh-topichead h3 { margin: 0; font-size: 21px; color: #ffd878; text-transform: none; letter-spacing: 0; }
+.sh-points { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.sh-points li { position: relative; padding: 10px 12px 10px 34px; border-radius: 12px; background: rgba(255,255,255,0.05); font-size: 15px; line-height: 1.45; }
+.sh-points li::before { content: ''; position: absolute; left: 14px; top: 17px; width: 8px; height: 8px; border-radius: 50%; background: #f2c14e; }
+.sh-terms { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-start; } .sh-terms > span { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.sh-term { padding: 6px 12px; border-radius: 999px; border: 2px dashed rgba(207,228,255,0.45); background: transparent; color: #cfe4ff; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
+.sh-term.on { border-style: solid; background: rgba(120,170,255,0.14); }
+.sh-def { max-width: 320px; padding: 8px 10px; border-radius: 10px; background: rgba(120,170,255,0.12); font-size: 13px; line-height: 1.4; }
+.sh-tablewrap { overflow-x: auto; } .sh-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.sh-table th { text-align: left; padding: 8px 10px; background: rgba(242,193,78,0.16); color: #ffe39a; font-weight: 900; }
+.sh-table td { padding: 8px 10px; border-top: 1px solid rgba(255,255,255,0.08); vertical-align: top; }
+.sh-check { display: grid; gap: 8px; padding: 12px; border-radius: 14px; background: rgba(0,0,0,0.18); }
+.sh-choice b { color: #ffd878; margin-right: 4px; }
 @media (max-width: 640px) { .sh-parts, .sh-src { grid-template-columns: 1fr; } }
 @media (max-width: 640px) { .sh-modes, .sh-modes.big { grid-template-columns: 1fr; } }
 `;
+
+// Math and formatting (KaTeX) load with the Study Hall, in the browser only.
+let richMod = null;
+const richReady = typeof window === 'undefined' ? Promise.resolve() : import('./rich.js').then((m) => {
+  richMod = m;
+  const st = document.createElement('style');
+  st.textContent = m.RICH_CSS;
+  document.head.append(st);
+}).catch(() => { /* plain text instead */ });
+const escHtml = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+/** HTML for kit text: math and bold when KaTeX has loaded, escaped text before that. */
+export const richHtml = (t) => (richMod ? richMod.rich(t) : escHtml(t));
 
 const SOURCE_ICON = { pdf: '📄', doc: '📝', slides: '📊', text: '📋', image: '📷', video: '🎬' };
 const SOURCE_NAME = { pdf: 'PDF', doc: 'Word document', slides: 'Slides', text: 'Pasted text', image: 'Photo of notes', video: 'Video' };
@@ -219,7 +263,8 @@ export function createStudyHall() {
   const h = (tag, attrs = {}, ...kids) => {
     const n = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs)) {
-      if (k === 'class') n.className = v; else if (k === 'text') n.textContent = v;
+      if (k === 'raw') continue;
+      if (k === 'class') n.className = v; else if (k === 'text') n.textContent = v; else if (k === 'html') n.innerHTML = attrs.raw ? v : richHtml(v);
       else if (k.startsWith('on')) n.addEventListener(k.slice(2), v); else if (v === true) n.setAttribute(k, ''); else if (v !== false && v != null) n.setAttribute(k, v);
     }
     for (const k of kids.flat(Infinity)) if (k != null && k !== false) n.append(k);
@@ -235,6 +280,7 @@ export function createStudyHall() {
   function close() {
     if (root.hidden) return;
     runId += 1;
+    openCount += 1; // stale streams stop updating the screen
     root.hidden = true;
     root.replaceChildren();
     const done = ctx?.onClose;
@@ -390,13 +436,13 @@ export function createStudyHall() {
         h('button', { class: 'sh-ghost', text: 'New questions', disabled: missing, onclick: () => makePart(kit, 'questions') })])
       : part('❓', 'Practice questions', false, 'Test-style multiple choice. Every right answer earns XP.', h('button', { class: 'sh-go', text: 'Make questions', disabled: missing, onclick: () => makePart(kit, 'questions') }));
     const guide = kit.guide
-      ? part('📘', 'Study guide', true, 'The summary, key ideas, terms and what tests like to ask.', [
+      ? part('📘', 'Study guide', true, kit.guide.topics ? `${kit.guide.topics.length} topic cards · ${Object.keys(kit.guideDone || {}).length} done. Each ends with a quick check.` : 'Your study guide.', [
         h('button', { class: 'sh-go', text: 'Open guide', onclick: () => showGuide(kit) }),
         h('button', { class: 'sh-ghost', text: 'Rewrite it', disabled: missing, onclick: () => makePart(kit, 'guide') })])
       : part('📘', 'Study guide', false, 'A summary with the key ideas, terms and watch-outs.', h('button', { class: 'sh-go', text: 'Make study guide', disabled: missing, onclick: () => makePart(kit, 'guide') }));
     frame(kit.title, `${SOURCE_NAME[kit.source?.kind] || 'Notes'}${kit.source?.name && kit.source.kind !== 'text' ? ` · ${kit.source.name}` : ''}`,
       kit.overview ? h('p', { class: 'sh-intro', text: kit.overview }) : null,
-      kit.topics?.length ? h('div', { class: 'sh-topics' }, kit.topics.map((t) => h('span', { text: t }))) : null,
+      kit.topics?.length ? h('div', { class: 'sh-topics' }, kit.topics.map((t) => h('span', { text: typeof t === 'string' ? t : t.name }))) : null,
       kit.cut ? h('p', { class: 'sh-note', text: 'This was long, so the kit uses the first part of it.' }) : null,
       missing ? h('p', { class: 'sh-err', text: 'The material for this kit isn’t on this computer any more, so nothing new can be made from it. What’s already made still works.' }) : null,
       h('div', { class: 'sh-step', text: 'What do you want to study with?' }),
@@ -406,78 +452,182 @@ export function createStudyHall() {
     ctx.save();
   }
 
+  // --- making a part: streamed, so studying starts with the first item ---------------------
+  // live = { items, done, error, wake }: screens show what has arrived and, when the
+  // student gets ahead of Claude, a short "writing the next one" wait that wakes up
+  // when the next item lands.
+  // Streams keep going if the student leaves the screen (or closes the Study Hall):
+  // what arrives is saved to the kit. Only Cancel on the waiting screen stops one.
+  const streams = new Set();
+  let openCount = 0;
+  function makeLive() {
+    const live = { items: [], done: false, error: null, wake: null };
+    const mine = openCount;
+    const wake = () => { const w = live.wake; live.wake = null; if (w && mine === openCount && !root.hidden) w(); };
+    live.push = (x) => { live.items.push(x); wake(); };
+    live.finish = (err = null) => { live.done = true; live.error = err; wake(); };
+    return live;
+  }
+  /** Shows a "writing the next one" screen until item i exists (or the stream ends). */
+  function awaitItem(live, i, title, sub, render, back) {
+    if (live.items[i] || live.done) return render();
+    frame(title, sub, h('div', { class: 'sh-load' }, h('div', { class: 'sh-spin' }), h('div', { class: 'sh-q', text: 'Claude is writing the next one…' }), h('p', { class: 'sh-note', text: 'It’s streaming in; this takes a second or two.' })),
+      h('div', {}, h('button', { class: 'sh-ghost', text: 'Back', onclick: () => { live.wake = null; back(); } })));
+    live.wake = () => awaitItem(live, i, title, sub, render, back);
+  }
+  const tag = (t, cls = '') => (t ? h('span', { class: `sh-tag ${cls}`, text: t }) : null);
+
   async function makePart(kit, part) {
+    const c = ctx; // the stream may outlive this screen (or the Study Hall being open)
+    const ac = new AbortController();
     const names = { cards: '12 flashcards', questions: '10 practice questions', guide: 'your study guide' };
-    const w = waiting(kit.title, `Claude is writing ${names[part]}…`, part === 'guide' ? 'Pulled only from your material.' : 'Straight from your material.', () => openKit(kit.id));
-    const deck = kit.deckId && ctx.state.decks?.[kit.deckId];
-    const avoid = part === 'cards' ? (deck?.cards || []).map((c) => c.front) : part === 'questions' ? (kit.questions || []).map((q) => q.q) : [];
+    const w = waiting(kit.title, `Claude is writing ${names[part]}…`, 'Straight from your material. The first one shows up in a couple of seconds.', () => { ac.abort(); openKit(kit.id); });
+    const deck0 = kit.deckId && ctx.state.decks?.[kit.deckId];
+    const avoid = part === 'cards' ? (deck0?.cards || []).map((c) => c.front) : part === 'questions' ? (kit.questions || []).map((q) => q.q) : [];
+    const live = makeLive();
+    let started = false;
+    const begin = () => {
+      if (started || !w.live()) return;
+      started = true;
+      w.stop();
+      if (part === 'cards') reviewCards(live, kit.title, kit, () => openKit(kit.id));
+      else if (part === 'questions') runQuiz(kit, live);
+      else showGuide(kit, live);
+    };
+    if (part === 'cards' && !deck0) kit.deckId = addDeck(ctx.state, { title: kit.title, cards: [] }).id;
+    if (part === 'questions') { kit.questions = []; kit.lastScore = ''; }
+    if (part === 'guide') { kit.guide = { summary: '', topics: [] }; kit.guideDone = {}; }
+    streams.add(ac);
     try {
-      const out = await ctx.ai.makeKitPart(kitText(kit.id), part, { count: part === 'cards' ? 12 : 10, avoid, kitTitle: kit.title });
-      w.stop();
-      if (!w.live()) return;
-      if (part === 'cards') {
-        if (deck) addCards(ctx.state, deck.id, out.cards);
-        else kit.deckId = addDeck(ctx.state, { title: kit.title, cards: out.cards }).id;
-        ctx.save();
-        const d = ctx.state.decks[kit.deckId];
-        const fresh = d.cards.slice(-out.cards.length).map((card) => ({ deck: d, card }));
-        reviewCards(fresh, kit.title, kit, () => openKit(kit.id));
-      } else if (part === 'questions') {
-        kit.questions = out.questions;
-        kit.lastScore = '';
-        ctx.save();
-        runQuiz(kit);
-      } else {
-        kit.guide = out;
-        ctx.save();
-        showGuide(kit);
-      }
+      await c.ai.streamKitPart(kitText(kit.id), part, { count: part === 'cards' ? 12 : 10, avoid, topics: kit.topics || [], signal: ac.signal }, (item) => {
+        if (part === 'cards') {
+          const deck = c.state.decks[kit.deckId];
+          addCards(c.state, deck.id, [item]);
+          live.push({ deck, card: deck.cards[deck.cards.length - 1] });
+        } else if (part === 'questions') { kit.questions.push(item); live.push(item); }
+        else if (item.kind === 'summary') { kit.guide.summary = item.text; live.push(item); } else { const { kind, ...t } = item; void kind; kit.guide.topics.push(t); live.push(item); }
+        if (part !== 'guide' || item.kind === 'topic' || live.items.length > 1) begin();
+      });
+      c.save();
+      live.finish();
+      begin();
     } catch (err) {
-      w.stop();
-      if (!root.hidden) oops('Couldn’t make that', err, () => makePart(kit, part), () => openKit(kit.id), 'Back to the kit');
-    }
+      c.save();
+      if (err?.name === 'AbortError') return;
+      live.finish(err);
+      if (!started) { w.stop(); if (!root.hidden) oops('Couldn’t make that', err, () => makePart(kit, part), () => openKit(kit.id), 'Back to the kit'); }
+    } finally { streams.delete(ac); }
   }
 
-  function showGuide(kit) {
+  // --- study guide: one topic card at a time, each with a quick check -----------------------
+  function showGuide(kit, live = null) {
+    // Guides made before topic cards had sections; show those as topics.
+    if (!kit.guide.topics && kit.guide.sections) kit.guide = { summary: kit.guide.summary || '', topics: kit.guide.sections.map((x) => ({ name: x.heading, src: '', points: x.points || [], terms: [], table: null, check: null })) };
     const g = kit.guide;
-    frame(kit.title, 'Study guide', h('div', { class: 'sh-guide' },
-      g.summary ? h('p', { class: 'sh-why', text: g.summary }) : null,
-      g.sections.map((s) => [h('h3', { text: s.heading }), h('ul', {}, s.points.map((p) => h('li', { text: p })))]),
-      g.terms?.length ? [h('h3', { text: 'Key terms' }), h('dl', {}, g.terms.map((t) => [h('dt', { text: t.term }), h('dd', { text: t.def })]))] : null,
-      g.watch?.length ? [h('h3', { text: 'Watch out for' }), h('ul', {}, g.watch.map((p) => h('li', { text: p })))] : null),
-    h('div', { class: 'sh-row' }, h('button', { class: 'sh-go', text: '← Back to the kit', onclick: () => openKit(kit.id) })));
+    const done = kit.guideDone || (kit.guideDone = {});
+    const count = () => g.topics.length;
+    const dots = (at) => h('div', { class: 'sh-dots' }, g.topics.map((t, i) => h('button', { class: `${i === at ? 'on' : ''} ${done[i] ? 'done' : ''}`, title: t.name, onclick: () => topic(i) })),
+      live && !live.done ? h('i', { class: 'sh-dot-more', title: 'More on the way' }) : null);
+    const writing = () => (live && !live.done ? ' · more on the way' : '');
+    function overview() {
+      frame(kit.title, `Study guide · ${count()} topic${count() === 1 ? '' : 's'}${writing()}`,
+        g.summary ? h('div', { class: 'sh-big', html: g.summary }) : null,
+        h('div', { class: 'sh-step', text: 'Topics' }),
+        h('div', { class: 'sh-toc' }, g.topics.map((t, i) => h('button', { class: done[i] ? 'done' : '', onclick: () => topic(i) }, h('em', { text: done[i] ? '✓' : String(i + 1) }), h('b', { text: t.name }), tag(t.src)))),
+        live && !live.done ? h('p', { class: 'sh-note', text: 'More topics are streaming in…' }) : null,
+        h('div', { class: 'sh-row' }, count() ? h('button', { class: 'sh-go', text: Object.keys(done).length ? 'Keep going' : 'Start with topic 1', onclick: () => topic(Math.max(0, g.topics.findIndex((_, i) => !done[i]))) }) : null,
+          h('button', { class: 'sh-ghost', text: '← Back to the kit', onclick: () => openKit(kit.id) })));
+      if (live && !live.done) live.wake = overview;
+    }
+    function waitTopic(j) {
+      if (g.topics[j]) return topic(j);
+      if (!live || live.done) return overview();
+      frame(kit.title, 'Study guide', h('div', { class: 'sh-load' }, h('div', { class: 'sh-spin' }), h('div', { class: 'sh-q', text: 'Claude is writing the next topic…' })),
+        h('div', {}, h('button', { class: 'sh-ghost', text: '← Topics', onclick: overview })));
+      live.wake = () => waitTopic(j);
+    }
+    function topic(i) {
+      if (live) live.wake = null;
+      const t = g.topics[i];
+      if (!t) return overview();
+      const terms = t.terms.length ? h('div', { class: 'sh-terms' }, t.terms.map((x) => {
+        const b = h('button', { class: 'sh-term', html: x.term, title: 'Tap for the definition' });
+        const d = h('span', { class: 'sh-def', html: x.def, hidden: true });
+        b.addEventListener('click', () => { d.hidden = !d.hidden; b.classList.toggle('on', !d.hidden); });
+        return h('span', {}, b, d);
+      })) : null;
+      const table = t.table ? h('div', { class: 'sh-tablewrap' }, h('table', { class: 'sh-table' }, h('thead', {}, h('tr', {}, t.table.cols.map((c) => h('th', { html: c })))), h('tbody', {}, t.table.rows.map((r) => h('tr', {}, r.map((c) => h('td', { html: c }))))))) : null;
+      const next = h('button', { class: 'sh-go', text: i + 1 < count() || (live && !live.done) ? 'Next topic →' : 'Finish', onclick: () => {
+        done[i] = true; ctx.save();
+        if (i + 1 < count()) topic(i + 1);
+        else if (live && !live.done) waitTopic(i + 1);
+        else overview();
+      } });
+      let check = null;
+      if (t.check) {
+        const q = t.check;
+        const why = h('div');
+        let answered = false;
+        const choices = h('div', { class: 'sh-choices' }, q.choices.map((c, k) => h('button', { class: 'sh-choice', html: `<b>${'ABCD'[k]}.</b> ${richHtml(c)}`, raw: true, onclick: (e) => {
+          if (answered) return;
+          answered = true;
+          const ok = k === q.answer;
+          e.currentTarget.classList.add(ok ? 'right' : 'wrong');
+          choices.children[q.answer].classList.add('right');
+          why.replaceChildren(h('div', { class: 'sh-why', html: `${ok ? '<b>Right.</b> ' : '<b>Not quite.</b> '}${richHtml(q.why)}`, raw: true }));
+          ctx.onAnswer?.({ topic: kit.title }, q, ok);
+        } })));
+        check = h('div', { class: 'sh-check' }, h('div', { class: 'sh-step', text: 'Quick check' }), h('div', { class: 'sh-q sm', html: q.q }), choices, why);
+      }
+      frame(kit.title, `Study guide · topic ${i + 1} of ${count()}${writing()}`, dots(i),
+        h('div', { class: 'sh-topichead' }, h('h3', { html: t.name }), tag(t.src)),
+        h('ul', { class: 'sh-points' }, t.points.map((p) => h('li', { html: p }))),
+        table, terms, check,
+        h('div', { class: 'sh-row' }, h('button', { class: 'sh-ghost', text: '← Topics', onclick: overview }), next));
+    }
+    overview();
   }
 
   // --- practice questions ---------------------------------------------------------------------
-  function runQuiz(kit) {
-    const list = kit.questions;
+  function runQuiz(kit, live = null) {
+    const list = live ? live.items : kit.questions;
+    const total = () => (live && !live.done ? `${list.length}+` : list.length);
     const source = { topic: kit.title };
     let i = 0, right = 0, wrong = 0;
     const show = () => {
       const q = list[i];
+      if (!q) return finish();
       let answered = false;
       const why = h('div');
-      const next = h('button', { class: 'sh-go', text: i + 1 < list.length ? 'Next' : 'Finish', hidden: true, onclick: () => { i += 1; if (i < list.length) show(); else finish(); } });
-      const choices = h('div', { class: 'sh-choices' }, q.choices.map((c, k) => h('button', { class: 'sh-choice', text: `${'ABCD'[k]}. ${c}`, onclick: (e) => {
+      const last = !(i + 1 < list.length || (live && !live.done));
+      const next = h('button', { class: 'sh-go', text: last ? 'Finish' : 'Next →', hidden: true, onclick: () => { i += 1; step(); } });
+      const choices = h('div', { class: 'sh-choices' }, q.choices.map((c, k) => h('button', { class: 'sh-choice', html: `<b>${'ABCD'[k]}.</b> ${richHtml(c)}`, raw: true, onclick: (e) => {
         if (answered) return;
         answered = true;
         const ok = k === q.answer;
         if (ok) right += 1; else wrong += 1;
         e.currentTarget.classList.add(ok ? 'right' : 'wrong');
         choices.children[q.answer].classList.add('right');
-        why.replaceChildren(h('div', { class: 'sh-why', text: `${ok ? 'Right. ' : 'Not quite. '}${q.why || ''}` }));
+        const more = q.more ? h('button', { class: 'sh-more-btn', text: ok ? 'What was the trap?' : 'Why not mine?' }) : null;
+        const moreText = q.more ? h('div', { class: 'sh-more-text', html: q.more, hidden: true }) : null;
+        more?.addEventListener('click', () => { moreText.hidden = !moreText.hidden; more.hidden = true; });
+        why.replaceChildren(h('div', { class: `sh-why ${ok ? 'ok' : 'no'}`, html: `${ok ? '<b>Right.</b> ' : '<b>Not quite.</b> '}${richHtml(q.why)}`, raw: true }), more, moreText);
         next.hidden = false;
         ctx.onAnswer?.(source, q, ok);
       } })));
-      frame(kit.title, `Question ${i + 1} of ${list.length} · ${right} right`, bar(i, list.length), h('div', { class: 'sh-q', text: q.q }), choices, why, next);
+      frame(kit.title, `Question ${i + 1} of ${total()} · ${right} right`, bar(i, Math.max(list.length, 1)),
+        h('div', { class: 'sh-tags' }, tag(q.level, q.level), tag(q.topic), tag(q.src, 'src')),
+        h('div', { class: 'sh-q', html: q.q }), choices, why, next);
       keyHandler = (e) => { if (!answered && '1234'.includes(e.key)) choices.children[Number(e.key) - 1]?.click(); else if (answered && e.key === 'Enter') next.click(); };
     };
+    const step = () => (live ? awaitItem(live, i, kit.title, `Question ${i + 1}`, show, () => openKit(kit.id)) : show());
     const finish = () => {
+      if (live?.error && !list.length) return oops('Couldn’t make that', live.error, () => makePart(kit, 'questions'), () => openKit(kit.id), 'Back to the kit');
       kit.lastScore = `${right}/${right + wrong}`;
       ctx.save();
-      results(`${right} of ${right + wrong} right`, [ctx.reward({ ...source, right, wrong }), wrong ? 'Make new questions any time from the kit, or take these again.' : 'A perfect round.'].filter(Boolean), kit);
+      results(`${right} of ${right + wrong} right`, [ctx.reward({ ...source, right, wrong }), wrong ? 'Take them again from the kit, or ask for new questions.' : 'A perfect round.'].filter(Boolean), kit);
     };
-    show();
+    step();
   }
   function results(title, lines, kit) {
     frame(title, null, ...lines.map((t) => h('p', { class: 'sh-why', text: t })), h('div', { class: 'sh-row' },
@@ -486,34 +636,47 @@ export function createStudyHall() {
   }
 
   // --- flashcards -----------------------------------------------------------------------------
-  function reviewCards(list, title, kit, back) {
-    if (!list.length) return results('Nothing due', ['All caught up on these cards. Come back tomorrow, or add more.'], kit);
+  // list: [{ deck, card }] or a live stream of them.
+  function reviewCards(listOrLive, title, kit, back) {
+    const live = Array.isArray(listOrLive) ? null : listOrLive;
+    const list = live ? live.items : listOrLive;
+    if (!live && !list.length) return results('Nothing due', ['All caught up on these cards. Come back tomorrow, or add more.'], kit);
     let i = 0, good = 0, again = 0;
-    const queue = [...list];
+    const retry = [];
+    const at = (k) => (k < list.length ? list[k] : retry[k - list.length]);
+    const size = () => list.length + retry.length;
     const show = () => {
-      const { deck, card } = queue[i];
+      const entry = at(i);
+      if (!entry) return finish();
+      const { deck, card } = entry;
       let flipped = false;
-      const face = h('div', { class: 'sh-flip', onclick: () => flip() }, h('small', { text: 'Front · tap to flip' }), card.front);
+      const face = h('div', { class: 'sh-flip', onclick: () => flip() });
+      const paint = () => face.replaceChildren(h('small', { text: flipped ? 'Back' : 'Front · tap to flip' }), h('div', { class: 'sh-face', html: flipped ? card.back : card.front }), flipped && card.src ? tag(card.src, 'src') : null);
+      paint();
       const rate = h('div', { class: 'sh-rate', hidden: true },
         h('button', { class: 'again', text: 'Again', onclick: () => grade('again') }),
         h('button', { class: 'good', text: 'Good', onclick: () => grade('good') }),
         h('button', { class: 'easy', text: 'Easy', onclick: () => grade('easy') }));
-      const flip = () => { flipped = !flipped; face.className = `sh-flip ${flipped ? 'back' : ''}`; face.replaceChildren(h('small', { text: flipped ? 'Back' : 'Front · tap to flip' }), flipped ? card.back : card.front); rate.hidden = !flipped; };
+      const flip = () => { flipped = !flipped; face.className = `sh-flip ${flipped ? 'back' : ''}`; paint(); rate.hidden = !flipped; };
       const grade = (g) => {
         rateCard(ctx.state, deck.id, card.id, g);
-        if (g === 'again') { again += 1; queue.push(queue[i]); } else good += 1;
+        if (g === 'again') { again += 1; if (retry.length < list.length) retry.push(entry); } else good += 1;
         i += 1;
-        if (i < queue.length && i < list.length * 2) show(); else finish();
+        step();
       };
-      frame(title, `Card ${Math.min(i + 1, queue.length)} of ${queue.length}`, bar(i, queue.length), face, rate,
+      const more = live && !live.done ? ' · more coming' : '';
+      frame(title, `Card ${i + 1} of ${size()}${more}`, bar(i, Math.max(size(), 1)), card.topic ? h('div', { class: 'sh-tags' }, tag(card.topic)) : null, face, rate,
         h('div', { class: 'sh-row' }, h('p', { class: 'sh-note', style: 'flex:1', text: 'Space flips · 1 Again · 2 Good · 3 Easy' }), h('button', { class: 'sh-ghost', text: 'Stop', onclick: () => { ctx.save(); back(); } })));
       keyHandler = (e) => { if (e.key === ' ') { e.preventDefault(); flip(); } else if (flipped && '123'.includes(e.key)) grade(['again', 'good', 'easy'][Number(e.key) - 1]); };
     };
+    // Cards still streaming in come first; cards marked Again come back after them.
+    const step = () => (live && i >= list.length && !live.done ? awaitItem(live, i, title, `Card ${i + 1}`, show, back) : show());
     const finish = () => {
       ctx.save();
+      if (live?.error && !list.length) return oops('Couldn’t make that', live.error, () => makePart(kit, 'cards'), () => openKit(kit.id), 'Back to the kit');
       results(`${good} card${good === 1 ? '' : 's'} remembered`, [ctx.reward({ topic: kit?.title || null, right: good, wrong: again, cards: true }), 'Cards you knew come back in a few days; the ones you didn’t, sooner.'].filter(Boolean), kit);
     };
-    show();
+    step();
   }
   let keyHandler = null;
   addEventListener('keydown', (e) => { if (!root.hidden && keyHandler && !(e.target instanceof HTMLTextAreaElement) && !(e.target instanceof HTMLInputElement)) keyHandler(e); });
@@ -525,6 +688,7 @@ export function createStudyHall() {
       root.hidden = false;
       void prefill;
       home();
+      if (!richMod) richReady.then(() => { if (ctx === context && root.querySelector('.sh-kit, .sh-src')) home(); });
     },
     close,
   };

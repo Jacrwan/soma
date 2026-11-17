@@ -23,7 +23,7 @@ import { createCoach } from './tutorial.js';
 import { makePiece } from './catalog.js';
 import { createOwl, makeOwl3D } from './owl.js';
 import { createStudyHall } from './studyhall.js';
-import { practiceStatus, readMaterial, makeKit, makeKitPart } from './practice.js';
+import { practiceStatus, readMaterial, makeKit, streamKitPart } from './practice.js';
 import * as Lore from './lore.js';
 
 // --- State ----------------------------------------------------------------------
@@ -1243,7 +1243,7 @@ function openStudyHall(prefill = {}) {
   studyHall.open({
     state, save,
     upcoming, courses,
-    ai: { readMaterial, makeKit, makeKitPart },
+    ai: { readMaterial, makeKit, streamKitPart },
     status: practiceStatus,
     onAnswer: (source, q, ok) => {
       const item = source.item && state.school.items[source.item.id];
