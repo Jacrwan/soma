@@ -1213,12 +1213,12 @@ export function rollDrop(state, tier, level, rng = Math.random) {
 // --- The story: one quest at a time, from the first lesson to the far planet ---------
 export const STORY = [
   { title: 'First lesson', text: 'Finish a study session of 10 minutes or more', need: 1, have: (s) => (s.study.total >= 10 ? 1 : 0), reward: { gear: 'rare', slot: 'weapon' } },
-  { title: 'Into the Wilds', text: 'Take the east trail and clear a camp in the Wilds', need: 1, have: (s) => s.stats.campsCleared, reward: { coins: 300, gear: 'common', slot: 'armor' } },
+  { title: 'Into the Wilds', text: 'Clear a fox camp out in the wild country past town', need: 1, have: (s) => s.stats.campsCleared, reward: { coins: 300, gear: 'common', slot: 'armor' } },
   { title: 'Getting stronger', text: 'Reach level 3 by studying', need: 3, have: (s) => s.hero.level, reward: { gear: 'rare', slot: 'armor' } },
   { title: 'Treasure hunter', text: 'Dig up 3 buried treasures', need: 3, have: (s) => s.stats.treasures, reward: { gear: 'rare', slot: 'charm' } },
   { title: 'Trained', text: 'Spend 3 skill points', need: 3, have: (s) => Object.values(s.hero.skills).reduce((a, b) => a + b, 0), reward: { coins: 800 } },
   { title: 'Hand it in', text: 'Hand in 3 assignments on Canvas', need: 3, have: (s) => s.stats.handedIn, reward: { gear: 'epic', slot: 'weapon' } },
-  { title: 'Pack leader', text: 'Reach level 8, then beat the Alpha in the Wilds', need: 1, have: (s) => (s.stats.realmBosses.wilds ? 1 : 0), reward: { gear: 'epic', slot: 'armor' } },
+  { title: 'Pack leader', text: 'Reach level 8, then beat the Alpha in its lair out in the country', need: 1, have: (s) => (s.stats.realmBosses.wilds ? 1 : 0), reward: { gear: 'epic', slot: 'armor' } },
   { title: 'Exam season', text: 'Study enough that an exam boss breaks on your gate', need: 1, have: (s) => s.stats.bossesBeaten, reward: { gear: 'epic', slot: 'charm' } },
   { title: 'Honor roll', text: 'Reach level 14', need: 14, have: (s) => s.hero.level, reward: { gear: 'legendary', slot: 'weapon' } },
   { title: 'To the stars', text: 'Build the Star Gate on the Moon', need: 1, have: (s) => (s.wonders.includes(6) ? 1 : 0), reward: { gear: 'legendary', slot: 'armor' } },
@@ -1765,7 +1765,7 @@ export function makeVillagerQuest(state, person, now = Date.now()) {
   options.push({ type: 'studyAny', target: 30, text: 'Study for 30 minutes, anything at all.' });
   const decor = { Herbalist: 'flowers', Smith: 'lamp', Farmer: 'bush', Baker: 'bench', Guard: 'fence', Bard: 'banner', Merchant: 'crates', Scholar: 'statue' }[person.role];
   if (decor) options.push({ type: 'build', decor, target: decor === 'fence' ? 3 : 1, text: `Build ${decor === 'fence' ? '3 fences' : `a ${DECOR[decor].name.toLowerCase()}`} somewhere in town (B).` });
-  if (person.role === 'Guard') options.push({ type: 'camp', target: 1, text: 'Clear a camp out in the Wilds.' });
+  if (person.role === 'Guard') options.push({ type: 'camp', target: 1, text: 'Clear a fox camp out in the country.' });
   // Each person leans toward their kind of task; the Scholar always pushes study.
   const leaning = { Scholar: ['study', 'practice', 'review'], Smith: ['build', 'studyAny'], Guard: ['camp', 'handin'], Herbalist: ['build', 'review'], Bard: ['practice', 'studyAny'], Baker: ['build', 'handin'], Farmer: ['build', 'study'], Merchant: ['handin', 'build'] }[person.role] || [];
   const seed = [...`${person.name}${dayOf(now)}`].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 3);
@@ -1966,7 +1966,7 @@ function dailyOptions(state, now) {
   if (next.some((a) => a.kind !== 'boss')) school.push({ type: 'handin', target: 1, text: 'Hand in one thing on Canvas' });
   if (state.review.cards.some((c) => c.due <= now + DAY)) school.push({ type: 'review', target: 5, text: 'Review 5 missed questions' });
   school.push({ type: 'practice', target: 5, text: 'Get 5 practice questions right' });
-  const life = [{ type: 'catch', target: 1, text: 'Catch a creature in the Wilds' }, { type: 'camp', target: 1, text: 'Clear a camp in the Wilds' }];
+  const life = [{ type: 'catch', target: 1, text: 'Catch a creature out in the country' }, { type: 'camp', target: 1, text: 'Clear a fox camp out in the country' }];
   if (state.villagers.list.length >= 2) life.push({ type: 'talk', target: 2, text: 'Talk to 2 villagers' });
   return { study, school, life };
 }

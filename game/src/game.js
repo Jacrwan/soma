@@ -9,6 +9,7 @@ import { createUI, timeLeft } from './ui.js';
 import { createFx, createAudio } from './fx.js';
 import { useCharacter, hasAvatar, createAvatar, createVillager, previewAvatar, CHARACTERS } from './avatar.js';
 import { createRealms } from './realm.js';
+import { createWildlands } from './wildlands.js';
 import { makePractice } from './practice.js';
 import * as Soma from './soma.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -664,6 +665,20 @@ const realms = createRealms({
   save: () => save(),
 });
 const inRealm = () => Boolean(realms.active);
+// Fox camps, treasure, shrines and the Alpha, out in the country around town (no portal).
+const wild = createWildlands({
+  world, fx, audio, ui, player,
+  state: () => state,
+  hurt: (amount, from) => hurtPlayer(amount, from),
+  shake: (v) => { shake = Math.max(shake, v); },
+  loot: (rarity, from, pos) => openLoot(S.grantChest(state, rarity, from).id, pos),
+  save: () => save(),
+  townR: W.TOWN_R, walkR: W.ISLAND_RADIUS,
+  height: (x, z) => world.groundHeight('earth', x, z),
+  open: (x, z) => world.openGround(x, z),
+  trees: () => world.treeSolids(),
+});
+const outdoors = () => !inRealm() && state.scene === 'earth';
 
 function enterRealm(name) {
   if (build.on) toggleBuild(false);
@@ -738,9 +753,23 @@ function hurtPlayer(amount, from) {
   if (player.hp <= 0) {
     player.hp = 0;
     player.down = true;
-    leaveRealm(true);
+    if (inRealm()) leaveRealm(true);
+    else knockedOutHome();
   }
   return true;
+}
+
+/** Knocked out in the country: wake up in the plaza, keeping everything found. */
+function knockedOutHome() {
+  ui.fade(() => {
+    player.object.position.set(0, 0, 9);
+    player.hp = S.maxHealth(state);
+    player.down = false;
+    player.vy = 0;
+    refreshHud();
+    ui.toast('Knocked out. You wake up back in town with everything you found.', 'bad');
+    save();
+  });
 }
 
 function dodge() {
@@ -785,6 +814,7 @@ function slam() {
     audio.thud();
     const power = S.playerPower(state);
     realms.strike({ from: at, facing: player.facing, reach: 6.5, wide: true, damage: power * 2.6, knock: 16, crit: S.heroStats(state).crit });
+    wild.strike({ from: at, facing: player.facing, reach: 6.5, wide: true, damage: power * 2.6, knock: 16, crit: S.heroStats(state).crit });
     hitTownEnemies((pos, reach) => Math.hypot(pos.x - at.x, pos.z - at.z) < 6.5 + (reach > 5 ? 2 : 0), 2.6);
   }, 380);
   void p;
@@ -1258,7 +1288,7 @@ function openStudyHall(prefill = {}) {
       save();
       if (right) audio.coin();
       if (r.chest) ui.toast('A perfect round: a rare chest landed on your plaza.', 'gold');
-      return `+${r.xp || 0} XP${r.minutes ? ` and ${r.minutes} minutes of study credit on ${item.name}` : ''}${r.lures ? ', and a lure for the Wilds' : ''}.`;
+      return `+${r.xp || 0} XP${r.minutes ? ` and ${r.minutes} minutes of study credit on ${item.name}` : ''}${r.lures ? ', and a lure for catching creatures' : ''}.`;
     },
     onClose: () => refreshHud(),
   }, prefill);
@@ -1280,7 +1310,7 @@ function openPracticeOld(id = null, topic = null) {
     onAnswer: (q, right) => { if (!right) S.addReview(state, item, topic ? { ...q, topic } : q); },
     finish: (right, wrong) => {
       const r = S.finishPractice(state, item.id, right, wrong, Date.now(), topic);
-      if (r.lures) setTimeout(() => ui.toast('Good round: +1 lure for the Wilds', 'good'), 600);
+      if (r.lures) setTimeout(() => ui.toast('Good round: +1 lure for catching creatures', 'good'), 600);
       gainedXp(r);
       syncInvaders(Date.now());
       refreshHud();
@@ -1342,7 +1372,7 @@ function endStudy() {
     else if (result.complete) bits.push('no more study chests today');
     if (result.complete && result.streak > 1) bits.push(`${result.streak} day streak`);
     ui.toast(bits.join(' · '), 'gold');
-    if (result.lures) ui.toast(`+${result.lures} lure${result.lures === 1 ? '' : 's'} for catching creatures in the Wilds (you have ${state.critters.lures})`, 'good');
+    if (result.lures) ui.toast(`+${result.lures} lure${result.lures === 1 ? '' : 's'} for catching creatures out in the country (you have ${state.critters.lures})`, 'good');
     if (result.prepared) ui.toast(result.item.kind === 'boss' ? `${result.item.name} has no armor left. Your gate will hold on exam day.` : `${result.item.name} is fully studied: handing it in pays 50% more.`, 'good');
   }
   syncChests();
@@ -1602,6 +1632,7 @@ function attack() {
   if (shoveInvaders(inArc)) landed = true;
   if (!landed && chopTree(p, fwd, finisher)) landed = true;
   if (realms.strike({ from: p, facing: player.facing, reach: 3.3 * reachMult, wide: finisher, damage: S.playerPower(state) * mult, knock: finisher ? 13 : 5, crit: hero.crit }) > 0) landed = true;
+  if (wild.strike({ from: p, facing: player.facing, reach: 3.3 * reachMult, wide: finisher, damage: S.playerPower(state) * mult, knock: finisher ? 13 : 5, crit: hero.crit }) > 0) landed = true;
   // A small step into the swing, so hits feel like they carry weight.
   if (!fight) {
     player.dashX = fwd.x * 7;
@@ -1661,6 +1692,10 @@ function findTarget() {
     for (const c of critters) if (!c.gone) offer(Math.hypot(p.x - c.object.position.x, p.z - c.object.position.z), 2.8, { text: `Catch the ${S.CRITTERS[c.species].name.toLowerCase()} · 1 lure (${state.critters.lures} left)`, run: () => catchCritter(c) });
     return best;
   }
+  if (outdoors()) {
+    wild.findTarget(p, offer);
+    for (const c of critters) if (!c.gone) offer(Math.hypot(p.x - c.object.position.x, p.z - c.object.position.z), 2.8, { text: `Catch the ${S.CRITTERS[c.species].name.toLowerCase()} · 1 lure (${state.critters.lures} left)`, run: () => catchCritter(c) });
+  }
   if (state.scene === 'earth') cacheObjects.forEach((c, i) => { if (!c.done) offer(Math.hypot(p.x - c.object.position.x, p.z - c.object.position.z), 3.6, { text: 'Open the hidden cache', run: () => openCacheAt(i) }); });
   for (const [id, entry] of chests) {
     if (entry.opening || entry.object.parent !== root()) continue;
@@ -1682,7 +1717,6 @@ function findTarget() {
     const w = W.wonderPosition(5);
     offer(Math.hypot(p.x - w.x, p.z - w.z), 9, { text: 'Fly to the Moon', run: () => ui.travel({ title: 'Moon Rocket', subtitle: 'A new colony with its own buildings, and the Star Gate.', label: 'Launch', onGo: () => travel('moon') }) });
   }
-  if (sceneName === 'earth') offer(Math.hypot(p.x - W.DOCK_POS.x, p.z - W.DOCK_POS.z), 5.5, { text: 'Take the trail to the Wilds', run: () => ui.travel({ title: 'The Wilds', subtitle: 'Levels 1 to 10. Untamed forest past the eastern pass. Monster camps guard chests, treasure is buried in the woods, and the Alpha waits at the far end. It all comes back each day.', label: 'Head out', onGo: () => enterRealm('wilds') }) });
   if (sceneName === 'moon' && state.wonders.includes(6)) {
     offer(Math.hypot(p.x - W.STARGATE_POS.x, p.z - W.STARGATE_POS.z), 7, { text: 'Step through the Star Gate', run: () => ui.travel({ title: 'Kepler Reach', subtitle: 'Levels 14 to 30. A world on the far side of the gate. Sentry machines guard the best loot in the game, and the Core Guardian holds the centre.', label: 'Step through', onGo: () => enterRealm('nova') }) });
   }
@@ -1838,7 +1872,7 @@ const TUTORIAL = [
     target: () => chests.get(tut.chestId)?.object.position, done: () => !state.school.chests.some((c) => c.id === tut.chestId) && !ui.isOpen() },
   { text: 'Press M for the map. See the grey? That’s fog: land nobody’s walked yet.', keys: ['M'], reveal: 'menu',
     done: () => tut.flags.map && !ui.isOpen() },
-  { text: 'Exploring clears the fog. Out there are lost Atlas pages: each one pays coins and tells a story. Follow my light!', keys: ['Shift', 'Q'], reveal: 'menu',
+  { text: 'Exploring clears the fog. Out there are lost Atlas pages, wild creatures and fox camps guarding chests. Follow my light!', keys: ['Shift', 'Q'], reveal: 'menu',
     enter: () => { tut.found = S.foundCount(state, state.era); },
     target: () => unfoundLandmark(), done: () => S.foundCount(state, state.era) > tut.found },
   { text: '', manual: true, reveal: 'all', target: () => { const w = S.nextWonder(state); return w && w.scene === 'earth' ? W.wonderPosition(w.index) : null; } },
@@ -2211,7 +2245,7 @@ function openMap() {
     g.font = `800 ${13 * k / 2.3}px Fredoka, sans-serif`; g.textAlign = 'center';
     g.lineWidth = 4 * k / 2.3; g.strokeStyle = 'rgba(20, 16, 36, 0.85)'; g.strokeText(text, x, y); g.fillStyle = color; g.fillText(text, x, y);
   };
-  // Caches, the trail to the Wilds, landmarks.
+  // Caches, wild places, landmarks.
   cacheObjects.forEach((c, i) => {
     const q = c.object.position;
     if (!seen(q.x, q.z)) return;
@@ -2219,7 +2253,6 @@ function openMap() {
     g.beginPath(); g.moveTo(X(q.x), Z(q.z) - 3.2 * k); g.lineTo(X(q.x) + 2.4 * k, Z(q.z)); g.lineTo(X(q.x), Z(q.z) + 3.2 * k); g.lineTo(X(q.x) - 2.4 * k, Z(q.z)); g.closePath(); g.fill();
     g.strokeStyle = '#3a2a05'; g.lineWidth = 0.6 * k; g.stroke();
   });
-  label('To the Wilds', X(W.DOCK_POS.x), Z(W.DOCK_POS.z) - 3 * k, '#bfe8ff');
   const marks = world.landmarks();
   for (const l of marks) {
     const found = state.found[S.landmarkKey(state.era, l.id)];
@@ -2467,6 +2500,7 @@ function solids() {
     const p = player.object.position;
     if (Math.hypot(p.x, p.z) > W.TOWN_R - 6) for (const t of world.treeSolids()) if (Math.abs(t.x - p.x) < 4 && Math.abs(t.z - p.z) < 4) list.push(t);
     for (const c of cacheObjects) list.push({ x: c.object.position.x, z: c.object.position.z, r: 1.1 });
+    list.push(...wild.solids(p));
   }
   return list;
 }
@@ -2738,6 +2772,8 @@ function frame(nowMs) {
   if (locked() && ui.isOpen()) document.exitPointerLock();
   if (shiftLock) document.body.classList.toggle('shiftlock', !ui.isOpen());
   if (!inRealm() && state.scene === 'earth') moveVillagers(dt, time);
+  wild.setActive(outdoors());
+  wild.update(dt, time, player.object.position, !player.down);
   updateCritters(dt, time);
   if (!inRealm() && state.scene === 'earth') { moveShadows(dt, time); movePacks(dt, time); animateLairs(time); }
   watchtower.userData.beam.rotation.y += dt * 0.6;
@@ -2819,7 +2855,6 @@ const dock = A.makeDock();
 dock.position.copy(W.DOCK_POS);
 dock.rotation.y = Math.atan2(W.DOCK_POS.x, W.DOCK_POS.z) - Math.PI / 2;
 world.earth.add(dock);
-fx.label(dock, 5, '<em>Explore</em>Trail to the Wilds', 'board');
 
 // --- Market, class halls, build mode and review ghosts ------------------------------------
 const deg = (d) => (d * Math.PI) / 180;
@@ -3571,8 +3606,18 @@ function clearCritters() {
   for (const c of critters) c.object.parent?.remove(c.object);
   critters.length = 0;
 }
+// Creatures live in two places: the Wilds realm, and the country around your town
+// (they wander in past the houses too, but never onto the plaza). At most a few at
+// a time, only near you, so they cost almost nothing.
+const CRITTER_HOME = { min: 26, max: W.ISLAND_RADIUS - 4, count: 5, far: 58 };
+const critterGround = (x, z) => (inRealm() ? 0 : world.groundHeight('earth', x, z));
+function critterSpot(x, z) {
+  const r = Math.hypot(x, z);
+  if (inRealm()) return r < realms.radius - 5;
+  return r > CRITTER_HOME.min && r < CRITTER_HOME.max && world.groundHeight('earth', x, z) > 0.15;
+}
 function spawnCritter() {
-  const group = realms.group;
+  const group = inRealm() ? realms.group : world.earth;
   if (!group) return;
   const species = S.rollCritter(phase.night);
   const object = A.makeCritter(species);
@@ -3580,23 +3625,27 @@ function spawnCritter() {
   for (let tries = 0; tries < 20; tries++) {
     const a = Math.random() * Math.PI * 2, r = 14 + Math.random() * 30;
     const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
-    if (Math.hypot(x, z) > realms.radius - 5) continue;
-    object.position.set(x, 0, z);
+    if (!critterSpot(x, z)) continue;
+    object.position.set(x, critterGround(x, z), z);
     object.rotation.y = Math.random() * 6.28;
     group.add(object);
     critters.push({ species, object, target: null, wait: 1 + Math.random() * 3, flee: 0, gone: false, phase: Math.random() * 6 });
     return;
   }
 }
+let critterPlace = null;
 function updateCritters(dt, time) {
-  if (realms.active !== 'wilds') { if (critters.length) clearCritters(); return; }
+  const place = realms.active === 'wilds' ? 'wilds' : outdoors() ? 'earth' : null;
+  if (place !== critterPlace) { clearCritters(); critterPlace = place; critterSpawn = 1.5; }
+  if (!place) return;
   critterSpawn -= dt;
-  if (critterSpawn <= 0 && critters.filter((c) => !c.gone).length < 6) { spawnCritter(); critterSpawn = 4; }
+  if (critterSpawn <= 0 && critters.filter((c) => !c.gone).length < (place === 'earth' ? CRITTER_HOME.count : 6)) { spawnCritter(); critterSpawn = place === 'earth' ? 3 : 4; }
   const p = player.object.position;
   for (let i = critters.length - 1; i >= 0; i--) {
     const c = critters[i];
     const o = c.object.position;
     const dPlayer = Math.hypot(p.x - o.x, p.z - o.z);
+    if (dPlayer > CRITTER_HOME.far) { c.object.parent?.remove(c.object); critters.splice(i, 1); continue; }
     // Running at them scares them off; walking up slowly works.
     if (!c.gone && dPlayer < 3.2 && keys.has('shift')) c.flee = Math.max(c.flee, 2.5);
     let speed = 0, tx = o.x, tz = o.z;
@@ -3614,7 +3663,7 @@ function updateCritters(dt, time) {
       if (c.wait <= 0) {
         const a = Math.random() * Math.PI * 2;
         c.target = { x: o.x + Math.cos(a) * (3 + Math.random() * 6), z: o.z + Math.sin(a) * (3 + Math.random() * 6) };
-        if (Math.hypot(c.target.x, c.target.z) > realms.radius - 5) c.target = { x: o.x * 0.8, z: o.z * 0.8 };
+        if (!critterSpot(c.target.x, c.target.z)) c.target = null;
       }
     }
     const dx = tx - o.x, dz = tz - o.z, d = Math.hypot(dx, dz);
@@ -3630,6 +3679,7 @@ function updateCritters(dt, time) {
       body.position.y = 0;
       if (dPlayer < 6) c.object.rotation.y += (Math.atan2(p.x - o.x, p.z - o.z) - c.object.rotation.y) * Math.min(1, dt * 3);
     }
+    o.y = critterGround(o.x, o.z);
     if (c.object.userData.flies) body.position.y = 0.4 + Math.sin(time * 2 + c.phase) * 0.25;
     for (const w of c.object.userData.wings || []) w.rotation.z = Math.sin(time * (c.species === 'moth' ? 14 : 3) + c.phase) * (c.species === 'moth' ? 0.7 : 0.15) * (w.position.x < 0 ? 1 : -1);
   }
@@ -4500,7 +4550,7 @@ window.epoch = {
   invaders: () => [...invaders.values()].map((i) => ({ name: i.item.name, mode: i.mode, x: +i.object.position.x.toFixed(1), z: +i.object.position.z.toFixed(1), inScene: Boolean(i.object.parent) })),
   armor(id) { const inv = invaders.get(id); return inv && inv.object.userData.armor?.filter((p) => p.visible).length; },
   info: () => ({ quality, calls: renderer.info.render.calls, tris: renderer.info.render.triangles, cpuMs: Math.round((pace.cpu || 0) * 10) / 10 }),
-  debug: { scene, renderer, bloom, world, composer, camera },
+  debug: { scene, renderer, bloom, world, composer, camera, wild, critters, player },
   reset() { localStorage.removeItem(SAVE_KEY); location.reload(); },
 };
 

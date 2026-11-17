@@ -589,7 +589,7 @@ export function createUI(on) {
           el('b', { text: c.count ? c.name : '???' }),
           el('span', { text: c.count ? `Caught ${c.count} · as a pet: +${c.bonus}% study XP` : c.hint }),
           c.count ? el('div', { class: 'gear-do' }, pet === c.id ? el('button', { class: 'btn small', text: 'Put away', onclick: () => onPet(null) }) : el('button', { class: 'btn small primary', text: 'Make pet', onclick: () => onPet(c.id) })) : null))),
-        el('p', { class: 'note', text: 'Find them in the Wilds. Walk up slowly (running scares them) and press E. Owls, moths and the star fox only come out at night, on your real clock.' }),
+        el('p', { class: 'note', text: 'They roam the country around your town. Walk up slowly (running scares them) and press E. Owls, moths and the star fox only come out at night, on your real clock.' }),
       );
     },
 
@@ -924,7 +924,7 @@ export function createUI(on) {
           el('span', { class: 'k' }, el('kbd', { text: 'T' })), el('span', { text: 'Start a study session. This is the only way to level up.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'C' }), el('kbd', { text: 'J' })), el('span', { text: 'Your hero (gear and skills) and your quests.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'E' })), el('span', { text: 'Talk to villagers: they move in as your town grows, give a small favour each day, and leave if the town keeps getting wrecked.' }),
-          el('span', { class: 'k' }, el('kbd', { text: 'K' })), el('span', { text: 'Creatures: catch them in the Wilds with lures you earn by studying. Pick one as a pet for bonus study XP.' }),
+          el('span', { class: 'k' }, el('kbd', { text: 'K' })), el('span', { text: 'Creatures: catch them out in the country with lures you earn by studying. Pick one as a pet for bonus study XP.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'B' })), el('span', { text: 'Build mode: place fences, lamps, trees and more anywhere in town. The market sells rare pieces.' }),
           el('span', { class: 'k' }, el('kbd', { text: '↗' })), el('span', { text: 'Explore past the town: walk out to the hills. Follow the light beams to hidden caches, each a chest a day.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'Z' })), el('span', { text: 'Photo mode: hide the screen clutter, pick a filter, and save a picture of your village.' }),
@@ -940,7 +940,7 @@ export function createUI(on) {
           el('li', { text: 'Walk past buildings to collect. Upgrade them, then build the wonder to reach the next age.' }),
           el('li', { text: 'Your Canvas assignments are the walking books marching on the gate. Hand one in on Canvas and it is gone, with a coin reward. Late ones halve your income.' }),
           el('li', { text: 'Walk up to a book and start a study session, then go do the work. The town fires on the book while the timer runs, earns double, and a chest drops when you finish.' }),
-          el('li', { text: 'Take the trail through the eastern pass to the Wilds: clear monster camps for chests, dig up treasure, find shrines and hunt the Alpha. After the Moon, the Star Gate opens a whole new world.' }),
+          el('li', { text: 'Head out past the edge of town: clear fox camps for chests, dig up treasure, find shrines and hunt the Alpha in its lair. After the Moon, the Star Gate opens a whole new world.' }),
           el('li', { text: 'Exams are giant armored books that march on your gate for days. Study to break their armor; on exam day, the armor left decides whether your gate holds or a building gets wrecked. Every grade posted on Canvas drops a chest on your plaza: the better the grade, the rarer the chest.' })),
         el('div', { class: 'actions' }, el('button', { class: 'btn primary', style: 'justify-content:center', onclick: close }, el('span', { text: first ? 'Start' : 'Back to the game' }))),
       );

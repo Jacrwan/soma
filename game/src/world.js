@@ -1163,7 +1163,7 @@ export function createWorld(scene, renderer) {
   function spinCountry(dt) {
     for (const o of country.spin) o.rotation[o.userData.spin || o.userData.axis || 'z'] += dt * (o.userData.speed ?? 0.9);
   }
-  return { earth, moon, landName, trimGrass, setFelled, nearestTree, caches: () => caches, treeSolids: () => (felled.size ? treeSolids.filter((t) => !felled.has(`${t.x.toFixed(1)},${t.z.toFixed(1)}`)) : treeSolids), landmarks: () => country.landmarks, roads: () => country.roads, fields: () => country.fields, mapColor, spinCountry, landIndex: () => landIndex, setEra, setClearings, setScene, showRealm, update, setQuality, setDaylight, get daylight() { return daylight; }, groundHeight: (name, x, z) => (name === 'moon' ? moonHeight(x, z, Math.hypot(x, z)) : hillHeight(x, z)) };
+  return { earth, moon, landName, trimGrass, setFelled, nearestTree, caches: () => caches, treeSolids: () => (felled.size ? treeSolids.filter((t) => !felled.has(`${t.x.toFixed(1)},${t.z.toFixed(1)}`)) : treeSolids), landmarks: () => country.landmarks, roads: () => country.roads, fields: () => country.fields, mapColor, spinCountry, landIndex: () => landIndex, setEra, setClearings, setScene, showRealm, update, setQuality, setDaylight, get daylight() { return daylight; }, groundHeight: (name, x, z) => (name === 'moon' ? moonHeight(x, z, Math.hypot(x, z)) : hillHeight(x, z)), openGround: (x, z) => Boolean(country) && !country.mask(x, z) && hillHeight(x, z) > 0.15 && Math.abs(hillHeight(x + 2, z) - hillHeight(x, z)) + Math.abs(hillHeight(x, z + 2) - hillHeight(x, z)) < 1.2 };
 }
 
 export { EARTH_PADS };
