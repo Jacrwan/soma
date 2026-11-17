@@ -103,9 +103,13 @@ function meadow(x, z, r, amp = 1) {
 // Creeks around the areas of the Stone Age valley, Animal Crossing style: you can see
 // across, but can't cross until a bridge is built. One arc along the town's edge in front
 // of every area except the meadow, and a creek along every border between two areas.
-export const CREEK = { r: TOWN_R + 3, half: 1.2, bank: 2.2, outer: RISE_R + 14 };
+// half: the flat bed's half-width; bank: how wide the banks climb; level: the water's height.
+// The water sits only a little below the grass, so it shows from far off too.
+export const CREEK = { r: TOWN_R + 3, half: 2.4, bank: 1.6, bed: -1.5, level: -0.32, outer: RISE_R + 14 };
+/** Where the water meets the bank, from the creek's middle. */
+export const CREEK_EDGE = (() => { let t = 0; while (t < 1 && CREEK.bed * (1 - smooth(t)) < CREEK.level) t += 0.01; return CREEK.half + CREEK.bank * t; })();
 const RAD = Math.PI / 180;
-function creekDistance(x, z, r = Math.hypot(x, z)) {
+export function creekDistance(x, z, r = Math.hypot(x, z)) {
   if (r < CREEK.r - 6) return Infinity;
   const a = ((Math.atan2(z, x) / RAD) + 360) % 360;
   let best = Infinity;
@@ -121,12 +125,26 @@ function creekDistance(x, z, r = Math.hypot(x, z)) {
   }
   return best;
 }
+const BANK_TOP = new THREE.Color(0xa98a5c), BANK_LOW = new THREE.Color(0x7a5f43);
+/** Colours a spot on a creek bank: packed earth, darker the lower it goes. */
+function creekBank(c, d, h) {
+  const top = CREEK.half + CREEK.bank + 0.4;
+  const k = 1 - smooth((d - CREEK_EDGE - 0.35) / (top - CREEK_EDGE - 0.35));
+  const dirt = BANK_TOP.clone().lerp(BANK_LOW, Math.max(0, Math.min(1, -h / 1.1)));
+  c.lerp(dirt, Math.max(0, Math.min(1, k)));
+}
 /** Carves a creek into a height (the valley only). */
 const withCreeks = (x, z, r, h) => {
   const d = creekDistance(x, z, r);
-  if (d > CREEK.half + CREEK.bank) return h;
+  const top = CREEK.half + CREEK.bank;
+  if (d > top + 10) return h;
+  // Out in the hills the ground eases down to a low strip along the creek first, so the
+  // banks are the same height everywhere and the water never pinches out.
+  const lie = Math.min(h, 0.15);
+  h = lie + (h - lie) * smooth((d - top) / 10);
+  if (d > top) return h;
   const s = smooth((d - CREEK.half) / CREEK.bank);
-  return h * s + (1 - s) * -1.25;
+  return h * s + (1 - s) * CREEK.bed;
 };
 function valleyHeight(x, z, r) {
   if (r < TOWN_R) return r > CREEK.r - CREEK.half - CREEK.bank ? withCreeks(x, z, r, 0) : 0;
@@ -354,15 +372,25 @@ const SKY_FRAG = `
 
 const WATER_VERT = `
   varying vec3 vWorld;
+  #ifdef CREEK
+  attribute vec2 aFlow;
+  varying vec2 vFlow;
+  #endif
   void main() {
     vec4 w = modelMatrix * vec4(position, 1.0);
     vWorld = w.xyz;
+    #ifdef CREEK
+    vFlow = aFlow;
+    #endif
     vec4 mvPosition = viewMatrix * w;
-    ${bendGlsl}
+    ${bendGlsl()}
     gl_Position = projectionMatrix * mvPosition;
   }`;
 const WATER_FRAG = `
   varying vec3 vWorld;
+  #ifdef CREEK
+  varying vec2 vFlow;
+  #endif
   uniform sampler2D ripples;
   uniform vec3 zenith, horizon, sunDir, sunColor, deep, shallow;
   uniform float time, haze;
@@ -376,7 +404,11 @@ const WATER_FRAG = `
     vec3 toEye = cameraPosition - vWorld;
     float dist = length(toEye);
     vec3 v = toEye / dist;
-    #ifdef INLAND
+    #ifdef CREEK
+    // Shallow and clear by the banks, deep in the middle.
+    float across = abs(vFlow.y);
+    float depth = 1.0 - smoothstep(0.15, 0.9, across) * 0.95;
+    #elif defined(INLAND)
     float depth = 0.62;
     #else
     float depth = smoothstep(44.5, 66.0, r);
@@ -393,7 +425,18 @@ const WATER_FRAG = `
     float lines = 1.0 - smoothstep(0.03, 0.08, abs(c - 0.5));
     // Rare sparkles where the sun catches the surface.
     float spark = smoothstep(0.71, 0.75, texture2D(ripples, p * 0.35 + time * vec2(0.04, -0.03)).r) * max(day, 0.35);
-    col = mix(col, mix(vec3(0.6, 0.75, 0.92), vec3(0.86, 0.96, 1.0), smoothstep(0.2, 0.8, day)), clamp(lines * 0.45 + spark * 0.7, 0.0, 1.0));
+    vec3 white = mix(vec3(0.6, 0.75, 0.92), vec3(0.86, 0.96, 1.0), smoothstep(0.2, 0.8, day));
+    #ifdef CREEK
+    // Ripples streaming downstream, and foam where the water laps the banks.
+    float run = texture2D(ripples, vec2(vFlow.x * 0.045 - time * 0.09, vFlow.y * 0.32 + 0.5)).r;
+    float run2 = texture2D(ripples, vec2(vFlow.x * 0.09 - time * 0.16, vFlow.y * 0.55 + 0.2)).g;
+    lines = smoothstep(0.62, 0.68, run * 0.6 + run2 * 0.4) * (1.0 - smoothstep(0.55, 0.85, across));
+    float lap = texture2D(ripples, vec2(vFlow.x * 0.16 - time * 0.05, vFlow.y * 0.1 + time * 0.02)).b;
+    float bank = smoothstep(0.74, 0.9, across + (lap - 0.5) * 0.22);
+    col = mix(col, white, clamp(lines * 0.55 + spark * 0.7 + bank * 0.9, 0.0, 1.0));
+    #else
+    col = mix(col, white, clamp(lines * 0.45 + spark * 0.7, 0.0, 1.0));
+    #endif
     float fres = 0.0;
     // Foam where the sea meets the sand, in bands that roll in.
     float chop = texture2D(ripples, p * 0.12 + time * 0.01).b * 0.5 + n1.x * 0.5;
@@ -469,6 +512,8 @@ export function createWorld(scene, renderer) {
   const water = new THREE.Mesh(new THREE.CircleGeometry(900, 72), new THREE.ShaderMaterial({ uniforms: waterUniforms, vertexShader: WATER_VERT, fragmentShader: WATER_FRAG, transparent: true, depthWrite: false }));
   // Creeks, ponds, rivers and lakes: the same water (and uniforms) without the sea's surf.
   const inlandWater = new THREE.ShaderMaterial({ uniforms: waterUniforms, vertexShader: WATER_VERT, fragmentShader: WATER_FRAG, transparent: true, depthWrite: false, defines: { INLAND: 1 } });
+  // The creeks: deeper in the middle, foam along the banks, ripples that run downstream.
+  const creekWater = new THREE.ShaderMaterial({ uniforms: waterUniforms, vertexShader: WATER_VERT, fragmentShader: WATER_FRAG, transparent: true, depthWrite: false, defines: { INLAND: 1, CREEK: 1 } });
   water.rotation.x = -Math.PI / 2;
   water.position.y = -0.5;
   water.renderOrder = 2;
@@ -503,7 +548,7 @@ export function createWorld(scene, renderer) {
     dispose(landParts);
     landParts.clear();
 
-    landParts.add(ground(MAP_SPAN, 140, hillHeight, groundMat, MAP_SPAN));
+    landParts.add(ground(MAP_SPAN, 280, hillHeight, groundMat, MAP_SPAN)); // half-metre grid, so creek banks come out clean
 
     // Hidden caches out in the country: dry, fairly flat ground, spread around, off the roads.
     {
@@ -553,6 +598,8 @@ export function createWorld(scene, renderer) {
         c.multiplyScalar(0.97 + 0.05 * (noise2(x * 2.3, z * 2.3) * 0.5 + 0.5));
         // Each area of the country has its own colour (meadow, orchard, pond, woods, highlands).
         if (h > -0.2) tintByZone(c, x, z, zoneFade(Math.hypot(x, z), TOWN_R, RISE_R) * zoneTint);
+        // Earth banks down to the creeks.
+        if (index === 0) { const cd = creekDistance(x, z); if (cd < CREEK.half + CREEK.bank + 0.4) creekBank(c, cd, h); }
         c.toArray(colors, i * 3);
       }
       g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
@@ -588,24 +635,28 @@ export function createWorld(scene, renderer) {
       landParts.add(creek);
       // The creeks around the areas: a strip of water along each one.
       const ribbon = (pts, width) => {
-        const pos = [], idx = [];
+        const pos = [], idx = [], flow = [];
+        let along = 0;
         pts.forEach((p, i) => {
           const q = pts[Math.min(pts.length - 1, i + 1)], o = pts[Math.max(0, i - 1)];
           let tx = q.x - o.x, tz = q.z - o.z;
           const tl = Math.hypot(tx, tz) || 1;
           tx /= tl; tz /= tl;
-          pos.push(p.x - tz * width, -0.45, p.z + tx * width, p.x + tz * width, -0.45, p.z - tx * width);
-          if (i) { const k = (i - 1) * 2; idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); } // facing up
+          pos.push(p.x - tz * width, CREEK.level, p.z + tx * width, p.x, CREEK.level, p.z, p.x + tz * width, CREEK.level, p.z - tx * width);
+          if (i) along += Math.hypot(p.x - pts[i - 1].x, p.z - pts[i - 1].z);
+          flow.push(along, -1, along, 0, along, 1);
+          if (i) { const k = (i - 1) * 3; idx.push(k, k + 3, k + 1, k + 1, k + 3, k + 4, k + 1, k + 4, k + 2, k + 2, k + 4, k + 5); } // facing up
         });
         const g = new THREE.BufferGeometry();
         g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        g.setAttribute('aFlow', new THREE.Float32BufferAttribute(flow, 2)); // metres downstream, and -1..1 across
         g.setIndex(idx);
         g.computeVertexNormals();
-        const m = new THREE.Mesh(g, inlandWater);
+        const m = new THREE.Mesh(g, creekWater);
         m.renderOrder = 2;
         return m;
       };
-      const w = CREEK.half + 1.2;
+      const w = CREEK_EDGE + 0.15;
       for (const sec of AREA_SECTORS) {
         const line = [];
         for (let r = CREEK.r - 1; r <= CREEK.outer; r += 3) line.push({ x: Math.cos(sec.to * RAD) * r, z: Math.sin(sec.to * RAD) * r });
@@ -718,13 +769,14 @@ export function createWorld(scene, renderer) {
       const d = Math.hypot(x, z);
       if (d < TOWN_R - 3.5 || country.mask(x, z)) return false;
       const h = hillHeight(x, z, d);
-      return h > -0.25 && h < 14;
+      // Not down the creek banks, where blades would stick up out of the water.
+      return h > 0.05 && h < 14 && (index !== 0 || creekDistance(x, z, d) > CREEK_EDGE + 0.6);
     }, 33 + index, land.grass, (x, z) => hillHeight(x, z) - 0.05);
     earth.add(wildGrass);
     // Flowers, reeds, mushrooms, logs, stumps, bushes, rocks and fruit, by area.
     cover = createCover({
       height: (x, z) => hillHeight(x, z),
-      free: (x, z) => !country.mask(x, z) && !caches.some((c) => Math.hypot(c.x - x, c.z - z) < 4),
+      free: (x, z) => !country.mask(x, z) && !caches.some((c) => Math.hypot(c.x - x, c.z - z) < 4) && (index !== 0 || creekDistance(x, z) > CREEK_EDGE + 0.5),
       townR: TOWN_R, riseR: RISE_R, green: zoneTint >= 0.4, pond: index === 0, seed: index,
     });
     landParts.add(cover.object);
@@ -831,6 +883,22 @@ export function createWorld(scene, renderer) {
         ctx.fillRect(X(gx), X(gz), s + 1, s + 1);
       }
       ctx.globalAlpha = 1;
+    }
+    // The valley's creeks: earth banks running down to the water, painted finely.
+    if (landIndex === 0) {
+      const c = new THREE.Color(), step = 0.25;
+      const half = MAP_SPAN / 2;
+      for (let gz = -half; gz < half; gz += step) for (let gx = -half; gx < half; gx += step) {
+        const x = gx + step / 2, z = gz + step / 2, rr = Math.hypot(x, z);
+        if (rr < CREEK.r - CREEK.half - CREEK.bank - 1) continue;
+        const cd = creekDistance(x, z, rr);
+        if (cd > CREEK.half + CREEK.bank + 0.4) continue;
+        c.set(P.base);
+        creekBank(c, cd, hillHeight(x, z, rr));
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = `#${c.getHexString()}`;
+        ctx.fillRect(X(gx), X(gz), step * s + 1, step * s + 1);
+      }
     }
     const tufts = [stamp(0x8fb257), stamp(0x4c7634)];
     for (let i = 0; i < 0; i++) {

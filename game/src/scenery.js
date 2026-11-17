@@ -34,7 +34,7 @@ export function installHorizonBend() {
   THREE.ShaderChunk.project_vertex = THREE.ShaderChunk.project_vertex.replace('gl_Position = projectionMatrix * mvPosition;', `${BEND_GLSL}\ngl_Position = projectionMatrix * mvPosition;`);
 }
 /** The same bend for a custom shader that computes mvPosition itself (e.g. water). */
-export const bendGlsl = BEND_GLSL;
+export const bendGlsl = () => (bent ? BEND_GLSL : '');
 /** Projects a world position the way the bent world draws it (for labels and markers). Modifies v. */
 export function projectBent(v, camera) {
   if (bent) {
