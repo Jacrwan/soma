@@ -314,7 +314,7 @@ export function createUI(on) {
       );
     },
 
-    building({ name, level, maxLevel, income, stored, cap, golden, upgrade, modernize, gild, tokens, onUpgrade, onModernize, onGild }) {
+    building({ name, level, maxLevel, income, stored, cap, golden, upgrade, modernize, gild, tokens, sell = null, onUpgrade, onModernize, onGild, onSell }) {
       const actions = [];
       if (upgrade) actions.push(el('button', { class: 'btn primary', disabled: !upgrade.affordable, onclick: () => { close(); onUpgrade(); } },
         el('span', {}, `Upgrade to level ${level + 1}`, el('small', { text: `Earns +${fmt(upgrade.income * 3600)} / hour` })), el('span', { class: 'cost' }, price(upgrade.cost))));
@@ -328,6 +328,16 @@ export function createUI(on) {
           el('div', { class: 'stat' }, el('small', { text: 'Waiting' }), el('b', { text: fmt(stored) })),
           el('div', { class: 'stat' }, el('small', { text: 'Holds up to' }), el('b', { text: fmt(cap) }))),
         el('div', { class: 'actions' }, actions.length ? actions : el('p', { class: 'note', text: 'Fully upgraded for this age. Reach the next age to rebuild it.' })),
+        sell ? (() => {
+          // Selling asks twice, so a stray click never knocks a building down.
+          let armed = false;
+          const label = el('span', {}, 'Sell this building', el('small', { text: `Half of the ${fmt(sell.paid)} it cost${sell.stored >= 1 ? `, plus ${fmt(sell.stored)} waiting inside` : ''}` }));
+          const b = el('button', { class: 'btn danger', onclick: () => {
+            if (!armed) { armed = true; b.classList.add('armed'); label.firstChild.textContent = 'Tap again to sell'; return; }
+            close(); onSell();
+          } }, label, el('span', { class: 'cost' }, price(sell.value)));
+          return el('div', { class: 'actions sell' }, b);
+        })() : null,
       );
     },
 

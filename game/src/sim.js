@@ -309,7 +309,7 @@ export function build(state, index, type, scene = state.scene) {
   if (index >= padsUnlocked(state, scene) || state.pads[scene][index] || !BUILDINGS[type]) return false;
   const tier = tierFor(state, scene);
   if (!spend(state, buildCost(type, tier))) return false;
-  state.pads[scene][index] = { type, tier, level: 1, golden: false, stored: 0 };
+  state.pads[scene][index] = { type, tier, level: 1, golden: false, stored: 0, paid: buildCost(type, tier) };
   return true;
 }
 
@@ -337,7 +337,10 @@ export function buildingCount(state, scene = 'earth') {
 
 export function upgrade(state, index, scene = state.scene) {
   const b = state.pads[scene][index];
-  if (!b || b.level >= MAX_LEVEL || !spend(state, upgradeCost(b))) return false;
+  if (!b || b.level >= MAX_LEVEL) return false;
+  const cost = upgradeCost(b);
+  if (!spend(state, cost)) return false;
+  b.paid = buildingPaid(b) + cost;
   b.level += 1;
   return true;
 }
@@ -347,6 +350,7 @@ export function modernize(state, index, scene = state.scene) {
   if (!b) return false;
   const cost = modernizeCost(state, b, scene);
   if (!Number.isFinite(cost) || !spend(state, cost)) return false;
+  b.paid = buildingPaid(b) + cost;
   b.tier = tierFor(state, scene);
   b.level = 1;
   return true;
@@ -358,6 +362,28 @@ export function gild(state, index, scene = state.scene) {
   state.tokens -= 1;
   b.golden = true;
   return true;
+}
+
+/** Everything spent on a building: building it plus its upgrades (worked out for older saves). */
+export function buildingPaid(b) {
+  if (!b) return 0;
+  if (typeof b.paid === 'number') return b.paid;
+  const base = buildCost(b.type, b.tier);
+  let total = base;
+  for (let l = 2; l <= b.level; l++) total += Math.round(base * LEVEL_COST[l]);
+  return total;
+}
+/** Selling gives back half of what the building cost; its stored coins come along too. */
+export const buildingSellValue = (b) => Math.floor(buildingPaid(b) / 2) + Math.floor(b?.stored || 0);
+/** Sells a building. Returns the coins paid back (0 if there was nothing to sell). */
+export function sellBuilding(state, index, scene = 'earth') {
+  const b = state.pads[scene][index];
+  if (!b) return 0;
+  const back = buildingSellValue(b);
+  state.pads[scene][index] = null;
+  delete state.padSpots[scene]?.[index];
+  addCoins(state, back);
+  return back;
 }
 
 /** Moves a building's stored coins to the player. Returns how many. */

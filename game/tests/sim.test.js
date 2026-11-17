@@ -1038,3 +1038,25 @@ test('the sample semester never costs anything: open work rolls a week on, and s
   for (const a of Object.values(s.school.items)) if (!a.submitted) assert.ok(a.dueAt > later + 2 * 3600000, `${a.name} moved past now`);
   assert.deepStrictEqual(S.resolveExams(s, later + 30 * 86400000).filter((e) => S.isSample(e.item)), []);
 });
+
+test('selling a building gives back half of everything spent on it, plus what is stored inside', () => {
+  const s = S.newState();
+  s.coins = 1e9;
+  const i = S.placeBuilding(s, 'home', 30, 30);
+  assert.ok(i >= 0);
+  const b = s.pads.earth[i];
+  const base = S.buildCost('home', b.tier);
+  assert.strictEqual(S.buildingPaid(b), base);
+  const up = S.upgradeCost(b);
+  assert.ok(S.upgrade(s, i, 'earth'));
+  assert.strictEqual(S.buildingPaid(b), base + up);
+  b.stored = 40;
+  const before = s.coins;
+  const back = S.sellBuilding(s, i, 'earth');
+  assert.strictEqual(back, Math.floor((base + up) / 2) + 40);
+  assert.strictEqual(s.coins, before + back);
+  assert.strictEqual(s.pads.earth[i], null);
+  assert.strictEqual(s.padSpots.earth[i], undefined);
+  // Old saves (no record of what was paid) still sell for half the build plus upgrades.
+  assert.strictEqual(S.buildingPaid({ type: 'home', tier: 0, level: 2 }), S.buildCost('home', 0) * 3);
+});

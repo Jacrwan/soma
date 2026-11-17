@@ -1058,3 +1058,7 @@ body:has(#menuMore:not([hidden])) #toasts { opacity: 0; }
 .label.board.far em { font-size: 11px; margin: 0; }
 
 .feedback-box { width: 100%; box-sizing: border-box; margin: 10px 0 4px; padding: 10px 12px; border-radius: 12px; border: 2px solid rgba(255,255,255,0.14); background: rgba(0,0,0,0.25); color: inherit; font: inherit; font-size: 14px; resize: vertical; }
+
+.actions.sell { margin-top: 6px; }
+.btn.danger { background: #3a2230; border-color: #e5483d; color: #ffd2cd; }
+.btn.danger.armed { background: #e5483d; color: #fff; }

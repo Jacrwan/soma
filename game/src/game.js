@@ -1020,6 +1020,21 @@ function openBuilding(i) {
     onUpgrade: () => (S.upgrade(state, i) ? built(i, `${S.buildingName(b)} is now level ${b.level}`) : deny('Not enough coins yet.')),
     onModernize: () => (S.modernize(state, i) ? built(i, `Rebuilt as ${S.buildingName(b)}`) : deny('Not enough coins yet.')),
     onGild: () => (S.gild(state, i) ? built(i, `${S.buildingName(b)} turned golden`) : deny('You need a golden token. Legendary chests have them.')),
+    sell: { value: S.buildingSellValue(b), paid: S.buildingPaid(b), stored: b.stored },
+    onSell: () => {
+      const name = S.buildingName(b);
+      const pos = pads[state.scene][i]?.group.position.clone();
+      const back = S.sellBuilding(state, i, state.scene);
+      if (!back && back !== 0) return;
+      refreshPad(state.scene, i);
+      if (state.scene === 'earth') world.setClearings(Object.values(state.padSpots.earth));
+      if (pos) { fx.burst(pos, A.C.wood ?? 0x8a5a33, 18, 5, 6); fx.coinsTo(pos, player.object, 6, () => audio.coin()); }
+      audio.pop();
+      ui.toast(`Sold the ${name}: +${S.fmt(back)} coins`, 'good');
+      refreshHud();
+      if (build.on) drawBuildBar();
+      save();
+    },
   });
 }
 

@@ -3,7 +3,7 @@
 //   each with its own colour and things growing in it.
 // - Ground cover: flowers, reeds, mushrooms, logs, stumps, bushes, rocks, lily pads,
 //   fallen fruit. One instanced mesh each, so about ten draw calls in all.
-// - Life: a flock of birds, butterflies by day, fireflies at night, cloud shadows.
+// - Life: a flock of birds and butterflies by day, cloud shadows.
 // - The horizon bends away like a rolling log (Animal Crossing's "drum"), so the far
 //   country drops out of view and there's never a flat, empty field to stare at.
 // Everything here is decided by fixed seeds, so the country looks the same each visit.
@@ -320,9 +320,9 @@ export function createCover({ height, free, townR, riseR, green = true, pond = f
   };
 }
 
-// --- Life: birds, butterflies, fireflies ---------------------------------------------------
+// --- Life: birds and butterflies ------------------------------------------------------------
 /**
- * opts: { height(x,z), townR, riseR }. update(dt, time, focus, light) with light 0 (night) .. 1 (day).
+ * opts: { height(x,z), townR }. update(dt, time, focus, light) with light 0 (night) .. 1 (day).
  */
 export function createLife({ height, townR }) {
   const group = new THREE.Group();
@@ -353,28 +353,7 @@ export function createLife({ height, townR }) {
   butterflies.instanceColor.needsUpdate = true;
   group.add(butterflies);
 
-  // Fireflies at night: points that drift and pulse.
-  const ffCount = 110;
-  const ffPos = new Float32Array(ffCount * 3);
-  const ffPhase = new Float32Array(ffCount);
-  const ff = Array.from({ length: ffCount }, (_, i) => { ffPhase[i] = Math.random() * 6.28; return { x: 9999, z: 9999, y: 1, ph: ffPhase[i] }; });
-  const ffGeo = new THREE.BufferGeometry();
-  ffGeo.setAttribute('position', new THREE.BufferAttribute(ffPos, 3));
-  ffGeo.setAttribute('phase', new THREE.BufferAttribute(ffPhase, 1));
-  const ffMat = new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-    uniforms: { uTime: { value: 0 }, uAlpha: { value: 0 } },
-    vertexShader: `attribute float phase; uniform float uTime; varying float vGlow;
-      void main() { vec3 transformed = position; vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
-        ${BEND_GLSL}
-        vGlow = 0.35 + 0.65 * pow(max(0.0, sin(uTime * 2.1 + phase * 3.0)), 3.0);
-        gl_PointSize = (4.0 + 6.0 * vGlow) * (40.0 / max(1.0, -mvPosition.z)); gl_Position = projectionMatrix * mvPosition; }`,
-    fragmentShader: `uniform float uAlpha; varying float vGlow;
-      void main() { float d = length(gl_PointCoord - 0.5); float a = smoothstep(0.5, 0.0, d) * vGlow * uAlpha; gl_FragColor = vec4(1.0, 0.95, 0.55, a); }`,
-  });
-  const fireflies = new THREE.Points(ffGeo, ffMat);
-  fireflies.frustumCulled = false;
-  group.add(fireflies);
+  // (Fireflies were here: removed Nov 17, Ted found the flickering lights confusing.)
 
   let birdA = 0;
   const outside = (x, z) => Math.hypot(x, z) > townR - 18;
@@ -424,26 +403,6 @@ export function createLife({ height, townR }) {
           butterflies.setMatrixAt(i, dummy.matrix);
         });
         butterflies.instanceMatrix.needsUpdate = true;
-      }
-      // Fireflies: fade in after dusk, drifting low around you.
-      const night = Math.max(0, Math.min(1, (0.45 - light) / 0.25));
-      ffMat.uniforms.uAlpha.value = night;
-      ffMat.uniforms.uTime.value = time;
-      fireflies.visible = night > 0.01;
-      if (fireflies.visible) {
-        for (let i = 0; i < ffCount; i++) {
-          const f = ff[i];
-          if (Math.hypot(f.x - focus.x, f.z - focus.z) > 26) {
-            const a = Math.random() * 6.28, d = 3 + Math.random() * 22;
-            f.x = focus.x + Math.cos(a) * d; f.z = focus.z + Math.sin(a) * d; f.y = height(f.x, f.z);
-          }
-          f.x += Math.sin(time * 0.6 + f.ph) * dt * 0.5;
-          f.z += Math.cos(time * 0.5 + f.ph * 1.7) * dt * 0.5;
-          ffPos[i * 3] = f.x;
-          ffPos[i * 3 + 1] = f.y + 0.5 + Math.sin(time * 0.8 + f.ph) * 0.4 + (f.ph % 1) * 1.2;
-          ffPos[i * 3 + 2] = f.z;
-        }
-        ffGeo.attributes.position.needsUpdate = true;
       }
     },
   };
