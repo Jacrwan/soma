@@ -91,110 +91,108 @@ function part(geo, color, { outline = 0.022, extra } = {}) {
   return g;
 }
 const sphere = (r, w = 32, h = 24) => new THREE.SphereGeometry(r, w, h);
-function bodyGeometry() {
-  // An upright owl body: narrow, widest a third of the way up, tapering to the shoulders.
+// The shape: one soft bell, head and body together, wide at the bottom with a
+// gently rounded top. Brown on top and down the back, with a V of brown over
+// the face; white on the face and belly (vertex colours).
+const BROWN = 0x9b7a63, BROWN_DARK = 0x6d5242, WHITE = 0xfbf7f0;
+function bellGeometry() {
   const pts = [];
-  for (let i = 0; i <= 28; i++) {
-    const t = i / 28;
-    const y = t * 0.56;
-    const r = 0.19 * Math.sin(Math.min(1, t * 1.05) * Math.PI) ** 0.7 * (1 - 0.25 * t) + 0.002;
-    pts.push(new THREE.Vector2(r, y));
+  const H = 0.74;
+  for (let i = 0; i <= 64; i++) {
+    const t = i / 64, y = t * H;
+    // A soft round bottom, fullest a third of the way up, easing in to a round head.
+    const bottom = Math.max(0, Math.sin(Math.min(1, t / 0.3) * Math.PI / 2)) ** 0.8;
+    const top = Math.max(0, Math.cos(Math.min(1, Math.max(0, (t - 0.58) / 0.42)) * Math.PI / 2)) ** 0.75;
+    const r = (0.335 - 0.03 * Math.max(0, t - 0.3)) * bottom * top;
+    pts.push(new THREE.Vector2(Math.max(0.001, r), y));
   }
-  const g = new THREE.LatheGeometry(pts, 36);
+  const g = new THREE.LatheGeometry(pts, 96);
+  const pos = g.attributes.position, colors = new Float32Array(pos.count * 3);
+  const brown = new THREE.Color(BROWN), white = new THREE.Color(WHITE);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const front = z / Math.max(0.001, Math.hypot(x, z)); // 1 straight ahead, -1 behind
+    // Where brown starts: low on the back, high on the face, dipping to a V in the middle of the forehead.
+    const edge = front > 0 ? 0.62 - 0.06 * Math.max(0, 1 - Math.abs(x) / 0.06) + 0.03 * (1 - front) : 0.18 + 0.44 * (1 + front);
+    const k = Math.max(0, Math.min(1, (y - edge) / 0.012 + 0.5));
+    new THREE.Color().copy(white).lerp(brown, k).toArray(colors, i * 3);
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   g.computeVertexNormals();
   return g;
 }
 export function makeOwl3D() {
   const root = new THREE.Group();
-  const brown = 0x8f5d3b, dark = 0x5f3b23, face = 0xf3e2c6, belly = 0xe8d0a6, amber = 0xf5a623;
-  const body = part(bodyGeometry(), brown, { outline: 0.018 });
-  body.position.y = 0.06;
+  const body = part(bellGeometry(), 0xffffff, { outline: 0.016, extra: { vertexColors: true } });
   root.add(body);
-  const front = part(sphere(0.16), belly, { outline: 0.012 });
-  front.scale.set(0.82, 1.25, 0.45);
-  front.position.set(0, 0.26, 0.11);
-  root.add(front);
-  // Belly stripes.
-  for (const [x, y] of [[-0.05, 0.32], [0.05, 0.32], [0, 0.25], [-0.06, 0.19], [0.06, 0.19], [0, 0.13]]) {
-    const v = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.008, 0.01), new THREE.MeshBasicMaterial({ color: 0xb88a5a }));
-    v.position.set(x, y, 0.185 - Math.abs(y - 0.24) * 0.12);
-    root.add(v);
+  // Little ear points at the top corners.
+  for (const sx of [-1, 1]) {
+    const ear = part(new THREE.ConeGeometry(0.06, 0.1, 12), BROWN, { outline: 0.012 });
+    ear.position.set(sx * 0.2, 0.7, 0);
+    ear.rotation.z = -sx * 0.5;
+    root.add(ear);
   }
-  // Head: wider than the body, a little flat, with a heart-shaped face and tall tufts.
-  const head = part(sphere(0.2), brown, { outline: 0.018 });
-  head.scale.set(1.12, 0.86, 0.95);
-  head.position.y = 0.6;
-  root.add(head);
+  // Big glossy eyes with two highlights each, rosy cheeks, a small yellow beak.
   const eyes = [];
   for (const sx of [-1, 1]) {
-    const tuft = part(new THREE.ConeGeometry(0.05, 0.17, 10), dark, { outline: 0.012 });
-    tuft.position.set(sx * 0.15, 0.78, -0.01);
-    tuft.rotation.z = -sx * 0.3;
-    root.add(tuft);
-    const disc = part(sphere(0.105), face, { outline: 0.01 });
-    disc.scale.set(1, 1.08, 0.38);
-    disc.position.set(sx * 0.085, 0.61, 0.15);
-    root.add(disc);
     const eye = new THREE.Group();
-    const iris = new THREE.Mesh(sphere(0.066), toon(amber));
-    iris.scale.set(1, 1, 0.3);
-    const pupil = new THREE.Mesh(sphere(0.05), new THREE.MeshBasicMaterial({ color: 0x1e120c }));
-    pupil.scale.set(1, 1, 0.3);
-    pupil.position.z = 0.006;
-    const shine = new THREE.Mesh(sphere(0.018, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-    shine.position.set(-sx * 0.016, 0.02, 0.022);
-    eye.add(iris, pupil, shine);
-    eye.position.set(sx * 0.082, 0.615, 0.19);
+    const ball = part(sphere(0.105, 32, 24), 0x2b1d18, { outline: 0.01, extra: { emissive: 0x120c09 } });
+    ball.scale.set(1, 1.05, 0.42);
+    const big = new THREE.Mesh(sphere(0.036, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    big.scale.z = 0.5;
+    big.position.set(-0.03, 0.035, 0.04);
+    const small = new THREE.Mesh(sphere(0.016, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    small.scale.z = 0.5;
+    small.position.set(0.035, -0.03, 0.04);
+    eye.add(ball, big, small);
+    eye.position.set(sx * 0.125, 0.47, 0.265);
+    eye.rotation.y = sx * 0.3;
     root.add(eye);
     eyes.push(eye);
+    const cheek = new THREE.Mesh(new THREE.CircleGeometry(0.04, 20), new THREE.MeshBasicMaterial({ color: 0xf6a27a, transparent: true, opacity: 0.85 }));
+    cheek.scale.set(1.2, 0.75, 1);
+    cheek.position.set(sx * 0.215, 0.38, 0.255);
+    cheek.rotation.y = sx * 0.62;
+    root.add(cheek);
   }
-  const beak = part(new THREE.ConeGeometry(0.028, 0.07, 10), 0xf2a33a, { outline: 0.01 });
-  beak.rotation.x = Math.PI + 0.35;
-  beak.position.set(0, 0.55, 0.22);
+  const beak = part(new THREE.ConeGeometry(0.045, 0.085, 3), 0xf5c03a, { outline: 0.01 });
+  beak.rotation.set(Math.PI + 0.25, 0, 0);
+  beak.position.set(0, 0.405, 0.32);
   root.add(beak);
-  // Wings: long feathered wings from the shoulders. Folded, they lie along the
-  // body; flying, they spread wide and beat.
+  // Feather marks on the belly.
+  for (const [x, y] of [[-0.09, 0.27], [0.02, 0.28], [0.12, 0.25], [-0.13, 0.19], [-0.02, 0.2], [0.08, 0.17], [-0.06, 0.12], [0.04, 0.1]]) {
+    const m = new THREE.Mesh(new THREE.TorusGeometry(0.014, 0.004, 4, 10, Math.PI), new THREE.MeshBasicMaterial({ color: 0x8a6d5a }));
+    m.rotation.z = Math.PI;
+    const r = 0.31 - 0.02;
+    const z = Math.sqrt(Math.max(0, r * r - x * x)) + 0.005;
+    m.position.set(x, y, z);
+    m.rotation.y = Math.atan2(x, z);
+    root.add(m);
+  }
+  // Wings: leaf-shaped, brown with darker tips, hinged at the shoulder.
   const wings = [];
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
-    const lens = [0.46, 0.42, 0.36, 0.28];
-    lens.forEach((len, i) => {
-      const f = part(sphere(0.5, 18, 10), i % 2 ? 0x75492c : dark, { outline: 0.01 });
-      f.scale.set(len, 0.05 + 0.01 * (3 - i), 0.04);
-      f.position.set(sx * len * 0.5, -i * 0.03, -i * 0.03);
-      f.rotation.z = sx * -i * 0.14;
-      pivot.add(f);
-    });
-    pivot.position.set(sx * 0.15, 0.44, -0.02);
+    const wing = part(sphere(0.2, 24, 16), BROWN, { outline: 0.012 });
+    wing.scale.set(0.32, 1, 0.55);
+    wing.position.set(0, -0.17, 0);
+    const tip = part(sphere(0.12, 20, 12), BROWN_DARK, { outline: 0.008 });
+    tip.scale.set(0.34, 0.9, 0.5);
+    tip.position.set(sx * 0.012, -0.3, 0.01);
+    pivot.add(wing, tip);
+    pivot.position.set(sx * 0.3, 0.44, -0.02);
+    pivot.rotation.z = sx * 0.18;
     pivot.userData = { side: sx };
     root.add(pivot);
     wings.push(pivot);
   }
-  // Tail feathers and feet.
-  const tail = part(new THREE.ConeGeometry(0.08, 0.16, 6), dark, { outline: 0.01 });
-  tail.rotation.x = -2.5;
-  tail.position.set(0, 0.08, -0.14);
-  root.add(tail);
-  for (const sx of [-1, 1]) for (const t of [-0.4, 0, 0.4]) {
-    const toe = part(new THREE.CapsuleGeometry(0.014, 0.04, 4, 8), 0xe8962e, { outline: 0.006 });
+  // Yellow feet in front.
+  for (const sx of [-1, 1]) for (const t of [-0.45, 0, 0.45]) {
+    const toe = part(new THREE.CapsuleGeometry(0.028, 0.04, 6, 10), 0xf5c03a, { outline: 0.008 });
     toe.rotation.set(Math.PI / 2, 0, t);
-    toe.position.set(sx * 0.06 + Math.sin(t) * 0.025, 0.04, 0.1);
+    toe.position.set(sx * 0.11 + Math.sin(t) * 0.035, 0.035, 0.2);
     root.add(toe);
   }
-  // A small graduation cap, tilted.
-  const cap = new THREE.Group();
-  const board = part(new THREE.BoxGeometry(0.3, 0.025, 0.3), 0x2b2a3f, { outline: 0.008 });
-  board.rotation.y = Math.PI / 4;
-  const crown = part(new THREE.CylinderGeometry(0.1, 0.11, 0.06, 20), 0x2b2a3f, { outline: 0.008 });
-  crown.position.y = -0.04;
-  const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.14, 6), toon(0xf2c14e));
-  cord.position.set(0.11, -0.05, 0.04);
-  const tassel = new THREE.Mesh(sphere(0.022, 10, 8), toon(0xf2c14e));
-  tassel.position.set(0.11, -0.13, 0.04);
-  cap.add(board, crown, cord, tassel);
-  cap.position.set(0, 0.79, 0);
-  cap.rotation.z = -0.14;
-  root.add(cap);
   root.traverse((o) => { if (o.isMesh) o.castShadow = o.material.type === 'MeshToonMaterial'; });
   root.userData = { wings, eyes };
   return root;
@@ -204,7 +202,7 @@ export function makeOwl3D() {
 export function createOwl() {
   const object = new THREE.Group();
   const model = makeOwl3D();
-  model.scale.setScalar(1.25);
+  model.scale.setScalar(1.15);
   object.add(model);
   let nextBlink = 2;
   let phase = 0;
@@ -214,18 +212,14 @@ export function createOwl() {
       // A gentle hover, wings beating while it keeps up with you, a blink now and then.
       model.position.y = Math.sin(time * 2.2) * 0.08;
       model.rotation.z = Math.sin(time * 1.1) * 0.05;
-      // A hovering owl never stops flapping: slow, wide beats while it waits, fast ones when it chases you.
-      const rate = moving ? 15 : 7;
-      phase += dt * rate;
-      const beat = Math.sin(phase);
-      const reach = moving ? 0.75 : 0.55;
+      // A hovering owl keeps flapping: slow wide beats while waiting, quick ones when chasing you.
+      phase += dt * (moving ? 15 : 8);
+      const beat = (Math.sin(phase) + 1) / 2; // 0 down, 1 up
       for (const w of model.userData.wings) {
         const s = w.userData.side;
-        w.rotation.z = s * (0.1 + beat * reach);
-        w.rotation.y = s * (0.15 + Math.max(0, -beat) * 0.25);
+        w.rotation.z = s * (0.18 + beat * (moving ? 1.25 : 0.95));
       }
-      // The body lifts on each downstroke.
-      model.position.y += Math.max(0, -beat) * 0.04;
+      model.position.y += (1 - beat) * 0.035;
       nextBlink -= dt;
       const shut = nextBlink < 0.12;
       if (nextBlink < 0) nextBlink = 2.5 + Math.random() * 3;

@@ -907,6 +907,8 @@ export function createUI(on) {
 
     /** Plays story lines ([speaker, text] pairs), then calls onDone. Queues behind any already playing. */
     story(lines, onDone) { startTalk(lines, onDone); },
+    /** Sets a speaker's portrait to a picture (a data URL). */
+    portrait(who, src) { if (SPEAKERS[who]) SPEAKERS[who].icon = `<img src="${src}" alt="" style="width:62px;height:62px;object-fit:contain">`; },
 
     map({ title, subtitle, canvas, legend }) {
       panel({ title, subtitle, wide: true }, el('div', { class: 'map-wrap' }, canvas), el('div', { class: 'map-legend' }, legend.map(([cls, text]) => el('span', { class: cls, text }))));

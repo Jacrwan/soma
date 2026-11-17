@@ -1775,6 +1775,8 @@ function replayTutorial() {
 
 // --- Owl, your guide, and the story ---------------------------------------------------
 const owl = createOwl();
+// Owl's dialogue portrait is a snapshot of the 3D Owl, so they always match.
+setTimeout(() => { try { ui.portrait('owl', renderThumb(makeOwl3D(), 0.1)); } catch { /* keeps the drawn one */ } }, 0);
 world.earth.add(owl.object);
 function updateOwl(dt, time) {
   const o = owl.object;
@@ -4232,7 +4234,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 window.epoch = {
   state, S, cam,
   give(n) { S.addCoins(state, n); refreshHud(); },
-  owlThumb: (open) => { const o = makeOwl3D(); for (const w of o.userData.wings) { const sd = w.userData.side; w.rotation.z = sd * (open ? 0.55 : -0.3); } return Promise.resolve(renderThumb(o, 0.4)); },
+  owlThumb: (open) => { const o = makeOwl3D(); for (const w of o.userData.wings) w.rotation.z = w.userData.side * (open ? 1.1 : 0.18); return Promise.resolve(renderThumb(o, 0.1)); },
   chests: () => openChests(),
   thumb: (r) => thumbFor(r),
   character: (id) => pickCharacter(id),
