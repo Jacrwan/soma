@@ -2830,10 +2830,23 @@ function updatePlayer(dt, time) {
     p.z *= limit / r;
   }
   // No walking into lakes, rivers or the sea.
-  if (!inRealm() && !moon && world.groundHeight('earth', p.x, p.z) < -0.45 && !onBridge(p.x, p.z)) {
+  const wet = (x, z) => world.groundHeight('earth', x, z) < -0.45 && !onBridge(x, z);
+  if (!inRealm() && !moon && wet(p.x, p.z)) {
     // Water: a creek you can't cross yet explains itself.
     if (state.scene === 'earth' && Math.hypot(p.x, p.z) > W.TOWN_R - 2) fogBump(sectorOf(p.x * 1.08, p.z * 1.08));
-    p.x = fromX; p.z = fromZ;
+    // Back to where this frame started (before any dash or knockback), and if even that is
+    // in the water, out onto the nearest dry bank, so nobody ever gets stuck in a creek.
+    player.dash = 0;
+    if (!wet(startX, startZ)) { p.x = startX; p.z = startZ; }
+    else if (!wet(fromX, fromZ)) { p.x = fromX; p.z = fromZ; }
+    else {
+      let best = null;
+      for (let d = 0.5; d <= 12 && !best; d += 0.5) for (let k = 0; k < 24; k++) {
+        const a = (k / 24) * Math.PI * 2, x = p.x + Math.cos(a) * d, z = p.z + Math.sin(a) * d;
+        if (!wet(x, z) && areaOpen(x, z)) { best = { x, z }; break; }
+      }
+      if (best) { p.x = best.x; p.z = best.z; }
+    }
   }
   // The fog: nothing gets you into land that hasn't opened yet: not walking, not dashing,
   // not being knocked back. Anyone who ends up inside is put back at the town's edge.

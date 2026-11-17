@@ -405,6 +405,44 @@ const WATER_FRAG = `
     float dist = length(toEye);
     vec3 v = toEye / dist;
     #ifdef CREEK
+    { // A creek that reads as real water: clear over its bed by the banks, deep in the
+      // middle, the sky mirrored in it at low angles, and ripples running downstream that
+      // catch the sun.
+      float across = abs(vFlow.y);
+      float down = vFlow.x;
+      vec3 m1 = texture2D(ripples, vec2(down * 0.10 - time * 0.20, vFlow.y * 0.22 + 0.3)).xyz * 2.0 - 1.0;
+      vec3 m2 = texture2D(ripples, vec2(down * 0.26 - time * 0.38, vFlow.y * 0.45 + 0.7)).xyz * 2.0 - 1.0;
+      vec3 m3 = texture2D(ripples, p * 0.3 + time * vec2(0.03, -0.02)).xyz * 2.0 - 1.0;
+      vec3 wn = normalize(vec3(m1.x * 0.8 + m2.x * 0.45 + m3.x * 0.12, 3.0, m1.y * 0.8 + m2.y * 0.45 + m3.y * 0.12));
+      float day = clamp(dot(sunColor, vec3(0.3, 0.6, 0.1)) * 1.15, 0.0, 1.0);
+      float dayK = smoothstep(0.2, 0.8, day);
+      float deepK = 1.0 - smoothstep(0.05, 0.95, across);
+      vec3 shallowC = mix(vec3(0.13, 0.26, 0.34), vec3(0.20, 0.42, 0.36), dayK);
+      vec3 deepC = mix(vec3(0.10, 0.21, 0.40), vec3(0.04, 0.22, 0.36), dayK);
+      vec3 col = mix(shallowC, deepC, deepK);
+      // The sky in it.
+      vec3 rdir = reflect(-v, wn);
+      vec3 skyC = mix(horizon, zenith, clamp(rdir.y * 1.4, 0.0, 1.0)) * mix(0.55, 1.0, dayK);
+      float fres = 0.05 + 0.95 * pow(1.0 - max(dot(wn, v), 0.0), 4.0);
+      col = mix(col, skyC, clamp(fres * 0.85 + 0.12, 0.0, 0.8));
+      // Sun (or moon) glints on the ripples.
+      float glint = pow(max(dot(rdir, sunDir), 0.0), 160.0);
+      col += sunColor * glint * mix(0.6, 2.2, dayK);
+      // Faint streaks where the current runs fastest.
+      float run = texture2D(ripples, vec2(down * 0.05 - time * 0.12, vFlow.y * 0.3 + 0.5)).r;
+      col += vec3(0.9, 0.97, 1.0) * smoothstep(0.66, 0.74, run) * 0.07 * (1.0 - across) * mix(0.4, 1.0, dayK);
+      // A soft lap of foam right at the banks.
+      float lap = texture2D(ripples, vec2(down * 0.18 - time * 0.06, time * 0.03)).b;
+      float foamE = smoothstep(0.88, 0.99, across + (lap - 0.5) * 0.1);
+      col = mix(col, vec3(0.86, 0.93, 0.94) * mix(0.45, 1.0, dayK), foamE * 0.5);
+      float alpha = mix(0.94, 0.55, smoothstep(0.5, 1.0, across));
+      alpha = max(alpha, min(1.0, fres * 0.9 + foamE * 0.5));
+      float fogC = 1.0 - exp(-haze * haze * dist * dist);
+      gl_FragColor = vec4(mix(col, horizon, fogC), mix(alpha, 1.0, fogC));
+      return;
+    }
+    #endif
+    #ifdef CREEK
     // Shallow and clear by the banks, deep in the middle.
     float across = abs(vFlow.y);
     float depth = 1.0 - smoothstep(0.15, 0.9, across) * 0.95;
