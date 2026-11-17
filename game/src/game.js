@@ -749,6 +749,17 @@ let openSet = new Set(['meadow']);
 /** Can the player be here? The town is always open; out in the country it depends on the area. */
 const areaOpen = (x, z) => Math.hypot(x, z) <= W.TOWN_R + 0.8 || openSet.has(sectorOf(x, z));
 let fogWalls = null, fogLand = -1;
+let fogBumpAt = 0;
+/** Walking into the fog says why it's there and how to open it (at most every few seconds). */
+function fogBump(zone) {
+  const now = performance.now();
+  if (now - fogBumpAt < 4000) return;
+  fogBumpAt = now;
+  const a = S.LAND_AREAS.find((x) => x.zone === zone) || S.nextArea(state);
+  if (!a) return;
+  const have = S.buildingCount(state).used;
+  ui.toast(`The fog's too thick to get into ${a.name}. It clears when your town has ${a.buildings} buildings (you have ${have}). Press B to build.`, 'bad');
+}
 const fogLabels = new Map();
 function refreshLand(animate = false) {
   if (fogLand !== world.landIndex()) {
@@ -768,8 +779,8 @@ function refreshLand(animate = false) {
     const w = fogWalls.walls.get(a.zone);
     const locked = !openSet.has(a.zone);
     let l = fogLabels.get(a.zone);
-    if (locked && !l) { l = fx.label(w.userData.anchor, 0, '', 'board'); fogLabels.set(a.zone, l); }
-    if (locked) l.set(`<em>${a.name}</em>Opens when your town has ${a.buildings} buildings`);
+    if (locked && !l) { l = fx.label(w.userData.anchor, 0, '', 'step fog'); fogLabels.set(a.zone, l); }
+    if (locked) { const have = S.buildingCount(state).used; l.set(`<em>${a.name} · locked</em>Build ${Math.max(0, a.buildings - have)} more building${a.buildings - have === 1 ? '' : 's'} to clear the fog (${have}/${a.buildings})`); }
     else if (l) { l.remove(); fogLabels.delete(a.zone); }
   }
   if (animate) for (const a of fresh) {
@@ -2718,6 +2729,7 @@ function updatePlayer(dt, time) {
   // Health comes back after a few quiet seconds.
   const maxHp = S.maxHealth(state);
   if (!player.down && time - player.hurtAt > S.heroStats(state).regenDelay) player.hp = Math.min(maxHp, player.hp + maxHp * 0.12 * dt);
+  const startX = p.x, startZ = p.z; // before dashes and knockbacks, for the fog check
   if (player.dash > 0) {
     player.dash -= dt;
     p.x += player.dashX * dt;
@@ -2773,8 +2785,15 @@ function updatePlayer(dt, time) {
   }
   // No walking into lakes, rivers or the sea.
   if (!inRealm() && !moon && world.groundHeight('earth', p.x, p.z) < -0.45) { p.x = fromX; p.z = fromZ; }
-  // The fog: no walking into land that hasn't opened yet (unless you're somehow already in it).
-  if (!inRealm() && !moon && state.scene === 'earth' && !areaOpen(p.x, p.z) && areaOpen(fromX, fromZ)) { p.x = fromX; p.z = fromZ; }
+  // The fog: nothing gets you into land that hasn't opened yet: not walking, not dashing,
+  // not being knocked back. Anyone who ends up inside is put back at the town's edge.
+  if (!inRealm() && !moon && state.scene === 'earth' && !areaOpen(p.x, p.z)) {
+    const lockedZone = sectorOf(p.x, p.z);
+    if (areaOpen(startX, startZ)) { p.x = startX; p.z = startZ; }
+    else { const r = Math.hypot(p.x, p.z) || 1, k = (W.TOWN_R - 1.5) / r; p.x *= k; p.z *= k; }
+    player.dash = 0;
+    fogBump(lockedZone);
+  }
   const ground = inRealm() ? 0 : world.groundHeight(state.scene, p.x, p.z);
   player.jumpBuf = Math.max(0, (player.jumpBuf || 0) - dt);
   if (player.grounded && (keys.has(' ') || player.jumpBuf > 0) && !ui.isOpen()) {

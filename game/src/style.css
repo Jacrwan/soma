@@ -1067,3 +1067,7 @@ body:has(#menuMore:not([hidden])) #toasts { opacity: 0; }
 
 .label.npc.mark.done { background: #3ec45a; color: #fff; }
 .quest-card.project { border-left: 4px solid #f2c14e; }
+
+/* Signs on the fog walls: always the full text, easy to read from the town. */
+.label.fog { background: rgba(28, 34, 48, 0.92); border-color: #cfe0ff; color: #fff; font-size: 13px; padding: 6px 12px; max-width: 260px; text-align: center; }
+.label.fog em { display: block; color: #cfe0ff; font-size: 12px; font-style: normal; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 2px; }
