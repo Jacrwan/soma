@@ -4,6 +4,8 @@ import { createClient } from '@supabase/supabase-js';
 import { isRateLimited } from './_rateLimit';
 import { TRIAL_DAYS, EXTENSION_MS, trialLengthMs, computeStatus } from './_trial';
 import { budgetStatus, TOPUP_PRICE_CENTS, TOPUP_ADDS_USD } from './_budget';
+import { claimReferral, referralStatus, FREE_WEEK_DAYS } from './_referrals';
+import { sendSupportMessage } from './_support';
 
 const ALLOWED_ORIGINS = [
   'https://somastudy.app',
@@ -32,7 +34,9 @@ function origin(req: any): string {
 export async function getSubscription(user: any, admin: any, res: any) {
   const { data: sub, error } = await admin
     .from('subscriptions')
-    .select('status, plan, trial_start, extension_start, current_period_end, cancel_at_period_end, stripe_subscription_id')
+    // '*' so free_week_until is read once referrals_support_migration.sql has
+    // run, and nothing breaks before it has.
+    .select('*')
     .eq('user_id', user.id)
     .maybeSingle();
 
@@ -200,7 +204,11 @@ export async function createCheckoutSession(user: any, admin: any, stripe: Strip
   const trialRunning  = !!sub?.trial_start && !sub.stripe_subscription_id
     && Date.now() <= new Date(sub.trial_start).getTime() + trialLengthMs(sub.trial_start);
   if (trialRunning) return res.status(409).json({ error: 'Free trial has not ended yet' });
-  const trialDays = hasFreeTrial ? 0 : TRIAL_DAYS;
+  // Free weeks from inviting friends that had nowhere to go yet (_referrals.ts)
+  // become trial days; the webhook marks them given when checkout completes.
+  const { data: banked } = await admin.from('referral_rewards').select('id').eq('user_id', user.id).eq('status', 'pending');
+  const bankedIds: string[] = Array.isArray(banked) ? banked.map((r: { id: string }) => r.id).slice(0, 10) : [];
+  const trialDays = (hasFreeTrial ? 0 : TRIAL_DAYS) + bankedIds.length * FREE_WEEK_DAYS;
 
   let customerId = sub?.stripe_customer_id as string | undefined;
   if (!customerId) {
@@ -226,6 +234,7 @@ export async function createCheckoutSession(user: any, admin: any, stripe: Strip
       ...(trialDays > 0 ? { trial_period_days: trialDays } : {}),
       metadata: { supabase_user_id: user.id, plan },
     },
+    ...(bankedIds.length ? { metadata: { supabase_user_id: user.id, referral_rewards: bankedIds.join(',') } } : {}),
     // From sign-up, back to the dashboard tour whether or not they started it.
     success_url: body.from === 'onboarding' ? `${org}/dashboard?walkthrough&subscription=started` : `${org}/day-view?subscription=started`,
     cancel_url: body.from === 'onboarding' ? `${org}/dashboard?walkthrough` : `${org}/pricing`,
@@ -248,8 +257,8 @@ async function getAiBudget(user: any, admin: any, res: any) {
  * the webhook records it when the payment completes.
  */
 async function createTopupSession(user: any, admin: any, stripe: Stripe, body: Record<string, unknown>, req: any, res: any) {
-  const { data: sub } = await admin.from('subscriptions').select('status, stripe_customer_id').eq('user_id', user.id).maybeSingle();
-  if (sub?.status !== 'active') return res.status(403).json({ error: 'Top-ups are for subscribers. Your trial includes its own Soma budget.' });
+  const { data: sub } = await admin.from('subscriptions').select('*').eq('user_id', user.id).maybeSingle();
+  if (!sub || computeStatus(sub) !== 'active') return res.status(403).json({ error: 'Top-ups are for subscribers. Your trial includes its own Soma budget.' });
   if (!sub.stripe_customer_id) return res.status(409).json({ error: 'No billing account found. Open Settings → Subscription.' });
   const back = ['/dashboard', '/ai', '/settings'].includes(String(body.returnPath)) ? String(body.returnPath) : '/dashboard';
   const org = origin(req);
@@ -297,6 +306,9 @@ const RATE_LIMITS: Record<string, { max: number; windowMs: number }> = {
   'create-billing-portal':    { max: 5,  windowMs: 60_000 },
   'get-ai-budget':            { max: 60, windowMs: 60_000 },
   'create-topup-session':     { max: 5,  windowMs: 60_000 },
+  'referral-status':          { max: 20, windowMs: 60_000 },
+  'referral-claim':           { max: 5,  windowMs: 60_000 },
+  'support-send':             { max: 8,  windowMs: 60_000 },
 };
 
 export default async function handler(req: any, res: any) {
@@ -336,7 +348,22 @@ export default async function handler(req: any, res: any) {
   if (action === 'get-subscription') return getSubscription(user, admin, res);
   if (action === 'get-ai-budget') return getAiBudget(user, admin, res);
 
+  // Message the developer and Invite friends live here too: the project is at
+  // Vercel's 12-function limit (_support.ts, _referrals.ts).
+  if (action === 'support-send') {
+    const out = await sendSupportMessage(admin, user, body);
+    return res.status(out.status).json(out.body);
+  }
+
   const stripeKey = process.env.STRIPE_SECRET_KEY ?? '';
+  if (action === 'referral-status' || action === 'referral-claim') {
+    const maybeStripe = stripeKey ? new Stripe(stripeKey) : null;
+    const out = action === 'referral-status'
+      ? await referralStatus(admin, maybeStripe, user.id)
+      : await claimReferral(admin, maybeStripe, user, body.code);
+    return res.status(out.status).json(out.body);
+  }
+
   if (!stripeKey) return res.status(500).json({ error: 'Stripe not configured' });
   const stripe = new Stripe(stripeKey);
 

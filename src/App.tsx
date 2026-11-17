@@ -30,6 +30,8 @@ import OnboardingFlow, { onboardingInProgress } from './components/Onboarding/On
 import Walkthrough from './components/Onboarding/Walkthrough';
 import PaywallScreen from './components/Paywall/PaywallScreen';
 import SemesterEndModal from './components/shared/SemesterEndModal';
+import SupportChat from './components/Support/SupportChat';
+import { captureRef, claimPendingRef } from './lib/referrals';
 import styles from './App.module.css';
 
 function getSemesterKey(): string | null {
@@ -395,6 +397,7 @@ function AppShell({ user, sessionResolved, onLogout }: {
           <Outlet />
         </main>
       </div>
+      {user && <SupportChat userId={user.id} />}
 
     </div>
     </TimerProvider>
@@ -430,6 +433,8 @@ export default function App() {
 
   useEffect(() => {
     applyTheme(storage.getSomaSettings().theme ?? 'light');
+    // An invite link (?ref=) is kept for the sign-up that follows (referrals.ts).
+    captureRef();
   }, []);
 
   // The free trial is offered once, during sign-up (OnboardingFlow), not on
@@ -468,6 +473,8 @@ export default function App() {
       // Before anything renders for this account: no other account's Canvas or Google cache.
       if (u) storage.claimLocalCache(u.id);
       setUser(u);
+      // A new account counts for the friend whose invite link brought it here.
+      if (u && (event === 'INITIAL_SESSION' || event === 'SIGNED_IN')) setTimeout(() => { void claimPendingRef(session); }, 0);
 
       if (event === 'INITIAL_SESSION') {
         if (u) {

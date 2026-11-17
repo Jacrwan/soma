@@ -28,6 +28,9 @@ export const USER_TABLES = [
   'google_calendar_connections',
   'settings',
   'subscriptions',
+  'referral_codes',
+  'referral_rewards',
+  // referrals and support_messages cascade from auth.users (other key names).
   // Older tables that may no longer exist; a missing table is just logged.
   'schedule_blocks',
   'elapsed_time',

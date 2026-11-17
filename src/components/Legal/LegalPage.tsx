@@ -883,6 +883,7 @@ function DataDeletion() {
           <li>Google Calendar connections and their stored tokens</li>
           <li>Canvas details synced by the Soma for Canvas extension</li>
           <li>App settings and preferences stored on our servers</li>
+          <li>Your invite link, the friends who joined with it, free weeks earned, and messages you sent the developer</li>
         </ul>
         <p>
           If you have an active subscription or free trial, it is cancelled first, so you are not

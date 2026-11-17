@@ -1,0 +1,200 @@
+/* Message the developer. The launcher sits in the bottom-right corner, under
+   the Focus pill (TimerOverlay, bottom: 52px), so the two never overlap. */
+
+.launcher {
+  position: fixed;
+  right: 20px;
+  bottom: 12px;
+  z-index: 310;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--text-secondary);
+  box-shadow: 0 4px 16px oklch(0% 0 0 / 0.10);
+  cursor: pointer;
+  transition: color 120ms ease, transform 120ms ease;
+}
+.launcher:hover { color: var(--accent); transform: translateY(-1px); }
+.launcher:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: center;
+}
+
+@keyframes panelIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+.panel {
+  position: fixed;
+  right: 20px;
+  bottom: 58px;
+  z-index: 310;
+  width: 360px;
+  max-width: calc(100vw - 32px);
+  height: min(520px, calc(100dvh - 90px));
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 12px 40px oklch(15% 0.01 265 / 0.18);
+  overflow: hidden;
+  animation: panelIn 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 14px 12px 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.headText { flex: 1; min-width: 0; }
+.title {
+  margin: 0;
+  font-family: 'Figtree', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sub { margin: 3px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--text-secondary); }
+
+.iconBtn {
+  display: inline-flex;
+  padding: 5px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.iconBtn:hover { color: var(--text-primary); background: var(--bg-secondary); }
+
+.empty { margin: 0; padding: 18px 16px; font-size: 13px; line-height: 1.5; color: var(--text-muted); }
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 14px 8px;
+}
+.msg { max-width: 82%; display: flex; flex-direction: column; gap: 2px; }
+.mine { align-self: flex-end; align-items: flex-end; }
+.theirs { align-self: flex-start; align-items: flex-start; }
+.bubbleText {
+  margin: 0;
+  padding: 8px 11px;
+  border-radius: 12px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.mine .bubbleText { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+.theirs .bubbleText { background: var(--bg-tertiary); color: var(--text-primary); border-bottom-left-radius: 4px; }
+.msgTime { font-size: 10.5px; color: var(--text-muted); padding: 0 4px; }
+
+.error { margin: 0 14px 6px; font-size: 12.5px; color: var(--danger); }
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--border);
+}
+.input {
+  flex: 1;
+  resize: none;
+  max-height: 120px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+.input:focus { outline: none; border-color: var(--accent); }
+.send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+.send:disabled { opacity: 0.4; cursor: default; }
+
+.inbox { flex: 1; overflow-y: auto; }
+.threadList { list-style: none; margin: 0; padding: 4px 0; }
+.threadRow {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 40px 10px 16px;
+  border: none;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.threadRow:hover { background: var(--bg-secondary); }
+.threadTop { display: flex; justify-content: space-between; gap: 8px; }
+.threadEmail { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.threadTime { flex-shrink: 0; font-size: 11px; color: var(--text-muted); }
+.threadSnippet { font-size: 12.5px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.threadUnread {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+@media (max-width: 480px) {
+  .panel { right: 16px; left: 16px; width: auto; max-width: none; }
+  .launcher { right: 16px; }
+}

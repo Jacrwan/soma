@@ -22,7 +22,7 @@ export async function authorizeChat(admin:ReturnType<typeof createClient>,token:
   if(error && (!error.status || error.status>=500))return {ok:false,status:503,error:'auth_service_unavailable'};
   if(error || !user)return {ok:false,status:401,error:'auth_required'};
   if(devEmail && user.email?.toLowerCase()===devEmail.trim().toLowerCase())return {ok:true,userId:user.id,unlimited:true};
-  const {data:sub,error:lookupError}=await admin.from('subscriptions').select('status, trial_start, extension_start, stripe_subscription_id').eq('user_id',user.id).maybeSingle();
+  const {data:sub,error:lookupError}=await admin.from('subscriptions').select('*').eq('user_id',user.id).maybeSingle();
   if(lookupError)return {ok:false,status:503,error:'subscription_unavailable'};
   const status=sub ? computeStatus(sub) : 'free';
   if(!['trialing','trial_extended','active'].includes(status))return {ok:false,status:402,error:'subscription_required'};

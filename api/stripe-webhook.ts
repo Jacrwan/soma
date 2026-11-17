@@ -138,6 +138,15 @@ export default async function handler(req: any, res: any) {
         if (session.mode === 'subscription' && session.subscription) {
           const sub = await stripe.subscriptions.retrieve(session.subscription as string);
           await upsertSubscription(sub);
+          // Free weeks from inviting friends that this checkout added as trial days.
+          const ids = (session.metadata?.referral_rewards ?? '').split(',').filter(id => /^[0-9a-f-]{36}$/.test(id));
+          const owner = session.metadata?.supabase_user_id;
+          if (ids.length && owner) {
+            const { error } = await admin.from('referral_rewards')
+              .update({ status: 'applied', how: 'checkout_trial', applied_at: new Date().toISOString() })
+              .in('id', ids).eq('user_id', owner).eq('status', 'pending');
+            if (error) console.error('[stripe-webhook] referral rewards not marked:', error.message);
+          }
         }
         // A paid top-up adds to this month's Soma budget. Stripe can deliver an
         // event twice; the session id is unique, so it's counted once.

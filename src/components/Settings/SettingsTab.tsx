@@ -23,9 +23,10 @@ import { SUBJECT_COLORS, nextUnusedColor } from '../../lib/subjectColors';
 import { DEFAULT_SCHEDULE, type SchedulePrefs } from '../../lib/taskScheduler';
 import type { GoogleCalendarConnection, GoogleCalendarInfo, Subject, SubjectColor } from '../../types';
 import styles from './SettingsTab.module.css';
+import InviteFriends from './InviteFriends';
 import { MONTHLY_PRICE, TRIAL_DAYS } from '../../lib/pricing';
 
-type Section = 'profile' | 'subscription' | 'appearance' | 'hours' | 'scheduling' | 'memory' | 'integrations' | 'courses' | 'legal';
+type Section = 'profile' | 'subscription' | 'invite' | 'appearance' | 'hours' | 'scheduling' | 'memory' | 'integrations' | 'courses' | 'legal';
 
 // Moved here from the app-wide footer (2026-10-29). The landing footer, the
 // sign-up consent line and the Pricing page still link these publicly.
@@ -43,7 +44,8 @@ export default function SettingsTab() {
   const navigate = useNavigate();
   const [settings, setSettings] = useState<SomaSettings>(() => storage.getSomaSettings());
   const aiBudget = useAiBudget();
-  const [activeSection, setActiveSection] = useState<Section>('profile');
+  // ?section=invite opens Invite friends directly.
+  const [activeSection, setActiveSection] = useState<Section>(() => new URLSearchParams(window.location.search).get('section') === 'invite' ? 'invite' : 'profile');
   const subscription = useSubscription();
   const [subLoading, setSubLoading] = useState(false);
   const [subError, setSubError] = useState<string | null>(null);
@@ -439,6 +441,7 @@ export default function SettingsTab() {
   const navItems: [Section, string][] = [
     ['profile',       'Profile'],
     ['subscription',  'Subscription'],
+    ['invite',        'Invite friends'],
     ['appearance',    'Appearance'],
     ['hours',         'Study hours'],
     ['scheduling',    'Scheduling'],
@@ -1414,6 +1417,13 @@ export default function SettingsTab() {
                 </div>
               )}
             </div>
+          </section>
+        )}
+
+        {activeSection === 'invite' && (
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>Invite friends</h2>
+            <InviteFriends />
           </section>
         )}
 

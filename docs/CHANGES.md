@@ -9,6 +9,48 @@ still needed.
 
 ---
 
+## 2026-11-17 (Invite friends: a free week; Message the developer: a chat bubble)
+
+- **Why:** the owner asked for a referral reward and a way for students to
+  reach them right away about a bug, in a chat box like Reclaim's, answered
+  by the owner (no AI) with a notification.
+- **What:**
+  - Invite friends (Settings → Invite friends, `?section=invite`): each
+    student gets `somastudy.app/?ref=<code>`. The visit keeps the code on the
+    browser (`src/lib/referrals.ts`); a new account (≤7 days old, email
+    confirmed) that signs in there counts once for the sharer. **Rule (owner):
+    3 friends within 2 months = 1 free week, at most one every 2 months**; 6 at
+    once is still one week, and friends from before the last week never count
+    again (`api/_referrals.ts` `referralProgress`).
+  - The free week (`planReward`): a Stripe trial runs 7 days longer; **a
+    paying subscriber's next charge moves 7 days later** (owner's choice):
+    Stripe `trial_end`, no proration. Stripe calls that a trial, so
+    `subscriptions.free_week_until` keeps them a subscriber in Soma:
+    `computeStatus` (`_trial.ts` `paidFreeWeek`) says active, and the AI
+    budget stays monthly (`_budget.ts`), not the trial's. A card-free trial
+    starts a week later; accounts free by hand get nothing (`not_needed`);
+    anyone else keeps it `pending` and their next checkout adds 7 trial days
+    per week (marked given by the webhook).
+  - Message the developer (`src/components/Support/SupportChat.tsx`): a
+    bubble bottom-right on every signed-in page, below the Focus pill. Students
+    send through the server (`api/_support.ts`), which saves first, then posts
+    to Discord (`DISCORD_SUPPORT_WEBHOOK_URL`, mentions off, a reply link
+    `/dashboard?support=<id>`). The owner's bubble (is_soma_owner) is an inbox
+    of every conversation; replies go straight to the table (RLS). Unread
+    replies show a badge (checked every minute; every 8 s while open).
+  - Both live as actions in `api/stripe.ts` (referral-status, referral-claim,
+    support-send): the project is at Vercel's 12-function limit.
+  - Subscription reads use `select('*')` so the new column is read once the
+    migration runs and nothing breaks before. Top-ups check `computeStatus`.
+  - Delete account clears referral_codes and referral_rewards; referrals and
+    support_messages cascade. The Data Deletion page lists them.
+- **Tests:** tests/referrals-support.spec.ts (the rule, the free week by plan,
+  a paying free week is still a subscriber, claims only from new accounts,
+  the third friend grants once, a message survives Discord failing, the
+  chat for a student and the owner, the invite card, the ?ref= claim).
+- **Setup still needed:** run `referrals_support_migration.sql` in Supabase;
+  add `DISCORD_SUPPORT_WEBHOOK_URL` in Vercel (Production) and redeploy.
+
 ## 2026-11-17 (a step worked on counts as placed; the timer shows on its own sitting)
 
 - **Why:** with Quiz 12's step 1 focused on 1–2 PM and step 2 at 3–4 PM, the

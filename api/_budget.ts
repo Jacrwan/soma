@@ -8,6 +8,8 @@
 // The prices shown in the app are in src/lib/pricing.ts (TOPUP_PRICE); keep
 // TOPUP_PRICE_CENTS and TOPUP_ADDS_USD in step with it.
 
+import { paidFreeWeek } from './_trial';
+
 /** Included each month, in dollars of AI use. One setting: measure, then tune. */
 export const MONTHLY_AI_BUDGET_USD = 4;
 /** For the whole 7-day trial. */
@@ -81,9 +83,11 @@ interface AdminLike {
  * paying student out over a database hiccup.
  */
 export async function budgetStatus(admin: AdminLike, userId: string, now = new Date()): Promise<BudgetStatus | null> {
-  const { data: sub, error: subError } = await admin.from('subscriptions').select('status, trial_start, current_period_end').eq('user_id', userId).maybeSingle();
+  const { data: sub, error: subError } = await admin.from('subscriptions').select('*').eq('user_id', userId).maybeSingle();
   if (subError) return null;
-  const period = budgetPeriod(sub as SubscriptionRow, now);
+  // A paying student's free week runs as a Stripe trial; it's still their monthly budget.
+  const row = sub && paidFreeWeek(sub as never, now.getTime()) ? { ...(sub as object), status: 'active' } : sub;
+  const period = budgetPeriod(row as SubscriptionRow, now);
   const since = period.start.toISOString();
   const [usage, topups] = await Promise.all([
     admin.from('ai_usage').select('cost_usd').eq('user_id', userId).gte('created_at', since),

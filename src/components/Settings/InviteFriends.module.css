@@ -1,0 +1,51 @@
+.wrap { display: flex; flex-direction: column; gap: 16px; }
+
+.lead { margin: 0; font-size: 13.5px; line-height: 1.6; color: var(--text-secondary); }
+.lead strong { color: var(--text-primary); font-weight: 600; }
+
+.note { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-muted); }
+
+.linkRow { display: flex; gap: 8px; }
+.link {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+}
+.link:focus { outline: none; border-color: var(--accent); }
+.copy {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.copy:hover { opacity: 0.88; }
+
+.progress { display: flex; align-items: center; gap: 12px; }
+.dots { display: flex; gap: 6px; flex-shrink: 0; }
+.dot { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--border); background: var(--bg); }
+.dotOn { background: var(--accent); border-color: var(--accent); }
+.progressText { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-primary); }
+
+.rewards { padding-top: 14px; border-top: 1px solid var(--border); }
+.rewardsTitle {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.rewardList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.reward { display: flex; gap: 12px; font-size: 13px; color: var(--text-secondary); }
+.rewardDate { flex-shrink: 0; width: 96px; color: var(--text-muted); }

@@ -21,7 +21,19 @@ export type StatusRow = {
   trial_start: string | null;
   extension_start: string | null;
   stripe_subscription_id?: string | null;
+  free_week_until?: string | null;
 };
+
+/**
+ * A paying student's free week from inviting friends (api/_referrals.ts)
+ * moves their next charge later, which Stripe runs as a trial. Until that
+ * date they're still a subscriber to Soma: same status, AI budget, top-ups.
+ */
+export function paidFreeWeek(row: Pick<StatusRow, 'status' | 'free_week_until'> & { stripe_subscription_id?: string | null }, now = Date.now()): boolean {
+  if (!row.stripe_subscription_id || row.status !== 'trialing' || !row.free_week_until) return false;
+  const until = Date.parse(row.free_week_until);
+  return Number.isFinite(until) && now <= until + 86_400_000;
+}
 
 /**
  * The one status every check uses: the AI, Settings, the calendar limit.
@@ -33,7 +45,7 @@ export type StatusRow = {
  * counts as ended, so it can't grant access forever.
  */
 export function computeStatus(row: StatusRow, now = Date.now()): string {
-  if (row.stripe_subscription_id) return row.status;
+  if (row.stripe_subscription_id) return paidFreeWeek(row, now) ? 'active' : row.status;
   if (row.status === 'trialing' || row.status === 'trial_extended') {
     const extended = row.status === 'trial_extended';
     const start = Date.parse((extended ? row.extension_start : row.trial_start) ?? '');
