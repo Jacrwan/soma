@@ -182,14 +182,14 @@ export function createUI(on) {
         wrap.classList.add('pop');
       }
       lastCoins = coins;
-      $('income').textContent = `+${fmt(income * 3600)} / hour${siege ? '  (halved)' : ''}`;
+      $('income').textContent = `+${fmt(income * 3600)} / hour`;
       $('eraIndex').textContent = ROMAN[era] || String(era + 1);
       $('eraName').textContent = eraName;
       $('eraGoal').textContent = goal;
       $('eraBar').style.width = `${Math.round(Math.max(0, Math.min(1, progress)) * 100)}%`;
       const s = $('siege');
       s.hidden = !siege;
-      if (siege) s.innerHTML = `<b>Under siege.</b> ${siege} is overdue. Income is halved until it's handed in.`;
+      if (siege) s.textContent = '';
       badge('schoolDot', chests);
       $('btnSound').classList.toggle('muted', Boolean(muted));
     },
@@ -314,24 +314,17 @@ export function createUI(on) {
       );
     },
 
-    building({ name, level, maxLevel, income, stored, cap, golden, upgrade, modernize, gild, tokens, sell = null, onUpgrade, onModernize, onGild, onSell }) {
+    building({ name, level, maxLevel, role, stored, upgrade, sell = null, onUpgrade, onSell }) {
       const actions = [];
       if (upgrade) actions.push(el('button', { class: 'btn primary', disabled: !upgrade.affordable, onclick: () => { close(); onUpgrade(); } },
-        el('span', {}, `Upgrade to level ${level + 1}`, el('small', { text: `Earns +${fmt(upgrade.income * 3600)} / hour` })), el('span', { class: 'cost' }, price(upgrade.cost))));
-      if (modernize) actions.push(el('button', { class: `btn ${upgrade ? '' : 'primary'}`, disabled: !modernize.affordable, onclick: () => { close(); onModernize(); } },
-        el('span', {}, `Rebuild as ${modernize.name}`, el('small', { text: `Earns +${fmt(modernize.income * 3600)} / hour at level 1` })), el('span', { class: 'cost' }, price(modernize.cost))));
-      if (gild) actions.push(el('button', { class: 'btn', disabled: tokens < 1, onclick: () => { close(); onGild(); } },
-        el('span', {}, 'Make it golden', el('small', { text: 'Triples what it earns, for good' })), el('span', { class: 'cost', text: `${tokens} token${tokens === 1 ? '' : 's'}` })));
-      panel({ title: `${golden ? 'Golden ' : ''}${name}`, subtitle: `Level ${level} of ${maxLevel}` },
-        el('div', { class: 'stats' },
-          el('div', { class: 'stat' }, el('small', { text: 'Earns' }), el('b', { text: `+${fmt(income * 3600)} / hour` })),
-          el('div', { class: 'stat' }, el('small', { text: 'Waiting' }), el('b', { text: fmt(stored) })),
-          el('div', { class: 'stat' }, el('small', { text: 'Holds up to' }), el('b', { text: fmt(cap) }))),
-        el('div', { class: 'actions' }, actions.length ? actions : el('p', { class: 'note', text: 'Fully upgraded for this age. Reach the next age to rebuild it.' })),
+        el('span', {}, `Upgrade to level ${level + 1}`, el('small', { text: 'Bigger and nicer: raises your town rating' })), el('span', { class: 'cost' }, price(upgrade.cost))));
+      panel({ title: name, subtitle: `Level ${level} of ${maxLevel}` },
+        el('p', { class: 'note', text: role }),
+        el('div', { class: 'actions' }, actions.length ? actions : el('p', { class: 'note', text: 'Fully upgraded.' })),
         sell ? (() => {
           // Selling asks twice, so a stray click never knocks a building down.
           let armed = false;
-          const label = el('span', {}, 'Sell this building', el('small', { text: `Half of the ${fmt(sell.paid)} it cost${sell.stored >= 1 ? `, plus ${fmt(sell.stored)} waiting inside` : ''}` }));
+          const label = el('span', {}, 'Sell this building', el('small', { text: `Half of the ${fmt(sell.paid)} it cost` }));
           const b = el('button', { class: 'btn danger', onclick: () => {
             if (!armed) { armed = true; b.classList.add('armed'); label.firstChild.textContent = 'Tap again to sell'; return; }
             close(); onSell();
@@ -344,7 +337,7 @@ export function createUI(on) {
     wonder({ name, cost, affordable, nextEra, newLand, finale, onBuild }) {
       panel({ title: name, subtitle: finale ? `The last wonder of ${finale}.` : `Building this wonder begins the ${nextEra}.` },
         finale ? el('p', { class: 'note', text: `Building it completes ${finale} and drops a legendary chest. You keep your town; new ages arrive next season.` }) : null,
-        newLand ? el('p', { class: 'note', text: `A new age is a new land. Your people set out for ${newLand}, and the town starts over empty. Your hero, coins, creatures, class halls and villagers come along, and a settler's purse pays for the first homes.` }) : null,
+        newLand ? el('p', { class: 'note', text: `A new age brings new country: ${newLand}. Your whole town comes along, rebuilt in the new style for free, with your villagers, creatures and class halls.` }) : null,
         el('div', { class: 'actions' },
           el('button', { class: 'btn primary', disabled: !affordable, onclick: () => { close(); onBuild(); } },
             el('span', {}, `Build the ${name}`, el('small', { text: finale ? `Completes ${finale}, with a legendary chest` : newLand ? `Then set out for ${newLand}` : 'New buildings, more land, a new look for your town' })), el('span', { class: 'cost' }, price(cost)))),
@@ -437,7 +430,7 @@ export function createUI(on) {
     },
 
     /** The quest log: the story quest, then every piece of schoolwork as a quest. */
-    quests({ story, projects = null, offers = [], done, total, level, school, onStudy, onPractice }) {
+    quests({ story, projects = null, offers = [], waiting = [], done, total, level, school, onStudy, onPractice }) {
       const reward = (r) => [r.coins ? `${fmt(r.coins)} coins` : null, r.gear ? `${r.gear} ${r.slot}` : null].filter(Boolean).join(' + ');
       panel({ title: 'Quests', subtitle: `Valley projects ${done} of ${total} done · you are level ${level}`, wide: true },
         el('h3', { text: 'Valley projects' }),
@@ -447,6 +440,7 @@ export function createUI(on) {
           el('div', { class: 'quest-pay' }, el('em', { text: pj.ready ? 'Done: go see them' : `${pj.have} / ${pj.need}` }), el('small', { text: `Reward: ${reward(pj.reward)}` })))),
         (projects || (story ? [story] : [])).length ? null : el('p', { class: 'note', text: offers.length ? 'No projects taken on. Look for a “!” over someone’s head and have a chat.' : 'Nobody needs a hand right now. New requests turn up as the valley grows.' }),
         offers.length ? el('p', { class: 'note', text: `Asking for help: ${offers.map((o) => (o.giver === 'Librarian' ? 'the Librarian' : o.giver)).join(', ')}.` }) : null,
+        waiting.length ? el('p', { class: 'note', text: `Coming soon: ${waiting.map((w) => w.from).join(', ')} will have projects once they move in. More homes (B) and a nicer town bring them sooner.` }) : null,
         el('h3', { text: 'School quests' }),
         school.length ? school.map((a) => el('div', { class: `quest-card ${a.overdue ? 'late' : ''}` },
           el('div', {}, el('b', {}, a.name, a.kind === 'boss' ? el('span', { class: 'tag', text: 'Exam' }) : null),
@@ -624,7 +618,7 @@ export function createUI(on) {
             ready ? el('button', { class: 'btn small primary', text: 'Hand it over', onclick: onClaim }) : null))
           : el('p', { class: 'note', text: 'Nothing today. Come back tomorrow.' }),
         gift ? el('div', { class: 'actions', style: 'margin-top:10px' }, el('button', { class: 'btn', onclick: onGift }, el('span', {}, 'Accept a gift', el('small', { text: 'Good friends leave you something once a day' })))) : null,
-        person ? el('p', { class: 'note', text: mood < 30 ? 'Late work and wrecked buildings wear people down. Hand things in and hold the gate on exam day to keep them here.' : 'Do their favours to become friends. Friends leave gifts, and best friends bring study tea.' }) : null,
+        person ? el('p', { class: 'note', text: 'Do their favours to become friends. Friends leave gifts, and best friends bring study tea.' }) : null,
       );
     },
 
@@ -859,13 +853,12 @@ export function createUI(on) {
       const offVerb = { hat: 'Take off', aura: 'Unequip', pet: 'Put away' };
       panel({ title: 'The Vault', subtitle: `${found} of ${total} rare finds · every chest comes from studying`, wide: true },
         el('div', { class: 'vault-head' },
-          el('div', { class: 'pity' }, el('small', { text: 'Epic or better' }), el('b', { text: `within ${Math.max(1, pityEpic - sinceEpic)} chests` }), el('div', { class: 'bar' }, el('i', { style: `width:${Math.round((sinceEpic / pityEpic) * 100)}%` }))),
-          el('div', { class: 'pity mythic' }, el('small', { text: 'Mythic guaranteed' }), el('b', { text: `within ${Math.max(1, pityMythic - sinceMythic)} chests` }), el('div', { class: 'bar' }, el('i', { style: `width:${Math.round((sinceMythic / pityMythic) * 100)}%` }))),
+          el('p', { class: 'note', text: 'No luck involved: every chest gives the next piece of its own tier, so the collection always fills in order.' }),
           el('button', { class: 'btn primary', disabled: !waiting, onclick: onOpenChest }, el('span', {}, waiting ? `Open a chest (${waiting})` : 'No chests waiting', el('small', { text: waiting ? 'The best one first' : 'Study, finish steps, practice' })))),
         tiers.map(({ tier, items }) => el('section', { class: `vault-tier t-${tier}` },
           el('div', { class: 'tier-head' },
             el('b', { text: tier }),
-            el('small', { text: `Odds per collectible: ${['common', 'rare', 'epic', 'legendary'].map((r) => `${r} chest ${pct(table[r].odds[tier])}`).join(' · ')}` })),
+            el('small', { text: `Comes from ${tier} chests, in order` })),
           el('div', { class: 'vault-grid' }, items.map((it) => {
             const img = el('img', { class: 'thumb', alt: '' });
             thumb(it.id).then((src) => { img.src = src; }).catch(() => {});
@@ -969,7 +962,7 @@ export function createUI(on) {
             el('div', { class: 'chest-odds' }, t.odds.map((o) => el('span', { class: `odd o-${o.tier}` }, el('i', { style: `width:${Math.max(4, o.pct)}%` }), el('small', { text: `${o.tier} ${o.pct}%` })))),
             el('p', { text: t.from }));
         })),
-        el('p', { class: 'note', text: 'Odds are for the rare find inside. Every chest also has coins, and better chests add gear, relics, tokens and looks.' }));
+        el('p', { class: 'note', text: 'No odds: each chest gives the next piece of its tier in the Vault, plus coins. Rare and better add gear; epic and better a new look.' }));
     },
 
     /** Plays story lines ([speaker, text] pairs), then calls onDone. Queues behind any already playing. */
@@ -992,7 +985,7 @@ export function createUI(on) {
           el('span', { class: 'k' }, el('kbd', { text: 'Right drag' })), el('span', { text: 'Hold right click and move the mouse to look around. Tap Ctrl to lock the camera behind you. Left click swings. Scroll to zoom. V locks the mouse to the view.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'T' })), el('span', { text: 'Start a study session: a real timer for real work, and the main way to level up.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'C' }), el('kbd', { text: 'J' })), el('span', { text: 'Your hero (gear and skills) and your quests.' }),
-          el('span', { class: 'k' }, el('kbd', { text: 'E' })), el('span', { text: 'Talk to villagers: they move in as your town grows, give a small favour each day, and leave if the town keeps getting wrecked.' }),
+          el('span', { class: 'k' }, el('kbd', { text: 'E' })), el('span', { text: 'Talk to villagers: they move in as your town grows, and give a small favour each day.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'K' })), el('span', { text: 'Creatures: catch them out in the country with lures you earn by studying. Pick one as a pet for bonus study XP.' }),
           el('span', { class: 'k' }, el('kbd', { text: 'B' })), el('span', { text: 'Build mode: place fences, lamps, trees and more anywhere in town. The market sells rare pieces.' }),
           el('span', { class: 'k' }, el('kbd', { text: '↗' })), el('span', { text: 'Explore past the town: walk out to the hills. Follow the light beams to hidden caches, each a chest a day.' }),
@@ -1010,7 +1003,7 @@ export function createUI(on) {
           el('li', { text: 'Your Canvas assignments are the walking books marching on the gate. Hand one in on Canvas and it is gone, with a coin reward. Late ones halve your income.' }),
           el('li', { text: 'Walk up to a book and start a study session, then go do the work. The town fires on the book while the timer runs, earns double, and a chest drops when you finish.' }),
           el('li', { text: 'Head out past the edge of town: clear fox camps for chests, dig up treasure, find shrines and hunt the Alpha in its lair. Raise the Great Pyramid to finish Season 1; new ages come next season.' }),
-          el('li', { text: 'Exams are giant armored books that march on your gate for days. Study to break their armor; on exam day, the armor left decides whether your gate holds or a building gets wrecked. Every grade posted on Canvas drops a chest on your plaza: the better the grade, the rarer the chest.' })),
+          el('li', { text: 'Exams are giant armored books that march on your gate for days. Study to break their armor; on exam day, break all its armor for a big bonus and an epic chest (nothing is ever lost). Every grade posted on Canvas drops a chest on your plaza: the better the grade, the rarer the chest.' })),
         el('div', { class: 'actions' }, el('button', { class: 'btn primary', style: 'justify-content:center', onclick: close }, el('span', { text: first ? 'Start' : 'Back to the game' }))),
       );
     },

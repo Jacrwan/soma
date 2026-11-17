@@ -16,48 +16,37 @@ test('a new game can afford its first home and nothing more expensive', () => {
   assert.ok(!S.build(s, 8, 'home'), 'pad 8 is locked in the Stone Age');
 });
 
-test('buildings fill their own store up to a cap, and collecting banks it', () => {
+test('buildings are homes and shops: they earn nothing, but each home makes room for a villager', () => {
   const s = rich();
   S.build(s, 0, 'work');
-  const before = s.coins;
   s.lastTick = NOW;
-  S.tick(s, NOW + 3600_000);
-  const hour = 5 * 3600 * S.TOWN_SCALE; // a works makes 5 a second before the town scale
-  assert.strictEqual(Math.round(s.pads.earth[0].stored), Math.round(hour));
-  assert.strictEqual(S.collect(s, 0), Math.floor(hour));
-  assert.strictEqual(s.coins, before + Math.floor(hour));
-  S.tick(s, NOW + 3600_000 + 100 * 3600_000);
-  assert.strictEqual(s.pads.earth[0].stored, S.buildingCap(s, s.pads.earth[0]), 'stops at the cap while away');
-  assert.ok(Math.abs(S.buildingCap(s, s.pads.earth[0]) - hour * S.STORE_HOURS) < 1e-6);
+  assert.strictEqual(S.tick(s, NOW + 3600_000), 0);
+  assert.strictEqual(s.pads.earth[0].stored, 0);
+  const room = S.villagerRoom(s);
+  S.build(s, 1, 'home');
+  assert.strictEqual(S.villagerRoom(s), room + 1);
+  assert.ok(S.buildingRole(s.pads.earth[1]).includes('home'));
 });
 
-test('upgrading and gilding raise income; modernizing needs a newer era', () => {
+test('upgrading tops out at level 3, and a new age keeps the whole town, restyled for free', () => {
   const s = rich();
   S.build(s, 0, 'home');
   const b = s.pads.earth[0];
-  const per = (x) => Math.round((x / S.TOWN_SCALE) * 1000) / 1000;
-  assert.strictEqual(per(S.buildingIncome(s, b)), 1);
   S.upgrade(s, 0); S.upgrade(s, 0);
   assert.strictEqual(b.level, 3);
   assert.ok(!S.upgrade(s, 0));
-  assert.strictEqual(per(S.buildingIncome(s, b)), 4.5);
-  assert.ok(!S.gild(s, 0), 'no token yet');
-  s.tokens = 1;
-  assert.ok(S.gild(s, 0));
-  assert.strictEqual(per(S.buildingIncome(s, b)), 13.5);
-  assert.ok(!S.modernize(s, 0), 'already current');
+  assert.strictEqual(S.gild, undefined, 'no more gilding');
+  assert.strictEqual(S.modernize, undefined, 'no more paid rebuilding');
   S.placeDecor(s, 'lamp', 20, 20);
   const coins = s.coins;
   const done = S.buildWonder(s);
   assert.strictEqual(s.era, 1);
-  // A new age is a new land: the town starts empty, with a settler's purse.
   assert.ok(done.newLand);
-  assert.ok(s.pads.earth.every((p) => p === null));
-  assert.strictEqual(s.decor.length, 0);
-  assert.strictEqual(done.purse, S.buildCost('home', 1) * 2 + S.buildCost('work', 1));
-  assert.strictEqual(s.coins, coins - S.ERAS[0].wonderCost + done.purse + done.decorBack);
-  assert.ok(S.build(s, 0, 'home'));
-  assert.strictEqual(S.buildingName(s.pads.earth[0]), 'Mudbrick House');
+  assert.strictEqual(s.pads.earth[0], b, 'the town comes along');
+  assert.strictEqual(b.tier, 1, 'rebuilt in the new style');
+  assert.strictEqual(s.decor.length, 1, 'decorations stay');
+  assert.strictEqual(done.restyled, 1);
+  assert.strictEqual(s.coins, coins - S.ERAS[0].wonderCost);
 });
 
 test('Season 1: two ages, and the second wonder ends the season with a legendary chest', () => {
@@ -126,21 +115,20 @@ test('first sync is quiet about old hand-ins but still drops a few grade chests'
   assert.strictEqual(S.syncSchool(s, items, NOW, { source: 'demo' }).length, 0, 'nothing happens twice');
 });
 
-test('handing in pays out once, a posted grade drops a chest by score, overdue work halves income', () => {
+test('handing in is the big payday (with a chest), a posted grade drops a chest by score, and late work costs nothing', () => {
   const s = rich(0);
   s.coins = 1e6; S.build(s, 0, 'trade'); s.coins = 0;
   S.syncSchool(s, [item({})], NOW, { source: 'demo' });
   assert.strictEqual(S.threats(s, NOW).length, 1);
-  assert.ok(!S.isUnderSiege(s, NOW));
-  assert.ok(S.isUnderSiege(s, NOW + 2 * DAY));
-  assert.ok(Math.abs(S.totalIncome(s, NOW + 2 * DAY) - 22 * S.TOWN_SCALE * S.SIEGE_MULT) < 1e-9);
+  assert.ok(!S.isUnderSiege(s, NOW + 2 * DAY), 'no siege any more');
 
   let events = S.syncSchool(s, [item({ submitted: true })], NOW + 2 * DAY);
   assert.deepStrictEqual(events.map((e) => e.type), ['handed-in']);
-  const pay = Math.round(Math.max(60, S.wage(s) * 120));
+  const pay = Math.round(Math.max(200, S.studyRate(s) * S.HAND_IN_MINUTES[1]));
   assert.strictEqual(events[0].reward, pay);
+  assert.ok(pay >= S.studyRate(s) * 25, 'a hand-in is worth at least a full session');
   assert.strictEqual(s.coins, pay);
-  assert.ok(!S.isUnderSiege(s, NOW + 2 * DAY));
+  assert.strictEqual(events[0].chest.rarity, 'common');
   assert.strictEqual(S.threats(s, NOW + 2 * DAY).length, 0);
 
   events = S.syncSchool(s, [item({ submitted: true, score: 17 })], NOW + 3 * DAY);
@@ -152,15 +140,15 @@ test('handing in pays out once, a posted grade drops a chest by score, overdue w
   assert.deepStrictEqual(events.map((e) => e.type), ['new']);
 });
 
-test('chests pay coins and richer chests give relics, cosmetics and tokens', () => {
+test('chests pay coins and the next catalogue piece; richer chests add gear and a new look, no dice', () => {
   const s = rich(0);
   S.grantChest(s, 'legendary', 'test');
   const { loot } = S.openChest(s, s.school.chests[0].id, () => 0, NOW);
-  assert.deepStrictEqual(loot.map((l) => l.kind), ['collectible', 'coins', 'relic', 'cosmetic', 'token', 'gear']);
+  assert.deepStrictEqual(loot.map((l) => l.kind), ['collectible', 'coins', 'cosmetic', 'gear']);
+  assert.strictEqual(loot[0].id, S.nextCollectible(S.newState(NOW), 'legendary'));
   assert.strictEqual(s.hero.gear.weapon.rarity, 'legendary');
   assert.strictEqual(s.coins, S.CHEST_COINS.legendary * 16000); // a share of the Stone Circle
-  assert.strictEqual(s.tokens, 1);
-  assert.strictEqual(S.relicMult(s), 1.25);
+  assert.strictEqual(s.relics.length, 0);
   assert.strictEqual(s.school.chests.length, 0);
   assert.strictEqual(S.openChest(s, 'nope'), null);
   S.grantChest(s, 'common', 'test');
@@ -176,27 +164,23 @@ test('power grows with recent hand-ins for that course, not with the age', () =>
   assert.strictEqual(S.playerPower(s, 'other', NOW), 10);
 });
 
-test('exam day: study strips armor, and the armor left decides the gate', () => {
+test('exam day: study strips armor; breaking it pays a bonus, and nothing is ever lost', () => {
   const exam = (id, dueAt, courseId = 'c') => ({ id, name: 'Midterm exam', courseId, courseName: 'Physics', dueAt, pointsPossible: 100, weight: 30, submitted: false, noSubmit: true });
   const s = rich();
   S.syncSchool(s, [exam('ready', NOW + 2 * DAY), exam('lazy', NOW + 2 * DAY, 'z'), exam('share', NOW + 2 * DAY), exam('half', NOW + 2 * DAY, 'other'), item({ id: 'hw', dueAt: NOW + DAY })], NOW, { source: 'soma' });
   const items = s.school.items;
-  // On paper, but an exam still marches.
   assert.ok(!S.isIgnored(s, items.ready));
   assert.strictEqual(S.examArmor(s, items.ready), 1);
   S.startStudy(s, 'ready', 45, NOW); S.finishStudy(s, NOW + 45 * 60_000);
   S.startStudy(s, 'ready', 45, NOW + HOUR); S.finishStudy(s, NOW + HOUR + 45 * 60_000);
   assert.ok(S.examArmor(s, items.ready) < 0.3);
-  // Every other session for the course (other exams too) counts half.
   S.startStudy(s, 'hw', 45, NOW + 2 * HOUR); S.finishStudy(s, NOW + 2 * HOUR + 45 * 60_000);
   assert.ok(Math.abs(S.examArmor(s, items.share) - (1 - (45 + 22.5) / 120)) < 1e-9);
   assert.ok(S.examArmor(s, items.ready) <= S.EXAM_HELD);
   S.startStudy(s, 'half', 60, NOW + 3 * HOUR); S.finishStudy(s, NOW + 4 * HOUR);
   assert.strictEqual(S.examOutcome(S.examArmor(s, items.half)), 'dented');
-
   assert.deepStrictEqual(S.resolveExams(s, NOW + DAY), []);
-  assert.strictEqual(S.lateItems(s, NOW + 3 * DAY).some((a) => a.kind === 'boss'), false);
-  s.pads.earth[0] = { type: Object.keys(S.BUILDINGS)[0], tier: 0, level: 3, golden: false, stored: 50 };
+  s.pads.earth[0] = { type: Object.keys(S.BUILDINGS)[0], tier: 0, level: 3, golden: false, stored: 0 };
   const coins = s.coins;
   const events = S.resolveExams(s, NOW + 2 * DAY + 1);
   const by = Object.fromEntries(events.map((e) => [e.item.id, e]));
@@ -204,12 +188,10 @@ test('exam day: study strips armor, and the armor left decides the gate', () => 
   assert.strictEqual(by.ready.chest.rarity, 'epic');
   assert.strictEqual(by.half.outcome, 'dented');
   assert.strictEqual(by.lazy.outcome, 'wrecked');
-  assert.deepStrictEqual(by.lazy.wrecked, { scene: 'earth', index: 0 });
-  assert.strictEqual(s.pads.earth[0].level, 2);
-  assert.ok(by.half.coins < 0 && by.lazy.coins < 0);
-  assert.ok(s.coins < coins + by.ready.coins);
+  assert.strictEqual(s.pads.earth[0].level, 3, 'no building is ever wrecked');
+  assert.ok(by.half.coins > 0 && by.lazy.coins > 0 && by.ready.coins > by.half.coins);
+  assert.ok(s.coins > coins);
   assert.strictEqual(s.stats.bossesBeaten, 1);
-  // Settled once, and gone from the march.
   assert.deepStrictEqual(S.resolveExams(s, NOW + 3 * DAY), []);
   assert.ok(!S.threats(s, NOW + 2 * DAY + 2).some((x) => x.item.kind === 'boss'));
 });
@@ -309,7 +291,8 @@ test('pacing: the Stone Age is about a week and the Bronze Age runs to about wee
   console.log('      days to each wonder:', built.join(', '));
   assert.strictEqual(built.length, 2, 'Season 1 can be finished');
   assert.ok(built[0] >= 4 && built[0] <= 10, `Stone Age took ${built[0]} days`);
-  assert.ok(built[1] >= 20 && built[1] <= 38, `Bronze Age ended on day ${built[1]}`);
+  // Hand-ins are the big payday now, so a student who hands something in most days gets there sooner.
+  assert.ok(built[1] >= 15 && built[1] <= 38, `Bronze Age ended on day ${built[1]}`);
   console.log('      coins from studying vs the town:', Math.round(got.study), Math.round(got.town));
   assert.ok(got.study > got.town, 'studying pays more than the town');
 });
@@ -342,17 +325,17 @@ test('quitting a session early pays for the minutes done but drops no chest, and
   assert.strictEqual(S.finishStudy(s, NOW), null);
 });
 
-test('study chests run out for the day', () => {
+test('one study chest a day', () => {
   const s = rich();
   S.syncSchool(s, [{ id: 'm', name: 'Midterm exam', courseId: 'c', courseName: 'Physics', dueAt: NOW + 2 * DAY, pointsPossible: 100, weight: 30, submitted: false }], NOW, { source: 'soma' });
   let t = NOW;
   const chests = [];
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 3; i++) {
     S.startStudy(s, 'm', 45, t);
     t += 45 * 60_000;
     chests.push(S.finishStudy(s, t).chest);
   }
-  assert.deepStrictEqual(chests.map((c) => c && c.rarity), ['epic', 'epic', 'epic', null]);
+  assert.deepStrictEqual(chests.map((c) => c && c.rarity), ['epic', null, null]);
   assert.strictEqual(S.studyProgress(s, s.school.items.m), 1);
   assert.strictEqual(S.examArmor(s, s.school.items.m), 0);
 });
@@ -407,17 +390,12 @@ test('class halls grow with study for that course', () => {
   assert.strictEqual(halls.w.level, 0);
 });
 
-test('the market keeps one stock per day, sells once, and tea boosts the next session', () => {
+test('the market keeps one stock per day, sells once, no chests, and tea boosts the next session', () => {
   const s = rich(1e9);
   const a = S.marketStock(s, NOW);
   assert.deepStrictEqual(S.marketStock(s, NOW + 1000), a);
   assert.ok(a.some((o) => o.kind === 'gear') && a.some((o) => o.kind === 'tea'));
-  const chestAt = a.findIndex((o) => o.kind === 'chest');
-  assert.ok(chestAt >= 0 && ['rare', 'epic', 'legendary'].includes(a[chestAt].rarity));
-  const chests = s.school.chests.length;
-  assert.ok(S.buyOffer(s, chestAt, NOW).chest);
-  assert.strictEqual(s.school.chests.length, chests + 1);
-  assert.strictEqual(S.buyOffer(s, chestAt, NOW), null); // one a day
+  assert.ok(!a.some((o) => o.kind === 'chest'), 'no chests for sale');
   const coins = s.coins;
   const tea = a.findIndex((o) => o.kind === 'tea');
   assert.ok(S.buyOffer(s, tea, NOW));
@@ -473,26 +451,19 @@ test('villagers move in as the town grows, one every 6 hours after the first two
   assert.strictEqual(new Set(s.villagers.list.map((p) => p.name)).size, 3);
 });
 
-test('a wrecked town and late work drive villagers away; they stay gone for 3 days', () => {
+test('villagers never leave: late work and bad exams only stop the cheer', () => {
   const s = rich();
   S.moveIn(s, NOW); S.moveIn(s, NOW);
   S.syncSchool(s, [item({ id: 'x', dueAt: NOW + HOUR })], NOW, { source: 'soma' });
-  assert.deepStrictEqual(S.villagersFeel(s, -30, NOW), []);
-  assert.strictEqual(s.villagers.list[0].mood, 40);
+  assert.deepStrictEqual(S.villagersFeel(s, -100, NOW), []);
+  assert.strictEqual(s.villagers.list.length, 2);
+  assert.strictEqual(s.villagers.list[0].mood, 70);
   const day = S.villagerDay(s, NOW + 2 * HOUR);
   assert.strictEqual(day.late, 1);
-  assert.strictEqual(s.villagers.list[0].mood, 36);
+  assert.deepStrictEqual(day.left, []);
   assert.strictEqual(S.villagerDay(s, NOW + 3 * HOUR), null); // once a day
-  const left = S.villagersFeel(s, -100, NOW + 4 * HOUR);
-  assert.strictEqual(left.length, 2);
-  assert.strictEqual(s.villagers.list.length, 0);
-  const gone = new Set(left.map((p) => p.name));
-  const next = S.moveIn(s, NOW + DAY);
-  assert.ok(next && !gone.has(next.name)); // someone new, not the ones who just left
-  s.villagers.list = [];
-  s.villagers.lastArrival = 0;
-  const back = [S.moveIn(s, NOW + 4 * DAY), S.moveIn(s, NOW + 4 * DAY)].map((p) => p.name);
-  assert.ok(back.some((n) => gone.has(n))); // after 3 days they can come back
+  S.villagersFeel(s, 10, NOW);
+  assert.strictEqual(s.villagers.list[0].mood, 80);
 });
 
 test('villager quests track real progress and pay once; talking and gifts are daily', () => {
@@ -529,35 +500,34 @@ test('villagers talk about your real situation', () => {
   assert.ok(S.villagerLine(s, p, NOW, 0).includes('packing'));
 });
 
-test('daily quests: three a day, all three grow the streak, a missed day resets it', () => {
+test('daily quests: three a day and a chest for all three; the only streak is the study streak, and it forgives a rest day', () => {
   const s = rich();
   S.syncSchool(s, [item({ id: 'a', courseId: 'p', courseName: 'Physics', dueAt: NOW + 3 * DAY })], NOW, { source: 'soma' });
   assert.ok(S.dailyRefresh(s, NOW));
   assert.ok(!S.dailyRefresh(s, NOW + 1000));
   assert.strictEqual(s.daily.quests.length, 3);
-  const finishAll = (t) => {
-    for (const q of s.daily.quests) {
-      if (q.type === 'studyAny' || q.type === 'study') s.study.courses[q.courseId] = (s.study.courses[q.courseId] || 0) + q.target, s.study.total += q.target;
-      else if (q.type === 'handin') s.stats.handedIn += 1;
-      else if (q.type === 'practice') s.stats.practiceRight = (s.stats.practiceRight || 0) + q.target;
-      else if (q.type === 'review') s.stats.reviewed = (s.stats.reviewed || 0) + q.target;
-      else if (q.type === 'catch') s.stats.caught = (s.stats.caught || 0) + 1;
-      else if (q.type === 'camp') s.stats.campsCleared += 1;
-      else if (q.type === 'talk') s.stats.talks = (s.stats.talks || 0) + 2;
-    }
-    return S.claimDaily(s, t);
-  };
-  const first = finishAll(NOW);
+  for (const q of s.daily.quests) {
+    if (q.type === 'studyAny' || q.type === 'study') s.study.courses[q.courseId] = (s.study.courses[q.courseId] || 0) + q.target, s.study.total += q.target;
+    else if (q.type === 'handin') s.stats.handedIn += 1;
+    else if (q.type === 'practice') s.stats.practiceRight = (s.stats.practiceRight || 0) + q.target;
+    else if (q.type === 'review') s.stats.reviewed = (s.stats.reviewed || 0) + q.target;
+    else if (q.type === 'catch') s.stats.caught = (s.stats.caught || 0) + 1;
+    else if (q.type === 'camp') s.stats.campsCleared += 1;
+    else if (q.type === 'talk') s.stats.talks = (s.stats.talks || 0) + 2;
+  }
+  const first = S.claimDaily(s, NOW);
   assert.strictEqual(first.claimed, 3);
-  assert.strictEqual(first.streak, 1);
-  assert.ok(first.chest);
+  assert.ok(first.done && first.chest.rarity === 'rare');
   assert.strictEqual(S.claimDaily(s, NOW).claimed, 0);
-  S.dailyRefresh(s, NOW + DAY);
-  assert.strictEqual(finishAll(NOW + DAY).streak, 2);
-  S.dailyRefresh(s, NOW + 3 * DAY); // skipped a day
-  assert.strictEqual(s.daily.streak, 0);
-  s.daily.streak = 6; s.daily.lastFull = null;
-  const seventh = finishAll(NOW + 3 * DAY);
+  // The study streak: a day off is forgiven, two in a row start it over.
+  const study = (t) => { S.startStudy(s, null, 10, t); return S.finishStudy(s, t + 10 * 60_000); };
+  assert.strictEqual(study(NOW).streak, 1);
+  assert.strictEqual(study(NOW + DAY).streak, 2);
+  assert.strictEqual(study(NOW + 3 * DAY).streak, 3, 'one rest day is fine');
+  assert.strictEqual(study(NOW + 6 * DAY).streak, 1, 'two days off starts over');
+  s.study.streak = 6;
+  const seventh = study(NOW + 7 * DAY);
+  assert.strictEqual(seventh.streak, 7);
   assert.strictEqual(seventh.milestone, 'epic');
 });
 
@@ -584,7 +554,7 @@ test('buildings can go anywhere: free slots first, more room each age', () => {
   const s = rich();
   assert.strictEqual(S.padsUnlocked(s, 'earth'), 8);
   const i = S.placeBuilding(s, 'home', 30, -12, 1.2);
-  assert.strictEqual(i, 0); // Stone Age has no free slots past the fixed spots yet
+  assert.strictEqual(i, 0);
   assert.deepStrictEqual(s.padSpots.earth[0], { x: 30, z: -12, rot: 1.2 });
   s.era = 2;
   assert.strictEqual(S.padsUnlocked(s, 'earth'), 20);
@@ -594,7 +564,7 @@ test('buildings can go anywhere: free slots first, more room each age', () => {
   assert.deepStrictEqual(S.buildingCount(s), { used: 20, room: 20 });
   assert.strictEqual(S.placeBuilding(s, 'home', 0, 0), -1);
   S.newLand(s);
-  assert.deepStrictEqual(s.padSpots.earth, {});
+  assert.deepStrictEqual(s.padSpots.earth[0], { x: 30, z: -12, rot: 1.2 }, 'a new age keeps every spot');
 });
 
 test('with the Soma plan, planned tasks for today become the daily quests', () => {
@@ -612,7 +582,7 @@ test('with the Soma plan, planned tasks for today become the daily quests', () =
   s.soma.done.t1 = true; s.soma.done.t2 = true;
   const r = S.claimDaily(s, NOW);
   assert.strictEqual(r.claimed, 2);
-  assert.strictEqual(r.streak, 1);
+  assert.ok(r.done && r.chest);
 });
 
 test('the Semester Pass fills only from studying and pays each reward once', () => {
@@ -682,34 +652,21 @@ test('exam topics are crystals: study, practice and review on a topic break it',
   assert.strictEqual(s.topics.m[0].minutes, 25); // kept when the list is edited
 });
 
-test('collectibles: odds by chest, pity for epic and mythic, duplicates pay coins', () => {
+test('collectibles fill in a fixed order, each chest from its own tier; a full tier pays coins', () => {
   const s = rich(0);
-  for (const r of ['common', 'rare', 'epic', 'legendary']) {
-    const sum = S.TIERS.reduce((n, t) => n + S.DROP_TABLE[r].odds[t], 0);
-    assert.ok(Math.abs(sum - 100) < 1e-9, r);
-  }
-  // Every chest gives a collectible. rng 0.5: commons from a common chest... until pity at 10.
-  const got = [];
-  for (let i = 0; i < S.PITY_EPIC; i++) got.push(S.rollCollectible(s, 'common', () => 0.5));
-  assert.deepStrictEqual(got.slice(0, -1).map((c) => c.tier), Array(S.PITY_EPIC - 1).fill('common'));
-  const pity = got[S.PITY_EPIC - 1];
-  assert.ok(pity.pity && ['epic', 'legendary', 'mythic'].includes(pity.tier));
-  s.vault.sinceMythic = S.PITY_MYTHIC - 1;
-  const myth = S.rollCollectible(s, 'common', () => 0.99);
-  assert.strictEqual(myth.tier, 'mythic');
-  assert.strictEqual(s.vault.sinceMythic, 0);
-  // Finds unlock things: hats in the wardrobe, decorations in build mode, pets.
-  s.vault.owned = {};
-  const all = Object.keys(S.COLLECTIBLES);
-  let n = 0;
-  for (const id of all) { s.vault.sinceMythic = 0; s.vault.sinceEpic = 0; }
-  const rng = () => ((n = (n * 9301 + 49297) % 233280) / 233280);
-  for (let i = 0; i < 400; i++) S.rollCollectible(s, 'legendary', rng);
-  assert.ok(S.vaultFound(s) >= 14);
-  assert.ok(s.cosmetics.owned.includes('hat:wizard') || s.cosmetics.owned.includes('hat:deans'));
+  const commons = Object.keys(S.COLLECTIBLES).filter((k) => S.COLLECTIBLES[k].tier === 'common');
+  const got = commons.map(() => S.rollCollectible(s, 'common').id);
+  assert.deepStrictEqual(got, commons, 'in catalogue order, no repeats');
   const before = s.coins;
-  const dupe = S.rollCollectible(s, 'legendary', () => 0.5);
-  if (dupe && dupe.dupe) assert.ok(s.coins > before);
+  assert.strictEqual(S.rollCollectible(s, 'common'), null, 'all commons owned');
+  assert.ok(s.coins > before, 'so the chest pays coins instead');
+  // A rare chest gives a rare first, then falls back to lower tiers.
+  const r = S.rollCollectible(s, 'rare');
+  assert.strictEqual(r.tier, 'rare');
+  // Finds unlock things: hats in the wardrobe, decorations in build mode, pets.
+  for (let i = 0; i < 30; i++) S.rollCollectible(s, 'mythic');
+  assert.strictEqual(S.vaultFound(s), Object.keys(S.COLLECTIBLES).length);
+  assert.ok(s.cosmetics.owned.includes('hat:wizard') && s.cosmetics.owned.includes('hat:deans'));
 });
 
 test('studying drops more chests: steps, perfect practice, learned reviews, broken weak points', () => {
@@ -727,15 +684,21 @@ test('studying drops more chests: steps, perfect practice, learned reviews, brok
   assert.ok(s.school.chests.some((c) => c.rarity === 'epic' && /Momentum/.test(c.from)));
 });
 
-test('camps and treasure come back the next day, shrines pay once ever', () => {
+test('only some camps and treasure are out each day, more after days away; shrines pay once ever', () => {
   const s = rich(0);
-  assert.ok(!S.exploreDone(s, 'wilds:camp:0', NOW));
-  S.markExplored(s, 'wilds:camp:0', NOW);
-  assert.ok(S.exploreDone(s, 'wilds:camp:0', NOW + 3600_000));
-  assert.ok(!S.exploreDone(s, 'wilds:camp:0', NOW + DAY));
-  const relic = S.useShrine(s, 'wilds:shrine:0', 'Old Stones');
+  const keys = Array.from({ length: 40 }, (_, i) => `land0:camp:${i}`);
+  const out = keys.filter((k) => !S.exploreDone(s, k, NOW));
+  assert.ok(out.length > 3 && out.length < 20, `about a quarter out today (${out.length})`);
+  const k = out[0];
+  S.markExplored(s, k, NOW);
+  assert.ok(S.exploreDone(s, k, NOW + 3600_000));
+  // Three days away banks more spots for the day you come back.
+  assert.strictEqual(S.spotShare(s, NOW + DAY), S.SPOT_SHARE);
+  assert.strictEqual(S.spotShare(s, NOW + 3 * DAY), S.SPOT_CAP);
+  assert.ok(!S.exploreDone(s, 'land0:shrine:0', NOW), 'shrines are always out');
+  const relic = S.useShrine(s, 'land0:shrine:0', 'Old Stones');
   assert.ok(relic && s.relics.length === 1);
-  assert.strictEqual(S.useShrine(s, 'wilds:shrine:0', 'Old Stones'), null);
+  assert.strictEqual(S.useShrine(s, 'land0:shrine:0', 'Old Stones'), null);
   assert.ok(S.killReward(s, 2) > S.killReward(s, 0));
   assert.strictEqual(S.maxHealth(s), 100);
 });
@@ -754,7 +717,7 @@ test('experience only comes from school: studying, handing in, grades and test b
   assert.strictEqual(s.hero.points, 1);
   S.syncSchool(s, [item({})], NOW, { source: 'soma' });
   const events = S.syncSchool(s, [item({ submitted: true, score: 19 })], NOW, { source: 'soma' });
-  assert.deepStrictEqual(events.map((e) => e.xp), [40, 135]);
+  assert.deepStrictEqual(events.map((e) => e.xp), [S.XP_HAND_IN[1], 135]);
   assert.ok(s.hero.level >= 3);
 });
 
@@ -814,7 +777,7 @@ test('the story pays out one quest at a time and old saves keep their studied mi
   assert.ok(S.deserialize(JSON.stringify(old), NOW).hero.level > 3);
 });
 
-test('late work costs coins and experience every hour, up to two days, and ignoring it stops that', () => {
+test('late work warns but never costs anything, and ignoring it clears it', () => {
   const s = rich(0);
   s.coins = 1000;
   S.addXp(s, 50);
@@ -822,48 +785,33 @@ test('late work costs coins and experience every hour, up to two days, and ignor
   assert.strictEqual(S.deadlineLevel(s, s.school.items.hw, NOW), 'critical');
   assert.deepStrictEqual(S.newWarnings(s, NOW).map((w) => w.level), ['critical']);
   assert.deepStrictEqual(S.newWarnings(s, NOW), []);
-  const late = NOW + 5 * 3600_000; // three hours late
+  const late = NOW + 5 * 3600_000;
   assert.strictEqual(S.deadlineLevel(s, s.school.items.hw, late), 'late');
-  assert.ok(S.isUnderSiege(s, late));
-  const lost = S.chargeLate(s, late);
-  assert.ok(Math.abs(lost.coins - 1000 * (1 - 0.99 ** 3)) < 0.01);
-  assert.strictEqual(lost.xp, 9);
-  assert.strictEqual(S.chargeLate(s, late).coins, 0);
-  // Stops after two days late.
-  S.chargeLate(s, NOW + 100 * 3600_000);
-  const total = S.lateCost(s, s.school.items.hw, NOW + 100 * 3600_000);
-  assert.ok(total.stopped && total.coins < 1000 * (1 - 0.99 ** 48) + 0.01);
-  // Ignored: no siege, no losses, no invader.
+  assert.deepStrictEqual(S.chargeLate(s, late), { coins: 0, xp: 0 });
+  assert.deepStrictEqual(S.chargeLate(s, NOW + 100 * 3600_000), { coins: 0, xp: 0 });
+  assert.strictEqual(s.coins, 1000);
+  assert.ok(S.handInReward(s, s.school.items.hw) > 0, 'still pays when handed in');
   S.setIgnored(s, 'hw', true, NOW + 100 * 3600_000);
-  assert.ok(!S.isUnderSiege(s, NOW + 100 * 3600_000));
   assert.deepStrictEqual(S.threats(s, NOW + 100 * 3600_000), []);
 });
 
-test('work found already late on the first sync costs nothing, and paper work is ignored by itself', () => {
+test('paper work is ignored by itself, and can be counted again', () => {
   const s = rich(0);
-  s.coins = 1000;
   S.syncSchool(s, [item({ id: 'old', dueAt: NOW - 3600_000 }), item({ id: 'paper', dueAt: NOW - 3600_000, noSubmit: true })], NOW, { source: 'soma' });
-  assert.strictEqual(S.chargeLate(s, NOW).coins, 0);
   assert.deepStrictEqual(S.lateItems(s, NOW).map((a) => a.id), ['old']);
-  assert.ok(S.chargeLate(s, NOW + 2 * 3600_000).coins > 0);
   S.setIgnored(s, 'paper', false, NOW + 2 * 3600_000);
   assert.deepStrictEqual(S.lateItems(s, NOW + 2 * 3600_000).map((a) => a.id).sort(), ['old', 'paper']);
   assert.strictEqual(S.fromSomaSnapshot({ kind: 'canvas', host: 'h', courses: [], groups: [], assignments: [{ id: 1, courseId: 1, name: 'Lab', submissionTypes: ['on_paper'] }] })[0].noSubmit, true);
 });
 
-test('market prices and study pay follow the age, and neither crashes in a new age', () => {
+test('study pay follows the age, and the market sells no chests', () => {
   const s = S.newState(NOW);
-  assert.strictEqual(S.wage(s), 16000 / S.WAGE_DIV); // rewards follow the age's wonder, not the town
+  assert.strictEqual(S.wage(s), 16000 / S.WAGE_DIV);
   s.coins = 1e9;
   S.buildWonder(s);
   assert.strictEqual(s.era, 1);
-  assert.strictEqual(S.baseIncome(s), 0);
-  assert.strictEqual(S.wage(s), (600000 * S.AGE_PACE[1]) / S.WAGE_DIV); // and rise with the age, even with an empty town
-  const chest = S.marketStock(s, NOW).find((o) => o.kind === 'chest');
-  assert.strictEqual(chest.price, Math.round(S.ERAS[1].wonderCost * S.CHEST_PRICE[chest.rarity]));
-  // A bought chest always costs more than the coins inside it.
-  for (const r of ['rare', 'epic', 'legendary']) assert.ok(S.CHEST_PRICE[r] > 2 * S.CHEST_COINS[r]);
-  // A 25 minute study session pays the age's study rate for each minute.
+  assert.strictEqual(S.wage(s), (600000 * S.AGE_PACE[1]) / S.WAGE_DIV);
+  assert.ok(!S.marketStock(s, NOW).some((o) => o.kind === 'chest'));
   const t = S.newState(NOW);
   const before = t.coins;
   S.startStudy(t, null, 25, NOW);
@@ -871,16 +819,18 @@ test('market prices and study pay follow the age, and neither crashes in a new a
   assert.strictEqual(t.coins - before, 25 * Math.round(16000 * S.STUDY_SHARE[0]));
 });
 
-test('hidden caches give a chest once a day each, and refill the next day', () => {
+test('hidden caches: the ones out today give a chest once, and others come out on other days', () => {
   const s = S.newState(NOW);
-  const chest = S.openCache(s, 0, NOW);
+  const out = (t) => Array.from({ length: 40 }, (_, i) => i).filter((i) => !S.exploreDone(s, S.cacheKey(s, i), t));
+  const today = out(NOW);
+  assert.ok(today.length > 0 && today.length < 40);
+  const chest = S.openCache(s, today[0], NOW);
   assert.ok(['common', 'rare'].includes(chest.rarity));
   assert.strictEqual(chest.from, 'A hidden cache');
-  assert.strictEqual(S.openCache(s, 0, NOW + 1000), null);
-  assert.ok(S.openCache(s, 1, NOW));
-  assert.ok(S.openCache(s, 0, NOW + DAY));
-  s.era = 1;
-  assert.ok(S.openCache(s, 1, NOW + DAY)); // a new land has its own caches
+  assert.strictEqual(S.openCache(s, today[0], NOW + 1000), null);
+  const hidden = Array.from({ length: 40 }, (_, i) => i).find((i) => !today.includes(i));
+  assert.strictEqual(S.openCache(s, hidden, NOW), null, 'not out today');
+  assert.notDeepStrictEqual(out(NOW + DAY), today, 'a different set tomorrow');
 });
 
 test('landmarks pay once, all of them give a chest; the map reveals where you walk', () => {
@@ -896,22 +846,21 @@ test('landmarks pay once, all of them give a chest; the map reveals where you wa
   assert.strictEqual(S.revealMap(s, 0, 0), false);
 });
 
-test('the week: study 150 minutes and hand in what is due for an epic chest; four weeks in a row, legendary', () => {
+test('the week: study 150 minutes and hand in what is due for an epic chest, every week', () => {
   const s = S.newState(NOW);
   const mon = S.weekStart(NOW);
   S.syncSchool(s, [item({ id: 'hw', dueAt: mon + 3 * DAY })], mon + DAY, { source: 'demo' });
   const study = (t, m) => { S.startStudy(s, null, m, t); S.finishStudy(s, t + m * 60000); };
   study(mon + DAY, 60); study(mon + 2 * DAY, 90);
-  let w = S.weekStatus(s, mon + 2 * DAY + 2 * 3600e3);
+  const w = S.weekStatus(s, mon + 2 * DAY + 2 * 3600e3);
   assert.strictEqual(w.minutes, 150);
-  assert.strictEqual(w.due, 1);
   assert.strictEqual(w.done, false, 'homework still due');
   assert.strictEqual(S.claimWeek(s, mon + 2 * DAY + 2 * 3600e3), null);
   S.syncSchool(s, [item({ id: 'hw', dueAt: mon + 3 * DAY, submitted: true })], mon + 2 * DAY + 3 * 3600e3);
-  const got = S.claimWeek(s, mon + 2 * DAY + 4 * 3600e3);
-  assert.strictEqual(got.chest.rarity, 'epic');
+  assert.strictEqual(S.claimWeek(s, mon + 2 * DAY + 4 * 3600e3).chest.rarity, 'epic');
   assert.strictEqual(S.claimWeek(s, mon + 2 * DAY + 5 * 3600e3), null, 'once a week');
-  for (let k = 1; k <= 3; k++) { study(mon + k * 7 * DAY + DAY, 150); const r = S.claimWeek(s, mon + k * 7 * DAY + DAY + 4 * 3600e3); assert.strictEqual(r.streak, k + 1); if (k === 3) assert.strictEqual(r.chest.rarity, 'legendary'); }
+  study(mon + 8 * DAY, 150);
+  assert.strictEqual(S.claimWeek(s, mon + 8 * DAY + 4 * 3600e3).chest.rarity, 'epic');
 });
 
 test('the village builder: pieces unlock with hours studied, paths paint and erase, the rating counts stars', () => {
@@ -946,18 +895,15 @@ test('homework and tests talk back, depending on the clock and how much you stud
   assert.ok(!/[{}]/.test(S.taunt(s, exam, NOW, 4)));
 });
 
-test('mythic chests open with legendary pools and more inside; the weekly streak reaches one at twelve', () => {
+test('mythic chests give a mythic piece and legendary gear; a 30-day study streak earns one', () => {
   const s = rich(0);
   S.grantChest(s, 'mythic', 'test');
-  const tokens = s.tokens;
   const { loot } = S.openChest(s, s.school.chests[0].id, () => 0.1, NOW);
-  assert.ok(loot.some((l) => l.kind === 'collectible' && ['epic', 'legendary', 'mythic'].includes(l.tier)));
+  assert.ok(loot.some((l) => l.kind === 'collectible' && l.tier === 'mythic'));
   assert.ok(loot.some((l) => l.kind === 'gear' && l.item.rarity === 'legendary'));
-  assert.strictEqual(s.tokens - tokens, 3);
+  assert.strictEqual(S.STREAK_MILESTONES[30], 'mythic');
   assert.deepStrictEqual(S.CHEST_TIERS.map((t) => t.id), ['common', 'rare', 'epic', 'legendary', 'mythic']);
 });
-
-// --- classify.js: exams, quizzes, projects and plain work ---
 
 test('classify: the before/after table', () => {
   const c = (over) => S.classify(item(over));
@@ -1087,9 +1033,14 @@ test('the country opens one area at a time through the Librarian\'s expansion pr
   assert.strictEqual(next().id, 'the-orchard-path');
   S.acceptProject(s, next().id);
   assert.deepStrictEqual(S.updateLandOpen(s), []);
-  S.turnInProject(s, 'the-orchard-path', () => 0);
-  assert.deepStrictEqual(S.updateLandOpen(s).map((a) => a.zone), ['orchard']);
-  assert.deepStrictEqual(S.openAreas(s), ['meadow', 'orchard']);
+  const t = Date.now();
+  S.turnInProject(s, 'the-orchard-path', () => 0, t);
+  // Built overnight: the bridge opens at 5 the next morning.
+  assert.deepStrictEqual(S.updateLandOpen(s, t), []);
+  assert.ok(S.underConstruction(s, 'orchard', t));
+  const morning = S.nextMorning(t);
+  assert.deepStrictEqual(S.updateLandOpen(s, morning).map((a) => a.zone), ['orchard']);
+  assert.deepStrictEqual(S.openAreas(s, morning), ['meadow', 'orchard']);
   s.era = 1;
   assert.strictEqual(S.openAreas(s).length, 5, 'later lands come fully open');
 });

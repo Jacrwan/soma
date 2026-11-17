@@ -119,8 +119,9 @@ export function relicMult(state) {
   return state.relics.reduce((m, r) => m * (1 + r.bonus), 1);
 }
 
-export function isUnderSiege(state, now = Date.now()) {
-  return lateItems(state, now).length > 0;
+/** Nothing besieges the town any more: late work never costs anything (Animal Crossing has no failure). */
+export function isUnderSiege() {
+  return false;
 }
 
 // --- Deadlines: warnings, late losses, and work with nothing to hand in --------------
@@ -128,8 +129,10 @@ export function isUnderSiege(state, now = Date.now()) {
 const HOUR = 3600000;
 export const URGENT_HOURS = 24; // due within a day: urgent
 export const CRITICAL_HOURS = 3; // due within three hours: critical
-export const LATE_COIN_RATE = 0.01; // share of coins lost every hour, for each late assignment
-export const LATE_XP_RATE = 3; // experience lost every hour, for each late assignment
+// Late work costs nothing. It used to drain coins and experience every hour, and that only
+// punished the students who most needed a reason to come back.
+export const LATE_COIN_RATE = 0;
+export const LATE_XP_RATE = 0;
 export const LATE_MAX_HOURS = 48; // after two days late, an assignment stops costing more
 
 /**
@@ -198,6 +201,7 @@ export function deadlineLevel(state, item, now = Date.now()) {
 export function chargeLate(state, now = Date.now()) {
   const school = state.school;
   const out = { coins: 0, xp: 0 };
+  if (!LATE_COIN_RATE && !LATE_XP_RATE) return out;
   for (const item of lateItems(state, now)) {
     const seenAt = school.seen[item.id]?.at || 0;
     const p = school.penalty[item.id] || (school.penalty[item.id] = { at: 0, coins: 0, xp: 0, bank: 0 });
@@ -248,6 +252,10 @@ export function newWarnings(state, now = Date.now()) {
 export function buildingName(b) {
   return BUILDINGS[b.type].names[b.tier];
 }
+/** What a building is for, now that buildings are homes and shops rather than income. */
+export function buildingRole(b) {
+  return { home: 'A home: every home makes room for one more villager to move in.', work: 'A workshop: villagers work here, and it counts toward your town rating.', trade: 'A shop: villagers trade here, and it counts toward your town rating.' }[b.type] || 'Part of your town.';
+}
 
 /** Coins per second for one building, before siege. */
 export function buildingIncome(state, b) {
@@ -293,14 +301,6 @@ export function upgradeCost(b) {
   if (b.level >= MAX_LEVEL) return Infinity;
   return Math.round(buildCost(b.type, b.tier) * LEVEL_COST[b.level + 1]);
 }
-
-/** Rebuilding an old building in the current era's style costs a new one, less a third. */
-export function modernizeCost(state, b, scene = state.scene) {
-  const tier = tierFor(state, scene);
-  if (b.tier >= tier) return Infinity;
-  return Math.round(buildCost(b.type, tier) * 0.67);
-}
-
 function spend(state, cost) {
   if (!(cost <= state.coins)) return false;
   state.coins -= cost;
@@ -345,16 +345,17 @@ export const LAND_AREAS = [
   { zone: 'highlands', name: 'The Highlands', project: 'the-highland-road' },
 ];
 /** Areas open in the current land (zone names). */
-export function openAreas(state) {
+export function openAreas(state, now = Date.now()) {
   if (state.era > 0) return LAND_AREAS.map((a) => a.zone);
   const done = new Set(state.projects?.done || []);
-  return LAND_AREAS.filter((a) => !a.project || done.has(a.project)).map((a) => a.zone);
+  const building = state.projects?.building || {};
+  return LAND_AREAS.filter((a) => !a.project || (done.has(a.project) && !(building[a.project] > now))).map((a) => a.zone);
 }
 /** Records what's open, and returns areas that opened since the last call. */
-export function updateLandOpen(state) {
+export function updateLandOpen(state, at = Date.now()) {
   const key = `e${state.era}`;
   const before = new Set((state.landOpen || (state.landOpen = {}))[key] || ['meadow']);
-  const now = openAreas(state);
+  const now = openAreas(state, at);
   state.landOpen[key] = now;
   return LAND_AREAS.filter((a) => now.includes(a.zone) && !before.has(a.zone));
 }
@@ -385,26 +386,6 @@ export function upgrade(state, index, scene = state.scene) {
   return true;
 }
 
-export function modernize(state, index, scene = state.scene) {
-  const b = state.pads[scene][index];
-  if (!b) return false;
-  const cost = modernizeCost(state, b, scene);
-  if (!Number.isFinite(cost) || !spend(state, cost)) return false;
-  b.paid = buildingPaid(b) + cost;
-  b.tier = tierFor(state, scene);
-  b.level = 1;
-  return true;
-}
-
-export function gild(state, index, scene = state.scene) {
-  const b = state.pads[scene][index];
-  if (!b || b.golden || state.tokens < 1) return false;
-  state.tokens -= 1;
-  b.golden = true;
-  return true;
-}
-
-/** Everything spent on a building: building it plus its upgrades (worked out for older saves). */
 export function buildingPaid(b) {
   if (!b) return 0;
   if (typeof b.paid === 'number') return b.paid;
@@ -464,10 +445,8 @@ export function buildWonder(state) {
     return { ...wonder, finale: true, chest };
   }
   state.era += 1;
-  // A wonder on Earth ends the age: the town moves to a new landscape and
-  // starts empty. Hero, coins, school, creatures and villagers come along;
-  // the old buildings stay behind, decorations are sold for half, and a
-  // settler's purse pays for a first home and works in the new age.
+  // A wonder on Earth ends the age: the country around town changes to the new
+  // age's landscape, and the town comes along whole, restyled for the new age.
   // (The Moon Rocket is the exception: you fly from Space Age land.)
   if (wonder.scene === 'earth' && wonder.index < MOON_TIER - 1) {
     const out = newLand(state);
@@ -476,24 +455,28 @@ export function buildWonder(state) {
   return wonder;
 }
 
-/** Empties the town for a fresh start in the next age. Returns { purse, decorBack }. */
+/**
+ * A new age never wipes your town (Animal Crossing's island is never reset): every
+ * building, decoration and path stays, and the buildings are rebuilt in the new
+ * age's style for free. Only the wild trees around town are new. Returns { restyled }.
+ */
 export function newLand(state) {
-  state.pads.earth = state.pads.earth.map(() => null);
-  state.padSpots.earth = {};
-  let decorBack = 0;
-  for (const d of state.decor) decorBack += Math.floor((d.paid || 0) / 2);
-  state.decor = [];
-  state.paths = {}; // a new land starts unpaved
-  state.felled = []; // and with its own trees
   const tier = tierFor(state, 'earth');
-  const purse = buildCost('home', tier) * 2 + buildCost('work', tier);
-  addCoins(state, purse + decorBack);
+  let restyled = 0;
+  for (const b of state.pads.earth) if (b && b.tier < tier) { b.tier = tier; restyled += 1; }
+  state.felled = []; // the country around town has its own trees
   state.stats.lands = (state.stats.lands || 1) + 1;
-  return { purse, decorBack, newLand: true };
+  return { purse: 0, decorBack: 0, restyled, newLand: true };
 }
 
 /** Advances production. Buildings fill their own stores up to a cap; walking by collects them. */
 export function tick(state, now = Date.now()) {
+  // Buildings are homes and shops: they no longer earn coins (studying and handing work in do).
+  state.lastTick = now;
+  return 0;
+}
+/** The old income model, kept only so old numbers can be read; nothing calls it. */
+function tickIncome(state, now = Date.now()) {
   const dt = Math.max(0, (now - state.lastTick) / 1000);
   state.lastTick = now;
   if (dt === 0) return 0;
@@ -596,7 +579,8 @@ export function syncSchool(state, items, now = Date.now(), { source = state.scho
         const reward = handInReward(state, item);
         addCoins(state, reward);
         state.stats.handedIn += 1;
-        events.push({ type: 'handed-in', item, reward, ...addXp(state, XP_HAND_IN[item.size || 1]) });
+        const chest = grantChest(state, HAND_IN_CHEST[item.size || 1] || 'common', `Handed in: ${item.name}`);
+        events.push({ type: 'handed-in', item, reward, chest, ...addXp(state, XP_HAND_IN[item.size || 1]) });
       }
     }
     const graded = typeof item.score === 'number' && item.pointsPossible > 0;
@@ -621,9 +605,13 @@ export function syncSchool(state, items, now = Date.now(), { source = state.scho
   return events;
 }
 
+// Handing real work in is the game's big payday: worth about one, two or four full
+// study sessions by size, more if you studied for it first, plus a chest.
+export const HAND_IN_MINUTES = [0, 30, 60, 120];
+export const HAND_IN_CHEST = [null, 'common', 'rare', 'epic'];
 export function handInReward(state, item) {
-  const seconds = [0, 120, 300, 900][item.size || 1];
-  return Math.round(Math.max(60 * (item.size || 1), wage(state) * seconds) * (1 + STUDIED_BONUS * studyProgress(state, item)));
+  const minutes = HAND_IN_MINUTES[item.size || 1];
+  return Math.round(Math.max(200 * (item.size || 1), studyRate(state) * minutes) * (1 + STUDIED_BONUS * studyProgress(state, item)));
 }
 
 // --- Studying: a real timer you run while you do the work ---------------------------
@@ -635,7 +623,7 @@ export const studyRate = (state) => Math.round(ageCost(state) * (STUDY_SHARE[sta
 export const FOCUS_MULT = 2; // the town earns this much more while a session runs
 export const STUDY_LENGTHS = [{ minutes: 10, rarity: 'common' }, { minutes: 25, rarity: 'rare' }, { minutes: 45, rarity: 'epic' }];
 export const STUDY_GOAL = [0, 30, 60, 120]; // minutes that fully prepare an item, by size
-export const STUDY_CHESTS_PER_DAY = 3;
+export const STUDY_CHESTS_PER_DAY = 1; // one study chest a day: a small, clear 'done for today'
 export const STUDIED_BONUS = 0.5; // extra hand-in reward for a fully studied item
 const MIN_SESSION = 5; // minutes; shorter than this earns nothing
 
@@ -728,10 +716,19 @@ export function finishStudy(state, now = Date.now()) {
   Object.assign(result, addXp(state, minutes * XP_PER_MINUTE * (complete ? XP_FULL_SESSION : 1) * heroStats(state).studyXp * tea));
   if (!complete) return result;
 
+  // The one streak: days with a finished session. It forgives a single rest day
+  // (yesterday off is fine), so one bad day never wipes weeks of work.
   const today = dayOf(now);
   if (study.lastDay !== today) {
-    study.streak = study.lastDay === dayOf(now - DAY) ? study.streak + 1 : 1;
+    const kept = study.lastDay === dayOf(now - DAY) || study.lastDay === dayOf(now - 2 * DAY);
+    study.streak = kept ? study.streak + 1 : 1;
     study.lastDay = today;
+    const milestone = STREAK_MILESTONES[study.streak];
+    if (milestone) {
+      result.milestone = milestone;
+      result.milestoneChest = grantChest(state, milestone, `${study.streak}-day study streak`);
+      state.critters.lures += 5;
+    }
   }
   result.streak = study.streak;
   if (study.chestDay !== today) {
@@ -753,6 +750,7 @@ export const PRACTICE_RIGHT_MINUTES = 5;
 export const PRACTICE_WRONG_MINUTES = 1; // a wrong answer still teaches something
 export const PRACTICE_DAILY_MINUTES = 40;
 export const PRACTICE_XP = 8; // per right answer
+export const PRACTICE_XP_DAILY = 30; // right answers a day that pay XP
 
 /** Minutes of study credit practice can still give this item today. */
 export function practiceRoom(state, itemId, now = Date.now()) {
@@ -770,8 +768,15 @@ export function finishPractice(state, itemId, right, wrong, now = Date.now(), to
   // Practice on one topic chips that topic's crystal, outside the daily practice cap.
   if (itemId && topic) addTopicMinutes(state, itemId, topic, right * PRACTICE_RIGHT_MINUTES);
   passPoints(state, right * 3);
-  // A perfect round (5 of 5) drops a rare chest.
-  result.chest = right >= 5 && wrong === 0 ? grantChest(state, 'rare', 'A perfect practice round') : null;
+  // A perfect round (5 of 5) drops a rare chest, once a day (retaking a quiz you've seen can't farm them).
+  const study0 = state.study;
+  const perfect = right >= 5 && wrong === 0 && study0.perfectDay !== dayOf(now);
+  if (perfect) study0.perfectDay = dayOf(now);
+  result.chest = perfect ? grantChest(state, 'rare', 'A perfect practice round') : null;
+  // XP counts only the first PRACTICE_XP_DAILY right answers a day, so replaying old quizzes stops paying.
+  if (study0.xpDay !== dayOf(now)) { study0.xpDay = dayOf(now); study0.xpRight = 0; }
+  const paidRight = Math.max(0, Math.min(right, PRACTICE_XP_DAILY - study0.xpRight));
+  study0.xpRight += paidRight;
   // A good practice round (3+ right) also earns a lure.
   result.lures = right >= 3 ? 1 : 0;
   state.critters.lures += result.lures;
@@ -787,7 +792,7 @@ export function finishPractice(state, itemId, right, wrong, now = Date.now(), to
     study.log = [...(study.log || []), { at: now, itemId: item.id, courseId: item.courseId, minutes }].slice(-400);
     result.prepared = before < 1 && studyProgress(state, item) >= 1;
   }
-  return Object.assign(result, addXp(state, right * PRACTICE_XP * heroStats(state).studyXp));
+  return Object.assign(result, addXp(state, paidRight * PRACTICE_XP * heroStats(state).studyXp));
 }
 
 /** What the gate looks like right now: who is marching, who is sieging. */
@@ -818,40 +823,26 @@ export const COSMETICS = [
 ];
 export const CHEST_COINS = { common: 0.004, rare: 0.01, epic: 0.025, legendary: 0.06, mythic: 0.15 }; // shares of this age's wonder: loot is mostly the items, not the coins
 
-/** Opens a chest: returns what was inside and applies it to the state. rng returns 0..1. */
+/**
+ * Opens a chest. No dice: every chest gives the next piece of its tier in the
+ * catalogue (the Vault), like filling a museum, plus coins; rare and better add a
+ * piece of gear of that rarity, and epic and better the next look you don't own.
+ * rng is only used for gear stats.
+ */
 export function openChest(state, chestId, rng = Math.random, now = Date.now()) {
   const i = state.school.chests.findIndex((c) => c.id === chestId);
   if (i < 0) return null;
   const [chest] = state.school.chests.splice(i, 1);
   const loot = [];
-  // A mythic chest draws from the legendary pools, and gives more of everything.
   const tier = chest.rarity === 'mythic' ? 'legendary' : chest.rarity;
-  const mythic = chest.rarity === 'mythic';
   const coins = Math.round(ageCost(state) * agePace(state) * CHEST_COINS[chest.rarity]);
   addCoins(state, coins);
   loot.push({ kind: 'coins', amount: coins });
-
-  const relicChance = { common: 0, rare: 0.35, epic: 1, legendary: 1 }[tier];
-  if (rng() < relicChance) {
-    const pool = RELICS[tier];
-    const [name, bonus] = pool[Math.floor(rng() * pool.length) % pool.length];
-    state.relics.push({ name, bonus });
-    loot.push({ kind: 'relic', name, bonus });
+  if (tier === 'epic' || tier === 'legendary') {
+    const id = COSMETICS.find((c) => !state.cosmetics.owned.includes(c));
+    if (id) { state.cosmetics.owned.push(id); loot.push({ kind: 'cosmetic', id }); }
   }
-  const cosmeticChance = { common: 0.1, rare: 0.25, epic: 0.5, legendary: 1 }[tier];
-  if (rng() < cosmeticChance) {
-    const missing = COSMETICS.filter((c) => !state.cosmetics.owned.includes(c));
-    if (missing.length) {
-      const id = missing[Math.floor(rng() * missing.length) % missing.length];
-      state.cosmetics.owned.push(id);
-      loot.push({ kind: 'cosmetic', id });
-    }
-  }
-  if (tier === 'legendary' || (tier === 'epic' && rng() < 0.3)) {
-    state.tokens += mythic ? 3 : 1;
-    loot.push({ kind: 'token' });
-  }
-  if (rng() < { common: 0.6, rare: 1, epic: 1, legendary: 1 }[tier]) {
+  if (tier !== 'common') {
     const got = addGear(state, rollGear(state, tier, rng));
     loot.push({ kind: 'gear', item: got.item, equipped: got.equipped });
   }
@@ -863,11 +854,11 @@ export function openChest(state, chestId, rng = Math.random, now = Date.now()) {
 
 /** Every chest rarity, rarest last, with how you get one. */
 export const CHEST_TIERS = [
-  { id: 'common', name: 'Common', from: 'Hidden caches, study sessions, homework steps' },
-  { id: 'rare', name: 'Rare', from: 'Good grades, practice rounds, caches (1 in 5), the market' },
-  { id: 'epic', name: 'Epic', from: 'Clearing your week, great grades, exam weak points, the market' },
-  { id: 'legendary', name: 'Legendary', from: 'Top grades, every fourth week in a row, the market (rarely)' },
-  { id: 'mythic', name: 'Mythic', from: 'Every twelfth week in a row, or a 1-in-80 market day' },
+  { id: 'common', name: 'Common', from: 'Hidden caches, small hand-ins, study sessions, homework steps' },
+  { id: 'rare', name: 'Rare', from: 'Medium hand-ins, good grades, a perfect practice round, all of today’s quests' },
+  { id: 'epic', name: 'Epic', from: 'Big hand-ins, clearing your week, great grades, a 7-day study streak' },
+  { id: 'legendary', name: 'Legendary', from: 'Top grades, a 14-day study streak, finishing Season 1' },
+  { id: 'mythic', name: 'Mythic', from: 'A 30-day study streak' },
 ];
 
 export function grantChest(state, rarity, from) {
@@ -882,15 +873,42 @@ export function grantChest(state, rarity, from) {
 export const maxHealth = (state) => heroStats(state).health;
 
 /** Camps, buried treasure and realm bosses come back once a day. */
+/**
+ * Out in the country only some of the caches, buried treasure and fox camps are out
+ * each day (about a quarter of them), so a full day's round is a few stops, not
+ * twenty. Days you skip bank more for when you come back, like Animal Crossing's
+ * fossils: a quarter more per missed day, up to three quarters.
+ */
+export const SPOT_SHARE = 0.25, SPOT_BANK = 0.25, SPOT_CAP = 0.75;
+export function spotShare(state, now = Date.now()) {
+  const last = state.explore.lastVisit;
+  if (!last) return SPOT_SHARE;
+  const missed = Math.max(0, Math.round((dayStart(now) - dayStart(last)) / DAY) - 1);
+  return Math.min(SPOT_CAP, SPOT_SHARE + SPOT_BANK * Math.min(2, missed));
+}
+const dayStart = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+export function spotOutToday(state, key, now = Date.now()) {
+  if (!/(^cache:|:treasure:|:camp:)/.test(key)) return true;
+  const share = state.explore.shareDay === dayOf(now) ? state.explore.share : spotShare(state, now);
+  let h = 2166136261;
+  for (const ch of `${dayOf(now)}|${key}`) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
+  h ^= h >>> 13; h = Math.imul(h, 0x5bd1e995); h ^= h >>> 15;
+  return ((h >>> 0) % 1000) / 1000 < share;
+}
 export function exploreDone(state, key, now = Date.now()) {
+  if (!spotOutToday(state, key, now)) return true;
   return state.explore.day === dayOf(now) && Boolean(state.explore.done[key]);
 }
 export function markExplored(state, key, now = Date.now()) {
   const e = state.explore;
   if (e.day !== dayOf(now)) {
+    // Lock in today's share before the visit counts, so the bonus holds all day.
+    e.share = spotShare(state, now);
+    e.shareDay = dayOf(now);
     e.day = dayOf(now);
     e.done = {};
   }
+  e.lastVisit = now;
   e.done[key] = true;
 }
 
@@ -1045,8 +1063,8 @@ export function claimWeek(state, now = Date.now()) {
   w.streak = w.claimed === dayOf(weekStart(now) - 7 * DAY) ? w.streak + 1 : 1;
   w.claimed = status.id;
   // Every fourth week in a row: legendary. Every twelfth: mythic.
-  const rarity = w.streak % 12 === 0 ? 'mythic' : w.streak % 4 === 0 ? 'legendary' : 'epic';
-  const chest = grantChest(state, rarity, w.streak > 1 ? `Week cleared · ${w.streak} in a row` : 'Week cleared');
+  // No separate weekly streak any more (the study streak is the only one): always epic.
+  const chest = grantChest(state, 'epic', 'Week cleared');
   return { chest, streak: w.streak };
 }
 
@@ -1118,27 +1136,16 @@ export function resolveExams(state, now = Date.now()) {
       addCoins(state, event.coins);
       event.chest = grantChest(state, 'epic', `Held the gate: ${item.name}`);
     } else {
-      event.coins = -Math.floor(state.coins * (outcome === 'dented' ? 0.05 : 0.1));
-      state.coins += event.coins;
-      if (outcome === 'wrecked') event.wrecked = wreckBuilding(state);
+      // Not ready enough for a bonus this time. Nothing is lost: the real grade still pays.
+      const small = Math.round(wage(state) * (outcome === 'dented' ? 400 : 150));
+      event.coins = small;
+      addCoins(state, small);
     }
     seen.exam = { outcome, armor, at: now };
-    event.left = villagersFeel(state, { held: 10, dented: -12, wrecked: -30 }[outcome], now);
+    event.left = villagersFeel(state, { held: 10, dented: 2, wrecked: 0 }[outcome], now);
     events.push(event);
   }
   return events;
-}
-
-/** The town's best building loses a level (or its stored coins at level 1). Returns { scene, index } or null. */
-function wreckBuilding(state) {
-  let best = null;
-  state.pads.earth.forEach((b, index) => {
-    if (b && (!best || buildingIncome(state, b) > buildingIncome(state, best.b))) best = { b, index };
-  });
-  if (!best) return null;
-  if (best.b.level > 1) best.b.level -= 1;
-  best.b.stored = 0;
-  return { scene: 'earth', index: best.index };
 }
 
 // --- The hero: an RPG character whose levels come from school ----------------------
@@ -1147,7 +1154,7 @@ function wreckBuilding(state) {
 
 export const XP_PER_MINUTE = 4;
 export const XP_FULL_SESSION = 1.25; // a session that runs its full length pays this much more
-export const XP_HAND_IN = [0, 40, 80, 160]; // by assignment size
+export const XP_HAND_IN = [0, 120, 240, 480]; // by assignment size: a hand-in beats a session
 export const MAX_HERO_LEVEL = 40;
 export const BAG_SIZE = 18;
 export const SLOTS = ['weapon', 'armor', 'charm'];
@@ -1328,14 +1335,20 @@ export const STORY = [
   { id: 'lanterns-for-the-woods', chapter: 0, from: 'The Librarian', opens: 'woods', title: 'A bridge into the woods', text: 'The woods are across the creek too. Study 2 hours in total and we\u2019ll build a bridge (and hang a lantern on it).', need: 120, have: (s) => s.study.total, reward: { gear: 'rare', slot: 'charm' } },
   { id: 'a-study-habit', chapter: 0, from: 'The Librarian', title: 'A study habit', text: 'Study 5 hours in total. Small sessions add up.', need: 300, have: (s) => s.study.total, reward: { gear: 'epic', slot: 'weapon' } },
   { id: 'the-highland-road', chapter: 0, from: 'The Librarian', opens: 'highlands', title: 'A bridge to the highlands', text: 'The highlands are rough country, with the Alpha up there. Reach level 5 and I\u2019ll build you the bridge.', need: 5, have: (s) => s.hero.level, reward: { coins: 800 } },
-  { id: 'the-alpha', chapter: 0, from: 'Bram, the guard', title: 'The Alpha', text: 'The big fox in the rock ring. Reach level 6 or so first, then beat the Alpha.', need: 1, have: (s) => (s.stats.realmBosses.wilds ? 1 : 0), reward: { gear: 'epic', slot: 'armor' } },
+  { id: 'the-alpha', chapter: 0, from: 'Bram, the guard', title: 'The Alpha', text: 'The big fox in the rock ring is level 8. Study up to about level 7 first, then beat the Alpha.', need: 1, have: (s) => (s.stats.realmBosses.wilds ? 1 : 0), reward: { gear: 'epic', slot: 'armor' } },
   { id: 'a-page-for-the-atlas', chapter: 0, from: 'The Librarian', title: 'A page for the Atlas', text: 'Find a landmark out in the country for my guidebook.', need: 1, have: (s) => foundCount(s, 0), reward: { coins: 400 } },
   { id: 'the-whole-valley', chapter: 0, from: 'The Librarian', title: 'The whole valley', text: 'Find all 4 landmarks, and my Atlas gets its first finished chapter.', need: 4, have: (s) => foundCount(s, 0), reward: { coins: 1000 } },
   { id: 'the-festival', chapter: 0, from: 'The Librarian', title: 'The festival', text: 'Raise the Stone Circle, and the whole valley throws a festival.', need: 1, have: (s) => (s.wonders.includes(0) || s.era > 0 ? 1 : 0), reward: { coins: 2000 } },
-  // Chapter 2: the Bronze Age, on the river.
+  // Chapter 2: the Bronze Age, on the river. Eight small steps instead of one long
+  // savings bar. "delta" projects count from the moment you take them on.
+  { id: 'river-welcome', chapter: 1, from: 'The Librarian', title: 'Settling in by the river', text: 'New country, same habit. Study 60 minutes after taking this on.', need: 60, delta: true, have: (s) => s.study.total, reward: { coins: 20000 } },
   { id: 'exam-season', chapter: 1, from: 'Odo, the scholar', title: 'Exam season', text: 'Study enough that an exam breaks on your gate on exam day.', need: 1, have: (s) => s.stats.bossesBeaten, reward: { gear: 'epic', slot: 'charm' } },
-  { id: 'honor-roll', chapter: 1, from: 'Sela, the merchant', title: 'Honor roll', text: 'Reach level 12.', need: 12, have: (s) => s.hero.level, reward: { gear: 'legendary', slot: 'weapon' } },
-  { id: 'scholar', chapter: 1, from: 'The Librarian', title: 'Scholar', text: 'Study 50 hours in total. The library needs regulars.', need: 3000, have: (s) => s.study.total, reward: { gear: 'legendary', slot: 'armor' } },
+  { id: 'library-foundations', chapter: 1, from: 'The Librarian', title: 'Library foundations', text: 'Every hand-in is a stone for the library. Hand in 5 assignments after taking this on.', need: 5, delta: true, have: (s) => s.stats.handedIn, reward: { coins: 40000 } },
+  { id: 'the-reading-room', chapter: 1, from: 'Wren, the bard', title: 'The reading room', text: 'A library needs readers. Study 3 hours after taking this on.', need: 180, delta: true, have: (s) => s.study.total, reward: { gear: 'epic', slot: 'weapon' } },
+  { id: 'shelves-of-questions', chapter: 1, from: 'The Librarian', title: 'Shelves of questions', text: 'Get 20 practice questions right in the Study Hall after taking this on.', need: 20, delta: true, have: (s) => s.stats.practiceRight || 0, reward: { coins: 40000 } },
+  { id: 'river-creatures', chapter: 1, from: 'Pell, the farmer', title: 'River creatures', text: 'The river country has its own wildlife. Catch 8 different kinds of creature.', need: 8, have: caughtKinds, reward: { gear: 'epic', slot: 'armor' } },
+  { id: 'honor-roll', chapter: 1, from: 'Sela, the merchant', title: 'Honor roll', text: 'Reach level 10.', need: 10, have: (s) => s.hero.level, reward: { gear: 'legendary', slot: 'weapon' } },
+  { id: 'scholar', chapter: 1, from: 'The Librarian', title: 'Scholar', text: 'Study 15 hours in total. The library needs regulars.', need: 900, have: (s) => s.study.total, reward: { gear: 'legendary', slot: 'armor' } },
   { id: 'the-library', chapter: 1, from: 'The Librarian', title: 'The library', text: 'Raise the Great Pyramid, with my library inside, and finish Season 1.', need: 1, have: (s) => (seasonDone(s) ? 1 : 0), reward: { gear: 'legendary', slot: 'charm', coins: 50000 } },
 ];
 
@@ -1345,9 +1358,35 @@ export const STORY = [
 /** 'The Librarian' or a villager's first name, from a project's `from`. */
 export const projectGiver = (p) => (p.from.includes(',') ? p.from.split(',')[0].trim() : 'Librarian');
 function projectStatus(state, p) {
-  const have = Math.min(p.need, p.have(state) || 0);
   const pr = state.projects;
-  return { id: p.id, from: p.from, giver: projectGiver(p), title: p.title, text: p.text, have, need: p.need, ready: have >= p.need, accepted: pr.accepted.includes(p.id), reward: p.reward };
+  const base = p.delta && pr.accepted.includes(p.id) ? (pr.base?.[p.id] ?? 0) : 0;
+  const raw = p.delta && !pr.accepted.includes(p.id) ? 0 : (p.have(state) || 0) - base;
+  const have = Math.max(0, Math.min(p.need, Math.floor(raw)));
+  return { id: p.id, from: p.from, giver: projectGiver(p), title: p.title, text: p.text, have, need: p.need, ready: have >= p.need, accepted: pr.accepted.includes(p.id), reward: p.reward, opens: p.opens || null };
+}
+/** 5 a.m. tomorrow (Animal Crossing builds overnight and opens at 5). */
+export function nextMorning(now = Date.now()) {
+  const d = new Date(now);
+  if (d.getHours() >= 5) d.setDate(d.getDate() + 1);
+  d.setHours(5, 0, 0, 0);
+  return d.getTime();
+}
+/** A bridge still being built overnight: { id, readyAt } or null. */
+export function underConstruction(state, zone, now = Date.now()) {
+  const a = LAND_AREAS.find((x) => x.zone === zone);
+  const at = a?.project && state.projects?.building?.[a.project];
+  return at && at > now ? { id: a.project, readyAt: at } : null;
+}
+/** Villagers who'll have a project once they move in (so the gate isn't invisible). */
+export function waitingGivers(state) {
+  const here = new Set(state.villagers.list.map((v) => v.name));
+  const out = [];
+  for (const g of new Set(STORY.map(projectGiver))) {
+    if (g === 'Librarian' || here.has(g)) continue;
+    const p = STORY.find((q) => projectGiver(q) === g && !state.projects.done.includes(q.id) && (q.chapter || 0) <= state.era);
+    if (p) out.push({ giver: g, title: p.title, from: p.from });
+  }
+  return out;
 }
 /** Is this person around to give projects? The Librarian always is; villagers once they've moved in. */
 const giverHere = (state, giver) => giver === 'Librarian' || state.villagers.list.some((v) => v.name === giver);
@@ -1362,11 +1401,12 @@ export function projectFrom(state, giver) {
 export function acceptProject(state, id) {
   const p = STORY.find((q) => q.id === id);
   if (!p || state.projects.done.includes(id) || state.projects.accepted.includes(id)) return false;
+  if (p.delta) (state.projects.base || (state.projects.base = {}))[id] = p.have(state) || 0;
   state.projects.accepted.push(id);
   return true;
 }
 /** Hands a finished project back to whoever gave it. Returns the reward, or null if it isn't done. */
-export function turnInProject(state, id, rng = Math.random) {
+export function turnInProject(state, id, rng = Math.random, now = Date.now()) {
   const p = STORY.find((q) => q.id === id);
   if (!p || state.projects.done.includes(id)) return null;
   const st = projectStatus(state, p);
@@ -1375,6 +1415,8 @@ export function turnInProject(state, id, rng = Math.random) {
   state.projects.accepted = state.projects.accepted.filter((x) => x !== id);
   state.quest.step = state.projects.done.length;
   const out = { title: st.title, from: st.from, coins: st.reward.coins || 0, gear: null };
+  // A bridge project is built overnight: it opens its area at 5 tomorrow morning.
+  if (p.opens) { (state.projects.building || (state.projects.building = {}))[id] = nextMorning(now); out.overnight = { zone: p.opens, readyAt: state.projects.building[id] }; }
   if (out.coins) addCoins(state, out.coins);
   if (st.reward.gear) out.gear = addGear(state, rollGear(state, st.reward.gear, rng, st.reward.slot, state.hero.level + 1));
   return out;
@@ -1552,8 +1594,6 @@ export function marketStock(state, now = Date.now()) {
   const day = dayOf(now);
   const m = state.market;
   if (m.day === day && m.offers.length) {
-    // Stock from before chests were sold gets today's chest added.
-    if (!m.offers.some((o) => o.kind === 'chest')) m.offers.push(marketChest(state, day));
     return m.offers;
   }
   const rng = seededRng([...day].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 17) ^ (state.hero.level * 7919));
@@ -1572,7 +1612,7 @@ export function marketStock(state, now = Date.now()) {
   offers.push({ kind: 'tea', price: share(state, 0.01), sold: false });
   const rare = Object.keys(DECOR).filter((k) => DECOR[k].market && !state.decorUnlocked.includes(k));
   if (rare.length) offers.push({ kind: 'decor', id: rare[Math.floor(rng() * rare.length)], price: share(state, 0.04), sold: false });
-  offers.push(marketChest(state, day));
+  // No chests for sale: chests come from studying, hand-ins and grades only.
   m.day = day;
   m.offers = offers;
   return offers;
@@ -1812,19 +1852,21 @@ export function removeDecor(state, id) {
 // schoolwork, give a small quest each day, and pack up and leave if the town
 // keeps getting wrecked on exam day or work keeps going late.
 
+// Move-in order: everyone with a Chapter 1 project comes first, so no project hides
+// behind a town of 10+ people.
 export const VILLAGERS = [
   { name: 'Mira', role: 'Herbalist', look: 'rogue' },
   { name: 'Tobin', role: 'Smith', look: 'barbarian' },
   { name: 'Odo', role: 'Scholar', look: 'mage' },
-  { name: 'Wren', role: 'Bard', look: 'hooded' },
   { name: 'Bram', role: 'Guard', look: 'knight' },
+  { name: 'Rook', role: 'Builder', look: 'knight' },
+  { name: 'Fen', role: 'Fisher', look: 'hooded' },
   { name: 'Juna', role: 'Baker', look: 'rogue' },
+  { name: 'Ivy', role: 'Gardener', look: 'rogue' },
+  { name: 'Wren', role: 'Bard', look: 'hooded' },
   { name: 'Pell', role: 'Farmer', look: 'barbarian' },
   { name: 'Sela', role: 'Merchant', look: 'hooded' },
-  { name: 'Ivy', role: 'Gardener', look: 'rogue' },
-  { name: 'Rook', role: 'Builder', look: 'knight' },
   { name: 'Nell', role: 'Librarian', look: 'mage' },
-  { name: 'Fen', role: 'Fisher', look: 'hooded' },
 ];
 export const VILLAGER_MAX = VILLAGERS.length;
 const MOVE_IN_GAP = 6 * 3600000; // one arrival every 6 hours at most (the first two come at once)
@@ -1833,7 +1875,8 @@ const MOVE_IN_GAP = 6 * 3600000; // one arrival every 6 hours at most (the first
 export function villagerRoom(state) {
   // A lovelier town draws more people: two per star, plus your class halls.
   const halls = courseHalls(state).filter((h) => h.level > 0).length;
-  return Math.min(VILLAGER_MAX, 2 + townRating(state).stars * 2 + halls);
+  const homes = state.pads.earth.filter((b) => b && b.type === 'home').length;
+  return Math.min(VILLAGER_MAX, 2 + townRating(state).stars * 2 + halls + homes);
 }
 
 /** Moves someone in if there's room. Returns the newcomer or null. */
@@ -1842,7 +1885,7 @@ export function moveIn(state, now = Date.now()) {
   if (v.list.length >= villagerRoom(state)) return null;
   if (v.list.length >= 2 && now - (v.lastArrival || 0) < MOVE_IN_GAP) return null;
   const taken = new Set(v.list.map((p) => p.name));
-  const pick = VILLAGERS.find((p) => !taken.has(p.name) && !(v.away[p.name] > now));
+  const pick = VILLAGERS.find((p) => !taken.has(p.name));
   if (!pick) return null;
   const person = { ...pick, mood: 70, friend: 0, joined: now, talked: null, gift: null, quest: null };
   person.quest = makeVillagerQuest(state, person, now);
@@ -1852,19 +1895,13 @@ export function moveIn(state, now = Date.now()) {
 }
 
 /** Everyone's mood moves by delta. Anyone who hits 0 leaves (and won't come back for 3 days). Returns who left. */
-export function villagersFeel(state, delta, now = Date.now()) {
+export function villagersFeel(state, delta) {
+  // Villagers love you by default and never move out over school (Animal Crossing's rule).
+  // Mood only goes up; a hard week just means less cheer, never a goodbye.
   const v = state.villagers;
   if (!v) return [];
-  const left = [];
-  for (const p of [...v.list]) {
-    p.mood = Math.max(0, Math.min(100, p.mood + delta));
-    if (p.mood <= 0) {
-      v.list.splice(v.list.indexOf(p), 1);
-      v.away[p.name] = now + 3 * DAY;
-      left.push(p);
-    }
-  }
-  return left;
+  for (const p of v.list) p.mood = Math.max(40, Math.min(100, p.mood + Math.max(0, delta)));
+  return [];
 }
 
 /**
@@ -1878,7 +1915,7 @@ export function villagerDay(state, now = Date.now()) {
   if (v.day === today) return null;
   v.day = today;
   const late = lateItems(state, now).length;
-  const left = villagersFeel(state, late ? -4 * late : 5, now);
+  const left = villagersFeel(state, late ? 0 : 5, now);
   for (const p of v.list) if (!p.quest || p.quest.day !== today) p.quest = makeVillagerQuest(state, p, now);
   return { left, late };
 }
@@ -2088,9 +2125,9 @@ export function villagerLine(state, person, now = Date.now(), k = 0) {
 }
 
 // --- Daily quests and the streak ---------------------------------------------
-// Three small quests a day. Finish all three to keep the streak; days 7, 14
-// and 30 pay big. Miss a day and the streak starts over.
-export const STREAK_MILESTONES = { 7: 'epic', 14: 'legendary', 30: 'legendary' };
+// Three small quests a day; all three done drops a chest. The only streak is the
+// study streak (finishStudy): days 7, 14 and 30 pay big there.
+export const STREAK_MILESTONES = { 7: 'epic', 14: 'legendary', 30: 'mythic' };
 
 const dailyStat = {
   ...statNow,
@@ -2119,7 +2156,6 @@ export function dailyRefresh(state, now = Date.now()) {
   const d = state.daily;
   const today = dayOf(now);
   if (d.day === today) return false;
-  if (d.lastFull !== dayOf(now - DAY) && d.lastFull !== today) d.streak = 0;
   const { study, school, life } = dailyOptions(state, now);
   const seed = [...today].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) >>> 0, 11);
   const pay = Math.round(Math.max(150, wage(state) * 300));
@@ -2148,14 +2184,12 @@ export function claimDaily(state, now = Date.now()) {
   addCoins(state, out.coins);
   if (!d.bonus && d.quests.length && d.quests.every((q) => q.claimed)) {
     d.bonus = true;
-    d.streak += 1;
     d.lastFull = dayOf(now);
-    d.best = Math.max(d.best || 0, d.streak);
-    out.streak = d.streak;
-    out.milestone = STREAK_MILESTONES[d.streak] || null;
-    out.chest = grantChest(state, out.milestone || (d.streak >= 3 ? 'epic' : 'rare'), `Day ${d.streak} streak`);
-    state.critters.lures += out.milestone ? 5 : 1;
+    out.done = true;
+    out.chest = grantChest(state, 'rare', 'All of today’s quests');
+    state.critters.lures += 1;
   }
+  out.streak = state.study.streak || 0;
   return out;
 }
 
@@ -2446,43 +2480,31 @@ export const COLLECTIBLES = {
   galaxy: { tier: 'mythic', kind: 'aura', name: 'Galaxy', text: 'A whole galaxy turning around you' },
   obelisk: { tier: 'mythic', kind: 'decor', name: 'Starfall obelisk', text: 'Fallen stars orbit its peak' },
 };
-/** Chance a chest holds a collectible, and the odds of each tier, by chest rarity. */
-export const DROP_TABLE = {
-  common: { chance: 1, odds: { common: 70, rare: 24, epic: 5, legendary: 0.9, mythic: 0.1 } },
-  rare: { chance: 1, odds: { common: 45, rare: 38, epic: 13, legendary: 3.5, mythic: 0.5 } },
-  epic: { chance: 1, odds: { common: 20, rare: 40, epic: 28, legendary: 10, mythic: 2 } },
-  legendary: { chance: 1, odds: { common: 0, rare: 30, epic: 40, legendary: 25, mythic: 5 } },
-  mythic: { chance: 1, odds: { common: 0, rare: 0, epic: 35, legendary: 45, mythic: 20 } },
-};
-export const PITY_EPIC = 10; // a collectible of epic or better at least this often
-export const PITY_MYTHIC = 120; // and a mythic at least this often
+/** Which tier of the catalogue each chest gives (always exactly its own tier). */
+export const DROP_TABLE = Object.fromEntries(['common', 'rare', 'epic', 'legendary', 'mythic'].map((r) => [r, { chance: 1, odds: Object.fromEntries(['common', 'rare', 'epic', 'legendary', 'mythic'].map((t) => [t, t === r ? 100 : 0])) }]));
+export const PITY_EPIC = 0, PITY_MYTHIC = 0; // no odds, so no pity counters
 
-function rollTier(chestRarity, rng) {
-  const odds = DROP_TABLE[chestRarity].odds;
-  const total = TIERS.reduce((n, t) => n + odds[t], 0);
-  let r = rng() * total;
-  for (const t of TIERS) { r -= odds[t]; if (r <= 0) return t; }
-  return 'common';
+/** The next catalogue piece a chest of this rarity gives, without giving it. */
+export function nextCollectible(state, chestRarity) {
+  const order = TIERS.slice(0, TIERS.indexOf(chestRarity) + 1).reverse(); // its own tier first, then lower
+  for (const t of order) {
+    const id = Object.keys(COLLECTIBLES).find((k) => COLLECTIBLES[k].tier === t && !state.vault.owned[k]);
+    if (id) return id;
+  }
+  return null;
 }
 
-/** Rolls a chest's collectible (with pity). Returns { id, tier, dupe, coins, pity } or null. */
-export function rollCollectible(state, chestRarity, rng = Math.random) {
+/** Gives a chest's catalogue piece: the next one not owned, its tier first. Returns { id, tier, dupe, coins } or null. */
+export function rollCollectible(state, chestRarity) {
   const v = state.vault;
-  v.sinceEpic += 1;
-  v.sinceMythic += 1;
-  let tier = null;
-  let pity = false;
-  if (v.sinceMythic >= PITY_MYTHIC) { tier = 'mythic'; pity = true; }
-  else if (v.sinceEpic >= PITY_EPIC) { tier = rollTier(chestRarity, rng); if (TIERS.indexOf(tier) < 2) tier = 'epic'; pity = true; }
-  else if (rng() < DROP_TABLE[chestRarity].chance) tier = rollTier(chestRarity, rng);
-  if (!tier) return null;
-  if (TIERS.indexOf(tier) >= 2) v.sinceEpic = 0;
-  if (tier === 'mythic') v.sinceMythic = 0;
-  // Prefer something not owned yet within the tier.
-  const pool = Object.keys(COLLECTIBLES).filter((id) => COLLECTIBLES[id].tier === tier);
-  const fresh = pool.filter((id) => !v.owned[id]);
-  const from = fresh.length && rng() < 0.75 ? fresh : pool;
-  const id = from[Math.floor(rng() * from.length) % from.length];
+  let id = nextCollectible(state, chestRarity);
+  // Everything at this tier and below is owned: the chest pays coins instead.
+  if (!id) {
+    const coins = Math.round(wage(state) * 30 * (1 + TIERS.indexOf(chestRarity) * 2));
+    addCoins(state, coins);
+    return null;
+  }
+  const tier = COLLECTIBLES[id].tier;
   const dupe = Boolean(v.owned[id]);
   v.owned[id] = (v.owned[id] || 0) + 1;
   const c = COLLECTIBLES[id];
@@ -2496,7 +2518,7 @@ export function rollCollectible(state, chestRarity, rng = Math.random) {
   // A duplicate is still worth something.
   const coins = dupe ? Math.round(wage(state) * 30 * (1 + TIERS.indexOf(tier) * 2)) : 0;
   if (coins) addCoins(state, coins);
-  return { id, tier, dupe, coins, pity };
+  return { id, tier, dupe, coins, pity: false };
 }
 
 export const vaultFound = (state) => Object.keys(COLLECTIBLES).filter((id) => state.vault.owned[id]).length;

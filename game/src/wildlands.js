@@ -87,7 +87,9 @@ export function createWildlands(ctx) {
     const inner = townR + 10, outer = walkR - 8;
     const boss = find(inner + 18, outer, 11, 30, 'highlands') || find(inner + 18, outer, 11, 30);
     const camps = [];
-    const sizes = [[3, 'rare', -1], [3, 'rare', 0], [4, 'rare', 1], [5, 'epic', 2]];
+    // Fixed levels by land (not your level), so getting stronger from studying feels like power.
+    const LV = index === 0 ? [2, 3, 5, 7] : [9, 11, 13, 15];
+    const sizes = [[3, 'rare', LV[0]], [3, 'rare', LV[1]], [4, 'rare', LV[2]], [5, 'epic', LV[3]]];
     sizes.forEach(([count, rarity, lv], i) => {
       const s = (i === 0 ? find(inner, outer, 7, 14, 'meadow') : null) || find(inner, outer, 7, 14);
       if (s) camps.push({ ...s, count, rarity, lv, key: `land${index}:camp:${i}`, alive: 0, awake: false, chest: null });
@@ -187,7 +189,7 @@ export function createWildlands(ctx) {
     camp.awake = true;
     if (S.exploreDone(ctx.state(), camp.key)) { camp.alive = 0; return; }
     camp.alive = 0;
-    const lv = Math.max(1, heroLevel() + camp.lv);
+    const lv = camp.lv;
     for (let k = 0; k < camp.count; k++) {
       const p = polar(3.2 + (k % 2) * 1.6, (k * (360 / camp.count)) * Math.PI / 180);
       spawn(camp.x + p.x, camp.z + p.z, k === 0 && camp.count >= 4 ? 1 : 0, lv, camp);
@@ -201,7 +203,7 @@ export function createWildlands(ctx) {
   function wakeBoss(b) {
     b.awake = true;
     if (S.exploreDone(ctx.state(), b.key)) return;
-    b.enemy = spawn(b.x, b.z, 2, heroLevel() + 3);
+    b.enemy = spawn(b.x, b.z, 2, land?.index ? 18 : 8); // the Alpha: level 8 in the valley
     meter(b.enemy);
   }
   function sleepBoss(b) {
@@ -344,7 +346,7 @@ export function createWildlands(ctx) {
     const state = ctx.state();
     for (const camp of land.camps) {
       if (!camp.chest.visible || !reach(camp) || Math.hypot(p.x - camp.x, p.z - camp.z) > LABEL_R) continue;
-      const lv = Math.max(1, heroLevel() + camp.lv);
+      const lv = camp.lv;
       labels.push(fx.label(camp.chest, 3.4, camp.alive || !camp.awake ? `<em>Level ${lv} fox camp</em>${camp.awake ? camp.alive : camp.count} guarding a ${camp.rarity} chest` : `<em>Camp cleared</em>${camp.rarity} chest`, camp.alive || !camp.awake ? 'boss' : 'studied'));
     }
     for (const s of land.shrines) if (s.orb.visible && reach(s) && Math.hypot(p.x - s.x, p.z - s.z) < LABEL_R) labels.push(fx.label(s.orb, 1.4, `<em>Shrine</em>${s.name}`, 'studied'));

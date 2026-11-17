@@ -1071,3 +1071,10 @@ body:has(#menuMore:not([hidden])) #toasts { opacity: 0; }
 /* Signs on the fog walls: always the full text, easy to read from the town. */
 .label.fog { background: rgba(28, 34, 48, 0.92); border-color: #cfe0ff; color: #fff; font-size: 13px; padding: 6px 12px; width: max-content; max-width: 240px; white-space: normal; text-align: center; line-height: 1.3; }
 .label.fog em { display: block; color: #cfe0ff; font-size: 12px; font-style: normal; letter-spacing: .04em; text-transform: uppercase; margin-bottom: 2px; }
+
+/* The study scene: everything but the timer fades while a session runs untouched. */
+body.study-scene .tracker, body.study-scene .menu, body.study-scene .hud-center .coins, body.study-scene .hud-center .income, body.study-scene #btnStudy, body.study-scene #btnBuild,
+body.study-scene #vitals, body.study-scene .era-card, body.study-scene .label { opacity: 0.12; transition: opacity 1.2s ease; }
+/* ...but the countdown stays, a little bigger. */
+body.study-scene #focus { transform: scale(1.15); transition: transform 1.2s ease; }
+.tracker, .menu, .hud-center, #btnStudy, #btnBuild, #vitals, .era-card { transition: opacity 0.3s ease; }

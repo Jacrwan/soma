@@ -24,7 +24,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createCoach } from './tutorial.js';
 import { makePiece } from './catalog.js';
 import { createOwl, makeOwl3D } from './owl.js';
-import { createStudyHall } from './studyhall.js';
+import { createStudyHall, addDeck as addHallDeck, addCards as addHallCards } from './studyhall.js';
 import { practiceStatus, readMaterial, makeKit, streamKitPart } from './practice.js';
 import * as Lore from './lore.js';
 import { startTelemetry, track } from './telemetry.js';
@@ -410,10 +410,12 @@ function syncInvaders(now) {
       object.position.set(lair.x, 0, lair.z);
       object.rotation.y = Math.atan2(-lair.x, -lair.z);
       world.earth.add(object);
-      inv = { object, boss: isBoss, item, label: fx.label(object, isBoss ? 6.6 : 2.3 + item.size * 0.5, '') };
+      inv = { object, boss: isBoss, item, label: fx.label(object, isBoss ? 6.6 : 2.3 + item.size * 0.5, ''), baseScale: object.scale.x };
       invaders.set(item.id, inv);
     }
     inv.item = item;
+    // Studying for a piece of work visibly shrinks its monster (down to about half size).
+    if (!isBoss) inv.object.scale.setScalar(inv.baseScale * (1 - 0.45 * S.studyProgress(state, item)));
     if (fight && fight.id === item.id) continue;
     // Its place on its course's front: a step closer to town every day. Work
     // due within a day leaves the front and comes after you (moveInvaders).
@@ -495,8 +497,8 @@ function moveInvaders(dt, time) {
     if (inv.mode === 'charge' && !studying && inv.bumpCd <= 0 && bumpAny <= 0 && Math.hypot(p.x - o.x, p.z - o.z) < 1.7) {
       inv.bumpCd = BUMP_EVERY;
       bumpAny = 1.5;
-      // Late homework never hits you: it just takes a few coins.
-      stealCoins(o);
+      // Late homework never hits you or takes anything: it just bumps you and asks to be handed in.
+      nudgeFrom(o);
     }
     if (!inv.boss) o.y = world.groundHeight('earth', o.x, o.z);
   }
@@ -517,7 +519,8 @@ function moveInvaders(dt, time) {
   bumpAny = Math.max(0, bumpAny - dt);
 }
 
-/** A swing knocks assignments back; only handing them in on Canvas gets rid of them. */
+/** A swing knocks assignments back and picks a fight: T then studies that one. Handing it in sends it home. */
+let lastHitItem = null;
 function shoveInvaders(inArc) {
   let landed = false;
   const p = player.object.position;
@@ -530,9 +533,10 @@ function shoveInvaders(inArc) {
     inv.knock = { x: (dx / d) * 14, z: (dz / d) * 14, t: 0.35 };
     inv.bumpCd = Math.max(inv.bumpCd || 0, 1.2);
     fx.burst(o.clone().add(new THREE.Vector3(0, 1, 0)), A.C.white, 8, 5, 4);
+    lastHitItem = inv.item.id;
     if (shooNote <= 0) {
       shooNote = 4;
-      fx.float(o.clone().add(new THREE.Vector3(0, 2.8, 0)), 'Hand it in to beat it', 'hit');
+      fx.float(o.clone().add(new THREE.Vector3(0, 2.8, 0)), 'Study it (T) to shrink it · hand it in to send it home', 'hit');
     }
   }
   return landed;
@@ -585,9 +589,15 @@ function syncChests() {
 function handleSchoolEvents(events) {
   for (const event of events) {
     if (event.type === 'handed-in') {
+      // The real win: the monster is sent home in a shower of gold, with a chest.
       const pos = despawnInvader(event.item.id, true) || new THREE.Vector3(0, 0, W.PATH_END_Z);
-      if (state.scene === 'earth') fx.coinsTo(pos, player.object, 10, () => audio.coin());
-      ui.toast(`Handed in: ${event.item.name}  +${S.fmt(event.reward)} coins, +${event.xp} XP`, 'good');
+      if (state.scene === 'earth') {
+        for (let k = 0; k < 3; k++) fx.burst(pos.clone().add(new THREE.Vector3(0, 1 + k * 1.2, 0)), [A.C.gold, A.C.white, A.C.gold][k], 26, 9, 9);
+        fx.coinsTo(pos, player.object, 16, () => audio.coin());
+      }
+      audio.era();
+      ui.banner('Sent home!', `${event.item.name} is handed in`);
+      ui.toast(`+${S.fmt(event.reward)} coins, +${event.xp} XP${event.chest ? ` and ${/^[aeiou]/.test(event.chest.rarity) ? 'an' : 'a'} ${event.chest.rarity} chest` : ''}`, 'gold');
       if (event.item.dueAt && event.item.dueAt - Date.now() > 2 * 86400e3) setTimeout(() => playBeat('proEarly'), 1800);
       gainedXp(event);
     } else if (event.type === 'chest') {
@@ -823,8 +833,9 @@ function refreshLand(animate = false) {
       }
       const a = S.LAND_AREAS.find((x) => x.zone === site.zone);
       const pj = S.areaProject(site.zone);
+      const building = S.underConstruction(state, site.zone);
       if (!site.label) site.label = fx.label(site.sign, 2.4, '', 'step fog');
-      site.label.set(`<em>${a.name} · across the creek</em>${pj ? `A bridge goes here: the Librarian’s project “${pj.title}”` : 'A bridge goes here one day'}`);
+      site.label.set(`<em>${a.name} · across the creek</em>${building ? 'Bridge under construction: ready tomorrow morning' : pj ? `A bridge goes here: the Librarian’s project “${pj.title}”` : 'A bridge goes here one day'}`);
     }
   }
   if (animate) for (const a of fresh) {
@@ -878,15 +889,10 @@ function leaveRealm(knockedOut = false) {
   });
 }
 
-/** Late homework near you quietly takes a few coins: no hit, no shove, no health lost. */
-function stealCoins(from) {
+/** Late homework near you only says hello: nothing is taken. */
+function nudgeFrom(from) {
   if (player.down || ui.isOpen()) return false;
-  const take = Math.min(Math.floor(state.coins), Math.max(1, Math.round(S.wage(state) * 20)));
-  if (!take) return false;
-  state.coins -= take;
-  audio.deny();
-  fx.float(from.clone().add(new THREE.Vector3(0, 2.6, 0)), `-${S.fmt(take)} coins`, 'hurt');
-  refreshHud();
+  fx.float(from.clone().add(new THREE.Vector3(0, 2.6, 0)), 'Hand me in!', 'info');
   return true;
 }
 
@@ -1016,10 +1022,9 @@ function refreshHud() {
 function deadlineAlert(late, now) {
   if (late.length) {
     const item = late[0];
-    const cost = S.lateCost(state, item, now);
     return {
       level: 'late', id: item.id, name: item.name, more: late.length - 1, canIgnore: true,
-      text: cost.stopped ? `late ${timeLeft(now - item.dueAt)} · cost you ${S.fmt(cost.coins)} coins and ${cost.xp} XP` : `late ${timeLeft(now - item.dueAt)} · losing ${S.fmt(cost.perHour)} coins and ${cost.xpPerHour} XP an hour`,
+      text: `late ${timeLeft(now - item.dueAt)} · still pays ${S.fmt(S.handInReward(state, item))} coins when handed in`,
     };
   }
   const soon = Object.values(state.school.items)
@@ -1035,7 +1040,7 @@ function ignoreItem(id, on) {
   const item = state.school.items[id];
   if (!item) return;
   S.setIgnored(state, id, on);
-  if (on) ui.toast(`Ignoring ${item.name}: no warnings or losses for it. Undo it from the Canvas list.`, 'good');
+  if (on) ui.toast(`Ignoring ${item.name}: no warnings for it. Undo it from the Canvas list.`, 'good');
   else ui.toast(`${item.name} counts again.`, 'good');
   syncInvaders(Date.now());
   refreshHud();
@@ -1066,10 +1071,10 @@ function checkDeadlines(startup = false) {
     if (w.level === 'late') {
       audio.alarm();
       ui.banner('Assignment late', name);
-      ui.toast(`${name} is late. Until it's handed in you lose 1% of your coins and ${S.LATE_XP_RATE} XP every hour. Nothing to submit? Press Ignore.`, 'bad');
+      ui.toast(`${name} is late. Nothing is lost: hand it in whenever you can and it still pays out. Nothing to submit? Press Ignore.`, 'gold');
     } else if (w.level === 'critical') {
       audio.alarm();
-      ui.toast(`Due in ${timeLeft(w.item.dueAt - now)}: ${name}. Hand it in on time to avoid losses.`, 'bad');
+      ui.toast(`Due in ${timeLeft(w.item.dueAt - now)}: ${name}. Hand it in for a big payday.`, 'gold');
     } else {
       ui.toast(`Due within a day: ${name}`, 'gold');
     }
@@ -1113,13 +1118,9 @@ function openBuilding(i) {
   const b = state.pads[state.scene][i];
   const tier = S.tierFor(state);
   ui.building({
-    name: S.buildingName(b), level: b.level, maxLevel: S.MAX_LEVEL, income: S.buildingIncome(state, b), stored: b.stored, cap: S.buildingCap(state, b), golden: b.golden, tokens: state.tokens,
-    upgrade: b.level < S.MAX_LEVEL ? { cost: S.upgradeCost(b), affordable: state.coins >= S.upgradeCost(b), income: S.buildingIncome(state, { ...b, level: b.level + 1 }) } : null,
-    modernize: b.tier < tier ? { name: S.BUILDINGS[b.type].names[tier], cost: S.modernizeCost(state, b), affordable: state.coins >= S.modernizeCost(state, b), income: S.buildingIncome(state, { ...b, tier, level: 1 }) } : null,
-    gild: !b.golden,
+    name: S.buildingName(b), level: b.level, maxLevel: S.MAX_LEVEL, role: S.buildingRole(b), stored: b.stored,
+    upgrade: b.level < S.MAX_LEVEL ? { cost: S.upgradeCost(b), affordable: state.coins >= S.upgradeCost(b) } : null,
     onUpgrade: () => (S.upgrade(state, i) ? built(i, `${S.buildingName(b)} is now level ${b.level}`) : deny('Not enough coins yet.')),
-    onModernize: () => (S.modernize(state, i) ? built(i, `Rebuilt as ${S.buildingName(b)}`) : deny('Not enough coins yet.')),
-    onGild: () => (S.gild(state, i) ? built(i, `${S.buildingName(b)} turned golden`) : deny('You need a golden token. Legendary chests have them.')),
     sell: { value: S.buildingSellValue(b), paid: S.buildingPaid(b), stored: b.stored },
     onSell: () => {
       const name = S.buildingName(b);
@@ -1253,7 +1254,7 @@ function moveToNewLand(done) {
     ui.banner(chapter ? chapter.title : eraName(), chapter ? chapter.goal : `A new land: ${world.landName()}`);
     warmShaders();
     if (state.era === 1) setTimeout(() => playStory('chapter2'), 2800);
-    setTimeout(() => ui.toast(`Your old town stays behind. A settler's purse of ${S.fmt(done.purse)} coins${done.decorBack ? ` (+${S.fmt(done.decorBack)} for your decorations)` : ''} gets the first homes built.`, 'gold'), 2600);
+    setTimeout(() => ui.toast(`Your whole town came along${done.restyled ? `, and ${done.restyled} building${done.restyled === 1 ? ' was' : 's were'} rebuilt in the new style for free` : ''}. New country to explore around it.`, 'gold'), 2600);
     save();
   });
 }
@@ -1304,8 +1305,7 @@ function openSchool() {
     const ignored = !a.submitted && S.isIgnored(state, a);
     if (ignored) status = state.school.ignored[a.id] === true ? 'Ignored: nothing to hand in' : 'Ignored: Canvas says on paper or no submission';
     else if (!a.submitted && a.dueAt && a.dueAt < now) {
-      const cost = S.lateCost(state, a, now);
-      status = `Late ${timeLeft(now - a.dueAt)}${cost.coins >= 1 || cost.xp ? ` · has cost ${S.fmt(cost.coins)} coins and ${cost.xp} XP` : ''}`;
+      status = `Late ${timeLeft(now - a.dueAt)} · still worth handing in`;
     }
     byCourse.get(a.courseName).push({ ...a, status, ignored, sample: S.isSample(a), late: !ignored && !a.submitted && a.dueAt && a.dueAt < now, studied: S.studyProgress(state, a) });
   }
@@ -1388,6 +1388,7 @@ function projectAction(giver) {
     if (!paid) return false;
     audio.chest();
     ui.banner('Project done', paid.title);
+    if (paid.overnight) setTimeout(() => ui.toast('Construction starts tonight: the bridge will be ready tomorrow morning. Come back and see!', 'gold'), 1600);
     const bits = [];
     if (paid.coins) bits.push(`+${S.fmt(paid.coins)} coins`);
     if (paid.gear) bits.push(gearLine(paid.gear));
@@ -1451,7 +1452,7 @@ function openHero() {
 function openQuests() {
   const now = Date.now();
   ui.quests({
-    projects: S.acceptedProjects(state), offers: S.projectOffers(state), done: state.projects.done.length, total: S.STORY.length, level: state.hero.level,
+    projects: S.acceptedProjects(state), offers: S.projectOffers(state), waiting: S.waitingGivers(state), done: state.projects.done.length, total: S.STORY.length, level: state.hero.level,
     school: S.threats(state, now).map(({ item, overdue }) => ({
       id: item.id, name: item.name, course: item.courseName, kind: item.kind, overdue, time: timeLeft(item.dueAt - now),
       studied: S.studyProgress(state, item), goal: S.STUDY_GOAL[item.size || 1],
@@ -1513,7 +1514,7 @@ function openStudyHall(prefill = {}) {
     status: practiceStatus,
     onAnswer: (source, q, ok) => {
       const item = source.item && state.school.items[source.item.id];
-      if (!ok && item && q.choices?.length === 4) S.addReview(state, item, source.topic ? { ...q, topic: source.topic } : q);
+      if (!ok && q.choices?.length) missedToDeck(item, source.topic ? { ...q, topic: source.topic } : q);
     },
     reward: ({ item, right = 0, wrong = 0, topic }) => {
       const r = S.finishPractice(state, item?.id ?? null, right, wrong, Date.now(), topic || null);
@@ -1534,34 +1535,6 @@ function openPractice(id = null, topic = null) {
   // Practice now opens the Study Hall, set to that item (and topic).
   return openStudyHall({ itemId: id, topic: topic || '', mode: 'quiz' });
 }
-function openPracticeOld(id = null, topic = null) {
-  if (fight || ui.isOpen()) return;
-  const now = Date.now();
-  const list = S.threats(state, now).map((t) => t.item);
-  const item = (id && state.school.items[id]) || list.filter((a) => a.kind === 'boss').sort((a, b) => a.dueAt - b.dueAt)[0] || list[0];
-  if (!item) return void ui.toast('Nothing to practice for yet. Exams and assignments from Canvas show up here.', 'bad');
-  ui.practice({
-    name: item.name, course: item.courseName || 'your course', armor: item.kind === 'boss' ? S.examArmor(state, item) : null,
-    load: () => makePractice(item, 5, topic),
-    onAnswer: (q, right) => { if (!right) S.addReview(state, item, topic ? { ...q, topic } : q); },
-    finish: (right, wrong) => {
-      const r = S.finishPractice(state, item.id, right, wrong, Date.now(), topic);
-      if (r.lures) setTimeout(() => ui.toast('Good round: +1 lure for catching creatures', 'good'), 600);
-      gainedXp(r);
-      syncInvaders(Date.now());
-      refreshHud();
-      save();
-      if (right) audio.coin();
-      const armor = item.kind === 'boss' ? ` ${item.name} has ${Math.round(S.examArmor(state, item) * 100)}% armor left.` : '';
-      const toast = `Practice: ${right} right. +${r.xp} XP${r.minutes ? `, ${r.minutes} min of study credit` : ''}.${armor}`;
-      ui.toast(toast, 'good');
-      if (r.prepared) ui.toast(item.kind === 'boss' ? `${item.name} has no armor left. Your gate will hold on exam day.` : `${item.name} is fully studied: handing it in pays 50% more.`, 'gold');
-      return `+${r.xp} XP${r.minutes ? ` and ${r.minutes} minutes of study credit` : ''}.${armor}${wrong ? ` The ${wrong} you missed come${wrong === 1 ? 's' : ''} back for review tomorrow.` : ''}${r.capped ? ' Practice credit for this one is used up today; more rounds still pay XP.' : ''}`;
-    },
-    again: () => openPracticeOld(item.id),
-  });
-}
-
 function beginStudy(id, minutes, topic = null) {
   if (!S.startStudy(state, id, minutes, Date.now(), topic)) return;
   track('study_start', { minutes });
@@ -1584,6 +1557,7 @@ function endStudy() {
   const hoursBefore = S.studyHours(state);
   const result = S.finishStudy(state);
   track('study_done', { minutes: Math.round(result?.minutes || 0) });
+  if (result?.coins && state.tutorial && !state.tutorial.studied) state.tutorial.studied = true;
   // New village pieces unlocked by the hours just studied.
   const fresh = [];
   for (let h = Math.floor(hoursBefore) + 1; h <= Math.floor(S.studyHours(state)); h++) fresh.push(...S.decorAt(h).map((k) => S.DECOR[k].name), ...S.PATHS.filter((p) => p.hours === h).map((p) => p.name));
@@ -1609,6 +1583,7 @@ function endStudy() {
     if (result.chest) bits.push(`a ${result.chest.rarity} chest on your plaza`);
     else if (result.complete) bits.push('no more study chests today');
     if (result.complete && result.streak > 1) bits.push(`${result.streak} day streak`);
+    if (result.milestone) setTimeout(() => ui.banner(`${result.streak}-day streak!`, `A ${result.milestone} chest and 5 lures`), 2200);
     ui.toast(bits.join(' · '), 'gold');
     if (result.lures) ui.toast(`+${result.lures} lure${result.lures === 1 ? '' : 's'} for catching creatures out in the country (you have ${state.critters.lures})`, 'good');
     if (result.prepared) ui.toast(result.item.kind === 'boss' ? `${result.item.name} has no armor left. Your gate will hold on exam day.` : `${result.item.name} is fully studied: handing it in pays 50% more.`, 'good');
@@ -1724,7 +1699,7 @@ function updateExamDay(dt) {
 
 function finishExamDay(event, pos) {
   villagersReact(event);
-  const { item, outcome, coins, chest, wrecked } = event;
+  const { item, outcome, coins } = event;
   if (pos) {
     despawnInvader(item.id, false);
     const colors = outcome === 'held' ? [A.C.gold, A.C.white, A.C.gold] : [A.C.red, 0x1a1420, A.C.red];
@@ -1735,19 +1710,11 @@ function finishExamDay(event, pos) {
     audio.era();
     ui.banner('The gate held', `Your studying broke ${item.name}`);
     ui.toast(`+${S.fmt(coins)} coins and an epic chest. Your grade will pay more when it posts.`, 'gold');
-  } else if (outcome === 'dented') {
-    audio.hurt();
-    ui.banner('The walls took a hit', `${item.name} still had ${Math.round(event.armor * 100)}% armor`);
-    ui.toast(`Repairs cost ${S.fmt(-coins)} coins. Study earlier next time to break its armor first.`, 'bad');
   } else {
-    audio.hurt();
-    if (wrecked) {
-      refreshPad(wrecked.scene, wrecked.index);
-      const at = pads[wrecked.scene][wrecked.index]?.group.position;
-      if (at && state.scene === wrecked.scene) for (let k = 0; k < 3; k++) fx.burst(at.clone().add(new THREE.Vector3(0, 1 + k, 0)), [A.C.red, 0x6b5a48, A.C.orange][k], 30, 9, 9);
-    }
-    ui.banner('A building was wrecked', `${item.name} hit the gate with ${Math.round(event.armor * 100)}% armor`);
-    ui.toast(`Lost ${S.fmt(-coins)} coins${wrecked ? ' and a level on your best building' : ''}. Your grade still pays when it posts.`, 'bad');
+    // Not enough studying to break it: no bonus chest, nothing lost.
+    audio.coin();
+    ui.banner(outcome === 'dented' ? 'Exam day: you made it through' : 'Exam day came and went', `${item.name} still had ${Math.round(event.armor * 100)}% armor`);
+    ui.toast(`+${S.fmt(coins)} coins for showing up. Study a little earlier next time for the big bonus. Your grade still pays when it posts.`, 'good');
   }
   syncChests();
   syncInvaders(Date.now());
@@ -1970,7 +1937,7 @@ function findTarget() {
     for (const [id, sh] of shadows) offer(Math.hypot(p.x - sh.object.position.x, p.z - sh.object.position.z), 3.4, sh.revealed ? { text: `Mark \u201c${sh.reading.label}\u201d as read`, run: () => readShadow(id) } : { text: 'Something from your syllabus (Watchtower)', run: openWatchtower });
     for (const [name, f] of folk) offer(Math.hypot(p.x - f.object.position.x, p.z - f.object.position.z), 3.2, { text: `Talk to ${name}`, run: () => openVillager(name) });
     if (state.tutorial?.done && owl.object.visible) offer(Math.hypot(p.x - owl.object.position.x, p.z - owl.object.position.z), 3.2, { text: 'Talk to the Librarian', run: openLibrarian });
-    for (const g of ghosts) offer(p.distanceTo(g.object.position), 3.6, { text: `Review ${S.dueReviews(state).length} missed questions`, run: openReview });
+    for (const g of ghosts) offer(p.distanceTo(g.object.position), 3.6, { text: 'Review your flashcards', run: () => openStudyHall() });
     for (const [id, h] of halls) {
       const next = S.threats(state).map((t) => t.item).filter((a) => a.courseId === id).sort((a, b) => a.dueAt - b.dueAt)[0];
       offer(Math.hypot(p.x - h.object.position.x, p.z - h.object.position.z), 5, { text: `Study for ${h.name}`, run: () => openStudy(next?.id ?? null) });
@@ -2069,32 +2036,16 @@ const nearestDummy = () => nearestOf(dummiesLeft().map((r) => r.object.position)
 // The Librarian teaches one thing at a time, and every step waits for you to do it.
 // reveal: which parts of the screen show from this step on.
 const TUTORIAL = [
-  { text: 'You’re awake! Stretch those legs. Walk around a bit.', keys: ['W', 'A', 'S', 'D'],
+  // Study first: the lesson is "studying grows my valley", not combat drills.
+  { text: 'You’re awake! Stretch those legs. WASD to walk, hold Shift to run.', keys: ['W', 'A', 'S', 'D'],
     enter: () => { tut.start = player.object.position.clone(); }, done: () => player.object.position.distanceTo(tut.start) > 7 },
-  { text: 'Faster. Hold Shift while you walk to run.', keys: ['Shift', '+ WASD'],
-    enter: () => { tut.ran = 0; tut.last = player.object.position.clone(); },
-    tick: () => { const p = player.object.position; if (keys.has('shift')) tut.ran += Math.hypot(p.x - tut.last.x, p.z - tut.last.z); tut.last.copy(p); },
-    done: () => tut.ran > 12 },
-  { text: 'Hop! Space jumps. Good for hills and showing off.', keys: ['Space'], done: () => tut.flags.jump },
-  { text: 'Now the useful one. Q dashes. Nothing can touch you mid-dash, so dash through trouble.', keys: ['Q'], done: () => tut.flags.dash },
-  { text: 'Look around: hold the right mouse button and drag. Or tap Ctrl to lock the camera behind you.', keys: ['Right drag', 'Ctrl'],
-    enter: () => { tut.lastYaw = cam.yaw; tut.yawMoved = 0; tut.lock = shiftLock; },
-    tick: () => { tut.yawMoved += Math.abs(cam.yaw - tut.lastYaw); tut.lastYaw = cam.yaw; },
-    done: () => tut.yawMoved > 1.4 || shiftLock !== tut.lock },
-  { text: 'Eek, a loose page! Smack it. F or left click. Three quick swings make a combo.', keys: ['F', 'Click'],
-    enter: () => { clearDummies(); tut.dummy = spawnDummy(3); },
-    target: () => nearestDummy(), done: () => !dummiesLeft().length },
-  { text: 'It brought friends. R slams the ground and hits everything around you.', keys: ['R'],
-    enter: () => { clearDummies(); player.slamCd = 0; spawnDummy(1.2); spawnDummy(4); },
-    target: () => nearestDummy(), done: () => tut.flags.slam && ((tut.flags.hit || 0) > 0 || !dummiesLeft().length) },
-  { text: 'Real enemies come from your coursework. That board shows it all. Click it, or walk over and press E.', keys: ['Click', 'E'], reveal: 'tracker',
-    enter: () => setTimeout(clearDummies, 1500),
+  { text: 'That board holds your real coursework from Canvas. Click it, or walk over and press E.', keys: ['Click', 'E'], reveal: 'tracker',
     target: () => BOARD_POS, done: () => tut.flags.school },
-  { text: 'Every monster is a real assignment. The closer it gets, the sooner it’s due. Go take a look.', reveal: 'tracker',
+  { text: 'Every little monster is a real assignment. The closer it gets, the sooner it’s due. Handing it in sends it home with a big payday.', reveal: 'tracker',
     target: () => nearestInvader(), done: () => { const t = nearestInvader(); return !t || Math.hypot(t.x - player.object.position.x, t.z - player.object.position.z) < 8; } },
-  { text: 'Monsters hate focus. Press T to start a study session. Real timer, real work. That’s how you grow.', keys: ['T'], glow: 'btnStudy', reveal: 'study',
-    done: () => tut.flags.study },
-  { text: 'We need shelter. Press B, then click the glowing patch to put a hut there. Roads stay clear.', keys: ['B', 'Click'], glow: 'btnBuild', reveal: 'build',
+  { text: 'Now the real thing. Press T and start a study session. Real timer, real work. Keep exploring while it runs.', keys: ['T'], glow: 'btnStudy', reveal: 'study',
+    done: () => Boolean(state.study.active) || state.tutorial.studied },
+  { text: 'While the timer runs: let’s give someone a home. Press B, then click the glowing patch to put a hut there.', keys: ['B', 'Click'], glow: 'btnBuild', reveal: 'build',
     target: () => tut.spot,
     enter: () => {
       tut.spot = freeBuildSpot();
@@ -2103,22 +2054,17 @@ const TUTORIAL = [
       if (state.coins < cost) { S.addCoins(state, cost - state.coins); refreshHud(); }
     },
     done: () => S.buildingCount(state).used > tut.built },
-  { text: 'Huts earn a little allowance, even while you’re away. Walk past yours to collect.', reveal: 'coins',
-    enter: () => {
-      tut.collected = state.stats.collected;
-      const b = state.pads.earth.find(Boolean);
-      if (b) b.stored = Math.max(b.stored, 25);
-    },
-    target: () => nearestBuilding(), done: () => state.stats.collected > tut.collected },
-  { text: 'Good grades and big wins drop chests. Here, this one’s on me. Walk up and press E.', keys: ['E'], reveal: 'coins',
+  { text: 'Hand-ins, good grades and finished sessions drop chests. Here, this one’s on me. Walk up and press E.', keys: ['E'], reveal: 'coins',
     // Given once: reloading on this step finds the same chest (or, if it's opened, moves on).
     enter: () => { const t = state.tutorial; if (!t.gift) { t.gift = S.grantChest(state, 'rare', 'A gift from the Librarian').id; save(); } tut.chestId = t.gift; syncChests(); },
     target: () => chests.get(tut.chestId)?.object.position, done: () => !state.school.chests.some((c) => c.id === tut.chestId) && !ui.isOpen() },
-  { text: 'Press M for the map. See the grey? That’s fog: land nobody’s walked yet.', keys: ['M'], reveal: 'menu',
+  { text: 'Press M for the map. See the grey? That’s land nobody’s walked yet.', keys: ['M'], reveal: 'menu',
     done: () => tut.flags.map && !ui.isOpen() },
-  { text: 'Exploring clears the fog. Out there: landmarks for my Atlas, wild creatures, and fox camps guarding chests. Follow my lantern!', keys: ['Shift', 'Q'], reveal: 'menu',
+  { text: 'Exploring clears the fog. Out there: landmarks for my Atlas, wild creatures and hidden chests. Follow my lantern!', keys: ['Shift'], reveal: 'menu',
     enter: () => { tut.found = S.foundCount(state, state.era); },
     target: () => unfoundLandmark() || W.GATE.clone().add(new THREE.Vector3(0, 0, 26)), done: () => S.foundCount(state, state.era) > tut.found || (Math.hypot(player.object.position.x, player.object.position.z) > W.TOWN_R + 9 && areaOpen(player.object.position.x, player.object.position.z)) },
+  { text: 'Last thing: finish your study session. When the timer ends you get coins, XP, lures and a chest. (No session running? Press T.)', keys: ['T'], reveal: 'menu',
+    done: () => state.tutorial.studied },
   { text: '', manual: true, reveal: 'all', target: () => { const w = S.nextWonder(state); return w && w.scene === 'earth' ? W.wonderPosition(w.index) : null; } },
 ];
 // The screen starts nearly empty and fills in as Owl teaches each part.
@@ -2149,7 +2095,7 @@ function startTutorialStep() {
   step.enter?.();
   if (step.manual) {
     const w = S.nextWonder(state);
-    step.text = w ? `You’re ready, keeper. Study to earn, hand in work to beat monsters, explore for pages. Then raise the ${w.name} right there. Here’s something for the road.` : 'You’re ready, keeper. Here’s something for the road.';
+    step.text = w ? `You’re ready, keeper. Study to grow the valley, hand in work to send monsters home, and come see me for projects. One day the ${w.name} will stand right there. Here’s something for the road.` : 'You’re ready, keeper. Here’s something for the road.';
   }
   applyTutHud();
   coach.show(step);
@@ -2590,7 +2536,7 @@ window.addEventListener('keydown', (event) => {
   else if (key === 'r') { if (build.on) { build.rot += Math.PI / 4; } else slam(); }
   else if (key === 'b') toggleBuild();
   else if ((key === 'x' || key === 'delete' || key === 'backspace') && build.on) removeBuild();
-  else if (key === 't') openStudy();
+  else if (key === 't') { openStudy(lastHitItem && state.school.items[lastHitItem] ? lastHitItem : null); lastHitItem = null; }
   else if (key === 'p') openPractice();
   else if (key === 'h') ui.help({ first: false, onTutorial: replayTutorial });
   else if (key === 'm') openMap();
@@ -2928,6 +2874,14 @@ function updateCamera(dt) {
     if (Math.abs(cam.pendYaw) < 1e-4) cam.pendYaw = 0;
     if (Math.abs(cam.pendPitch) < 1e-4) cam.pendPitch = 0;
   }
+  const scene_ = inStudyScene();
+  document.body.classList.toggle('study-scene', scene_);
+  if (scene_) {
+    // A slow, cosy drift around the hero while you study.
+    cam.yaw += dt * 0.05;
+    cam.pitch += (0.32 - cam.pitch) * Math.min(1, dt * 0.6);
+    cam.want += (9 - cam.want) * Math.min(1, dt * 0.6);
+  }
   cam.dist += (cam.want - cam.dist) * Math.min(1, dt * 10);
   cam.idle += dt;
   // The view follows a smoothed point on the hero, but turning is applied at
@@ -2971,21 +2925,12 @@ function updateTown(dt, time) {
       pad.marker.position.y = 0.1 + Math.sin(time * 2.4 + i) * 0.08;
     }
     if (!b) continue;
-    const rate = S.buildingIncome(state, b);
-    const full = b.stored / Math.max(1, S.buildingCap(state, b));
-    pad.bubble.visible = b.stored > rate * 12;
-    if (pad.bubble.visible) {
-      pad.bubble.position.y = pad.top + 0.5 + Math.sin(time * 2.6 + i) * 0.18;
-      pad.bubble.rotation.y = time * 2.2;
-      pad.bubble.scale.setScalar(0.7 + Math.min(1, full * 6) * 0.6);
-    }
-    if (!fight && b.stored >= Math.max(1, rate * 2.5) && Math.hypot(p.x - pad.group.position.x, p.z - pad.group.position.z) < 5.4) {
+    // Buildings are homes and shops now: they don't make coins, so nothing to collect.
+    pad.bubble.visible = false;
+    // Old saves may still hold coins in a building: walking by hands them over, once.
+    if (!fight && b.stored >= 1 && Math.hypot(p.x - pad.group.position.x, p.z - pad.group.position.z) < 5.4) {
       const amount = S.collect(state, i);
-      if (amount > 0) {
-        const from = pad.group.position.clone().add(new THREE.Vector3(0, pad.top * 0.5, 0));
-        fx.coinsTo(from, player.object, 3 + Math.round(Math.min(1, full * 4) * 8), () => audio.coin());
-        fx.float(pad.group.position.clone().add(new THREE.Vector3(0, pad.top + 1, 0)), `+${S.fmt(amount)}`);
-      }
+      if (amount > 0) fx.float(pad.group.position.clone().add(new THREE.Vector3(0, pad.top + 1, 0)), `+${S.fmt(amount)}`);
     }
   }
   for (const o of spinners) { if (o.userData.axis === 'z') o.rotation.z += dt * 0.9; else o.rotation.y += dt * 1.6; }
@@ -3027,9 +2972,16 @@ let saveTimer = 0;
 // move brings it straight back to full speed. Shadows redraw every other frame.
 let lastInput = performance.now();
 for (const type of ['keydown', 'mousedown', 'mousemove', 'wheel', 'touchstart']) window.addEventListener(type, () => { lastInput = performance.now(); }, { passive: true, capture: true });
+// The study scene: with a session running and nobody touching anything for a few
+// seconds, the game turns into something to glance at, not play: the HUD fades, the
+// camera drifts slowly around you, and it draws only 12 frames a second (cheap on a
+// weak laptop, and not a distraction). Any input brings the game straight back.
+const STUDY_SCENE_AFTER = 8000;
+const inStudyScene = (now = performance.now()) => Boolean(state.study.active) && !ui.isOpen() && !fight && !inRealm() && now - lastInput > STUDY_SCENE_AFTER && !keys.size;
 function frameBudget(now) {
   const idle = now - lastInput;
   if (keys.size || drag || build.painting) return 0;
+  if (inStudyScene(now)) return 1000 / 12;
   return idle > 20000 ? 1000 / 20 : idle > 2500 ? 1000 / 30 : 0;
 }
 let shadowFrame = 0;
@@ -3078,13 +3030,6 @@ function frame(nowMs) {
   realms.update(dt, time, player.object.position, !player.down);
   if (fight) updateExamDay(dt);
   updateStudy(dt, time);
-  if (!ui.isOpen() && !inRealm() && document.visibilityState === 'visible') {
-    nextRaid -= dt;
-    if (nextRaid <= 0) {
-      nextRaid = 150 + Math.random() * 120;
-      spawnRaid();
-    }
-  }
   target = ui.isOpen() ? null : findTarget();
   ui.prompt(target ? target.text : null);
   updateCamera(dt);
@@ -3175,7 +3120,7 @@ function openMarket() {
       else ui.toast(`${S.DECOR[o.id].name} unlocked in build mode (B).`, 'gold');
       refreshHud(); save(); ui.close(); openMarket();
     },
-    showcase: Object.entries(S.COLLECTIBLES).filter(([, c]) => c.tier === 'mythic' || c.tier === 'legendary').sort(([, a], [, b]) => tierRank(b.tier) - tierRank(a.tier)).map(([id, c]) => ({ id, name: c.name, tier: c.tier, owned: Boolean(state.vault.owned[id]), odds: `${S.DROP_TABLE.legendary.odds[c.tier]}% from a legendary chest`, src: thumbFor({ kind: 'collectible', id }) })),
+    showcase: Object.entries(S.COLLECTIBLES).filter(([, c]) => c.tier === 'mythic' || c.tier === 'legendary').sort(([, a], [, b]) => tierRank(b.tier) - tierRank(a.tier)).map(([id, c]) => ({ id, name: c.name, tier: c.tier, owned: Boolean(state.vault.owned[id]), odds: `From ${c.tier} chests`, src: thumbFor({ kind: 'collectible', id }) })),
     onVault: () => { ui.close(); openVault(); },
     onSellJunk: () => {
       const coins = S.sellJunk(state);
@@ -3667,8 +3612,7 @@ function syncVillagers() {
 function villagerTick(now) {
   const day = S.villagerDay(state, now);
   if (day) {
-    for (const p of day.left) ui.toast(`${p.name} the ${p.role.toLowerCase()} packed up and left. Too much late work.`, 'bad');
-    if (day.late) ui.toast(`The town is grumbling: ${day.late} late assignment${day.late === 1 ? '' : 's'} made everyone a bit unhappier.`, 'bad');
+
   }
   const newcomer = S.moveIn(state, now);
   if (newcomer) ui.toast(`${newcomer.name} the ${newcomer.role.toLowerCase()} moved into town. Go say hi (E).`, 'gold');
@@ -3677,7 +3621,6 @@ function villagerTick(now) {
 }
 function villagersReact(event) {
   if (event.outcome === 'held') setTimeout(() => playBeat('firstExam'), 2500);
-  for (const p of event.left || []) ui.toast(`${p.name} the ${p.role.toLowerCase()} left town after ${event.item.name} wrecked the gate.`, 'bad');
   if (event.outcome === 'held') for (const f of folk.values()) f.cheer = 4;
   syncVillagers();
 }
@@ -3829,7 +3772,7 @@ function drawDaily() {
   dailyEl.replaceChildren();
   const head = document.createElement('div');
   head.className = 'daily-head';
-  head.innerHTML = `<b>${d.fromPlan ? 'Your plan' : 'Today'}</b><span>${done}/${d.quests.length}</span>${d.streak ? `<em>🔥 ${d.streak} day${d.streak === 1 ? '' : 's'}</em>` : ''}`;
+  head.innerHTML = `<b>${d.fromPlan ? 'Your plan' : 'Today'}</b><span>${done}/${d.quests.length}</span>${state.study.streak ? `<em>🔥 ${state.study.streak} day${state.study.streak === 1 ? '' : 's'}</em>` : ''}`;
   dailyEl.append(head);
   for (const q of d.quests) {
     const row = document.createElement('div');
@@ -3845,9 +3788,9 @@ function drawDaily() {
   const week = document.createElement('div');
   week.className = `week ${w.claimed ? 'claimed' : w.done ? 'done' : ''}`;
   const part = Math.min(1, w.minutes / w.goal) * (w.due ? 0.6 : 1) + (w.due ? 0.4 * (w.handed / w.due) : 0);
-  week.innerHTML = `<div class="week-head"><b>This week</b><span>${w.claimed ? 'cleared ✓' : `${w.daysLeft} day${w.daysLeft === 1 ? '' : 's'} left`}</span>${w.streak > 1 ? `<em>${w.streak} weeks in a row</em>` : ''}</div>`
+  week.innerHTML = `<div class="week-head"><b>This week</b><span>${w.claimed ? 'cleared ✓' : `${w.daysLeft} day${w.daysLeft === 1 ? '' : 's'} left`}</span></div>`
     + `<div class="week-bar"><i style="width:${Math.round(part * 100)}%"></i></div>`
-    + `<small>Study ${Math.min(w.minutes, w.goal)}/${w.goal} min${w.due ? ` · Hand in ${w.handed}/${w.due}` : ''} · ${(w.streak + 1) % 4 === 0 && !w.claimed ? 'legendary' : 'epic'} chest</small>`;
+    + `<small>Study ${Math.min(w.minutes, w.goal)}/${w.goal} min${w.due ? ` · Hand in ${w.handed}/${w.due}` : ''} · epic chest</small>`;
   dailyEl.append(week);
 }
 function dailyTick(startup = false) {
@@ -3859,14 +3802,14 @@ function dailyTick(startup = false) {
   }
   if (r.chest) {
     audio.era();
-    ui.banner(r.milestone ? `${r.streak}-day streak!` : `Day ${r.streak} streak`, r.milestone ? `A ${r.milestone} chest and 5 lures` : 'All three done: a chest is on your plaza');
+    ui.banner('All done for today', 'A rare chest is on your plaza. See you tomorrow!');
     syncChests();
   }
   const wk = S.claimWeek(state);
   if (wk) {
     setTimeout(() => playBeat('firstWeek'), 3000);
     audio.era();
-    ui.banner(wk.streak > 1 ? `Week cleared · ${wk.streak} in a row` : 'Week cleared', `A ${wk.chest.rarity} chest is on your plaza`);
+    ui.banner('Week cleared', `A ${wk.chest.rarity} chest is on your plaza`);
     syncChests();
   }
   if (fresh || r.claimed || wk) save();
@@ -3891,7 +3834,7 @@ function openMorning(manual = false) {
     people: state.villagers.list.length,
     sad: state.villagers.list.filter((p) => p.mood < 30).map((p) => p.name),
     quests: state.daily.quests.map((q) => ({ text: q.text, have: S.dailyProgress(state, q), need: q.target, reward: q.reward })),
-    streak: state.daily.streak, best: state.daily.best || 0,
+    streak: state.study.streak || 0, best: Math.max(state.daily.best || 0, state.study.streak || 0),
     lures: state.critters.lures,
     onGo: () => ui.close(),
   });
@@ -3983,11 +3926,32 @@ function updateCritters(dt, time) {
   }
 }
 function catchCritter(c) {
-  if (c.gone) return;
+  if (c.gone || c.catching) return;
   if (state.critters.lures < 1) return void ui.toast('No lures left. Every 10 minutes of studying earns one.', 'bad');
   const info = S.CRITTERS[c.species];
   const r = S.tryCatch(state, c.species);
   if (!r) return;
+  // Animal Crossing's fishing cue: a few nibbles (more for rarer creatures), then the bite.
+  c.catching = true;
+  const at = () => c.object.position.clone().add(new THREE.Vector3(0, 1.2, 0));
+  const base = c.object.scale.x;
+  const nibbles = { common: 1, rare: 2, epic: 3, legendary: 4 }[info.rarity] || 1;
+  for (let k = 0; k < nibbles; k++) setTimeout(() => {
+    if (!c.object.parent) return;
+    audio.pop();
+    c.object.scale.setScalar(base * 1.12);
+    setTimeout(() => c.object.scale.setScalar(base), 140);
+    fx.float(at(), '…', 'info');
+  }, 380 + k * 520);
+  setTimeout(() => {
+    c.catching = false;
+    if (!c.object.parent) return;
+    fx.float(at(), '!', 'gold');
+    shake = Math.max(shake, 0.12);
+    finishCatch(c, info, r);
+  }, 380 + nibbles * 520 + 260);
+}
+function finishCatch(c, info, r) {
   if (r.ok) {
     fx.burst(c.object.position.clone().add(new THREE.Vector3(0, 0.6, 0)), A.C.gold, 22, 6, 6);
     audio.chest();
@@ -4721,6 +4685,24 @@ function openSettings() {
   });
 }
 
+// One flashcard system: a missed question becomes a card in the Study Hall's
+// "Missed questions" deck, on the same spaced schedule as every other deck.
+function missedDeck() {
+  let deck = Object.values(state.decks || {}).find((d) => d.missed);
+  if (!deck) { deck = addHallDeck(state, { title: 'Missed questions', cards: [] }); deck.missed = true; }
+  return deck;
+}
+function missedToDeck(item, q) {
+  const deck = missedDeck();
+  if (deck.cards.some((c) => c.front === q.q)) return;
+  const answer = typeof q.answer === 'number' ? q.choices?.[q.answer] : q.answer;
+  addHallCards(state, deck.id, [{ front: q.q, back: `${answer ?? ''}${q.why ? `\n\n${q.why}` : ''}`, topic: q.topic || '', src: item?.name || q.from || '' }]);
+}
+// Old saves: move the old review cards into that deck, once.
+if (state.review?.cards?.length) {
+  for (const c of state.review.cards) missedToDeck(null, c);
+  state.review.cards = [];
+}
 function openReview() {
   const cards = S.dueReviews(state).slice(0, 10).map((c) => ({ ...c }));
   if (!cards.length) return void ui.toast('Nothing to review right now. Missed practice questions come back here.', 'good');
@@ -4773,10 +4755,12 @@ somaRefresh(true);
 applyTheme();
 applySettings();
 refreshHud();
-if (S.dueReviews(state).length) setTimeout(() => ui.toast(`${S.dueReviews(state).length} missed questions are back for review. Find the pale books by the Canvas board.`, 'gold'), 3000);
+
 
 S.revealMap(state, 0, 0, W.TOWN_R + 4);
 if (state.tutorial && !state.tutorial.done) {
+  // Saves from the old, longer tutorial pick up at the matching part of the new one.
+  if (state.tutorial.step >= TUTORIAL.length) state.tutorial.step = TUTORIAL.length - 2;
   applyTutHud();
   if (state.tutorial.step === 0) setTimeout(() => playStory('intro', startTutorialStep), 900);
   else startTutorialStep();
