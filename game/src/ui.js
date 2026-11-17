@@ -437,15 +437,16 @@ export function createUI(on) {
     },
 
     /** The quest log: the story quest, then every piece of schoolwork as a quest. */
-    quests({ story, done, total, level, school, onStudy, onPractice }) {
+    quests({ story, projects = null, offers = [], done, total, level, school, onStudy, onPractice }) {
       const reward = (r) => [r.coins ? `${fmt(r.coins)} coins` : null, r.gear ? `${r.gear} ${r.slot}` : null].filter(Boolean).join(' + ');
       panel({ title: 'Quests', subtitle: `Valley projects ${done} of ${total} done · you are level ${level}`, wide: true },
-        el('h3', { text: 'Valley project' }),
-        story ? el('div', { class: 'quest-card main' },
-          el('div', {}, story.from ? el('small', { class: 'quest-from', text: `From ${story.from}` }) : null, el('b', { text: story.title }), el('small', { text: story.text }),
-            el('div', { class: 'bar' }, el('i', { style: `width:${Math.round((story.have / story.need) * 100)}%` }))),
-          el('div', { class: 'quest-pay' }, el('em', { text: `${story.have} / ${story.need}` }), el('small', { text: `Reward: ${reward(story.reward)}` })))
-          : el('p', { class: 'note', text: 'Every Season 1 project is done. The Librarian already has a new list for next season.' }),
+        el('h3', { text: 'Valley projects' }),
+        (projects || (story ? [story] : [])).map((pj) => el('div', { class: 'quest-card main' },
+          el('div', {}, pj.from ? el('small', { class: 'quest-from', text: `For ${pj.from}` }) : null, el('b', { text: pj.title }), el('small', { text: pj.text }),
+            el('div', { class: 'bar' }, el('i', { style: `width:${Math.round((pj.have / pj.need) * 100)}%` }))),
+          el('div', { class: 'quest-pay' }, el('em', { text: pj.ready ? 'Done: go see them' : `${pj.have} / ${pj.need}` }), el('small', { text: `Reward: ${reward(pj.reward)}` })))),
+        (projects || (story ? [story] : [])).length ? null : el('p', { class: 'note', text: offers.length ? 'No projects taken on. Look for a “!” over someone’s head and have a chat.' : 'Nobody needs a hand right now. New requests turn up as the valley grows.' }),
+        offers.length ? el('p', { class: 'note', text: `Asking for help: ${offers.map((o) => (o.giver === 'Librarian' ? 'the Librarian' : o.giver)).join(', ')}.` }) : null,
         el('h3', { text: 'School quests' }),
         school.length ? school.map((a) => el('div', { class: `quest-card ${a.overdue ? 'late' : ''}` },
           el('div', {}, el('b', {}, a.name, a.kind === 'boss' ? el('span', { class: 'tag', text: 'Exam' }) : null),
@@ -592,17 +593,30 @@ export function createUI(on) {
     },
 
     /** Talking to a villager: what they say, how they feel, their quest for today. */
-    villager({ name, role, mood, friend, line, quest, gift, onClaim, onGift }) {
+    villager({ name, role, mood, friend, line, quest, gift, project = null, onClaim, onGift, onProject }) {
+      const person = mood != null; // the Librarian has no mood or friendship meter
       const feel = mood >= 70 ? ['Happy', '😊'] : mood >= 45 ? ['Fine', '🙂'] : mood >= 25 ? ['Worried', '😟'] : ['About to leave', '😣'];
       const bond = friend >= 80 ? 'Best friend' : friend >= 50 ? 'Friend' : friend >= 20 ? 'Friendly' : 'New neighbour';
       const ready = quest && !quest.done && quest.have >= quest.need;
-      panel({ title: name, subtitle: `${role} · ${bond}` },
+      // A project: offered (take it or leave it), in progress, or ready to hand back.
+      const projectCard = project ? el('div', { class: `quest-card project ${project.ready && project.accepted ? 'done' : ''}` },
+        el('div', {}, el('b', { text: project.title }), el('small', { text: project.text }),
+          project.accepted ? el('div', { class: 'bar study' }, el('i', { style: `width:${Math.round((Math.min(project.have, project.need) / project.need) * 100)}%` })) : null,
+          project.accepted ? el('small', { text: project.ready ? 'Done! Hand it over.' : `${Math.min(project.have, project.need)} / ${project.need}` }) : null),
+        el('div', { class: 'quest-pay' }, el('small', { text: `Reward: ${project.reward}` }),
+          !project.accepted ? el('button', { class: 'btn small primary', text: 'I’ll do it', onclick: onProject })
+            : project.ready ? el('button', { class: 'btn small primary', text: 'Hand it over', onclick: onProject }) : el('em', { text: 'In progress' })))
+        : null;
+      panel({ title: name, subtitle: person ? `${role} · ${bond}` : role },
         el('blockquote', { class: 'npc-line', text: `“${line}”` }),
-        el('div', { class: 'stats' },
+        person ? el('div', { class: 'stats' },
           el('div', { class: 'stat' }, el('small', { text: 'Mood' }), el('b', { text: `${feel[1]} ${feel[0]}` }), el('div', { class: 'bar' }, el('i', { style: `width:${mood}%` }))),
-          el('div', { class: 'stat' }, el('small', { text: 'Friendship' }), el('b', { text: `${Math.round(friend)} / 100` }), el('div', { class: 'bar xp' }, el('i', { style: `width:${friend}%` })))),
-        el('h3', { text: 'Today’s favour' }),
-        quest ? el('div', { class: `quest-card ${quest.done ? 'done' : ''}` },
+          el('div', { class: 'stat' }, el('small', { text: 'Friendship' }), el('b', { text: `${Math.round(friend)} / 100` }), el('div', { class: 'bar xp' }, el('i', { style: `width:${friend}%` })))) : null,
+        projectCard ? el('h3', { text: project.accepted ? 'Project' : 'Could you help with something?' }) : null,
+        projectCard,
+        projectCard && !project.accepted ? el('p', { class: 'note', text: 'No rush, and no pressure. It’ll still be here whenever you want it.' }) : null,
+        person ? el('h3', { text: 'Today’s favour' }) : null,
+        !person ? null : quest ? el('div', { class: `quest-card ${quest.done ? 'done' : ''}` },
           el('div', {}, el('b', { text: quest.text }),
             el('div', { class: 'bar study' }, el('i', { style: `width:${Math.round((Math.min(quest.have, quest.need) / quest.need) * 100)}%` })),
             el('small', { text: quest.done ? 'Done for today. Come back tomorrow.' : `${Math.min(quest.have, quest.need)} / ${quest.need}` })),
@@ -610,7 +624,7 @@ export function createUI(on) {
             ready ? el('button', { class: 'btn small primary', text: 'Hand it over', onclick: onClaim }) : null))
           : el('p', { class: 'note', text: 'Nothing today. Come back tomorrow.' }),
         gift ? el('div', { class: 'actions', style: 'margin-top:10px' }, el('button', { class: 'btn', onclick: onGift }, el('span', {}, 'Accept a gift', el('small', { text: 'Good friends leave you something once a day' })))) : null,
-        el('p', { class: 'note', text: mood < 30 ? 'Late work and wrecked buildings wear people down. Hand things in and hold the gate on exam day to keep them here.' : 'Do their favours to become friends. Friends leave gifts, and best friends bring study tea.' }),
+        person ? el('p', { class: 'note', text: mood < 30 ? 'Late work and wrecked buildings wear people down. Hand things in and hold the gate on exam day to keep them here.' : 'Do their favours to become friends. Friends leave gifts, and best friends bring study tea.' }) : null,
       );
     },
 

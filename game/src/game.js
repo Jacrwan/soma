@@ -902,7 +902,7 @@ function refreshHud() {
   });
   const hero = S.heroStats(state);
   ui.vitals({ hp: player.hp, max: hero.health, dodge: player.dashCd, slam: player.slamCd / hero.slamTime, level: hero.level, xp: state.hero.xp, need: S.xpToNext(hero.level), points: state.hero.points, capped: hero.level >= S.MAX_HERO_LEVEL });
-  const story = S.storyStatus(state);
+  const story = S.acceptedProjects(state)[0] || null;
   ui.quest(realms.status() || (story ? { title: `${story.from ? `${story.from.split(',')[0]}: ` : ''}${story.title}`, parts: [story.text, `${story.have} / ${story.need}`], onOpen: openQuests } : null));
   ui.alert(deadlineAlert(late, now));
   ui.threats(inRealm() ? [] : S.threats(state, now).map(({ item, overdue }) => ({
@@ -1266,22 +1266,55 @@ function gearLine(got) {
 
 /** 'The Librarian' -> 'owl'; 'Mira, the herbalist' -> 'mira' (dialogue speaker keys). */
 const speakerFor = (from = '') => (/librarian/i.test(from) && !/,/.test(from) ? 'owl' : from.split(',')[0].trim().toLowerCase() || 'owl');
+// Projects are never pushed: when one you took on is finished, a note says who to go see.
+const readyNoted = new Set();
 function checkStory() {
-  if (ui.isOpen()) return;
-  const paid = S.claimStory(state);
-  if (!paid) return;
-  audio.chest();
-  ui.banner('Project done', paid.title);
-  const bits = [];
-  if (paid.coins) bits.push(`+${S.fmt(paid.coins)} coins`);
-  if (paid.gear) bits.push(gearLine(paid.gear));
-  ui.toast(`Reward: ${bits.join(' · ')}`, 'gold');
-  // The next project comes from whoever needs it, in their own words (like a favour in Animal Crossing).
-  const next = S.storyStatus(state);
-  if (next) setTimeout(() => { if (!ui.isOpen()) ui.story([[speakerFor(next.from), `${next.title}! ${next.text}`]]); else ui.toast(`New project from ${next.from}: ${next.title}`); }, 2200);
-  if (paid.gear?.equipped) dressPlayer();
+  for (const p of S.acceptedProjects(state)) {
+    if (!p.ready || readyNoted.has(p.id)) continue;
+    readyNoted.add(p.id);
+    ui.toast(`${p.title}: done! Go see ${p.giver === 'Librarian' ? 'the Librarian' : p.giver} for your reward.`, 'good');
+  }
+}
+/** Takes on or hands back someone's project. giver: 'Librarian' or a villager name. Returns true if anything happened. */
+function projectAction(giver) {
+  const p = S.projectFrom(state, giver);
+  if (!p) return false;
+  if (!p.accepted) {
+    S.acceptProject(state, p.id);
+    audio.build();
+    ui.toast(`Project taken on: ${p.title}`, 'good');
+  } else if (p.ready) {
+    const paid = S.turnInProject(state, p.id);
+    if (!paid) return false;
+    audio.chest();
+    ui.banner('Project done', paid.title);
+    const bits = [];
+    if (paid.coins) bits.push(`+${S.fmt(paid.coins)} coins`);
+    if (paid.gear) bits.push(gearLine(paid.gear));
+    ui.toast(`Reward: ${bits.join(' · ')}`, 'gold');
+    if (paid.gear?.equipped) dressPlayer();
+    track('project_done', { id: p.id });
+  } else return false;
   refreshHud();
   save();
+  return true;
+}
+/** What a project looks like in someone's talk panel. */
+const projectView = (p) => p && { title: p.title, text: p.text, have: p.have, need: p.need, accepted: p.accepted, ready: p.ready, reward: [p.reward.coins ? `${S.fmt(p.reward.coins)} coins` : null, p.reward.gear ? `${p.reward.gear} ${p.reward.slot}` : null].filter(Boolean).join(' + ') };
+/** Talking to the Librarian at her post: her project, if she has one, and a friendly word. */
+function openLibrarian() {
+  if (ui.isOpen()) return;
+  const p = S.projectFrom(state, 'Librarian');
+  const lines = !p ? ['Nothing on my list for you right now. Enjoy the valley! I\u2019ll think of something. I always do.']
+    : p.ready && p.accepted ? [`You did it! ${p.title}, done. Here, this is for you.`]
+      : p.accepted ? [`How\u2019s it going? ${p.text}`]
+        : [`Oh, good, you\u2019re here. I have a little project, if you\u2019re up for it.`];
+  ui.villager({
+    name: 'The Librarian', role: 'Runs the valley', mood: null, friend: null,
+    line: lines[0], quest: null, gift: false,
+    project: projectView(p),
+    onProject: () => { projectAction('Librarian'); ui.close(); openLibrarian(); },
+  });
 }
 
 function openHero() {
@@ -1317,9 +1350,8 @@ function openHero() {
 
 function openQuests() {
   const now = Date.now();
-  const story = S.storyStatus(state);
   ui.quests({
-    story, done: state.quest.step, total: S.STORY.length, level: state.hero.level,
+    projects: S.acceptedProjects(state), offers: S.projectOffers(state), done: state.projects.done.length, total: S.STORY.length, level: state.hero.level,
     school: S.threats(state, now).map(({ item, overdue }) => ({
       id: item.id, name: item.name, course: item.courseName, kind: item.kind, overdue, time: timeLeft(item.dueAt - now),
       studied: S.studyProgress(state, item), goal: S.STUDY_GOAL[item.size || 1],
@@ -1837,6 +1869,7 @@ function findTarget() {
     offer(Math.hypot(p.x - WATCH_POS.x, p.z - WATCH_POS.z), 5, { text: 'Watchtower: what Canvas doesn\u2019t show', run: openWatchtower });
     for (const [id, sh] of shadows) offer(Math.hypot(p.x - sh.object.position.x, p.z - sh.object.position.z), 3.4, sh.revealed ? { text: `Mark \u201c${sh.reading.label}\u201d as read`, run: () => readShadow(id) } : { text: 'Something from your syllabus (Watchtower)', run: openWatchtower });
     for (const [name, f] of folk) offer(Math.hypot(p.x - f.object.position.x, p.z - f.object.position.z), 3.2, { text: `Talk to ${name}`, run: () => openVillager(name) });
+    if (state.tutorial?.done && owl.object.visible) offer(Math.hypot(p.x - owl.object.position.x, p.z - owl.object.position.z), 3.2, { text: 'Talk to the Librarian', run: openLibrarian });
     for (const g of ghosts) offer(p.distanceTo(g.object.position), 3.6, { text: `Review ${S.dueReviews(state).length} missed questions`, run: openReview });
     for (const [id, h] of halls) {
       const next = S.threats(state).map((t) => t.item).filter((a) => a.courseId === id).sort((a, b) => a.dueAt - b.dueAt)[0];
@@ -2075,6 +2108,7 @@ function replayTutorial() {
 // --- Owl, your guide, and the story ---------------------------------------------------
 // The Librarian: the guide, in the world as a robed keeper with a lantern, walking beside you.
 const owl = { object: new THREE.Group(), model: null, moving: false };
+const owlLabel = fx.label(owl.object, 2.7, '', 'npc empty'); // "!" when she has a project for you
 world.earth.add(owl.object);
 createVillager('mage', { tint: 0x4a3f8f, scale: 0.92 }).then((model) => {
   owl.model = model;
@@ -2108,6 +2142,10 @@ function updateOwl(dt, time) {
   o.visible = !inRealm() && state.scene === 'earth' && !photo.on;
   if (!o.visible) return;
   o.position.set(OWL_POST.x, world.groundHeight('earth', OWL_POST.x, OWL_POST.z), OWL_POST.z);
+  const lp = state.tutorial?.done ? S.projectFrom(state, 'Librarian') : null;
+  if (lp && !lp.accepted) owlLabel.set('<b>!</b>', 'npc mark project');
+  else if (lp?.accepted && lp.ready) owlLabel.set('<b>\u2713</b>', 'npc mark done');
+  else owlLabel.set('', 'npc empty');
   // Turns to watch you when you're close; otherwise looks out over the plaza.
   const p = player.object.position;
   const near = Math.hypot(p.x - o.position.x, p.z - o.position.z) < 12;
@@ -3568,10 +3606,19 @@ function moveVillagers(dt, time) {
     f.model?.userData.villager.update(dt, mode);
     // What shows over their head: a line when you're close, "!" when their quest is done.
     const ready = person.quest && !person.quest.done && S.questProgress(state, person.quest) >= person.quest.target;
+    const proj = S.projectFrom(state, person.name);
+    if (proj && !near) {
+      // A project: "!" when they have one to offer, a tick when yours is done and they're waiting.
+      if (!proj.accepted) f.label.set('<b>!</b>', 'npc mark project');
+      else if (proj.ready) f.label.set('<b>\u2713</b>', 'npc mark done');
+      else if (ready) f.label.set('<b>\u2713</b>', 'npc mark done');
+      else f.label.set('', 'npc empty');
+      continue;
+    }
     if (near) {
       if (time - f.lineAt > 6) { f.k += 1; f.lineAt = time; }
       f.label.set(`<em>${person.name} · ${person.role}</em>${escapeHtml(S.villagerLine(state, person, now, f.k))}`, 'npc talk');
-    } else if (ready) f.label.set('<b>!</b>', 'npc mark');
+    } else if (ready) f.label.set('<b>\u2713</b>', 'npc mark done');
     else if (person.mood < 30) f.label.set('<b>…</b>', 'npc sad');
     else f.label.set('', 'npc empty');
   }
@@ -3590,6 +3637,8 @@ function openVillager(name) {
     line: S.villagerLine(state, person, Date.now(), f ? f.k : 0),
     quest: q ? { text: q.text, have: S.questProgress(state, q), need: q.target, done: q.done, reward: q.reward.coins } : null,
     gift: S.giftReady(state, name),
+    project: projectView(S.projectFrom(state, name)),
+    onProject: () => { projectAction(name); ui.close(); openVillager(name); },
     onClaim: () => {
       const r = S.claimVillagerQuest(state, name);
       if (!r) return;

@@ -1064,3 +1064,6 @@ body:has(#menuMore:not([hidden])) #toasts { opacity: 0; }
 .btn.danger.armed { background: #e5483d; color: #fff; }
 
 .quest-from { display: block; color: #ffd878; font-weight: 800; letter-spacing: .02em; margin-bottom: 2px; }
+
+.label.npc.mark.done { background: #3ec45a; color: #fff; }
+.quest-card.project { border-left: 4px solid #f2c14e; }

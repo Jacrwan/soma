@@ -96,6 +96,7 @@ export function newState(now = Date.now()) {
     paths: {}, // 'x,z' -> path material index
     felled: [], // trees cut down in this land, by position key
     villagers: { list: [], away: {}, lastArrival: 0, day: null },
+    projects: { accepted: [], done: [] },
     daily: { day: null, quests: [], streak: 0, best: 0, lastFull: null, bonus: false, reported: null },
     critters: { lures: 3, caught: {}, pet: null },
     soma: { status: 'offline', todos: [], readings: [], done: {} },
@@ -1272,46 +1273,75 @@ const caughtKinds = (s) => Object.values(s.critters.caught || {}).filter((n) => 
 const caughtTotal = (s) => Object.values(s.critters.caught || {}).reduce((a, n) => a + (n || 0), 0);
 const bestFriend = (s) => Math.max(0, ...s.villagers.list.map((p) => p.friend || 0));
 export const STORY = [
-  { from: 'The Librarian', title: 'A roof over your head', text: 'Every newcomer needs a hut. Build your first one (B).', need: 1, have: built, reward: { coins: 200 } },
-  { from: 'The Librarian', title: 'First lesson', text: 'The valley runs on studying. Finish a study session of 10 minutes or more (T).', need: 1, have: (s) => (s.study.total >= 10 ? 1 : 0), reward: { gear: 'rare', slot: 'weapon' } },
-  { from: 'Mira, the herbalist', title: 'Start a creature log', text: 'Catch a creature out in the country. Walk up slowly, then press E.', need: 1, have: caughtTotal, reward: { coins: 300 } },
-  { from: 'Bram, the guard', title: 'Send the homework home', text: 'Your homework keeps wandering into town. Hand in 3 assignments.', need: 3, have: (s) => s.stats.handedIn, reward: { gear: 'rare', slot: 'armor' } },
-  { from: 'The Librarian', title: 'A page for the Atlas', text: 'Find a landmark out in the country for my guidebook.', need: 1, have: (s) => foundCount(s, 0), reward: { coins: 400 } },
-  { from: 'Tobin, the smith', title: 'Fox trouble', text: 'Foxes ran off with my tools. Clear a fox camp, would you?', need: 1, have: (s) => s.stats.campsCleared, reward: { coins: 300, gear: 'common', slot: 'armor' } },
-  { from: 'Odo, the scholar', title: 'Getting stronger', text: 'Reach level 3. Studying is how you level up.', need: 3, have: (s) => s.hero.level, reward: { gear: 'rare', slot: 'armor' } },
-  { from: 'Rook, the builder', title: 'A proper neighbourhood', text: 'Three buildings make a neighbourhood. Build 3.', need: 3, have: built, reward: { coins: 600 } },
-  { from: 'Fen, the fisher', title: 'Treasure hunter', text: 'Gold beams in the grass mean buried treasure. Dig up 3.', need: 3, have: (s) => s.stats.treasures, reward: { gear: 'rare', slot: 'charm' } },
-  { from: 'Mira, the herbalist', title: 'A fuller log', text: 'Catch 4 different kinds of creature. Some only come out at night.', need: 4, have: caughtKinds, reward: { coins: 800 } },
-  { from: 'Juna, the baker', title: 'Good neighbours', text: 'Become friends with someone: reach 50 friendship by doing their daily favours.', need: 50, have: bestFriend, reward: { gear: 'rare', slot: 'weapon' } },
-  { from: 'The Librarian', title: 'The whole valley', text: 'Find all 4 landmarks, and my Atlas gets its first finished chapter.', need: 4, have: (s) => foundCount(s, 0), reward: { coins: 1000 } },
-  { from: 'Ivy, the gardener', title: 'A lovely valley', text: 'Decorate until the valley is rated 2 stars. Paths and flowers help.', need: 2, have: (s) => townRating(s).stars, reward: { gear: 'epic', slot: 'charm' } },
-  { from: 'The Librarian', title: 'A study habit', text: 'Study 5 hours in total. Small sessions add up.', need: 300, have: (s) => s.study.total, reward: { gear: 'epic', slot: 'weapon' } },
-  { from: 'Bram, the guard', title: 'The Alpha', text: 'The big fox in the rock ring. Reach level 6 or so first, then beat the Alpha.', need: 1, have: (s) => (s.stats.realmBosses.wilds ? 1 : 0), reward: { gear: 'epic', slot: 'armor' } },
-  { from: 'The Librarian', title: 'The festival', text: 'Raise the Stone Circle, and the whole valley throws a festival.', need: 1, have: (s) => (s.wonders.includes(0) || s.era > 0 ? 1 : 0), reward: { coins: 2000 } },
+  { id: 'a-roof-over-your-head', chapter: 0, from: 'The Librarian', title: 'A roof over your head', text: 'Every newcomer needs a hut. Build your first one (B).', need: 1, have: built, reward: { coins: 200 } },
+  { id: 'first-lesson', chapter: 0, from: 'The Librarian', title: 'First lesson', text: 'The valley runs on studying. Finish a study session of 10 minutes or more (T).', need: 1, have: (s) => (s.study.total >= 10 ? 1 : 0), reward: { gear: 'rare', slot: 'weapon' } },
+  { id: 'start-a-creature-log', chapter: 0, from: 'Mira, the herbalist', title: 'Start a creature log', text: 'Catch a creature out in the country. Walk up slowly, then press E.', need: 1, have: caughtTotal, reward: { coins: 300 } },
+  { id: 'send-the-homework-home', chapter: 0, from: 'Bram, the guard', title: 'Send the homework home', text: 'Your homework keeps wandering into town. Hand in 3 assignments.', need: 3, have: (s) => s.stats.handedIn, reward: { gear: 'rare', slot: 'armor' } },
+  { id: 'a-page-for-the-atlas', chapter: 0, from: 'The Librarian', title: 'A page for the Atlas', text: 'Find a landmark out in the country for my guidebook.', need: 1, have: (s) => foundCount(s, 0), reward: { coins: 400 } },
+  { id: 'fox-trouble', chapter: 0, from: 'Tobin, the smith', title: 'Fox trouble', text: 'Foxes ran off with my tools. Clear a fox camp, would you?', need: 1, have: (s) => s.stats.campsCleared, reward: { coins: 300, gear: 'common', slot: 'armor' } },
+  { id: 'getting-stronger', chapter: 0, from: 'Odo, the scholar', title: 'Getting stronger', text: 'Reach level 3. Studying is how you level up.', need: 3, have: (s) => s.hero.level, reward: { gear: 'rare', slot: 'armor' } },
+  { id: 'a-proper-neighbourhood', chapter: 0, from: 'Rook, the builder', title: 'A proper neighbourhood', text: 'Three buildings make a neighbourhood. Build 3.', need: 3, have: built, reward: { coins: 600 } },
+  { id: 'treasure-hunter', chapter: 0, from: 'Fen, the fisher', title: 'Treasure hunter', text: 'Gold beams in the grass mean buried treasure. Dig up 3.', need: 3, have: (s) => s.stats.treasures, reward: { gear: 'rare', slot: 'charm' } },
+  { id: 'a-fuller-log', chapter: 0, from: 'Mira, the herbalist', title: 'A fuller log', text: 'Catch 4 different kinds of creature. Some only come out at night.', need: 4, have: caughtKinds, reward: { coins: 800 } },
+  { id: 'good-neighbours', chapter: 0, from: 'Juna, the baker', title: 'Good neighbours', text: 'Become friends with someone: reach 50 friendship by doing their daily favours.', need: 50, have: bestFriend, reward: { gear: 'rare', slot: 'weapon' } },
+  { id: 'the-whole-valley', chapter: 0, from: 'The Librarian', title: 'The whole valley', text: 'Find all 4 landmarks, and my Atlas gets its first finished chapter.', need: 4, have: (s) => foundCount(s, 0), reward: { coins: 1000 } },
+  { id: 'a-lovely-valley', chapter: 0, from: 'Ivy, the gardener', title: 'A lovely valley', text: 'Decorate until the valley is rated 2 stars. Paths and flowers help.', need: 2, have: (s) => townRating(s).stars, reward: { gear: 'epic', slot: 'charm' } },
+  { id: 'a-study-habit', chapter: 0, from: 'The Librarian', title: 'A study habit', text: 'Study 5 hours in total. Small sessions add up.', need: 300, have: (s) => s.study.total, reward: { gear: 'epic', slot: 'weapon' } },
+  { id: 'the-alpha', chapter: 0, from: 'Bram, the guard', title: 'The Alpha', text: 'The big fox in the rock ring. Reach level 6 or so first, then beat the Alpha.', need: 1, have: (s) => (s.stats.realmBosses.wilds ? 1 : 0), reward: { gear: 'epic', slot: 'armor' } },
+  { id: 'the-festival', chapter: 0, from: 'The Librarian', title: 'The festival', text: 'Raise the Stone Circle, and the whole valley throws a festival.', need: 1, have: (s) => (s.wonders.includes(0) || s.era > 0 ? 1 : 0), reward: { coins: 2000 } },
   // Chapter 2: the Bronze Age, on the river.
-  { from: 'Odo, the scholar', title: 'Exam season', text: 'Study enough that an exam breaks on your gate on exam day.', need: 1, have: (s) => s.stats.bossesBeaten, reward: { gear: 'epic', slot: 'charm' } },
-  { from: 'Sela, the merchant', title: 'Honor roll', text: 'Reach level 12.', need: 12, have: (s) => s.hero.level, reward: { gear: 'legendary', slot: 'weapon' } },
-  { from: 'The Librarian', title: 'Scholar', text: 'Study 50 hours in total. The library needs regulars.', need: 3000, have: (s) => s.study.total, reward: { gear: 'legendary', slot: 'armor' } },
-  { from: 'The Librarian', title: 'The library', text: 'Raise the Great Pyramid, with my library inside, and finish Season 1.', need: 1, have: (s) => (seasonDone(s) ? 1 : 0), reward: { gear: 'legendary', slot: 'charm', coins: 50000 } },
+  { id: 'exam-season', chapter: 1, from: 'Odo, the scholar', title: 'Exam season', text: 'Study enough that an exam breaks on your gate on exam day.', need: 1, have: (s) => s.stats.bossesBeaten, reward: { gear: 'epic', slot: 'charm' } },
+  { id: 'honor-roll', chapter: 1, from: 'Sela, the merchant', title: 'Honor roll', text: 'Reach level 12.', need: 12, have: (s) => s.hero.level, reward: { gear: 'legendary', slot: 'weapon' } },
+  { id: 'scholar', chapter: 1, from: 'The Librarian', title: 'Scholar', text: 'Study 50 hours in total. The library needs regulars.', need: 3000, have: (s) => s.study.total, reward: { gear: 'legendary', slot: 'armor' } },
+  { id: 'the-library', chapter: 1, from: 'The Librarian', title: 'The library', text: 'Raise the Great Pyramid, with my library inside, and finish Season 1.', need: 1, have: (s) => (seasonDone(s) ? 1 : 0), reward: { gear: 'legendary', slot: 'charm', coins: 50000 } },
 ];
 
-export function storyStatus(state) {
-  const quest = STORY[state.quest.step];
-  if (!quest) return null;
-  const have = Math.min(quest.need, quest.have(state) || 0);
-  return { step: state.quest.step, total: STORY.length, from: quest.from || '', title: quest.title, text: quest.text, have, need: quest.need, done: have >= quest.need, reward: quest.reward };
+// Projects are offered by whoever gives them, never pushed: a "!" over their head means
+// they have something for you; talking to them lets you take it on, and you bring it
+// back to them for the reward. One project per person at a time, in order.
+/** 'The Librarian' or a villager's first name, from a project's `from`. */
+export const projectGiver = (p) => (p.from.includes(',') ? p.from.split(',')[0].trim() : 'Librarian');
+function projectStatus(state, p) {
+  const have = Math.min(p.need, p.have(state) || 0);
+  const pr = state.projects;
+  return { id: p.id, from: p.from, giver: projectGiver(p), title: p.title, text: p.text, have, need: p.need, ready: have >= p.need, accepted: pr.accepted.includes(p.id), reward: p.reward };
 }
-
-/** Pays out the current quest if it is finished and moves to the next one. */
-export function claimStory(state, rng = Math.random) {
-  const status = storyStatus(state);
-  if (!status || !status.done) return null;
-  state.quest.step += 1;
-  const out = { title: status.title, coins: status.reward.coins || 0, gear: null };
+/** Is this person around to give projects? The Librarian always is; villagers once they've moved in. */
+const giverHere = (state, giver) => giver === 'Librarian' || state.villagers.list.some((v) => v.name === giver);
+/** The project this person has for you now (taken on or not), or null. */
+export function projectFrom(state, giver) {
+  if (!giverHere(state, giver)) return null;
+  const p = STORY.find((q) => projectGiver(q) === giver && !state.projects.done.includes(q.id));
+  if (!p || (p.chapter || 0) > state.era) return null;
+  return projectStatus(state, p);
+}
+/** Takes on a project. */
+export function acceptProject(state, id) {
+  const p = STORY.find((q) => q.id === id);
+  if (!p || state.projects.done.includes(id) || state.projects.accepted.includes(id)) return false;
+  state.projects.accepted.push(id);
+  return true;
+}
+/** Hands a finished project back to whoever gave it. Returns the reward, or null if it isn't done. */
+export function turnInProject(state, id, rng = Math.random) {
+  const p = STORY.find((q) => q.id === id);
+  if (!p || state.projects.done.includes(id)) return null;
+  const st = projectStatus(state, p);
+  if (!st.ready) return null;
+  state.projects.done.push(id);
+  state.projects.accepted = state.projects.accepted.filter((x) => x !== id);
+  state.quest.step = state.projects.done.length;
+  const out = { title: st.title, from: st.from, coins: st.reward.coins || 0, gear: null };
   if (out.coins) addCoins(state, out.coins);
-  if (status.reward.gear) out.gear = addGear(state, rollGear(state, status.reward.gear, rng, status.reward.slot, state.hero.level + 1));
+  if (st.reward.gear) out.gear = addGear(state, rollGear(state, st.reward.gear, rng, st.reward.slot, state.hero.level + 1));
   return out;
 }
+/** Projects you've taken on, oldest first (for the tracker and the quest log). */
+export const acceptedProjects = (state) => state.projects.accepted.map((id) => STORY.find((q) => q.id === id)).filter(Boolean).map((p) => projectStatus(state, p));
+/** Who has a new project waiting for you to ask about. */
+export const projectOffers = (state) => [...new Set(STORY.map(projectGiver))].map((g) => projectFrom(state, g)).filter((st) => st && !st.accepted);
+/** Kept for older callers: the first project you've taken on. */
+export function storyStatus(state) { return acceptedProjects(state)[0] || null; }
 
 /** Counts what was done out exploring, for quests. kind: 'camp', 'treasure' or 'boss'. */
 export function noteExplore(state, kind, realm) {
@@ -2457,6 +2487,9 @@ export function deserialize(text, now = Date.now()) {
     state.hero = { ...fresh.hero, ...(saved.hero || {}) };
     state.hero.gear = { ...fresh.hero.gear, ...(saved.hero?.gear || {}) };
     state.quest = { ...fresh.quest, ...(saved.quest || {}) };
+    // Projects: saves from before projects were offered by people count the steps already done.
+    state.projects = saved.projects && Array.isArray(saved.projects.done) ? { accepted: [...(saved.projects.accepted || [])], done: [...saved.projects.done] }
+      : { accepted: [], done: STORY.slice(0, Math.min(STORY.length, state.quest.step || 0)).map((q) => q.id) };
     // A save from before heroes existed: the minutes already studied still count.
     if (!saved.hero && state.study.total > 0) addXp(state, state.study.total * XP_PER_MINUTE);
     state.settings = { ...fresh.settings, ...(saved.settings || {}) };

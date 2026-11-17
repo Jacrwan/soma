@@ -787,20 +787,27 @@ test('levels, skills and gear make the hero stronger; a level gap bends the figh
 
 test('the story pays out one quest at a time and old saves keep their studied minutes', () => {
   const s = rich(0);
-  // Valley projects: the first asks for a hut, the second for a study session, each from someone.
-  assert.strictEqual(S.storyStatus(s).title, 'A roof over your head');
-  assert.strictEqual(S.storyStatus(s).from, 'The Librarian');
-  assert.strictEqual(S.claimStory(s), null);
+  // Projects come from people and are taken on by talking to them: never pushed.
+  assert.deepStrictEqual(S.acceptedProjects(s), []);
+  const offer = S.projectFrom(s, 'Librarian');
+  assert.strictEqual(offer.title, 'A roof over your head');
+  assert.strictEqual(offer.accepted, false);
+  assert.strictEqual(S.turnInProject(s, offer.id), null, 'not done yet');
+  assert.ok(S.acceptProject(s, offer.id));
   s.coins = 1e9;
   assert.ok(S.placeBuilding(s, 'home', 30, 30) >= 0);
-  assert.strictEqual(S.claimStory(s, () => 0).coins, 200);
-  assert.strictEqual(S.storyStatus(s).title, 'First lesson');
-  s.study.total = 25;
-  const paid = S.claimStory(s, () => 0);
-  assert.strictEqual(paid.gear.item.slot, 'weapon');
-  assert.strictEqual(S.storyStatus(s).from, 'Mira, the herbalist');
-  s.critters.caught.frog = 1;
-  assert.ok(S.storyStatus(s).done);
+  assert.ok(S.projectFrom(s, 'Librarian').ready);
+  assert.strictEqual(S.turnInProject(s, offer.id, () => 0).coins, 200);
+  assert.strictEqual(S.projectFrom(s, 'Librarian').title, 'First lesson');
+  // A villager's project waits until they've moved in.
+  assert.strictEqual(S.projectFrom(s, 'Bram'), null);
+  s.villagers.list.push({ name: 'Mira', role: 'Herbalist', friend: 0, mood: 70 });
+  assert.strictEqual(S.projectFrom(s, 'Mira').title, 'Start a creature log');
+  // Older saves keep the projects they had already finished.
+  const older = JSON.parse(S.serialize(S.newState(NOW)));
+  delete older.projects;
+  older.quest.step = 2;
+  assert.strictEqual(S.deserialize(JSON.stringify(older), NOW).projects.done.length, 2);
   const old = JSON.parse(S.serialize(S.newState(NOW)));
   delete old.hero;
   old.study.total = 100;
