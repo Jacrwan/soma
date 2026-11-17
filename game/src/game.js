@@ -22,6 +22,9 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createCoach } from './tutorial.js';
 import { makePiece } from './catalog.js';
 import { createOwl, makeOwl3D } from './owl.js';
+import { createStudyHall } from './studyhall.js';
+import { makeStudySet, gradeExplain, practiceStatus } from './practice.js';
+import * as Lore from './lore.js';
 
 // --- State ----------------------------------------------------------------------
 // Inside Soma the save belongs to the signed-in student, so two accounts in
@@ -301,7 +304,8 @@ function updateTaunts(dt) {
       if (inv.taunt.shown) inv.taunt.k += 1;
       inv.taunt.at = t;
       inv.taunt.shown = true;
-      inv.taunt.label.set(escapeHtml(S.taunt(state, inv.item, now, inv.taunt.k)), `npc talk taunt ${inv.boss ? 'boss' : ''}`);
+      const pro = inv.taunt.k % 4 === 3 && Lore.PROCRASTINATOR_TAUNTS.length ? Lore.PROCRASTINATOR_TAUNTS[(inv.taunt.k + hash(inv.item.id)) % Lore.PROCRASTINATOR_TAUNTS.length] : null;
+      inv.taunt.label.set(escapeHtml(pro || S.taunt(state, inv.item, now, inv.taunt.k)), `npc talk taunt ${inv.boss ? 'boss' : ''}`);
     }
   }
 }
@@ -518,6 +522,7 @@ function handleSchoolEvents(events) {
       const pos = despawnInvader(event.item.id, true) || new THREE.Vector3(0, 0, W.PATH_END_Z);
       if (state.scene === 'earth') fx.coinsTo(pos, player.object, 10, () => audio.coin());
       ui.toast(`Handed in: ${event.item.name}  +${S.fmt(event.reward)} coins, +${event.xp} XP`, 'good');
+      if (event.item.dueAt && event.item.dueAt - Date.now() > 2 * 86400e3) setTimeout(() => playBeat('proEarly'), 1800);
       gainedXp(event);
     } else if (event.type === 'chest') {
       if (event.exam && event.chest.coins) ui.banner(`Exam graded: ${event.chest.percent}%`, `${event.chest.from}  +${event.xp} XP, +${S.fmt(event.chest.coins)} coins`);
@@ -1219,7 +1224,43 @@ function openStudy(selected = null) {
 }
 
 /** A round of AI practice questions on an item; defaults to the most urgent exam, then anything due. */
+// --- The Study Hall: real studying on whatever the student picks ---------------------
+const studyHall = createStudyHall();
+function openStudyHall(prefill = {}) {
+  if (fight || ui.isOpen() || studyHall.isOpen()) return;
+  const now = Date.now();
+  const upcoming = S.threats(state, now).map((t) => t.item).filter((a) => !a.submitted).sort((a, b) => (a.dueAt || 0) - (b.dueAt || 0))
+    .map((a) => ({ id: a.id, name: a.name, courseName: a.courseName || 'Course', courseId: a.courseId, kind: a.kind, due: a.dueAt ? timeLeft(a.dueAt - now) : '' }));
+  const courses = S.courseHalls(state).map((h) => ({ id: h.id, name: h.name }));
+  studyHall.open({
+    state, save,
+    upcoming, courses,
+    ai: { makeStudySet, gradeExplain },
+    status: practiceStatus,
+    onAnswer: (source, q, ok) => {
+      const item = source.item && state.school.items[source.item.id];
+      if (!ok && item && q.choices?.length === 4) S.addReview(state, item, source.topic ? { ...q, topic: source.topic } : q);
+    },
+    reward: ({ item, right = 0, wrong = 0, topic }) => {
+      const r = S.finishPractice(state, item?.id ?? null, right, wrong, Date.now(), topic || null);
+      gainedXp(r);
+      syncInvaders(Date.now());
+      syncChests();
+      refreshHud();
+      save();
+      if (right) audio.coin();
+      if (r.chest) ui.toast('A perfect round: a rare chest landed on your plaza.', 'gold');
+      return `+${r.xp || 0} XP${r.minutes ? ` and ${r.minutes} minutes of study credit on ${item.name}` : ''}${r.lures ? ', and a lure for the Wilds' : ''}.`;
+    },
+    onClose: () => refreshHud(),
+  }, prefill);
+}
+
 function openPractice(id = null, topic = null) {
+  // Practice now opens the Study Hall, set to that item (and topic).
+  return openStudyHall({ itemId: id, topic: topic || '', mode: 'quiz' });
+}
+function openPracticeOld(id = null, topic = null) {
   if (fight || ui.isOpen()) return;
   const now = Date.now();
   const list = S.threats(state, now).map((t) => t.item);
@@ -1243,12 +1284,13 @@ function openPractice(id = null, topic = null) {
       if (r.prepared) ui.toast(item.kind === 'boss' ? `${item.name} has no armor left. Your gate will hold on exam day.` : `${item.name} is fully studied: handing it in pays 50% more.`, 'gold');
       return `+${r.xp} XP${r.minutes ? ` and ${r.minutes} minutes of study credit` : ''}.${armor}${wrong ? ` The ${wrong} you missed come${wrong === 1 ? 's' : ''} back for review tomorrow.` : ''}${r.capped ? ' Practice credit for this one is used up today; more rounds still pay XP.' : ''}`;
     },
-    again: () => openPractice(item.id),
+    again: () => openPracticeOld(item.id),
   });
 }
 
 function beginStudy(id, minutes, topic = null) {
   if (!S.startStudy(state, id, minutes, Date.now(), topic)) return;
+  if (new Date().getHours() < 4) setTimeout(() => playBeat('proLateNight'), 1200);
   if (dayPhase().sleeping) setTimeout(() => ui.toast('The town is asleep. Wren stays up by the fire with you.', 'good'), 1500);
   const item = id ? state.school.items[id] : null;
   audio.build();
@@ -1278,6 +1320,8 @@ function endStudy() {
   else {
     const pos = inv ? inv.object.position.clone() : player.object.position.clone();
     if (result.complete) {
+      setTimeout(() => playBeat('firstStudy'), 2500);
+      if (result.streak >= 7) setTimeout(() => playBeat('streak7'), 3200);
       for (let k = 0; k < 3; k++) fx.burst(pos.clone().add(new THREE.Vector3(0, 1 + k, 0)), [A.C.gold, A.C.white, A.C.orange][k], 26, 10, 10);
       shake = Math.max(shake, 0.3);
       audio.era();
@@ -1598,8 +1642,9 @@ function findTarget() {
   if (fight || player.down || build.on || tryOn) return null;
   const p = player.object.position;
   let best = null;
-  const offer = (dist, range, entry) => {
-    if (dist < range && (!best || dist / range < best.score)) best = { ...entry, score: dist / range };
+  // weight > 1 makes an offer lose ties to what's around it (a chest, the board).
+  const offer = (dist, range, entry, weight = 1) => {
+    if (dist < range && (!best || (dist / range) * weight < best.score)) best = { ...entry, score: (dist / range) * weight };
   };
   if (inRealm()) {
     realms.findTarget(p, offer);
@@ -1651,9 +1696,11 @@ function findTarget() {
     for (const inv of invaders.values()) {
       if (fight && fight.id === inv.item.id) continue;
       const steps = state.steps[inv.item.id];
-      offer(p.distanceTo(inv.object.position), inv.boss ? 8 : 4.5, inv.boss
+      // Work due soon trails you around town, so it only takes E when you walk up to
+      // it, and never from a chest, the board or a page you're standing at.
+      offer(p.distanceTo(inv.object.position), inv.boss ? 8 : inv.mode === 'road' ? 4.5 : 2.6, inv.boss
         ? { text: `${inv.item.name}: weak points and study`, run: () => openExam(inv.item.id) }
-        : { text: steps ? `${inv.item.name}: steps and study` : `Break ${inv.item.name} into steps`, run: () => openSteps(inv.item.id) });
+        : { text: steps ? `${inv.item.name}: steps and study` : `Break ${inv.item.name} into steps`, run: () => openSteps(inv.item.id) }, inv.boss ? 1 : 1.6);
     }
     for (const [itemId, pack] of packs) for (const m of pack.values()) offer(Math.hypot(p.x - m.object.position.x, p.z - m.object.position.z), 2.6, { text: `Done: ${m.step.text}`, run: () => doneStep(itemId, m.step.id) });
   }
@@ -1805,10 +1852,22 @@ function playStory(id, after) {
   save();
   ui.story(lines, after);
 }
+/** Plays a moment from lore.js once (id is remembered in the save). */
+function playBeat(id, lines = Lore.BEATS[id.split(':')[0]], after) {
+  const seen = state.story || (state.story = {});
+  if (seen[id] || !lines) return void after?.();
+  seen[id] = true;
+  save();
+  ui.story(lines, after);
+}
 // Moments that play when something first happens.
 function checkLore() {
   if (inRealm() || state.scene !== 'earth' || !state.tutorial?.done || ui.isOpen()) return;
   if (!state.story.procrastinator && S.lateItems(state).length) return void playStory('procrastinator');
+  const now = Date.now();
+  const open = S.threats(state, now).map((t) => t.item);
+  if (!state.story.allHandedIn && state.school.source !== 'none' && Object.keys(state.school.items).length && !open.length) return void playBeat('allHandedIn');
+  if (!state.story.proDeadline && open.some((a) => !a.submitted && a.dueAt - now < 24 * 3600e3 && a.dueAt > now && S.studyProgress(state, a) === 0)) return void playBeat('proDeadline');
   if (!state.story.exam) {
     const p = player.object.position;
     for (const inv of invaders.values()) if (inv.boss && Math.hypot(inv.object.position.x - p.x, inv.object.position.z - p.z) < 16) return void playStory('exam');
@@ -1927,7 +1986,8 @@ function updateExploring(dt) {
     if (!got) continue;
     audio.chest();
     ui.banner(`Atlas page ${got.count} of ${marks.length}`, l.name);
-    ui.toast(`${l.text} +${S.fmt(got.coins)} coins`, 'gold');
+    ui.toast(`+${S.fmt(got.coins)} coins`, 'gold');
+    if (Lore.ATLAS_PAGES[l.id]) setTimeout(() => ui.story([['atlas', Lore.ATLAS_PAGES[l.id]]]), 1600);
     if (got.count === 1) setTimeout(() => playStory('atlas'), 2200);
     if (got.count === marks.length) setTimeout(() => playStory(`pages${Math.min(1, state.era)}`), 2600);
     fx.burst(new THREE.Vector3(l.x, l.y + 2, l.z), A.C.gold, 30, 8, 9);
@@ -2066,6 +2126,7 @@ function openLoot(id, pos) {
   const chest = state.school.chests.find((c) => c.id === id);
   const result = S.openChest(state, id);
   if (!result) return;
+  if (result.chest.rarity === 'mythic') setTimeout(() => playBeat('firstMythic'), 9000);
   fx.burst(pos, A.RARITY_COLORS[chest.rarity], 26, 8, 10);
   syncChests();
   save();
@@ -3148,6 +3209,7 @@ function villagerTick(now) {
   syncVillagers();
 }
 function villagersReact(event) {
+  if (event.outcome === 'held') setTimeout(() => playBeat('firstExam'), 2500);
   for (const p of event.left || []) ui.toast(`${p.name} the ${p.role.toLowerCase()} left town after ${event.item.name} wrecked the gate.`, 'bad');
   if (event.outcome === 'held') for (const f of folk.values()) f.cheer = 4;
   syncVillagers();
@@ -3217,6 +3279,9 @@ function openVillager(name) {
   const person = state.villagers.list.find((x) => x.name === name);
   if (!person) return;
   if (S.talkTo(state, name)) save();
+  // A friendship story beat, the first time each friendship level is reached.
+  const story = (Lore.VILLAGER_STORIES[name] || []).find((b) => person.friend >= b.at && !state.story?.[`vs:${name}:${b.at}`]);
+  if (story) return void playBeat(`vs:${name}:${story.at}`, story.lines, () => openVillager(name));
   const f = folk.get(name);
   const q = person.quest;
   ui.villager({
@@ -3321,6 +3386,7 @@ function dailyTick(startup = false) {
   }
   const wk = S.claimWeek(state);
   if (wk) {
+    setTimeout(() => playBeat('firstWeek'), 3000);
     audio.era();
     ui.banner(wk.streak > 1 ? `Week cleared · ${wk.streak} in a row` : 'Week cleared', `A ${wk.chest.rarity} chest is on your plaza`);
     syncChests();
@@ -4212,6 +4278,8 @@ if (state.tutorial && !state.tutorial.done) {
   applyTutHud();
   if (state.tutorial.step === 0) setTimeout(() => playStory('intro', startTutorialStep), 900);
   else startTutorialStep();
+} else if (awayMs > 3 * 86400e3) {
+  setTimeout(() => playBeat(`welcomeBack:${new Date().toDateString()}`, Lore.BEATS.welcomeBack), 1500);
 } else if (awayMs > 60000 && awayEarned >= 1) {
   ui.toast(`While you were away (${timeLeft(awayMs)}), your buildings made ${S.fmt(awayEarned)} coins. Walk past them to collect.`, 'gold');
 }

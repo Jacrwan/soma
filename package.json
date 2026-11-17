@@ -12,7 +12,7 @@
     "preview": "vite preview",
     "test": "playwright test",
     "build:extension": "node extension/build-release.mjs",
-    "test:game": "node --test game/tests/sim.test.js"
+    "test:game": "node --test game/tests/sim.test.js game/tests/study.test.js"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "^6.6.0",

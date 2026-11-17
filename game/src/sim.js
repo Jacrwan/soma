@@ -1,6 +1,8 @@
 // Epoch: game rules with no rendering. Everything here is plain data and
 // functions so it can be tested in Node and trusted by the 3D layer.
 
+import { classifyItem, isCanvasQuiz, KINDS, PROCTORED } from './classify.js';
+
 export const SAVE_KEY = 'epoch-save-v1';
 
 // era: the age your civilization is in. Building wonder N moves you from
@@ -79,7 +81,7 @@ export function newState(now = Date.now()) {
     relics: [],
     tokens: 0,
     cosmetics: { owned: ['hat:none', 'color:clay'], hat: 'hat:none', color: 'color:clay', character: 'barbarian', outfits: [], outfit: null, themes: [], theme: null },
-    school: { source: 'none', items: {}, seen: {}, chests: [], ignored: {}, penalty: {}, warned: {} },
+    school: { source: 'none', items: {}, seen: {}, chests: [], ignored: {}, penalty: {}, warned: {}, kinds: {} },
     explore: { day: null, done: {}, shrines: {} },
     study: { active: null, minutes: {}, courses: {}, log: [], practice: {}, streak: 0, lastDay: null, chestDay: null, chestsToday: 0, total: 0 },
     hero: { level: 1, xp: 0, points: 0, skills: {}, gear: { weapon: null, armor: null, charm: null }, bag: [], nextId: 1 },
@@ -447,17 +449,20 @@ export function fmt(n) {
 
 const DAY = 86400000;
 export const APPROACH_DAYS = 10; // an invader is visible this long before it is due
-const TEST_WORDS = /\b(exam|midterm|final|test|quiz)\b/i;
+/** What an assignment is in the game: { kind, size }. Rules live in classify.js; override is the student's call. */
+export function classify(a, override) {
+  const { kind, size } = classifyItem(a, override);
+  return { kind, size };
+}
 
-/** What an assignment is in the game. weight is the share of the course grade its group carries, 0 to 100. */
-export function classify(a) {
-  const points = a.pointsPossible || 0;
-  const looksLikeTest = TEST_WORDS.test(a.name || '') || TEST_WORDS.test(a.groupName || '');
-  const heavy = (a.weight || 0) >= 20 || points >= 100;
-  if (looksLikeTest && (heavy || /\b(exam|midterm|final)\b/i.test(a.name || ''))) return { kind: 'boss', size: 3 };
-  if (heavy || points >= 50) return { kind: 'invader', size: 2 };
-  if (looksLikeTest) return { kind: 'invader', size: 2 };
-  return { kind: 'invader', size: 1 };
+/** The student's own call on an item: 'boss', 'quiz' or 'assignment'; null goes back to the guess. */
+export function setKind(state, id, kind) {
+  if (kind && !KINDS.includes(kind)) return false;
+  if (kind) state.school.kinds[id] = kind;
+  else delete state.school.kinds[id];
+  const item = state.school.items[id];
+  if (item) Object.assign(item, classifyItem(item, kind || undefined));
+  return true;
 }
 
 /** 0 at the edge of the map (far from due), 1 at your gate (due now). null when not visible yet. */
@@ -491,7 +496,7 @@ export function syncSchool(state, items, now = Date.now(), { source = state.scho
   let firstChests = 0;
 
   for (const raw of items) {
-    const item = { ...raw, ...classify(raw) };
+    const item = { ...raw, ...classifyItem(raw, school.kinds?.[raw.id]) };
     next[item.id] = item;
     const seen = school.seen[item.id] || (school.seen[item.id] = { submitted: false, graded: false, boss: false, at: now });
     const known = Boolean(school.items[item.id]);
@@ -1256,6 +1261,7 @@ export function fromSomaSnapshot(snapshot) {
   return snapshot.assignments.map((a) => {
     const group = groups.get(a.groupId);
     const paper = Array.isArray(a.submissionTypes) && a.submissionTypes.some((t) => t === 'on_paper' || t === 'none');
+    const types = Array.isArray(a.submissionTypes) ? a.submissionTypes.slice(0, 6).map(String) : [];
     return {
       id: `${snapshot.host}:${a.id}`,
       name: a.name || 'Assignment',
@@ -1270,6 +1276,10 @@ export function fromSomaSnapshot(snapshot) {
       excused: Boolean(a.excused),
       // Handed in on paper, or nothing to hand in: Canvas never shows these as submitted.
       noSubmit: paper,
+      // Signals for classify.js: how it is handed in, and whether it is sat under a proctor.
+      submissionTypes: types,
+      isQuiz: isCanvasQuiz(a) || types.includes('online_quiz'),
+      proctored: PROCTORED.test(a.description || ''),
     };
   });
 }
@@ -2367,6 +2377,7 @@ export function deserialize(text, now = Date.now()) {
     state.pads.moon.length = MOON_PADS;
     for (const scene of ['earth', 'moon']) state.pads[scene] = Array.from(state.pads[scene], (b) => b || null);
     state.school = { ...fresh.school, ...(saved.school || {}) };
+    state.school.kinds = { ...(saved.school?.kinds || {}) };
     // Work seen before late losses existed starts its clock now, not at its due date.
     for (const seen of Object.values(state.school.seen)) if (!seen.at) seen.at = now;
     state.study = { ...fresh.study, ...(saved.study || {}) };

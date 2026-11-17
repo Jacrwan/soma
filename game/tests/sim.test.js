@@ -943,3 +943,84 @@ test('mythic chests open with legendary pools and more inside; the weekly streak
   assert.strictEqual(s.tokens - tokens, 3);
   assert.deepStrictEqual(S.CHEST_TIERS.map((t) => t.id), ['common', 'rare', 'epic', 'legendary', 'mythic']);
 });
+
+// --- classify.js: exams, quizzes, projects and plain work ---
+
+test('classify: the before/after table', () => {
+  const c = (over) => S.classify(item(over));
+  assert.deepStrictEqual(c({ name: 'Midterm Exam', pointsPossible: 100, weight: 25, groupName: 'Exams' }), { kind: 'boss', size: 3 });
+  assert.deepStrictEqual(c({ name: 'Test 2', pointsPossible: 100, weight: 30, groupName: 'Tests' }), { kind: 'boss', size: 3 });
+  assert.deepStrictEqual(c({ name: 'Coding Problem 4', pointsPossible: 100, weight: 0, groupName: 'Coding Problems' }), { kind: 'invader', size: 2 });
+  assert.deepStrictEqual(c({ name: 'Lab 9 - Matrix Operations', pointsPossible: 10, weight: 20, groupName: 'Labs' }), { kind: 'invader', size: 2 });
+  assert.deepStrictEqual(c({ name: 'L18-Warm Up Quiz (ICA Nov 9)', pointsPossible: 10, weight: 5, groupName: 'In-Class Activities' }), { kind: 'invader', size: 1 });
+  assert.deepStrictEqual(c({ name: 'Final Project', pointsPossible: 100, weight: 0, groupName: 'Projects' }), { kind: 'invader', size: 2 });
+  assert.deepStrictEqual(c({ name: 'Exam1', pointsPossible: 100, weight: 0, groupName: 'Assignments' }), { kind: 'boss', size: 3 });
+});
+
+test('classify: final projects, papers and presentations are not exams', () => {
+  for (const name of ['Final Project', 'Final Paper', 'Final Presentation', 'Final Lab Report', 'Midterm Paper', 'Final Draft']) {
+    const r = S.classify(item({ name, pointsPossible: 150, weight: 25, groupName: 'Assignments' }));
+    assert.strictEqual(r.kind, 'invader', name);
+  }
+  assert.strictEqual(S.classify(item({ name: 'Final', pointsPossible: 200, weight: 30 })).kind, 'boss');
+  assert.strictEqual(S.classify(item({ name: 'Final Exam Review', pointsPossible: 5, weight: 5 })).kind, 'invader');
+});
+
+test('classify: exams under other names become bosses', () => {
+  for (const name of ['Unit 3 Assessment', 'Prelim 1', 'Exam II', 'Hour Exam', 'Test #2', 'Exam_2', 'Midterm1']) {
+    assert.strictEqual(S.classify(item({ name, pointsPossible: 100, weight: 0, groupName: 'Assignments' })).kind, 'boss', name);
+  }
+  assert.strictEqual(S.classify(item({ name: 'Write test cases', pointsPossible: 100 })).kind, 'invader');
+  // A tiny weekly "test" is a big invader, not a boss.
+  assert.deepStrictEqual(S.classify(item({ name: 'Test 3', pointsPossible: 10, weight: 5 })), { kind: 'invader', size: 2 });
+});
+
+test('classify: quizzes are sized by weight, and labels say what they are', () => {
+  assert.deepStrictEqual(S.classify(item({ name: 'Quiz 4 (in class)', pointsPossible: 10, weight: 10 })), { kind: 'invader', size: 1 });
+  assert.deepStrictEqual(S.classify(item({ name: 'Quiz 5', pointsPossible: 50, weight: 15, groupName: 'Quizzes' })), { kind: 'invader', size: 2 });
+  const s = S.newState(NOW);
+  S.syncSchool(s, [item({ id: 'q', name: 'Quiz 1' }), item({ id: 'p', name: 'Final Project', pointsPossible: 100 }), item({ id: 'e', name: 'Exam 1', pointsPossible: 100 })], NOW, { source: 'demo' });
+  assert.deepStrictEqual(['q', 'p', 'e'].map((id) => s.school.items[id].label), ['quiz', 'project', 'exam']);
+});
+
+test('classify: Canvas quiz types and proctoring count without words in the name', () => {
+  const list = S.fromSomaSnapshot({
+    kind: 'canvas', host: 'h', courses: [{ id: 1, name: 'Bio' }], groups: [{ id: 9, name: 'Weekly', weight: 10 }],
+    assignments: [
+      { id: 1, courseId: 1, groupId: 9, name: 'Chapter 4', pointsPossible: 10, submissionTypes: ['online_quiz'] },
+      { id: 2, courseId: 1, groupId: 9, name: 'Unit 2', pointsPossible: 120, submissionTypes: ['online_quiz'] },
+      { id: 3, courseId: 1, groupId: 9, name: 'Checkpoint', pointsPossible: 60, description: 'Requires Respondus LockDown Browser.' },
+    ],
+  });
+  assert.strictEqual(list[0].isQuiz, true);
+  assert.strictEqual(list[2].proctored, true);
+  assert.strictEqual('description' in list[2], false);
+  assert.deepStrictEqual(list.map((a) => S.classify(a)), [{ kind: 'invader', size: 1 }, { kind: 'boss', size: 3 }, { kind: 'boss', size: 3 }]);
+});
+
+test('setKind: the student overrides the guess, and old saves still load', () => {
+  const s = S.newState(NOW);
+  assert.deepStrictEqual(s.school.kinds, {});
+  S.syncSchool(s, [item({ id: 'x', name: 'Checkpoint 3', pointsPossible: 30 })], NOW, { source: 'demo' });
+  assert.strictEqual(s.school.items.x.kind, 'invader');
+  assert.ok(S.setKind(s, 'x', 'boss'));
+  assert.deepStrictEqual([s.school.items.x.kind, s.school.items.x.size, s.school.items.x.label], ['boss', 3, 'exam']);
+  // It sticks through the next sync and a save.
+  S.syncSchool(s, [item({ id: 'x', name: 'Checkpoint 3', pointsPossible: 30 })], NOW + 1, { source: 'demo' });
+  assert.strictEqual(s.school.items.x.kind, 'boss');
+  const back = S.deserialize(S.serialize(s), NOW);
+  assert.strictEqual(back.school.kinds.x, 'boss');
+  // A boss guess turned into an assignment, then back to the guess.
+  S.syncSchool(s, [item({ id: 'm', name: 'Midterm 1', pointsPossible: 100 })], NOW + 2, { source: 'demo' });
+  S.setKind(s, 'm', 'assignment');
+  assert.deepStrictEqual([s.school.items.m.kind, s.school.items.m.label], ['invader', 'assignment']);
+  S.setKind(s, 'm', 'quiz');
+  assert.strictEqual(s.school.items.m.label, 'quiz');
+  S.setKind(s, 'm', null);
+  assert.strictEqual(s.school.items.m.kind, 'boss');
+  assert.strictEqual(S.setKind(s, 'm', 'dragon'), false);
+  // A save from before overrides existed.
+  const old = JSON.parse(S.serialize(S.newState(NOW)));
+  delete old.school.kinds;
+  assert.deepStrictEqual(S.deserialize(JSON.stringify(old), NOW).school.kinds, {});
+});

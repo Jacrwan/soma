@@ -50,6 +50,7 @@ export function createUI(on) {
 
   // Story dialogue: one line at a time, typed out. Space, E, Enter or a click moves on.
   const SPEAKERS = {
+    atlas: { name: 'A page of the Atlas', icon: '<svg viewBox="0 0 48 48"><path d="M10 8h22l6 6v26H10z" fill="#f4e6c4" stroke="#8a6a3a" stroke-width="2"/><path d="M15 18h18M15 24h18M15 30h12" stroke="#8a6a3a" stroke-width="2" stroke-linecap="round"/></svg>' },
     owl: { name: 'Owl', icon: '<svg viewBox="0 0 48 48"><path d="M14 10h20v6l-3 3v14l3 3v4H14v-4l3-3V19l-3-3z" fill="#f2c14e" stroke="#3a2a05" stroke-width="2"/><circle cx="24" cy="26" r="5" fill="#fff1b0"/></svg>' },
     pro: { name: 'The Procrastinator', icon: '<svg viewBox="0 0 48 48"><circle cx="24" cy="26" r="17" fill="#3a2a5c"/><path d="M8 24c4-12 28-12 32 0-6-4-26-4-32 0z" fill="#241a3a"/><path d="M14 25q4-3 8 0M26 25q4-3 8 0" stroke="#c8b8ff" stroke-width="2.4" fill="none" stroke-linecap="round"/><path d="M17 33q7 5 14 0" stroke="#c8b8ff" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="37" cy="12" r="3" fill="#c8b8ff" opacity=".7"/><circle cx="41" cy="6" r="2" fill="#c8b8ff" opacity=".5"/></svg>' },
   };
@@ -61,7 +62,7 @@ export function createUI(on) {
   let talk = null;
   function showLine() {
     const [who, text] = talk.lines[talk.i];
-    const sp = SPEAKERS[who] || SPEAKERS.owl;
+    const sp = SPEAKERS[who] || { name: who[0].toUpperCase() + who.slice(1), icon: '<svg viewBox="0 0 48 48"><circle cx="24" cy="19" r="9" fill="#f1c9a5"/><path d="M8 44c2-10 9-15 16-15s14 5 16 15z" fill="#7a9e6a"/><circle cx="20.5" cy="19" r="1.6" fill="#2b1d18"/><circle cx="27.5" cy="19" r="1.6" fill="#2b1d18"/><path d="M21 23q3 2 6 0" stroke="#2b1d18" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>' };
     talkBox.className = `talk-${who}`;
     talkBox.querySelector('.talk-face').innerHTML = sp.icon;
     talkBox.querySelector('.talk-name').textContent = sp.name;
@@ -865,7 +866,7 @@ export function createUI(on) {
           el('div', { class: 'stat' }, el('small', { text: 'Study chests left today' }), el('b', { text: String(chestsLeft) })),
           el('div', { class: 'stat' }, el('small', { text: 'Streak' }), el('b', { text: `${streak} day${streak === 1 ? '' : 's'}` }))),
         el('div', { class: 'actions' }, go),
-        onPractice ? el('div', { class: 'actions', style: 'margin-top:8px' }, el('button', { class: 'btn', onclick: () => { const id = pick.value || null; if (!id) return; close(); onPractice(id); } }, el('span', {}, 'Practice questions with AI', el('small', { text: 'Soma writes questions from your course notes. Right answers break armor too. (P)' })))) : null,
+        onPractice ? el('div', { class: 'actions', style: 'margin-top:8px' }, el('button', { class: 'btn', onclick: () => { const id = pick.value || null; close(); onPractice(id); } }, el('span', {}, 'Study Hall: quizzes, flashcards and more', el('small', { text: 'Pick anything to study, or paste your notes. Claude makes quizzes, flashcards, explain-it questions and practice problems. (P)' })))) : null,
         el('p', { class: 'note', text: 'You can switch tabs: the timer keeps running and shows in the tab title. Ending early still pays for the minutes you did, after the first five.' }),
       );
     },

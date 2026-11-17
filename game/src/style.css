@@ -1033,3 +1033,8 @@ body:has(#talk:not([hidden])) .hotbar, body:has(#talk:not([hidden])) .menu { opa
 body.tut-early #alert, body.tut-early #siege { visibility: hidden !important; }
 
 #owlSay.pinned::after { display: none; }
+
+/* Toasts: above the build bar on wide screens, and out of the way of the open Menu. */
+body:has(#buildbar) #toasts { bottom: 270px; }
+body:has(#menuMore:not([hidden])) #toasts { opacity: 0; }
+.pass-upsell .btn { flex: none; width: auto; }

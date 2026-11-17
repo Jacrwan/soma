@@ -132,7 +132,7 @@ export function createCoach({ scene, camera, onSkip, onQuit, onNext }) {
       if (behind) { x = innerWidth - x; y = innerHeight - y; }
       // The open part of the screen: clear of the side panels, the coach card and the hotbar.
       const wide = innerWidth > 900;
-      const box = { l: 70, r: innerWidth - (wide ? 310 : 70), t: wide ? 300 : 260, b: innerHeight - 130 };
+      const box = { l: 70, r: innerWidth - (wide ? 330 : 70), t: wide ? 300 : 260, b: innerHeight - 200 }; // clear of the E prompt too
       const onScreen = !behind && x > box.l && x < box.r && y > box.t && y < box.b;
       marker.hidden = dist < 3;
       distEl.textContent = `${Math.round(dist)} m`;
