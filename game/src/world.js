@@ -1024,12 +1024,12 @@ export function createWorld(scene, renderer) {
     scene.fog = new THREE.FogExp2(sky.horizon, sky.haze);
     scene.environmentIntensity = 0.85;
     // Cartoon light: a bright sky fill so shadows stay soft and colours stay clean.
-    hemi.intensity = 0.95;
+    hemi.intensity = 0.84; // a little less fill than before so buildings keep their shape
     hemi.color.set(0xd6ecff);
-    hemi.groundColor.set(0x7fa85a);
-    sun.intensity = Math.min(era, 5) === 3 ? 2.6 : 2.9;
+    hemi.groundColor.set(0x8e9a6a);
+    sun.intensity = Math.min(era, 5) === 3 ? 2.75 : 3.1;
     sun.color.set(sky.sun);
-    skyBase = { zenith: new THREE.Color(sky.zenith), horizon: new THREE.Color(sky.horizon), sun: new THREE.Color(sky.sun), hemi: new THREE.Color(0xd6ecff), ground: new THREE.Color(0x7fa85a), sunPower: sun.intensity, hemiPower: 0.95, env: 0.85 };
+    skyBase = { zenith: new THREE.Color(sky.zenith), horizon: new THREE.Color(sky.horizon), sun: new THREE.Color(sky.sun), hemi: new THREE.Color(0xd6ecff), ground: new THREE.Color(0x8e9a6a), sunPower: sun.intensity, hemiPower: 0.84, env: 0.85 };
     applyDaylight();
     bakeEnvironment();
   }

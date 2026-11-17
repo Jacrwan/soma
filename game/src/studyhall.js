@@ -93,20 +93,44 @@ const CSS = `
 .sh-decks { display: grid; gap: 6px; }
 .sh-deck { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 12px; background: rgba(255,255,255,0.05); }
 .sh-deck b { flex: 1; font-size: 14px; } .sh-deck em { font-style: normal; font-size: 12px; font-weight: 800; color: #ffd878; }
-@media (max-width: 640px) { .sh-modes { grid-template-columns: repeat(2, 1fr); } }
+.sh-intro { margin: 0; font-size: 14.5px; line-height: 1.45; color: rgba(255,255,255,0.85); }
+.sh-ai { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 12px; font-size: 13px; font-weight: 800; background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.75); }
+.sh-ai.ok { background: rgba(62,196,90,0.14); color: #b9f0c4; } .sh-ai.bad { background: rgba(229,72,61,0.16); color: #ffd2cd; }
+.sh-ai i { width: 9px; height: 9px; border-radius: 50%; background: currentColor; flex: none; }
+.sh-ai.wait i { animation: sh-pulse 1s ease-in-out infinite; }
+.sh-sub { font-size: 12.5px; font-weight: 800; color: rgba(255,255,255,0.6); margin: 2px 0 -6px; }
+.sh-modes.big { grid-template-columns: repeat(2, 1fr); }
+.sh-modes.big .sh-mode { display: grid; grid-template-columns: 40px 1fr; align-items: center; column-gap: 10px; text-align: left; padding: 12px 14px; }
+.sh-modes.big .sh-mode i { grid-row: span 2; font-size: 28px; text-align: center; }
+.sh-modes.big .sh-mode b { margin: 0; font-size: 15.5px; } .sh-modes.big .sh-mode small { font-size: 12px; line-height: 1.35; margin: 2px 0 0; color: rgba(255,255,255,0.7); }
+.sh-more { border-radius: 12px; background: rgba(255,255,255,0.04); padding: 8px 12px; }
+.sh-more summary { cursor: pointer; font-size: 13px; font-weight: 800; color: rgba(255,255,255,0.75); }
+.sh-more[open] summary { margin-bottom: 10px; } .sh-more > div { display: grid; gap: 10px; }
+.sh-gobar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.sh-gobar .sh-note { flex: 1; min-width: 180px; }
+.sh-load { display: grid; gap: 12px; padding: 18px 4px; text-align: center; }
+.sh-load .sh-q { font-size: 17px; }
+.sh-spin { width: 46px; height: 46px; margin: 0 auto; border-radius: 50%; border: 5px solid rgba(255,255,255,0.12); border-top-color: #f2c14e; animation: sh-rot .9s linear infinite; }
+.sh-indet { height: 8px; border-radius: 99px; background: rgba(255,255,255,0.1); overflow: hidden; position: relative; }
+.sh-indet i { position: absolute; top: 0; bottom: 0; width: 35%; border-radius: 99px; background: linear-gradient(90deg, #f2c14e, #ffe08a); animation: sh-slide 1.4s ease-in-out infinite; }
+.sh-oops { display: grid; gap: 12px; padding: 8px 0; } .sh-oops .sh-q { font-size: 17px; }
+@keyframes sh-rot { to { transform: rotate(360deg); } }
+@keyframes sh-slide { from { left: -35%; } to { left: 100%; } }
+@keyframes sh-pulse { 50% { opacity: .3; } }
+@media (max-width: 640px) { .sh-modes, .sh-modes.big { grid-template-columns: 1fr; } }
 `;
 
 const MODES = [
-  { id: 'quiz', icon: '❓', name: 'Quiz', hint: 'Multiple choice' },
-  { id: 'cards', icon: '🃏', name: 'Flashcards', hint: 'Saved, spaced review' },
-  { id: 'explain', icon: '✍️', name: 'Explain it', hint: 'Write it, get graded' },
-  { id: 'problems', icon: '🧮', name: 'Problems', hint: 'Worked steps' },
+  { id: 'quiz', icon: '❓', name: 'Quiz', noun: 'quiz questions', hint: 'Multiple-choice questions. After each one you see why the answer is right.' },
+  { id: 'cards', icon: '🃏', name: 'Flashcards', noun: 'flashcards', hint: 'A deck that’s saved and comes back on a schedule, so it sticks.' },
+  { id: 'explain', icon: '✍️', name: 'Explain it', noun: 'explain-it questions', hint: 'Answer in your own words. Claude grades it and says what you missed.' },
+  { id: 'problems', icon: '🧮', name: 'Problems', noun: 'practice problems', hint: 'Exam-style problems. Try them, then see the worked steps.' },
 ];
 
 /**
  * Opens the Study Hall. ctx: {
  *   state, save(), upcoming: [{ id, name, courseName, kind, due }], courses: [{ id, name }],
- *   ai: { makeStudySet, gradeExplain }, status(): { ok, reason },
+ *   ai: { makeStudySet, gradeExplain }, status(): { ok, label } | { ok: false, reason } (or a Promise of it),
  *   reward({ item, right, wrong, minutes }) -> string (a line for the results screen),
  *   onClose()
  * } prefill: { itemId, topic, mode }
@@ -136,6 +160,7 @@ export function createStudyHall() {
   }
   function close() {
     if (root.hidden) return;
+    runId += 1;
     root.hidden = true;
     root.replaceChildren();
     const done = ctx?.onClose;
@@ -149,42 +174,83 @@ export function createStudyHall() {
     e.stopImmediatePropagation();
   }, true);
 
-  // --- 1 + 2: what and how --------------------------------------------------------------
+  // --- the start screen: what to study, then how ------------------------------------------
+  // Everything a first-time student needs is on one screen, top to bottom:
+  // whether the AI is ready, what to study (Canvas items, courses or any topic),
+  // how (four modes, one line each), and a Start button that says what it will make.
+  let aiStatus = null; // last answer from ctx.status()
+  const aiBadge = () => {
+    if (!aiStatus) return h('div', { class: 'sh-ai wait' }, h('i'), 'Checking the AI…');
+    if (aiStatus.ok) return h('div', { class: 'sh-ai ok' }, h('i'), `AI ready · ${aiStatus.label || 'Claude'}`);
+    return h('div', { class: 'sh-ai bad' }, h('i'), aiStatus.reason || 'The AI isn’t available right now.');
+  };
+  async function checkAI() {
+    try { aiStatus = await ctx.status(); } catch { aiStatus = { ok: false, reason: 'Couldn’t check the AI. Check your connection and try again.' }; }
+    return aiStatus;
+  }
+
   function pickScreen(prefill = {}) {
-    const pick = { source: prefill.topic ? 'topic' : prefill.itemId ? 'item' : ctx.upcoming.length ? 'item' : 'topic', itemId: prefill.itemId || ctx.upcoming[0]?.id || null, courseId: ctx.courses[0]?.id || null, topic: prefill.topic || '', notes: '', mode: prefill.mode || 'quiz', count: 8, level: 'mixed' };
-    const status = ctx.status();
-    const what = h('div');
+    const firstItem = prefill.itemId && ctx.upcoming.some((a) => a.id === prefill.itemId) ? prefill.itemId : null;
+    const pick = {
+      source: prefill.source || (prefill.topic ? 'topic' : firstItem ? 'item' : null),
+      itemId: prefill.itemId || firstItem, courseId: prefill.courseId || null, topic: prefill.topic || '', notes: prefill.notes || '',
+      mode: prefill.mode || 'quiz', count: prefill.count || 8, level: prefill.level || 'mixed',
+    };
+    const what = h('div', { class: 'sh-body', style: 'padding:0' });
+    const label = () => {
+      if (pick.source === 'item') return ctx.upcoming.find((a) => a.id === pick.itemId)?.name || '';
+      if (pick.source === 'course') return ctx.courses.find((c) => c.id === pick.courseId)?.name || '';
+      return pick.topic.trim();
+    };
+    const ready = () => (pick.source === 'item' ? Boolean(pick.itemId) : pick.source === 'course' ? Boolean(pick.courseId) : pick.source === 'topic' && pick.topic.trim().length >= 2);
+    let go, goNote, badge;
+    const refreshGo = () => {
+      const mode = MODES.find((m) => m.id === pick.mode);
+      const name = label();
+      go.disabled = !ready() || !aiStatus?.ok;
+      go.textContent = ready() ? `Make ${pick.count} ${mode.noun}` : 'Start';
+      goNote.textContent = !ready() ? 'First pick something above, or type a topic.'
+        : !aiStatus ? 'Checking the AI…'
+          : !aiStatus.ok ? 'The AI isn’t available (see the note at the top).'
+            : `On “${name.length > 60 ? `${name.slice(0, 57)}…` : name}”. Takes about 5 to 20 seconds.`;
+    };
     const draw = () => {
-      const tabs = h('div', { class: 'sh-tabs' }, [['item', 'Something due'], ['course', 'A course'], ['topic', 'My own topic']].map(([id, name]) => h('button', { class: `sh-tab ${pick.source === id ? 'on' : ''}`, text: name, onclick: () => { pick.source = id; draw(); } })));
-      let chooser;
-      if (pick.source === 'item') chooser = ctx.upcoming.length
-        ? h('div', { class: 'sh-list' }, ctx.upcoming.map((a) => h('button', { class: `sh-pick ${pick.itemId === a.id ? 'on' : ''}`, onclick: () => { pick.itemId = a.id; draw(); } }, h('b', { text: a.name }), h('small', { text: `${a.kind === 'boss' ? 'Exam' : 'Assignment'} · ${a.courseName}${a.due ? ` · ${a.due}` : ''}` }))))
-        : h('p', { class: 'sh-note', text: 'Nothing coming up from Canvas. Pick a course or type your own topic.' });
-      else if (pick.source === 'course') chooser = ctx.courses.length
-        ? h('div', { class: 'sh-tabs' }, ctx.courses.map((c) => h('button', { class: `sh-chip ${pick.courseId === c.id ? 'on' : ''}`, text: c.name, onclick: () => { pick.courseId = c.id; draw(); } })))
-        : h('p', { class: 'sh-note', text: 'No courses yet. Type your own topic instead.' });
-      else {
-        chooser = h('input', { class: 'sh-input', placeholder: 'e.g. eigenvectors, the Krebs cycle, Chapter 5 of Hamlet', value: pick.topic, maxlength: 140 });
-        chooser.addEventListener('input', () => { pick.topic = chooser.value; go.disabled = !ready(); });
-        setTimeout(() => chooser.focus(), 0);
-      }
-      const notes = h('textarea', { class: 'sh-notes', placeholder: 'Optional: paste your notes, a study guide or lecture slides text. Questions will come from these.', maxlength: 9000 });
+      const pickBtn = (on, onclick, title, sub) => h('button', { class: `sh-pick ${on ? 'on' : ''}`, onclick }, h('b', { text: title }), sub ? h('small', { text: sub }) : null);
+      const due = ctx.upcoming.length
+        ? h('div', { class: 'sh-list' }, ctx.upcoming.slice(0, 12).map((a) => pickBtn(pick.source === 'item' && pick.itemId === a.id, () => { pick.source = 'item'; pick.itemId = a.id; draw(); }, a.name, `${a.kind === 'boss' ? 'Exam' : 'Assignment'} · ${a.courseName}${a.due ? ` · ${a.due}` : ''}`)))
+        : null;
+      const courses = ctx.courses.length
+        ? h('div', { class: 'sh-tabs' }, ctx.courses.map((c) => h('button', { class: `sh-chip ${pick.source === 'course' && pick.courseId === c.id ? 'on' : ''}`, text: c.name, onclick: () => { pick.source = 'course'; pick.courseId = c.id; draw(); } })))
+        : null;
+      const topic = h('input', { class: 'sh-input', placeholder: 'Type any topic, e.g. eigenvectors, the Krebs cycle, Hamlet act 3', value: pick.topic, maxlength: 140, 'aria-label': 'Topic to study' });
+      if (pick.source === 'topic') topic.style.borderColor = '#f2c14e';
+      topic.addEventListener('input', () => { pick.topic = topic.value; pick.source = topic.value.trim() ? 'topic' : (pick.source === 'topic' ? null : pick.source); topic.style.borderColor = pick.source === 'topic' ? '#f2c14e' : ''; refreshGo(); });
+      topic.addEventListener('focus', () => { if (pick.topic.trim() && pick.source !== 'topic') { pick.source = 'topic'; draw(); } });
+      topic.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !go.disabled) start(pick); });
+      const modes = h('div', { class: 'sh-modes big' }, MODES.map((m) => h('button', { class: `sh-mode ${pick.mode === m.id ? 'on' : ''}`, onclick: () => { pick.mode = m.id; draw(); } }, h('i', { text: m.icon }), h('b', { text: m.name }), h('small', { text: m.hint }))));
+      const chips = (text, key, vals) => h('div', { class: 'sh-row' }, h('span', { text }), vals.map(([v, t]) => h('button', { class: `sh-chip ${pick[key] === v ? 'on' : ''}`, text: t, onclick: () => { pick[key] = v; pick.moreOpen = true; draw(); } })));
+      const notes = h('textarea', { class: 'sh-notes', placeholder: 'Paste your notes, a study guide or slide text. Claude writes the questions from these.', maxlength: 9000 });
       notes.value = pick.notes;
       notes.addEventListener('input', () => { pick.notes = notes.value; });
-      const modes = h('div', { class: 'sh-modes' }, MODES.map((m) => h('button', { class: `sh-mode ${pick.mode === m.id ? 'on' : ''}`, onclick: () => { pick.mode = m.id; draw(); } }, h('i', { text: m.icon }), h('b', { text: m.name }), h('small', { text: m.hint }))));
-      const chips = (label, key, vals) => h('div', { class: 'sh-row' }, h('span', { text: label }), vals.map(([v, t]) => h('button', { class: `sh-chip ${pick[key] === v ? 'on' : ''}`, text: t, onclick: () => { pick[key] = v; draw(); } })));
-      const go = h('button', { class: 'sh-go', text: 'Start', onclick: () => start(pick) });
-      go.disabled = !ready() || !status.ok;
+      const more = h('details', { class: 'sh-more', open: Boolean(pick.moreOpen || pick.notes) },
+        h('summary', { text: `Options: ${pick.count} items · ${{ easy: 'easy', mixed: 'mixed', hard: 'hard' }[pick.level]}${pick.notes.trim() ? ' · your notes' : ''}` }),
+        h('div', {}, chips('How many', 'count', [[5, '5'], [8, '8'], [12, '12'], [20, '20']]), chips('Level', 'level', [['easy', 'Easy'], ['mixed', 'Mixed'], ['hard', 'Hard']]), notes));
+      more.addEventListener('toggle', () => { pick.moreOpen = more.open; });
+      go = h('button', { class: 'sh-go', onclick: () => start(pick) });
+      goNote = h('p', { class: 'sh-note' });
+      badge = aiBadge();
       what.replaceChildren(...[
-        h('div', { class: 'sh-step', text: '1 · What do you want to study?' }), tabs, chooser, notes,
-        h('div', { class: 'sh-step', text: '2 · How?' }), modes,
-        chips('How many', 'count', [[5, '5'], [8, '8'], [12, '12'], [20, '20']]),
-        chips('Level', 'level', [['easy', 'Easy'], ['mixed', 'Mixed'], ['hard', 'Hard']]),
-        status.ok ? null : h('p', { class: 'sh-err', text: status.reason }),
-        go,
+        h('p', { class: 'sh-intro', text: 'Pick what you’re studying and how. Claude writes the questions, cards or problems for you, and every right answer earns XP for your hero.' }),
+        badge,
+        h('div', { class: 'sh-step', text: '1 · What are you studying?' }),
+        due ? h('div', { class: 'sh-sub', text: 'Coming up on Canvas' }) : null, due,
+        courses ? h('div', { class: 'sh-sub', text: 'A whole course' }) : null, courses,
+        h('div', { class: 'sh-sub', text: due || courses ? 'Or any topic' : 'Type any topic (your Canvas classes show up here once Canvas is connected in Soma)' }), topic,
+        h('div', { class: 'sh-step', text: '2 · How do you want to study it?' }), modes, more,
+        h('div', { class: 'sh-gobar' }, go, goNote),
       ].filter(Boolean));
+      refreshGo();
     };
-    const ready = () => (pick.source === 'item' ? Boolean(pick.itemId) : pick.source === 'course' ? Boolean(pick.courseId) : pick.topic.trim().length >= 2);
     draw();
     const due = dueCards(ctx.state);
     const decks = Object.values(ctx.state.decks || {}).sort((a, b) => b.created - a.created);
@@ -197,18 +263,34 @@ export function createStudyHall() {
           h('button', { class: 'sh-ghost', text: 'Study', onclick: () => reviewCards(d.cards.map((card) => ({ deck: d, card })), d.title) }),
           h('button', { class: 'sh-ghost', text: '🗑', title: 'Delete deck', onclick: () => { deleteDeck(ctx.state, d.id); ctx.save(); pickScreen(pick); } }));
       }))) : null;
-    frame('Study Hall', 'Real studying, on what you choose. Every right answer powers up your hero.', what, deckList);
+    frame('Study Hall', 'Quizzes, flashcards and practice made by Claude', what, deckList);
+    // Ask (again) whether the AI is reachable; redraw only the badge and the button.
+    const opened = ctx;
+    checkAI().then(() => { if (ctx !== opened || !badge?.isConnected) return; const next = aiBadge(); badge.replaceWith(next); badge = next; refreshGo(); });
   }
 
   // --- generating ---------------------------------------------------------------------------
+  let runId = 0; // bumps on cancel/close so a late answer is ignored
   async function start(pick) {
+    const run = ++runId;
     const item = pick.source === 'item' ? ctx.upcoming.find((a) => a.id === pick.itemId) : null;
     const course = pick.source === 'course' ? ctx.courses.find((c) => c.id === pick.courseId)?.name : item?.courseName || '';
     const what = { topic: pick.source === 'topic' ? pick.topic.trim() : '', course, item: item ? { name: item.name, courseName: item.courseName, courseId: item.courseId } : null, notes: pick.notes };
-    frame('Study Hall', 'Writing your set…', h('p', { class: 'sh-note', text: `Claude is reading ${pick.notes.trim() ? 'your notes' : 'your course notes'} and writing ${pick.count} ${MODES.find((m) => m.id === pick.mode).name.toLowerCase()}. This takes a few seconds.` }), h('div', { class: 'sh-progress' }, h('i', { style: 'width:35%' })));
+    const mode = MODES.find((m) => m.id === pick.mode);
+    const name = item?.name || what.topic || course || 'your topic';
+    const secs = h('p', { class: 'sh-note', text: 'Usually 5 to 20 seconds.' });
+    const t0 = Date.now();
+    const tick = setInterval(() => { if (run !== runId || !secs.isConnected) return clearInterval(tick); const s = Math.round((Date.now() - t0) / 1000); secs.textContent = s < 25 ? `${s}s · usually 5 to 20 seconds` : `${s}s · still writing, bigger sets take longer`; }, 1000);
+    frame('Study Hall', `Making ${mode.name.toLowerCase()}`, h('div', { class: 'sh-load' },
+      h('div', { class: 'sh-spin' }),
+      h('div', { class: 'sh-q', text: `Claude is writing ${pick.count} ${mode.noun} on “${name}”` }),
+      h('p', { class: 'sh-note', text: pick.notes.trim() ? 'Using the notes you pasted.' : 'Tip: paste your notes under Options next time and the questions come straight from them.' }),
+      h('div', { class: 'sh-indet' }, h('i')), secs,
+      h('div', {}, h('button', { class: 'sh-ghost', text: 'Cancel', onclick: () => { runId += 1; clearInterval(tick); pickScreen(pick); } }))));
     try {
       const set = await ctx.ai.makeStudySet(what, pick.mode, pick.count, pick.level);
-      if (root.hidden) return;
+      clearInterval(tick);
+      if (root.hidden || run !== runId) return;
       const source = { item: item || null, course, topic: what.topic };
       if (pick.mode === 'quiz') runQuiz(set, source, pick);
       else if (pick.mode === 'cards') {
@@ -218,10 +300,20 @@ export function createStudyHall() {
       } else if (pick.mode === 'explain') runExplain(set, source, pick);
       else runProblems(set, source, pick);
     } catch (err) {
-      if (root.hidden) return;
-      frame('Study Hall', 'That didn’t work', h('p', { class: 'sh-err', text: err.message || String(err) }), h('div', { class: 'sh-row' }, h('button', { class: 'sh-go', text: 'Try again', onclick: () => start(pick) }), h('button', { class: 'sh-ghost', text: 'Back', onclick: () => pickScreen(pick) })));
+      clearInterval(tick);
+      if (root.hidden || run !== runId) return;
+      frame('Study Hall', 'Couldn’t make that set', h('div', { class: 'sh-oops' },
+        h('div', { class: 'sh-q', text: 'Claude couldn’t make your set this time.' }),
+        h('p', { class: 'sh-err', text: friendly(err) }),
+        h('p', { class: 'sh-note', text: 'Nothing was lost. Your decks and progress are saved.' }),
+        h('div', { class: 'sh-row' }, h('button', { class: 'sh-go', text: 'Try again', onclick: () => start(pick) }), h('button', { class: 'sh-ghost', text: 'Change what to study', onclick: () => pickScreen(pick) }))));
     }
   }
+  const friendly = (err) => {
+    const msg = err?.message || String(err || '');
+    if (!msg || /failed to fetch|networkerror|load failed/i.test(msg)) return 'Couldn’t reach the AI. Check your connection and try again.';
+    return msg;
+  };
   const bar = (i, n) => h('div', { class: 'sh-progress' }, h('i', { style: `width:${Math.round((i / n) * 100)}%` }));
   function results(title, lines, pick, extra = null) {
     frame(title, null, ...lines.map((t) => h('p', { class: 'sh-why', text: t })), extra, h('div', { class: 'sh-row' },
@@ -303,13 +395,13 @@ export function createStudyHall() {
           const g = await ctx.ai.gradeExplain(p, box.value);
           total += g.score;
           ctx.onAnswer?.(source, { q: p.q, choices: [], answer: 0, why: p.points.join(' · ') }, g.score >= 70);
-          out.replaceChildren(h('div', { class: 'sh-score', text: `${g.score}/100` }),
+          out.replaceChildren(...[h('div', { class: 'sh-score', text: `${g.score}/100` }),
             g.got.length ? h('ul', { class: 'sh-got' }, g.got.map((t) => h('li', { text: t }))) : null,
             g.missed.length ? h('ul', { class: 'sh-missed' }, g.missed.map((t) => h('li', { text: t }))) : null,
             g.tip ? h('p', { class: 'sh-why', text: g.tip }) : null,
-            h('button', { class: 'sh-go', text: i + 1 < set.prompts.length ? 'Next question' : 'Finish', onclick: () => { i += 1; if (i < set.prompts.length) show(); else finish(); } }));
+            h('button', { class: 'sh-go', text: i + 1 < set.prompts.length ? 'Next question' : 'Finish', onclick: () => { i += 1; if (i < set.prompts.length) show(); else finish(); } })].filter(Boolean));
           submit.remove();
-        } catch (err) { submit.disabled = false; submit.textContent = 'Check my answer'; out.replaceChildren(h('p', { class: 'sh-err', text: err.message })); }
+        } catch (err) { submit.disabled = false; submit.textContent = 'Check my answer'; out.replaceChildren(h('p', { class: 'sh-err', text: `${friendly(err)} Your answer is still here; press Check again.` })); }
       } });
       frame(set.title, `Question ${i + 1} of ${set.prompts.length}`, bar(i, set.prompts.length), h('div', { class: 'sh-q', text: p.q }), box, submit, out);
       setTimeout(() => box.focus(), 0);

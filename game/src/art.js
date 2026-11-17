@@ -6,6 +6,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { SURFACES, surfaceTexture, blobTexture } from './tex.js';
 import { singleTree, rockGeometry } from './nature.js';
+import { kitMesh, kitLoaded, upgradeWhenReady, nearestKitColor } from './kit.js';
 
 export const C = {
   grass: 0x8cc06a, grassDark: 0x6ea556, sand: 0xead9a8, dirt: 0xb08a5e, rock: 0x9b9aa2, rockDark: 0x7d7c86,
@@ -2234,3 +2235,95 @@ export function bakeModel(root) {
 { const raw = makeCreature; makeCreature = (...args) => bakeModel(raw(...args)); }
 { const raw = makePedestal; makePedestal = (...args) => bakeModel(raw(...args)); }
 { const raw = makeTrophy; makeTrophy = (...args) => bakeModel(raw(...args)); }
+
+// --- Town pieces from the KayKit Medieval Hexagon pack (kit.js) -------------------
+// The landmarks and the Timber-age buildings use the pack's models. Until the
+// files arrive the simple models above stand in, then swap in place.
+const KIT_SCALE = 3.1; // the pack is ~2 units a hex; this sits a building on a pad
+function kitPut(g, name, x, z, ry = 0, scale = KIT_SCALE, shadow = true) {
+  const m = kitMesh(name, scale, { shadow });
+  if (!m) return null;
+  m.position.set(x, 0, z);
+  m.rotation.y = ry;
+  g.add(m);
+  return m;
+}
+function withKit(g, build) {
+  if (kitLoaded()) {
+    for (const child of [...g.children]) if (!child.userData.keep) g.remove(child);
+    build(g);
+    return g;
+  }
+  return upgradeWhenReady(g, build);
+}
+{
+  const raw = makeMarket;
+  makeMarket = (...args) => withKit(raw(...args), (g) => {
+    kitPut(g, 'market', 0, 0, 0, 3.0); // fits the market's collision circle (game.js, r 2.6)
+    // Stock spilling out front: barrels, crates, sacks and a barrow.
+    kitPut(g, 'barrel', -2.9, 1.8, 0.4, 2.6, false);
+    kitPut(g, 'barrel', -2.5, 2.4, 1.2, 2.6, false);
+    kitPut(g, 'crate', 2.9, 1.8, 0.3, 2.4, false);
+    kitPut(g, 'crateSmall', 2.5, 2.5, -0.4, 2.4, false);
+    kitPut(g, 'sack', 1.9, 2.5, 0.9, 2.6, false);
+    kitPut(g, 'wheelbarrow', -1.7, 2.8, -0.6, 2.6, false);
+    kitPut(g, 'flagRed', -2.8, -1.4, 0.5, 3.4, false);
+    g.add(contactShadow(4.2, 0.3));
+  });
+}
+{
+  const raw = makeVault;
+  makeVault = (...args) => {
+    const g = raw(...args);
+    // The spinning lock is held by game.js; it stays and moves onto the keep's gate.
+    g.traverse((o) => { if (o.name === 'spin') o.userData.keep = true; });
+    return withKit(g, (v) => {
+      kitPut(v, 'castle', 0, -0.6, 0, 2.7);
+      for (const o of v.children) if (o.name === 'spin') { o.position.set(0, 1.2, 2.55); o.visible = false; }
+      kitPut(v, 'flagYellow', -2.8, 2.0, 0.3, 3.2, false);
+      kitPut(v, 'flagYellow', 2.8, 2.0, -0.3, 3.2, false);
+      kitPut(v, 'crateLong', 2.9, -1.8, 0.2, 2.4, false);
+      kitPut(v, 'barrel', -2.9, -1.6, 0, 2.4, false);
+      v.add(contactShadow(4.6, 0.32));
+    });
+  };
+}
+{
+  const raw = makeHall;
+  // A class hall grows: scaffolding, a schoolhouse, a church-like hall, then a
+  // tall tower beside it. The roof colour follows the class colour.
+  makeHall = (floors, color) => {
+    const g = raw(floors, color);
+    const c = nearestKitColor(color);
+    const height = floors <= 0 ? 4.2 : floors <= 2 ? 4.6 : floors <= 5 ? 5.6 : 7.4;
+    withKit(g, (h) => {
+      if (floors <= 0) { kitPut(h, 'scaffolding', 0, 0, 0, 2.3); kitPut(h, 'lumber', 2.4, 1.6, 0.6, 2.4, false); return; }
+      if (floors <= 2) kitPut(h, `home_B:${c}`, 0, 0, 0, 3.4 + floors * 0.15);
+      else if (floors <= 5) kitPut(h, `church:${c}`, 0, 0, 0, 3.2 + (floors - 3) * 0.12);
+      else { kitPut(h, `church:${c}`, -0.6, 0.2, 0, 3.3); kitPut(h, `tower_A:${c}`, 1.9, -0.9, 0, 3.0); }
+      h.add(contactShadow(3.4, 0.3));
+    });
+    g.userData.height = height;
+    return g;
+  };
+}
+{
+  const raw = makeBuilding;
+  // The Timber age (tier 2) builds from the pack: cottages, a blacksmith and a
+  // tavern. Other ages keep their own models.
+  const PICK = { home: ['home_A', 'home_B', 'home_B'], work: ['blacksmith', 'blacksmith', 'blacksmith'], trade: ['tavern', 'tavern', 'tavern'] };
+  const ROOF = { home: 'blue', work: 'red', trade: 'yellow' };
+  makeBuilding = (type, tier, level, golden) => {
+    const g = raw(type, tier, level, golden);
+    if (tier !== 2) return g;
+    g.traverse((o) => { if (o.name === 'spin') o.userData.keep = true; });
+    return withKit(g, (b) => {
+      const lv = Math.max(1, Math.min(3, level));
+      const name = `${PICK[type][lv - 1]}:${golden ? 'yellow' : ROOF[type]}`;
+      kitPut(b, name, 0, 0, 0, 3.0 + lv * 0.25);
+      if (lv >= 2) { kitPut(b, 'barrel', -2.6, 1.6, 0.3, 2.4, false); kitPut(b, 'crateSmall', 2.6, 1.8, 0.5, 2.4, false); }
+      if (lv >= 3) kitPut(b, 'fence', 0, -2.9, 0, 2.6, false);
+      b.add(contactShadow(4.4));
+    });
+  };
+}

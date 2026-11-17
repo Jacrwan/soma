@@ -1,8 +1,9 @@
-// Practice questions written by Soma's AI. Inside Soma (somastudy.app/game)
-// the game shares the student's sign-in, so it can read their course notes
-// from Supabase and ask Soma's /api/chat for a round of questions. The
-// 'practice' purpose runs on Soma's small model, with no memory and nothing
-// learned, and is billed to the student's normal AI budget.
+// Practice questions and study sets written by Claude, always on a server.
+// Inside Soma (somastudy.app/game) the game shares the student's sign-in, so it
+// can read their course notes from Supabase and ask Soma's /api/chat (the
+// 'practice' purpose: no memory, nothing learned, billed to the student's AI
+// budget). In dev, the Epoch/Soma vite server answers /api/practice itself
+// (server/practice-api.js), so studying works with no sign-in on localhost.
 
 const SUPABASE_URL = import.meta.env?.VITE_SUPABASE_URL || '';
 const SUPABASE_KEY = import.meta.env?.VITE_SUPABASE_ANON_KEY || '';
@@ -23,12 +24,36 @@ function session() {
   return null;
 }
 
-/** Whether practice can run here: { ok } or { ok: false, reason }. */
-export function practiceStatus() {
+// Where the AI lives. In dev (standalone Epoch, or Soma's local vite) the dev
+// server answers /api/practice with its own server-side key, no sign-in. In
+// production there is no such route, so the game uses Soma's signed-in /api/chat.
+let probe = null; // { at, local }
+async function localAI() {
+  if (probe && (probe.local?.ready || Date.now() - probe.at < 15000)) return probe.local;
+  let local = null;
+  try {
+    const res = await fetch('/api/practice', { headers: { accept: 'application/json' } });
+    if (res.ok && (res.headers.get('content-type') || '').includes('json')) {
+      const data = await res.json();
+      if (data?.service === 'epoch-practice') local = data;
+    }
+  } catch { /* no dev endpoint */ }
+  probe = { at: Date.now(), local };
+  return local;
+}
+
+/**
+ * Whether AI studying can run here: { ok, via: 'local'|'soma', label } or
+ * { ok: false, reason } with a sentence a student can act on.
+ */
+export async function practiceStatus() {
+  const local = await localAI();
+  if (local?.ready) return { ok: true, via: 'local', label: 'Claude, running on this computer' };
   const s = session();
-  if (!s) return { ok: false, reason: 'Practice questions come from Soma. Open the game from Soma while signed in.' };
-  if (s.expiresAt && s.expiresAt < Date.now() + 30_000) return { ok: false, reason: 'Your Soma sign-in has expired. Open Soma once to refresh it, then come back.' };
-  return { ok: true };
+  if (s && !(s.expiresAt && s.expiresAt < Date.now() + 30_000)) return { ok: true, via: 'soma', label: 'Soma AI' };
+  if (local) return { ok: false, reason: 'The AI isn’t set up on this computer yet: the dev server found no EPOCH_ANTHROPIC_API_KEY. Add it to .env.development.local and restart the server.' };
+  if (s) return { ok: false, reason: 'Your Soma sign-in has expired. Open Soma once to refresh it, then come back.' };
+  return { ok: false, reason: 'AI studying runs through Soma. Open Epoch from Soma (somastudy.app/game) while signed in.' };
 }
 
 const words = (text) => (String(text).toLowerCase().match(/[a-z0-9]{3,}/g) || []).filter((w) => !STOP.has(w));
@@ -90,41 +115,62 @@ Rules:
 
 const ERRORS = {
   auth_required: 'Your Soma sign-in has expired. Open Soma once to refresh it.',
-  subscription_required: 'Practice questions use Soma AI, which needs a Soma plan or trial.',
+  subscription_required: 'AI studying uses Soma AI, which needs a Soma plan or trial.',
   ai_budget_used: 'This month’s Soma AI budget is used up. It resets soon, or you can top up in Soma.',
-  rate_limit: 'Soma AI is busy. Try again in a minute.',
-  overloaded: 'Soma AI is busy. Try again in a minute.',
+  rate_limit: 'The AI is busy right now. Wait a minute and try again.',
+  overloaded: 'The AI is busy right now. Wait a minute and try again.',
+  request_timeout: 'The AI took too long to answer. Try again, maybe with fewer items.',
+  offline: 'Couldn’t reach the AI. Check your internet connection and try again.',
+  bad_key: 'The AI key on this computer was rejected. Check EPOCH_ANTHROPIC_API_KEY and restart the dev server.',
+  server_not_configured: 'The AI isn’t set up on the server yet.',
+  context_too_long: 'That’s too much text for one go. Paste fewer notes and try again.',
+  response_incomplete: 'The answer got cut off. Try again with fewer items.',
+  refused: 'The AI wouldn’t write material on that. Try wording the topic differently.',
 };
+const NO_REPLY = 'Couldn’t reach the AI. Check your connection and try again.';
+const UNREADABLE = 'The AI sent back something unreadable. Try again.';
 
-/** Asks Soma's AI for a round of questions on an item (or on a course when item is free study). */
-export async function makePractice(item, count = 5, topic = null) {
-  const s = session();
-  if (!s) throw new Error(practiceStatus().reason);
-  let notes = { text: '', files: [] };
-  try { notes = await courseNotes(topic ? { ...item, name: `${topic} ${topic} ${item.name}` } : item, s.token); } catch { /* questions without notes still work */ }
-  const ask = `${notes.text ? `Course notes:\n${notes.text}\n\n` : ''}Write ${count} practice questions ${topic ? `on the topic "${topic}" ` : ''}for "${item.name}" in ${item.courseName || 'this course'}.`;
-  const res = await fetch('/api/chat', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', Authorization: `Bearer ${s.token}` },
-    body: JSON.stringify({ messages: [{ role: 'user', content: ask }], systemPrompt: SYSTEM, purpose: 'practice' }),
-  });
+/** One call to the AI (local dev endpoint or Soma's /api/chat). Returns the parsed JSON it wrote. */
+async function askAI(system, content) {
+  const status = await practiceStatus();
+  if (!status.ok) throw new Error(status.reason);
+  const local = status.via === 'local';
+  const s = local ? null : session();
+  let res;
+  try {
+    res = await fetch(local ? '/api/practice' : '/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...(s ? { Authorization: `Bearer ${s.token}` } : {}) },
+      body: JSON.stringify({ messages: [{ role: 'user', content }], systemPrompt: system, purpose: 'practice' }),
+    });
+  } catch { throw new Error(NO_REPLY); }
   let data = null;
   try { data = await res.json(); } catch { /* not JSON */ }
-  if (!res.ok) throw new Error(ERRORS[data?.error] || (res.status === 401 ? ERRORS.auth_required : 'Soma AI could not write questions right now. Try again.'));
+  if (!res.ok) {
+    if (local && res.status === 404) probe = null; // dev server restarted without the endpoint
+    throw new Error(ERRORS[data?.error] || (res.status === 401 ? ERRORS.auth_required : 'The AI couldn’t do that right now. Try again in a moment.'));
+  }
   const text = (data?.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
-  const json = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1);
-  let questions = [];
-  try { questions = JSON.parse(json).questions || []; } catch { /* bad JSON */ }
-  questions = questions.filter((q) => q && typeof q.q === 'string' && Array.isArray(q.choices) && q.choices.length === 4 && Number.isInteger(q.answer) && q.answer >= 0 && q.answer < 4).slice(0, count);
-  if (!questions.length) throw new Error('Soma AI sent back something unreadable. Try again.');
+  try { return JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)); } catch { throw new Error(UNREADABLE); }
+}
+
+/** Asks the AI for a round of questions on an item (or on a course when item is free study). */
+export async function makePractice(item, count = 5, topic = null) {
+  const s = session();
+  let notes = { text: '', files: [] };
+  if (s) try { notes = await courseNotes(topic ? { ...item, name: `${topic} ${topic} ${item.name}` } : item, s.token); } catch { /* questions without notes still work */ }
+  const ask = `${notes.text ? `Course notes:\n${notes.text}\n\n` : ''}Write ${count} practice questions ${topic ? `on the topic "${topic}" ` : ''}for "${item.name}" in ${item.courseName || 'this course'}.`;
+  const out = await askAI(SYSTEM, ask);
+  const questions = (out.questions || []).filter((q) => q && typeof q.q === 'string' && Array.isArray(q.choices) && q.choices.length === 4 && Number.isInteger(q.answer) && q.answer >= 0 && q.answer < 4).slice(0, count);
+  if (!questions.length) throw new Error(UNREADABLE);
   return { questions, files: notes.files };
 }
 
 // --- Study Hall: sets built from what the student wants to study ----------------------
-// Every set comes from Soma's /api/chat (the 'practice' purpose: Soma's AI on the
-// server, using Soma's own Anthropic key; the browser never sees a key). The
-// student's own notes ride along: whatever they pasted, plus the Soma documents
-// that best match the topic.
+// Every set comes from the AI on a server (askAI: the dev server's /api/practice,
+// or Soma's /api/chat with the 'practice' purpose); the browser never sees a key.
+// The student's own notes ride along: whatever they pasted, plus (when signed in
+// to Soma) the Soma documents that best match the topic.
 
 const LEVELS = { easy: 'Mostly easy, a few medium.', mixed: 'A mix of easy, medium and hard.', hard: 'Mostly hard: multi-step, application and tricky cases.' };
 const SET_PROMPTS = {
@@ -140,35 +186,19 @@ const SET_PROMPTS = {
 const SET_SYSTEM = (mode) => `You make study material for a college student. Base it on the student's notes when given; otherwise on what courses like this usually cover. Plain wording. No trivia about file names or page numbers.
 ${SET_PROMPTS[mode]}`;
 
-async function askSoma(system, content) {
-  const s = session();
-  if (!s) throw new Error(practiceStatus().reason);
-  const res = await fetch('/api/chat', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', Authorization: `Bearer ${s.token}` },
-    body: JSON.stringify({ messages: [{ role: 'user', content }], systemPrompt: system, purpose: 'practice' }),
-  });
-  let data = null;
-  try { data = await res.json(); } catch { /* not JSON */ }
-  if (!res.ok) throw new Error(ERRORS[data?.error] || (res.status === 401 ? ERRORS.auth_required : 'Soma AI could not do that right now. Try again.'));
-  const text = (data?.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
-  try { return JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)); } catch { throw new Error('Soma AI sent back something unreadable. Try again.'); }
-}
-
 /**
  * A study set. what: { topic, course, item, notes } (any of them). mode: quiz |
  * cards | explain | problems. Returns { title, files, ...items } with bad entries dropped.
  */
 export async function makeStudySet({ topic = '', course = '', item = null, notes = '' }, mode = 'quiz', count = 8, level = 'mixed') {
   const s = session();
-  if (!s) throw new Error(practiceStatus().reason);
   let found = { text: '', files: [] };
   const lookup = item || { name: topic, courseName: course, courseId: '' };
-  try { found = await courseNotes(topic ? { ...lookup, name: `${topic} ${topic} ${lookup.name || ''}` } : lookup, s.token); } catch { /* without notes is fine */ }
+  if (s) try { found = await courseNotes(topic ? { ...lookup, name: `${topic} ${topic} ${lookup.name || ''}` } : lookup, s.token); } catch { /* without notes is fine */ }
   const own = notes.trim().slice(0, 9000);
   const subject = [topic && `the topic "${topic}"`, item && `"${item.name}"`, (course || item?.courseName) && `in ${course || item.courseName}`].filter(Boolean).join(' ') || 'this course';
   const ask = `${own ? `The student's own notes:\n${own}\n\n` : ''}${found.text ? `More of their course notes:\n${found.text}\n\n` : ''}Make ${count} ${{ quiz: 'quiz questions', cards: 'flashcards', explain: 'explain-it questions', problems: 'practice problems' }[mode]} on ${subject}. ${LEVELS[level] || LEVELS.mixed}`;
-  const out = await askSoma(SET_SYSTEM(mode), ask);
+  const out = await askAI(SET_SYSTEM(mode), ask);
   const clean = {
     quiz: () => ({ questions: (out.questions || []).filter((q) => q && typeof q.q === 'string' && Array.isArray(q.choices) && q.choices.length === 4 && Number.isInteger(q.answer) && q.answer >= 0 && q.answer < 4) }),
     cards: () => ({ cards: (out.cards || []).filter((c) => c && typeof c.front === 'string' && typeof c.back === 'string' && c.front.trim() && c.back.trim()) }),
@@ -176,7 +206,7 @@ export async function makeStudySet({ topic = '', course = '', item = null, notes
     problems: () => ({ problems: (out.problems || []).filter((p) => p && typeof p.q === 'string').map((p) => ({ q: p.q, steps: Array.isArray(p.steps) ? p.steps.filter((x) => typeof x === 'string') : [], answer: String(p.answer ?? '') })) }),
   }[mode]();
   const list = Object.values(clean)[0].slice(0, count);
-  if (!list.length) throw new Error('Soma AI came back empty. Try again, or add a few lines of notes.');
+  if (!list.length) throw new Error('The AI came back empty. Try again, or add a few lines of notes.');
   return { title: typeof out.title === 'string' && out.title.trim() ? out.title.trim().slice(0, 80) : (topic || item?.name || course || 'Study set'), files: found.files, [Object.keys(clean)[0]]: list };
 }
 
@@ -185,7 +215,7 @@ Return only JSON: {"score":0-100,"got":["what they got right, short"],"missed":[
 Judge understanding, not wording or spelling. An empty or off-topic answer scores 0.`;
 /** Grades an explain-it answer against its key points. */
 export async function gradeExplain(prompt, answer) {
-  const out = await askSoma(GRADE_SYSTEM, `Question: ${prompt.q}\nKey points a good answer covers:\n${prompt.points.map((p) => `- ${p}`).join('\n') || '- (use your judgement)'}\n\nThe student's answer:\n${String(answer).slice(0, 3000)}`);
+  const out = await askAI(GRADE_SYSTEM, `Question: ${prompt.q}\nKey points a good answer covers:\n${prompt.points.map((p) => `- ${p}`).join('\n') || '- (use your judgement)'}\n\nThe student's answer:\n${String(answer).slice(0, 3000)}`);
   const list = (x) => (Array.isArray(x) ? x.filter((v) => typeof v === 'string').slice(0, 5) : []);
   return { score: Math.max(0, Math.min(100, Math.round(Number(out.score) || 0))), got: list(out.got), missed: list(out.missed), tip: typeof out.tip === 'string' ? out.tip : '' };
 }

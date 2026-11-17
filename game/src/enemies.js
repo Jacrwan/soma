@@ -1,16 +1,43 @@
 // Enemies as real rigged models with their own walk and run cycles:
 // foxes in the Wilds, soldiers raiding the town, robots on the far planet.
 // Fox.glb is from the Khronos glTF samples (CC-BY 4.0, PixelMannen / tomkranis);
-// Soldier.glb and RobotExpressive.glb are from the three.js examples.
+// RobotExpressive.glb is from the three.js examples. The town raiders are the
+// Skeleton Warrior from KayKit's Skeletons pack by Kay Lousberg (CC0), the
+// same artist and rig as the hero.
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { MODELS } from './paths.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+/**
+ * KayKit characters come as ~10 skinned parts; parts that share a material and
+ * a bind pose are merged into one, so a raider costs 2 draw calls, not 10.
+ */
+function mergeSkinnedParts(root) {
+  const groups = new Map();
+  root.traverse((o) => { if (o.isSkinnedMesh && !Array.isArray(o.material)) { const k = o.material.uuid; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(o); } });
+  for (const parts of groups.values()) {
+    if (parts.length < 2) continue;
+    const first = parts[0];
+    if (!parts.every((p) => p.skeleton === first.skeleton && p.bindMatrix.equals(first.bindMatrix) && p.matrix.equals(first.matrix) && p.parent === first.parent)) continue;
+    const attrs = Object.keys(first.geometry.attributes).sort().join();
+    if (!parts.every((p) => Object.keys(p.geometry.attributes).sort().join() === attrs)) continue;
+    const merged = mergeGeometries(parts.map((p) => p.geometry), false);
+    if (!merged) continue;
+    const mesh = new THREE.SkinnedMesh(merged, first.material);
+    mesh.name = first.name;
+    mesh.position.copy(first.position); mesh.quaternion.copy(first.quaternion); mesh.scale.copy(first.scale);
+    first.parent.add(mesh);
+    mesh.bind(first.skeleton, first.bindMatrix);
+    for (const p of parts) p.parent.remove(p);
+  }
+}
 
 const KINDS = {
   fox: { file: 'Fox.glb', height: 1.15, yaw: 0, idle: 'Survey', walk: 'Walk', run: 'Run' },
-  bandit: { file: 'Soldier.glb', height: 1.9, yaw: Math.PI, idle: 'Idle', walk: 'Walk', run: 'Run' },
+  bandit: { file: 'Skeleton_Warrior.glb', height: 1.75, yaw: 0, idle: 'Idle', walk: 'Walking_A', run: 'Running_A', attack: '1H_Melee_Attack_Chop', death: 'Death_A' },
   robot: { file: 'RobotExpressive.glb', height: 2.2, yaw: 0, idle: 'Idle', walk: 'Walking', run: 'Running', attack: 'Punch', death: 'Death' },
 };
 
@@ -19,6 +46,7 @@ const loader = new GLTFLoader();
 export const enemiesReady = Promise.all(Object.entries(KINDS).map(([kind, info]) =>
   loader.loadAsync(`${MODELS}/${info.file}`).then((gltf) => {
     gltf.scene.updateMatrixWorld(true);
+    if (kind === 'bandit') mergeSkinnedParts(gltf.scene);
     const box = new THREE.Box3().setFromObject(gltf.scene);
     sources[kind] = { gltf, fit: info.height / Math.max(0.001, box.max.y - box.min.y), floor: box.min.y };
   }).catch((error) => console.warn(`Enemy model ${info.file} did not load.`, error)),

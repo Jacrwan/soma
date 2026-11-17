@@ -89,8 +89,14 @@ composer.addPass(new ShaderPass({
     void main() {
       vec4 c = texture2D(tDiffuse, vUv);
       float l = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
-      c.rgb = mix(vec3(l), c.rgb, 1.08);
+      // Tame the lime: wide grass reads loud, so greens lose a little saturation
+      // while the warm and blue accents (roofs, chests, the hero) keep theirs.
+      float green = clamp((c.g - max(c.r, c.b)) / max(c.g, 0.001) * 2.0, 0.0, 1.0);
+      c.rgb = mix(vec3(l), c.rgb, 1.08 - green * 0.2);
       c.rgb *= vec3(1.03, 1.0, 0.97);
+      // Split tone: warm light, slightly cool shade, for depth.
+      float hi = smoothstep(0.25, 0.9, l);
+      c.rgb *= mix(vec3(0.97, 0.99, 1.04), vec3(1.03, 1.0, 0.95), hi);
       vec2 d = vUv - 0.5;
       c.rgb *= 1.0 - dot(d, d) * 0.55;
       gl_FragColor = c;
@@ -756,6 +762,7 @@ function dodge() {
   player.dash = 0.2;
   player.safe = 0.34;
   player.dashCd = S.heroStats(state).dodgeTime;
+  tut.flags.dash = true;
   audio.swing();
   fx.burst(player.object.position, A.C.white, 6, 3, 2);
 }
@@ -763,6 +770,7 @@ function dodge() {
 function slam() {
   if (player.slamCd > 0 || player.down || ui.isOpen() || fight && false) return;
   player.slamCd = S.heroStats(state).slamTime;
+  tut.flags.slam = true;
   player.swing = 1;
   player.vy = 7.5;
   player.grounded = false;
@@ -1504,6 +1512,7 @@ function spawnRaid() {
 function updateRaiders(dt) {
   for (let i = raiders.length - 1; i >= 0; i--) {
     const r = raiders[i];
+    if (r.mode === 'dummy') { updateDummy(r, dt); continue; }
     const pad = pads[state.scene][r.target];
     const goal = r.mode === 'approach' && pad ? pad.group.position : r.home;
     const dx = goal.x - r.object.position.x;
@@ -1616,6 +1625,7 @@ function hitTownEnemies(inArc, mult = 1) {
     const r = raiders[i];
     if (!inArc(r.object.position, 3.4)) continue;
     landed = true;
+    tut.flags.hit = (tut.flags.hit || 0) + 1;
     const dmg = Math.max(1, Math.round(S.playerPower(state) * mult * S.levelEdge(state.hero.level, r.level).deal));
     r.hp -= dmg;
     r.hitFlash = 1;
@@ -1679,7 +1689,8 @@ function findTarget() {
   if (sceneName === 'moon') {
     offer(Math.hypot(p.x - W.LANDER_POS.x, p.z - W.LANDER_POS.z), 5.5, { text: 'Return to Earth', run: () => ui.travel({ title: 'Lander', subtitle: 'Your town keeps earning while you are away.', label: 'Fly home', onGo: () => travel('earth') }) });
   }
-  if (sceneName === 'earth') offer(Math.hypot(p.x - BOARD_POS.x, p.z - BOARD_POS.z), 4, { text: 'Canvas board: your assignments and grades', run: openSchool });
+  // While the Librarian is pointing at the board, a passing villager can't take the E key from it.
+  if (sceneName === 'earth') offer(Math.hypot(p.x - BOARD_POS.x, p.z - BOARD_POS.z), 4, { text: 'Canvas board: your assignments and grades', run: openSchool }, tutorialStep()?.target?.() === BOARD_POS ? 0.3 : 1);
   if (sceneName === 'earth' && !build.on) {
     offer(Math.hypot(p.x - MARKET_POS.x, p.z - MARKET_POS.z), 5, { text: 'Open the market', run: openMarket });
     offer(Math.hypot(p.x - VAULT_POS.x, p.z - VAULT_POS.z), 5.5, { text: `The Vault: ${S.vaultFound(state)}/${Object.keys(S.COLLECTIBLES).length} rare finds`, run: openVault });
@@ -1731,36 +1742,103 @@ const nearestBuilding = () => nearestOf(state.pads.earth.map((b, i) => (b ? pads
 const nearestCache = () => nearestOf(cacheObjects.filter((c) => !c.done).map((c) => c.object.position));
 
 const unfoundLandmark = () => nearestOf(world.landmarks().filter((l) => !state.found[S.landmarkKey(state.era, l.id)]));
-// Owl teaches one thing at a time. reveal: which parts of the screen show from this step on.
+// Spawned ahead and to the right: the Librarian walks on your left, so the bubble never hides them.
+// A practice foe for the tutorial: a loose page-wraith (a small walking book) that
+// stands still and bobs. It lives in `raiders` so swings, slams, damage numbers and
+// the coin drop all work exactly as they do in a real fight.
+function spawnDummy(offset = 0) {
+  const p = player.object.position;
+  const fwd = new THREE.Vector3(-Math.sin(cam.yaw), 0, -Math.cos(cam.yaw));
+  const side = new THREE.Vector3(Math.cos(cam.yaw), 0, -Math.sin(cam.yaw));
+  const object = A.makeCreature('invader', 0.3);
+  object.scale.multiplyScalar(1.35);
+  object.position.copy(p).addScaledVector(fwd, 4).addScaledVector(side, offset);
+  object.position.y = world.groundHeight('earth', object.position.x, object.position.z);
+  object.userData.base = object.scale.x;
+  world.earth.add(object);
+  fx.burst(object.position.clone().add(new THREE.Vector3(0, 1, 0)), A.C.white, 18, 5, 5);
+  const hp = Math.max(1, Math.round(S.playerPower(state) * 2.2));
+  const dummy = { object, enemy: null, target: -1, mode: 'dummy', hp, level: 1, carry: 0, wait: 0, hitFlash: 0, home: object.position.clone(), t: Math.random() * 6 };
+  raiders.push(dummy);
+  return dummy;
+}
+function updateDummy(r, dt) {
+  r.t += dt;
+  r.hitFlash = Math.max(0, r.hitFlash - dt * 4);
+  const o = r.object, p = player.object.position;
+  o.scale.setScalar(o.userData.base * (1 + r.hitFlash * 0.3));
+  // Knocked back a little by each hit, then drifts home.
+  o.position.x += (r.home.x - o.position.x) * Math.min(1, dt * 2);
+  o.position.z += (r.home.z - o.position.z) * Math.min(1, dt * 2);
+  o.position.y = world.groundHeight('earth', o.position.x, o.position.z) + 0.15 + Math.abs(Math.sin(r.t * 3)) * 0.3;
+  o.rotation.y = Math.atan2(p.x - o.position.x, p.z - o.position.z) + Math.sin(r.t * 5) * 0.15;
+  o.rotation.z = r.hitFlash * Math.sin(r.t * 40) * 0.3;
+}
+// An open patch of grass near you where a hut fits, so the build step can point at it.
+function freeBuildSpot() {
+  const p = player.object.position;
+  for (let r = 6; r <= 30; r += 2) for (let k = 0; k < 16; k++) {
+    const a = (k / 16) * Math.PI * 2, x = Math.round((p.x + Math.cos(a) * r) * 2) / 2, z = Math.round((p.z + Math.sin(a) * r) * 2) / 2;
+    if (!buildBlocked(x, z, true) && !onTownRoad(x, z) && world.groundHeight('earth', x, z) > -0.2) return new THREE.Vector3(x, world.groundHeight('earth', x, z), z);
+  }
+  return null;
+}
+const clearDummies = () => {
+  for (let i = raiders.length - 1; i >= 0; i--) if (raiders[i].mode === 'dummy') { raiders[i].object.parent?.remove(raiders[i].object); raiders.splice(i, 1); }
+};
+const dummiesLeft = () => raiders.filter((r) => r.mode === 'dummy');
+const nearestDummy = () => nearestOf(dummiesLeft().map((r) => r.object.position));
+
+// The Librarian teaches one thing at a time, and every step waits for you to do it.
+// reveal: which parts of the screen show from this step on.
 const TUTORIAL = [
-  { text: 'Can you move? Try walking. Hold Shift to run.', keys: ['W', 'A', 'S', 'D'],
-    enter: () => { tut.start = player.object.position.clone(); }, done: () => player.object.position.distanceTo(tut.start) > 8 },
-  { text: 'Look around. Hold the right mouse button and drag. This was all your town once.', keys: ['Right drag'],
-    enter: () => { tut.lastYaw = cam.yaw; tut.yawMoved = 0; }, tick: () => { tut.yawMoved += Math.abs(cam.yaw - tut.lastYaw); tut.lastYaw = cam.yaw; }, done: () => tut.yawMoved > 1.4 },
-  { text: 'That board shows what the Drift is sending at us. It’s your real coursework. Click it, or walk over and press E.', keys: ['Click', 'E'], reveal: 'tracker',
+  { text: 'You’re awake! Stretch those legs. Walk around a bit.', keys: ['W', 'A', 'S', 'D'],
+    enter: () => { tut.start = player.object.position.clone(); }, done: () => player.object.position.distanceTo(tut.start) > 7 },
+  { text: 'Faster. Hold Shift while you walk to run.', keys: ['Shift', '+ WASD'],
+    enter: () => { tut.ran = 0; tut.last = player.object.position.clone(); },
+    tick: () => { const p = player.object.position; if (keys.has('shift')) tut.ran += Math.hypot(p.x - tut.last.x, p.z - tut.last.z); tut.last.copy(p); },
+    done: () => tut.ran > 12 },
+  { text: 'Hop! Space jumps. Good for hills and showing off.', keys: ['Space'], done: () => tut.flags.jump },
+  { text: 'Now the useful one. Q dashes. Nothing can touch you mid-dash, so dash through trouble.', keys: ['Q'], done: () => tut.flags.dash },
+  { text: 'Look around: hold the right mouse button and drag. Or tap Ctrl to lock the camera behind you.', keys: ['Right drag', 'Ctrl'],
+    enter: () => { tut.lastYaw = cam.yaw; tut.yawMoved = 0; tut.lock = shiftLock; },
+    tick: () => { tut.yawMoved += Math.abs(cam.yaw - tut.lastYaw); tut.lastYaw = cam.yaw; },
+    done: () => tut.yawMoved > 1.4 || shiftLock !== tut.lock },
+  { text: 'Eek, a loose page! Smack it. F or left click. Three quick swings make a combo.', keys: ['F', 'Click'],
+    enter: () => { clearDummies(); tut.dummy = spawnDummy(3); },
+    target: () => nearestDummy(), done: () => !dummiesLeft().length },
+  { text: 'It brought friends. R slams the ground and hits everything around you.', keys: ['R'],
+    enter: () => { clearDummies(); player.slamCd = 0; spawnDummy(1.2); spawnDummy(4); },
+    target: () => nearestDummy(), done: () => tut.flags.slam && ((tut.flags.hit || 0) > 0 || !dummiesLeft().length) },
+  { text: 'Real enemies come from your coursework. That board shows it all. Click it, or walk over and press E.', keys: ['Click', 'E'], reveal: 'tracker',
+    enter: () => setTimeout(clearDummies, 1500),
     target: () => BOARD_POS, done: () => tut.flags.school },
-  { text: 'There’s one now. Every monster is a real assignment, and the closer it gets, the sooner it’s due. Go take a look.', reveal: 'tracker',
+  { text: 'Every monster is a real assignment. The closer it gets, the sooner it’s due. Go take a look.', reveal: 'tracker',
     target: () => nearestInvader(), done: () => { const t = nearestInvader(); return !t || Math.hypot(t.x - player.object.position.x, t.z - player.object.position.z) < 8; } },
-  { text: 'Monsters hate focus. Press T and set up a study session. A real timer, for real work. It’s the only way you grow stronger.', keys: ['T'], glow: 'btnStudy', reveal: 'study',
+  { text: 'Monsters hate focus. Press T to start a study session. Real timer, real work. That’s how you grow.', keys: ['T'], glow: 'btnStudy', reveal: 'study',
     done: () => tut.flags.study },
-  { text: 'We need shelter. Press B, pick a hut, and put it anywhere you like.', keys: ['B', 'Click'], glow: 'btnBuild', reveal: 'build',
+  { text: 'We need shelter. Press B, then click the glowing patch to put a hut there. Roads stay clear.', keys: ['B', 'Click'], glow: 'btnBuild', reveal: 'build',
+    target: () => tut.spot,
     enter: () => {
+      tut.spot = freeBuildSpot();
       tut.built = S.buildingCount(state).used;
       const cost = S.buildCost('home', S.tierFor(state));
       if (state.coins < cost) { S.addCoins(state, cost - state.coins); refreshHud(); }
     },
     done: () => S.buildingCount(state).used > tut.built },
-  { text: 'Huts make a little allowance, even while you’re away. Walk past it to collect. Studying pays far more, though.', reveal: 'coins',
+  { text: 'Huts earn a little allowance, even while you’re away. Walk past yours to collect.', reveal: 'coins',
     enter: () => {
       tut.collected = state.stats.collected;
       const b = state.pads.earth.find(Boolean);
       if (b) b.stored = Math.max(b.stored, 25);
     },
     target: () => nearestBuilding(), done: () => state.stats.collected > tut.collected },
-  { text: 'The Drift drops things when you push it back. Here, this one’s on me. Open it.', keys: ['E'], reveal: 'coins',
+  { text: 'Beating the Drift drops chests. Here, this one’s on me. Walk up and press E.', keys: ['E'], reveal: 'coins',
     enter: () => { tut.chestId = S.grantChest(state, 'rare', 'A gift from the Librarian').id; syncChests(); },
     target: () => chests.get(tut.chestId)?.object.position, done: () => !state.school.chests.some((c) => c.id === tut.chestId) && !ui.isOpen() },
-  { text: 'Out past the walls are pages of the Atlas, the map of everything ever learned. Follow the arrow and find one.', reveal: 'menu',
+  { text: 'Press M for the map. See the grey? That’s fog: land nobody’s walked yet.', keys: ['M'], reveal: 'menu',
+    done: () => tut.flags.map && !ui.isOpen() },
+  { text: 'Exploring clears the fog. Out there are lost Atlas pages: each one pays coins and tells a story. Follow my light!', keys: ['Shift', 'Q'], reveal: 'menu',
     enter: () => { tut.found = S.foundCount(state, state.era); },
     target: () => unfoundLandmark(), done: () => S.foundCount(state, state.era) > tut.found },
   { text: '', manual: true, reveal: 'all', target: () => { const w = S.nextWonder(state); return w && w.scene === 'earth' ? W.wonderPosition(w.index) : null; } },
@@ -1793,7 +1871,7 @@ function startTutorialStep() {
   step.enter?.();
   if (step.manual) {
     const w = S.nextWonder(state);
-    step.text = w ? `That’s the spot. Raise the ${w.name} and this land wakes up, and the next chapter begins. Study, clear your week, find the pages. I’ll be right here.` : 'Keep studying, keeper. I’ll be right here.';
+    step.text = w ? `You’re ready, keeper. Study to earn, hand in work to beat monsters, explore for pages. Then raise the ${w.name} right there. Here’s something for the road.` : 'You’re ready, keeper. Here’s something for the road.';
   }
   applyTutHud();
   coach.show(step);
@@ -1805,13 +1883,40 @@ function nextTutorialStep() {
   save();
   startTutorialStep();
 }
+// Every step pays a little, so learning feels like playing.
+function tutorialReward() {
+  const coins = Math.max(10, Math.round(S.wage(state) * 12));
+  const xp = 6;
+  S.addCoins(state, coins);
+  fx.float(player.object.position.clone().add(new THREE.Vector3(0, 2.5, 0)), `+${S.fmt(coins)} coins`);
+  fx.coinsTo(owl.object.position.clone().add(new THREE.Vector3(0, 1.6, 0)), player.object, 4, () => audio.coin());
+  gainedXp(S.addXp(state, xp));
+  refreshHud();
+}
+// The send-off: a real purse and a level, so you leave the lesson stronger.
+function tutorialPayoff() {
+  const coins = Math.max(150, Math.round(S.wage(state) * 120));
+  S.addCoins(state, coins);
+  const need = Math.max(0, S.xpToNext(state.hero.level) - state.hero.xp);
+  const lv = S.addXp(state, need);
+  gainedXp(lv);
+  const p = player.object.position;
+  fx.burst(p.clone().add(new THREE.Vector3(0, 1.5, 0)), A.C.gold, 50, 10, 10);
+  fx.ring(p.clone(), 6, 0.01, 0xffd76a);
+  fx.coinsTo(owl.object.position.clone().add(new THREE.Vector3(0, 1.6, 0)), player.object, 14, () => audio.coin());
+  fx.float(p.clone().add(new THREE.Vector3(0, 3, 0)), `+${S.fmt(coins)} coins · Level ${lv.level}!`, 'gold');
+  ui.toast(`Lesson's over: +${S.fmt(coins)} coins and hero level ${lv.level}. Press C to spend your skill points.`, 'gold');
+  refreshHud();
+}
 function finishTutorial(early) {
   state.tutorial = { step: TUTORIAL.length, done: true };
   state.settings.seenHelp = true;
   coach.hide();
   applyTutHud();
   save();
-  if (!early) { audio.era(); ui.banner(S.CHAPTERS[0].title, S.CHAPTERS[0].goal); }
+  // The level-up banner shows first; the chapter title follows it.
+  if (!early) { audio.era(); tutorialPayoff(); setTimeout(() => ui.banner(S.CHAPTERS[0].title, S.CHAPTERS[0].goal), 2800); }
+  clearDummies();
 }
 function replayTutorial() {
   ui.close();
@@ -1915,6 +2020,7 @@ function updateTutorial(time) {
     tut.advancing = true;
     coach.complete();
     audio.chest();
+    tutorialReward();
     setTimeout(nextTutorialStep, 1100);
   }
 }
@@ -2065,6 +2171,7 @@ function openChests() {
 
 function openMap() {
   if (inRealm() || state.scene !== 'earth') return void ui.toast('The map shows your home land. Head back to use it.', 'bad');
+  tut.flags.map = true;
   S.revealMap(state, player.object.position.x, player.object.position.z);
   const size = 640;
   const canvas = document.createElement('canvas');
@@ -2187,6 +2294,7 @@ window.addEventListener('keydown', (event) => {
   keys.add(key);
   if (key === ' ') event.preventDefault();
   if (event.repeat) return;
+  if (key === ' ') player.jumpBuf = 0.15; // a quick tap between frames still jumps
   if (key === 'e' || key === 'enter') interact();
   else if (key === 'f') attack();
   else if (key === 'g') openSchool();
@@ -2437,9 +2545,12 @@ function updatePlayer(dt, time) {
   // No walking into lakes, rivers or the sea.
   if (!inRealm() && !moon && world.groundHeight('earth', p.x, p.z) < -0.45) { p.x = fromX; p.z = fromZ; }
   const ground = inRealm() ? 0 : world.groundHeight(state.scene, p.x, p.z);
-  if (player.grounded && keys.has(' ') && !ui.isOpen()) {
+  player.jumpBuf = Math.max(0, (player.jumpBuf || 0) - dt);
+  if (player.grounded && (keys.has(' ') || player.jumpBuf > 0) && !ui.isOpen()) {
+    player.jumpBuf = 0;
     player.vy = moon ? 6.2 : 8.6;
     player.grounded = false;
+    tut.flags.jump = true;
   }
   player.vy -= (moon ? 5.5 : 24) * dt;
   p.y += player.vy * dt;
@@ -4349,7 +4460,7 @@ window.epoch = {
   thumb: (r) => thumbFor(r),
   character: (id) => pickCharacter(id),
   goTo(kind) { const inv = [...invaders.values()].filter((i) => (kind === 'boss') === i.boss).sort((a, b) => a.object.position.distanceTo(player.object.position) - b.object.position.distanceTo(player.object.position))[0]; if (!inv) return null; const o = inv.object.position; player.object.position.set(o.x + 4, 0, o.z + 4); cam.yaw = Math.atan2(4, 4); cam.pitch = 0.32; cam.want = cam.dist = inv.boss ? 20 : 13; return inv.item.name; },
-  tutorial: () => ({ ...state.tutorial, title: tutorialStep()?.title }), skipStep: () => nextTutorialStep(),
+  tutorial: () => ({ ...state.tutorial, title: tutorialStep()?.title, text: tutorialStep()?.text, target: tutorialStep()?.target?.() || null }), skipStep: () => nextTutorialStep(),
   caches: () => world.caches(), openCache: (i) => openCacheAt(i), landmarks: () => world.landmarks(), openMap: () => openMap(), reveal: (x, z) => S.revealMap(state, x, z),
   refresh() { world.setEra(state.era); world.setScene(state.scene, state.era); dressPlayer(); refreshAllPads(); refreshWonders(); syncChests(); syncInvaders(Date.now()); syncDecor(); syncPaths(); refreshHud(); },
   look(yaw, pitch, dist) { Object.assign(cam, { yaw, pitch, dist, want: dist }); },

@@ -165,6 +165,9 @@ export function createFx(scene, camera) {
       for (const entry of labels) {
         entry.object.getWorldPosition(v);
         const pos = v.clone();
+        // Far labels shrink to their name (style.css .label.far); speech stays as is.
+        const far = !/npc|step|talk/.test(entry.kind) && camera.position.distanceTo(v) > 24;
+        if (entry.node.classList.contains('far') !== far) { entry.node.classList.toggle('far', far); entry.size = null; }
         let shown = Boolean(entry.object.parent);
         for (let o = entry.object; o && shown; o = o.parent) shown = o.visible;
         if (!shown || !project(pos, entry.node, entry.height, false)) { if (entry.node.style.display !== 'none') entry.node.style.display = 'none'; entry.shown = false; continue; }
