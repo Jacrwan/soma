@@ -103,7 +103,7 @@ function meadow(x, z, r, amp = 1) {
 // Creeks around the areas of the Stone Age valley, Animal Crossing style: you can see
 // across, but can't cross until a bridge is built. One arc along the town's edge in front
 // of every area except the meadow, and a creek along every border between two areas.
-export const CREEK = { r: TOWN_R + 3, half: 1.7, bank: 2.6, outer: RISE_R + 14 };
+export const CREEK = { r: TOWN_R + 3, half: 1.2, bank: 2.2, outer: RISE_R + 14 };
 const RAD = Math.PI / 180;
 function creekDistance(x, z, r = Math.hypot(x, z)) {
   if (r < CREEK.r - 6) return Infinity;
@@ -383,16 +383,17 @@ const WATER_FRAG = `
     #endif
     // Cartoon water: flat, bright colour; thin white ripple lines that drift; a few
     // sparkles where the sun catches it. Darker at night, like everything else.
-    float day = clamp(dot(sunColor, vec3(0.3, 0.6, 0.1)) * 1.15, 0.28, 1.0);
+    float day = clamp(dot(sunColor, vec3(0.3, 0.6, 0.1)) * 1.15, 0.0, 1.0);
     // (Linear colour: the screen brightens it, so these read as a clear turquoise to a deep blue.)
-    vec3 col = mix(vec3(0.10, 0.52, 0.78), vec3(0.03, 0.25, 0.60), depth) * day;
+    // By day a clear turquoise; at night a moonlit blue (never a black hole in the grass).
+    vec3 col = mix(mix(vec3(0.13, 0.32, 0.52), vec3(0.08, 0.22, 0.42), depth), mix(vec3(0.10, 0.52, 0.78), vec3(0.03, 0.25, 0.60), depth), smoothstep(0.2, 0.8, day));
     // Thin wavy outlines: contour lines through a slowly drifting ripple field.
     float wave = texture2D(ripples, p * 0.018 + time * vec2(0.006, 0.004)).r * 0.65 + texture2D(ripples, p * 0.034 - time * vec2(0.005, 0.007)).g * 0.35;
     float c = fract(wave * 3.5 + time * 0.03);
     float lines = 1.0 - smoothstep(0.03, 0.08, abs(c - 0.5));
     // Rare sparkles where the sun catches the surface.
-    float spark = smoothstep(0.71, 0.75, texture2D(ripples, p * 0.35 + time * vec2(0.04, -0.03)).r) * day;
-    col = mix(col, vec3(0.86, 0.96, 1.0), clamp(lines * 0.45 + spark * 0.7, 0.0, 1.0));
+    float spark = smoothstep(0.71, 0.75, texture2D(ripples, p * 0.35 + time * vec2(0.04, -0.03)).r) * max(day, 0.35);
+    col = mix(col, mix(vec3(0.6, 0.75, 0.92), vec3(0.86, 0.96, 1.0), smoothstep(0.2, 0.8, day)), clamp(lines * 0.45 + spark * 0.7, 0.0, 1.0));
     float fres = 0.0;
     // Foam where the sea meets the sand, in bands that roll in.
     float chop = texture2D(ripples, p * 0.12 + time * 0.01).b * 0.5 + n1.x * 0.5;
@@ -604,7 +605,7 @@ export function createWorld(scene, renderer) {
         m.renderOrder = 2;
         return m;
       };
-      const w = CREEK.half + 1.4;
+      const w = CREEK.half + 1.2;
       for (const sec of AREA_SECTORS) {
         const line = [];
         for (let r = CREEK.r - 1; r <= CREEK.outer; r += 3) line.push({ x: Math.cos(sec.to * RAD) * r, z: Math.sin(sec.to * RAD) * r });
