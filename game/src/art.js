@@ -2234,3 +2234,52 @@ export function bakeModel(root) {
 { const raw = makeCreature; makeCreature = (...args) => bakeModel(raw(...args)); }
 { const raw = makePedestal; makePedestal = (...args) => bakeModel(raw(...args)); }
 { const raw = makeTrophy; makeTrophy = (...args) => bakeModel(raw(...args)); }
+
+/** Owl, the old librarian spirit who guides you. About half a metre tall; userData.wings flap. */
+export function makeOwl() {
+  const g = new THREE.Group();
+  const brown = 0x8a6248, belly = 0xf1dfc0, dark = 0x5e402e;
+  const body = ball(0.24, brown, 1, { rough: 0.85 });
+  body.scale.set(1, 1.12, 0.92);
+  g.add(at(body, 0, 0.26, 0));
+  const front = ball(0.18, belly, 1, { rough: 0.9 });
+  front.scale.set(1, 1.15, 0.6);
+  g.add(at(front, 0, 0.22, 0.12));
+  const head = ball(0.2, brown, 1, { rough: 0.85 });
+  head.scale.set(1.12, 0.95, 0.95);
+  g.add(at(head, 0, 0.56, 0.02));
+  for (const s of [-1, 1]) {
+    const disc = ball(0.085, belly, 1);
+    disc.scale.set(1, 1, 0.45);
+    g.add(at(disc, s * 0.08, 0.58, 0.17));
+    const eye = ball(0.055, 0x1b1410, 1, { rough: 0.2 });
+    eye.scale.set(1, 1, 0.5);
+    g.add(at(eye, s * 0.08, 0.58, 0.205));
+    g.add(at(ball(0.017, 0xffffff, 0), s * 0.08 + 0.018, 0.6, 0.235));
+    const tuft = cone(0.05, 0.14, dark, 5);
+    tuft.rotation.z = -s * 0.45;
+    g.add(at(tuft, s * 0.15, 0.69, -0.02));
+  }
+  const beak = cone(0.035, 0.08, 0xe0a02a, 5);
+  beak.rotation.x = Math.PI;
+  g.add(at(beak, 0, 0.55, 0.22));
+  const wings = [];
+  for (const s of [-1, 1]) {
+    const pivot = new THREE.Group();
+    const wing = ball(0.15, dark, 1, { rough: 0.85 });
+    wing.scale.set(0.35, 1, 0.75);
+    wing.position.set(s * 0.06, -0.08, 0);
+    pivot.add(wing);
+    pivot.position.set(s * 0.21, 0.36, -0.01);
+    pivot.userData.side = s;
+    g.add(pivot);
+    wings.push(pivot);
+  }
+  for (const s of [-1, 1]) g.add(at(cone(0.03, 0.06, 0xe0a02a, 4), s * 0.07, 0.0, 0.08));
+  // A small lantern hanging from one foot: the Atlas's light.
+  const lantern = ball(0.05, 0xfff1b0, 0, { emissive: 0xffd27a, glow: 1.6 });
+  lantern.name = 'glow';
+  g.add(at(lantern, 0.09, -0.06, 0.06));
+  g.userData.wings = wings;
+  return g;
+}

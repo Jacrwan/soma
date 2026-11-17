@@ -48,6 +48,61 @@ export function createUI(on) {
   const gearStat = (g) => (g.slot === 'weapon' ? `+${g.might} damage` : g.slot === 'armor' ? `+${g.health} health` : `+${g.crit}% crit · +${g.might} damage`);
   const opening = createOpening();
 
+  // Story dialogue: one line at a time, typed out. Space, E, Enter or a click moves on.
+  const SPEAKERS = {
+    owl: { name: 'Owl', icon: '<svg viewBox="0 0 48 48"><ellipse cx="24" cy="28" rx="15" ry="16" fill="#8a6248"/><ellipse cx="24" cy="32" rx="9" ry="10" fill="#f1dfc0"/><circle cx="17" cy="22" r="7" fill="#f1dfc0"/><circle cx="31" cy="22" r="7" fill="#f1dfc0"/><circle cx="17" cy="22" r="4" fill="#1b1410"/><circle cx="31" cy="22" r="4" fill="#1b1410"/><circle cx="18.3" cy="20.6" r="1.3" fill="#fff"/><circle cx="32.3" cy="20.6" r="1.3" fill="#fff"/><path d="M22 26l2 4 2-4z" fill="#e0a02a"/><path d="M11 13l4 6-6-1zM37 13l-4 6 6-1z" fill="#5e402e"/></svg>' },
+    pro: { name: 'The Procrastinator', icon: '<svg viewBox="0 0 48 48"><circle cx="24" cy="26" r="17" fill="#3a2a5c"/><path d="M8 24c4-12 28-12 32 0-6-4-26-4-32 0z" fill="#241a3a"/><path d="M14 25q4-3 8 0M26 25q4-3 8 0" stroke="#c8b8ff" stroke-width="2.4" fill="none" stroke-linecap="round"/><path d="M17 33q7 5 14 0" stroke="#c8b8ff" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="37" cy="12" r="3" fill="#c8b8ff" opacity=".7"/><circle cx="41" cy="6" r="2" fill="#c8b8ff" opacity=".5"/></svg>' },
+  };
+  const talkBox = document.createElement('div');
+  talkBox.id = 'talk';
+  talkBox.hidden = true;
+  talkBox.innerHTML = '<div class="talk-face"></div><div class="talk-body"><b class="talk-name"></b><p class="talk-text"></p><small class="talk-next">Space to continue</small></div>';
+  document.body.append(talkBox);
+  let talk = null;
+  function showLine() {
+    const [who, text] = talk.lines[talk.i];
+    const sp = SPEAKERS[who] || SPEAKERS.owl;
+    talkBox.className = `talk-${who}`;
+    talkBox.querySelector('.talk-face').innerHTML = sp.icon;
+    talkBox.querySelector('.talk-name').textContent = sp.name;
+    talk.shown = 0;
+    talk.text = text;
+    talkBox.querySelector('.talk-text').textContent = '';
+    clearInterval(talk.timer);
+    talk.timer = setInterval(() => {
+      talk.shown += 2;
+      talkBox.querySelector('.talk-text').textContent = text.slice(0, talk.shown);
+      if (talk.shown >= text.length) clearInterval(talk.timer);
+    }, 18);
+  }
+  function nextLine() {
+    if (!talk) return;
+    if (talk.shown < talk.text.length) { talk.shown = talk.text.length; clearInterval(talk.timer); talkBox.querySelector('.talk-text').textContent = talk.text; return; }
+    talk.i += 1;
+    if (talk.i >= talk.lines.length) {
+      const done = talk.onDone;
+      clearInterval(talk.timer);
+      talk = null;
+      talkBox.hidden = true;
+      done?.();
+      if (queue.length) { const q = queue.shift(); startTalk(q.lines, q.onDone); }
+      return;
+    }
+    showLine();
+  }
+  const queue = [];
+  function startTalk(lines, onDone) {
+    if (talk) { queue.push({ lines, onDone }); return; }
+    talk = { lines, i: 0, onDone, timer: 0 };
+    talkBox.hidden = false;
+    showLine();
+  }
+  talkBox.addEventListener('pointerdown', (e) => { e.stopPropagation(); nextLine(); });
+  addEventListener('keydown', (e) => {
+    if (!talk || e.repeat) return;
+    if ([' ', 'e', 'E', 'Enter', 'Escape'].includes(e.key)) { e.preventDefault(); e.stopImmediatePropagation(); nextLine(); }
+  }, true);
+
   $('btnSchool').addEventListener('click', () => on.school());
   $('btnStudy').addEventListener('click', () => on.study(null));
   $('btnBuild')?.addEventListener('click', () => on.build?.());
@@ -94,7 +149,7 @@ export function createUI(on) {
   }
 
   return {
-    isOpen: () => Boolean(open) || opening.isOpen(),
+    isOpen: () => Boolean(open) || opening.isOpen() || Boolean(talk),
     close,
 
     hud({ coins, income, era, eraName, goal, progress, siege, chests, muted }) {
@@ -848,6 +903,9 @@ export function createUI(on) {
         })),
         el('p', { class: 'note', text: 'Odds are for the rare find inside. Every chest also has coins, and better chests add gear, relics, tokens and looks.' }));
     },
+
+    /** Plays story lines ([speaker, text] pairs), then calls onDone. Queues behind any already playing. */
+    story(lines, onDone) { startTalk(lines, onDone); },
 
     map({ title, subtitle, canvas, legend }) {
       panel({ title, subtitle, wide: true }, el('div', { class: 'map-wrap' }, canvas), el('div', { class: 'map-legend' }, legend.map(([cls, text]) => el('span', { class: cls, text }))));

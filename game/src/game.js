@@ -931,6 +931,7 @@ function openWonder(wonder) {
       audio.era();
       if (done.finale) {
         ui.banner(`${S.SEASON.name} complete`, done.name);
+        setTimeout(() => playStory('finale'), 2400);
         syncChests();
         setTimeout(() => ui.toast(`A legendary chest landed on your plaza. New ages come next season; until then your weeks, exams, the Vault and the map are still going.`, 'gold'), 3200);
         refreshWonders();
@@ -941,10 +942,10 @@ function openWonder(wonder) {
       ui.banner(done.index === 5 ? 'The Moon is waiting' : done.index === 6 ? 'You reached the stars' : 'A new age begins', eraName());
       if (done.index === 5) setTimeout(() => ui.toast('Walk to the rocket and press E to fly to the Moon.', 'gold'), 3600);
       if (done.newLand) {
-        // Let the wonder stand for a moment, then set out for the new land.
+        // Let the wonder stand for a moment, hear Owl out, then set out for the new land.
         refreshWonders();
         save();
-        setTimeout(() => moveToNewLand(done), 3200);
+        setTimeout(() => playStory(`chapter${done.index + 1}`, () => moveToNewLand(done)), 2600);
         return;
       }
       world.setEra(state.era);
@@ -1009,8 +1010,10 @@ function moveToNewLand(done) {
     syncHalls();
     applyTimeOfDay();
     refreshHud();
-    ui.banner(eraName(), `A new land: ${world.landName()}`);
+    const chapter = S.CHAPTERS[state.era];
+    ui.banner(chapter ? chapter.title : eraName(), chapter ? chapter.goal : `A new land: ${world.landName()}`);
     warmShaders();
+    if (state.era === 1) setTimeout(() => playStory('chapter2'), 2800);
     setTimeout(() => ui.toast(`Your old town stays behind. A settler's purse of ${S.fmt(done.purse)} coins${done.decorBack ? ` (+${S.fmt(done.decorBack)} for your decorations)` : ''} gets the first homes built.`, 'gold'), 2600);
     save();
   });
@@ -1679,39 +1682,52 @@ const nearestEmptyPad = () => nearestOf(state.pads.earth.map((b, i) => (!b && i 
 const nearestBuilding = () => nearestOf(state.pads.earth.map((b, i) => (b ? pads.earth[i].group.position : null)).filter(Boolean));
 const nearestCache = () => nearestOf(cacheObjects.filter((c) => !c.done).map((c) => c.object.position));
 
+const unfoundLandmark = () => nearestOf(world.landmarks().filter((l) => !state.found[S.landmarkKey(state.era, l.id)]));
+// Owl teaches one thing at a time. reveal: which parts of the screen show from this step on.
 const TUTORIAL = [
-  { title: 'Walk around', text: 'Use W A S D to walk. Hold Shift to run and press Space to jump.', keys: ['W', 'A', 'S', 'D'],
+  { text: 'Can you move? Try walking. Hold Shift to run.', keys: ['W', 'A', 'S', 'D'],
     enter: () => { tut.start = player.object.position.clone(); }, done: () => player.object.position.distanceTo(tut.start) > 8 },
-  { title: 'Look around', text: 'Hold the right mouse button and drag to turn the camera. Scroll to zoom. Tap Ctrl to lock the camera to your mouse.', keys: ['Right drag', 'Scroll', 'Ctrl'],
+  { text: 'Look around. Hold the right mouse button and drag. This was all your town once.', keys: ['Right drag'],
     enter: () => { tut.lastYaw = cam.yaw; tut.yawMoved = 0; }, tick: () => { tut.yawMoved += Math.abs(cam.yaw - tut.lastYaw); tut.lastYaw = cam.yaw; }, done: () => tut.yawMoved > 1.4 },
-  { title: 'Your Canvas board', text: 'Your real assignments, tests and grades from Canvas live here. Walk to the board and press E.', keys: ['E'],
+  { text: 'That board shows what the Drift is sending at us. It’s your real coursework. Walk over and press E.', keys: ['E'], reveal: 'tracker',
     target: () => BOARD_POS, done: () => tut.flags.school },
-  { title: 'Homework attacks', text: 'Every assignment marches on your town as a monster. The closer it gets, the sooner it is due. Go take a look at one.',
+  { text: 'There’s one now. Every monster is a real assignment, and the closer it gets, the sooner it’s due. Go take a look.', reveal: 'tracker',
     target: () => nearestInvader(), done: () => { const t = nearestInvader(); return !t || Math.hypot(t.x - player.object.position.x, t.z - player.object.position.z) < 8; } },
-  { title: 'Study to level up', text: 'Press T to open a study session. A real timer runs while you do the work, and it is the only way your hero levels up. Open it now; you can start one or close it.', keys: ['T'], glow: 'btnStudy',
+  { text: 'Monsters hate focus. Press T and set up a study session. A real timer, for real work. It’s the only way you grow stronger.', keys: ['T'], glow: 'btnStudy', reveal: 'study',
     done: () => tut.flags.study },
-  { title: 'Build a home', text: 'Press B (or the blue Build button), pick a home, and click anywhere on the ground to put it there. You can build anywhere you can walk.', keys: ['B', 'Click'], glow: 'btnBuild',
+  { text: 'We need shelter. Press B, pick a hut, and put it anywhere you like.', keys: ['B', 'Click'], glow: 'btnBuild', reveal: 'build',
     enter: () => {
       tut.built = S.buildingCount(state).used;
       const cost = S.buildCost('home', S.tierFor(state));
       if (state.coins < cost) { S.addCoins(state, cost - state.coins); refreshHud(); }
     },
     done: () => S.buildingCount(state).used > tut.built },
-  { title: 'Collect coins', text: 'Your town makes a small allowance, even while you are away. Walk past a building to collect. Studying pays far more.',
+  { text: 'Huts make a little allowance, even while you’re away. Walk past it to collect. Studying pays far more, though.', reveal: 'coins',
     enter: () => {
       tut.collected = state.stats.collected;
-      // Town income is slow on purpose; the first home starts with a little saved up.
       const b = state.pads.earth.find(Boolean);
       if (b) b.stored = Math.max(b.stored, 25);
     },
     target: () => nearestBuilding(), done: () => state.stats.collected > tut.collected },
-  { title: 'Open a chest', text: 'Chests come from grades, quests and exploring. Here is one to start you off. Walk to it and press E.', keys: ['E'],
-    enter: () => { tut.chestId = S.grantChest(state, 'rare', 'Your first chest').id; syncChests(); },
+  { text: 'The Drift drops things when you push it back. Here, this one’s on me. Open it.', keys: ['E'], reveal: 'coins',
+    enter: () => { tut.chestId = S.grantChest(state, 'rare', 'A gift from Owl').id; syncChests(); },
     target: () => chests.get(tut.chestId)?.object.position, done: () => !state.school.chests.some((c) => c.id === tut.chestId) && !ui.isOpen() },
-  { title: 'Explore', text: 'Past the town is open country. Follow a beam of light to a hidden cache. Each one gives a chest once a day.',
-    target: () => nearestCache(), done: () => cacheObjects.some((c) => c.done) },
-  { title: 'Your goal', text: '', manual: true, target: () => { const w = S.nextWonder(state); return w && w.scene === 'earth' ? W.wonderPosition(w.index) : null; } },
+  { text: 'Out past the walls are pages of the Atlas, the map of everything ever learned. Follow the arrow and find one.', reveal: 'menu',
+    enter: () => { tut.found = S.foundCount(state, state.era); },
+    target: () => unfoundLandmark(), done: () => S.foundCount(state, state.era) > tut.found },
+  { text: '', manual: true, reveal: 'all', target: () => { const w = S.nextWonder(state); return w && w.scene === 'earth' ? W.wonderPosition(w.index) : null; } },
 ];
+// The screen starts nearly empty and fills in as Owl teaches each part.
+const TUT_HUD = { tracker: ['.tracker'], study: ['#btnStudy', '#vitals'], build: ['#btnBuild', '.era-card'], coins: ['.hud-center'], menu: ['.menu'] };
+const TUT_ORDER = ['tracker', 'study', 'build', 'coins', 'menu'];
+function applyTutHud() {
+  const step = tutorialStep();
+  let upto = -1;
+  if (!step) upto = TUT_ORDER.length;
+  else for (let i = 0; i <= state.tutorial.step; i++) { const r = TUTORIAL[i]?.reveal; if (r === 'all') upto = TUT_ORDER.length; else if (r) upto = Math.max(upto, TUT_ORDER.indexOf(r)); }
+  TUT_ORDER.forEach((key, i) => { for (const sel of TUT_HUD[key]) document.querySelectorAll(sel).forEach((n) => n.classList.toggle('tut-hide', i > upto)); });
+  document.body.classList.toggle('tut-early', upto < 0);
+}
 
 const coach = createCoach({
   scene, camera,
@@ -1725,12 +1741,14 @@ function startTutorialStep() {
   if (!step) return coach.hide();
   tut.flags = {};
   tut.advancing = false;
+  tut.started = true;
   step.enter?.();
-  if (step.title === 'Your goal') {
+  if (step.manual) {
     const w = S.nextWonder(state);
-    step.text = w ? `Build the ${w.name} to finish the ${S.ERAS[state.era].name}. ${S.SEASON.name} is two ages, about a month of studying. Each week, clear the weekly goal (top right) for an epic chest.` : 'Keep studying and clearing your weeks. Press H any time to see every control.';
+    step.text = w ? `That’s the spot. Raise the ${w.name} and this land wakes up, and the next chapter begins. Study, clear your week, find the pages. I’ll be right here.` : 'Keep studying, keeper. I’ll be right here.';
   }
-  coach.show(step, state.tutorial.step, TUTORIAL.length);
+  applyTutHud();
+  coach.show(step);
 }
 function nextTutorialStep() {
   if (!tutorialStep()) return;
@@ -1743,20 +1761,60 @@ function finishTutorial(early) {
   state.tutorial = { step: TUTORIAL.length, done: true };
   state.settings.seenHelp = true;
   coach.hide();
+  applyTutHud();
   save();
-  if (!early) { audio.era(); ui.banner('You are ready', 'Press H any time to see every control'); }
+  if (!early) { audio.era(); ui.banner(S.CHAPTERS[0].title, S.CHAPTERS[0].goal); }
 }
 function replayTutorial() {
   ui.close();
   state.tutorial = { step: 0, done: false };
-  startTutorialStep();
+  state.story = { ...state.story, intro: false };
+  playStory('intro', startTutorialStep);
+}
+
+// --- Owl, your guide, and the story ---------------------------------------------------
+const owl = { object: A.makeOwl(), t: 0 };
+owl.object.scale.setScalar(1.35);
+world.earth.add(owl.object);
+function updateOwl(dt, time) {
+  const o = owl.object;
+  o.visible = !inRealm() && state.scene === 'earth' && !photo.on;
+  if (!o.visible) return;
+  // Hovers over your left shoulder, a little behind, and keeps up when you run.
+  const p = player.object.position;
+  const side = new THREE.Vector3(Math.cos(cam.yaw), 0, -Math.sin(cam.yaw));
+  const back = new THREE.Vector3(Math.sin(cam.yaw), 0, Math.cos(cam.yaw));
+  const want = p.clone().addScaledVector(side, -1.3).addScaledVector(back, 0.6);
+  want.y = p.y + 2.0 + Math.sin(time * 2.2) * 0.12;
+  if (o.position.distanceTo(want) > 25) o.position.copy(want);
+  o.position.lerp(want, Math.min(1, dt * 4));
+  o.rotation.y = Math.atan2(-back.x, -back.z) + Math.PI + Math.sin(time * 0.7) * 0.25;
+  for (const w of o.userData.wings) w.rotation.z = w.userData.side * (0.35 + Math.sin(time * 9) * 0.45);
+}
+/** Plays a story moment once, then calls after (even if it was already seen). */
+function playStory(id, after) {
+  const lines = S.storyBeat(state, id);
+  if (!lines) return void after?.();
+  save();
+  ui.story(lines, after);
+}
+// Moments that play when something first happens.
+function checkLore() {
+  if (inRealm() || state.scene !== 'earth' || !state.tutorial?.done || ui.isOpen()) return;
+  if (!state.story.procrastinator && S.lateItems(state).length) return void playStory('procrastinator');
+  if (!state.story.exam) {
+    const p = player.object.position;
+    for (const inv of invaders.values()) if (inv.boss && Math.hypot(inv.object.position.x - p.x, inv.object.position.z - p.z) < 16) return void playStory('exam');
+  }
 }
 function updateTutorial(time) {
   const step = tutorialStep();
-  if (!step || inRealm() || state.scene !== 'earth') { coach.setVisible(false); return; }
+  // Nothing to check until a step has actually begun (the intro plays first).
+  if (!step || !tut.started || inRealm() || state.scene !== 'earth') { coach.setVisible(false); return; }
   coach.setVisible(!ui.isOpen());
   if (tut.advancing) return;
   step.tick?.();
+  coach.follow(owl.object.position);
   coach.point(step.target?.() || null, player.object.position, time);
   if (!step.manual && step.done()) {
     tut.advancing = true;
@@ -1861,10 +1919,12 @@ function updateExploring(dt) {
     const got = S.discover(state, l.id, marks.length);
     if (!got) continue;
     audio.chest();
-    ui.banner(`Discovered · ${got.count} of ${marks.length}`, l.name);
+    ui.banner(`Atlas page ${got.count} of ${marks.length}`, l.name);
     ui.toast(`${l.text} +${S.fmt(got.coins)} coins`, 'gold');
+    if (got.count === 1) setTimeout(() => playStory('atlas'), 2200);
+    if (got.count === marks.length) setTimeout(() => playStory(`pages${Math.min(1, state.era)}`), 2600);
     fx.burst(new THREE.Vector3(l.x, l.y + 2, l.z), A.C.gold, 30, 8, 9);
-    if (got.chest) { syncChests(); ui.toast(`Every landmark in this land found: a rare chest landed on your plaza.`, 'gold'); }
+    if (got.chest) { syncChests(); ui.toast(`Every Atlas page in this land found: a rare chest landed on your plaza.`, 'gold'); }
     refreshHud();
     save();
   }
@@ -1987,10 +2047,10 @@ function openMap() {
   const found = S.foundCount(state, state.era);
   const left = cacheObjects.filter((c) => !c.done).length;
   ui.map({
-    title: 'Map',
-    subtitle: `${world.landName()} · ${found} of ${marks.length} landmarks found · ${left} cache${left === 1 ? '' : 's'} left today`,
+    title: 'The Atlas',
+    subtitle: `${world.landName()} · ${found} of ${marks.length} Atlas pages found · ${left} cache${left === 1 ? '' : 's'} left today`,
     canvas,
-    legend: [['lg-you', 'You'], ['lg-star', 'Landmark'], ['lg-cache', 'Hidden cache'], ['lg-fog', 'Not explored yet']],
+    legend: [['lg-you', 'You'], ['lg-star', 'Atlas page'], ['lg-cache', 'Hidden cache'], ['lg-fog', 'Not explored yet']],
   });
 }
 
@@ -2459,6 +2519,7 @@ function frame(nowMs) {
   updatePlayer(dt, time);
   syncCaches();
   updateTutorial(time);
+  updateOwl(dt, time);
   updateExploring(dt);
   trimShadows(dt);
   updateCombatHud(dt);
@@ -2523,6 +2584,7 @@ function frame(nowMs) {
     if (build.on) drawBuildBar();
     checkDeadlines();
     checkStory();
+    checkLore();
   }
   saveTimer -= dt;
   if (saveTimer <= 0) {
@@ -4140,8 +4202,9 @@ if (S.dueReviews(state).length) setTimeout(() => ui.toast(`${S.dueReviews(state)
 
 S.revealMap(state, 0, 0, W.TOWN_R + 4);
 if (state.tutorial && !state.tutorial.done) {
-  startTutorialStep();
-  if (state.tutorial.step === 0) setTimeout(() => ui.banner('Welcome to Epoch', 'An RPG that levels up when you study'), 600);
+  applyTutHud();
+  if (state.tutorial.step === 0) setTimeout(() => playStory('intro', startTutorialStep), 900);
+  else startTutorialStep();
 } else if (awayMs > 60000 && awayEarned >= 1) {
   ui.toast(`While you were away (${timeLeft(awayMs)}), your buildings made ${S.fmt(awayEarned)} coins. Walk past them to collect.`, 'gold');
 }

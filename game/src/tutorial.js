@@ -1,4 +1,5 @@
-// The tutorial coach: a card that gives one step at a time, a gold arrow
+// The tutorial coach: Owl says what to do next in a bubble over its head (one
+// thing at a time, no list of steps), a gold arrow
 // bobbing over the place to go, and a pointer on screen (at the edge when the
 // place is out of view) with how far it is. The steps themselves live in
 // game.js, since each one waits for something real to happen in the game.
@@ -9,23 +10,27 @@ const ARROW_SVG = '<svg viewBox="0 0 24 24"><path d="M12 22 3 10h5.5V2h7v8H21z"/
 
 export function createCoach({ scene, camera, onSkip, onQuit, onNext }) {
   const card = document.createElement('div');
-  card.id = 'coach';
+  card.id = 'owlSay';
   card.hidden = true;
   card.innerHTML = `
-    <div class="coach-top"><small class="coach-step"></small><div class="coach-dots"></div></div>
-    <b class="coach-title"></b>
+    <b class="coach-title">Owl</b>
     <p class="coach-text"></p>
     <div class="coach-keys"></div>
     <div class="coach-actions">
       <button type="button" class="coach-next">Got it</button>
-      <button type="button" class="coach-skip">Skip step</button>
-      <button type="button" class="coach-quit">End tutorial</button>
     </div>`;
   document.body.append(card);
+  const quit = document.createElement('button');
+  quit.id = 'owlSkip';
+  quit.type = 'button';
+  quit.hidden = true;
+  quit.textContent = 'Skip tutorial';
+  document.body.append(quit);
   const $ = (s) => card.querySelector(s);
   $('.coach-next').addEventListener('click', () => onNext());
-  $('.coach-skip').addEventListener('click', () => onSkip());
-  $('.coach-quit').addEventListener('click', () => onQuit());
+  quit.addEventListener('click', () => onQuit());
+  void onSkip;
+  const bubbleAt = new THREE.Vector3();
 
   const marker = document.createElement('div');
   marker.id = 'coachMarker';
@@ -61,20 +66,17 @@ export function createCoach({ scene, camera, onSkip, onQuit, onNext }) {
   }
 
   return {
-    show(step, index, total) {
+    show(step) {
       shown = true;
       card.hidden = false;
+      quit.hidden = false;
       card.classList.remove('coach-done');
       card.classList.remove('coach-in');
       void card.offsetWidth;
       card.classList.add('coach-in');
-      $('.coach-step').textContent = `Step ${index + 1} of ${total}`;
-      $('.coach-dots').innerHTML = Array.from({ length: total }, (_, i) => `<i class="${i < index ? 'on' : i === index ? 'now' : ''}"></i>`).join('');
-      $('.coach-title').textContent = step.title;
       $('.coach-text').textContent = step.text;
       $('.coach-keys').replaceChildren(...(step.keys || []).map((k) => Object.assign(document.createElement('kbd'), { textContent: k })));
       $('.coach-next').hidden = !step.manual;
-      $('.coach-skip').hidden = Boolean(step.manual);
       glow(step.glow);
     },
     /** A tick and a flash before the next step. */
@@ -87,6 +89,7 @@ export function createCoach({ scene, camera, onSkip, onQuit, onNext }) {
     hide() {
       shown = false;
       card.hidden = true;
+      quit.hidden = true;
       marker.hidden = true;
       pin.visible = false;
       glow(null);
@@ -94,7 +97,16 @@ export function createCoach({ scene, camera, onSkip, onQuit, onNext }) {
     /** Hides everything while a panel is open; shows it again after. */
     setVisible(on) {
       card.hidden = !shown || !on;
+      quit.hidden = !shown || !on;
       if (!on) { marker.hidden = true; pin.visible = false; }
+    },
+    /** Keeps Owl's bubble over its head. */
+    follow(owlPos) {
+      if (card.hidden) return;
+      bubbleAt.copy(owlPos).add(new THREE.Vector3(0, 1.0, 0)).project(camera);
+      const x = Math.max(170, Math.min(innerWidth - 170, (bubbleAt.x * 0.5 + 0.5) * innerWidth));
+      const y = Math.max(90, Math.min(innerHeight - 160, (-bubbleAt.y * 0.5 + 0.5) * innerHeight));
+      card.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
     },
     /** Points at target (a Vector3, or null for nothing to point at) every frame. */
     point(target, from, time) {

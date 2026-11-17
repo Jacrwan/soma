@@ -102,6 +102,7 @@ export function newState(now = Date.now()) {
     topics: {}, // exam itemId -> [{ name, minutes }]
     pass: { season: 'Fall 2026', points: 0, premium: false, freeClaimed: [], premiumClaimed: [] },
     tutorial: { step: 0, done: false },
+    story: {}, // story beats seen: id -> true
     week: { claimed: null, streak: 0 }, // the weekly goal: last week claimed, weeks in a row
     found: {}, // landmarks discovered: 'lm:<era>:<id>' -> true
     mapSeen: {}, // era -> string of '0'/'1', one per map cell walked near
@@ -814,6 +815,72 @@ export function openCache(state, i, now = Date.now()) {
   return grantChest(state, roll < 0.2 ? 'rare' : 'common', 'A hidden cache');
 }
 
+// --- The story -----------------------------------------------------------------------
+// The Realm of Epoch is held together by what people learn. When learning is
+// neglected, a fog called the Drift creeps in and turns unfinished work into
+// monsters; it answers to the Procrastinator, who only ever says "later".
+// You are a keeper who woke in the ruins of your own town. Owl, the old
+// librarian, helps you rebuild it and find the pages of the Atlas, the map of
+// everything ever learned, which the Drift tore apart. Each age is a chapter.
+export const CHAPTERS = [
+  { title: 'Chapter 1: Waking', goal: 'Rebuild the camp and raise the Stone Circle' },
+  { title: 'Chapter 2: The Library Burns', goal: 'Find the old library\u2019s pages and raise the Great Pyramid' },
+];
+export const LORE = {
+  intro: [
+    ['owl', '...hey. Hey! You\u2019re awake. Thank the stars.'],
+    ['owl', 'You were gone a long time. The Drift came in while you weren\u2019t looking and took the whole town.'],
+    ['owl', 'Everything you left unfinished, it turned into monsters. They\u2019re still out there, marching.'],
+    ['owl', 'I\u2019m Owl. I kept the old library, before it burned. Come on. Let\u2019s get you on your feet.'],
+  ],
+  procrastinator: [
+    ['pro', 'Well, well. A keeper. Awake, even.'],
+    ['pro', 'You don\u2019t have to do all that today, you know. Or tomorrow. Later is so much nicer.'],
+    ['pro', 'Every time you put something off, my Drift grows a little. I\u2019ll be watching. Later.'],
+    ['owl', 'That was the Procrastinator. Don\u2019t listen to him. Every bit of work you finish pushes his fog back.'],
+  ],
+  exam: [
+    ['owl', 'That big one is an Examiner. Every course has one, and they hit hard on exam day.'],
+    ['owl', 'You can\u2019t fight it now. Study for it. Each session strips its armor, and the weak points are the topics you still don\u2019t know.'],
+  ],
+  atlas: [
+    ['owl', 'A page of the Atlas! I knew they\u2019d be out here.'],
+    ['owl', 'The Atlas is the map of everything anyone ever learned. The Drift tore it apart and scattered the pages across the land.'],
+    ['owl', 'Find every page in this land, and it remembers itself. Check your map (M) for the ones you haven\u2019t found.'],
+  ],
+  pages0: [
+    ['owl', 'That\u2019s every page in this valley. Look how the land settles when it remembers.'],
+    ['owl', 'Hold onto them. The next chapter is written on the back.'],
+  ],
+  chapter1: [
+    ['owl', 'The Stone Circle stands. Feel that? The Drift is pulling back.'],
+    ['owl', 'There\u2019s a river to the north where the old library stood. If any of my books survived, they\u2019re there.'],
+    ['owl', 'Pack up. A new land is waiting, and so is the next chapter.'],
+  ],
+  chapter2: [
+    ['owl', 'Chapter 2: The Library Burns.'],
+    ['owl', 'This is where my library was. The Procrastinator burned it the night everyone decided to start tomorrow.'],
+    ['pro', 'Oh, don\u2019t be dramatic. I just suggested a nap. A very long one.'],
+    ['owl', 'Find the pages, raise the Great Pyramid, and we\u2019ll have something he can\u2019t burn.'],
+  ],
+  pages1: [
+    ['owl', 'Every page in the desert. The library\u2019s light is coming back. I can almost read again.'],
+  ],
+  finale: [
+    ['pro', 'No. No, no, no. You were supposed to do it later.'],
+    ['owl', 'It\u2019s finished. The Great Pyramid stands, and the Drift can\u2019t cross it.'],
+    ['pro', 'Fine. Enjoy your little season. I\u2019ll be back when the next one starts. I always come back. Later.'],
+    ['owl', 'He will, too. But so will we. Season 1 is yours. Keep studying, keeper.'],
+  ],
+};
+/** Marks a story beat seen. Returns its lines the first time, null after. */
+export function storyBeat(state, id) {
+  const seen = state.story || (state.story = {});
+  if (seen[id] || !LORE[id]) return null;
+  seen[id] = true;
+  return LORE[id];
+}
+
 /**
  * Landmarks out in the country: the first visit pays a share of the age's
  * wonder, and finding all of an age's landmarks gives a rare chest.
@@ -827,7 +894,7 @@ export function discover(state, id, total) {
   const coins = Math.round(ageCost(state) * LANDMARK_SHARE);
   addCoins(state, coins);
   const count = foundCount(state, state.era);
-  const chest = total && count === total ? grantChest(state, 'rare', 'Every landmark found') : null;
+  const chest = total && count === total ? grantChest(state, 'rare', 'Every Atlas page in this land') : null;
   return { coins, count, chest };
 }
 export const foundCount = (state, era) => Object.keys(state.found).filter((k) => k.startsWith(`lm:${era}:`)).length;
@@ -1760,6 +1827,8 @@ const TAUNTS = {
     "Go on, scroll a bit more. I'll still be here.",
     "Starting me early? Nobody does that. Prove me wrong.",
     "I'm only {pts} points. What could go wrong?",
+    "The Procrastinator says hi. He says do me later.",
+    "Later is a lovely word, isn't it? Say it with me. Later.",
   ],
   soon: [
     "{time} left. You've opened me zero times. Bold.",
@@ -1767,12 +1836,14 @@ const TAUNTS = {
     "Tonight's plan: you, me, and a lot of regret.",
     "I heard you say \"I'll do it later.\" It's later.",
     "{course} is watching. So am I.",
+    "Just one more episode first. The Procrastinator insists.",
   ],
   overdue: [
     "Late. Again. I'm eating your coins while we chat.",
     "Overdue by {late}. Still feeling brave?",
     "Your grade called. It wants to talk.",
     "Every hour you wait, I get a little more comfortable in your town.",
+    "The Drift loves me. I'm its favourite kind of late.",
   ],
   studied: [
     "Wait, you actually studied me? That's not fair.",

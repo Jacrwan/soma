@@ -996,3 +996,38 @@ body.in-realm .tracker #quest { display: block; }
 @keyframes mythic-edge { 0% { border-color: #ff4fd8; } 33% { border-color: #7fd3ff; } 66% { border-color: #fff2a0; } 100% { border-color: #ff4fd8; } }
 .o-common { --oc: #b9c0c9; } .o-rare { --oc: #4a90e2; } .o-epic { --oc: #a35be0; } .o-legendary { --oc: #f2c14e; } .o-mythic { --oc: #ff4fd8; }
 @media (max-width: 900px) { .chest-tiers { grid-template-columns: repeat(2, 1fr); } }
+
+/* --- Story dialogue --- */
+#talk { position: fixed; left: 50%; bottom: 26px; z-index: 55; transform: translateX(-50%); display: flex; gap: 14px; align-items: flex-start; width: min(620px, calc(100vw - 32px)); padding: 14px 18px 12px 14px; border-radius: 20px; background: rgba(24, 20, 42, 0.95); border: 2px solid rgba(255, 216, 120, 0.45); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5); color: #fff6e0; cursor: pointer; animation: talk-in 0.3s cubic-bezier(0.2, 1.3, 0.4, 1); }
+#talk[hidden] { display: none; }
+@keyframes talk-in { from { opacity: 0; transform: translate(-50%, 16px); } }
+.talk-face { flex: none; width: 64px; height: 64px; border-radius: 16px; background: rgba(255, 255, 255, 0.08); display: grid; place-items: center; }
+.talk-face svg { width: 54px; height: 54px; }
+.talk-body { flex: 1; min-width: 0; }
+.talk-name { display: block; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: #ffd878; margin-bottom: 3px; }
+.talk-text { margin: 0; min-height: 44px; font-size: 16.5px; font-weight: 700; line-height: 1.4; }
+.talk-next { display: block; margin-top: 6px; text-align: right; font-size: 11px; color: rgba(255, 255, 255, 0.5); }
+#talk.talk-pro { border-color: rgba(176, 140, 255, 0.6); background: rgba(28, 16, 48, 0.96); }
+#talk.talk-pro .talk-name { color: #c8b8ff; }
+#talk.talk-pro .talk-text { font-style: italic; }
+body:has(#talk:not([hidden])) .hotbar, body:has(#talk:not([hidden])) .menu { opacity: 0; }
+
+/* --- Owl's tutorial bubble --- */
+#owlSay { position: fixed; left: 0; top: 0; z-index: 40; width: min(330px, calc(100vw - 32px)); padding: 11px 15px 12px; border-radius: 18px; background: #fffaf0; color: #2a2238; border: 2px solid rgba(42, 34, 56, 0.12); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35); pointer-events: auto; }
+#owlSay[hidden] { display: none; }
+#owlSay::after { content: ''; position: absolute; left: 50%; bottom: -9px; transform: translateX(-50%); border: 9px solid transparent; border-bottom: 0; border-top-color: #fffaf0; }
+#owlSay.coach-in { animation: owl-pop 0.32s cubic-bezier(0.2, 1.5, 0.4, 1); }
+@keyframes owl-pop { from { opacity: 0; scale: 0.85; } }
+#owlSay .coach-title { display: block; font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: #9a6a12; }
+#owlSay .coach-text { margin: 3px 0 0; font-size: 15px; font-weight: 700; line-height: 1.35; color: #2a2238; }
+#owlSay .coach-keys { margin-top: 8px; }
+#owlSay .coach-keys kbd { background: #2a2238; color: #fff; box-shadow: 0 3px 0 #120e1c; }
+#owlSay .coach-actions { margin-top: 9px; }
+#owlSay .coach-actions:has(.coach-next[hidden]) { display: none; }
+#owlSay.coach-done { border-color: #3ec45a; }
+#owlSay.coach-done .coach-text::after { content: ' \2713'; color: #3ec45a; }
+#owlSkip { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 41; padding: 5px 12px; border-radius: 999px; border: 0; background: rgba(20, 17, 31, 0.6); color: rgba(255, 255, 255, 0.75); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+#owlSkip[hidden] { display: none; }
+/* While the tutorial runs, the screen starts empty and fills in as each part is taught. */
+.tut-hide { visibility: hidden !important; }
+body.tut-early #alert, body.tut-early #siege { visibility: hidden !important; }
