@@ -1774,14 +1774,15 @@ function replayTutorial() {
 }
 
 // --- Owl, your guide, and the story ---------------------------------------------------
+// Owl has no body in the world: it speaks through the dialogue box and the tutorial bubble.
 const owl = createOwl();
-// Owl's dialogue portrait is a snapshot of the 3D Owl, so they always match.
-setTimeout(() => { try { ui.portrait('owl', renderThumb(makeOwl3D(), 0.1)); } catch { /* keeps the drawn one */ } }, 0);
+owl.object.visible = false;
 world.earth.add(owl.object);
 function updateOwl(dt, time) {
   const o = owl.object;
-  o.visible = !inRealm() && state.scene === 'earth' && !photo.on;
-  if (!o.visible) return;
+  o.visible = false;
+  void time;
+  return;
   // Hovers over your left shoulder, a little behind, and keeps up when you run.
   const p = player.object.position;
   const side = new THREE.Vector3(Math.cos(cam.yaw), 0, -Math.sin(cam.yaw));
@@ -1820,7 +1821,7 @@ function updateTutorial(time) {
   coach.setVisible(!ui.isOpen());
   if (tut.advancing) return;
   step.tick?.();
-  coach.follow(owl.object.position);
+  coach.pin();
   coach.point(step.target?.() || null, player.object.position, time);
   if (!step.manual && step.done()) {
     tut.advancing = true;

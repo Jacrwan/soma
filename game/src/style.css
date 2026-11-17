@@ -1031,3 +1031,5 @@ body:has(#talk:not([hidden])) .hotbar, body:has(#talk:not([hidden])) .menu { opa
 /* While the tutorial runs, the screen starts empty and fills in as each part is taught. */
 .tut-hide { visibility: hidden !important; }
 body.tut-early #alert, body.tut-early #siege { visibility: hidden !important; }
+
+#owlSay.pinned::after { display: none; }

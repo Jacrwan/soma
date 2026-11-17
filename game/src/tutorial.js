@@ -100,6 +100,12 @@ export function createCoach({ scene, camera, onSkip, onQuit, onNext }) {
       quit.hidden = !shown || !on;
       if (!on) { marker.hidden = true; pin.visible = false; }
     },
+    /** Keeps the bubble in one place: top centre, under the HUD. */
+    pin() {
+      if (card.hidden) return;
+      card.style.transform = `translate(${innerWidth / 2}px, 96px) translate(-50%, 0)`;
+      card.classList.add('pinned');
+    },
     /** Keeps Owl's bubble over its head. */
     follow(owlPos) {
       if (card.hidden) return;
