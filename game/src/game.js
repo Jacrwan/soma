@@ -30,7 +30,7 @@ import * as Lore from './lore.js';
 import { startTelemetry, track } from './telemetry.js';
 import { sendFeedback } from './feedback.js';
 import { loadCloud, saveCloud } from './cloudsave.js';
-import { sectorOf, createFogWalls } from './scenery.js';
+import { sectorOf, createFogWalls, LockedBlurPass } from './scenery.js';
 
 // --- State ----------------------------------------------------------------------
 // Inside Soma the save belongs to the signed-in student, so two accounts in
@@ -135,8 +135,11 @@ const fx = createFx(scene, camera);
 const audio = createAudio(() => state.settings);
 
 // Finishing: soft glow on bright things, a slight vignette and warmth, then tone mapping.
-const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
+// The scene's depth is kept so land that hasn't opened yet can be blurred (LockedBlurPass).
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4, depthTexture: new THREE.DepthTexture(1, 1) }));
 composer.addPass(new RenderPass(scene, camera));
+const lockedBlur = new LockedBlurPass(camera, W.TOWN_R);
+composer.addPass(lockedBlur);
 const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.32, 0.7, 0.92);
 composer.addPass(bloom);
 composer.addPass(new ShaderPass({
@@ -757,8 +760,9 @@ function fogBump(zone) {
   fogBumpAt = now;
   const a = S.LAND_AREAS.find((x) => x.zone === zone) || S.nextArea(state);
   if (!a) return;
-  const have = S.buildingCount(state).used;
-  ui.toast(`The fog's too thick to get into ${a.name}. It clears when your town has ${a.buildings} buildings (you have ${have}). Press B to build.`, 'bad');
+  const pj = S.areaProject(a.zone);
+  const lib = S.projectFrom(state, 'Librarian');
+  ui.toast(`${a.name} isn't open yet. ${pj ? (lib?.id === pj.id ? `The Librarian's project "${pj.title}" opens it. Go talk to her by the board.` : `It opens with the Librarian's project "${pj.title}". Keep doing her projects and she'll get to it.`) : ''}`, 'bad');
 }
 const fogLabels = new Map();
 function refreshLand(animate = false) {
@@ -773,21 +777,26 @@ function refreshLand(animate = false) {
   }
   const fresh = S.updateLandOpen(state);
   openSet = new Set(S.openAreas(state));
-  fogWalls.setOpen([...openSet], animate);
+  fogWalls.setOpen([...openSet], false);
+  // No fog to look at: the walls only hold the signs. Locked land is blurred on screen instead.
+  fogWalls.object.traverse((o) => { if (o.isMesh) o.visible = false; });
+  lockedBlur.setOpen([...openSet]);
   // A sign on each fog wall: what it is and how to open it.
   for (const a of S.LAND_AREAS) {
     const w = fogWalls.walls.get(a.zone);
     const locked = !openSet.has(a.zone);
     let l = fogLabels.get(a.zone);
     if (locked && !l) { l = fx.label(w.userData.anchor, 0, '', 'step fog'); fogLabels.set(a.zone, l); }
-    if (locked) { const have = S.buildingCount(state).used; l.set(`<em>${a.name} · locked</em>Build ${Math.max(0, a.buildings - have)} more building${a.buildings - have === 1 ? '' : 's'} to clear the fog (${have}/${a.buildings})`); }
+    if (locked) { const pj = S.areaProject(a.zone); l.set(`<em>${a.name} · not open yet</em>${pj ? `Opens with the Librarian\u2019s project \u201c${pj.title}\u201d` : 'Opens later'}`); }
     else if (l) { l.remove(); fogLabels.delete(a.zone); }
   }
   if (animate) for (const a of fresh) {
     audio.era();
     ui.banner('New land opened', a.name);
     const next = S.nextArea(state);
-    setTimeout(() => ui.toast(next ? `The fog lifted. Next: ${next.name}, at ${next.buildings} buildings.` : 'The fog is gone. The whole valley is open.', 'gold'), 1800);
+    const nextPj = next && S.areaProject(next.zone);
+    setTimeout(() => ui.toast(next ? `${a.name} is open! Next, ${next.name}: the Librarian will have a project for it.` : 'The whole valley is open.', 'gold'), 1800);
+    void nextPj;
     track('land_opened', { zone: a.zone });
   }
   if (fresh.length) save();
@@ -3061,7 +3070,7 @@ function frame(nowMs) {
   renderer.info.reset();
   shadowFrame = (shadowFrame + 1) % 2;
   renderer.shadowMap.needsUpdate = shadowFrame === 0 || budget > 0;
-  if (usePost) composer.render();
+  if (usePost || (lockedBlur.enabled && state.scene === 'earth' && !inRealm())) composer.render();
   else renderer.render(scene, camera);
   pace.cpu = (pace.cpu || 0) * 0.95 + (performance.now() - cpuStart) * 0.05;
   requestAnimationFrame(frame);

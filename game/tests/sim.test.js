@@ -1074,22 +1074,22 @@ test('selling a building gives back half of everything spent on it, plus what is
   assert.strictEqual(S.buildingPaid({ type: 'home', tier: 0, level: 2 }), S.buildCost('home', 0) * 3);
 });
 
-test('the country opens one area at a time as the town grows, and stays open', () => {
+test('the country opens one area at a time through the Librarian\'s expansion projects', () => {
   const s = S.newState();
   s.coins = 1e9;
   assert.deepStrictEqual(S.openAreas(s), ['meadow']);
-  assert.deepStrictEqual(S.updateLandOpen(s), []);
   assert.strictEqual(S.nextArea(s).zone, 'orchard');
-  S.placeBuilding(s, 'home', 30, 30);
-  S.placeBuilding(s, 'home', 34, 30);
+  assert.strictEqual(S.areaProject('orchard').title, 'The orchard path');
+  // Work through the Librarian's list: a hut, a first lesson, then the orchard path.
+  const next = () => S.projectFrom(s, 'Librarian');
+  S.acceptProject(s, next().id); S.placeBuilding(s, 'home', 30, 30); S.turnInProject(s, next().id, () => 0);
+  S.acceptProject(s, next().id); s.study.total = 40; S.turnInProject(s, next().id, () => 0);
+  assert.strictEqual(next().id, 'the-orchard-path');
+  S.acceptProject(s, next().id);
+  assert.deepStrictEqual(S.updateLandOpen(s), []);
+  S.turnInProject(s, 'the-orchard-path', () => 0);
   assert.deepStrictEqual(S.updateLandOpen(s).map((a) => a.zone), ['orchard']);
-  S.placeBuilding(s, 'home', 38, 30);
-  S.placeBuilding(s, 'home', 42, 30);
-  assert.deepStrictEqual(S.updateLandOpen(s).map((a) => a.zone), ['pond', 'woods']);
-  const i = s.pads.earth.findIndex(Boolean);
-  S.sellBuilding(s, i);
-  S.updateLandOpen(s);
-  assert.ok(S.openAreas(s).includes('woods'), 'selling does not close land again');
+  assert.deepStrictEqual(S.openAreas(s), ['meadow', 'orchard']);
   s.era = 1;
-  assert.deepStrictEqual(S.openAreas(s), ['meadow'], 'a new land starts small again');
+  assert.strictEqual(S.openAreas(s).length, 5, 'later lands come fully open');
 });

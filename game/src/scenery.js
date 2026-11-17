@@ -518,3 +518,87 @@ export function createFogWalls({ height, townR, outerR }) {
     },
   };
 }
+
+// --- Locked land, out of focus ----------------------------------------------------------
+// A screen pass that blurs whatever stands on land that hasn't opened yet, like looking
+// through frosted glass. It rebuilds each pixel's place in the world from the depth
+// buffer, so the land itself goes soft (no wall, no fog). Pixels on open land cost one
+// depth read; only locked pixels are blurred.
+import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js';
+export class LockedBlurPass extends Pass {
+  constructor(camera, townR) {
+    super();
+    this.camera = camera;
+    this.needsSwap = true;
+    const from = SECTORS.map((s) => s.from), span = SECTORS.map((s) => s.to - s.from);
+    this.uniforms = {
+      tDiffuse: { value: null }, tDepth: { value: null },
+      uProjInv: { value: new THREE.Matrix4() }, uViewInv: { value: new THREE.Matrix4() },
+      uTexel: { value: new THREE.Vector2(1, 1) }, uTownR: { value: townR },
+      uFrom: { value: from }, uSpan: { value: span }, uLocked: { value: SECTORS.map(() => 0) },
+    };
+    this.names = SECTORS.map((s) => s.name);
+    this.quad = new FullScreenQuad(new THREE.ShaderMaterial({
+      uniforms: this.uniforms,
+      vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: `
+        uniform sampler2D tDiffuse; uniform sampler2D tDepth;
+        uniform mat4 uProjInv; uniform mat4 uViewInv; uniform vec2 uTexel; uniform float uTownR;
+        uniform float uFrom[${SECTORS.length}]; uniform float uSpan[${SECTORS.length}]; uniform float uLocked[${SECTORS.length}];
+        varying vec2 vUv;
+        float lockedAt(vec3 w) {
+          float r = length(w.xz);
+          if (r < uTownR) return 0.0;
+          float a = mod(degrees(atan(w.z, w.x)) + 360.0, 360.0);
+          float on = 0.0;
+          for (int i = 0; i < ${SECTORS.length}; i++) if (mod(a - mod(uFrom[i] + 360.0, 360.0) + 360.0, 360.0) < uSpan[i]) on = uLocked[i];
+          return on * smoothstep(uTownR, uTownR + 5.0, r);
+        }
+        vec3 worldAt(vec2 uv, float d) {
+          vec4 v = uProjInv * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
+          return (uViewInv * vec4(v.xyz / v.w, 1.0)).xyz;
+        }
+        void main() {
+          vec4 c = texture2D(tDiffuse, vUv);
+          float d = texture2D(tDepth, vUv).x;
+          float m = 0.0;
+          if (d < 0.99999) m = lockedAt(worldAt(vUv, d));
+          else {
+            // The sky: blurred where it sits behind locked land (just above the horizon).
+            float below = texture2D(tDepth, vUv - vec2(0.0, 0.03)).x;
+            if (below < 0.99999) m = lockedAt(worldAt(vUv - vec2(0.0, 0.03), below)) * 0.6;
+          }
+          if (m <= 0.001) { gl_FragColor = c; return; }
+          // Two rings of taps: soft, even, cheap.
+          vec3 acc = c.rgb; float n = 1.0;
+          for (int i = 0; i < 8; i++) {
+            float a = float(i) * 0.7854;
+            vec2 o = vec2(cos(a), sin(a)) * uTexel;
+            acc += texture2D(tDiffuse, vUv + o * 6.0).rgb + texture2D(tDiffuse, vUv + o * 13.0 + vec2(-o.y, o.x) * 4.0).rgb;
+            n += 2.0;
+          }
+          vec3 blur = acc / n;
+          // Out of focus, a little paler, so it reads as "not yet".
+          float l = dot(blur, vec3(0.2126, 0.7152, 0.0722));
+          blur = mix(blur, vec3(l), 0.25) * 0.92 + 0.08;
+          gl_FragColor = vec4(mix(c.rgb, blur, m), c.a);
+        }`,
+    }));
+  }
+  /** names: areas that are open; everything else blurs. */
+  setOpen(names) {
+    const open = new Set(names);
+    this.uniforms.uLocked.value = this.names.map((n) => (open.has(n) ? 0 : 1));
+    this.enabled = this.uniforms.uLocked.value.some((v) => v > 0);
+  }
+  setSize(w, h) { this.uniforms.uTexel.value.set(1 / Math.max(1, w), 1 / Math.max(1, h)); }
+  render(renderer, writeBuffer, readBuffer) {
+    this.uniforms.tDiffuse.value = readBuffer.texture;
+    this.uniforms.tDepth.value = readBuffer.depthTexture;
+    this.uniforms.uProjInv.value.copy(this.camera.projectionMatrixInverse);
+    this.uniforms.uViewInv.value.copy(this.camera.matrixWorld);
+    renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
+    this.quad.render(renderer);
+  }
+  dispose() { this.quad.material.dispose(); this.quad.dispose(); }
+}

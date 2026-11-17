@@ -332,35 +332,42 @@ export function placeBuilding(state, type, x, z, rot = 0, scene = 'earth') {
   return index;
 }
 
-// --- Land that opens as the town grows -------------------------------------------
-// A new land starts small: the town and the meadow outside the gate. Each building you
-// put up opens the next area of the country; locked areas sit behind a wall of fog.
-// Once an area is open it stays open (selling a building doesn't close it again).
+// --- Land that opens through projects ----------------------------------------------
+// The valley starts small: the town and the meadow outside the gate. The rest of the
+// country opens one area at a time when you finish the Librarian's expansion projects
+// (like Animal Crossing's bridges and inclines). Locked land shows blurred, and you
+// can't walk into it. Later lands (Chapter 2 on) come fully open.
 export const LAND_AREAS = [
-  { zone: 'meadow', name: 'The Meadow', buildings: 0 },
-  { zone: 'orchard', name: 'The Orchard', buildings: 2 },
-  { zone: 'pond', name: 'The Pond', buildings: 3 },
-  { zone: 'woods', name: 'The Woods', buildings: 4 },
-  { zone: 'highlands', name: 'The Highlands', buildings: 5 },
+  { zone: 'meadow', name: 'The Meadow', project: null },
+  { zone: 'orchard', name: 'The Orchard', project: 'the-orchard-path' },
+  { zone: 'pond', name: 'The Pond', project: 'a-bridge-to-the-pond' },
+  { zone: 'woods', name: 'The Woods', project: 'lanterns-for-the-woods' },
+  { zone: 'highlands', name: 'The Highlands', project: 'the-highland-road' },
 ];
 /** Areas open in the current land (zone names). */
 export function openAreas(state) {
-  return state.landOpen?.[`e${state.era}`] || ['meadow'];
+  if (state.era > 0) return LAND_AREAS.map((a) => a.zone);
+  const done = new Set(state.projects?.done || []);
+  return LAND_AREAS.filter((a) => !a.project || done.has(a.project)).map((a) => a.zone);
 }
-/** Opens any areas the town has grown enough for. Returns the newly opened ones. */
+/** Records what's open, and returns areas that opened since the last call. */
 export function updateLandOpen(state) {
   const key = `e${state.era}`;
-  const open = new Set(openAreas(state));
-  const used = buildingCount(state, 'earth').used;
-  const fresh = [];
-  for (const a of LAND_AREAS) if (!open.has(a.zone) && used >= a.buildings) { open.add(a.zone); fresh.push(a); }
-  (state.landOpen || (state.landOpen = {}))[key] = LAND_AREAS.map((a) => a.zone).filter((z) => open.has(z));
-  return fresh;
+  const before = new Set((state.landOpen || (state.landOpen = {}))[key] || ['meadow']);
+  const now = openAreas(state);
+  state.landOpen[key] = now;
+  return LAND_AREAS.filter((a) => now.includes(a.zone) && !before.has(a.zone));
 }
-/** The next area still locked, and how many buildings it needs, or null. */
+/** The next area still locked (and the project that opens it), or null. */
 export function nextArea(state) {
   const open = new Set(openAreas(state));
   return LAND_AREAS.find((a) => !open.has(a.zone)) || null;
+}
+/** The project that opens an area: { id, title, from } (or null). */
+export function areaProject(zone) {
+  const a = LAND_AREAS.find((x) => x.zone === zone);
+  const p = a?.project && STORY.find((q) => q.id === a.project);
+  return p ? { id: p.id, title: p.title, from: p.from } : null;
 }
 
 /** How many buildings are standing, and how many this age allows. */
@@ -1307,19 +1314,23 @@ const bestFriend = (s) => Math.max(0, ...s.villagers.list.map((p) => p.friend ||
 export const STORY = [
   { id: 'a-roof-over-your-head', chapter: 0, from: 'The Librarian', title: 'A roof over your head', text: 'Every newcomer needs a hut. Build your first one (B).', need: 1, have: built, reward: { coins: 200 } },
   { id: 'first-lesson', chapter: 0, from: 'The Librarian', title: 'First lesson', text: 'The valley runs on studying. Finish a study session of 10 minutes or more (T).', need: 1, have: (s) => (s.study.total >= 10 ? 1 : 0), reward: { gear: 'rare', slot: 'weapon' } },
+  { id: 'the-orchard-path', chapter: 0, from: 'The Librarian', opens: 'orchard', title: 'The orchard path', text: 'The path to the orchard is overgrown. Study 30 minutes in total and I\u2019ll have it cleared.', need: 30, have: (s) => s.study.total, reward: { coins: 300 } },
   { id: 'start-a-creature-log', chapter: 0, from: 'Mira, the herbalist', title: 'Start a creature log', text: 'Catch a creature out in the country. Walk up slowly, then press E.', need: 1, have: caughtTotal, reward: { coins: 300 } },
   { id: 'send-the-homework-home', chapter: 0, from: 'Bram, the guard', title: 'Send the homework home', text: 'Your homework keeps wandering into town. Hand in 3 assignments.', need: 3, have: (s) => s.stats.handedIn, reward: { gear: 'rare', slot: 'armor' } },
-  { id: 'a-page-for-the-atlas', chapter: 0, from: 'The Librarian', title: 'A page for the Atlas', text: 'Find a landmark out in the country for my guidebook.', need: 1, have: (s) => foundCount(s, 0), reward: { coins: 400 } },
+  { id: 'a-bridge-to-the-pond', chapter: 0, from: 'The Librarian', opens: 'pond', title: 'A bridge to the pond', text: 'Three buildings and the town can spare the timber for a bridge to the pond.', need: 3, have: built, reward: { coins: 500 } },
   { id: 'fox-trouble', chapter: 0, from: 'Tobin, the smith', title: 'Fox trouble', text: 'Foxes ran off with my tools. Clear a fox camp, would you?', need: 1, have: (s) => s.stats.campsCleared, reward: { coins: 300, gear: 'common', slot: 'armor' } },
   { id: 'getting-stronger', chapter: 0, from: 'Odo, the scholar', title: 'Getting stronger', text: 'Reach level 3. Studying is how you level up.', need: 3, have: (s) => s.hero.level, reward: { gear: 'rare', slot: 'armor' } },
   { id: 'a-proper-neighbourhood', chapter: 0, from: 'Rook, the builder', title: 'A proper neighbourhood', text: 'Three buildings make a neighbourhood. Build 3.', need: 3, have: built, reward: { coins: 600 } },
   { id: 'treasure-hunter', chapter: 0, from: 'Fen, the fisher', title: 'Treasure hunter', text: 'Gold beams in the grass mean buried treasure. Dig up 3.', need: 3, have: (s) => s.stats.treasures, reward: { gear: 'rare', slot: 'charm' } },
   { id: 'a-fuller-log', chapter: 0, from: 'Mira, the herbalist', title: 'A fuller log', text: 'Catch 4 different kinds of creature. Some only come out at night.', need: 4, have: caughtKinds, reward: { coins: 800 } },
   { id: 'good-neighbours', chapter: 0, from: 'Juna, the baker', title: 'Good neighbours', text: 'Become friends with someone: reach 50 friendship by doing their daily favours.', need: 50, have: bestFriend, reward: { gear: 'rare', slot: 'weapon' } },
-  { id: 'the-whole-valley', chapter: 0, from: 'The Librarian', title: 'The whole valley', text: 'Find all 4 landmarks, and my Atlas gets its first finished chapter.', need: 4, have: (s) => foundCount(s, 0), reward: { coins: 1000 } },
   { id: 'a-lovely-valley', chapter: 0, from: 'Ivy, the gardener', title: 'A lovely valley', text: 'Decorate until the valley is rated 2 stars. Paths and flowers help.', need: 2, have: (s) => townRating(s).stars, reward: { gear: 'epic', slot: 'charm' } },
+  { id: 'lanterns-for-the-woods', chapter: 0, from: 'The Librarian', opens: 'woods', title: 'Lanterns for the woods', text: 'The woods are too dark to walk. Study 2 hours in total and I\u2019ll hang lanterns all the way in.', need: 120, have: (s) => s.study.total, reward: { gear: 'rare', slot: 'charm' } },
   { id: 'a-study-habit', chapter: 0, from: 'The Librarian', title: 'A study habit', text: 'Study 5 hours in total. Small sessions add up.', need: 300, have: (s) => s.study.total, reward: { gear: 'epic', slot: 'weapon' } },
+  { id: 'the-highland-road', chapter: 0, from: 'The Librarian', opens: 'highlands', title: 'The highland road', text: 'The road to the highlands is rough going. Reach level 5 and you\u2019ll be ready for it.', need: 5, have: (s) => s.hero.level, reward: { coins: 800 } },
   { id: 'the-alpha', chapter: 0, from: 'Bram, the guard', title: 'The Alpha', text: 'The big fox in the rock ring. Reach level 6 or so first, then beat the Alpha.', need: 1, have: (s) => (s.stats.realmBosses.wilds ? 1 : 0), reward: { gear: 'epic', slot: 'armor' } },
+  { id: 'a-page-for-the-atlas', chapter: 0, from: 'The Librarian', title: 'A page for the Atlas', text: 'Find a landmark out in the country for my guidebook.', need: 1, have: (s) => foundCount(s, 0), reward: { coins: 400 } },
+  { id: 'the-whole-valley', chapter: 0, from: 'The Librarian', title: 'The whole valley', text: 'Find all 4 landmarks, and my Atlas gets its first finished chapter.', need: 4, have: (s) => foundCount(s, 0), reward: { coins: 1000 } },
   { id: 'the-festival', chapter: 0, from: 'The Librarian', title: 'The festival', text: 'Raise the Stone Circle, and the whole valley throws a festival.', need: 1, have: (s) => (s.wonders.includes(0) || s.era > 0 ? 1 : 0), reward: { coins: 2000 } },
   // Chapter 2: the Bronze Age, on the river.
   { id: 'exam-season', chapter: 1, from: 'Odo, the scholar', title: 'Exam season', text: 'Study enough that an exam breaks on your gate on exam day.', need: 1, have: (s) => s.stats.bossesBeaten, reward: { gear: 'epic', slot: 'charm' } },
