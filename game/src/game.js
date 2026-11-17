@@ -1737,7 +1737,7 @@ const TUTORIAL = [
     enter: () => { tut.start = player.object.position.clone(); }, done: () => player.object.position.distanceTo(tut.start) > 8 },
   { text: 'Look around. Hold the right mouse button and drag. This was all your town once.', keys: ['Right drag'],
     enter: () => { tut.lastYaw = cam.yaw; tut.yawMoved = 0; }, tick: () => { tut.yawMoved += Math.abs(cam.yaw - tut.lastYaw); tut.lastYaw = cam.yaw; }, done: () => tut.yawMoved > 1.4 },
-  { text: 'That board shows what the Drift is sending at us. It’s your real coursework. Walk over and press E.', keys: ['E'], reveal: 'tracker',
+  { text: 'That board shows what the Drift is sending at us. It’s your real coursework. Click it, or walk over and press E.', keys: ['Click', 'E'], reveal: 'tracker',
     target: () => BOARD_POS, done: () => tut.flags.school },
   { text: 'There’s one now. Every monster is a real assignment, and the closer it gets, the sooner it’s due. Go take a look.', reveal: 'tracker',
     target: () => nearestInvader(), done: () => { const t = nearestInvader(); return !t || Math.hypot(t.x - player.object.position.x, t.z - player.object.position.z) < 8; } },
@@ -1758,7 +1758,7 @@ const TUTORIAL = [
     },
     target: () => nearestBuilding(), done: () => state.stats.collected > tut.collected },
   { text: 'The Drift drops things when you push it back. Here, this one’s on me. Open it.', keys: ['E'], reveal: 'coins',
-    enter: () => { tut.chestId = S.grantChest(state, 'rare', 'A gift from Owl').id; syncChests(); },
+    enter: () => { tut.chestId = S.grantChest(state, 'rare', 'A gift from the Librarian').id; syncChests(); },
     target: () => chests.get(tut.chestId)?.object.position, done: () => !state.school.chests.some((c) => c.id === tut.chestId) && !ui.isOpen() },
   { text: 'Out past the walls are pages of the Atlas, the map of everything ever learned. Follow the arrow and find one.', reveal: 'menu',
     enter: () => { tut.found = S.foundCount(state, state.era); },
@@ -2271,7 +2271,12 @@ canvas.addEventListener('contextmenu', (event) => event.preventDefault());
 canvas.addEventListener('mousedown', (event) => {
   audio.unlock();
   if (shiftLock && !locked() && event.button === 0) { lockPointer(); if (locked()) return; }
-  if (event.button === 0) return void (build.on ? placeBuild() : attack());
+  if (event.button === 0) {
+    if (build.on) return void placeBuild();
+    // Clicking the Canvas board opens it (from anywhere it's in view, not just up close).
+    if (!inRealm() && state.scene === 'earth' && clickedObject(event, board)) return void openSchool();
+    return void attack();
+  }
   if (event.button !== 2) return;
   event.preventDefault();
   drag = { x: event.clientX, y: event.clientY };
@@ -2779,6 +2784,13 @@ const build = { on: false, type: 'b:home', rot: 0, ghost: null, at: null, ok: fa
 const pointer = { x: innerWidth / 2, y: innerHeight / 2 };
 canvas.addEventListener('mousemove', (event) => { pointer.x = event.clientX; pointer.y = event.clientY; });
 const ray = new THREE.Raycaster();
+/** Whether a click lands on object (or its children). */
+function clickedObject(event, object) {
+  if (!object?.parent) return false;
+  const rect = canvas.getBoundingClientRect();
+  ray.setFromCamera(new THREE.Vector2(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1), camera);
+  return ray.intersectObject(object, true).length > 0;
+}
 function groundAt(x, y) {
   const rect = canvas.getBoundingClientRect();
   ray.setFromCamera(new THREE.Vector2(((x - rect.left) / rect.width) * 2 - 1, -((y - rect.top) / rect.height) * 2 + 1), camera);

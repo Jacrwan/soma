@@ -51,7 +51,7 @@ export function createUI(on) {
   // Story dialogue: one line at a time, typed out. Space, E, Enter or a click moves on.
   const SPEAKERS = {
     atlas: { name: 'A page of the Atlas', icon: '<svg viewBox="0 0 48 48"><path d="M10 8h22l6 6v26H10z" fill="#f4e6c4" stroke="#8a6a3a" stroke-width="2"/><path d="M15 18h18M15 24h18M15 30h12" stroke="#8a6a3a" stroke-width="2" stroke-linecap="round"/></svg>' },
-    owl: { name: 'Owl', icon: '<svg viewBox="0 0 48 48"><path d="M14 10h20v6l-3 3v14l3 3v4H14v-4l3-3V19l-3-3z" fill="#f2c14e" stroke="#3a2a05" stroke-width="2"/><circle cx="24" cy="26" r="5" fill="#fff1b0"/></svg>' },
+    owl: { name: 'The Librarian', icon: '<svg viewBox="0 0 48 48"><path d="M14 10h20v6l-3 3v14l3 3v4H14v-4l3-3V19l-3-3z" fill="#f2c14e" stroke="#3a2a05" stroke-width="2"/><circle cx="24" cy="26" r="5" fill="#fff1b0"/></svg>' },
     pro: { name: 'The Procrastinator', icon: '<svg viewBox="0 0 48 48"><circle cx="24" cy="26" r="17" fill="#3a2a5c"/><path d="M8 24c4-12 28-12 32 0-6-4-26-4-32 0z" fill="#241a3a"/><path d="M14 25q4-3 8 0M26 25q4-3 8 0" stroke="#c8b8ff" stroke-width="2.4" fill="none" stroke-linecap="round"/><path d="M17 33q7 5 14 0" stroke="#c8b8ff" stroke-width="2.2" fill="none" stroke-linecap="round"/><circle cx="37" cy="12" r="3" fill="#c8b8ff" opacity=".7"/><circle cx="41" cy="6" r="2" fill="#c8b8ff" opacity=".5"/></svg>' },
   };
   const talkBox = document.createElement('div');

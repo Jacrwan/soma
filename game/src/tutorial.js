@@ -13,7 +13,7 @@ export function createCoach({ scene, camera, onSkip, onQuit, onNext }) {
   card.id = 'owlSay';
   card.hidden = true;
   card.innerHTML = `
-    <b class="coach-title">Owl</b>
+    <b class="coach-title">The Librarian</b>
     <p class="coach-text"></p>
     <div class="coach-keys"></div>
     <div class="coach-actions">
@@ -106,7 +106,7 @@ export function createCoach({ scene, camera, onSkip, onQuit, onNext }) {
       card.style.transform = `translate(${innerWidth / 2}px, 96px) translate(-50%, 0)`;
       card.classList.add('pinned');
     },
-    /** Keeps Owl's bubble over its head. */
+    /** Keeps the bubble over a point in the world. */
     follow(owlPos) {
       if (card.hidden) return;
       bubbleAt.copy(owlPos).add(new THREE.Vector3(0, 1.0, 0)).project(camera);

@@ -836,7 +836,7 @@ export const LORE = {
     ['owl', '...hey. Hey! You\u2019re awake. Thank the stars.'],
     ['owl', 'You were gone a long time. The Drift came in while you weren\u2019t looking and took the whole town.'],
     ['owl', 'Everything you left unfinished, it turned into monsters. They\u2019re still out there, marching.'],
-    ['owl', 'I\u2019m Owl. I kept the old library, before it burned. Come on. Let\u2019s get you on your feet.'],
+    ['owl', 'I\u2019m the Librarian. I kept the old library, before it burned. You can\u2019t see me, but I\u2019ll be right beside you. Come on. Let\u2019s get you on your feet.'],
   ],
   procrastinator: [
     ['pro', 'Well, well. A keeper. Awake, even.'],

@@ -17,7 +17,7 @@ export const ATLAS_PAGES = {
   port: "Boats carried copper up the river, and stories came with them. The library was built to keep the stories dry.",
   obelisk: "Students carved their names here after their final trials. Some names are cut deep. Some were added years late, and still count.",
   caravan: "Traders swapped lessons at every stop. A fair price for a lesson was another lesson. The Atlas grew a page a night.",
-  sandarch: "The wind cut this arch a grain at a time. Owl wrote beside it: \"That is how you read a hard book.\"",
+  sandarch: "The wind cut this arch a grain at a time. The Librarian wrote beside it: \"That is how you read a hard book.\"",
 
   // Land 3: Middle Ages
   castle: "The lord of this keep put everything off until spring. Spring came. So did the Drift. Only the stairs are left.",
@@ -26,7 +26,7 @@ export const ATLAS_PAGES = {
   mill: "The mill never stopped, not even in the dark years. Small turns, every day. The town ate because of it.",
 
   // Land 4: Age of Steam
-  mine: "Miners worked by lamplight and sang to keep count. The Drift hates singing. Nobody knows why. Owl has guesses.",
+  mine: "Miners worked by lamplight and sang to keep count. The Drift hates singing. Nobody knows why. The Librarian has guesses.",
   watertower: "The engines ran on water and patience. When the tower ran dry, the whole town stopped and filled it bucket by bucket.",
   chimney: "The first factory burned the night shift into the morning shift, again and again. The workers wrote: rest is part of the work.",
   engine: "This engine pulled the first train in, three days late. The town cheered anyway. Late still arrives.",
@@ -83,7 +83,7 @@ export const VILLAGER_STORIES = {
       ['odo', "By day twenty I couldn't remember my own name. I signed a letter \"Scholar\"."],
     ] },
     { at: 50, lines: [
-      ['odo', "Owl found me asleep on a stack of books and made me take a walk. I was furious."],
+      ['odo', "The Librarian found me asleep on a stack of books and made me take a walk. I was furious."],
       ['owl', "He was. He also came back and finished the chapter in an hour."],
       ['odo', "Rest is not the opposite of study. It's the part where the study sticks."],
     ] },
@@ -191,7 +191,7 @@ export const VILLAGER_STORIES = {
   ],
   Nell: [
     { at: 20, lines: [
-      ['nell', "I was Owl's apprentice at the old library. I was there the night it burned."],
+      ['nell', "I was the Librarian's apprentice at the old library. I was there the night it burned."],
       ['nell', "I ran out with one book. Not even a good one. A dictionary."],
     ] },
     { at: 50, lines: [
