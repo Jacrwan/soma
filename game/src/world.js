@@ -376,17 +376,24 @@ const WATER_FRAG = `
     vec3 toEye = cameraPosition - vWorld;
     float dist = length(toEye);
     vec3 v = toEye / dist;
-    float fres = 0.03 + 0.97 * pow(1.0 - max(dot(n, v), 0.0), 5.0);
-    vec3 refl = reflect(-v, n);
-    vec3 sky = mix(horizon, zenith, pow(max(refl.y, 0.0), 0.5));
     #ifdef INLAND
-    float depth = 0.62; // creeks and ponds: one calm, clear colour
+    float depth = 0.62;
     #else
     float depth = smoothstep(44.5, 66.0, r);
     #endif
-    vec3 col = mix(mix(shallow, deep, depth), sky, fres);
-    float sd = max(dot(refl, sunDir), 0.0);
-    col += sunColor * (pow(sd, 260.0) * 5.0 + pow(sd, 24.0) * 0.12);
+    // Cartoon water: flat, bright colour; thin white ripple lines that drift; a few
+    // sparkles where the sun catches it. Darker at night, like everything else.
+    float day = clamp(dot(sunColor, vec3(0.3, 0.6, 0.1)) * 1.15, 0.28, 1.0);
+    // (Linear colour: the screen brightens it, so these read as a clear turquoise to a deep blue.)
+    vec3 col = mix(vec3(0.10, 0.52, 0.78), vec3(0.03, 0.25, 0.60), depth) * day;
+    // Thin wavy outlines: contour lines through a slowly drifting ripple field.
+    float wave = texture2D(ripples, p * 0.018 + time * vec2(0.006, 0.004)).r * 0.65 + texture2D(ripples, p * 0.034 - time * vec2(0.005, 0.007)).g * 0.35;
+    float c = fract(wave * 3.5 + time * 0.03);
+    float lines = 1.0 - smoothstep(0.03, 0.08, abs(c - 0.5));
+    // Rare sparkles where the sun catches the surface.
+    float spark = smoothstep(0.71, 0.75, texture2D(ripples, p * 0.35 + time * vec2(0.04, -0.03)).r) * day;
+    col = mix(col, vec3(0.86, 0.96, 1.0), clamp(lines * 0.45 + spark * 0.7, 0.0, 1.0));
+    float fres = 0.0;
     // Foam where the sea meets the sand, in bands that roll in.
     float chop = texture2D(ripples, p * 0.12 + time * 0.01).b * 0.5 + n1.x * 0.5;
     float edge = r - 62.6 - sin(time * 0.7 + atan(p.y, p.x) * 5.0) * 0.35;
@@ -398,7 +405,7 @@ const WATER_FRAG = `
     #endif
     col = mix(col, vec3(1.0), foam * 0.85);
     #ifdef INLAND
-    float alpha = clamp(0.9 + fres * 0.3, 0.0, 1.0);
+    float alpha = 0.95;
     #else
     float alpha = clamp(mix(0.45, 0.97, smoothstep(61.5, 71.0, r)) + fres * 0.4 + foam, 0.0, 1.0);
     #endif
@@ -513,7 +520,14 @@ export function createWorld(scene, renderer) {
     }
 
     // Landmarks, roads and farms out in the country.
-    country = layoutCountry({ index, height: (x, z) => hillHeight(x, z), passOpen, caches, townR: TOWN_R, walkR: ISLAND_RADIUS });
+    // In the valley, roads into an area across a creek start at that area's bridge, on the far bank.
+    const roadFrom = index !== 0 ? null : (x, z) => {
+      const sec = AREA_SECTORS.find((sc) => { const a = ((Math.atan2(z, x) / RAD) + 360) % 360; return (((a - sc.from) % 360) + 360) % 360 <= sc.to - sc.from; });
+      if (!sec || sec.name === 'meadow') return null;
+      const mid = ((sec.from + sec.to) / 2) * RAD;
+      return { x: Math.cos(mid) * (CREEK.r + CREEK.half + CREEK.bank + 1.5), z: Math.sin(mid) * (CREEK.r + CREEK.half + CREEK.bank + 1.5) };
+    };
+    country = layoutCountry({ index, height: (x, z) => hillHeight(x, z), passOpen, caches, townR: TOWN_R, walkR: ISLAND_RADIUS, roadFrom });
     landParts.add(country.object);
 
     // The hills around the town, coloured by height.

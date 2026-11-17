@@ -192,26 +192,38 @@ let barkMat = null;
 let leafMat = null;
 /** Where the player is, in view space. Trees between the camera and here are cut away so the view stays clear. */
 export const focusView = { value: new THREE.Vector3(0, 0, -20) };
-const CUTAWAY = `
+// Trees between the camera and the player fade as a whole (a fine screen-door pattern,
+// like most third-person games) instead of having a hole cut in them. How much a tree
+// fades comes from where its middle sits relative to the player on screen, so it eases
+// in and out smoothly as the camera turns. Trees right next to the camera fade most.
+const OCCLUDE_VERT = `
+      #ifdef USE_INSTANCING
+        vec4 occC = modelViewMatrix * instanceMatrix * vec4(0.0, 3.0, 0.0, 1.0);
+      #else
+        vec4 occC = modelViewMatrix * vec4(0.0, 3.0, 0.0, 1.0);
+      #endif
       {
-        float fragDepth = vViewPosition.z;
-        float focusDepth = -uFocusView.z;
-        // Anything right in front of the camera dissolves, so walking through
-        // a grove never puts a wall of leaves over the screen.
-        if (fragDepth < 7.0) discard;
-        if (fragDepth < focusDepth - 0.8) {
-          vec2 off = vViewPosition.xy / fragDepth + uFocusView.xy / focusDepth;
-          off.y -= 0.035;
-          float hole = length(off * vec2(1.0, 1.25));
-          if (hole < 0.22) discard;
+        float cDepth = -occC.z, fDepth = -uFocusView.z;
+        vOccl = 0.0;
+        if (cDepth < 7.0) vOccl = 1.0;
+        else if (cDepth < fDepth - 1.0) {
+          vec2 off = occC.xy / cDepth - uFocusView.xy / fDepth;
+          off.y -= 0.05;
+          vOccl = (1.0 - smoothstep(0.14, 0.34, length(off * vec2(1.0, 0.8)))) * smoothstep(fDepth - 1.0, fDepth - 4.0, cDepth);
         }
+      }`;
+const CUTAWAY = `
+      if (vOccl > 0.01) {
+        const float BAYER[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+        ivec2 q = ivec2(mod(floor(gl_FragCoord.xy), 4.0));
+        if ((BAYER[q.x + q.y * 4] + 0.5) / 16.0 < vOccl * 0.75) discard;
       }`;
 function sway(material, strength, from) {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uWind = wind;
     shader.uniforms.uFocusView = focusView;
-    shader.fragmentShader = `uniform vec3 uFocusView;\n${shader.fragmentShader}`.replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>${CUTAWAY}`);
-    shader.vertexShader = `uniform float uWind;\n${shader.vertexShader}`.replace('#include <begin_vertex>', `#include <begin_vertex>
+    shader.fragmentShader = `varying float vOccl;\n${shader.fragmentShader}`.replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>${CUTAWAY}`);
+    shader.vertexShader = `uniform float uWind;\nuniform vec3 uFocusView;\nvarying float vOccl;\n${shader.vertexShader}`.replace('#include <begin_vertex>', `#include <begin_vertex>${OCCLUDE_VERT}
       #ifdef USE_INSTANCING
         float ph = uWind * 1.5 + instanceMatrix[3].x * 0.31 + instanceMatrix[3].z * 0.23;
       #else

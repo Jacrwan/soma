@@ -316,7 +316,7 @@ function seeded(seed) {
   };
 }
 
-export function layoutCountry({ index, height, passOpen, caches, townR, walkR }) {
+export function layoutCountry({ index, height, passOpen, caches, townR, walkR, roadFrom = null }) {
   const r = seeded(4242 + index * 97);
   const object = new THREE.Group();
   const mask = new Uint8Array(HALF * 2 * HALF * 2);
@@ -369,7 +369,8 @@ export function layoutCountry({ index, height, passOpen, caches, townR, walkR })
   const roads = [];
   for (const t of [...landmarks, ...caches]) {
     const a = Math.atan2(t.z, t.x);
-    const sx = Math.cos(a) * (townR - 5), sz = Math.sin(a) * (townR - 5);
+    const from = roadFrom?.(t.x, t.z);
+    const sx = from ? from.x : Math.cos(a) * (townR - 5), sz = from ? from.z : Math.sin(a) * (townR - 5);
     const len = Math.hypot(t.x - sx, t.z - sz);
     const ex = t.x - ((t.x - sx) / len) * 4.5, ez = t.z - ((t.z - sz) / len) * 4.5;
     const n = Math.max(4, Math.ceil(len / 2));
@@ -389,8 +390,16 @@ export function layoutCountry({ index, height, passOpen, caches, townR, walkR })
         if (dry(p.x - px * o, p.z - pz * o)) { p.x -= px * o; p.z -= pz * o; break; }
       }
     }
-    roads.push(pts);
-    for (const p of pts) markCircle(p.x, p.z, 2, MASK.ROAD);
+    // Smooth out the sideways steps (no staircase roads along a creek), then leave out
+    // any stretch that would still be in water: the road just stops at the bank.
+    for (let pass = 0; pass < 4; pass++) for (let i = 1; i < pts.length - 1; i++) {
+      pts[i].x = (pts[i - 1].x + pts[i].x * 2 + pts[i + 1].x) / 4;
+      pts[i].z = (pts[i - 1].z + pts[i].z * 2 + pts[i + 1].z) / 4;
+    }
+    let run = [];
+    const flush = () => { if (run.length >= 3) { roads.push(run); for (const p of run) markCircle(p.x, p.z, 2, MASK.ROAD); } run = []; };
+    for (const p of pts) { if (dry(p.x, p.z)) run.push(p); else flush(); }
+    flush();
   }
   object.add(roadMesh(roads, height, ROAD_COLORS[index] ?? ROAD_COLORS[0]));
 
