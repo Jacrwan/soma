@@ -21,7 +21,7 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { createCoach } from './tutorial.js';
 import { makePiece } from './catalog.js';
-import { createOwl } from './owl.js';
+import { createOwl, makeOwl3D } from './owl.js';
 
 // --- State ----------------------------------------------------------------------
 // Inside Soma the save belongs to the signed-in student, so two accounts in
@@ -1789,6 +1789,10 @@ function updateOwl(dt, time) {
   if (o.position.distanceTo(want) > 25) o.position.copy(want);
   o.position.lerp(want, Math.min(1, dt * 4));
   const moving = o.position.distanceTo(want) > 0.6;
+  // Faces the camera, turned a little toward you, the way a guide keeps an eye on you.
+  const look = Math.atan2(camera.position.x - o.position.x, camera.position.z - o.position.z);
+  const toYou = Math.atan2(p.x - o.position.x, p.z - o.position.z);
+  o.rotation.y = look + Math.atan2(Math.sin(toYou - look), Math.cos(toYou - look)) * 0.35;
   owl.update(dt, time, world.groundHeight('earth', o.position.x, o.position.z), moving);
 }
 /** Plays a story moment once, then calls after (even if it was already seen). */
@@ -4228,6 +4232,7 @@ document.addEventListener('visibilitychange', () => { if (document.visibilitySta
 window.epoch = {
   state, S, cam,
   give(n) { S.addCoins(state, n); refreshHud(); },
+  owlThumb: () => Promise.resolve(renderThumb(makeOwl3D(), 0.4)),
   chests: () => openChests(),
   thumb: (r) => thumbFor(r),
   character: (id) => pickCharacter(id),

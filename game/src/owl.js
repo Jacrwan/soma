@@ -58,41 +58,163 @@ function texture(svg) {
   });
 }
 
-/** The Owl sprite: { object, update(dt, time, flying) }. */
+// --- Owl in 3D, cel-shaded to match the drawing ------------------------------------
+// Smooth shapes, flat toon shading in three tones, and a dark outline around
+// every part (an inverted copy drawn behind it), so it reads like the cartoon.
+let toonRamp = null;
+function ramp() {
+  if (toonRamp) return toonRamp;
+  const data = new Uint8Array([90, 90, 90, 255, 175, 175, 175, 255, 255, 255, 255, 255]);
+  toonRamp = new THREE.DataTexture(data, 3, 1, THREE.RGBAFormat);
+  toonRamp.minFilter = toonRamp.magFilter = THREE.NearestFilter;
+  toonRamp.needsUpdate = true;
+  return toonRamp;
+}
+const toon = (color, extra = {}) => new THREE.MeshToonMaterial({ color, gradientMap: ramp(), ...extra });
+const OUTLINE = new THREE.MeshBasicMaterial({ color: 0x2f1d14, side: THREE.BackSide });
+function part(geo, color, { outline = 0.022, extra } = {}) {
+  const g = new THREE.Group();
+  const m = new THREE.Mesh(geo, toon(color, extra));
+  g.add(m);
+  if (outline) {
+    const o = new THREE.Mesh(geo, OUTLINE);
+    o.scale.setScalar(1);
+    o.onBeforeRender = () => {};
+    // Push the outline out along the normals, the same distance everywhere.
+    o.material = OUTLINE.clone();
+    o.material.onBeforeCompile = (sh) => {
+      sh.vertexShader = sh.vertexShader.replace('#include <begin_vertex>', `#include <begin_vertex>\n transformed += normal * ${outline.toFixed(3)};`);
+    };
+    g.add(o);
+  }
+  g.userData.mesh = m;
+  return g;
+}
+const sphere = (r, w = 32, h = 24) => new THREE.SphereGeometry(r, w, h);
+function eggGeometry() {
+  // A plump egg: wide at the belly, rounded on top.
+  const pts = [];
+  for (let i = 0; i <= 24; i++) {
+    const t = i / 24, a = -Math.PI / 2 + t * Math.PI;
+    const r = Math.cos(a) * (0.31 + 0.04 * Math.sin(a + 0.6));
+    pts.push(new THREE.Vector2(Math.max(0.0001, r), Math.sin(a) * 0.37));
+  }
+  const g = new THREE.LatheGeometry(pts, 40);
+  g.computeVertexNormals();
+  return g;
+}
+export function makeOwl3D() {
+  const root = new THREE.Group();
+  const brown = 0x9a6640, dark = 0x6e4529, face = 0xfbefd9, belly = 0xf4e2c4, amber = 0xf5a623, gold = 0xd9a640;
+  const body = part(eggGeometry(), brown, { outline: 0.024 });
+  body.position.y = 0.4;
+  root.add(body);
+  const front = part(sphere(0.25), belly, { outline: 0.016 });
+  front.scale.set(0.95, 1.0, 0.55);
+  front.position.set(0, 0.3, 0.16);
+  root.add(front);
+  // Ear tufts.
+  for (const sx of [-1, 1]) {
+    const tuft = part(new THREE.ConeGeometry(0.07, 0.2, 12), dark, { outline: 0.016 });
+    tuft.position.set(sx * 0.17, 0.78, 0.02);
+    tuft.rotation.z = -sx * 0.45;
+    root.add(tuft);
+  }
+  // Face: two big discs, glasses, eyes.
+  const eyes = [];
+  for (const sx of [-1, 1]) {
+    const disc = part(sphere(0.13), face, { outline: 0.014 });
+    disc.scale.set(1, 1, 0.42);
+    disc.position.set(sx * 0.11, 0.55, 0.24);
+    root.add(disc);
+    const eye = new THREE.Group();
+    const iris = new THREE.Mesh(sphere(0.075), toon(amber));
+    iris.scale.set(1, 1, 0.35);
+    const pupil = new THREE.Mesh(sphere(0.054), new THREE.MeshBasicMaterial({ color: 0x1e120c }));
+    pupil.scale.set(1, 1, 0.35);
+    pupil.position.z = 0.012;
+    const shine = new THREE.Mesh(sphere(0.02, 12, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    shine.position.set(0.022, 0.024, 0.03);
+    const shine2 = new THREE.Mesh(sphere(0.01, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    shine2.position.set(-0.02, -0.024, 0.03);
+    eye.add(iris, pupil, shine, shine2);
+    eye.position.set(sx * 0.11, 0.55, 0.29);
+    root.add(eye);
+    eyes.push(eye);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.014, 10, 36), toon(gold, { emissive: 0x3a2808 }));
+    rim.position.set(sx * 0.11, 0.55, 0.305);
+    root.add(rim);
+  }
+  const bridge = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.04, 8), toon(gold));
+  bridge.rotation.z = Math.PI / 2;
+  bridge.position.set(0, 0.57, 0.31);
+  root.add(bridge);
+  const beak = part(new THREE.ConeGeometry(0.04, 0.09, 12), 0xf2a33a, { outline: 0.012 });
+  beak.rotation.x = Math.PI + 0.35;
+  beak.position.set(0, 0.46, 0.32);
+  root.add(beak);
+  // Wings, hinged at the shoulder.
+  const wings = [];
+  for (const sx of [-1, 1]) {
+    const pivot = new THREE.Group();
+    const wing = part(sphere(0.2), dark, { outline: 0.018 });
+    wing.scale.set(0.3, 0.9, 0.7);
+    wing.position.set(sx * 0.02, -0.15, -0.02);
+    pivot.add(wing);
+    pivot.position.set(sx * 0.29, 0.46, 0);
+    pivot.userData.side = sx;
+    root.add(pivot);
+    wings.push(pivot);
+  }
+  // Feet.
+  for (const sx of [-1, 1]) for (const t of [-0.4, 0, 0.4]) {
+    const toe = part(new THREE.CapsuleGeometry(0.018, 0.05, 4, 8), 0xe8962e, { outline: 0.008 });
+    toe.rotation.set(Math.PI / 2, 0, t);
+    toe.position.set(sx * 0.09 + Math.sin(t) * 0.03, 0.03, 0.14);
+    root.add(toe);
+  }
+  // Graduation cap with a tassel.
+  const cap = new THREE.Group();
+  const board = part(new THREE.BoxGeometry(0.42, 0.035, 0.42), 0x2b2a3f, { outline: 0.012 });
+  board.rotation.y = Math.PI / 4;
+  const crown = part(new THREE.CylinderGeometry(0.15, 0.16, 0.09, 24), 0x2b2a3f, { outline: 0.012 });
+  crown.position.y = -0.06;
+  const button = new THREE.Mesh(sphere(0.02, 10, 8), toon(0xf2c14e));
+  button.position.y = 0.025;
+  const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.2, 6), toon(0xf2c14e));
+  cord.position.set(0.15, -0.06, 0.06);
+  cord.rotation.z = 0.15;
+  const tassel = new THREE.Mesh(sphere(0.03, 10, 8), toon(0xf2c14e));
+  tassel.position.set(0.165, -0.17, 0.06);
+  cap.add(board, crown, button, cord, tassel);
+  cap.position.set(0, 0.83, -0.02);
+  cap.rotation.z = -0.12;
+  root.add(cap);
+  root.traverse((o) => { if (o.isMesh) o.castShadow = o.material !== OUTLINE && o.material.type !== 'MeshBasicMaterial'; });
+  root.userData = { wings, eyes };
+  return root;
+}
+
+/** Owl in the world: { object, update(dt, time, ground, moving) }. */
 export function createOwl() {
-  const material = new THREE.SpriteMaterial({ transparent: true, depthWrite: false });
-  const sprite = new THREE.Sprite(material);
-  sprite.scale.set(1.5, 1.72, 1);
-  sprite.center.set(0.5, 0.1);
-  sprite.renderOrder = 4;
   const object = new THREE.Group();
-  object.add(sprite);
-  // A soft shadow under Owl so it reads as being in the world.
-  const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.28, 20), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.18, depthWrite: false }));
-  shadow.rotation.x = -Math.PI / 2;
-  object.add(shadow);
-  const frames = {};
-  Promise.all([texture(owlSvg()), texture(owlSvg({ blink: true })), texture(owlSvg({ flap: true }))]).then(([open, blink, flap]) => {
-    Object.assign(frames, { open, blink, flap });
-    material.map = open;
-    material.needsUpdate = true;
-  });
+  const model = makeOwl3D();
+  model.scale.setScalar(1.35);
+  object.add(model);
   let nextBlink = 2;
   return {
     object,
     update(dt, time, ground = 0, moving = false) {
-      if (!frames.open) return;
-      // Hovering: a gentle bob, a flap of the wings every so often (often while moving), a blink now and then.
-      const flapping = moving ? Math.sin(time * 14) > 0 : Math.sin(time * 1.3) > 0.96;
+      // A gentle hover, wings beating while it keeps up with you, a blink now and then.
+      model.position.y = Math.sin(time * 2.2) * 0.08;
+      model.rotation.z = Math.sin(time * 1.1) * 0.05;
+      const beat = moving ? Math.sin(time * 16) * 0.7 + 0.5 : 0.08 + Math.sin(time * 1.6) * 0.05;
+      for (const w of model.userData.wings) w.rotation.z = w.userData.side * beat;
       nextBlink -= dt;
-      const blinking = nextBlink < 0.12;
+      const shut = nextBlink < 0.12;
       if (nextBlink < 0) nextBlink = 2.5 + Math.random() * 3;
-      const want = blinking ? frames.blink : flapping ? frames.flap : frames.open;
-      if (material.map !== want) { material.map = want; material.needsUpdate = true; }
-      sprite.position.y = Math.sin(time * 2.2) * 0.08;
-      material.rotation = Math.sin(time * 1.1) * 0.06;
-      shadow.position.y = ground - object.position.y + 0.04;
-      shadow.material.opacity = 0.18 / (1 + Math.max(0, object.position.y - ground) * 0.4);
+      for (const e of model.userData.eyes) e.scale.y = shut ? 0.12 : 1;
+      void ground;
     },
   };
 }
