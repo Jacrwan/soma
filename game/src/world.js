@@ -7,6 +7,10 @@ import { C, mat, at, makeRock, makeTownCenter, makeGate, makeLander } from './ar
 import { noiseTexture, rippleNormals, fbm, noise3 } from './tex.js';
 import { createForest, createGrass, createClouds, wind } from './nature.js';
 import { EARTH_PADS, MOON_PADS } from './sim.js';
+import { installHorizonBend, bendGlsl, POND, STREAM, ZONES, zoneWeights, tintByZone, zoneFade, createCover, createLife, addCloudShadows, clouds } from './scenery.js';
+
+// The world bends away like a rolling log (see scenery.js); must be set before any shader compiles.
+installHorizonBend();
 
 export const TOWN_R = 62; // the flat town circle in every land
 export const RISE_R = TOWN_R + 56; // where the mountains start; between town and here is open country
@@ -100,7 +104,16 @@ function valleyHeight(x, z, r) {
   if (r < TOWN_R) return 0;
   const open = passOpen(x, z, r);
   const up = (rise(r) / 12) ** 1.55 * 4.4 * (0.75 + 0.45 * noise2(x * 0.35, z * 0.35));
-  return meadow(x, z, r) + Math.min(74, up * (0.05 + 0.95 * open * open));
+  const h = meadow(x, z, r) + Math.min(74, up * (0.05 + 0.95 * open * open));
+  // The pond in the south-west, and the stream that runs down to it from the hills.
+  const pond = smooth((Math.hypot(x - POND.x, z - POND.z) - POND.r) / 6);
+  const sx = STREAM.b.x - STREAM.a.x, sz = STREAM.b.z - STREAM.a.z;
+  const t = Math.max(0, Math.min(1, ((x - STREAM.a.x) * sx + (z - STREAM.a.z) * sz) / (sx * sx + sz * sz)));
+  const wob = Math.sin(t * 9) * 2.2;
+  const sd = Math.hypot(x - (STREAM.a.x + sx * t) - wob * 0.6, z - (STREAM.a.z + sz * t) + wob * 0.4);
+  const stream = smooth((sd - STREAM.w) / 3);
+  const wet = Math.min(pond, stream);
+  return h * wet + (1 - wet) * -1.4;
 }
 // Bronze Age: low dunes, sandstone mesas far out, and a river behind the town.
 function duneHeight(x, z, r) {
@@ -316,7 +329,9 @@ const WATER_VERT = `
   void main() {
     vec4 w = modelMatrix * vec4(position, 1.0);
     vWorld = w.xyz;
-    gl_Position = projectionMatrix * viewMatrix * w;
+    vec4 mvPosition = viewMatrix * w;
+    ${bendGlsl}
+    gl_Position = projectionMatrix * mvPosition;
   }`;
 const WATER_FRAG = `
   varying vec3 vWorld;
@@ -398,7 +413,7 @@ export function createWorld(scene, renderer) {
   mapTexture.flipY = false;
   mapTexture.anisotropy = renderer ? renderer.capabilities.getMaxAnisotropy() : 4;
   const grain = noiseTexture('dust', 256);
-  const groundMat = groundMaterial(mapTexture, grain, 70, 0.25, 0.18);
+  const groundMat = addCloudShadows(groundMaterial(mapTexture, grain, 70, 0.25, 0.18), 'ground');
   const waterUniforms = {
     ripples: { value: rippleNormals(256) }, time: skyUniforms.time, haze: { value: 0.006 },
     zenith: skyUniforms.zenith, horizon: skyUniforms.horizon, sunDir: skyUniforms.sunDir, sunColor: skyUniforms.sunColor,
@@ -427,9 +442,15 @@ export function createWorld(scene, renderer) {
   let country = { landmarks: [], roads: [], fields: [], spin: [], mask: () => 0 };
   let grassLevel = 0;
   const dispose = (root) => root.traverse((o) => { if (o.isMesh || o.isInstancedMesh) { o.geometry?.dispose(); } });
+  let zoneTint = 0.55;
+  let cover = null;
+  // Birds, butterflies and fireflies (scenery.js), around wherever the player is.
+  const life = createLife({ height: (x, z) => hillHeight(x, z), townR: TOWN_R });
+  earth.add(life.object);
   function buildLand(index) {
     landIndex = index;
     land = LANDS[index];
+    zoneTint = [0.55, 0.16, 0.5, 0.25, 0.5, 0.12][index] ?? 0.3;
     dispose(landParts);
     landParts.clear();
 
@@ -474,11 +495,13 @@ export function createWorld(scene, renderer) {
         const [h0, a] = stops[k], [h1, b] = stops[k + 1];
         c.set(a).lerp(new THREE.Color(b), Math.max(0, Math.min(1, (t - h0) / (h1 - h0))));
         c.multiplyScalar(0.97 + 0.05 * (noise2(x * 2.3, z * 2.3) * 0.5 + 0.5));
+        // Each area of the country has its own colour (meadow, orchard, pond, woods, highlands).
+        if (h > -0.2) tintByZone(c, x, z, zoneFade(Math.hypot(x, z), TOWN_R, RISE_R) * zoneTint);
         c.toArray(colors, i * 3);
       }
       g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
       g.computeVertexNormals();
-      const hills = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true }));
+      const hills = new THREE.Mesh(g, addCloudShadows(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true }), 'hills'));
       hills.receiveShadow = true;
       landParts.add(hills);
     }
@@ -491,6 +514,22 @@ export function createWorld(scene, renderer) {
       river.position.set(0, -0.45, -78);
       river.renderOrder = 2;
       landParts.add(river);
+    } else if (index === 0) {
+      const pondWater = new THREE.Mesh(new THREE.CircleGeometry(POND.r + 3.5, 40), water.material);
+      pondWater.rotation.x = -Math.PI / 2;
+      pondWater.position.set(POND.x, -0.45, POND.z);
+      pondWater.renderOrder = 2;
+      landParts.add(pondWater);
+      const sx = STREAM.b.x - STREAM.a.x, sz = STREAM.b.z - STREAM.a.z, len = Math.hypot(sx, sz);
+      const creek = new THREE.Mesh(new THREE.PlaneGeometry(len + 6, STREAM.w * 2 + 5, 24, 1), water.material);
+      // Follow the stream's wobble so the water sits in its bed.
+      const cp = creek.geometry.attributes.position;
+      for (let k = 0; k < cp.count; k++) { const u = cp.getX(k) / (len + 6) + 0.5; const wob = Math.sin(Math.max(0, Math.min(1, u)) * 9) * 2.2; cp.setY(k, cp.getY(k) - wob * 0.72); }
+      creek.rotation.x = -Math.PI / 2;
+      creek.rotation.z = -Math.atan2(sz, sx);
+      creek.position.set(STREAM.a.x + sx / 2, -0.45, STREAM.a.z + sz / 2);
+      creek.renderOrder = 2;
+      landParts.add(creek);
     } else if (land.water?.kind === 'lake') {
       const lake = new THREE.Mesh(new THREE.CircleGeometry(17, 40), water.material);
       lake.rotation.x = -Math.PI / 2;
@@ -552,7 +591,9 @@ export function createWorld(scene, renderer) {
         if (country.mask(x, z)) continue;
         if (d < RISE_R) {
           const grove = noise2(x * 0.05 + 3, z * 0.05 + 9) * 0.7 + noise2(x * 0.13 - 4, z * 0.13) * 0.3;
-          if (grove < 0.2 && r() > 0.04) continue;
+          // The woods are thick, the meadow open, the orchard planted in rows (below).
+          const zw = zoneWeights(x, z);
+          if (grove < 0.2 - zw[3] * 0.38 + zw[0] * 0.25 + zw[1] * 0.3 && r() > 0.04 + zw[3] * 0.25) continue;
           if (caches.some((c) => Math.hypot(c.x - x, c.z - z) < 6)) continue;
         }
         // Desert palms grow along the river.
@@ -560,6 +601,18 @@ export function createWorld(scene, renderer) {
         const scale = 1.1 + r() * 1.3;
         list.push({ x, y: y - 0.3, z, kind: pick(land.slope.kinds, r()), scale, turn: r() * 6.28 });
         if (d < ISLAND_RADIUS + 3) treeSolids.push({ x, z, r: 0.35 + scale * 0.22 });
+      }
+      // The orchard: fruit trees in loose rows, with fallen fruit under them (ground cover).
+      if (zoneTint >= 0.4) {
+        for (let gx = -RISE_R; gx <= RISE_R; gx += 7) for (let gz = -RISE_R; gz <= RISE_R; gz += 7) {
+          const x = gx + (r() - 0.5) * 1.2, z = gz + (r() - 0.5) * 1.2, d = Math.hypot(x, z);
+          if (d < TOWN_R + 6 || d > RISE_R - 4 || zoneWeights(x, z)[1] < 0.6) continue;
+          const y = hillHeight(x, z, d);
+          if (y < 0.15 || y > 8 || country.mask(x, z) || caches.some((c) => Math.hypot(c.x - x, c.z - z) < 6)) continue;
+          const scale = 0.8 + r() * 0.3;
+          list.push({ x, y: y - 0.3, z, kind: 0, scale, turn: r() * 6.28 });
+          treeSolids.push({ x, z, r: 0.35 + scale * 0.22 });
+        }
       }
       countrySlopes = slopes;
       countryList = list;
@@ -583,9 +636,17 @@ export function createWorld(scene, renderer) {
       return h > -0.25 && h < 14;
     }, 33 + index, land.grass, (x, z) => hillHeight(x, z) - 0.05);
     earth.add(wildGrass);
+    // Flowers, reeds, mushrooms, logs, stumps, bushes, rocks and fruit, by area.
+    cover = createCover({
+      height: (x, z) => hillHeight(x, z),
+      free: (x, z) => !country.mask(x, z) && !caches.some((c) => Math.hypot(c.x - x, c.z - z) < 4),
+      townR: TOWN_R, riseR: RISE_R, green: zoneTint >= 0.4, pond: index === 0, seed: index,
+    });
+    landParts.add(cover.object);
     applyGrassLevel();
   }
   function applyGrassLevel() {
+    cover?.setLevel(grassLevel);
     if (grass) grass.count = Math.floor(grass.userData.full * [0.8, 0.45, 0.2][grassLevel]);
     if (wildGrass) wildGrass.count = Math.floor(wildGrass.userData.full * [0.6, 0.25, 0][grassLevel]);
     if (wildGrass) wildGrass.visible = grassLevel < 2;
@@ -670,6 +731,20 @@ export function createWorld(scene, renderer) {
     for (let i = 0; i < 700; i++) {
       const a = r() * 6.28, d = Math.sqrt(r()) * (TOWN_R - 4);
       dab(greens[Math.floor(r() * greens.length)], Math.cos(a) * d, Math.sin(a) * d, 2 + r() * 5, 0.12 + r() * 0.12);
+    }
+    // The country's areas show where the painted ground reaches past the town edge too.
+    if (zoneTint > 0) {
+      const zcol = new THREE.Color();
+      for (let gz = -MAP_SPAN / 2; gz < MAP_SPAN / 2; gz += 1) for (let gx = -MAP_SPAN / 2; gx < MAP_SPAN / 2; gx += 1) {
+        const f = zoneFade(Math.hypot(gx + 0.5, gz + 0.5), TOWN_R, RISE_R) * zoneTint;
+        if (f <= 0.01) continue;
+        zcol.set(P.base);
+        tintByZone(zcol, gx + 0.5, gz + 0.5, 1);
+        ctx.globalAlpha = f;
+        ctx.fillStyle = `#${zcol.getHexString()}`;
+        ctx.fillRect(X(gx), X(gz), s + 1, s + 1);
+      }
+      ctx.globalAlpha = 1;
     }
     const tufts = [stamp(0x8fb257), stamp(0x4c7634)];
     for (let i = 0; i < 0; i++) {
@@ -1084,6 +1159,9 @@ export function createWorld(scene, renderer) {
   function update(dt, time, focus, camera) {
     skyUniforms.time.value = time;
     wind.value = time;
+    clouds.t.value = time;
+    clouds.amt.value = 0.22 * daylight.light;
+    if (earth.visible) life.update(dt, time, focus, daylight.light);
     if (camera) dome.position.copy(camera.position);
     if (gateFlag) gateFlag.rotation.y = Math.sin(time * 3) * 0.25;
     for (const o of animated) {

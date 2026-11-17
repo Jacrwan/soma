@@ -2,6 +2,7 @@
 // that follow things, and small synthesized sounds.
 
 import * as THREE from 'three';
+import { projectBent } from './scenery.js';
 import { mat, makeCoin } from './art.js';
 
 export function createFx(scene, camera) {
@@ -20,7 +21,7 @@ export function createFx(scene, camera) {
   function project(pos, node, dy = 0, show = true) {
     v.copy(pos);
     v.y += dy;
-    v.project(camera);
+    projectBent(v, camera); // labels follow the rolling-log horizon (scenery.js)
     const visible = v.z < 1 && v.z > -1 && Math.abs(v.x) < 1.15 && Math.abs(v.y) < 1.15;
     if (!visible && node.style.display !== 'none') node.style.display = 'none';
     else if (visible && show && node.style.display !== '') node.style.display = '';

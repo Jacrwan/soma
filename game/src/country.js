@@ -381,6 +381,14 @@ export function layoutCountry({ index, height, passOpen, caches, townR, walkR })
       const off = Math.sin(k * Math.PI) * bend + Math.sin(k * Math.PI * 3) * wave * Math.sin(k * Math.PI);
       pts.push({ x: sx + (ex - sx) * k + px * off, z: sz + (ez - sz) * k + pz * off });
     }
+    // Never through water: wet points step sideways until they're on dry ground (around the pond).
+    for (const p of pts) {
+      if (dry(p.x, p.z)) continue;
+      for (let o = 1.5; o <= 24; o += 1.5) {
+        if (dry(p.x + px * o, p.z + pz * o)) { p.x += px * o; p.z += pz * o; break; }
+        if (dry(p.x - px * o, p.z - pz * o)) { p.x -= px * o; p.z -= pz * o; break; }
+      }
+    }
     roads.push(pts);
     for (const p of pts) markCircle(p.x, p.z, 2, MASK.ROAD);
   }

@@ -5,6 +5,7 @@
 // game.js, since each one waits for something real to happen in the game.
 
 import * as THREE from 'three';
+import { projectBent } from './scenery.js';
 
 const ARROW_SVG = '<svg viewBox="0 0 24 24"><path d="M12 22 3 10h5.5V2h7v8H21z"/></svg>';
 
@@ -108,13 +109,13 @@ export function createCoach({ scene, camera, onSkip, onQuit, onNext }) {
     },
     /** True when a point in the world is on screen (not behind the camera). */
     inView(pos) {
-      bubbleAt.copy(pos).add(new THREE.Vector3(0, 2.4, 0)).project(camera);
+      bubbleAt.copy(pos).add(new THREE.Vector3(0, 2.4, 0)); projectBent(bubbleAt, camera);
       return bubbleAt.z < 1 && Math.abs(bubbleAt.x) < 0.9 && bubbleAt.y < 0.9 && bubbleAt.y > -0.6;
     },
     /** Keeps the bubble over a point in the world. */
     follow(owlPos) {
       if (card.hidden) return;
-      bubbleAt.copy(owlPos).add(new THREE.Vector3(0, 2.4, 0)).project(camera);
+      bubbleAt.copy(owlPos).add(new THREE.Vector3(0, 2.4, 0)); projectBent(bubbleAt, camera);
       card.classList.remove('pinned');
       const x = Math.max(170, Math.min(innerWidth - 170, (bubbleAt.x * 0.5 + 0.5) * innerWidth));
       const y = Math.max(90, Math.min(innerHeight - 160, (-bubbleAt.y * 0.5 + 0.5) * innerHeight));
@@ -131,7 +132,7 @@ export function createCoach({ scene, camera, onSkip, onQuit, onNext }) {
       ring.material.opacity = 0.75 * (1 - (time % 1.2) / 1.2);
 
       const dist = Math.hypot(target.x - from.x, target.z - from.z);
-      v.copy(target).add(new THREE.Vector3(0, 4.6, 0)).project(camera);
+      v.copy(target).add(new THREE.Vector3(0, 4.6, 0)); projectBent(v, camera);
       const behind = v.z > 1;
       let x = (v.x * 0.5 + 0.5) * innerWidth;
       let y = (-v.y * 0.5 + 0.5) * innerHeight;
