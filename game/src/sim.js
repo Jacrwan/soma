@@ -879,41 +879,56 @@ export const CHAPTERS = [
   { title: 'Chapter 1: Waking', goal: 'Rebuild the camp and raise the Stone Circle' },
   { title: 'Chapter 2: The Library Burns', goal: 'Find the old library\u2019s pages and raise the Great Pyramid' },
 ];
+// The story of Season 1. Chapter 1 (the Stone Age) is "The Valley That Forgot":
+// the Atlas remembers everything anyone has learned; the Drift (forgetting, fed by
+// "later") tore it up, so the world must be lived again chapter by chapter, starting
+// with the first people. The Librarian has lost their own name to the Drift. The four
+// Atlas pages in this valley tell Ash's tale: the girl who painted the herds so her
+// tribe would not forget, and her friend the hunter who kept saying "tomorrow" until
+// winter came early, and was called Later ever after. Finding all four gives the
+// Librarian their name back (Ash) and reveals who the Procrastinator really is (Later).
 export const LORE = {
   intro: [
     ['owl', '...hey. Hey! You\u2019re awake. Thank the stars.'],
-    ['owl', 'You were gone a long time. The Drift came in while you weren\u2019t looking and took the whole town.'],
-    ['owl', 'Everything you left unfinished, it turned into monsters. They\u2019re still out there, marching.'],
-    ['owl', 'I\u2019m the Librarian. I kept the old library, before it burned. I keep my post here by the board, lantern lit. I\u2019ll talk you through it. Come on. Let\u2019s get you on your feet.'],
+    ['owl', 'Don\u2019t panic. You\u2019re in the valley at the start of everything. The very first chapter.'],
+    ['owl', 'The Drift tore up the Atlas, the book that remembers everything anyone ever learned. Without it, the world is forgetting itself.'],
+    ['owl', 'And everything left undone, the Drift turns into monsters. A few of yours are already marching on the gate.'],
+    ['owl', 'To write the Atlas back, someone has to live it again, one chapter at a time. Tonight, that\u2019s you.'],
+    ['owl', 'I\u2019m the Librarian. I\u2019ve kept the Atlas longer than I can remember. Literally: the Drift took my name. Come on, up you get.'],
   ],
   procrastinator: [
-    ['pro', 'Well, well. A keeper. Awake, even.'],
-    ['pro', 'You don\u2019t have to do all that today, you know. Or tomorrow. Later is so much nicer.'],
-    ['pro', 'Every time you put something off, my Drift grows a little. I\u2019ll be watching. Later.'],
-    ['owl', 'That was the Procrastinator. Don\u2019t listen to him. Every bit of work you finish pushes his fog back.'],
+    ['pro', 'Well, well. A keeper. Up and about. Adorable.'],
+    ['pro', 'A tip from an old hunter: whatever it is, it can wait. Things always wait. Until they don\u2019t.'],
+    ['pro', 'They called me Later, back in this valley. The Drift is my doing, more or less. You\u2019re welcome.'],
+    ['owl', 'That\u2019s the Procrastinator. He feeds on \u201ctomorrow\u201d. Every bit of work you finish today pushes his fog back.'],
+    ['owl', '...Later. Why do I know that name?'],
   ],
   exam: [
     ['owl', 'That big one is an Examiner. Every course has one, and they hit hard on exam day.'],
     ['owl', 'You can\u2019t fight it now. Study for it. Each session strips its armor, and the weak points are the topics you still don\u2019t know.'],
   ],
   atlas: [
-    ['owl', 'A page of the Atlas! I knew they\u2019d be out here.'],
-    ['owl', 'The Atlas is the map of everything anyone ever learned. The Drift tore it apart and scattered the pages across the land.'],
-    ['owl', 'Find every page in this land, and it remembers itself. Check your map (M) for the ones you haven\u2019t found.'],
+    ['owl', 'A page of the Atlas! Lying out here in the grass like a leaf.'],
+    ['owl', 'Every land hides four. This valley\u2019s pages tell one story: the first people, the first winter, and the first keeper.'],
+    ['owl', 'Find all four (your map shows where), and maybe I\u2019ll remember why this valley feels like home.'],
   ],
   pages0: [
-    ['owl', 'That\u2019s every page in this valley. Look how the land settles when it remembers.'],
-    ['owl', 'Hold onto them. The next chapter is written on the back.'],
+    ['owl', 'That\u2019s all four. The valley\u2019s chapter is whole again.'],
+    ['owl', 'Ash. The girl with the paint, the stones, the lantern... That\u2019s my name. That\u2019s me. I remember.'],
+    ['owl', 'Which means Later is... oh, Later. He was my best friend once. He still thinks tomorrow will save him.'],
+    ['pro', 'I heard that. And it will. Any day now.'],
+    ['owl', 'Build the Stone Circle I never finished, keeper. A calendar so big nobody can put it off.'],
   ],
   chapter1: [
-    ['owl', 'The Stone Circle stands. Feel that? The Drift is pulling back.'],
-    ['owl', 'There\u2019s a river to the north where the old library stood. If any of my books survived, they\u2019re there.'],
-    ['owl', 'Pack up. A new land is waiting, and so is the next chapter.'],
+    ['owl', 'The Stone Circle stands. Stones that remember the days, so nobody has to carry them alone.'],
+    ['pro', 'Very impressive. Big rocks. Can\u2019t wait to ignore them.'],
+    ['owl', 'The Drift is pulling back from the valley. Downriver, the next chapter is waiting: the first towns, the first books, and my library.'],
+    ['owl', 'Pack up, keeper. This time we\u2019re writing it all down.'],
   ],
   chapter2: [
     ['owl', 'Chapter 2: The Library Burns.'],
-    ['owl', 'This is where my library was. The Procrastinator burned it the night everyone decided to start tomorrow.'],
-    ['pro', 'Oh, don\u2019t be dramatic. I just suggested a nap. A very long one.'],
+    ['owl', 'This is where I built my library, so nothing would ever be forgotten again. Later burned it the night everyone decided to start tomorrow.'],
+    ['pro', 'Oh, don\u2019t be dramatic, Ash. I just suggested a nap. A very long one.'],
     ['owl', 'Find the pages, raise the Great Pyramid, and we\u2019ll have something he can\u2019t burn.'],
   ],
   pages1: [

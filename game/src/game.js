@@ -2105,8 +2105,11 @@ function playStory(id, after) {
   const lines = S.storyBeat(state, id);
   if (!lines) return void after?.();
   save();
-  ui.story(lines, after);
+  // Finding all four Stone Age pages gives the Librarian back their name.
+  ui.story(lines, () => { if (id === 'pages0') nameLibrarian(); after?.(); });
 }
+const nameLibrarian = () => ui.speakerName('owl', 'Ash, the Librarian');
+if (state.story?.pages0) nameLibrarian();
 /** Plays a moment from lore.js once (id is remembered in the save). */
 function playBeat(id, lines = Lore.BEATS[id.split(':')[0]], after) {
   const seen = state.story || (state.story = {});

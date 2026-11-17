@@ -961,6 +961,8 @@ export function createUI(on) {
     /** Plays story lines ([speaker, text] pairs), then calls onDone. Queues behind any already playing. */
     story(lines, onDone) { startTalk(lines, onDone); },
     /** Sets a speaker's portrait to a picture (a data URL). */
+    /** Renames a speaker in dialogue (the Librarian, once Ash remembers their name). */
+    speakerName(who, name) { if (SPEAKERS[who]) SPEAKERS[who].name = name; },
     portrait(who, src, zoom = 1) { if (SPEAKERS[who]) SPEAKERS[who].icon = `<img src="${src}" alt="" style="width:62px;height:62px;object-fit:contain;transform:scale(${zoom});transform-origin:50% 22%">`; },
 
     map({ title, subtitle, canvas, legend }) {

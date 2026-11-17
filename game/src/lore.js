@@ -7,11 +7,12 @@
 // One page per landmark id in country.js LANDMARKS, shown when the landmark is
 // first found. Read in order, each land tells a bit of how the world forgot.
 export const ATLAS_PAGES = {
-  // Land 1: Stone Age (Chapter 1: Waking)
-  mammoth: "Page one. The first people learned the herds by watching them. They wrote nothing down, so they had to remember everything.",
-  cave: "When remembering got too heavy, someone painted it on a wall. That was the first page of the Atlas, before it was even a book.",
-  eldertree: "The elder tree was planted by the first keeper. Every ring is a year somebody chose to learn one more thing.",
-  sunstones: "These stones count the days to summer. The first deadline, if you like. People met it, and nobody went hungry.",
+  // Land 1: Stone Age (Chapter 1: The Valley That Forgot). Ash's tale, in four parts;
+  // each makes sense alone, since pages can be found in any order.
+  mammoth: "Ash's tale, part one. The first people had no writing. Everything they knew lived in their heads: where the herds walk, which berries kill. Forget once, and the whole tribe goes hungry.",
+  cave: "Ash's tale, part two. A girl named Ash got tired of forgetting, so she painted the herds on this wall. The tribe laughed at her. Then the snow came, and only the wall remembered the way to the herds.",
+  sunstones: "Ash's tale, part three. Her best friend, a hunter, promised to mark the sun's path on these stones. Tomorrow, he said, every day. Winter came a month early. The tribe called him Later after that, and he never forgave the name.",
+  eldertree: "Ash's tale, part four. Ash marked the sun herself, a stone each dawn, and planted this tree to count the years. She was the first keeper of the Atlas. She carried a lantern, and she never let it go out.",
 
   // Land 2: Bronze Age (Chapter 2: The Library Burns)
   port: "Boats carried copper up the river, and stories came with them. The library was built to keep the stories dry.",
@@ -225,8 +226,8 @@ export const VILLAGER_STORIES = {
 export const BEATS = {
   // When the first study session finishes (any length, timer completes).
   firstStudy: [
-    ['owl', "There. Did you see that? The fog pulled back a step."],
-    ['owl', "That's how it works. Every minute you study, the Drift loses a little ground."],
+    ['owl', "There. Did you see my lantern flare? The fog pulled back a step."],
+    ['owl', "That's how it works. Every minute you study feeds the light, and the Drift loses a little ground."],
     ['owl', "Not glamorous. Just true. Have a stretch, keeper. You earned it."],
   ],
 
