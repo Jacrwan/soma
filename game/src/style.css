@@ -1001,7 +1001,7 @@ body.in-realm .tracker #quest { display: block; }
 #talk { position: fixed; left: 50%; bottom: 26px; z-index: 55; transform: translateX(-50%); display: flex; gap: 14px; align-items: flex-start; width: min(620px, calc(100vw - 32px)); padding: 14px 18px 12px 14px; border-radius: 20px; background: rgba(24, 20, 42, 0.95); border: 2px solid rgba(255, 216, 120, 0.45); box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5); color: #fff6e0; cursor: pointer; animation: talk-in 0.3s cubic-bezier(0.2, 1.3, 0.4, 1); }
 #talk[hidden] { display: none; }
 @keyframes talk-in { from { opacity: 0; transform: translate(-50%, 16px); } }
-.talk-face { flex: none; width: 64px; height: 64px; border-radius: 16px; background: rgba(255, 255, 255, 0.08); display: grid; place-items: center; }
+.talk-face { flex: none; width: 64px; height: 64px; border-radius: 16px; background: rgba(255, 255, 255, 0.08); display: grid; place-items: center; overflow: hidden; }
 .talk-face svg { width: 54px; height: 54px; }
 .talk-body { flex: 1; min-width: 0; }
 .talk-name { display: block; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: #ffd878; margin-bottom: 3px; }
@@ -1038,3 +1038,6 @@ body.tut-early #alert, body.tut-early #siege { visibility: hidden !important; }
 body:has(#buildbar) #toasts { bottom: 270px; }
 body:has(#menuMore:not([hidden])) #toasts { opacity: 0; }
 .pass-upsell .btn { flex: none; width: auto; }
+/* The guide's bubble floats over the world: clicks and drags pass through it, except on its buttons. */
+#owlSay { pointer-events: none; }
+#owlSay button { pointer-events: auto; }

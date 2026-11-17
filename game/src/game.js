@@ -1821,29 +1821,58 @@ function replayTutorial() {
 }
 
 // --- Owl, your guide, and the story ---------------------------------------------------
-// Owl has no body in the world: it speaks through the dialogue box and the tutorial bubble.
-const owl = createOwl();
-owl.object.visible = false;
+// The Librarian: the guide, in the world as a robed keeper with a lantern, walking beside you.
+const owl = { object: new THREE.Group(), model: null, moving: false };
+world.earth.add(owl.object);
+createVillager('mage', { tint: 0x4a3f8f, scale: 0.92 }).then((model) => {
+  owl.model = model;
+  owl.object.add(model);
+  // A glowing lantern in the left hand: the Atlas's light.
+  const hand = model.getObjectByName('handslot.l');
+  const lantern = new THREE.Group();
+  const glass = new THREE.Mesh(new THREE.SphereGeometry(0.11, 14, 10), new THREE.MeshStandardMaterial({ color: 0xfff1b0, emissive: 0xffc860, emissiveIntensity: 2.2 }));
+  glass.name = 'glow';
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.06, 10), new THREE.MeshStandardMaterial({ color: 0x3a2a1a, metalness: 0.6, roughness: 0.4 }));
+  cap.position.y = 0.12;
+  lantern.add(glass, cap);
+  if (hand) { const s = 1 / hand.getWorldScale(new THREE.Vector3()).x; lantern.scale.setScalar(s); lantern.position.y = -0.12 * s; hand.add(lantern); }
+  else { lantern.position.set(0.35, 0.9, 0.2); owl.object.add(lantern); }
+}).catch(() => {});
+const owlSpot = new THREE.Vector3();
+// The dialogue portrait: the Librarian's head and shoulders.
+createVillager('mage', { tint: 0x4a3f8f, scale: 0.92 }).then((m) => {
+  m.userData.villager.update(0.4, 'idle');
+  m.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(m);
+  const crop = new THREE.Group();
+  crop.add(m);
+  try { ui.portrait('owl', renderThumb(crop, 0.15), 2.6); } catch { /* keeps the lantern icon */ }
+}).catch(() => {});
 world.earth.add(owl.object);
 function updateOwl(dt, time) {
   const o = owl.object;
-  o.visible = false;
-  void time;
-  return;
-  // Hovers over your left shoulder, a little behind, and keeps up when you run.
+  o.visible = !inRealm() && state.scene === 'earth' && !photo.on;
+  if (!o.visible) return;
+  // Walks a little behind you and to the left; hurries when you get far ahead.
   const p = player.object.position;
   const side = new THREE.Vector3(Math.cos(cam.yaw), 0, -Math.sin(cam.yaw));
   const back = new THREE.Vector3(Math.sin(cam.yaw), 0, Math.cos(cam.yaw));
-  const want = p.clone().addScaledVector(side, -1.3).addScaledVector(back, 0.6);
-  want.y = p.y + 2.0 + Math.sin(time * 2.2) * 0.12;
-  if (o.position.distanceTo(want) > 25) o.position.copy(want);
-  o.position.lerp(want, Math.min(1, dt * 4));
-  const moving = o.position.distanceTo(want) > 0.6;
-  // Faces the camera, turned a little toward you, the way a guide keeps an eye on you.
-  const look = Math.atan2(camera.position.x - o.position.x, camera.position.z - o.position.z);
-  const toYou = Math.atan2(p.x - o.position.x, p.z - o.position.z);
-  o.rotation.y = look + Math.atan2(Math.sin(toYou - look), Math.cos(toYou - look)) * 0.35;
-  owl.update(dt, time, world.groundHeight('earth', o.position.x, o.position.z), moving);
+  owlSpot.copy(p).addScaledVector(side, -1.8).addScaledVector(back, 1.2);
+  const dx = owlSpot.x - o.position.x, dz = owlSpot.z - o.position.z, d = Math.hypot(dx, dz);
+  if (d > 30) o.position.copy(owlSpot);
+  else if (d > 0.6) {
+    const speed = Math.min(d * 2.2, d > 6 ? 11 : 4.5);
+    o.position.x += (dx / d) * speed * dt;
+    o.position.z += (dz / d) * speed * dt;
+    o.rotation.y = Math.atan2(dx, dz);
+  } else {
+    // Standing: turn to face you.
+    const t = Math.atan2(p.x - o.position.x, p.z - o.position.z);
+    o.rotation.y += Math.atan2(Math.sin(t - o.rotation.y), Math.cos(t - o.rotation.y)) * Math.min(1, dt * 4);
+  }
+  o.position.y = world.groundHeight('earth', o.position.x, o.position.z);
+  owl.model?.userData.villager.update(dt, d > 0.6 ? 'walk' : 'idle');
+  void time;
 }
 /** Plays a story moment once, then calls after (even if it was already seen). */
 function playStory(id, after) {
@@ -1880,7 +1909,7 @@ function updateTutorial(time) {
   coach.setVisible(!ui.isOpen());
   if (tut.advancing) return;
   step.tick?.();
-  coach.pin();
+  coach.follow(owl.object.position);
   coach.point(step.target?.() || null, player.object.position, time);
   if (!step.manual && step.done()) {
     tut.advancing = true;

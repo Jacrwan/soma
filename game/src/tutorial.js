@@ -109,7 +109,8 @@ export function createCoach({ scene, camera, onSkip, onQuit, onNext }) {
     /** Keeps the bubble over a point in the world. */
     follow(owlPos) {
       if (card.hidden) return;
-      bubbleAt.copy(owlPos).add(new THREE.Vector3(0, 1.0, 0)).project(camera);
+      bubbleAt.copy(owlPos).add(new THREE.Vector3(0, 2.4, 0)).project(camera);
+      card.classList.remove('pinned');
       const x = Math.max(170, Math.min(innerWidth - 170, (bubbleAt.x * 0.5 + 0.5) * innerWidth));
       const y = Math.max(90, Math.min(innerHeight - 160, (-bubbleAt.y * 0.5 + 0.5) * innerHeight));
       card.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`;
