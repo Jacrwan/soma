@@ -160,7 +160,7 @@ test('a message to the developer is saved first, and a Discord failure doesn’t
 
 const account = { id: '11111111-1111-4111-8111-111111111111', email: 'student@example.com', aud: 'authenticated', role: 'authenticated', created_at: '2025-01-01T00:00:00Z', email_confirmed_at: '2025-01-01T00:00:00Z', app_metadata: {}, user_metadata: {} };
 
-async function signIn(page: Page, opts: { owner?: boolean; user?: typeof account; messages?: Row[]; threads?: Row[] } = {}) {
+async function signIn(page: Page, opts: { owner?: boolean; user?: typeof account; messages?: Row[]; threads?: Row[]; status?: string } = {}) {
   const user = opts.user ?? account;
   const state = { messages: opts.messages ?? [], api: [] as Row[], read: 0 };
   await page.addInitScript(u => { localStorage.setItem('sb-soma-regression-auth-token', JSON.stringify({ access_token: 'test-token', refresh_token: 'r', token_type: 'bearer', expires_at: Math.floor(Date.now() / 1000) + 3600, expires_in: 3600, user: u })); }, user);
@@ -195,7 +195,7 @@ async function signIn(page: Page, opts: { owner?: boolean; user?: typeof account
     }
     if (body.action === 'referral-status') return route.fulfill({ json: { code: 'abcd2345', counted: 2, needed: 3, waitUntil: null, windowDays: 60, totalFriends: 2, rewards: [] } });
     if (body.action === 'referral-claim') return route.fulfill({ json: { result: 'counted' } });
-    return route.fulfill({ json: { status: 'active' } });
+    return route.fulfill({ json: { status: opts.status ?? 'active' } });
   });
   await page.route('**/api/google-calendar-events', route => route.fulfill({ json: { events: [], incomplete: false } }));
   return state;
@@ -263,4 +263,36 @@ test('a new account that came from an invite link claims it once', async ({ page
   await page.goto('/settings');
   await expect.poll(() => state.api.filter(a => a.action === 'referral-claim')).toEqual([{ action: 'referral-claim', code: 'abcd2345' }]);
   await expect.poll(() => page.evaluate(() => localStorage.getItem('soma_ref'))).toBeNull();
+});
+
+test('students not paying see the invite popup once a day; subscribers never do', async ({ page }) => {
+  await signIn(page, { status: 'trialing' });
+  await page.goto('/tasks');
+  const popup = page.getByRole('dialog', { name: 'Get a free week of Soma' });
+  await expect(popup).toBeVisible({ timeout: 5_000 });
+  await expect(popup.getByRole('textbox', { name: 'Your invite link' })).toHaveValue('https://somastudy.app/?ref=abcd2345');
+  await popup.getByRole('button', { name: 'Maybe later' }).click();
+  await expect(popup).toHaveCount(0);
+  // The same day, again: not shown.
+  await page.reload();
+  await page.waitForTimeout(2_500);
+  await expect(popup).toHaveCount(0);
+  // Tomorrow it comes back.
+  await page.evaluate(id => localStorage.setItem(`soma_invite_nudge_${id}`, 'Mon Jan 01 2001'), account.id);
+  await page.reload();
+  await expect(popup).toBeVisible({ timeout: 5_000 });
+});
+
+test('a subscriber gets no invite popup', async ({ page }) => {
+  await signIn(page, { status: 'active' });
+  await page.goto('/tasks');
+  await page.waitForTimeout(2_500);
+  await expect(page.getByRole('dialog', { name: 'Get a free week of Soma' })).toHaveCount(0);
+});
+
+test('an account made today gets no invite popup (sign-up showed the link)', async ({ page }) => {
+  await signIn(page, { status: 'free', user: { ...account, created_at: new Date().toISOString() } });
+  await page.goto('/tasks');
+  await page.waitForTimeout(2_500);
+  await expect(page.getByRole('dialog', { name: 'Get a free week of Soma' })).toHaveCount(0);
 });

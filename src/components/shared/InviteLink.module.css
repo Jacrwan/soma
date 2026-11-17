@@ -1,0 +1,30 @@
+.wrap { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+.row { display: flex; gap: 8px; }
+.link {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 13px;
+}
+.link:focus { outline: none; border-color: var(--accent); }
+.copy {
+  flex-shrink: 0;
+  padding: 9px 16px;
+  border: none;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.copy:hover { opacity: 0.88; }
+.progress { display: flex; align-items: center; gap: 6px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--border); }
+.on { background: var(--accent); border-color: var(--accent); }
+.count { margin-left: 4px; font-size: 12.5px; color: var(--text-muted); }

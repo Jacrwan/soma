@@ -9,6 +9,26 @@ still needed.
 
 ---
 
+## 2026-11-17 (the invite link at the end of sign-up, and once a day for non-payers)
+
+- **Why:** the owner asked for Invite friends in sign-up and as a popup for
+  every non-paying user once a day, the first time they open Soma.
+- **What:**
+  - Sign-up's last step ("You're all set") shows the invite link with Copy
+    and the progress dots (`src/components/shared/InviteLink.tsx`).
+  - `src/components/shared/InviteNudge.tsx`: "Get a free week of Soma", 1.5 s
+    after opening an app page, once a calendar day per account on this browser
+    (`soma_invite_nudge_<user id>`, set when it opens, so a refresh doesn't
+    bring it back). Only for free, trialing, trial_extended and ended-trial
+    statuses; never for active subscribers or accounts given access by hand
+    (a paying student's free week reads as active). Not on the day the
+    account was made (sign-up showed it), not during sign-up or the tour, not
+    on Settings → Invite friends. Esc, "Maybe later" or a click outside closes it.
+  - Neither shows anything if the link can't load (migration not run).
+- **Tests:** referrals-support.spec.ts (popup once a day and back the next;
+  none for a subscriber; none on the sign-up day), onboarding.spec.ts (the
+  last step shows the link).
+
 ## 2026-11-17 (Invite friends: a free week; Message the developer: a chat bubble)
 
 - **Why:** the owner asked for a referral reward and a way for students to

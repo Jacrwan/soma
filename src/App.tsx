@@ -31,6 +31,7 @@ import Walkthrough from './components/Onboarding/Walkthrough';
 import PaywallScreen from './components/Paywall/PaywallScreen';
 import SemesterEndModal from './components/shared/SemesterEndModal';
 import SupportChat from './components/Support/SupportChat';
+import InviteNudge from './components/shared/InviteNudge';
 import { captureRef, claimPendingRef } from './lib/referrals';
 import styles from './App.module.css';
 
@@ -636,6 +637,10 @@ export default function App() {
     )}
     {showWalkthrough && user && !showOnboarding && (
       <Walkthrough onDone={finishWalkthrough} />
+    )}
+    {/* Daily invite popup for students who aren't paying (InviteNudge.tsx). */}
+    {user && !showOnboarding && !showWalkthrough && ['/dashboard','/day-view','/deadlines','/tasks','/canvas','/grades','/documents','/calendar','/ai','/insights','/settings'].includes(location.pathname) && sessionResolved && (
+      <InviteNudge user={user} />
     )}
     </>
     </ErrorBoundary>
