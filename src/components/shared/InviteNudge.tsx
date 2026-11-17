@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom';
 import type { User } from '@supabase/supabase-js';
 import { useSubscription } from '../../lib/subscription';
 import InviteLink from './InviteLink';
+import { FRIENDS_NEEDED } from '../../lib/referrals';
 import styles from './InviteNudge.module.css';
 
 /**
@@ -55,7 +56,7 @@ export default function InviteNudge({ user }: { user: User }) {
       <div className={styles.box} role="dialog" aria-modal="true" aria-labelledby="invite-nudge-title">
         <h2 id="invite-nudge-title" className={styles.title}>Get a free week of Soma</h2>
         <p className={styles.lead}>
-          Send your link to friends. When <strong>3 of them sign up</strong> within 2 months, your next week is free.
+          Send your link to friends. When <strong>{FRIENDS_NEEDED} of them sign up</strong> within 2 months, your next week is free.
         </p>
         <InviteLink />
         <div className={styles.actions}>

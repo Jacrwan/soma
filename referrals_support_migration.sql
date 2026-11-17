@@ -5,8 +5,8 @@
 --
 -- 1. Invite friends (Settings → Invite friends). Each student has a link
 --    (somastudy.app/?ref=<code>). A friend who signs up with it counts for
---    them. 3 friends within 2 months earn one free week, and at most one
---    free week every 2 months (6 friends at once is still one week).
+--    them. 5 friends within 2 months earn one free week, and at most one
+--    free week every 2 months (10 friends at once is still one week).
 --    The server (api/stripe.ts, service role) does every write; students
 --    only read their own rows.
 --

@@ -9,6 +9,16 @@ still needed.
 
 ---
 
+## 2026-11-17 (a free week takes 5 friends, not 3)
+
+- **Why:** the owner changed the rule: 5 friends within 2 months earn a free
+  week (still at most one every 2 months; 10 at once is still one week).
+- **What:** `FRIENDS_NEEDED = 5` in `api/_referrals.ts` and in
+  `src/lib/referrals.ts` (the copy on sign-up, the daily popup and Settings
+  reads it). Keep the two in step.
+- **Tests:** referrals-support.spec.ts (5 earn one, 4 don't; the fifth
+  grants, the sixth through tenth don't), onboarding.spec.ts.
+
 ## 2026-11-17 (the invite link at the end of sign-up, and once a day for non-payers)
 
 - **Why:** the owner asked for Invite friends in sign-up and as a popup for

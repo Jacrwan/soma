@@ -135,14 +135,14 @@ test('Google Calendar and the free trial come after Canvas, and each can be skip
   await expect(page.getByRole('heading', { name: /You're all set/ })).toBeVisible();
 });
 
-test('the last sign-up step shows the invite link (3 friends = a free week)', async ({ page }) => {
+test('the last sign-up step shows the invite link (5 friends = a free week)', async ({ page }) => {
   await setup(page, { progress: { ...onCanvasStep, step: 6 } });
   await page.route('**/api/stripe', r => r.fulfill({ json: r.request().postDataJSON().action === 'referral-status'
-    ? { code: 'abcd2345', counted: 0, needed: 3, waitUntil: null, windowDays: 60, totalFriends: 0, rewards: [] }
+    ? { code: 'abcd2345', counted: 0, needed: 5, waitUntil: null, windowDays: 60, totalFriends: 0, rewards: [] }
     : { status: 'free' } }));
   await page.goto('/dashboard');
   await expect(page.getByRole('heading', { name: /You're all set/ })).toBeVisible();
-  await expect(page.getByText('When 3 of them sign up with your link')).toBeVisible();
+  await expect(page.getByText('When 5 of them sign up with your link')).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Your invite link' })).toHaveValue('https://somastudy.app/?ref=abcd2345');
 });
 

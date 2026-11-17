@@ -25,6 +25,9 @@ export class ReferralsNotSetUpError extends Error {
   constructor() { super('Invites aren’t set up yet.'); }
 }
 
+/** Friends who must sign up within 2 months for a free week: api/_referrals.ts FRIENDS_NEEDED. */
+export const FRIENDS_NEEDED = 5;
+
 export const inviteLink = (code: string) => `https://somastudy.app/?ref=${code}`;
 
 /** Keeps a ?ref= code from the address, for the sign-up that follows. */

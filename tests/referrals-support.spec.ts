@@ -4,8 +4,8 @@ import { discordPayload, sendSupportMessage } from '../api/_support';
 import { computeStatus } from '../api/_trial';
 
 // Invite friends and Message the developer, 2026-11-17. The owner's rule:
-// 3 new friends within 2 months earn one free week, at most one every 2
-// months (6 friends at once is still one week). A paying student's week moves
+// 5 new friends within 2 months earn one free week, at most one every 2
+// months (10 friends at once is still one week). A paying student's week moves
 // their next charge later; Soma must still treat them as a subscriber.
 
 const DAY = 86_400_000;
@@ -58,21 +58,23 @@ function memoryAdmin(tables: Record<string, Row[]>) {
   return { from };
 }
 
-test('3 friends within 2 months earn one free week; 6 at once is still one', () => {
+test('5 friends within 2 months earn one free week; 10 at once is still one', () => {
   const ago = (d: number) => NOW - d * DAY;
-  expect(referralProgress([ago(50), ago(3)], null, NOW)).toMatchObject({ counted: 2, due: false });
-  expect(referralProgress([ago(50), ago(3), ago(1)], null, NOW)).toMatchObject({ counted: 3, due: true });
+  const days = (...d: number[]) => d.map(ago);
+  expect(referralProgress(days(50, 30, 10, 3), null, NOW)).toMatchObject({ counted: 4, due: false });
+  expect(referralProgress(days(50, 30, 10, 3, 1), null, NOW)).toMatchObject({ counted: 5, due: true });
   // Older than 2 months doesn't count.
-  expect(referralProgress([ago(70), ago(3), ago(1)], null, NOW)).toMatchObject({ counted: 2, due: false });
-  // A week given 5 days ago: friends 4–6 of the same burst wait out the 2 months, and by then they're too old.
-  const burst = [ago(6), ago(6), ago(6), ago(6), ago(6), ago(6)];
+  expect(referralProgress(days(70, 30, 10, 3, 1), null, NOW)).toMatchObject({ counted: 4, due: false });
+  // A week given 5 days ago: friends 6–10 of the same burst wait out the 2 months, and by then they're too old.
+  const burst = Array.from({ length: 10 }, () => ago(6));
   const waiting = referralProgress(burst, ago(5), NOW);
   expect(waiting).toMatchObject({ due: false, waitUntil: new Date(ago(5) + 60 * DAY).toISOString() });
   expect(referralProgress(burst, ago(5), ago(5) + 61 * DAY).due).toBe(false);
-  // After the wait, 3 new friends earn the next one.
+  // After the wait, 5 new friends earn the next one.
   const later = ago(5) + 61 * DAY;
-  expect(referralProgress([...burst, later - DAY, later - DAY, later - 2 * DAY], ago(5), later)).toMatchObject({ counted: 3, due: true });
-  expect(FRIENDS_NEEDED).toBe(3);
+  const fresh = [1, 1, 2, 3, 4].map(d => later - d * DAY);
+  expect(referralProgress([...burst, ...fresh], ago(5), later)).toMatchObject({ counted: 5, due: true });
+  expect(FRIENDS_NEEDED).toBe(5);
 });
 
 test('the free week: a paying student’s next charge moves 7 days later; a trial runs longer', () => {
@@ -114,17 +116,17 @@ test('only a new account counts, once, and never for itself', async () => {
   expect(tables.referral_rewards).toHaveLength(0);
 });
 
-test('the third friend grants one week; the fourth through sixth don’t', async () => {
+test('the fifth friend grants one week; the sixth through tenth don’t', async () => {
   const tables: Record<string, Row[]> = {
     referral_codes: [{ user_id: 'alice', code: 'abcd2345' }], referrals: [], referral_rewards: [],
     // Alice's card-free trial started two days ago.
     subscriptions: [{ user_id: 'alice', status: 'trialing', trial_start: new Date(NOW - 2 * DAY).toISOString(), extension_start: null, stripe_subscription_id: null }],
   };
   const admin = memoryAdmin(tables);
-  for (const id of ['b', 'c', 'd', 'e', 'f', 'g']) {
+  for (const id of ['b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k']) {
     await claimReferral(admin, null, { id, created_at: new Date(NOW - DAY).toISOString(), email_confirmed_at: 'yes' }, 'abcd2345', NOW);
   }
-  expect(tables.referrals).toHaveLength(6);
+  expect(tables.referrals).toHaveLength(10);
   expect(tables.referral_rewards).toHaveLength(1);
   expect(tables.referral_rewards[0]).toMatchObject({ status: 'applied', how: 'trial_longer' });
   expect(tables.subscriptions[0].trial_start).toBe(new Date(NOW + 5 * DAY).toISOString());
@@ -193,7 +195,7 @@ async function signIn(page: Page, opts: { owner?: boolean; user?: typeof account
       state.messages.push(row);
       return route.fulfill({ json: { message: row } });
     }
-    if (body.action === 'referral-status') return route.fulfill({ json: { code: 'abcd2345', counted: 2, needed: 3, waitUntil: null, windowDays: 60, totalFriends: 2, rewards: [] } });
+    if (body.action === 'referral-status') return route.fulfill({ json: { code: 'abcd2345', counted: 2, needed: 5, waitUntil: null, windowDays: 60, totalFriends: 2, rewards: [] } });
     if (body.action === 'referral-claim') return route.fulfill({ json: { result: 'counted' } });
     return route.fulfill({ json: { status: opts.status ?? 'active' } });
   });
@@ -251,7 +253,7 @@ test('Settings → Invite friends shows the link and progress', async ({ page })
   await signIn(page);
   await page.goto('/settings?section=invite');
   await expect(page.getByRole('textbox', { name: 'Your invite link' })).toHaveValue('https://somastudy.app/?ref=abcd2345');
-  await expect(page.getByText('2 of 3 friends in the last 2 months.')).toBeVisible();
+  await expect(page.getByText('2 of 5 friends in the last 2 months.')).toBeVisible();
 });
 
 test('a new account that came from an invite link claims it once', async ({ page }) => {

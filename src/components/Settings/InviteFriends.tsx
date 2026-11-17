@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ReferralsNotSetUpError, inviteLink, loadReferralStatus, type ReferralReward, type ReferralStatus } from '../../lib/referrals';
+import { FRIENDS_NEEDED, ReferralsNotSetUpError, inviteLink, loadReferralStatus, type ReferralReward, type ReferralStatus } from '../../lib/referrals';
 import styles from './InviteFriends.module.css';
 
 /**
@@ -49,7 +49,7 @@ export default function InviteFriends() {
   return (
     <div className={styles.wrap}>
       <p className={styles.lead}>
-        Share your link. When <strong>3 friends sign up</strong> with it within 2 months, you get <strong>a free week</strong> of Soma.
+        Share your link. When <strong>{FRIENDS_NEEDED} friends sign up</strong> with it within 2 months, you get <strong>a free week</strong> of Soma.
         You can earn one free week every 2 months.
       </p>
 

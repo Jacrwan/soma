@@ -2,9 +2,9 @@
 // Invite friends (referrals_support_migration.sql). A student shares
 // somastudy.app/?ref=<code>; a friend who signs up with it counts for them.
 //
-// The rule, decided by the owner 2026-11-17: 3 new friends within 2 months
-// earn one free week, and at most one free week every 2 months, so 6 friends
-// at once is still one week. Friends who signed up before the last free week
+// The rule, decided by the owner 2026-11-17: 5 new friends within 2 months
+// earn one free week, and at most one free week every 2 months, so 10 friends
+// at once is still one week (it was 3 friends for the first hours). Friends who signed up before the last free week
 // never count again.
 //
 // The free week, by where the student is:
@@ -23,7 +23,7 @@
 import type Stripe from 'stripe';
 import { computeStatus, paidFreeWeek, trialLengthMs, EXTENSION_MS } from './_trial';
 
-export const FRIENDS_NEEDED = 3;
+export const FRIENDS_NEEDED = 5;   // keep FRIENDS_NEEDED in src/lib/referrals.ts in step
 export const WINDOW_DAYS = 60;
 export const FREE_WEEK_DAYS = 7;
 const DAY = 86_400_000;
@@ -43,7 +43,7 @@ export type Progress = {
 
 /**
  * Friends count when they signed up in the last 2 months and after the last
- * free week. A free week is due at 3, once 2 months have passed since the last.
+ * free week. A free week is due at FRIENDS_NEEDED, once 2 months have passed since the last.
  */
 export function referralProgress(friendTimes: number[], lastRewardAt: number | null, now = Date.now()): Progress {
   const from = Math.max(now - WINDOW_MS, lastRewardAt ?? -Infinity);
@@ -217,7 +217,7 @@ export async function referralStatus(admin: Admin, stripe: Stripe | null, userId
     if (!codeRow) return { status: 503, body: { error: 'Couldn’t make your invite link.' } };
   }
 
-  // A wait may have ended since the third friend joined; and a pending week
+  // A wait may have ended since the last friend needed joined; and a pending week
   // may now have somewhere to go.
   try {
     await grantIfDue(admin, stripe, userId, now);

@@ -10,6 +10,7 @@ import ExtensionSetup from './ExtensionSetup';
 import type { University } from '../../lib/universities';
 import UniversityPicker from '../shared/UniversityPicker';
 import InviteLink from '../shared/InviteLink';
+import { FRIENDS_NEEDED } from '../../lib/referrals';
 import styles from './OnboardingFlow.module.css';
 
 export const EDUCATION_OPTIONS = [
@@ -375,7 +376,7 @@ export default function OnboardingFlow({ userName, onComplete }: Props) {
             <p className={styles.sub}>Your study workspace is ready. Let's get to work.</p>
             {/* Invite friends (api/_referrals.ts): shown here once, then daily to non-payers (InviteNudge). */}
             <div className={styles.invite}>
-              <p className={styles.inviteText}>Studying with friends? When 3 of them sign up with your link, you get a <strong>free week</strong>.</p>
+              <p className={styles.inviteText}>Studying with friends? When {FRIENDS_NEEDED} of them sign up with your link, you get a <strong>free week</strong>.</p>
               <InviteLink />
             </div>
             <button
