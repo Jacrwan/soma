@@ -90,6 +90,9 @@ test('the Habits widget: add a habit, check off today, fix another day, and it s
   await widget.getByRole('button', { name: 'Edit' }).click();
   await widget.getByRole('button', { name: 'Remove Gym' }).click();
   await expect(widget).toContainText('Things you want to keep up');
+  // One add row, not the empty state's and Edit's both (2026-11-17), and Edit is over.
+  await expect(widget.getByRole('form', { name: 'Add a habit' })).toHaveCount(1);
+  await expect(widget.getByRole('button', { name: /^(Edit|Done)$/ })).toHaveCount(0);
   await expect.poll(() => posts.at(-1)?.habits).toEqual({ items: [], done: {} });
 });
 

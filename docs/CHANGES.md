@@ -9,6 +9,16 @@ still needed.
 
 ---
 
+## 2026-11-17 (Habits: one add row after removing the last habit)
+
+- **Why:** the owner saw two "Gym / 5× a week / Add" rows. Removing the last
+  habit in Edit left Edit on, so the empty widget's add row and Edit's both
+  showed, and Edit's button (only shown with habits) was gone.
+- **What:** `Habits.tsx`: Edit's add row only shows with habits listed, and
+  Edit ends when the last habit goes.
+- **Tests:** habits.spec.ts ("the Habits widget: add a habit…": one add row
+  after removing the last; fails on the old code).
+
 ## 2026-11-17 (another account on the same browser saw the last one's habits)
 
 - **Why:** the owner saw habits shared across accounts. Signing in as a

@@ -29,6 +29,9 @@ export default function Habits() {
     return () => { gone = true; window.removeEventListener(HABITS_CHANGED, refresh); };
   }, []);
 
+  // Removing the last habit ends Edit: its button is gone, so it couldn't be turned off.
+  useEffect(() => { if (!habits.items.length) setEditing(false); }, [habits.items.length]);
+
   async function store(next: HabitList) {
     const before = habits;
     setHabits(next); setError('');
@@ -96,7 +99,8 @@ export default function Habits() {
           })}
         </ul>
       )}
-      {editing && habits.items.length < MAX_HABITS && addForm}
+      {/* The empty widget has its own add row; this one is Edit's, so never both. */}
+      {editing && habits.items.length > 0 && habits.items.length < MAX_HABITS && addForm}
       {error && <p role="alert" className={styles.hint}>{error}</p>}
     </section>
   );
