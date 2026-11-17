@@ -198,25 +198,26 @@ export const focusView = { value: new THREE.Vector3(0, 0, -20) };
 // in and out smoothly as the camera turns. Trees right next to the camera fade most.
 const OCCLUDE_VERT = `
       #ifdef USE_INSTANCING
-        vec4 occC = modelViewMatrix * instanceMatrix * vec4(0.0, 3.0, 0.0, 1.0);
+        vec4 occC = modelViewMatrix * instanceMatrix * vec4(0.0, 2.6, 0.0, 1.0);
+        float occR = 1.9 * length(instanceMatrix[0].xyz);
       #else
-        vec4 occC = modelViewMatrix * vec4(0.0, 3.0, 0.0, 1.0);
+        vec4 occC = modelViewMatrix * vec4(0.0, 2.6, 0.0, 1.0);
+        float occR = 1.9;
       #endif
       {
-        float cDepth = -occC.z, fDepth = -uFocusView.z;
-        vOccl = 0.0;
-        if (cDepth < 7.0) vOccl = 1.0;
-        else if (cDepth < fDepth - 1.0) {
-          vec2 off = occC.xy / cDepth - uFocusView.xy / fDepth;
-          off.y -= 0.05;
-          vOccl = (1.0 - smoothstep(0.14, 0.34, length(off * vec2(1.0, 0.8)))) * smoothstep(fDepth - 1.0, fDepth - 4.0, cDepth);
-        }
+        // Only a tree that really stands on the line from the camera to the player fades:
+        // how far the tree's middle is from that line, against the size of its crown.
+        vec3 F = uFocusView;
+        float t = clamp(dot(occC.xyz, F) / max(dot(F, F), 0.001), 0.0, 1.0);
+        float d = length(occC.xyz - F * t);
+        vOccl = (1.0 - smoothstep(occR * 0.7, occR * 1.15, d)) * (1.0 - smoothstep(0.86, 0.96, t));
+        if (-occC.z < 4.0) vOccl = 1.0; // right in front of the lens
       }`;
 const CUTAWAY = `
       if (vOccl > 0.01) {
         const float BAYER[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
         ivec2 q = ivec2(mod(floor(gl_FragCoord.xy), 4.0));
-        if ((BAYER[q.x + q.y * 4] + 0.5) / 16.0 < vOccl * 0.75) discard;
+        if ((BAYER[q.x + q.y * 4] + 0.5) / 16.0 < vOccl * 0.7) discard;
       }`;
 function sway(material, strength, from) {
   material.onBeforeCompile = (shader) => {

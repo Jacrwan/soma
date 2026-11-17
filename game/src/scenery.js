@@ -304,7 +304,7 @@ export function createCover({ height, free, townR, riseR, green = true, pond = f
   add('mushrooms', mushroomClump(), vcMat({ roughness: 0.7 }), 300, [0.02, 0.06, 0.12, 0.9, 0.05], { scale: [1.2, 2.2] });
   add('logs', logGeo(), vcMat(), 46, [0.03, 0.08, 0.1, 0.7, 0.4], { scale: [0.7, 1.2], shadow: true, maxH: 9 });
   add('stumps', stumpGeo(), vcMat(), 70, [0.05, 0.15, 0.15, 0.8, 0.3], { scale: [0.7, 1.3], shadow: true });
-  add('bushes', bushGeo(), vcMat({ roughness: 1, flatShading: true }), 220, [0.25, 0.5, 0.45, 0.6, 0.3], { colors: green ? [0x5e9e44, 0x6aaa4c, 0x4f8c3c, 0x76b257] : [0x9a9a58, 0x8a8c4e], scale: [0.6, 1.4], sink: 0.12 });
+  add('bushes', bushGeo(), vcMat({ roughness: 1, flatShading: true }), 380, [0.25, 0.5, 0.45, 0.6, 0.3], { colors: green ? [0x5e9e44, 0x6aaa4c, 0x4f8c3c, 0x76b257] : [0x9a9a58, 0x8a8c4e], scale: [0.6, 1.4], sink: 0.12 });
   add('rocks', painted(rockGeometry(false).clone(), 0xffffff), vcMat({ roughness: 1 }), 320, [0.05, 0.05, 0.1, 0.12, 1], { colors: [0x9a9c9e, 0x8a8c8e, 0xa8a49a], scale: [0.3, 2.4], sink: 0.25, maxH: 30, tiltMax: 0.6, shadow: true });
   if (green) add('fruit', fruitGeo(), vcMat({ roughness: 0.5 }), 160, [0, 1, 0.02, 0, 0], { colors: [0xd8402e, 0xe8642c, 0xf2b631], scale: [0.9, 1.3] });
   if (pond) {
@@ -317,7 +317,7 @@ export function createCover({ height, free, townR, riseR, green = true, pond = f
   return {
     object: group,
     /** 0 full, 1 fewer, 2 fewest (slow machines). */
-    setLevel(level) { for (const m of kinds) m.count = Math.floor(m.userData.full * [1, 0.6, 0.3][level]); },
+    setLevel(level) { for (const m of kinds) m.count = Math.floor(m.userData.full * [1, 0.85, 0.65][level]); },
   };
 }
 

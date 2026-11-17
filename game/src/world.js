@@ -666,7 +666,7 @@ export function createWorld(scene, renderer) {
       const pick = (kinds, v) => { let acc = 0; for (const [k, w] of kinds) { acc += w; if (v < acc) return k; } return kinds[0][0]; };
       // Out in the country trees grow in groves with meadows between; past
       // RISE_R they thicken into forest up the mountain sides.
-      const want = Math.round(land.slope.count * 1.7);
+      const want = Math.round(land.slope.count * 2.6); // the country should feel as full as the town
       treeSolids = [];
       for (let tries = 0; tries < 20000 && list.length < want; tries++) {
         const a = r() * 6.28, d = TOWN_R + 1.5 + Math.sqrt(r()) * (RISE_R + 70 - TOWN_R);
@@ -678,7 +678,7 @@ export function createWorld(scene, renderer) {
           const grove = noise2(x * 0.05 + 3, z * 0.05 + 9) * 0.7 + noise2(x * 0.13 - 4, z * 0.13) * 0.3;
           // The woods are thick, the meadow open, the orchard planted in rows (below).
           const zw = zoneWeights(x, z);
-          if (grove < 0.2 - zw[3] * 0.38 + zw[0] * 0.25 + zw[1] * 0.3 && r() > 0.04 + zw[3] * 0.25) continue;
+          if (grove < 0.12 - zw[3] * 0.3 + zw[0] * 0.1 + zw[1] * 0.12 && r() > 0.12 + zw[3] * 0.25) continue;
           if (caches.some((c) => Math.hypot(c.x - x, c.z - z) < 6)) continue;
         }
         // Desert palms grow along the river.
@@ -734,7 +734,7 @@ export function createWorld(scene, renderer) {
     cover?.setLevel(grassLevel);
     if (grass) grass.count = Math.floor(grass.userData.full * [0.8, 0.45, 0.2][grassLevel]);
     // Low still keeps a little country grass, so the land past town doesn't look bare next to it.
-    if (wildGrass) wildGrass.count = Math.floor(wildGrass.userData.full * [0.6, 0.25, 0.12][grassLevel]);
+    if (wildGrass) wildGrass.count = Math.floor(wildGrass.userData.full * [0.6, 0.35, 0.25][grassLevel]);
     if (wildGrass) wildGrass.visible = true;
   }
 
