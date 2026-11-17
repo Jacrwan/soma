@@ -138,6 +138,9 @@ const audio = createAudio(() => state.settings);
 // The scene's depth is kept so land that hasn't opened yet can be blurred (LockedBlurPass).
 const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4, depthTexture: new THREE.DepthTexture(1, 1) }));
 composer.addPass(new RenderPass(scene, camera));
+// Each buffer needs its own depth texture: a cloned one shares the GPU texture, and on low
+// graphics (no anti-aliasing) reading one while drawing into the other turned the screen black.
+composer.renderTarget2.depthTexture = new THREE.DepthTexture(1, 1);
 const lockedBlur = new LockedBlurPass(camera, W.TOWN_R);
 composer.addPass(lockedBlur);
 const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.32, 0.7, 0.92);
