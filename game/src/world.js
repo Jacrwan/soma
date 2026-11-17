@@ -379,7 +379,11 @@ const WATER_FRAG = `
     float fres = 0.03 + 0.97 * pow(1.0 - max(dot(n, v), 0.0), 5.0);
     vec3 refl = reflect(-v, n);
     vec3 sky = mix(horizon, zenith, pow(max(refl.y, 0.0), 0.5));
+    #ifdef INLAND
+    float depth = 0.62; // creeks and ponds: one calm, clear colour
+    #else
     float depth = smoothstep(44.5, 66.0, r);
+    #endif
     vec3 col = mix(mix(shallow, deep, depth), sky, fres);
     float sd = max(dot(refl, sunDir), 0.0);
     col += sunColor * (pow(sd, 260.0) * 5.0 + pow(sd, 24.0) * 0.12);
@@ -389,8 +393,15 @@ const WATER_FRAG = `
     float wash = (1.0 - smoothstep(0.0, 1.6, edge)) * smoothstep(-1.8, 0.2, edge);
     float bands = smoothstep(0.72, 0.98, sin(edge * 1.9 - time * 1.1 + chop * 2.5) * 0.5 + 0.5) * (1.0 - smoothstep(1.0, 7.0, edge)) * step(0.0, edge);
     float foam = clamp(wash * (0.55 + chop) + bands * 0.55, 0.0, 1.0);
+    #ifdef INLAND
+    foam = 0.0; // the surf belongs to the sea, not to a creek
+    #endif
     col = mix(col, vec3(1.0), foam * 0.85);
+    #ifdef INLAND
+    float alpha = clamp(0.9 + fres * 0.3, 0.0, 1.0);
+    #else
     float alpha = clamp(mix(0.45, 0.97, smoothstep(61.5, 71.0, r)) + fres * 0.4 + foam, 0.0, 1.0);
+    #endif
     float fog = 1.0 - exp(-haze * haze * dist * dist);
     gl_FragColor = vec4(mix(col, horizon, fog), mix(alpha, 1.0, fog));
   }`;
@@ -448,6 +459,8 @@ export function createWorld(scene, renderer) {
     deep: { value: new THREE.Color(0x0d4f6e) }, shallow: { value: new THREE.Color(0x3fc4c0) },
   };
   const water = new THREE.Mesh(new THREE.CircleGeometry(900, 72), new THREE.ShaderMaterial({ uniforms: waterUniforms, vertexShader: WATER_VERT, fragmentShader: WATER_FRAG, transparent: true, depthWrite: false }));
+  // Creeks, ponds, rivers and lakes: the same water (and uniforms) without the sea's surf.
+  const inlandWater = new THREE.ShaderMaterial({ uniforms: waterUniforms, vertexShader: WATER_VERT, fragmentShader: WATER_FRAG, transparent: true, depthWrite: false, defines: { INLAND: 1 } });
   water.rotation.x = -Math.PI / 2;
   water.position.y = -0.5;
   water.renderOrder = 2;
@@ -537,19 +550,19 @@ export function createWorld(scene, renderer) {
     // Water: a river, a lake or the sea, depending on the land.
     water.visible = land.water?.kind === 'sea';
     if (land.water?.kind === 'river') {
-      const river = new THREE.Mesh(new THREE.PlaneGeometry(700, 14), water.material);
+      const river = new THREE.Mesh(new THREE.PlaneGeometry(700, 14), inlandWater);
       river.rotation.x = -Math.PI / 2;
       river.position.set(0, -0.45, -78);
       river.renderOrder = 2;
       landParts.add(river);
     } else if (index === 0) {
-      const pondWater = new THREE.Mesh(new THREE.CircleGeometry(POND.r + 3.5, 40), water.material);
+      const pondWater = new THREE.Mesh(new THREE.CircleGeometry(POND.r + 3.5, 40), inlandWater);
       pondWater.rotation.x = -Math.PI / 2;
       pondWater.position.set(POND.x, -0.45, POND.z);
       pondWater.renderOrder = 2;
       landParts.add(pondWater);
       const sx = STREAM.b.x - STREAM.a.x, sz = STREAM.b.z - STREAM.a.z, len = Math.hypot(sx, sz);
-      const creek = new THREE.Mesh(new THREE.PlaneGeometry(len + 6, STREAM.w * 2 + 5, 24, 1), water.material);
+      const creek = new THREE.Mesh(new THREE.PlaneGeometry(len + 6, STREAM.w * 2 + 5, 24, 1), inlandWater);
       // Follow the stream's wobble so the water sits in its bed.
       const cp = creek.geometry.attributes.position;
       for (let k = 0; k < cp.count; k++) { const u = cp.getX(k) / (len + 6) + 0.5; const wob = Math.sin(Math.max(0, Math.min(1, u)) * 9) * 2.2; cp.setY(k, cp.getY(k) - wob * 0.72); }
@@ -573,7 +586,7 @@ export function createWorld(scene, renderer) {
         g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
         g.setIndex(idx);
         g.computeVertexNormals();
-        const m = new THREE.Mesh(g, water.material);
+        const m = new THREE.Mesh(g, inlandWater);
         m.renderOrder = 2;
         return m;
       };
@@ -588,7 +601,7 @@ export function createWorld(scene, renderer) {
         landParts.add(ribbon(arc, w));
       }
     } else if (land.water?.kind === 'lake') {
-      const lake = new THREE.Mesh(new THREE.CircleGeometry(17, 40), water.material);
+      const lake = new THREE.Mesh(new THREE.CircleGeometry(17, 40), inlandWater);
       lake.rotation.x = -Math.PI / 2;
       lake.position.set(-86, -0.45, 6);
       lake.renderOrder = 2;
@@ -705,8 +718,9 @@ export function createWorld(scene, renderer) {
   function applyGrassLevel() {
     cover?.setLevel(grassLevel);
     if (grass) grass.count = Math.floor(grass.userData.full * [0.8, 0.45, 0.2][grassLevel]);
-    if (wildGrass) wildGrass.count = Math.floor(wildGrass.userData.full * [0.6, 0.25, 0][grassLevel]);
-    if (wildGrass) wildGrass.visible = grassLevel < 2;
+    // Low still keeps a little country grass, so the land past town doesn't look bare next to it.
+    if (wildGrass) wildGrass.count = Math.floor(wildGrass.userData.full * [0.6, 0.25, 0.12][grassLevel]);
+    if (wildGrass) wildGrass.visible = true;
   }
 
   earth.add(createClouds(16, 404, 60, 190, 34, 62));

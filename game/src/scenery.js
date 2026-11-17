@@ -82,7 +82,8 @@ export function zoneAt(x, z) {
   return ZONES[w.indexOf(Math.max(...w))].name;
 }
 /** How strongly the area colours show at a distance r from the town centre (0 in town). */
-export const zoneFade = (r, townR, riseR) => Math.max(0, Math.min(1, (r - townR + 3) / 6)) * Math.max(0, Math.min(1, (riseR + 24 - r) / 16));
+// Starts past the creek at the town's edge (and eases in), so both banks are the same green.
+export const zoneFade = (r, townR, riseR) => Math.max(0, Math.min(1, (r - townR - 7) / 14)) * Math.max(0, Math.min(1, (riseR + 24 - r) / 16));
 const tintColor = new THREE.Color();
 const zc = ZONES.map((z) => new THREE.Color(z.color));
 /** Tints a colour toward its area's colour. amount: 0..1. Modifies c. */
