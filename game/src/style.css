@@ -1062,3 +1062,5 @@ body:has(#menuMore:not([hidden])) #toasts { opacity: 0; }
 .actions.sell { margin-top: 6px; }
 .btn.danger { background: #3a2230; border-color: #e5483d; color: #ffd2cd; }
 .btn.danger.armed { background: #e5483d; color: #fff; }
+
+.quest-from { display: block; color: #ffd878; font-weight: 800; letter-spacing: .02em; margin-bottom: 2px; }

@@ -439,13 +439,13 @@ export function createUI(on) {
     /** The quest log: the story quest, then every piece of schoolwork as a quest. */
     quests({ story, done, total, level, school, onStudy, onPractice }) {
       const reward = (r) => [r.coins ? `${fmt(r.coins)} coins` : null, r.gear ? `${r.gear} ${r.slot}` : null].filter(Boolean).join(' + ');
-      panel({ title: 'Quests', subtitle: `Story ${done} of ${total} done · you are level ${level}`, wide: true },
-        el('h3', { text: 'Story' }),
+      panel({ title: 'Quests', subtitle: `Valley projects ${done} of ${total} done · you are level ${level}`, wide: true },
+        el('h3', { text: 'Valley project' }),
         story ? el('div', { class: 'quest-card main' },
-          el('div', {}, el('b', { text: story.title }), el('small', { text: story.text }),
+          el('div', {}, story.from ? el('small', { class: 'quest-from', text: `From ${story.from}` }) : null, el('b', { text: story.title }), el('small', { text: story.text }),
             el('div', { class: 'bar' }, el('i', { style: `width:${Math.round((story.have / story.need) * 100)}%` }))),
           el('div', { class: 'quest-pay' }, el('em', { text: `${story.have} / ${story.need}` }), el('small', { text: `Reward: ${reward(story.reward)}` })))
-          : el('p', { class: 'note', text: 'Season 1’s story is finished. New ages and a new chapter come next season.' }),
+          : el('p', { class: 'note', text: 'Every Season 1 project is done. The Librarian already has a new list for next season.' }),
         el('h3', { text: 'School quests' }),
         school.length ? school.map((a) => el('div', { class: `quest-card ${a.overdue ? 'late' : ''}` },
           el('div', {}, el('b', {}, a.name, a.kind === 'boss' ? el('span', { class: 'tag', text: 'Exam' }) : null),

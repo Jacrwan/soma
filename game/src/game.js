@@ -903,7 +903,7 @@ function refreshHud() {
   const hero = S.heroStats(state);
   ui.vitals({ hp: player.hp, max: hero.health, dodge: player.dashCd, slam: player.slamCd / hero.slamTime, level: hero.level, xp: state.hero.xp, need: S.xpToNext(hero.level), points: state.hero.points, capped: hero.level >= S.MAX_HERO_LEVEL });
   const story = S.storyStatus(state);
-  ui.quest(realms.status() || (story ? { title: `Quest: ${story.title}`, parts: [story.text, `${story.have} / ${story.need}`], onOpen: openQuests } : null));
+  ui.quest(realms.status() || (story ? { title: `${story.from ? `${story.from.split(',')[0]}: ` : ''}${story.title}`, parts: [story.text, `${story.have} / ${story.need}`], onOpen: openQuests } : null));
   ui.alert(deadlineAlert(late, now));
   ui.threats(inRealm() ? [] : S.threats(state, now).map(({ item, overdue }) => ({
     id: item.id, name: item.name, course: item.courseName, kind: item.kind, overdue, soon: item.dueAt - now < 86400000, time: timeLeft(item.dueAt - now),
@@ -1038,6 +1038,18 @@ function openBuilding(i) {
   });
 }
 
+/** The valley festival when the Stone Circle goes up: a banner and fireworks over the circle. */
+function festival(at) {
+  ui.banner('The valley festival', 'Everyone’s here');
+  const colors = [0xffd34d, 0xff7a59, 0x7fc8ff, 0xb69cff, 0x7fe08a, 0xffffff];
+  for (let k = 0; k < 14; k++) {
+    setTimeout(() => {
+      const p = at.clone().add(new THREE.Vector3((Math.random() - 0.5) * 14, 14 + Math.random() * 8, (Math.random() - 0.5) * 14));
+      fx.burst(p, colors[k % colors.length], 36, 9, 9);
+      if (k % 2 === 0) audio.pop();
+    }, 400 + k * 550);
+  }
+}
 function openWonder(wonder) {
   ui.wonder({
     name: wonder.name, cost: wonder.cost, affordable: state.coins >= wonder.cost, nextEra: eraName(state.era + 1),
@@ -1071,6 +1083,7 @@ function openWonder(wonder) {
         // Let the wonder stand for a moment, hear Owl out, then set out for the new land.
         refreshWonders();
         save();
+        if (done.index === 0) festival(W.wonderPosition(0));
         setTimeout(() => playStory(`chapter${done.index + 1}`, () => moveToNewLand(done)), 2600);
         return;
       }
@@ -1251,18 +1264,21 @@ function gearLine(got) {
   return `${i.name} (${i.rarity}, ${stat})${got.equipped ? ', equipped' : ', in your bag'}`;
 }
 
+/** 'The Librarian' -> 'owl'; 'Mira, the herbalist' -> 'mira' (dialogue speaker keys). */
+const speakerFor = (from = '') => (/librarian/i.test(from) && !/,/.test(from) ? 'owl' : from.split(',')[0].trim().toLowerCase() || 'owl');
 function checkStory() {
   if (ui.isOpen()) return;
   const paid = S.claimStory(state);
   if (!paid) return;
   audio.chest();
-  ui.banner('Quest complete', paid.title);
+  ui.banner('Project done', paid.title);
   const bits = [];
   if (paid.coins) bits.push(`+${S.fmt(paid.coins)} coins`);
   if (paid.gear) bits.push(gearLine(paid.gear));
   ui.toast(`Reward: ${bits.join(' · ')}`, 'gold');
+  // The next project comes from whoever needs it, in their own words (like a favour in Animal Crossing).
   const next = S.storyStatus(state);
-  if (next) setTimeout(() => ui.toast(`New quest: ${next.title}. ${next.text}.`), 1800);
+  if (next) setTimeout(() => { if (!ui.isOpen()) ui.story([[speakerFor(next.from), `${next.title}! ${next.text}`]]); else ui.toast(`New project from ${next.from}: ${next.title}`); }, 2200);
   if (paid.gear?.equipped) dressPlayer();
   refreshHud();
   save();
@@ -1961,13 +1977,13 @@ const TUTORIAL = [
       if (b) b.stored = Math.max(b.stored, 25);
     },
     target: () => nearestBuilding(), done: () => state.stats.collected > tut.collected },
-  { text: 'Beating the Drift drops chests. Here, this one’s on me. Walk up and press E.', keys: ['E'], reveal: 'coins',
+  { text: 'Good grades and big wins drop chests. Here, this one’s on me. Walk up and press E.', keys: ['E'], reveal: 'coins',
     // Given once: reloading on this step finds the same chest (or, if it's opened, moves on).
     enter: () => { const t = state.tutorial; if (!t.gift) { t.gift = S.grantChest(state, 'rare', 'A gift from the Librarian').id; save(); } tut.chestId = t.gift; syncChests(); },
     target: () => chests.get(tut.chestId)?.object.position, done: () => !state.school.chests.some((c) => c.id === tut.chestId) && !ui.isOpen() },
   { text: 'Press M for the map. See the grey? That’s fog: land nobody’s walked yet.', keys: ['M'], reveal: 'menu',
     done: () => tut.flags.map && !ui.isOpen() },
-  { text: 'Exploring clears the fog. Out there are lost Atlas pages, wild creatures and fox camps guarding chests. Follow my light!', keys: ['Shift', 'Q'], reveal: 'menu',
+  { text: 'Exploring clears the fog. Out there: landmarks for my Atlas, wild creatures, and fox camps guarding chests. Follow my lantern!', keys: ['Shift', 'Q'], reveal: 'menu',
     enter: () => { tut.found = S.foundCount(state, state.era); },
     target: () => unfoundLandmark(), done: () => S.foundCount(state, state.era) > tut.found },
   { text: '', manual: true, reveal: 'all', target: () => { const w = S.nextWonder(state); return w && w.scene === 'earth' ? W.wonderPosition(w.index) : null; } },

@@ -787,13 +787,19 @@ test('levels, skills and gear make the hero stronger; a level gap bends the figh
 
 test('the story pays out one quest at a time and old saves keep their studied minutes', () => {
   const s = rich(0);
-  assert.strictEqual(S.storyStatus(s).title, 'First lesson');
+  // Valley projects: the first asks for a hut, the second for a study session, each from someone.
+  assert.strictEqual(S.storyStatus(s).title, 'A roof over your head');
+  assert.strictEqual(S.storyStatus(s).from, 'The Librarian');
   assert.strictEqual(S.claimStory(s), null);
+  s.coins = 1e9;
+  assert.ok(S.placeBuilding(s, 'home', 30, 30) >= 0);
+  assert.strictEqual(S.claimStory(s, () => 0).coins, 200);
+  assert.strictEqual(S.storyStatus(s).title, 'First lesson');
   s.study.total = 25;
   const paid = S.claimStory(s, () => 0);
   assert.strictEqual(paid.gear.item.slot, 'weapon');
-  assert.strictEqual(S.storyStatus(s).title, 'Into the Wilds');
-  S.noteExplore(s, 'camp', 'wilds');
+  assert.strictEqual(S.storyStatus(s).from, 'Mira, the herbalist');
+  s.critters.caught.frog = 1;
   assert.ok(S.storyStatus(s).done);
   const old = JSON.parse(S.serialize(S.newState(NOW)));
   delete old.hero;

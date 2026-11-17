@@ -869,76 +869,67 @@ export function openCache(state, i, now = Date.now()) {
 }
 
 // --- The story -----------------------------------------------------------------------
-// The Realm of Epoch is held together by what people learn. When learning is
-// neglected, a fog called the Drift creeps in and turns unfinished work into
-// monsters; it answers to the Procrastinator, who only ever says "later".
-// You are a keeper who woke in the ruins of your own town. Owl, the old
-// librarian, helps you rebuild it and find the pages of the Atlas, the map of
-// everything ever learned, which the Drift tore apart. Each age is a chapter.
+// Season 1, told the Animal Crossing way: almost no plot. You've just moved to a
+// little valley to start your first semester. The Librarian runs the place: a
+// cheerful planner with a lantern and a list, who keeps handing you the next small
+// project (her real dream is a proper library). Neighbours move in as the valley
+// grows, each with a small favour and a story of their own. Your homework keeps
+// escaping from the board as little book monsters; handing it in sends it home.
+// The Procrastinator is a lazy travelling peddler who wanders through selling
+// "later". Chapter 1 ends with a festival at the Stone Circle; Chapter 2 builds
+// the Librarian's library inside the Great Pyramid.
 export const CHAPTERS = [
-  { title: 'Chapter 1: Waking', goal: 'Rebuild the camp and raise the Stone Circle' },
-  { title: 'Chapter 2: The Library Burns', goal: 'Find the old library\u2019s pages and raise the Great Pyramid' },
+  { title: 'Chapter 1: Moving In', goal: 'Settle in, meet the neighbours, and raise the Stone Circle for the valley festival' },
+  { title: 'Chapter 2: The Library', goal: 'Raise the Great Pyramid, with the Librarian’s library inside' },
 ];
-// The story of Season 1. Chapter 1 (the Stone Age) is "The Valley That Forgot":
-// the Atlas remembers everything anyone has learned; the Drift (forgetting, fed by
-// "later") tore it up, so the world must be lived again chapter by chapter, starting
-// with the first people. The Librarian has lost their own name to the Drift. The four
-// Atlas pages in this valley tell Ash's tale: the girl who painted the herds so her
-// tribe would not forget, and her friend the hunter who kept saying "tomorrow" until
-// winter came early, and was called Later ever after. Finding all four gives the
-// Librarian their name back (Ash) and reveals who the Procrastinator really is (Later).
 export const LORE = {
   intro: [
-    ['owl', '...hey. Hey! You\u2019re awake. Thank the stars.'],
-    ['owl', 'Don\u2019t panic. You\u2019re in the valley at the start of everything. The very first chapter.'],
-    ['owl', 'The Drift tore up the Atlas, the book that remembers everything anyone ever learned. Without it, the world is forgetting itself.'],
-    ['owl', 'And everything left undone, the Drift turns into monsters. A few of yours are already marching on the gate.'],
-    ['owl', 'To write the Atlas back, someone has to live it again, one chapter at a time. Tonight, that\u2019s you.'],
-    ['owl', 'I\u2019m the Librarian. I\u2019ve kept the Atlas longer than I can remember. Literally: the Drift took my name. Come on, up you get.'],
+    ['owl', 'Oh! You’re here! Welcome, welcome. You must be the new student.'],
+    ['owl', 'I’m the Librarian. I run things around here. Well, “run”. It’s a campfire, a board and a lot of grass so far.'],
+    ['owl', 'But I have plans. Lists of plans. You study, the valley grows, and one day: a real library. With chairs!'],
+    ['owl', 'One small thing first. Your homework escaped from the board again. It does that. Hand it in and it trots right home.'],
+    ['owl', 'Come on, I’ll show you around. I’m the one with the lantern.'],
   ],
   procrastinator: [
-    ['pro', 'Well, well. A keeper. Up and about. Adorable.'],
-    ['pro', 'A tip from an old hunter: whatever it is, it can wait. Things always wait. Until they don\u2019t.'],
-    ['pro', 'They called me Later, back in this valley. The Drift is my doing, more or less. You\u2019re welcome.'],
-    ['owl', 'That\u2019s the Procrastinator. He feeds on \u201ctomorrow\u201d. Every bit of work you finish today pushes his fog back.'],
-    ['owl', '...Later. Why do I know that name?'],
+    ['pro', 'Psst. New in town? Welcome! I sell the finest product in the valley.'],
+    ['pro', 'It’s called Later. You can have as much as you like, and it’s free. Until it isn’t.'],
+    ['owl', 'That’s the Procrastinator. He wanders through now and then. Please don’t buy anything.'],
+    ['pro', 'Rude. I’ll be back. Eventually. Probably tomorrow.'],
   ],
   exam: [
-    ['owl', 'That big one is an Examiner. Every course has one, and they hit hard on exam day.'],
-    ['owl', 'You can\u2019t fight it now. Study for it. Each session strips its armor, and the weak points are the topics you still don\u2019t know.'],
+    ['owl', 'See the big one with armour? That’s an exam. Every class has one, and they arrive on exam day whether you’re ready or not.'],
+    ['owl', 'You can’t fight it yet. Study for it: every session knocks off some armour, so by exam day it’s soft.'],
   ],
   atlas: [
-    ['owl', 'A page of the Atlas! Lying out here in the grass like a leaf.'],
-    ['owl', 'Every land hides four. This valley\u2019s pages tell one story: the first people, the first winter, and the first keeper.'],
-    ['owl', 'Find all four (your map shows where), and maybe I\u2019ll remember why this valley feels like home.'],
+    ['owl', 'You found a landmark! Wonderful. That’s a page for my Atlas.'],
+    ['owl', 'The Atlas is my guidebook to the valley. I’ve been writing it for years, but I keep getting distracted by new projects.'],
+    ['owl', 'There are four landmarks out there. Your map (M) shows the ones you haven’t found yet.'],
   ],
   pages0: [
-    ['owl', 'That\u2019s all four. The valley\u2019s chapter is whole again.'],
-    ['owl', 'Ash. The girl with the paint, the stones, the lantern... That\u2019s my name. That\u2019s me. I remember.'],
-    ['owl', 'Which means Later is... oh, Later. He was my best friend once. He still thinks tomorrow will save him.'],
-    ['pro', 'I heard that. And it will. Any day now.'],
-    ['owl', 'Build the Stone Circle I never finished, keeper. A calendar so big nobody can put it off.'],
+    ['owl', 'All four! The Atlas has its first finished chapter. Do you know how long I’ve wanted to say that?'],
+    ['owl', 'I’m going to read it out loud tonight. Twice. Nobody can stop me.'],
   ],
   chapter1: [
-    ['owl', 'The Stone Circle stands. Stones that remember the days, so nobody has to carry them alone.'],
-    ['pro', 'Very impressive. Big rocks. Can\u2019t wait to ignore them.'],
-    ['owl', 'The Drift is pulling back from the valley. Downriver, the next chapter is waiting: the first towns, the first books, and my library.'],
-    ['owl', 'Pack up, keeper. This time we\u2019re writing it all down.'],
+    ['owl', 'The Stone Circle is up! Do you hear that? Everyone’s coming out.'],
+    ['owl', 'Festival time! A valley isn’t really a valley until it throws its first party.'],
+    ['pro', 'I brought snacks. They’re for later. Obviously.'],
+    ['owl', 'Thank you, really. A few weeks ago this was grass and a campfire. Look at it now.'],
+    ['owl', 'And now, my big project: a library. There’s a river valley downstream with room to build. Pack a bag. We’re moving the whole town.'],
   ],
   chapter2: [
-    ['owl', 'Chapter 2: The Library Burns.'],
-    ['owl', 'This is where I built my library, so nothing would ever be forgotten again. Later burned it the night everyone decided to start tomorrow.'],
-    ['pro', 'Oh, don\u2019t be dramatic, Ash. I just suggested a nap. A very long one.'],
-    ['owl', 'Find the pages, raise the Great Pyramid, and we\u2019ll have something he can\u2019t burn.'],
+    ['owl', 'Chapter 2: The Library.'],
+    ['owl', 'A river, a desert, and all the room in the world. Our neighbours came along, of course.'],
+    ['owl', 'Here’s the plan: the Great Pyramid. And inside it, my library. Shelves to the ceiling, a seat for everyone, a lamp at every desk.'],
+    ['pro', 'A library? In a pyramid? Bold. I’ll come by later to not read anything.'],
   ],
   pages1: [
-    ['owl', 'Every page in the desert. The library\u2019s light is coming back. I can almost read again.'],
+    ['owl', 'Every landmark on the river! The Atlas is getting thick. I may need a second lantern to read it.'],
   ],
   finale: [
-    ['pro', 'No. No, no, no. You were supposed to do it later.'],
-    ['owl', 'It\u2019s finished. The Great Pyramid stands, and the Drift can\u2019t cross it.'],
-    ['pro', 'Fine. Enjoy your little season. I\u2019ll be back when the next one starts. I always come back. Later.'],
-    ['owl', 'He will, too. But so will we. Season 1 is yours. Keep studying, keeper.'],
+    ['owl', 'It’s done. The Great Pyramid, and my library inside. I’ve dreamed about this since the campfire.'],
+    ['owl', 'There’s a desk with your name on it. Literally. I carved it. Badly.'],
+    ['pro', 'Fine, it’s nice. I’ll admit it. Later.'],
+    ['owl', 'That’s Season 1, keeper. Keep studying, keep visiting. New ages come next season, and I already have a list.'],
   ],
 };
 /** Marks a story beat seen. Returns its lines the first time, null after. */
@@ -1273,27 +1264,42 @@ export function rollDrop(state, tier, level, rng = Math.random) {
   return addGear(state, rollGear(state, tier === 1 && rng() < 0.35 ? 'rare' : 'common', rng, null, Math.min(level, state.hero.level + 2)));
 }
 
-// --- The story: one quest at a time, from the first lesson to the far planet ---------
+// --- Valley projects: one at a time, each from someone in the valley -------------------
+// Small, concrete goals that grow the valley, like Animal Crossing's errands. Chapter 1
+// (Stone Age) ends with the Stone Circle; Chapter 2 (Bronze Age) with the Great Pyramid.
+const built = (s) => s.pads.earth.filter(Boolean).length;
+const caughtKinds = (s) => Object.values(s.critters.caught || {}).filter((n) => n > 0).length;
+const caughtTotal = (s) => Object.values(s.critters.caught || {}).reduce((a, n) => a + (n || 0), 0);
+const bestFriend = (s) => Math.max(0, ...s.villagers.list.map((p) => p.friend || 0));
 export const STORY = [
-  { title: 'First lesson', text: 'Finish a study session of 10 minutes or more', need: 1, have: (s) => (s.study.total >= 10 ? 1 : 0), reward: { gear: 'rare', slot: 'weapon' } },
-  { title: 'Into the Wilds', text: 'Clear a fox camp out in the wild country past town', need: 1, have: (s) => s.stats.campsCleared, reward: { coins: 300, gear: 'common', slot: 'armor' } },
-  { title: 'Getting stronger', text: 'Reach level 3 by studying', need: 3, have: (s) => s.hero.level, reward: { gear: 'rare', slot: 'armor' } },
-  { title: 'Treasure hunter', text: 'Dig up 3 buried treasures', need: 3, have: (s) => s.stats.treasures, reward: { gear: 'rare', slot: 'charm' } },
-  { title: 'Trained', text: 'Spend 3 skill points', need: 3, have: (s) => Object.values(s.hero.skills).reduce((a, b) => a + b, 0), reward: { coins: 800 } },
-  { title: 'Hand it in', text: 'Hand in 3 assignments on Canvas', need: 3, have: (s) => s.stats.handedIn, reward: { gear: 'epic', slot: 'weapon' } },
-  { title: 'Pack leader', text: 'Reach level 8, then beat the Alpha in its lair out in the country', need: 1, have: (s) => (s.stats.realmBosses.wilds ? 1 : 0), reward: { gear: 'epic', slot: 'armor' } },
-  { title: 'Exam season', text: 'Study enough that an exam boss breaks on your gate', need: 1, have: (s) => s.stats.bossesBeaten, reward: { gear: 'epic', slot: 'charm' } },
-  { title: 'Honor roll', text: 'Reach level 14', need: 14, have: (s) => s.hero.level, reward: { gear: 'legendary', slot: 'weapon' } },
-  // Season 1 ends with the Bronze Age, so the story does too (the Moon and the Star Gate come in a later season).
-  { title: 'Scholar', text: 'Study 50 hours in total', need: 3000, have: (s) => s.study.total, reward: { gear: 'legendary', slot: 'armor' } },
-  { title: 'Season 1 complete', text: 'Raise the Great Pyramid and finish Season 1', need: 1, have: (s) => (seasonDone(s) ? 1 : 0), reward: { gear: 'legendary', slot: 'charm', coins: 50000 } },
+  { from: 'The Librarian', title: 'A roof over your head', text: 'Every newcomer needs a hut. Build your first one (B).', need: 1, have: built, reward: { coins: 200 } },
+  { from: 'The Librarian', title: 'First lesson', text: 'The valley runs on studying. Finish a study session of 10 minutes or more (T).', need: 1, have: (s) => (s.study.total >= 10 ? 1 : 0), reward: { gear: 'rare', slot: 'weapon' } },
+  { from: 'Mira, the herbalist', title: 'Start a creature log', text: 'Catch a creature out in the country. Walk up slowly, then press E.', need: 1, have: caughtTotal, reward: { coins: 300 } },
+  { from: 'Bram, the guard', title: 'Send the homework home', text: 'Your homework keeps wandering into town. Hand in 3 assignments.', need: 3, have: (s) => s.stats.handedIn, reward: { gear: 'rare', slot: 'armor' } },
+  { from: 'The Librarian', title: 'A page for the Atlas', text: 'Find a landmark out in the country for my guidebook.', need: 1, have: (s) => foundCount(s, 0), reward: { coins: 400 } },
+  { from: 'Tobin, the smith', title: 'Fox trouble', text: 'Foxes ran off with my tools. Clear a fox camp, would you?', need: 1, have: (s) => s.stats.campsCleared, reward: { coins: 300, gear: 'common', slot: 'armor' } },
+  { from: 'Odo, the scholar', title: 'Getting stronger', text: 'Reach level 3. Studying is how you level up.', need: 3, have: (s) => s.hero.level, reward: { gear: 'rare', slot: 'armor' } },
+  { from: 'Rook, the builder', title: 'A proper neighbourhood', text: 'Three buildings make a neighbourhood. Build 3.', need: 3, have: built, reward: { coins: 600 } },
+  { from: 'Fen, the fisher', title: 'Treasure hunter', text: 'Gold beams in the grass mean buried treasure. Dig up 3.', need: 3, have: (s) => s.stats.treasures, reward: { gear: 'rare', slot: 'charm' } },
+  { from: 'Mira, the herbalist', title: 'A fuller log', text: 'Catch 4 different kinds of creature. Some only come out at night.', need: 4, have: caughtKinds, reward: { coins: 800 } },
+  { from: 'Juna, the baker', title: 'Good neighbours', text: 'Become friends with someone: reach 50 friendship by doing their daily favours.', need: 50, have: bestFriend, reward: { gear: 'rare', slot: 'weapon' } },
+  { from: 'The Librarian', title: 'The whole valley', text: 'Find all 4 landmarks, and my Atlas gets its first finished chapter.', need: 4, have: (s) => foundCount(s, 0), reward: { coins: 1000 } },
+  { from: 'Ivy, the gardener', title: 'A lovely valley', text: 'Decorate until the valley is rated 2 stars. Paths and flowers help.', need: 2, have: (s) => townRating(s).stars, reward: { gear: 'epic', slot: 'charm' } },
+  { from: 'The Librarian', title: 'A study habit', text: 'Study 5 hours in total. Small sessions add up.', need: 300, have: (s) => s.study.total, reward: { gear: 'epic', slot: 'weapon' } },
+  { from: 'Bram, the guard', title: 'The Alpha', text: 'The big fox in the rock ring. Reach level 6 or so first, then beat the Alpha.', need: 1, have: (s) => (s.stats.realmBosses.wilds ? 1 : 0), reward: { gear: 'epic', slot: 'armor' } },
+  { from: 'The Librarian', title: 'The festival', text: 'Raise the Stone Circle, and the whole valley throws a festival.', need: 1, have: (s) => (s.wonders.includes(0) || s.era > 0 ? 1 : 0), reward: { coins: 2000 } },
+  // Chapter 2: the Bronze Age, on the river.
+  { from: 'Odo, the scholar', title: 'Exam season', text: 'Study enough that an exam breaks on your gate on exam day.', need: 1, have: (s) => s.stats.bossesBeaten, reward: { gear: 'epic', slot: 'charm' } },
+  { from: 'Sela, the merchant', title: 'Honor roll', text: 'Reach level 12.', need: 12, have: (s) => s.hero.level, reward: { gear: 'legendary', slot: 'weapon' } },
+  { from: 'The Librarian', title: 'Scholar', text: 'Study 50 hours in total. The library needs regulars.', need: 3000, have: (s) => s.study.total, reward: { gear: 'legendary', slot: 'armor' } },
+  { from: 'The Librarian', title: 'The library', text: 'Raise the Great Pyramid, with my library inside, and finish Season 1.', need: 1, have: (s) => (seasonDone(s) ? 1 : 0), reward: { gear: 'legendary', slot: 'charm', coins: 50000 } },
 ];
 
 export function storyStatus(state) {
   const quest = STORY[state.quest.step];
   if (!quest) return null;
   const have = Math.min(quest.need, quest.have(state) || 0);
-  return { step: state.quest.step, total: STORY.length, title: quest.title, text: quest.text, have, need: quest.need, done: have >= quest.need, reward: quest.reward };
+  return { step: state.quest.step, total: STORY.length, from: quest.from || '', title: quest.title, text: quest.text, have, need: quest.need, done: have >= quest.need, reward: quest.reward };
 }
 
 /** Pays out the current quest if it is finished and moves to the next one. */
@@ -1917,7 +1923,7 @@ const TAUNTS = {
     "Overdue by {late}. Still feeling brave?",
     "Your grade called. It wants to talk.",
     "Every hour you wait, I get a little more comfortable in your town.",
-    "The Drift loves me. I'm its favourite kind of late.",
+    "Later is on sale today. And tomorrow. And the day after.",
   ],
   studied: [
     "Wait, you actually studied me? That's not fair.",

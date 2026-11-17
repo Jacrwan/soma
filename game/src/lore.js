@@ -4,21 +4,21 @@
 // lowercase name ('mira', 'tobin', ...).
 
 // --- Atlas pages ------------------------------------------------------------------
-// One page per landmark id in country.js LANDMARKS, shown when the landmark is
-// first found. Read in order, each land tells a bit of how the world forgot.
+// The Atlas is the Librarian's guidebook to wherever the town lives. One page per
+// landmark id in country.js LANDMARKS, shown when the landmark is first found.
+// Each page is a short, fond note from her, in any order.
 export const ATLAS_PAGES = {
-  // Land 1: Stone Age (Chapter 1: The Valley That Forgot). Ash's tale, in four parts;
-  // each makes sense alone, since pages can be found in any order.
-  mammoth: "Ash's tale, part one. The first people had no writing. Everything they knew lived in their heads: where the herds walk, which berries kill. Forget once, and the whole tribe goes hungry.",
-  cave: "Ash's tale, part two. A girl named Ash got tired of forgetting, so she painted the herds on this wall. The tribe laughed at her. Then the snow came, and only the wall remembered the way to the herds.",
-  sunstones: "Ash's tale, part three. Her best friend, a hunter, promised to mark the sun's path on these stones. Tomorrow, he said, every day. Winter came a month early. The tribe called him Later after that, and he never forgave the name.",
-  eldertree: "Ash's tale, part four. Ash marked the sun herself, a stone each dawn, and planted this tree to count the years. She was the first keeper of the Atlas. She carried a lantern, and she never let it go out.",
+  // Land 1: the Stone Age valley.
+  mammoth: "Mammoth bones. Tobin swears they're a dinosaur. Odo swears they're not. They've argued about it every Tuesday for six years. Nobody has looked it up.",
+  cave: "The painted cave. Somebody long ago painted every animal in the valley on this wall, so they wouldn't forget where the herds go. The first study notes, really. Mine are messier.",
+  eldertree: "The elder tree. The oldest thing in the valley, and the best nap spot. Odo reads under it every afternoon. He calls it research.",
+  sunstones: "The sun stones. On the longest day of summer, the sunrise lines up perfectly between them. The first calendar. Possibly the first deadline. I'm told people met it.",
 
-  // Land 2: Bronze Age (Chapter 2: The Library Burns)
-  port: "Boats carried copper up the river, and stories came with them. The library was built to keep the stories dry.",
-  obelisk: "Students carved their names here after their final trials. Some names are cut deep. Some were added years late, and still count.",
-  caravan: "Traders swapped lessons at every stop. A fair price for a lesson was another lesson. The Atlas grew a page a night.",
-  sandarch: "The wind cut this arch a grain at a time. The Librarian wrote beside it: \"That is how you read a hard book.\"",
+  // Land 2: the Bronze Age river.
+  port: "The river port. Boats bring copper, cloth and gossip upriver. Sela knows every boat by name and every captain by their debts.",
+  obelisk: "The sun obelisk. Students carve their names here after their final exams. Some names are cut deep. Some were added years late, and still count.",
+  caravan: "The caravan camp. Traders rest here on the long road and swap stories for supper. A fair price for a story is another story.",
+  sandarch: "The sandstone arch. The wind carved it one grain at a time. I wrote underneath: that is also how you read a hard book.",
 
   // Land 3: Middle Ages
   castle: "The lord of this keep put everything off until spring. Spring came. So did the Drift. Only the stairs are left.",
@@ -192,16 +192,16 @@ export const VILLAGER_STORIES = {
   ],
   Nell: [
     { at: 20, lines: [
-      ['nell', "I was the Librarian's apprentice at the old library. I was there the night it burned."],
-      ['nell', "I ran out with one book. Not even a good one. A dictionary."],
+      ['nell', "I used to work at the big library in the city. Thousands of books. I left after a week."],
+      ['nell', "Everyone there seemed to know everything already. I took one book home. Not even a good one. A dictionary."],
     ] },
     { at: 50, lines: [
-      ['nell', "For years I thought I wasn't a real librarian. Real ones would have saved more."],
-      ['owl', "Nell. You saved every word. That's literally what a dictionary is."],
+      ['nell', "For years I thought I wasn't a real librarian. Real ones would have stayed."],
+      ['owl', "Nell. You took home every word. That's literally what a dictionary is."],
       ['nell', "...I hate when you're right."],
     ] },
     { at: 80, lines: [
-      ['nell', "I'm rebuilding the shelves page by page, as you find them. It's slow. I like slow now."],
+      ['nell', "I'm going to help stock our library, when it's built. One shelf at a time. I like slow now."],
       ['nell', "If you ever feel like you don't belong in your class, keeper, I promise you're not the only one."],
     ] },
   ],
@@ -226,14 +226,14 @@ export const VILLAGER_STORIES = {
 export const BEATS = {
   // When the first study session finishes (any length, timer completes).
   firstStudy: [
-    ['owl', "There. Did you see my lantern flare? The fog pulled back a step."],
-    ['owl', "That's how it works. Every minute you study feeds the light, and the Drift loses a little ground."],
-    ['owl', "Not glamorous. Just true. Have a stretch, keeper. You earned it."],
+    ['owl', "There it is! Your first session. Look at the board: one less thing to worry about."],
+    ['owl', "That's the whole trick, honestly. Small sessions, most days. The valley grows a little every time."],
+    ['owl', "Have a stretch. You earned it."],
   ],
 
   // When the first exam (kind 'boss') is beaten at the gate on exam day.
   firstExam: [
-    ['owl', "The Examiner's down! The gate held!"],
+    ['owl', "The exam's down! The gate held!"],
     ['pro', "Hm. Lucky. Beginner's luck. Definitely luck."],
     ['owl', "It wasn't luck. It was every session you sat through when you'd rather not have."],
     ['owl', "Whatever the grade says, you showed up ready. Remember how this feels."],
@@ -242,7 +242,7 @@ export const BEATS = {
   // When the first week goal is cleared (claimWeek returns a chest for the first time).
   firstWeek: [
     ['owl', "A whole week, done. Every hour studied, everything handed in."],
-    ['owl', "Back when the library stood, we'd ring a bell for this. Imagine a bell."],
+    ['owl', "When the library's built, we'll ring a bell for this. For now, imagine a bell."],
     ['pro', "I'm imagining a nap. Same energy."],
     ['owl', "Monday brings a new goal. It always will. But this week is yours forever."],
   ],
@@ -250,7 +250,7 @@ export const BEATS = {
   // When the study streak (state.study.streak) first reaches 7 days.
   streak7: [
     ['owl', "Seven days in a row. Do you know what the town calls that?"],
-    ['owl', "A habit. The Drift can't eat a habit. It's tried."],
+    ['owl', "A habit. The Procrastinator can't sell you anything once you've got one of those."],
     ['owl', "And if you miss a day someday, that's fine. Habits come back faster than they leave."],
   ],
 
@@ -258,7 +258,7 @@ export const BEATS = {
   allHandedIn: [
     ['owl', "Listen. Hear that? Nothing stomping around town."],
     ['owl', "Every assignment handed in. The roads are quiet for the first time since you woke."],
-    ['pro', "Ugh. It's so peaceful. I hate it. I'll be in my fog if anyone needs me."],
+    ['pro', "Ugh. It's so peaceful. Bad for business. I'll be in my hammock if anyone needs me."],
   ],
 
   // When the player opens the game after 3+ days away. Gentle: no guilt, no lecture.
@@ -273,7 +273,7 @@ export const BEATS = {
   // When the first mythic chest is opened (chest.rarity === 'mythic').
   firstMythic: [
     ['owl', "Oh. Oh my. That's a mythic chest. I've only read about these."],
-    ['owl', "They say the old keepers filled them for whoever came after. Twelve weeks of work, sealed in one box."],
+    ['owl', "They say it takes a whole term of steady work to earn one. Twelve weeks, sealed in a box."],
     ['pro', "Can I just... hold it? For a second? I'll give it back later."],
     ['owl', "No."],
   ],
