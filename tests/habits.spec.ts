@@ -105,6 +105,32 @@ test('habits checked on another device show here, and a failed save puts the che
   await expect(widget.getByRole('button', { name: 'Eat healthy: done today' })).toHaveAttribute('aria-pressed', 'true');
 });
 
+test('another account signing in on this browser never sees or saves the last account’s habits', async ({ page }) => {
+  // The last account on this browser had habits, a layout and study hours in its local copy.
+  const other = '99999999-9999-4999-8999-999999999999';
+  await page.addInitScript(o => {
+    if (sessionStorage.getItem('seeded')) return;
+    sessionStorage.setItem('seeded', '1');
+    localStorage.setItem('soma_local_owner', o);
+    localStorage.setItem('soma_settings', JSON.stringify({ theme: 'dark', studyWindow: { start: '05:00', end: '06:00' }, habits: { items: [{ id: 'secret-gym', title: 'Other account gym', perWeek: 5 }], done: {} } }));
+  }, other);
+  // This account has the Habits widget and no habits of its own on the server.
+  const server: Record<string, unknown> = { ...withWidget };
+  const posts = await dashboard(page, server);
+  const widget = page.getByRole('region', { name: 'Habits' });
+  await expect(widget).toContainText('Things you want to keep up');
+  await expect(widget).not.toContainText('Other account gym');
+  // Adding its own habit saves only its own.
+  await widget.getByLabel('Habit name').fill('Read');
+  await widget.getByRole('button', { name: 'Add' }).click();
+  await expect.poll(() => (posts.at(-1)?.habits as { items?: { title: string }[] } | undefined)?.items?.map(h => h.title)).toEqual(['Read']);
+  // The local copy is this account's now; only the theme carried over.
+  const local = await page.evaluate(() => JSON.parse(localStorage.getItem('soma_settings') ?? '{}'));
+  expect(local.studyWindow?.start).not.toBe('05:00');
+  expect(JSON.stringify(local)).not.toContain('Other account gym');
+  expect(await page.evaluate(() => localStorage.getItem('soma_local_owner'))).toBe(account.id);
+});
+
 test('Habits is in the Add widgets tray, and the plain demo dashboard has no Habits widget', async ({ page }) => {
   const { WIDGETS } = await import('../src/lib/dashboardLayout');
   expect(WIDGETS.find(w => w.id === 'habits')).toMatchObject({ name: 'Habits', size: 'small' });

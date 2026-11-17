@@ -9,6 +9,23 @@ still needed.
 
 ---
 
+## 2026-11-17 (another account on the same browser saw the last one's habits)
+
+- **Why:** the owner saw habits shared across accounts. Signing in as a
+  second account on the same browser cleared the last account's Canvas and
+  Google caches (`claimLocalCache`, 2026-10-30) but not `soma_settings`, this
+  browser's settings copy. The Habits widget starts from that copy and kept it
+  when the new account had no habits on the server, so the last account's
+  habits showed (and Soma read them), and adding or checking one saved the
+  whole list into the new account. The same copy carried the dashboard layout,
+  study hours and scheduling preferences across accounts.
+- **What:** `claimLocalCache` (`src/lib/storage.ts`) resets `soma_settings`
+  to just theme and time format when a different account signs in.
+  `habits_leak_check.sql` (read-only) lists accounts whose saved habits match
+  another account's, with a commented one-account clean-up.
+- **Tests:** habits.spec.ts ("another account signing in on this browser
+  never sees or saves the last account’s habits": fails on the old code).
+
 ## 2026-11-17 (Message the developer: a reply preview beside the bubble)
 
 - **Why:** the owner asked for a clear notification when a student gets a reply.

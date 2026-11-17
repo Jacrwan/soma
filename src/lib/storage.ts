@@ -1096,6 +1096,14 @@ export const storage = {
       localStorage.removeItem(KEYS.googleEvents);
       localStorage.removeItem(KEYS.googleCacheTimestamp);
       clearLocalSnapshots();
+      // This browser's settings copy belongs to the last account too: its
+      // habits, dashboard layout, study hours and profile. Until 2026-11-17 it
+      // stayed, so the next account saw the last one's habits (and Soma did),
+      // and checking one saved the whole list into the new account. Only how
+      // the screen looks stays; the rest comes back from the new account's
+      // own settings.
+      const { theme, timeFormat } = storage.getSomaSettings();
+      localStorage.setItem(SOMA_SETTINGS_KEY, JSON.stringify({ theme, timeFormat }));
       localStorage.setItem(KEYS.localOwner, userId);
     } catch { /* storage blocked: nothing cached to leak */ }
   },
