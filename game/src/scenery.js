@@ -546,13 +546,21 @@ export class LockedBlurPass extends Pass {
         uniform mat4 uProjInv; uniform mat4 uViewInv; uniform vec2 uTexel; uniform float uTownR;
         uniform float uFrom[${SECTORS.length}]; uniform float uSpan[${SECTORS.length}]; uniform float uLocked[${SECTORS.length}];
         varying vec2 vUv;
+        // How locked a spot is, 0..1, with soft edges: about 7 degrees of fade at an area's
+        // sides and 10 metres at the town's edge, so there's never a hard line on screen.
         float lockedAt(vec3 w) {
           float r = length(w.xz);
-          if (r < uTownR) return 0.0;
+          if (r < uTownR - 1.0) return 0.0;
           float a = mod(degrees(atan(w.z, w.x)) + 360.0, 360.0);
           float on = 0.0;
-          for (int i = 0; i < ${SECTORS.length}; i++) if (mod(a - mod(uFrom[i] + 360.0, 360.0) + 360.0, 360.0) < uSpan[i]) on = uLocked[i];
-          return on * smoothstep(uTownR, uTownR + 5.0, r);
+          for (int i = 0; i < ${SECTORS.length}; i++) {
+            float into = mod(a - mod(uFrom[i] + 360.0, 360.0) + 360.0, 360.0);
+            if (into > uSpan[i] + 7.0 && into < 353.0) continue;
+            if (into >= 353.0) into -= 360.0;
+            float edge = smoothstep(-7.0, 7.0, into) * smoothstep(-7.0, 7.0, uSpan[i] - into);
+            on = max(on, uLocked[i] * edge);
+          }
+          return on * smoothstep(uTownR - 1.0, uTownR + 10.0, r);
         }
         vec3 worldAt(vec2 uv, float d) {
           vec4 v = uProjInv * vec4(uv * 2.0 - 1.0, d * 2.0 - 1.0, 1.0);
@@ -569,18 +577,22 @@ export class LockedBlurPass extends Pass {
             if (below < 0.99999) m = lockedAt(worldAt(vUv - vec2(0.0, 0.03), below)) * 0.6;
           }
           if (m <= 0.001) { gl_FragColor = c; return; }
-          // Two rings of taps: soft, even, cheap.
-          vec3 acc = c.rgb; float n = 1.0;
-          for (int i = 0; i < 8; i++) {
-            float a = float(i) * 0.7854;
-            vec2 o = vec2(cos(a), sin(a)) * uTexel;
-            acc += texture2D(tDiffuse, vUv + o * 6.0).rgb + texture2D(tDiffuse, vUv + o * 13.0 + vec2(-o.y, o.x) * 4.0).rgb;
-            n += 2.0;
+          // A smooth, round blur: 24 taps on a golden-angle spiral, weighted toward the
+          // middle, so there are no rings or streaks. Stronger the more locked it is.
+          vec3 acc = c.rgb; float wsum = 1.0;
+          float radius = 14.0 * m;
+          for (int i = 1; i <= 24; i++) {
+            float fi = float(i);
+            float rr = sqrt(fi / 24.0);
+            float ang = fi * 2.39996;
+            float wt = 1.0 - rr * 0.6;
+            acc += texture2D(tDiffuse, vUv + vec2(cos(ang), sin(ang)) * rr * radius * uTexel).rgb * wt;
+            wsum += wt;
           }
-          vec3 blur = acc / n;
-          // Out of focus, a little paler, so it reads as "not yet".
+          vec3 blur = acc / wsum;
+          // Natural colours, just softer: a touch less saturated and a hair cooler.
           float l = dot(blur, vec3(0.2126, 0.7152, 0.0722));
-          blur = mix(blur, vec3(l), 0.25) * 0.92 + 0.08;
+          blur = mix(blur, vec3(l), 0.15) * vec3(0.98, 1.0, 1.03);
           gl_FragColor = vec4(mix(c.rgb, blur, m), c.a);
         }`,
     }));
