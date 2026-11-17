@@ -31,3 +31,30 @@ test('decks stay bounded', () => {
   const big = addDeck(s, { title: 'big', cards: Array.from({ length: 200 }, (_, i) => ({ front: `f${i}`, back: 'b' })) }, NOW);
   assert.strictEqual(big.cards.length, 80);
 });
+
+import { addKit, deleteKit, kitText, kitMade, addCards, KIT_MAX } from '../src/studyhall.js';
+
+test('study kits: material is kept apart from the save, and nothing is made until asked', () => {
+  const s = {};
+  const kit = addKit(s, { title: 'Cell respiration', overview: 'How cells make ATP.', topics: ['Glycolysis', 'Krebs cycle'], source: { kind: 'pdf', name: 'bio.pdf' } }, 'Glycolysis splits glucose into two pyruvate...', NOW);
+  assert.strictEqual(kitText(kit.id), 'Glycolysis splits glucose into two pyruvate...');
+  assert.ok(!JSON.stringify(s).includes('splits glucose'), 'the save holds no material');
+  assert.strictEqual(kit.deckId, null);
+  assert.strictEqual(kit.questions, null);
+  assert.strictEqual(kit.guide, null);
+  assert.strictEqual(kitMade(s, kit), 'Nothing made yet');
+  kit.deckId = addDeck(s, { title: kit.title, cards: [{ front: 'ATP from glycolysis', back: '2 net' }] }, NOW).id;
+  addCards(s, kit.deckId, [{ front: 'Where is the Krebs cycle', back: 'Mitochondrial matrix' }], NOW);
+  assert.strictEqual(s.decks[kit.deckId].cards.length, 2);
+  assert.match(kitMade(s, kit), /2/);
+  deleteKit(s, kit.id);
+  assert.strictEqual(s.kits[kit.id], undefined);
+  assert.strictEqual(s.decks[kit.deckId], undefined, 'its deck goes with it');
+  assert.strictEqual(kitText(kit.id), '');
+});
+
+test('study kits stay bounded', () => {
+  const s = {};
+  for (let i = 0; i < KIT_MAX + 5; i++) addKit(s, { title: `Kit ${i}` }, `text ${i}`, NOW + i);
+  assert.strictEqual(Object.keys(s.kits).length, KIT_MAX);
+});

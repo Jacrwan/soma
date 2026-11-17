@@ -106,6 +106,11 @@ export function createCoach({ scene, camera, onSkip, onQuit, onNext }) {
       card.style.transform = `translate(${innerWidth / 2}px, 96px) translate(-50%, 0)`;
       card.classList.add('pinned');
     },
+    /** True when a point in the world is on screen (not behind the camera). */
+    inView(pos) {
+      bubbleAt.copy(pos).add(new THREE.Vector3(0, 2.4, 0)).project(camera);
+      return bubbleAt.z < 1 && Math.abs(bubbleAt.x) < 0.9 && bubbleAt.y < 0.9 && bubbleAt.y > -0.6;
+    },
     /** Keeps the bubble over a point in the world. */
     follow(owlPos) {
       if (card.hidden) return;

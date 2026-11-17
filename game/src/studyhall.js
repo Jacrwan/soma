@@ -1,9 +1,8 @@
-// The Study Hall: real studying, built around what the student wants to study.
-// 1. What: an upcoming Canvas item, a whole course, or any topic they type,
-//    plus their own notes if they paste some (Soma notes are added on the server side).
-// 2. How: a quiz, flashcards, explain-it (Claude grades a written answer) or
-//    practice problems with worked steps. How many, how hard.
-// 3. Flashcards become decks that come back on a spaced schedule (Leitner boxes).
+// The Study Hall: study kits made from what the student brings.
+// 1. Bring material: upload a file (PDF, Word, slides, text, a photo of notes),
+//    paste text, or paste a YouTube link. Claude sets up a kit: title, overview, topics.
+// 2. Inside the kit, nothing is made until asked: flashcards (a deck on a spaced
+//    schedule, Leitner boxes), practice questions, or a study guide summary.
 // Rules for decks are plain functions (tested in tests/study.test.js); the UI is
 // its own overlay so it doesn't depend on the rest of the HUD.
 
@@ -44,6 +43,54 @@ export function rateCard(state, deckId, cardId, grade, now = Date.now()) {
   return card;
 }
 export function deleteDeck(state, deckId) { if (state.decks) delete state.decks[deckId]; }
+/** Adds cards to an existing deck (new cards are due now). */
+export function addCards(state, deckId, cards, now = Date.now()) {
+  const deck = state.decks?.[deckId];
+  if (!deck) return null;
+  for (const c of cards) if (deck.cards.length < CARD_MAX * 2) deck.cards.push({ id: uid(), front: String(c.front).slice(0, 300), back: String(c.back).slice(0, 400), box: 0, due: now });
+  return deck;
+}
+
+// --- Study kits ---------------------------------------------------------------------------
+// A kit is what the student brought (kept as text in its own localStorage key, so the
+// save stays small) plus a title, overview and topics. Its flashcards are a deck;
+// practice questions and the study guide are kept on the kit once made.
+export const KIT_MAX = 30;
+const KIT_KEY = (id) => `epoch.kit.${id}`;
+const kitMemory = new Map(); // when localStorage is unavailable or full
+export function saveKitText(id, text) {
+  kitMemory.set(id, text);
+  try { localStorage.setItem(KIT_KEY(id), text); } catch { /* memory only */ }
+}
+export function kitText(id) {
+  try { const t = localStorage.getItem(KIT_KEY(id)); if (t) return t; } catch { /* no storage */ }
+  return kitMemory.get(id) || '';
+}
+/** Saves a new kit and its material. Returns the kit. */
+export function addKit(state, { title, overview = '', topics = [], source = {}, chars = 0, cut = false }, text, now = Date.now()) {
+  const kits = state.kits || (state.kits = {});
+  const ids = Object.keys(kits);
+  if (ids.length >= KIT_MAX) deleteKit(state, ids.sort((x, y) => (kits[x].opened || kits[x].created) - (kits[y].opened || kits[y].created))[0]);
+  const kit = { id: uid(), title: String(title || 'Study kit').slice(0, 80), overview: String(overview).slice(0, 600), topics: topics.slice(0, 8), source, chars, cut, created: now, deckId: null, questions: null, guide: null };
+  kits[kit.id] = kit;
+  saveKitText(kit.id, text);
+  return kit;
+}
+/** Deletes a kit, its deck and its stored material. */
+export function deleteKit(state, id) {
+  const kit = state.kits?.[id];
+  if (!kit) return;
+  if (kit.deckId) deleteDeck(state, kit.deckId);
+  delete state.kits[id];
+  kitMemory.delete(id);
+  try { localStorage.removeItem(KIT_KEY(id)); } catch { /* no storage */ }
+}
+/** A short "what's made" label for the kit list. */
+export function kitMade(state, kit) {
+  const deck = kit.deckId && state.decks?.[kit.deckId];
+  const bits = [deck && `🃏 ${deck.cards.length}`, kit.questions?.length && `❓ ${kit.questions.length}`, kit.guide && '📘'].filter(Boolean);
+  return bits.length ? bits.join(' · ') : 'Nothing made yet';
+}
 
 // --- UI ----------------------------------------------------------------------------------
 const CSS = `
@@ -117,23 +164,48 @@ const CSS = `
 @keyframes sh-rot { to { transform: rotate(360deg); } }
 @keyframes sh-slide { from { left: -35%; } to { left: 100%; } }
 @keyframes sh-pulse { 50% { opacity: .3; } }
+.sh-src { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.sh-src button { padding: 12px 10px; border-radius: 14px; border: 2px solid transparent; background: rgba(255,255,255,0.06); color: inherit; font: inherit; font-size: 14.5px; font-weight: 900; cursor: pointer; }
+.sh-src button i { display: block; font-style: normal; font-size: 24px; margin-bottom: 2px; }
+.sh-src button.on { border-color: #f2c14e; background: rgba(242,193,78,0.14); }
+.sh-drop { display: grid; place-items: center; gap: 6px; min-height: 130px; padding: 18px; border-radius: 16px; border: 2px dashed rgba(255,255,255,0.22); background: rgba(0,0,0,0.18); text-align: center; cursor: pointer; }
+.sh-drop.over, .sh-drop:hover { border-color: #f2c14e; background: rgba(242,193,78,0.08); }
+.sh-drop b { font-size: 15.5px; } .sh-drop small { color: rgba(255,255,255,0.6); font-weight: 700; font-size: 12px; }
+.sh-drop .sh-file { padding: 6px 12px; border-radius: 999px; background: #f2c14e; color: #1d1830; font-weight: 900; font-size: 13px; }
+.sh-paste { min-height: 160px; resize: vertical; }
+.sh-kits { display: grid; gap: 8px; }
+.sh-kit { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-radius: 14px; border: 0; background: rgba(255,255,255,0.06); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.sh-kit:hover { background: rgba(255,255,255,0.1); }
+.sh-kit > i { font-style: normal; font-size: 24px; } .sh-kit div { flex: 1; min-width: 0; }
+.sh-kit b { display: block; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .sh-kit small { color: rgba(255,255,255,0.6); font-size: 12px; font-weight: 700; }
+.sh-kit em { font-style: normal; font-size: 12px; font-weight: 900; color: #ffd878; white-space: nowrap; }
+.sh-topics { display: flex; flex-wrap: wrap; gap: 6px; } .sh-topics span { padding: 5px 10px; border-radius: 999px; background: rgba(255,255,255,0.08); font-size: 12.5px; font-weight: 800; }
+.sh-parts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.sh-part { display: grid; align-content: start; gap: 8px; padding: 14px; border-radius: 16px; background: rgba(255,255,255,0.06); border: 2px solid rgba(255,255,255,0.06); }
+.sh-part > i { font-style: normal; font-size: 30px; } .sh-part b { font-size: 16px; } .sh-part small { color: rgba(255,255,255,0.65); font-size: 12.5px; font-weight: 700; line-height: 1.35; }
+.sh-part.made { border-color: rgba(62,196,90,0.45); }
+.sh-part .sh-go, .sh-part .sh-ghost { justify-self: stretch; text-align: center; font-size: 14px; padding: 10px 12px; }
+.sh-guide { overflow-wrap: anywhere; }
+.sh-guide h3 { margin: 14px 0 6px; font-size: 16px; color: #ffd878; } .sh-guide ul { margin: 0; padding-left: 20px; display: grid; gap: 5px; font-size: 14.5px; line-height: 1.4; }
+.sh-guide dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0; font-size: 14px; } .sh-guide dt { font-weight: 900; color: #cfe4ff; } .sh-guide dd { margin: 0; color: rgba(255,255,255,0.85); }
+.sh-guide .sh-why { font-size: 15px; }
+.sh-danger { margin-left: auto; padding: 9px 14px; border-radius: 12px; border: 0; background: transparent; color: #ff9d94; font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
+@media (max-width: 640px) { .sh-parts, .sh-src { grid-template-columns: 1fr; } }
 @media (max-width: 640px) { .sh-modes, .sh-modes.big { grid-template-columns: 1fr; } }
 `;
 
-const MODES = [
-  { id: 'quiz', icon: '❓', name: 'Quiz', noun: 'quiz questions', hint: 'Multiple-choice questions. After each one you see why the answer is right.' },
-  { id: 'cards', icon: '🃏', name: 'Flashcards', noun: 'flashcards', hint: 'A deck that’s saved and comes back on a schedule, so it sticks.' },
-  { id: 'explain', icon: '✍️', name: 'Explain it', noun: 'explain-it questions', hint: 'Answer in your own words. Claude grades it and says what you missed.' },
-  { id: 'problems', icon: '🧮', name: 'Problems', noun: 'practice problems', hint: 'Exam-style problems. Try them, then see the worked steps.' },
-];
+const SOURCE_ICON = { pdf: '📄', doc: '📝', slides: '📊', text: '📋', image: '📷', video: '🎬' };
+const SOURCE_NAME = { pdf: 'PDF', doc: 'Word document', slides: 'Slides', text: 'Pasted text', image: 'Photo of notes', video: 'Video' };
+const ACCEPT = '.pdf,.docx,.pptx,.txt,.md,.csv,.html,.png,.jpg,.jpeg,.webp,.gif';
 
 /**
  * Opens the Study Hall. ctx: {
- *   state, save(), upcoming: [{ id, name, courseName, kind, due }], courses: [{ id, name }],
- *   ai: { makeStudySet, gradeExplain }, status(): { ok, label } | { ok: false, reason } (or a Promise of it),
- *   reward({ item, right, wrong, minutes }) -> string (a line for the results screen),
- *   onClose()
- * } prefill: { itemId, topic, mode }
+ *   state, save(),
+ *   ai: { readMaterial({file|url}), makeKit(text, title), makeKitPart(text, part, opts) },
+ *   status(): { ok, label } | { ok: false, reason } (or a Promise of it),
+ *   reward({ topic, right, wrong, cards }) -> string (a line for the results screen),
+ *   onAnswer(source, q, ok), onClose()
+ * }
  */
 export function createStudyHall() {
   const style = document.createElement('style');
@@ -150,13 +222,15 @@ export function createStudyHall() {
       if (k === 'class') n.className = v; else if (k === 'text') n.textContent = v;
       else if (k.startsWith('on')) n.addEventListener(k.slice(2), v); else if (v === true) n.setAttribute(k, ''); else if (v !== false && v != null) n.setAttribute(k, v);
     }
-    for (const k of kids.flat()) if (k != null) n.append(k);
+    for (const k of kids.flat(Infinity)) if (k != null && k !== false) n.append(k);
     return n;
   };
   function frame(title, sub, ...body) {
+    keyHandler = null;
     root.replaceChildren(h('div', { class: 'sh-card' },
       h('div', { class: 'sh-head' }, h('div', {}, h('h2', { text: title }), sub ? h('small', { text: sub }) : null), h('button', { class: 'sh-x', text: '✕', title: 'Close (Esc)', onclick: close })),
-      h('div', { class: 'sh-body' }, ...body)));
+      h('div', { class: 'sh-body' }, ...body.flat())));
+    root.querySelector('.sh-card').scrollTop = 0;
   }
   function close() {
     if (root.hidden) return;
@@ -167,18 +241,14 @@ export function createStudyHall() {
     ctx = null;
     done?.();
   }
-  // While open, keys belong to the Study Hall (typing answers mustn't move the hero).
+  // While open, keys belong to the Study Hall (typing mustn't move the hero).
   addEventListener('keydown', (e) => {
     if (root.hidden) return;
     if (e.key === 'Escape') { e.preventDefault(); close(); }
     e.stopImmediatePropagation();
   }, true);
 
-  // --- the start screen: what to study, then how ------------------------------------------
-  // Everything a first-time student needs is on one screen, top to bottom:
-  // whether the AI is ready, what to study (Canvas items, courses or any topic),
-  // how (four modes, one line each), and a Start button that says what it will make.
-  let aiStatus = null; // last answer from ctx.status()
+  let aiStatus = null;
   const aiBadge = () => {
     if (!aiStatus) return h('div', { class: 'sh-ai wait' }, h('i'), 'Checking the AI…');
     if (aiStatus.ok) return h('div', { class: 'sh-ai ok' }, h('i'), `AI ready · ${aiStatus.label || 'Claude'}`);
@@ -188,258 +258,273 @@ export function createStudyHall() {
     try { aiStatus = await ctx.status(); } catch { aiStatus = { ok: false, reason: 'Couldn’t check the AI. Check your connection and try again.' }; }
     return aiStatus;
   }
-
-  function pickScreen(prefill = {}) {
-    const firstItem = prefill.itemId && ctx.upcoming.some((a) => a.id === prefill.itemId) ? prefill.itemId : null;
-    const pick = {
-      source: prefill.source || (prefill.topic ? 'topic' : firstItem ? 'item' : null),
-      itemId: prefill.itemId || firstItem, courseId: prefill.courseId || null, topic: prefill.topic || '', notes: prefill.notes || '',
-      mode: prefill.mode || 'quiz', count: prefill.count || 8, level: prefill.level || 'mixed',
-    };
-    const what = h('div', { class: 'sh-body', style: 'padding:0' });
-    const label = () => {
-      if (pick.source === 'item') return ctx.upcoming.find((a) => a.id === pick.itemId)?.name || '';
-      if (pick.source === 'course') return ctx.courses.find((c) => c.id === pick.courseId)?.name || '';
-      return pick.topic.trim();
-    };
-    const ready = () => (pick.source === 'item' ? Boolean(pick.itemId) : pick.source === 'course' ? Boolean(pick.courseId) : pick.source === 'topic' && pick.topic.trim().length >= 2);
-    let go, goNote, badge;
-    const refreshGo = () => {
-      const mode = MODES.find((m) => m.id === pick.mode);
-      const name = label();
-      go.disabled = !ready() || !aiStatus?.ok;
-      go.textContent = ready() ? `Make ${pick.count} ${mode.noun}` : 'Start';
-      goNote.textContent = !ready() ? 'First pick something above, or type a topic.'
-        : !aiStatus ? 'Checking the AI…'
-          : !aiStatus.ok ? 'The AI isn’t available (see the note at the top).'
-            : `On “${name.length > 60 ? `${name.slice(0, 57)}…` : name}”. Takes about 5 to 20 seconds.`;
-    };
-    const draw = () => {
-      const pickBtn = (on, onclick, title, sub) => h('button', { class: `sh-pick ${on ? 'on' : ''}`, onclick }, h('b', { text: title }), sub ? h('small', { text: sub }) : null);
-      const due = ctx.upcoming.length
-        ? h('div', { class: 'sh-list' }, ctx.upcoming.slice(0, 12).map((a) => pickBtn(pick.source === 'item' && pick.itemId === a.id, () => { pick.source = 'item'; pick.itemId = a.id; draw(); }, a.name, `${a.kind === 'boss' ? 'Exam' : 'Assignment'} · ${a.courseName}${a.due ? ` · ${a.due}` : ''}`)))
-        : null;
-      const courses = ctx.courses.length
-        ? h('div', { class: 'sh-tabs' }, ctx.courses.map((c) => h('button', { class: `sh-chip ${pick.source === 'course' && pick.courseId === c.id ? 'on' : ''}`, text: c.name, onclick: () => { pick.source = 'course'; pick.courseId = c.id; draw(); } })))
-        : null;
-      const topic = h('input', { class: 'sh-input', placeholder: 'Type any topic, e.g. eigenvectors, the Krebs cycle, Hamlet act 3', value: pick.topic, maxlength: 140, 'aria-label': 'Topic to study' });
-      if (pick.source === 'topic') topic.style.borderColor = '#f2c14e';
-      topic.addEventListener('input', () => { pick.topic = topic.value; pick.source = topic.value.trim() ? 'topic' : (pick.source === 'topic' ? null : pick.source); topic.style.borderColor = pick.source === 'topic' ? '#f2c14e' : ''; refreshGo(); });
-      topic.addEventListener('focus', () => { if (pick.topic.trim() && pick.source !== 'topic') { pick.source = 'topic'; draw(); } });
-      topic.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !go.disabled) start(pick); });
-      const modes = h('div', { class: 'sh-modes big' }, MODES.map((m) => h('button', { class: `sh-mode ${pick.mode === m.id ? 'on' : ''}`, onclick: () => { pick.mode = m.id; draw(); } }, h('i', { text: m.icon }), h('b', { text: m.name }), h('small', { text: m.hint }))));
-      const chips = (text, key, vals) => h('div', { class: 'sh-row' }, h('span', { text }), vals.map(([v, t]) => h('button', { class: `sh-chip ${pick[key] === v ? 'on' : ''}`, text: t, onclick: () => { pick[key] = v; pick.moreOpen = true; draw(); } })));
-      const notes = h('textarea', { class: 'sh-notes', placeholder: 'Paste your notes, a study guide or slide text. Claude writes the questions from these.', maxlength: 9000 });
-      notes.value = pick.notes;
-      notes.addEventListener('input', () => { pick.notes = notes.value; });
-      const more = h('details', { class: 'sh-more', open: Boolean(pick.moreOpen || pick.notes) },
-        h('summary', { text: `Options: ${pick.count} items · ${{ easy: 'easy', mixed: 'mixed', hard: 'hard' }[pick.level]}${pick.notes.trim() ? ' · your notes' : ''}` }),
-        h('div', {}, chips('How many', 'count', [[5, '5'], [8, '8'], [12, '12'], [20, '20']]), chips('Level', 'level', [['easy', 'Easy'], ['mixed', 'Mixed'], ['hard', 'Hard']]), notes));
-      more.addEventListener('toggle', () => { pick.moreOpen = more.open; });
-      go = h('button', { class: 'sh-go', onclick: () => start(pick) });
-      goNote = h('p', { class: 'sh-note' });
-      badge = aiBadge();
-      what.replaceChildren(...[
-        h('p', { class: 'sh-intro', text: 'Pick what you’re studying and how. Claude writes the questions, cards or problems for you, and every right answer earns XP for your hero.' }),
-        badge,
-        h('div', { class: 'sh-step', text: '1 · What are you studying?' }),
-        due ? h('div', { class: 'sh-sub', text: 'Coming up on Canvas' }) : null, due,
-        courses ? h('div', { class: 'sh-sub', text: 'A whole course' }) : null, courses,
-        h('div', { class: 'sh-sub', text: due || courses ? 'Or any topic' : 'Type any topic (your Canvas classes show up here once Canvas is connected in Soma)' }), topic,
-        h('div', { class: 'sh-step', text: '2 · How do you want to study it?' }), modes, more,
-        h('div', { class: 'sh-gobar' }, go, goNote),
-      ].filter(Boolean));
-      refreshGo();
-    };
-    draw();
-    const due = dueCards(ctx.state);
-    const decks = Object.values(ctx.state.decks || {}).sort((a, b) => b.created - a.created);
-    const deckList = decks.length ? h('div', {},
-      h('div', { class: 'sh-step', text: `Your flashcard decks${due.length ? ` · ${due.length} due` : ''}` }),
-      due.length ? h('button', { class: 'sh-go', style: 'margin:8px 0', text: `Review ${due.length} due card${due.length === 1 ? '' : 's'}`, onclick: () => reviewCards(due.slice(0, 40), 'Review') }) : null,
-      h('div', { class: 'sh-decks' }, decks.slice(0, 8).map((d) => {
-        const n = dueCards(ctx.state, Date.now(), d.id).length;
-        return h('div', { class: 'sh-deck' }, h('b', { text: d.title }), h('em', { text: `${d.cards.length} cards${n ? ` · ${n} due` : ''}` }),
-          h('button', { class: 'sh-ghost', text: 'Study', onclick: () => reviewCards(d.cards.map((card) => ({ deck: d, card })), d.title) }),
-          h('button', { class: 'sh-ghost', text: '🗑', title: 'Delete deck', onclick: () => { deleteDeck(ctx.state, d.id); ctx.save(); pickScreen(pick); } }));
-      }))) : null;
-    frame('Study Hall', 'Quizzes, flashcards and practice made by Claude', what, deckList);
-    // Ask (again) whether the AI is reachable; redraw only the badge and the button.
-    const opened = ctx;
-    checkAI().then(() => { if (ctx !== opened || !badge?.isConnected) return; const next = aiBadge(); badge.replaceWith(next); badge = next; refreshGo(); });
-  }
-
-  // --- generating ---------------------------------------------------------------------------
-  let runId = 0; // bumps on cancel/close so a late answer is ignored
-  async function start(pick) {
-    const run = ++runId;
-    const item = pick.source === 'item' ? ctx.upcoming.find((a) => a.id === pick.itemId) : null;
-    const course = pick.source === 'course' ? ctx.courses.find((c) => c.id === pick.courseId)?.name : item?.courseName || '';
-    const what = { topic: pick.source === 'topic' ? pick.topic.trim() : '', course, item: item ? { name: item.name, courseName: item.courseName, courseId: item.courseId } : null, notes: pick.notes };
-    const mode = MODES.find((m) => m.id === pick.mode);
-    const name = item?.name || what.topic || course || 'your topic';
-    const secs = h('p', { class: 'sh-note', text: 'Usually 5 to 20 seconds.' });
-    const t0 = Date.now();
-    const tick = setInterval(() => { if (run !== runId || !secs.isConnected) return clearInterval(tick); const s = Math.round((Date.now() - t0) / 1000); secs.textContent = s < 25 ? `${s}s · usually 5 to 20 seconds` : `${s}s · still writing, bigger sets take longer`; }, 1000);
-    frame('Study Hall', `Making ${mode.name.toLowerCase()}`, h('div', { class: 'sh-load' },
-      h('div', { class: 'sh-spin' }),
-      h('div', { class: 'sh-q', text: `Claude is writing ${pick.count} ${mode.noun} on “${name}”` }),
-      h('p', { class: 'sh-note', text: pick.notes.trim() ? 'Using the notes you pasted.' : 'Tip: paste your notes under Options next time and the questions come straight from them.' }),
-      h('div', { class: 'sh-indet' }, h('i')), secs,
-      h('div', {}, h('button', { class: 'sh-ghost', text: 'Cancel', onclick: () => { runId += 1; clearInterval(tick); pickScreen(pick); } }))));
-    try {
-      const set = await ctx.ai.makeStudySet(what, pick.mode, pick.count, pick.level);
-      clearInterval(tick);
-      if (root.hidden || run !== runId) return;
-      const source = { item: item || null, course, topic: what.topic };
-      if (pick.mode === 'quiz') runQuiz(set, source, pick);
-      else if (pick.mode === 'cards') {
-        const deck = addDeck(ctx.state, { title: set.title, course, itemId: item?.id || null, cards: set.cards });
-        ctx.save();
-        reviewCards(deck.cards.map((card) => ({ deck, card })), set.title, source);
-      } else if (pick.mode === 'explain') runExplain(set, source, pick);
-      else runProblems(set, source, pick);
-    } catch (err) {
-      clearInterval(tick);
-      if (root.hidden || run !== runId) return;
-      frame('Study Hall', 'Couldn’t make that set', h('div', { class: 'sh-oops' },
-        h('div', { class: 'sh-q', text: 'Claude couldn’t make your set this time.' }),
-        h('p', { class: 'sh-err', text: friendly(err) }),
-        h('p', { class: 'sh-note', text: 'Nothing was lost. Your decks and progress are saved.' }),
-        h('div', { class: 'sh-row' }, h('button', { class: 'sh-go', text: 'Try again', onclick: () => start(pick) }), h('button', { class: 'sh-ghost', text: 'Change what to study', onclick: () => pickScreen(pick) }))));
-    }
-  }
   const friendly = (err) => {
     const msg = err?.message || String(err || '');
     if (!msg || /failed to fetch|networkerror|load failed/i.test(msg)) return 'Couldn’t reach the AI. Check your connection and try again.';
     return msg;
   };
   const bar = (i, n) => h('div', { class: 'sh-progress' }, h('i', { style: `width:${Math.round((i / n) * 100)}%` }));
-  function results(title, lines, pick, extra = null) {
-    frame(title, null, ...lines.map((t) => h('p', { class: 'sh-why', text: t })), extra, h('div', { class: 'sh-row' },
-      pick ? h('button', { class: 'sh-go', text: 'Another round', onclick: () => start(pick) }) : null,
-      h('button', { class: 'sh-ghost', text: 'Study something else', onclick: () => pickScreen(pick || {}) }),
-      h('button', { class: 'sh-ghost', text: 'Done', onclick: close })));
+  let runId = 0; // bumps on cancel/close so a late answer is ignored
+
+  /** A waiting screen with a timer and a way back. Returns { run, stop }. */
+  function waiting(title, line, note, back) {
+    const run = ++runId;
+    const secs = h('p', { class: 'sh-note', text: 'Usually 5 to 30 seconds.' });
+    const t0 = Date.now();
+    const tick = setInterval(() => { if (run !== runId || !secs.isConnected) return clearInterval(tick); const s = Math.round((Date.now() - t0) / 1000); secs.textContent = s < 35 ? `${s}s · usually 5 to 30 seconds` : `${s}s · still working, long material takes longer`; }, 1000);
+    frame(title, null, h('div', { class: 'sh-load' }, h('div', { class: 'sh-spin' }), h('div', { class: 'sh-q', text: line }), note ? h('p', { class: 'sh-note', text: note }) : null,
+      h('div', { class: 'sh-indet' }, h('i')), secs, h('div', {}, h('button', { class: 'sh-ghost', text: 'Cancel', onclick: () => { runId += 1; clearInterval(tick); back(); } }))));
+    return { live: () => run === runId && !root.hidden, stop: () => clearInterval(tick) };
+  }
+  function oops(title, err, retry, back, backText = 'Back') {
+    frame(title, null, h('div', { class: 'sh-oops' },
+      h('p', { class: 'sh-err', text: friendly(err) }),
+      h('div', { class: 'sh-row' }, retry ? h('button', { class: 'sh-go', text: 'Try again', onclick: retry }) : null, h('button', { class: 'sh-ghost', text: backText, onclick: back }))));
   }
 
-  // --- quiz ---------------------------------------------------------------------------------
-  function runQuiz(set, source, pick) {
+  // --- home: make a kit, or open one -------------------------------------------------------
+  const draft = { tab: 'file', file: null, text: '', url: '' };
+  function home() {
+    let go, badge;
+    const panel = h('div', { class: 'sh-body', style: 'padding:0' });
+    const ready = () => (draft.tab === 'file' ? Boolean(draft.file) : draft.tab === 'text' ? draft.text.trim().length >= 80 : /youtu\.?be/.test(draft.url));
+    const refreshGo = () => { go.disabled = !ready() || !aiStatus?.ok; };
+    const drawPanel = () => {
+      if (draft.tab === 'file') {
+        const input = h('input', { type: 'file', accept: ACCEPT, hidden: true });
+        input.addEventListener('change', () => { draft.file = input.files[0] || null; drawPanel(); refreshGo(); });
+        const drop = h('div', { class: 'sh-drop', role: 'button', tabindex: '0', onclick: () => input.click() },
+          draft.file ? h('span', { class: 'sh-file', text: `${draft.file.name} · ${draft.file.size < 1048576 ? `${Math.max(1, Math.round(draft.file.size / 1024))} KB` : `${(draft.file.size / 1048576).toFixed(1)} MB`}` }) : h('i', { style: 'font-size:30px;font-style:normal', text: '📤' }),
+          h('b', { text: draft.file ? 'Click to choose a different file' : 'Drop a file here, or click to choose' }),
+          h('small', { text: 'PDF, Word (.docx), PowerPoint (.pptx), text, or a photo of your notes · up to 20 MB' }), input);
+        drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('over'); });
+        drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+        drop.addEventListener('drop', (e) => { e.preventDefault(); draft.file = e.dataTransfer.files[0] || null; drawPanel(); refreshGo(); });
+        panel.replaceChildren(drop);
+      } else if (draft.tab === 'text') {
+        const box = h('textarea', { class: 'sh-input sh-paste', placeholder: 'Paste your notes, a reading, slide text or a transcript.', maxlength: 60000 });
+        box.value = draft.text;
+        const count = h('p', { class: 'sh-note' });
+        const upd = () => { const n = box.value.trim().length; count.textContent = n < 80 ? `A few sentences at least (${n} characters so far).` : `${n.toLocaleString()} characters.`; };
+        box.addEventListener('input', () => { draft.text = box.value; upd(); refreshGo(); });
+        upd();
+        panel.replaceChildren(box, count);
+        setTimeout(() => box.focus(), 0);
+      } else {
+        const link = h('input', { class: 'sh-input', placeholder: 'Paste a YouTube link, e.g. https://youtu.be/…', value: draft.url, 'aria-label': 'YouTube link' });
+        link.addEventListener('input', () => { draft.url = link.value.trim(); refreshGo(); });
+        link.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !go.disabled) createKit(); });
+        panel.replaceChildren(link, h('p', { class: 'sh-note', text: 'Claude studies from the video’s captions, so lectures and explainers work best.' }));
+        setTimeout(() => link.focus(), 0);
+      }
+    };
+    const tabs = h('div', { class: 'sh-src' }, [['file', '📤', 'Upload a file'], ['text', '📋', 'Paste text'], ['video', '🎬', 'Video link']].map(([id, icon, name]) =>
+      h('button', { class: draft.tab === id ? 'on' : '', onclick: (e) => { draft.tab = id; for (const b of tabs.children) b.classList.toggle('on', b === e.currentTarget); drawPanel(); refreshGo(); } }, h('i', { text: icon }), name)));
+    drawPanel();
+    go = h('button', { class: 'sh-go', text: 'Make my study kit', onclick: createKit });
+    badge = aiBadge();
+
+    const kits = Object.values(ctx.state.kits || {}).sort((a, b) => (b.opened || b.created) - (a.opened || a.created));
+    const due = dueCards(ctx.state);
+    const list = kits.length ? [
+      h('div', { class: 'sh-step', text: 'Your study kits' }),
+      due.length ? h('button', { class: 'sh-go', style: 'justify-self:start', text: `Review ${due.length} due flashcard${due.length === 1 ? '' : 's'}`, onclick: () => reviewCards(due.slice(0, 40), 'Due flashcards', null, home) }) : null,
+      h('div', { class: 'sh-kits' }, kits.map((k) => h('button', { class: 'sh-kit', onclick: () => openKit(k.id) },
+        h('i', { text: SOURCE_ICON[k.source?.kind] || '📚' }),
+        h('div', {}, h('b', { text: k.title }), h('small', { text: `${SOURCE_NAME[k.source?.kind] || 'Notes'}${k.source?.name && k.source.kind !== 'text' ? ` · ${k.source.name}` : ''}` })),
+        h('em', { text: kitMade(ctx.state, k) }))))] : [];
+    frame('Study Hall', 'Turn your material into a study kit',
+      h('p', { class: 'sh-intro', text: 'Bring what you’re studying. Claude turns it into a study kit, then makes flashcards, practice questions or a study guide whenever you ask.' }),
+      badge,
+      h('div', { class: 'sh-step', text: 'New study kit' }), tabs, panel,
+      h('div', { class: 'sh-gobar' }, go, h('p', { class: 'sh-note', text: 'Nothing is made until you pick it inside the kit.' })),
+      list);
+    refreshGo();
+    const opened = ctx;
+    checkAI().then(() => { if (ctx !== opened || !badge?.isConnected) return; const next = aiBadge(); badge.replaceWith(next); badge = next; refreshGo(); });
+  }
+
+  async function createKit() {
+    const tab = draft.tab;
+    const label = tab === 'file' ? draft.file?.name : tab === 'video' ? 'that video' : 'your notes';
+    const w = waiting('New study kit', tab === 'file' ? `Reading ${label}…` : tab === 'video' ? 'Getting the video’s captions…' : 'Reading your notes…',
+      tab === 'file' && /\.(png|jpe?g|webp|gif)$/i.test(draft.file?.name || '') ? 'Claude is reading your photo; handwriting can take a little longer.' : null, home);
+    try {
+      let src;
+      if (tab === 'text') src = { title: 'Pasted notes', text: draft.text.trim().slice(0, 60000), kind: 'text' };
+      else src = await ctx.ai.readMaterial(tab === 'file' ? { file: draft.file } : { url: draft.url });
+      if (!w.live()) return;
+      const sub = root.querySelector('.sh-load .sh-q');
+      if (sub) sub.textContent = 'Building your study kit…';
+      const info = await ctx.ai.makeKit(src.text, src.title);
+      w.stop();
+      if (!w.live()) return;
+      const kit = addKit(ctx.state, { ...info, source: { kind: src.kind, name: tab === 'file' ? draft.file.name : src.title }, chars: src.text.length, cut: Boolean(src.cut) }, src.text);
+      ctx.save();
+      Object.assign(draft, { file: null, text: '', url: '' });
+      openKit(kit.id);
+    } catch (err) {
+      w.stop();
+      if (!root.hidden) oops('Couldn’t make that kit', err, createKit, home, 'Back');
+    }
+  }
+
+  // --- a kit: overview, then flashcards / practice questions / study guide on request ------
+  function openKit(id) {
+    const kit = ctx.state.kits?.[id];
+    if (!kit) return home();
+    kit.opened = Date.now();
+    const text = kitText(kit.id);
+    const deck = kit.deckId && ctx.state.decks?.[kit.deckId];
+    const due = deck ? dueCards(ctx.state, Date.now(), deck.id).length : 0;
+    const part = (icon, name, made, info, buttons) => h('div', { class: `sh-part ${made ? 'made' : ''}` }, h('i', { text: icon }), h('b', { text: name }), h('small', { text: info }), buttons);
+    const missing = !text;
+    const cards = deck
+      ? part('🃏', 'Flashcards', true, `${deck.cards.length} cards${due ? ` · ${due} due now` : ' · none due'}. Cards you miss come back sooner.`, [
+        h('button', { class: 'sh-go', text: due ? `Study ${due} due` : 'Study all', onclick: () => reviewCards((due ? dueCards(ctx.state, Date.now(), deck.id) : deck.cards.map((card) => ({ deck, card }))), kit.title, kit, () => openKit(id)) }),
+        h('button', { class: 'sh-ghost', text: '+ 12 more cards', disabled: missing, onclick: () => makePart(kit, 'cards') })])
+      : part('🃏', 'Flashcards', false, 'A deck that comes back on a schedule, so it sticks.', h('button', { class: 'sh-go', text: 'Make flashcards', disabled: missing, onclick: () => makePart(kit, 'cards') }));
+    const quiz = kit.questions?.length
+      ? part('❓', 'Practice questions', true, `${kit.questions.length} questions${kit.lastScore ? ` · last time ${kit.lastScore}` : ''}. See why after each answer.`, [
+        h('button', { class: 'sh-go', text: 'Take them', onclick: () => runQuiz(kit) }),
+        h('button', { class: 'sh-ghost', text: 'New questions', disabled: missing, onclick: () => makePart(kit, 'questions') })])
+      : part('❓', 'Practice questions', false, 'Test-style multiple choice. Every right answer earns XP.', h('button', { class: 'sh-go', text: 'Make questions', disabled: missing, onclick: () => makePart(kit, 'questions') }));
+    const guide = kit.guide
+      ? part('📘', 'Study guide', true, 'The summary, key ideas, terms and what tests like to ask.', [
+        h('button', { class: 'sh-go', text: 'Open guide', onclick: () => showGuide(kit) }),
+        h('button', { class: 'sh-ghost', text: 'Rewrite it', disabled: missing, onclick: () => makePart(kit, 'guide') })])
+      : part('📘', 'Study guide', false, 'A summary with the key ideas, terms and watch-outs.', h('button', { class: 'sh-go', text: 'Make study guide', disabled: missing, onclick: () => makePart(kit, 'guide') }));
+    frame(kit.title, `${SOURCE_NAME[kit.source?.kind] || 'Notes'}${kit.source?.name && kit.source.kind !== 'text' ? ` · ${kit.source.name}` : ''}`,
+      kit.overview ? h('p', { class: 'sh-intro', text: kit.overview }) : null,
+      kit.topics?.length ? h('div', { class: 'sh-topics' }, kit.topics.map((t) => h('span', { text: t }))) : null,
+      kit.cut ? h('p', { class: 'sh-note', text: 'This was long, so the kit uses the first part of it.' }) : null,
+      missing ? h('p', { class: 'sh-err', text: 'The material for this kit isn’t on this computer any more, so nothing new can be made from it. What’s already made still works.' }) : null,
+      h('div', { class: 'sh-step', text: 'What do you want to study with?' }),
+      h('div', { class: 'sh-parts' }, cards, quiz, guide),
+      h('div', { class: 'sh-row' }, h('button', { class: 'sh-ghost', text: '← All kits', onclick: home }),
+        h('button', { class: 'sh-danger', text: 'Delete kit', onclick: () => { if (confirm(`Delete “${kit.title}” and its flashcards?`)) { deleteKit(ctx.state, kit.id); ctx.save(); home(); } } })));
+    ctx.save();
+  }
+
+  async function makePart(kit, part) {
+    const names = { cards: '12 flashcards', questions: '10 practice questions', guide: 'your study guide' };
+    const w = waiting(kit.title, `Claude is writing ${names[part]}…`, part === 'guide' ? 'Pulled only from your material.' : 'Straight from your material.', () => openKit(kit.id));
+    const deck = kit.deckId && ctx.state.decks?.[kit.deckId];
+    const avoid = part === 'cards' ? (deck?.cards || []).map((c) => c.front) : part === 'questions' ? (kit.questions || []).map((q) => q.q) : [];
+    try {
+      const out = await ctx.ai.makeKitPart(kitText(kit.id), part, { count: part === 'cards' ? 12 : 10, avoid, kitTitle: kit.title });
+      w.stop();
+      if (!w.live()) return;
+      if (part === 'cards') {
+        if (deck) addCards(ctx.state, deck.id, out.cards);
+        else kit.deckId = addDeck(ctx.state, { title: kit.title, cards: out.cards }).id;
+        ctx.save();
+        const d = ctx.state.decks[kit.deckId];
+        const fresh = d.cards.slice(-out.cards.length).map((card) => ({ deck: d, card }));
+        reviewCards(fresh, kit.title, kit, () => openKit(kit.id));
+      } else if (part === 'questions') {
+        kit.questions = out.questions;
+        kit.lastScore = '';
+        ctx.save();
+        runQuiz(kit);
+      } else {
+        kit.guide = out;
+        ctx.save();
+        showGuide(kit);
+      }
+    } catch (err) {
+      w.stop();
+      if (!root.hidden) oops('Couldn’t make that', err, () => makePart(kit, part), () => openKit(kit.id), 'Back to the kit');
+    }
+  }
+
+  function showGuide(kit) {
+    const g = kit.guide;
+    frame(kit.title, 'Study guide', h('div', { class: 'sh-guide' },
+      g.summary ? h('p', { class: 'sh-why', text: g.summary }) : null,
+      g.sections.map((s) => [h('h3', { text: s.heading }), h('ul', {}, s.points.map((p) => h('li', { text: p })))]),
+      g.terms?.length ? [h('h3', { text: 'Key terms' }), h('dl', {}, g.terms.map((t) => [h('dt', { text: t.term }), h('dd', { text: t.def })]))] : null,
+      g.watch?.length ? [h('h3', { text: 'Watch out for' }), h('ul', {}, g.watch.map((p) => h('li', { text: p })))] : null),
+    h('div', { class: 'sh-row' }, h('button', { class: 'sh-go', text: '← Back to the kit', onclick: () => openKit(kit.id) })));
+  }
+
+  // --- practice questions ---------------------------------------------------------------------
+  function runQuiz(kit) {
+    const list = kit.questions;
+    const source = { topic: kit.title };
     let i = 0, right = 0, wrong = 0;
-    const missed = [];
     const show = () => {
-      const q = set.questions[i];
+      const q = list[i];
       let answered = false;
       const why = h('div');
-      const next = h('button', { class: 'sh-go', text: i + 1 < set.questions.length ? 'Next' : 'Finish', hidden: true, onclick: () => { i += 1; if (i < set.questions.length) show(); else finish(); } });
+      const next = h('button', { class: 'sh-go', text: i + 1 < list.length ? 'Next' : 'Finish', hidden: true, onclick: () => { i += 1; if (i < list.length) show(); else finish(); } });
       const choices = h('div', { class: 'sh-choices' }, q.choices.map((c, k) => h('button', { class: 'sh-choice', text: `${'ABCD'[k]}. ${c}`, onclick: (e) => {
         if (answered) return;
         answered = true;
         const ok = k === q.answer;
-        if (ok) right += 1; else { wrong += 1; missed.push(q); }
+        if (ok) right += 1; else wrong += 1;
         e.currentTarget.classList.add(ok ? 'right' : 'wrong');
         choices.children[q.answer].classList.add('right');
         why.replaceChildren(h('div', { class: 'sh-why', text: `${ok ? 'Right. ' : 'Not quite. '}${q.why || ''}` }));
         next.hidden = false;
         ctx.onAnswer?.(source, q, ok);
       } })));
-      frame(set.title, `Question ${i + 1} of ${set.questions.length} · ${right} right`, bar(i, set.questions.length), h('div', { class: 'sh-q', text: q.q }), choices, why, next);
+      frame(kit.title, `Question ${i + 1} of ${list.length} · ${right} right`, bar(i, list.length), h('div', { class: 'sh-q', text: q.q }), choices, why, next);
+      keyHandler = (e) => { if (!answered && '1234'.includes(e.key)) choices.children[Number(e.key) - 1]?.click(); else if (answered && e.key === 'Enter') next.click(); };
     };
-    const finish = () => results(`${right} of ${right + wrong} right`, [ctx.reward({ ...source, right, wrong }), missed.length ? `The ${missed.length} you missed come back for review.` : 'A perfect round.'].filter(Boolean), pick);
+    const finish = () => {
+      kit.lastScore = `${right}/${right + wrong}`;
+      ctx.save();
+      results(`${right} of ${right + wrong} right`, [ctx.reward({ ...source, right, wrong }), wrong ? 'Make new questions any time from the kit, or take these again.' : 'A perfect round.'].filter(Boolean), kit);
+    };
     show();
   }
+  function results(title, lines, kit) {
+    frame(title, null, ...lines.map((t) => h('p', { class: 'sh-why', text: t })), h('div', { class: 'sh-row' },
+      kit ? h('button', { class: 'sh-go', text: '← Back to the kit', onclick: () => openKit(kit.id) }) : h('button', { class: 'sh-go', text: '← Study Hall', onclick: home }),
+      h('button', { class: 'sh-ghost', text: 'Done', onclick: close })));
+  }
 
-  // --- flashcards ---------------------------------------------------------------------------
-  function reviewCards(list, title, source = null) {
-    if (!list.length) return results('Nothing due', ['All caught up on these cards. Come back tomorrow, or make a new deck.'], null);
+  // --- flashcards -----------------------------------------------------------------------------
+  function reviewCards(list, title, kit, back) {
+    if (!list.length) return results('Nothing due', ['All caught up on these cards. Come back tomorrow, or add more.'], kit);
     let i = 0, good = 0, again = 0;
     const queue = [...list];
     const show = () => {
       const { deck, card } = queue[i];
-      let back = false;
+      let flipped = false;
       const face = h('div', { class: 'sh-flip', onclick: () => flip() }, h('small', { text: 'Front · tap to flip' }), card.front);
       const rate = h('div', { class: 'sh-rate', hidden: true },
         h('button', { class: 'again', text: 'Again', onclick: () => grade('again') }),
         h('button', { class: 'good', text: 'Good', onclick: () => grade('good') }),
         h('button', { class: 'easy', text: 'Easy', onclick: () => grade('easy') }));
-      const flip = () => { back = !back; face.className = `sh-flip ${back ? 'back' : ''}`; face.replaceChildren(h('small', { text: back ? 'Back' : 'Front · tap to flip' }), back ? card.back : card.front); rate.hidden = !back; };
+      const flip = () => { flipped = !flipped; face.className = `sh-flip ${flipped ? 'back' : ''}`; face.replaceChildren(h('small', { text: flipped ? 'Back' : 'Front · tap to flip' }), flipped ? card.back : card.front); rate.hidden = !flipped; };
       const grade = (g) => {
         rateCard(ctx.state, deck.id, card.id, g);
         if (g === 'again') { again += 1; queue.push(queue[i]); } else good += 1;
         i += 1;
         if (i < queue.length && i < list.length * 2) show(); else finish();
       };
-      frame(title, `Card ${Math.min(i + 1, queue.length)} of ${queue.length} · ${deck.title}`, bar(i, queue.length), face, rate, h('p', { class: 'sh-note', text: 'Space flips · 1 Again · 2 Good · 3 Easy' }));
-      keyHandler = (e) => { if (e.key === ' ') { e.preventDefault(); flip(); } else if (back && '123'.includes(e.key)) grade(['again', 'good', 'easy'][Number(e.key) - 1]); };
+      frame(title, `Card ${Math.min(i + 1, queue.length)} of ${queue.length}`, bar(i, queue.length), face, rate,
+        h('div', { class: 'sh-row' }, h('p', { class: 'sh-note', style: 'flex:1', text: 'Space flips · 1 Again · 2 Good · 3 Easy' }), h('button', { class: 'sh-ghost', text: 'Stop', onclick: () => { ctx.save(); back(); } })));
+      keyHandler = (e) => { if (e.key === ' ') { e.preventDefault(); flip(); } else if (flipped && '123'.includes(e.key)) grade(['again', 'good', 'easy'][Number(e.key) - 1]); };
     };
     const finish = () => {
-      keyHandler = null;
       ctx.save();
-      results(`${good} card${good === 1 ? '' : 's'} remembered`, [ctx.reward({ ...(source || {}), right: good, wrong: again, cards: true }), 'Cards you knew come back in a few days; the ones you didn’t, sooner. Find them under "Your flashcard decks".'].filter(Boolean), null);
+      results(`${good} card${good === 1 ? '' : 's'} remembered`, [ctx.reward({ topic: kit?.title || null, right: good, wrong: again, cards: true }), 'Cards you knew come back in a few days; the ones you didn’t, sooner.'].filter(Boolean), kit);
     };
     show();
   }
   let keyHandler = null;
   addEventListener('keydown', (e) => { if (!root.hidden && keyHandler && !(e.target instanceof HTMLTextAreaElement) && !(e.target instanceof HTMLInputElement)) keyHandler(e); });
 
-  // --- explain it -------------------------------------------------------------------------
-  function runExplain(set, source, pick) {
-    let i = 0, total = 0;
-    const show = () => {
-      const p = set.prompts[i];
-      const box = h('textarea', { class: 'sh-answer', placeholder: 'Explain it in your own words, like you’re teaching a friend.' });
-      const out = h('div');
-      const submit = h('button', { class: 'sh-go', text: 'Check my answer', onclick: async () => {
-        if (box.value.trim().length < 15) return void out.replaceChildren(h('p', { class: 'sh-err', text: 'Write a bit more first, a few sentences at least.' }));
-        submit.disabled = true; submit.textContent = 'Claude is reading it…';
-        try {
-          const g = await ctx.ai.gradeExplain(p, box.value);
-          total += g.score;
-          ctx.onAnswer?.(source, { q: p.q, choices: [], answer: 0, why: p.points.join(' · ') }, g.score >= 70);
-          out.replaceChildren(...[h('div', { class: 'sh-score', text: `${g.score}/100` }),
-            g.got.length ? h('ul', { class: 'sh-got' }, g.got.map((t) => h('li', { text: t }))) : null,
-            g.missed.length ? h('ul', { class: 'sh-missed' }, g.missed.map((t) => h('li', { text: t }))) : null,
-            g.tip ? h('p', { class: 'sh-why', text: g.tip }) : null,
-            h('button', { class: 'sh-go', text: i + 1 < set.prompts.length ? 'Next question' : 'Finish', onclick: () => { i += 1; if (i < set.prompts.length) show(); else finish(); } })].filter(Boolean));
-          submit.remove();
-        } catch (err) { submit.disabled = false; submit.textContent = 'Check my answer'; out.replaceChildren(h('p', { class: 'sh-err', text: `${friendly(err)} Your answer is still here; press Check again.` })); }
-      } });
-      frame(set.title, `Question ${i + 1} of ${set.prompts.length}`, bar(i, set.prompts.length), h('div', { class: 'sh-q', text: p.q }), box, submit, out);
-      setTimeout(() => box.focus(), 0);
-    };
-    const finish = () => {
-      const avg = Math.round(total / set.prompts.length);
-      const right = Math.round((avg / 100) * set.prompts.length);
-      results(`Average ${avg}/100`, [ctx.reward({ ...source, right, wrong: set.prompts.length - right, written: true })], pick);
-    };
-    show();
-  }
-
-  // --- practice problems ----------------------------------------------------------------
-  function runProblems(set, source, pick) {
-    let i = 0, right = 0, wrong = 0;
-    const show = () => {
-      const p = set.problems[i];
-      const work = h('textarea', { class: 'sh-answer', placeholder: 'Work it out here (optional), then reveal the solution.' });
-      const sol = h('div');
-      const reveal = h('button', { class: 'sh-go', text: 'Show solution', onclick: () => {
-        reveal.remove();
-        sol.replaceChildren(h('div', { class: 'sh-step', text: 'Solution' }), h('ol', { class: 'sh-steps' }, p.steps.map((s) => h('li', { text: s }))), h('div', { class: 'sh-why', text: `Answer: ${p.answer}` }),
-          h('div', { class: 'sh-row' }, h('span', { text: 'Did you get it?' }),
-            h('button', { class: 'sh-chip', text: 'Got it', onclick: () => next(true) }),
-            h('button', { class: 'sh-chip', text: 'Not this time', onclick: () => next(false) })));
-      } });
-      const next = (ok) => { if (ok) right += 1; else wrong += 1; ctx.onAnswer?.(source, { q: p.q, choices: [], answer: 0, why: `${p.steps.join(' ')} Answer: ${p.answer}` }, ok); i += 1; if (i < set.problems.length) show(); else results(`${right} of ${right + wrong} solved`, [ctx.reward({ ...source, right, wrong })], pick); };
-      frame(set.title, `Problem ${i + 1} of ${set.problems.length}`, bar(i, set.problems.length), h('div', { class: 'sh-q', text: p.q }), work, reveal, sol);
-    };
-    show();
-  }
-
   return {
     isOpen: () => !root.hidden,
     open(context, prefill = {}) {
       ctx = context;
       root.hidden = false;
-      pickScreen(prefill);
+      void prefill;
+      home();
     },
     close,
   };

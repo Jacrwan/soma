@@ -23,7 +23,7 @@ import { createCoach } from './tutorial.js';
 import { makePiece } from './catalog.js';
 import { createOwl, makeOwl3D } from './owl.js';
 import { createStudyHall } from './studyhall.js';
-import { makeStudySet, gradeExplain, practiceStatus } from './practice.js';
+import { practiceStatus, readMaterial, makeKit, makeKitPart } from './practice.js';
 import * as Lore from './lore.js';
 
 // --- State ----------------------------------------------------------------------
@@ -1243,7 +1243,7 @@ function openStudyHall(prefill = {}) {
   studyHall.open({
     state, save,
     upcoming, courses,
-    ai: { makeStudySet, gradeExplain },
+    ai: { readMaterial, makeKit, makeKitPart },
     status: practiceStatus,
     onAnswer: (source, q, ok) => {
       const item = source.item && state.school.items[source.item.id];
@@ -1943,7 +1943,6 @@ createVillager('mage', { tint: 0x4a3f8f, scale: 0.92 }).then((model) => {
   if (hand) { const s = 1 / hand.getWorldScale(new THREE.Vector3()).x; lantern.scale.setScalar(s); lantern.position.y = -0.12 * s; hand.add(lantern); }
   else { lantern.position.set(0.35, 0.9, 0.2); owl.object.add(lantern); }
 }).catch(() => {});
-const owlSpot = new THREE.Vector3();
 // The dialogue portrait: the Librarian's head and shoulders.
 createVillager('mage', { tint: 0x4a3f8f, scale: 0.92 }).then((m) => {
   m.userData.villager.update(0.4, 'idle');
@@ -1954,29 +1953,20 @@ createVillager('mage', { tint: 0x4a3f8f, scale: 0.92 }).then((m) => {
   try { ui.portrait('owl', renderThumb(crop, 0.15), 2.6); } catch { /* keeps the lantern icon */ }
 }).catch(() => {});
 world.earth.add(owl.object);
+// The Librarian keeps to one post beside the Canvas board; they don't follow you.
+const OWL_POST = new THREE.Vector3(3.6, 0, 25.6);
+owl.object.position.copy(OWL_POST);
 function updateOwl(dt, time) {
   const o = owl.object;
   o.visible = !inRealm() && state.scene === 'earth' && !photo.on;
   if (!o.visible) return;
-  // Walks a little behind you and to the left; hurries when you get far ahead.
+  o.position.set(OWL_POST.x, world.groundHeight('earth', OWL_POST.x, OWL_POST.z), OWL_POST.z);
+  // Turns to watch you when you're close; otherwise looks out over the plaza.
   const p = player.object.position;
-  const side = new THREE.Vector3(Math.cos(cam.yaw), 0, -Math.sin(cam.yaw));
-  const back = new THREE.Vector3(Math.sin(cam.yaw), 0, Math.cos(cam.yaw));
-  owlSpot.copy(p).addScaledVector(side, -1.8).addScaledVector(back, 1.2);
-  const dx = owlSpot.x - o.position.x, dz = owlSpot.z - o.position.z, d = Math.hypot(dx, dz);
-  if (d > 30) o.position.copy(owlSpot);
-  else if (d > 0.6) {
-    const speed = Math.min(d * 2.2, d > 6 ? 11 : 4.5);
-    o.position.x += (dx / d) * speed * dt;
-    o.position.z += (dz / d) * speed * dt;
-    o.rotation.y = Math.atan2(dx, dz);
-  } else {
-    // Standing: turn to face you.
-    const t = Math.atan2(p.x - o.position.x, p.z - o.position.z);
-    o.rotation.y += Math.atan2(Math.sin(t - o.rotation.y), Math.cos(t - o.rotation.y)) * Math.min(1, dt * 4);
-  }
-  o.position.y = world.groundHeight('earth', o.position.x, o.position.z);
-  owl.model?.userData.villager.update(dt, d > 0.6 ? 'walk' : 'idle');
+  const near = Math.hypot(p.x - o.position.x, p.z - o.position.z) < 12;
+  const t = near ? Math.atan2(p.x - o.position.x, p.z - o.position.z) : Math.PI * 0.85;
+  o.rotation.y += Math.atan2(Math.sin(t - o.rotation.y), Math.cos(t - o.rotation.y)) * Math.min(1, dt * 3);
+  owl.model?.userData.villager.update(dt, 'idle');
   void time;
 }
 /** Plays a story moment once, then calls after (even if it was already seen). */
@@ -2014,7 +2004,10 @@ function updateTutorial(time) {
   coach.setVisible(!ui.isOpen());
   if (tut.advancing) return;
   step.tick?.();
-  coach.follow(owl.object.position);
+  // The bubble sits over the Librarian when they're close and in view; otherwise at the top of the screen.
+  const op = owl.object.position, pp = player.object.position;
+  if (Math.hypot(op.x - pp.x, op.z - pp.z) < 14 && coach.inView(op)) coach.follow(op);
+  else coach.pin();
   coach.point(step.target?.() || null, player.object.position, time);
   if (!step.manual && step.done()) {
     tut.advancing = true;
