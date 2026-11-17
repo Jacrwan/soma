@@ -393,17 +393,19 @@ export function createUI(on) {
 
     /** Grades: each course's grade and every graded assignment. */
     grades({ courses, sample, onCanvas }) {
-      const pct = (p) => (p == null ? '–' : `${Math.round(p * 10) / 10}%`);
-      panel({ title: 'Grades', subtitle: sample ? 'Sample semester: connect Canvas in Soma to see your real grades here.' : 'Straight from Canvas, through Soma. Every new grade also drops a chest on your plaza.', wide: true },
+      const pct = (p) => (p == null ? '–' : `${Math.round(p * 100) / 100}%`);
+      panel({ title: 'Grades', subtitle: sample ? 'Sample semester: connect Canvas in Soma to see your real grades here.' : 'The same grades as Soma’s Grades page. Every new grade also drops a chest on your plaza.', wide: true },
         courses.length ? courses.map((c) => el('section', { class: 'grade-course' },
           el('div', { class: 'grade-head' },
             el('b', { text: c.courseName }),
-            el('span', { class: 'grade-big' }, c.letter ? el('em', { text: c.letter }) : null, el('span', { text: pct(c.pct) })),
-            el('small', { text: c.fromCanvas ? 'Course grade from Canvas' : c.items.length ? `Estimated from ${c.items.length} graded assignment${c.items.length === 1 ? '' : 's'}` : '' })),
-          c.items.length ? el('div', { class: 'grade-list' }, c.items.map((it) => el('div', { class: `grade-row ${it.pct >= 90 ? 'hi' : it.pct < 70 ? 'lo' : ''}` },
+            el('span', { class: 'grade-big' }, c.big ? el('em', { text: c.big }) : el('span', { text: 'No grade yet' }), c.small ? el('span', { text: c.small }) : null),
+            el('small', { text: c.basis || '' })),
+          c.categories?.length ? el('div', { class: 'grade-cats' }, c.categories.map((k) => el('span', { class: 'grade-cat' },
+            el('b', { text: k.name }), el('small', { text: `${k.weight} · ${k.pct == null ? 'nothing graded' : pct(k.pct)}${k.dropped ? ` · lowest ${k.dropped} dropped` : ''}` })))) : null,
+          c.items.length ? el('div', { class: 'grade-list' }, c.items.map((it) => el('div', { class: `grade-row ${it.pct >= 90 ? 'hi' : it.pct != null && it.pct < 70 ? 'lo' : ''}` },
             el('span', { class: 'grade-name', text: it.name }),
-            el('small', { text: [it.kind === 'boss' ? 'Exam' : null, it.group || null].filter(Boolean).join(' · ') }),
-            el('span', { class: 'grade-score', text: `${Math.round(it.score * 100) / 100} / ${it.points}` }),
+            el('small', { text: it.tag || '' }),
+            el('span', { class: 'grade-score', text: it.points ? `${Math.round(it.score * 100) / 100} / ${it.points}` : `${Math.round(it.score * 100) / 100}` }),
             el('b', { text: pct(it.pct) })))) : null))
           : el('p', { class: 'note', text: 'No grades posted yet. They show up here by themselves as Canvas posts them.' }),
         el('div', { class: 'actions', style: 'margin-top:12px' }, el('button', { class: 'btn small', text: 'Open Canvas (G)', onclick: () => { close(); onCanvas(); } })),

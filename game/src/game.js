@@ -1304,9 +1304,46 @@ function canvasCourseGrades() {
   }
   return out;
 }
-function openGrades() {
+// Inside Soma, the Grades panel uses Soma's own grade code (src/lib/grades.ts), so it shows
+// exactly what Soma's Grades page shows: Canvas's course grade, the syllabus weights and
+// drops from the grade book, Gradescope scores and grades typed in by hand. Loaded only
+// when the panel opens. Outside Soma (the standalone game) the glob finds nothing and the
+// game's own estimate from Canvas assignments is used instead.
+const somaGradeCode = import.meta.glob('../../src/lib/grades.ts');
+async function somaGrades() {
+  const load = Object.values(somaGradeCode)[0];
+  if (!load) return null;
+  try {
+    const G = await load();
+    const basis = { weighted: 'Weighted by your syllabus (Soma grade book)', canvas: 'Course grade from Canvas', average: 'Average of everything graded so far', none: '' };
+    return G.buildGrades().filter((c) => !c.archived).map((c) => {
+      const h = G.headline(c);
+      return {
+        courseName: c.name, big: h.big, small: h.kind === 'average' ? null : h.small, basis: basis[h.kind] || '',
+        categories: (c.weighted?.categories || []).filter((r) => r.count > 0 || r.category.weight > 0).map((r) => ({
+          name: r.category.name, weight: c.weighted.mode === 'points' ? `${r.category.points ?? 0} pts` : `${r.category.weight}%`,
+          pct: r.percent, dropped: r.dropped,
+        })),
+        items: c.items.map((i) => ({ name: i.name, score: i.score, points: i.max, pct: i.percent, tag: [i.source === 'gradescope' ? 'Gradescope' : i.source === 'manual' ? 'Added by you' : null, i.group, i.late ? 'late' : null].filter(Boolean).join(' · ') })),
+      };
+    });
+  } catch {
+    return null;
+  }
+}
+async function openGrades() {
   if (ui.isOpen()) ui.close();
-  ui.grades({ courses: S.gradeReport(state, canvasCourseGrades()), sample: state.school.source === 'demo', onCanvas: () => openSchool() });
+  let courses = state.school.source === 'demo' ? null : await somaGrades();
+  if (!courses?.length) {
+    courses = S.gradeReport(state, canvasCourseGrades()).map((c) => ({
+      courseName: c.courseName, big: c.letter || (c.pct != null ? `${Math.round(c.pct * 100) / 100}%` : null), small: c.letter && c.pct != null ? `${Math.round(c.pct * 100) / 100}%` : null,
+      basis: c.fromCanvas ? 'Course grade from Canvas' : c.items.length ? `Estimated from ${c.items.length} graded assignment${c.items.length === 1 ? '' : 's'}` : '',
+      categories: [],
+      items: c.items.map((i) => ({ name: i.name, score: i.score, points: i.points, pct: i.pct, tag: [i.kind === 'boss' ? 'Exam' : null, i.group || null].filter(Boolean).join(' · ') })),
+    }));
+  }
+  if (ui.isOpen()) return;
+  ui.grades({ courses, sample: state.school.source === 'demo', onCanvas: () => openSchool() });
 }
 function openSchool() {
   tut.flags.school = true;

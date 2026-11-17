@@ -1091,3 +1091,6 @@ body.study-scene #focus { transform: scale(1.15); transition: transform 1.2s eas
 .grade-row .grade-score { opacity: .7; font-size: 13px; }
 .grade-row b { min-width: 52px; text-align: right; }
 .grade-row.hi b { color: #7be38f; } .grade-row.lo b { color: #ff9b8a; }
+.grade-cats { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.grade-cat { display: grid; padding: 5px 9px; border-radius: 10px; background: rgba(255,215,106,0.1); font-size: 12px; }
+.grade-cat small { opacity: .7; font-size: 11px; }
