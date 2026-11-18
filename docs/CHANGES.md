@@ -9,6 +9,68 @@ still needed.
 
 ---
 
+## 2026-11-17 (Ask Soma reschedules in one fixed order; Accept places a card again)
+
+- **Why:** at 5:23 PM the owner sent "push project 4 for later, im doing math
+  right now for 2 hours, then oral presentations. im not attending large
+  group." Soma put Project 4 between math and Oral Presentations. Each block
+  took the first gap that fit it, so there was no "then", and "later" named no
+  other day, so the move was pulled back onto today. The follow-up "now oral
+  presentations immediately after math" (typed "no") got a break added and
+  Project 4 sent to Thursday, which the reply claimed without a card. Earlier
+  a Lab 10 card had no room at Accept and could only be dismissed. Owner's rules:
+  "later" is the next open time before it's due (later today if there's
+  room, else ask about another day), leaving room for a task's later steps;
+  work being rescheduled pushes aside only lower-priority work; a card whose
+  time is gone is placed again and asked about again.
+- **What:** placement now runs in one fixed order (`src/lib/replan.ts`, pure,
+  wired into `interpret` in `src/lib/assistant.ts`):
+  1. The model reports intent: new `"sequence":{anchor, items}` for an order
+     the student gave, and `"later":true` on a move. There's also a prompt
+     rule for reading fast typos in context.
+  2. A sequence is laid back to back from its anchor (`layChain`). It flows
+     past classes they attend and started/done/on-timer work. Their other work
+     in the way is moved by `clearFor`, as for a stated time (Keep both still
+     offered).
+  3. `later` (`placeLater`) goes in the first open time after now, after where
+     the block was and after the sequence. It must end before its due time
+     and leave room for later steps (`fitsAfter`, steps read from the sitting
+     row). With no room that day, the card asks "No room left today after
+     8:20 PM. Put it Wed 8:00 AM–8:45 AM?".
+  4. Soma's own picks (`makeRoom`) move only work ranked below what is being
+     placed (`movable` + `outranks`, rank from `effectiveRank` with the
+     student's own deadline). Stated times and sequences aren't limited by
+     rank (your words first).
+  5. Whole-board check before any card shows: this reply's cards (every
+     split piece), cards from earlier turns that stay, the plan, and classes
+     not skipped (unless allowed by overlapOk or a stated time). A card that
+     lands on an earlier waiting card is read again with that card held;
+     anything still clashing is asked about.
+  6. A reply that says it moves something no card changes goes back to the
+     model once; if it stays, that sentence is cut (`unbackedClaims`).
+  - Accept (`applyProposal` → `placeAgain`): a move or new block whose time is
+    taken or already over is placed again against the current plan. The card
+    gets the new time and the student is asked again ("…now fits 6:30
+    PM–7:30 PM. Accept again to keep it." / "Put it Wed 8:00 AM–9:00 AM? It's
+    waiting on Wed: accept it there, or Accept all."). A move whose block
+    moved since (the task scheduler) is checked where the student wants it,
+    not refused. A stale delete is still refused. Accept all leaves re-placed
+    cards for a second Accept (`PlacedAgain`).
+  - `statedRange` (`src/lib/statedTime.ts`): a bare number right after a name
+    word is part of the name. "Move project 4 to 5:30 pm until 6:15 pm" read
+    as 4:00–5:30 PM before.
+- **Tests:** tests/ai-reschedule-pipeline.spec.ts (the Nov 17 replay comes out
+  math 5:23–7:23, oral 7:23–8:23, Project 4 8:25–9:10; later with no room asks
+  about tomorrow; later on a step that leaves no room for the next step asks;
+  only lower-ranked work moves; Accept re-places, and on a full day offers
+  tomorrow; a new card never lands on a waiting one; an unbacked claim is
+  retried and cut). All 8 fail on the old code. tests/replan.spec.ts (pure
+  steps, the name-number parse). A real-model check of the same messages is in
+  the pipeline spec, skipped without ANTHROPIC_API_KEY.
+- **Not verified:** the real-model check (needs the owner's key). The prompt
+  rules for `sequence`, `later` and typos only work if the model follows them.
+- **Setup:** none. No schema change.
+
 ## 2026-11-17 (Habits: one add row after removing the last habit)
 
 - **Why:** the owner saw two "Gym / 5× a week / Add" rows. Removing the last

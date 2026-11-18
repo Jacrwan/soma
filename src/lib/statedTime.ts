@@ -14,10 +14,18 @@
 export function statedRange(text: string, nowMinute: number): { start: number; end: number; fromNow: boolean } | undefined {
   const TOKEN = String.raw`(now|noon|midnight|\d{1,2}(?::[0-5]\d)?\s*(?:[ap]\.?\s?m\.?)?)`;
   // A token must stand alone: "4.1-4.9" and "HW 4: KK-4" are not times.
-  const range = new RegExp(String.raw`(?:^|[\s(,])(?:from\s+)?${TOKEN}(?![\d.:])\s*(-|–|—|\bto\b|\buntil\b|\btill\b|\btil\b)\s*${TOKEN}(?![\d.:])`, 'i');
+  const range = new RegExp(String.raw`(?:^|[\s(,])(?:from\s+)?${TOKEN}(?![\d.:])\s*(-|–|—|\bto\b|\buntil\b|\btill\b|\btil\b)\s*${TOKEN}(?![\d.:])`, 'gi');
   const lone = new RegExp(String.raw`(?:^|[\s(,])(until|till|til)\s+${TOKEN}(?![\d.:])`, 'i');
   let startTok: string, endTok: string, connector: string;
-  const m = text.match(range);
+  // "Move project 4 to 5:30 pm" is Project 4 moved to 5:30, not 4:00–5:30
+  // (2026-11-17): a bare number right after a name word is part of the name.
+  const NAME_WORD = /\b(project|proj|lab|hw|homework|quiz|chapter|ch|section|sec|problem|pset|ps|part|step|week|unit|lecture|lec|checkpoint|essay|exam|midterm|assignment|discussion|disc|worksheet|reading|module|lesson|test|paper|draft|set|no|number|#)\s*$/i;
+  let m: RegExpExecArray | null = null;
+  for (let x: RegExpExecArray | null; (x = range.exec(text)); ) {
+    const at = x.index + x[0].indexOf(x[1]);
+    if (/[:apnm]/i.test(x[1]) || !NAME_WORD.test(text.slice(0, at))) { m = x; break; }
+    range.lastIndex = at + x[1].length;   // look again just past the name's number
+  }
   if (m) { [, startTok, connector, endTok] = m; }
   else {
     const l = text.match(lone);
