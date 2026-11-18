@@ -9,6 +9,34 @@ still needed.
 
 ---
 
+## 2026-11-18 (Pieces of one task cut up by breaks join back into one sitting)
+
+- **Why:** after the fix below shipped, the owner's Project 4: Animator
+  checkpoint 1 still sat as 3:00–3:40, 3:50–4:05 and 4:15–4:20. These were the
+  pieces earlier runs had left. Once out from under the math block, each one was
+  "fine where it is", so nothing put them back together.
+- **What:** `src/lib/taskScheduler.ts` step 1 (`joinPieces`) runs before
+  sittings are kept. Sittings of the same task on one day join into the first
+  one when all of these hold:
+  - they are back to back, apart by no more than the break (+5 min);
+  - none is Focus-started, pinned, done or past (one whose time has come but
+    nobody started counts);
+  - the joined sitting stays within the longest sitting.
+
+  Joined sittings then go through the normal checks: if the joined time is
+  free it's saved there, otherwise it moves whole. The others are removed.
+  Tasks with steps or a set number of sittings are left alone. Sittings far
+  apart on a day stay as they are. A sitting placed twice in one run keeps
+  its last time.
+- **Tests:** `tests/task-scheduler.spec.ts`: "back-to-back pieces of one task,
+  apart only by breaks, join into one sitting" (the owner's board at 3:03 →
+  3:00–4:00) and "sittings of one task far apart on a day, or with a set
+  number, stay as they are".
+- **Note:** `tests/ai-plan-changes.spec.ts` "renaming one block of a task with
+  two blocks…" fails on and off with or without this change (strict-mode
+  locator, timing). `tests/ai-load-limit.spec.ts` was already failing.
+- **Setup:** none. The owner's pieces join on the next dashboard load.
+
 ## 2026-11-18 (A sitting whose time has come no longer splits into shards or stays under your block)
 
 - **Why:** at 12:29 PM the owner said "im doing the math homework ... from now

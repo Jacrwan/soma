@@ -279,10 +279,39 @@ export function schedule(input: ScheduleInput): ScheduleResult {
   /** Sittings that stay as they are whatever the count: done, started (even if over), pinned ahead, and missed ones (re-placed whole). */
   const sittingsSettled = (st: State) => st.task.sittings.filter(s => s.done || s.started || (s.end > now && (s.pinned || s.start < now))).length + st.pool.filter(p => p.asap).length;
 
+  /**
+   * One block cut up by breaks is one sitting again (2026-11-18: Project 4 sat
+   * as 3:00–3:40, 3:50–4:05 and 4:15–4:20, pieces left by earlier runs, and
+   * nothing joined them). Back-to-back sittings of the same task on one day,
+   * apart by no more than a break, none started (Focus), pinned, done or past, become the
+   * first one, as long as it stays within the longest sitting. Not for steps
+   * or a set number of sittings, where each one is the student's.
+   */
+  const joined = new Set<string>();
+  const joinPieces = (st: State): SchedSitting[] => {
+    const list = st.task.sittings.map(x => ({ ...x })).sort((a, b) => a.start - b.start);
+    if (st.task.steps || st.task.count) return list;
+    // A piece whose time has come but that nobody started joins too: it counts whole and moves like a plain one.
+    const loose = (x: SchedSitting) => !x.done && !x.pinned && !x.started && x.end > now;
+    const out: SchedSitting[] = [];
+    let lastEnd = -Infinity;
+    for (const s of list) {
+      const prev = out[out.length - 1];
+      if (prev && loose(prev) && loose(s) && dayOf(prev.start) === dayOf(s.start)
+        && s.start - lastEnd <= brk + 5 && prev.end - prev.start + s.end - s.start <= prefs.longest) {
+        prev.end += s.end - s.start;
+        joined.add(prev.id);
+        remove.push({ taskId: st.task.id, id: s.id });
+      } else out.push(s);
+      lastEnd = s.end;
+    }
+    return out;
+  };
+
   // 1. Keep what can stay. Higher tasks claim first where two overlap.
   for (const st of states) {
     const open = st.task.steps ? new Set(st.task.steps.map(x => x.id)) : null;
-    for (const s of st.task.sittings.map(x => ({ ...x })).sort((a, b) => a.start - b.start)) {
+    for (const s of joinPieces(st)) {
       if (s.done) continue;
       const len = s.end - s.start;
       // With steps, a sitting stands for one open step; generic ones and extras go.
@@ -320,6 +349,7 @@ export function schedule(input: ScheduleInput): ScheduleResult {
           if (dayOf(s.start) === today) todayRoom -= len;
           st.covered += len; st.days.add(dayOf(s.start));
           if (open && stepOk && s.stepId) st.stepEnd.set(s.stepId, s.end);
+          if (joined.has(s.id)) place.push({ taskId: st.task.id, id: s.id, start: s.start, end: s.end });
         } else st.pool.push({ id: s.id, len, asap: false, removable: true, ...(open && s.stepId ? { stepId: s.stepId } : {}) });
         continue;
       }
@@ -330,6 +360,7 @@ export function schedule(input: ScheduleInput): ScheduleResult {
         if (dayOf(s.start) === today) todayRoom -= len;
         st.covered += len; st.movable.push(s); st.days.add(dayOf(s.start));
         if (open && s.stepId) st.stepEnd.set(s.stepId, s.end);
+        if (joined.has(s.id)) place.push({ taskId: st.task.id, id: s.id, start: s.start, end: s.end });
       } else st.pool.push({ id: s.id, len, asap: false, removable: true, ...(open && s.stepId ? { stepId: s.stepId } : {}) });
     }
     // Steps keep their order: a kept sitting that now starts before an earlier step's ends has to move.
@@ -659,7 +690,10 @@ export function schedule(input: ScheduleInput): ScheduleResult {
 
   // A move back to the same time is no move.
   const original = new Map(input.tasks.flatMap(t => t.sittings.map(s => [s.id, s] as const)));
-  const placed = place.filter(p => { const o = p.id ? original.get(p.id) : undefined; return !o || o.start !== p.start || o.end !== p.end; });
+  // A sitting placed twice in one run (joined, then moved or trimmed) keeps its last time.
+  const last = new Map(place.map((p, i) => [p.id ?? i, i] as const));
+  const placed = place.filter((p, i) => last.get(p.id ?? i) === i)
+    .filter(p => { const o = p.id ? original.get(p.id) : undefined; return !o || o.start !== p.start || o.end !== p.end; });
   // Today's open time, and the sitting that could fill it if the student wants.
   const todayOpen = segsOnDay(free, today, now).reduce((n, [a, z]) => n + z - a, 0);
   let ahead: ScheduleResult['ahead'];
