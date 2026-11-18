@@ -9,7 +9,7 @@ still needed.
 
 ---
 
-## 2026-11-18 (Landing logo wall trimmed to 7 schools for now)
+## 2026-11-18 (Landing logo wall trimmed to 8 schools for now)
 
 - **Why:** the owner wants a shorter "Used by students at" wall for now.
 - **What:** the wall's list moved to `src/components/Landing/universityWall.ts`.
@@ -17,8 +17,10 @@ still needed.
   is UC Berkeley, Cornell, UC Irvine, Rutgers, UC Davis, Emory and Carnegie
   Mellon. To restore the full wall, point `UNIVERSITY_LOGOS` at
   `UNIVERSITY_WALL_FULL`. No logo files were deleted.
-- **Not done:** Boston College was asked for but there is no logo file yet in
-  `public/university-logos/`.
+- **Boston College:** added as `public/university-logos/boston-college.svg`,
+  the public-domain "Boston College Logotype.svg" from Wikimedia Commons
+  (checked: no scripts). It's on the wall now, so 8 schools show, and it's
+  in `UNIVERSITY_WALL_FULL` too.
 - **Tests:** none; `npm run build` passes.
 - **Setup:** none.
 

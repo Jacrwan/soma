@@ -1,6 +1,6 @@
 // The "Used by students at" logo wall on the landing page.
 //
-// UNIVERSITY_WALL_FULL is the full wall, saved 2026-11-18 when the owner
+// UNIVERSITY_WALL_FULL is the full wall (plus Boston College), saved 2026-11-18 when the owner
 // trimmed it for now. To bring it back, point UNIVERSITY_LOGOS at it.
 // The logo files all stay in public/university-logos/.
 
@@ -22,6 +22,7 @@ export const UNIVERSITY_WALL_FULL: readonly UniversityLogo[] = [
   { name: 'Carnegie Mellon University', src: '/university-logos/carnegie-mellon.png', shape: 'mark' },
   { name: 'Georgia Tech', src: '/university-logos/georgia-tech.svg', shape: 'mark' },
   { name: 'Rutgers University', src: '/university-logos/rutgers-wordmark.svg', shape: 'wide' },
+  { name: 'Boston College', src: '/university-logos/boston-college.svg', shape: 'wide' },
 ];
 
 const SHOWN_NOW = [
@@ -32,7 +33,7 @@ const SHOWN_NOW = [
   'UC Davis',
   'Emory University',
   'Carnegie Mellon University',
-  // Boston College: add once a logo file is in public/university-logos/.
+  'Boston College',
 ];
 
 export const UNIVERSITY_LOGOS: readonly UniversityLogo[] = UNIVERSITY_WALL_FULL.filter(u =>
