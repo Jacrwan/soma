@@ -405,3 +405,28 @@ test('the Nov 18 board: Project 4\'s 15 + 5 + 40 minute pieces under and after m
     expect(all.reduce((n, s) => n + s.end - s.start, 0)).toBe(60);
   }
 });
+
+// 2026-11-18, later: the pieces from the runs before the fix sat as 3:00–3:40,
+// 3:50–4:05 and 4:15–4:20 after math. Each was fine where it was, so nothing
+// joined them.
+test('back-to-back pieces of one task, apart only by breaks, join into one sitting', () => {
+  const p = resolvePrefs({ studyWindow: { start: '08:00', end: '23:00' }, chunks: { min: 15 } });
+  const busy = [{ start: at(0, 12, 29), end: at(0, 14), study: true }, { start: at(0, 14), end: at(0, 14, 59) }];
+  const lab = task('lab', { rank: 1, total: 90, due: at(0, 23, 59), sittings: [{ id: 'L', start: at(0, 16, 30), end: at(0, 18) }] });
+  const p4 = task('p4', { rank: 2, total: 60, due: at(1, 23, 59), sittings: [
+    { id: 'c', start: at(0, 15), end: at(0, 15, 40) }, { id: 'd', start: at(0, 15, 50), end: at(0, 16, 5) }, { id: 'e', start: at(0, 16, 15), end: at(0, 16, 20) },
+  ] });
+  const r = schedule({ tasks: [lab, p4], busy, prefs: p, now: at(0, 15, 3), days: 7, weekday0: 3 });
+  expect(r.place.filter(x => x.taskId === 'p4')).toEqual([{ taskId: 'p4', id: 'c', start: at(0, 15), end: at(0, 16) }]);
+  expect(r.remove.filter(x => x.taskId === 'p4').map(x => x.id).sort()).toEqual(['d', 'e']);
+  expect(r.place.some(x => x.taskId === 'lab')).toBe(false);
+});
+
+test('sittings of one task far apart on a day, or with a set number, stay as they are', () => {
+  const apart = run({ tasks: [task('hw', { total: 60, due: at(2, 23, 59), sittings: [{ id: 'a', start: at(1, 9), end: at(1, 9, 30) }, { id: 'b', start: at(1, 15), end: at(1, 15, 30) }] })] });
+  expect(apart.place).toEqual([]);
+  expect(apart.remove).toEqual([]);
+  const counted = run({ tasks: [task('hw', { total: 60, due: at(2, 23, 59), count: 2, sittings: [{ id: 'a', start: at(1, 9), end: at(1, 9, 30) }, { id: 'b', start: at(1, 9, 40), end: at(1, 10, 10) }] })] });
+  expect(counted.place).toEqual([]);
+  expect(counted.remove).toEqual([]);
+});
