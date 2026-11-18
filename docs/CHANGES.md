@@ -9,6 +9,37 @@ still needed.
 
 ---
 
+## 2026-11-18 (A sitting whose time has come no longer splits into shards or stays under your block)
+
+- **Why:** at 12:29 PM the owner said "im doing the math homework ... from now
+  until the math discussion". Math went in at 12:29–2:00, but Project 4:
+  Animator checkpoint 1 was left as 1:00–1:15 and 1:25–1:30 under it, plus
+  3:00–3:40, so the dashboard drew the overlaps side by side.
+  - The task scheduler treated an unstarted sitting whose start had passed
+    as under way. It held its time whatever covered it, and counted only the
+    minutes left, while the task's total counted all of it. So every run
+    during that sitting added a new one for the minutes that went by (a
+    1:00–1:15 run at 1:05 added 1:25–1:35).
+  - The stated time couldn't move it: blocks starting within 5 minutes of
+    now are never movable.
+- **What:** `src/lib/taskScheduler.ts` step 1: only pinned or Focus-started
+  sittings hold their time no matter what. An unstarted one whose time has come
+  counts whole if its time is still free, and moves like any clash if a block
+  now covers it. Re-placing missed work takes a remainder too small to be its
+  own sitting (under the shortest piece) into the missed one. Missed sittings
+  left over then come off instead of staying as a missed 5 minutes.
+  `src/lib/assistant.ts` `movable`: a time the student states also moves a
+  scheduled sitting whose time has come but has no Focus on it. Soma's own
+  picks keep the 5-minute rule.
+- **Tests:** tests/task-scheduler.spec.ts (no sitting added for passing
+  minutes; a covered one moves and a Focus-started one holds; the Nov 18 board
+  at 1:10, 1:22 and 1:27 ends with nothing under math, nothing under 15
+  minutes, 60 in all). tests/ai-reschedule-pipeline.spec.ts (a stated time
+  at 1:05 offers "Moves from 1:00 PM–1:45 PM" and Accept puts it after 2:00).
+  All 4 fail on the old code.
+- **Setup:** none. The owner's existing pieces are fixed on the next scheduler
+  run (dashboard load).
+
 ## 2026-11-17 (Ask Soma reschedules in one fixed order; Accept places a card again)
 
 - **Why:** at 5:23 PM the owner sent "push project 4 for later, im doing math

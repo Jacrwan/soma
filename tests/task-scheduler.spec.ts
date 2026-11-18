@@ -363,3 +363,45 @@ test('a step worked on in its sitting, now over, counts as placed: the next step
   expect(r.place).toEqual([]);
   expect(r.remove).toEqual([]);
 });
+
+// 2026-11-18: "math from now until the discussion" left Project 4 as 1:00–1:15
+// and 1:25–1:30 under the math block, plus 3:00–3:40. A sitting whose time had
+// come, unstarted, held its time whatever covered it, and counted only the
+// minutes left, so each run added a sitting for the minutes that went by.
+test('an unstarted sitting whose time has come counts whole: no sitting is added for the minutes gone by', () => {
+  const r = run({ now: at(0, 13, 5), tasks: [task('p4', { total: 60, due: at(1, 23, 59), sittings: [{ id: 's', start: at(0, 13), end: at(0, 14) }] })] });
+  expect(r.place).toEqual([]);
+  expect(r.remove).toEqual([]);
+});
+
+test('an unstarted sitting whose time has come moves when a block now covers it; a Focus-started one holds', () => {
+  const busy = [{ start: at(0, 12, 29), end: at(0, 14), study: true }];
+  const moved = run({ now: at(0, 13, 5), busy, tasks: [task('p4', { total: 60, due: at(1, 23, 59), sittings: [{ id: 's', start: at(0, 13), end: at(0, 14) }] })] });
+  expect(moved.place).toHaveLength(1);
+  expect(moved.place[0]).toMatchObject({ id: 's' });
+  expect(moved.place[0].start).toBeGreaterThanOrEqual(at(0, 14));
+  expect(moved.place[0].end - moved.place[0].start).toBe(60);
+  // Focus has run 5 minutes of it.
+  const held = run({ now: at(0, 13, 5), busy, tasks: [task('p4', { total: 60, logged: 5, due: at(1, 23, 59), sittings: [{ id: 's', start: at(0, 13), end: at(0, 14), started: true }] })] });
+  expect(held.place).toEqual([]);
+});
+
+test('the Nov 18 board: Project 4\'s 15 + 5 + 40 minute pieces under and after math become whole sittings outside it', () => {
+  const p = resolvePrefs({ studyWindow: { start: '08:00', end: '23:00' }, chunks: { min: 15 } });
+  const busy = [
+    { start: at(0, 12), end: at(0, 12, 59) }, { start: at(0, 12, 29), end: at(0, 14), study: true }, { start: at(0, 14), end: at(0, 14, 59) },
+  ];
+  const lab = task('lab', { rank: 1, total: 90, due: at(0, 23, 59), sittings: [{ id: 'L', start: at(0, 15, 50), end: at(0, 17, 20), pinned: true }] });
+  const p4 = task('p4', { rank: 2, total: 60, due: at(1, 23, 59), sittings: [
+    { id: 'a', start: at(0, 13), end: at(0, 13, 15) }, { id: 'b', start: at(0, 13, 25), end: at(0, 13, 30) }, { id: 'c', start: at(0, 15), end: at(0, 15, 40) },
+  ] });
+  for (const now of [at(0, 13, 10), at(0, 13, 22), at(0, 13, 27)]) {
+    const r = schedule({ tasks: [lab, p4], busy, prefs: p, now, days: 7, weekday0: 3 });
+    const kept = p4.sittings.filter(s => !r.remove.some(x => x.id === s.id)).map(s => r.place.find(x => x.id === s.id) ?? { ...s, taskId: 'p4' });
+    const all = [...kept, ...r.place.filter(x => x.taskId === 'p4' && !x.id)];
+    // Nothing left under the math block, nothing under 15 minutes, still 60 in all.
+    expect(all.every(s => s.end <= at(0, 12, 29) || s.start >= at(0, 14))).toBe(true);
+    expect(all.every(s => s.end - s.start >= 15)).toBe(true);
+    expect(all.reduce((n, s) => n + s.end - s.start, 0)).toBe(60);
+  }
+});

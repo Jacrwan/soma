@@ -234,6 +234,27 @@ test('a reply that says it moves something no card changes is retried, and the c
   expect(state.calls).toBe(2);
 });
 
+// 2026-11-18: "math homework from now until the math discussion" at 1:05 PM.
+// Project 4's sitting had begun by the clock (1:00) but nobody started it; the
+// stated time couldn't move it, so it stayed under the math block.
+test('a stated time moves a scheduled sitting whose time has come but nobody started', async ({ page }) => {
+  const state = await setup(page, {
+    clock: '13:05',
+    todos: [
+      { id: 't-math', text: 'Math 53 homework: 16.1, 16.2, 16.3', subject_id: 'math' },
+      { id: 't-proj', text: 'Project 4: Animator checkpoint 1', subject_id: 'cs', due_date: key(offset(1)), auto_schedule: true, estimated_minutes: 45 },
+    ],
+    sessions: [{ id: 's-proj', todo_id: 't-proj', start_time: at(0, '13:00'), end_time: at(0, '13:45') }],
+    events: [event('disc', 'MATH 53 Discussion', '14:00', '14:59')],
+  }, () => ({ reply: 'Math until the discussion.', blocks: [{ title: 'Math 53 homework: 16.1, 16.2, 16.3', subject: 'MATH 53', date: TODAY, start: '13:05', end: '14:00' }] }));
+  await ask(page, 'im doing the math homework from now until the math discussion');
+  await expect(page.getByText(/Moves from 1:00 PM–1:45 PM/).first()).toBeVisible();
+  await page.getByRole('button', { name: /^Accept all/ }).click();
+  await expect(page.getByRole('button', { name: /^Accept/ })).toHaveCount(0);
+  const [start] = sessionOf(state.db, 's-proj');
+  expect(String(start) >= at(0, '14:00')).toBe(true);
+});
+
 // The same three messages against the real model. It calls Anthropic and costs
 // money, so it runs only with a key:
 //   ANTHROPIC_API_KEY=... npx playwright test tests/ai-reschedule-pipeline.spec.ts -g "real model"
