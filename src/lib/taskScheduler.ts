@@ -301,12 +301,26 @@ export function schedule(input: ScheduleInput): ScheduleResult {
         else if (s.started && open && stepOk && s.stepId) st.stepEnd.set(s.stepId, s.end);
         continue;
       }
-      if (s.pinned || s.started || s.start < now) {
-        // Fixed, or already under way: it holds its time.
+      if (s.pinned || s.started) {
+        // Fixed, or under way (Focus ran): it holds its time.
         reserve(Math.max(s.start, now), s.end); use(s.start, len);
         if (dayOf(s.start) === today) todayRoom -= len;
         st.covered += s.end - Math.max(s.start, now); st.days.add(dayOf(s.start));
         if (open && stepOk && s.stepId) st.stepEnd.set(s.stepId, s.end);
+        continue;
+      }
+      if (s.start < now) {
+        // Its time has come but nobody started it (2026-11-18). It counts
+        // whole, as plannedOn does: counting only what's left added a new
+        // sitting for the minutes that went by on every run (Project 4 became
+        // 15 + 5 + 40 minutes). Something now on top of it (a block the
+        // student put there) moves it like any clash; it no longer holds.
+        if (isFree(now, s.end)) {
+          reserve(now, s.end); use(s.start, len);
+          if (dayOf(s.start) === today) todayRoom -= len;
+          st.covered += len; st.days.add(dayOf(s.start));
+          if (open && stepOk && s.stepId) st.stepEnd.set(s.stepId, s.end);
+        } else st.pool.push({ id: s.id, len, asap: false, removable: true, ...(open && s.stepId ? { stepId: s.stepId } : {}) });
         continue;
       }
       // Fine where it is: open, before the deadline, and not before the task's
@@ -511,7 +525,10 @@ export function schedule(input: ScheduleInput): ScheduleResult {
     if (!short) return;
 
     // Missed work: the earliest time there is, taking a lower task's slot if that comes first.
-    let asapLeft = Math.min(short, st.pool.filter(p => p.asap).reduce((n, p) => n + p.len, 0));
+    const missedMin = st.pool.filter(p => p.asap).reduce((n, p) => n + p.len, 0);
+    // A rest too small to be a sitting of its own goes with the missed one
+    // (2026-11-18: a 15 and a 5 minute piece came back as two sittings).
+    let asapLeft = missedMin && short - missedMin < prefs.shortest ? short : Math.min(short, missedMin);
     while (asapLeft > 0) {
       const piece = Math.min(asapLeft, prefs.longest);
       const want = Math.min(piece, prefs.shortest);
@@ -533,6 +550,10 @@ export function schedule(input: ScheduleInput): ScheduleResult {
         asapLeft -= len; short -= len;
       }
     }
+    // Every missed minute that was owed has a new time: missed sittings left
+    // over had theirs taken into another, and come off rather than stay behind
+    // as a missed 5 minutes.
+    if (missedMin && asapLeft <= 0) for (const p of st.pool) if (p.asap) p.removable = true;
     if (!short) return;
 
     // The rest: spread over the days up to the finish day, one sitting a day where there's room.

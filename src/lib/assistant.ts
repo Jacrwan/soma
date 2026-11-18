@@ -766,7 +766,10 @@ export async function askSoma(opts: {
     };
     let placingRank: number | undefined;
     const movable = (b: typeof fresh.blocks[number], changing = false) => !b.external && !!b.todoId && !!b.time && b.state === 'Planned' && !b.ended && !b.actualSeconds && b.day >= 0
-      && (b.day > 0 || rangeOf(b.time)[0] > nowMinute + 5) && b.id !== opts.activeBlockId && (changing || !changes.some(c => c.id === String(b.id)))
+      // A time the student states also moves a scheduled sitting whose time has
+      // come but that nobody started (no Focus on it): "math from now until the
+      // discussion" left Project 4 under the math block (2026-11-18).
+      && (b.day > 0 || rangeOf(b.time)[0] > nowMinute + 5 || (changing && !!b.sitting && !b.focusedSeconds)) && b.id !== opts.activeBlockId && (changing || !changes.some(c => c.id === String(b.id)))
       && (changing || outranks(placingRank, rankOf(b.todoId)))
       // A time the student states comes first, even over a block they pinned: the card offers the move, and "Keep both" (2026-11-15).
       && (changing || !pins.has(pinKey(b.todoId!, dateOf(b.day), b.time.split('–')[0])));
