@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { MONTHLY_PRICE, SEMESTER_PRICE, TRIAL_DAYS } from '../../lib/pricing';
+import { UNIVERSITY_LOGOS } from './universityWall';
 
 const BRIEF_SCRIPT = [
   { kind: 'lead', text: "Here's what I'd do with the four hours you have free today." },
@@ -14,19 +15,6 @@ const BRIEF_COURSES = [
   { name: 'Statistics 200', color: '#a855f7', time: '1h 10m' },
 ] as const;
 
-const UNIVERSITY_LOGOS = [
-  { name: 'Stanford University', src: '/university-logos/stanford.svg', shape: 'mark' },
-  { name: 'Cornell University', src: '/university-logos/cornell.svg', shape: 'mark' },
-  { name: 'UC Berkeley', src: '/university-logos/uc-berkeley.svg', shape: 'mark' },
-  { name: 'UCLA', src: '/university-logos/ucla.svg', shape: 'mark' },
-  { name: 'UC San Diego', src: '/university-logos/ucsd.png', shape: 'mark' },
-  { name: 'Emory University', src: '/university-logos/emory.svg', shape: 'wide' },
-  { name: 'UC Irvine', src: '/university-logos/uc-irvine-wordmark.svg', shape: 'wide' },
-  { name: 'UC Davis', src: '/university-logos/uc-davis-wordmark.svg', shape: 'wide' },
-  { name: 'Carnegie Mellon University', src: '/university-logos/carnegie-mellon.png', shape: 'mark' },
-  { name: 'Georgia Tech', src: '/university-logos/georgia-tech.svg', shape: 'mark' },
-  { name: 'Rutgers University', src: '/university-logos/rutgers-wordmark.svg', shape: 'wide' },
-] as const;
 const UNIVERSITY_LOGO_COPIES = [0, 1, 2, 3, 4, 5] as const;
 
 const LANDING_CSS = `

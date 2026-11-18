@@ -9,6 +9,19 @@ still needed.
 
 ---
 
+## 2026-11-18 (Landing logo wall trimmed to 7 schools for now)
+
+- **Why:** the owner wants a shorter "Used by students at" wall for now.
+- **What:** the wall's list moved to `src/components/Landing/universityWall.ts`.
+  `UNIVERSITY_WALL_FULL` keeps all 11 schools; `UNIVERSITY_LOGOS` (what shows)
+  is UC Berkeley, Cornell, UC Irvine, Rutgers, UC Davis, Emory and Carnegie
+  Mellon. To restore the full wall, point `UNIVERSITY_LOGOS` at
+  `UNIVERSITY_WALL_FULL`. No logo files were deleted.
+- **Not done:** Boston College was asked for but there is no logo file yet in
+  `public/university-logos/`.
+- **Tests:** none; `npm run build` passes.
+- **Setup:** none.
+
 ## 2026-11-18 (Pieces of one task cut up by breaks join back into one sitting)
 
 - **Why:** after the fix below shipped, the owner's Project 4: Animator
