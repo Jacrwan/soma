@@ -1011,10 +1011,37 @@
    lines up with the conversation above rather than running narrower. */
 .inputRow { max-width: 768px; }
 
+/* Same dictation button as the dashboard's composer: a plain outlined square,
+   a stop square and a soft red pulse while listening. */
 .micBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
   align-self: flex-end;
-  margin-bottom: 2px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.12s;
 }
+.micBtn:hover:not(:disabled) { background: var(--bg-tertiary); }
+.micBtn:disabled { opacity: 0.45; cursor: not-allowed; }
+.micBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.micOn {
+  color: #d32f2f;
+  border-color: color-mix(in oklch, #d32f2f, transparent 55%);
+  animation: micPulse 1.4s ease-in-out infinite;
+}
+@keyframes micPulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklch, #d32f2f, transparent 70%); }
+  50% { box-shadow: 0 0 0 5px color-mix(in oklch, #d32f2f, transparent 100%); }
+}
+@media (prefers-reduced-motion: reduce) { .micOn { animation: none; } }
 
 /* The active row is already marked by its surface; a blue title on top of that
    competes with the subject colours used elsewhere in the app. */

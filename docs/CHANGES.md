@@ -9,6 +9,29 @@ still needed.
 
 ---
 
+## 2026-11-18 (AI page dictation works like the dashboard: no auto-send, no spoken replies)
+
+- **Why:** on the AI page, dictation stopped at the first pause between words
+  and sent the message by itself, then read Soma's reply aloud in the
+  browser's voice. The owner wants it to work like voice-to-type: words go
+  into the box and nothing is sent until they press Send. The mic button also
+  looked different from the dashboard's.
+- **What:** `src/components/AI/AITab.tsx` drops its own speech code
+  (one-shot recognition, auto-send effect, `speechSynthesis` read-aloud) and
+  uses the shared `src/lib/useSpeechInput.ts`, the same hook as the dashboard.
+  It keeps listening through pauses until you press stop. Words are added to
+  whatever is already typed. Pressing Send stops the mic. A blocked mic shows
+  an alert, and browsers with no speech recognition show no mic button. The
+  chat no longer asks the AI for the short "VOICE" reply, since nothing is
+  read aloud. (The `voice` option in `src/lib/assistant.ts` is now unused but
+  was left in place.) The button is the dashboard's: an outlined square with
+  a mic icon, which becomes a stop square with a red pulse while listening
+  (`.micBtn`/`.micOn` in `AITab.module.css`, sized 40px to the AI composer).
+- **Tests:** `tests/dashboard-voice.spec.ts`: "AI page: dictation keeps
+  listening through pauses, never sends by itself, and nothing is read aloud"
+  and "AI page: stopping dictation leaves the words in the box unsent".
+- **Setup:** none.
+
 ## 2026-11-18 (Landing logo wall trimmed to 8 schools for now)
 
 - **Why:** the owner wants a shorter "Used by students at" wall for now.

@@ -26,8 +26,9 @@ const FAKE_RECOGNITION = () => {
   (window as any).SpeechRecognition = FakeRecognition;
 };
 
-async function setup(page: Page, opts: { speech?: boolean } = { speech: true }) {
+async function setup(page: Page, opts: { speech?: boolean; path?: string } = { speech: true }) {
   const state = { chatCalls: 0 };
+  await page.addInitScript(() => { (window as any).__spoken = 0; const s = window.speechSynthesis; if (s) s.speak = () => { (window as any).__spoken++; }; });
   if (opts.speech) await page.addInitScript(FAKE_RECOGNITION);
   else await page.addInitScript(() => { delete (window as any).webkitSpeechRecognition; delete (window as any).SpeechRecognition; });
   await page.addInitScript(a => {
@@ -43,6 +44,7 @@ async function setup(page: Page, opts: { speech?: boolean } = { speech: true }) 
   await page.route('**/api/memory', r => r.fulfill({ json: { revision: 0, enabled: true, entries: [] } }));
   await page.route('**/api/google-calendar-events', r => r.fulfill({ json: { events: [], incomplete: false } }));
   await page.route('**/api/chat', r => { if (triaged(r)) return; state.chatCalls++; return r.fulfill({ json: { content: [{ text: JSON.stringify({ reply: 'ok', blocks: [] }) }] } }); });
+  if (opts.path) return state;
   await page.goto('/dashboard');
   await expect(page.getByLabel('What do you need to work on?')).toBeVisible();
   return state;
@@ -92,4 +94,39 @@ test('browsers without speech recognition show no mic button', async ({ page }) 
   await setup(page, { speech: false });
   await expect(page.getByRole('button', { name: 'Send to Soma' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Dictate' })).toHaveCount(0);
+});
+
+// The AI page, 2026-11-18: dictation used to stop at the first pause, send on
+// its own, and read the reply aloud. Now it works like the dashboard.
+test('AI page: dictation keeps listening through pauses, never sends by itself, and nothing is read aloud', async ({ page }) => {
+  const state = await setup(page, { speech: true, path: '/ai' });
+  await page.goto('/ai');
+  const box = page.getByPlaceholder('Message Soma…');
+  await expect(box).toBeVisible();
+  await page.getByRole('button', { name: 'Dictate' }).click();
+  await expect(page.getByRole('button', { name: 'Stop dictation' })).toHaveAttribute('aria-pressed', 'true');
+  await say(page, 'move my essay', true);
+  await page.waitForTimeout(400);                          // a pause between words
+  await say(page, ' to tomorrow', false);
+  await expect(box).toHaveValue('move my essay to tomorrow');
+  expect(state.chatCalls).toBe(0);
+  await expect(page.getByRole('button', { name: 'Stop dictation' })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Dictate' })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__rec)).toBeNull();
+  await expect.poll(() => state.chatCalls).toBeGreaterThan(0);
+  await expect(page.getByText('ok', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).__spoken)).toBe(0);
+});
+
+test('AI page: stopping dictation leaves the words in the box unsent', async ({ page }) => {
+  const state = await setup(page, { speech: true, path: '/ai' });
+  await page.goto('/ai');
+  await page.getByRole('button', { name: 'Dictate' }).click();
+  await say(page, 'plan my week', true);
+  await page.getByRole('button', { name: 'Stop dictation' }).click();
+  await expect(page.getByPlaceholder('Message Soma…')).toHaveValue('plan my week');
+  await page.waitForTimeout(300);
+  expect(state.chatCalls).toBe(0);
 });
