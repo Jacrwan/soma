@@ -20,15 +20,8 @@ import { MONTHLY_PRICE, SEMESTER_PRICE, TRIAL_DAYS } from '../../lib/pricing';
 import AiBudgetMeter from '../UI/AiBudgetMeter';
 import ActionCards from './ActionCards';
 import { useAiBudget, budgetUsedUp } from '../../lib/aiBudget';
-
-declare global {
-  interface Window {
-    SpeechRecognition: any;
-    webkitSpeechRecognition: any;
-  }
-  // eslint-disable-next-line no-var
-  var SpeechRecognition: any;
-}
+import { useSpeechInput } from '../../lib/useSpeechInput';
+import { Mic, Square } from 'lucide-react';
 
 function SessionListSkeleton() {
   return (
@@ -351,9 +344,9 @@ export default function AITab() {
   const pendingProposals=useProposals(userId);
   const chatSaves=useRef(new Map<string,Promise<void>>());
   const chatOwner=useRef<string|null>(null);
-  const [voiceActive, setVoiceActive] = useState(false);
-  const [voiceTriggered, setVoiceTriggered] = useState(false);
-  const recognitionRef = useRef<any>(null);
+  // Dictation only fills the box, like the dashboard: it keeps listening
+  // through pauses and nothing is sent until the student presses Send.
+  const voice = useSpeechInput(setInput);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -468,12 +461,6 @@ export default function AITab() {
   }, [location.state, sessionsLoading, activeSessionId, userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (voiceTriggered && input.trim() && !loading) {
-      send();
-    }
-  }, [voiceTriggered]);
-
-  useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
@@ -551,81 +538,12 @@ export default function AITab() {
     setDeleteConfirmId(null);
   }
 
-  function stopSpeaking() {
-    window.speechSynthesis.cancel();
-  }
-
-  function speakText(text: string) {
-    stopSpeaking();
-    const clean = text
-      .replace(/<[^>]+>/g, '')
-      .replace(/\*\*/g, '')
-      .replace(/^[-•]\s*/gm, '')
-      .replace(/\n{2,}/g, '. ')
-      .replace(/\n/g, ' ')
-      .trim();
-    if (!clean) return;
-    const utterance = new SpeechSynthesisUtterance(clean);
-    utterance.rate = 1.05;
-    window.speechSynthesis.speak(utterance);
-  }
-
-  function toggleVoice() {
-    if (voiceActive) {
-      recognitionRef.current?.stop();
-      return;
-    }
-
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return;
-
-    stopSpeaking();
-    const recognition = new SR();
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-    recognitionRef.current = recognition;
-
-    let finalTranscript = '';
-
-    recognition.onresult = (event: any) => {
-      let interim = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const t = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += t;
-        } else {
-          interim = t;
-        }
-      }
-      setInput(finalTranscript + interim);
-    };
-
-    recognition.onend = () => {
-      setVoiceActive(false);
-      recognitionRef.current = null;
-      if (finalTranscript.trim()) {
-        setVoiceTriggered(true);
-      }
-    };
-
-    recognition.onerror = () => {
-      setVoiceActive(false);
-      recognitionRef.current = null;
-    };
-
-    setVoiceActive(true);
-    recognition.start();
-  }
-
   async function send(override?: string) {
     if (paused) return;
     const text = (override ?? input).trim();
     if (!text || loading || !activeSessionId) return;
 
-    const isVoice = voiceTriggered;
-    setVoiceTriggered(false);
-    stopSpeaking();
+    voice.stop();
 
     const session = sessions.find(s => s.id === activeSessionId);
     if (!session) return;
@@ -644,7 +562,7 @@ export default function AITab() {
       const history=session.messages
         .map(m=>({role:m.role,content:m.modelContent ?? stripTags(m.content),...(m.at ? {at:m.at} : {})}))
         .filter(m=>m.content.trim());
-      const result=await askSoma({userId:requestUserId,origin:dateAt(new Date(),0),text,history,voice:isVoice,conversationId:activeSessionId ?? undefined,onReply:setStreamText});
+      const result=await askSoma({userId:requestUserId,origin:dateAt(new Date(),0),text,history,conversationId:activeSessionId ?? undefined,onReply:setStreamText});
       await storage.assertUser(requestUserId);
       const made=getProposals(requestUserId).filter(p=>result.proposedIds.includes(p.id));
       const assistantMsg: ChatMessage = {
@@ -654,7 +572,6 @@ export default function AITab() {
         ...(result.actions?.length ? { actions: result.actions } : {}),
       };
       updateSession(activeSessionId, s => ({ ...s, messages: [...s.messages, assistantMsg] }));
-      if (isVoice) speakText(result.display);
     } catch (err: unknown) {
       const content = aiErrorMessage(err);
       const errorMsg: ChatMessage = {
@@ -828,6 +745,7 @@ export default function AITab() {
         <div className={styles.inputAreaWrapper} data-tour="ai">
           {historyError && <p role="alert">{historyError}</p>}
           {proposalError && <p role="alert">{proposalError}</p>}
+          {voice.error && <p role="alert">{voice.error}</p>}
           <div className={styles.inputRow}>
             <textarea
               ref={textareaRef}
@@ -839,18 +757,19 @@ export default function AITab() {
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
             />
-            <button
-              className={`${styles.micBtn}${voiceActive ? ` ${styles.micBtnActive}` : ''}`}
-              onClick={toggleVoice}
-              disabled={loading}
-              title={voiceActive ? 'Stop listening' : 'Voice input'}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="9" y="1" width="6" height="12" rx="3" />
-                <path d="M5 10a7 7 0 0 0 14 0" />
-                <line x1="12" y1="17" x2="12" y2="23" />
-              </svg>
-            </button>
+            {voice.supported && (
+              <button
+                type="button"
+                className={`${styles.micBtn}${voice.listening ? ` ${styles.micOn}` : ''}`}
+                onClick={() => voice.listening ? voice.stop() : voice.start(input)}
+                disabled={loading}
+                aria-pressed={voice.listening}
+                aria-label={voice.listening ? 'Stop dictation' : 'Dictate'}
+                title={voice.listening ? 'Stop dictation' : 'Dictate'}
+              >
+                {voice.listening ? <Square size={12} /> : <Mic size={14} />}
+              </button>
+            )}
             <button
               className={styles.sendBtn}
               onClick={() => void send()}
