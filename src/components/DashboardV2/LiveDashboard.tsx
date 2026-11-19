@@ -203,6 +203,7 @@ export default function LiveDashboard({userId}:{userId:string}) {
   * plan, and when a sitting is missed. It waits while a save or the editor is
   * open, and runs again after; what it moved shows above today's plan.
   */
+ const reclaimSkipped=useRef(false);
  const scheduleTimer=useRef<number|undefined>(undefined),scheduling=useRef(false),asking=useRef(false),askedPending=useRef(false);
  const runSchedule=useCallback((delay=1500)=>{
   window.clearTimeout(scheduleTimer.current);
@@ -224,7 +225,13 @@ export default function LiveDashboard({userId}:{userId:string}) {
    const atRisk=Object.keys(result.atRisk).length;
    if(moves.length || atRisk)setTaskNote({moves,atRisk,atRiskTitles:result.atRiskTitles ?? []});else setTaskNote(n=>n && null);
    if(result.ahead)setAhead(result.ahead);
-   if(result.moved.length || result.created || result.removed)void reload().catch(()=>{});
+   const changed=!!(result.moved.length || result.created || result.removed);
+   if(changed)void reload().catch(()=>{});
+   // A reclaim check that came while this ran was skipped (2026-11-19: the run
+   // now always reads the plan, for calendar changes). It runs now, or, when
+   // this run changed the plan, once the plan is read again: on the old one
+   // it saw a moved sitting as still missed and ran this again, which cleared the note.
+   if(reclaimSkipped.current){reclaimSkipped.current=false;if(!changed)runRef.current();}
   };
   // Right away when asked to (the first run, on load), else after a pause so a burst of changes runs once.
   if(delay<=0)void go();else scheduleTimer.current=window.setTimeout(()=>void go(),delay);
@@ -236,6 +243,15 @@ export default function LiveDashboard({userId}:{userId:string}) {
   for(const e of events)window.addEventListener(e,later);
   return()=>{window.clearTimeout(scheduleTimer.current);for(const e of events)window.removeEventListener(e,later);};
  },[runSchedule]);
+ // Google Calendar changed (read again on focus, after a change made there):
+ // schedule again, so a block an event moved onto moves off it (2026-11-19).
+ const calendarSeen=useRef<string|null>(null);
+ const calendarNow=!snapshot || snapshot.calendarError ? null : snapshot.blocks.filter(b=>b.external && !b.manual).map(b=>`${b.id}=${b.time}`).sort().join('|');
+ useEffect(()=>{
+  if(calendarNow===null)return;
+  if(calendarSeen.current!==null && calendarSeen.current!==calendarNow)runSchedule();
+  calendarSeen.current=calendarNow;
+ },[calendarNow,runSchedule]);
  // A sitting that just ended without Focus or a check is missed: schedule again.
  const missedSeen=useRef(new Set<string>());
  // Warm the documents cache so Ask Soma can answer from uploaded files even if
@@ -339,7 +355,8 @@ export default function LiveDashboard({userId}:{userId:string}) {
   finally{writing.current=false;setBusy(false);}
  }
  async function runReclaim(){
-  if(!snapshot || writing.current || reclaimLock.current || editingPlan.current || scheduling.current)return;
+  if(scheduling.current){reclaimSkipped.current=true;return;}
+  if(!snapshot || writing.current || reclaimLock.current || editingPlan.current)return;
   const date=localDate(origin);
   const snap=toVersionBlocks(snapshot.blocks.filter(b=>b.day===0));
   if(snap.length && !loadDayVersions(userId,date).length){
