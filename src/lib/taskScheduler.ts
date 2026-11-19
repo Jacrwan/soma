@@ -621,7 +621,11 @@ export function schedule(input: ScheduleInput): ScheduleResult {
       const fit = (d: number, oneADay: boolean) => {
         if (oneADay && st.days.has(d)) return null;
         if (!capOk(d * DAY, size) || size > roomOn(st, d)) return null;
-        const seg = segsOn(d, lastT).find(([a, z]) => z - a >= size && safe(st, a, a + size));
+        // On the window's first day, not before it opens: a block moved off a
+        // calendar event starts where it was, not earlier that day (2026-11-19).
+        // For tasks the window opens at the day's start or now, so no change.
+        const seg = segsOn(d, lastT).map(([a, z]) => [d === dayOf(st.startT) ? Math.max(a, st.startT) : a, z] as Seg)
+          .find(([a, z]) => z - a >= size && safe(st, a, a + size));
         return seg ? seg[0] : null;
       };
       // The whole window (one a day, then doubling up) before any earlier day.

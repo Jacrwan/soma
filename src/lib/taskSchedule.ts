@@ -6,6 +6,7 @@ import { getProposals } from './proposalStore';
 import { estimate, kindOf } from './planIt';
 import { rangeOf } from './clockRange';
 import { pinBlock, pinKey, pinnedKeys } from './pinnedBlocks';
+import { eventKey, skippedKeys } from './skippedEvents';
 import { subjectForCourse } from './canvasDeepSync';
 import { readMirror } from './activeTimerMirror';
 import { asTodoKind, type Todo, type TodoSession } from '../types';
@@ -104,6 +105,73 @@ function sittingsOf(todo: Todo, sessions: TodoSession[], history: History[], pin
         || (focusing && live!.start < +end && Date.now() > +start),
     };
   }).sort((a, b) => +a.start - +b.start);
+}
+
+/** Scheduler ids for blocks moved off a calendar event: `block:<session id>`. */
+const BLOCK = 'block:';
+type Clash = { sessionId: string; todoId: string; title: string; start: number; end: number; pinned: boolean };
+
+/**
+ * Event times as they were last seen here, per event and date ("gym@2026-11-19"
+ * → "17:00–18:00"), and the dates that read covered. Browser storage, per
+ * account, like pins and skips.
+ */
+const SEEN_KEY = 'soma_seen_event_times';
+type Seen = { times: Record<string, string>; dates: Set<string> };
+function seenEvents(userId: string): Seen | null {
+  try {
+    const stored = JSON.parse(localStorage.getItem(SEEN_KEY) ?? 'null') as { userId: string; times: Record<string, string>; dates: string[] } | null;
+    if (!stored || stored.userId !== userId || !stored.times || !Array.isArray(stored.dates)) return null;
+    return { times: stored.times, dates: new Set(stored.dates) };
+  } catch { return null; }
+}
+function rememberEvents(userId: string, old: Seen | null, now: Record<string, string>, dates: Set<string>, today: string) {
+  const keep = (d: string) => d >= today && !dates.has(d);
+  // Dates this run read are replaced whole (a deleted event drops out); past dates go.
+  const times = Object.fromEntries(Object.entries(old?.times ?? {}).filter(([k]) => keep(k.slice(k.lastIndexOf('@') + 1))));
+  const all = [...[...(old?.dates ?? [])].filter(keep), ...dates];
+  try { localStorage.setItem(SEEN_KEY, JSON.stringify({ userId, times: { ...times, ...now }, dates: all })); } catch { /* not remembered on this device */ }
+}
+
+/**
+ * Blocks a calendar event moved onto (2026-11-19: the owner moved gym in
+ * Google Calendar to 5 PM and "Review: CS 61A lecture" stayed under it).
+ * Before, only tasks with a due date ever moved, and nothing ran when the
+ * calendar changed. A block moves when an event on it is new or has moved
+ * since the last run here, whoever placed it. A block the student already
+ * had over an event (accepted with the overlap, or a class they may skip)
+ * stays, and so does every clash on the first run on a device, which has
+ * nothing to compare with. Never: a task's sitting (the task
+ * scheduler has those), a block that's begun, checked off or had Focus,
+ * or an event the student said they're skipping.
+ */
+function calendarClashes(userId: string, snapshot: Snapshot, managed: Set<string>, origin: Date, now: number, pins: Set<string>): Clash[] {
+  const skipped = skippedKeys(userId), seen = seenEvents(userId);
+  const dateOf = (day: number) => localDate(dateAt(origin, day));
+  const span = (b: { day: number; time: string }) => { const [a, z] = rangeOf(b.time); return [b.day * 1440 + a, b.day * 1440 + z] as const; };
+  const events = snapshot.blocks.filter(b => b.external && b.time && !skipped.has(eventKey(b.id, dateOf(b.day))));
+  const read = new Set(snapshot.blocks.map(b => dateOf(b.day)));
+  rememberEvents(userId, seen, Object.fromEntries(snapshot.blocks.filter(e => e.external && !e.manual && e.time).map(e => [eventKey(e.id, dateOf(e.day)), e.time])), read, dateOf(0));
+  // Only on a date the last run read: a day just coming into view isn't a change.
+  const movedOnto = (e: typeof events[number]) => {
+    const date = dateOf(e.day);
+    return !!seen && !e.manual && seen.dates.has(date) && seen.times[eventKey(e.id, date)] !== e.time;
+  };
+  return snapshot.blocks.flatMap(b => {
+    if (b.external || !b.todoId || !b.sessionId || managed.has(b.todoId) || !b.time || b.state !== 'Planned') return [];
+    const [a, z] = span(b);
+    if (a < now) return [];
+    const on = events.filter(e => { const [x, y] = span(e); return x < z && y > a; });
+    if (!on.length) return [];
+    const session = snapshot.sessions.find(s => s.id === b.sessionId);
+    if (!session?.startTime || !session.endTime) return [];
+    const pinned = !!session.pinned || pins.has(pinKey(b.todoId, session.date, b.time.slice(0, 5)));
+    if (!on.some(movedOnto)) return [];
+    const focused = snapshot.history.some(h => h.subject_id === b.subjectId && h.task_text === b.title && h.start_time && h.end_time
+      && +new Date(utcIso(h.start_time)) < +new Date(session.endTime!) && +new Date(utcIso(h.end_time)) > +new Date(session.startTime!));
+    if (focused) return [];
+    return [{ sessionId: b.sessionId, todoId: b.todoId, title: b.title, start: a, end: z, pinned }];
+  });
 }
 
 /** Priority uses the student's own deadline when there is one. */
@@ -242,22 +310,24 @@ async function run(userId: string): Promise<RescheduleResult> {
   const closed = await closeHandedIn(userId, todos);
   if (auto && await adoptCanvas(userId, todos)) todos = await readTodos(userId);
   const managed = todos.filter(t => isManaged(t, auto, today));
-  if (!managed.length) {
+  const nothing = () => {
     last = empty;
     // The pages read the plan again: a task was just finished.
     if (closed) window.dispatchEvent(new Event('soma_todos_changed'));
     return closed ? { ...empty, removed: closed } : empty;
-  }
+  };
 
-  const furthest = Math.max(...managed.map(t => Math.ceil((+dueMoment(deadlineOf(t)!) - +origin) / DAY_MS) + 1));
+  const furthest = Math.max(0, ...managed.map(t => Math.ceil((+dueMoment(deadlineOf(t)!) - +origin) / DAY_MS) + 1));
   const days = Math.min(MAX_DAYS, Math.max(7, furthest));
   const snapshot = await readPlan(userId, origin, 0, days);
   // Half a calendar would read as open time and put work over classes.
-  if (snapshot.calendarError) return { ...empty, skipped: snapshot.calendarError };
+  if (snapshot.calendarError) return managed.length ? { ...empty, skipped: snapshot.calendarError } : nothing();
 
   const ids = new Set(managed.map(t => t.id));
   const abs = (d: Date) => Math.round((+d - +origin) / 60000);
   const pins = pinnedKeys(userId);
+  const clashes = calendarClashes(userId, snapshot, ids, origin, abs(now), pins);
+  if (!managed.length && !clashes.length) return nothing();
   const live = liveFocus(userId);
   const info = new Map(managed.map(t => [t.id, { todo: t, sittings: sittingsOf(t, snapshot.sessions, snapshot.history, pins, live) }]));
   const dayStart = (date: string) => abs(new Date(`${date}T00:00:00`));
@@ -283,10 +353,24 @@ async function run(userId: string): Promise<RescheduleResult> {
   // move's slot, and Accept failed with "That time overlaps").
   const waiting = getProposals(userId).filter(p => p.time)
     .flatMap(p => [p, ...(p.extra ?? []).filter(x => x.time).map(x => ({ ...p, day: x.day, time: x.time }))]);
-  const busy = [...snapshot.blocks.filter(b => b.time && !(b.todoId && ids.has(b.todoId))), ...waiting]
+  // A block a calendar event now sits on isn't in the way: it's moving.
+  const clashing = new Set(clashes.map(c => c.sessionId));
+  const busy = [...snapshot.blocks.filter(b => b.time && !(b.todoId && ids.has(b.todoId)) && !(b.sessionId && clashing.has(b.sessionId))), ...waiting]
     .map(b => { const [a, z] = rangeOf(b.time); return { start: b.day * 1440 + a, end: b.day * 1440 + z, study: !b.external }; });
+  // Each goes to the first open time after where it was, whole, on its day or
+  // the next few, after every task with a due date has had its turn.
+  for (const c of clashes) tasks.push({
+    id: BLOCK + c.sessionId, rank: Number.MAX_SAFE_INTEGER, total: c.end - c.start, logged: 0,
+    due: (Math.floor(c.start / 1440) + 8) * 1440 - 1, from: c.start, count: 1,
+    sittings: [{ id: c.sessionId, start: c.start, end: c.end }],
+  });
 
   const result = schedule({ tasks, busy, prefs, now: abs(now), days, weekday0: origin.getDay() });
+  const clash = (taskId: string) => taskId.startsWith(BLOCK) ? clashes.find(c => BLOCK + c.sessionId === taskId) : undefined;
+  // A student's block is never deleted here: one with nowhere to go stays put.
+  result.remove = result.remove.filter(r => !clash(r.taskId));
+  result.atRisk = result.atRisk.filter(r => !clash(r.taskId));
+  if (result.ahead && clash(result.ahead.taskId)) delete result.ahead;
   const moment = (minute: number) => new Date(origin.getFullYear(), origin.getMonth(), origin.getDate(), 0, minute);
 
   const fail = (e: { message: string } | null) => { if (e) throw new Error(/step_id/.test(e.message) ? 'Run task_details_migration.sql in Supabase to schedule steps.' : /done_at|pinned/.test(e.message) ? 'Run task_scheduler_migration.sql in Supabase to schedule tasks.' : e.message); };
@@ -300,6 +384,16 @@ async function run(userId: string): Promise<RescheduleResult> {
     const start = moment(p.start), end = moment(p.end);
     // step_id only for tasks with steps, so scheduling works before task_details_migration.sql.
     const row = { date: localDate(start), start_time: start.toISOString(), end_time: end.toISOString(), ...(p.stepId ? { step_id: p.stepId } : {}) };
+    const c = clash(p.taskId);
+    if (c) {
+      if (!p.id) continue;
+      const { error } = await supabase.from('todo_sessions').update(row).eq('id', p.id).eq('user_id', userId);
+      fail(error);
+      // A time the student chose stays theirs at its new time.
+      if (c.pinned) pinBlock(userId, pinKey(c.todoId, row.date, `${String(start.getHours()).padStart(2, '0')}:${String(start.getMinutes()).padStart(2, '0')}`));
+      moved.push({ todoId: c.todoId, title: c.title, from: moment(c.start), to: start });
+      continue;
+    }
     if (p.id) {
       const { error } = await supabase.from('todo_sessions').update(row).eq('id', p.id).eq('user_id', userId);
       fail(error);
