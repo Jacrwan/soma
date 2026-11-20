@@ -9,6 +9,26 @@ still needed.
 
 ---
 
+## 2026-11-19 (Soma's AI sees exam dates 60 days back and ahead)
+
+- **Why:** asked to plan for finals "due on the date and time I put in my
+  calendar", Soma said it couldn't see them. They were on the calendar four
+  weeks out (Physics 5A Dec 15, CS 61A and MATH 53 Dec 18), but the AI only
+  gets the next seven days of events. The owner asked for exam dates up to 60
+  days ahead, and back.
+- **What:** `askSoma` in `src/lib/assistant.ts` reads the calendar from 60
+  days before to 60 days after today, alongside the plan. `examEvents` keeps
+  events whose names say final, midterm, exam, quiz or test, drops repeats,
+  sorts them and caps the list at 20. They go to the AI as CONTEXT `exams`,
+  for example "Tue 2026-12-15 15:00–18:00 Physics 5A Final", with "past" on
+  ones that are over. The prompt's EXAM PREP rule says to take exam dates
+  from there and never say an exam listed there isn't on the calendar. A
+  failed read goes without the list and never blocks a reply. Placement is
+  unchanged: blocks still go only in the next seven days (the Nov 5 rule).
+- **Tests:** `tests/ai-exam-dates.spec.ts`: exams 60 days back and ahead come
+  through and classes and far-off events don't; no exams means no key; a
+  failed read still replies.
+
 ## 2026-11-18 (AI page dictation works like the dashboard: no auto-send, no spoken replies)
 
 - **Why:** on the AI page, dictation stopped at the first pause between words
