@@ -9,6 +9,54 @@ still needed.
 
 ---
 
+## 2026-11-20 (Missed work goes back by priority and in order; your words win; your blocks need a yes)
+
+- **Why:** two blocks missed on Thursday (Physics reading 12.7–12.11, Review:
+  CS 61A lecture from Mon 11-09) went to Sunday, because Friday and Saturday
+  were full of old lecture reviews and Catch-Up only filled open time. Then
+  "I'm doing the physics reading I missed yesterday right now til 1pm" made a
+  second 12.7–12.9 block, couldn't link it ("already planned in another
+  block"), and refused it ("overlaps a scheduled session") over an untouched
+  11:00 review. The owner wants: high-priority missed work back right away with
+  other work moving aside, low-priority work free to go far out; work that comes
+  first kept first (a missed chapter 5 before chapter 6); the student's words
+  over everything, and a block they placed never moved without a yes.
+- **What:**
+  - `src/lib/workOrder.ts` (new, pure): `priorityOf` (dated work keeps the
+    Tasks order; missed undated work counts as due the day it was planned;
+    undated work to come goes last, earlier day first) and `comesBefore`
+    (reading-list position, a smaller number in the same title, an earlier
+    "from <date>"; same course only).
+  - `src/lib/catchUp.ts` `buildCatchUp`: most urgent first, with work that
+    comes first ahead of what it comes before. What fell behind (missed,
+    overdue, due today or tomorrow) takes an open slot from today on or else
+    the slot of lower-priority, unstarted, unpinned blocks (up to three side
+    by side), which move to the next open time, never past their due day.
+    Work due later only takes open time. A last pass puts work that comes
+    first into the slot of what it comes before, and moves that one after it.
+    Scheduler sittings, started blocks and calendar events never move. Blocks
+    the student placed come back as `offers`, never moved; `movePinned` is
+    their yes. New `moves` and `offers` on the plan.
+  - `src/components/DashboardV2/CatchUp.tsx`: a "Moved to make room" list,
+    "You placed these yourself" with a Move it button, and the moves saved
+    before the work that takes their time.
+  - `src/lib/assistant.ts`: a stated time also clears an ordinary block whose
+    time has come and that nobody started (it was sittings only). A new block
+    whose sections all belong to one upcoming block becomes a move of that
+    block, whole (replaces the "already planned in another block" unlink). A
+    move of a block the student placed says "You set this time yourself" and
+    is marked `confirm`: Accept all leaves it, and the cards that need it, for
+    their own Accept. Prompt: work they missed or are doing now is the entry
+    already in plan, moved by its id.
+- **Tests:** `tests/catch-up-priority.spec.ts` (owner's Nov 20 board: both
+  misses today, three old reviews to Sunday; due-later work only takes open
+  time; chapter 5 before 6; pinned blocks offered, not moved; `comesBefore`,
+  `priorityOf`); `tests/catch-up-dashboard.spec.ts` › "Catch-Up moves
+  lower-priority work aside…"; `tests/ai-missed-now.spec.ts` (the reading moves
+  to now–1 PM and the review moves; a pinned review says so and waits for its
+  own Accept); `tests/reading-progress.spec.ts` › "sections already in an
+  upcoming block move that block…" (was "cannot re-plan").
+
 ## 2026-11-19 (Soma's AI sees exam dates 60 days back and ahead)
 
 - **Why:** asked to plan for finals "due on the date and time I put in my

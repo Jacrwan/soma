@@ -175,15 +175,21 @@ test('a proposed block covers the sections it names once accepted', async ({ pag
   expect(it['5.1'].todo_id).toBeNull();
 });
 
-test('a block cannot re-plan sections already in an upcoming block', async ({ page }) => {
+// 2026-11-20: instead of refusing the sections, the block that has them moves
+// to the new time ("the reading I missed, right now til 1"). Never a second block.
+test('sections already in an upcoming block move that block instead of planning them twice', async ({ page }) => {
   const state = await setup(page, ctx => ({ reply: 'Planned.', blocks: [{ title: 'Momentum 4.7–4.9 again', subject: 'Physics 5A', date: TOMORROW, start: '14:00', end: '15:00', covers: [idOf(ctx, '4.7'), idOf(ctx, '4.9')] }] }));
   state.db.todos.push({ id: 't-next', user_id: account.id, text: 'Physics reading: 4.7–4.9', subject_id: 'phys', status: 'nothing', date: TOMORROW });
   state.db.todo_sessions.push({ id: 's-next', user_id: account.id, todo_id: 't-next', date: TOMORROW, start_time: at(1, '09:00'), end_time: at(1, '10:00') });
   for (const r of state.db.course_items) if (['4.7', '4.8', '4.9'].includes(String(r.label))) r.todo_id = 't-next';
   await ask(page, 'plan 4.7 to 4.9');
-  await expect(page.getByRole('log')).toContainText('4.7 is already planned in another block');
+  await expect(page.getByRole('log')).toContainText('Planned.');
+  await expect(page.getByRole('log')).not.toContainText('already planned in another block');
   const ctx = JSON.parse(state.prompt.match(/CONTEXT[^:]*: (\{[^\n]*\})/)![1]) as Ctx;
   expect(openLine(ctx.courses[0], '4.7')).toMatch(/ · planned$/);
+  await page.getByRole('button', { name: 'Accept', exact: true }).click();
+  await expect.poll(() => state.db.todo_sessions.find(s => s.id === 's-next')?.start_time).toBe(at(1, '14:00'));
+  expect(state.db.todos.filter(t => String(t.text).includes('again'))).toEqual([]);
 });
 
 test('a block worked on shows a bookmark that records how far you got', async ({ page }) => {

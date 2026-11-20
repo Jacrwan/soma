@@ -140,3 +140,30 @@ test('the yesterday card suggests the rest for today, checks nothing off, and "I
   expect(rest).toBeTruthy();
   expect(state.tables.todo_sessions.find(s => s.todo_id === rest!.id)?.date).toBe(dateOf(0));
 });
+
+// 2026-11-20: a missed block went to Sunday because today was full of old
+// reviews. Now it goes back today and the review in its way moves aside; the
+// card lists the move, and "Add to my plan" saves both.
+test('Catch-Up moves lower-priority work aside for what was missed, and saves both', async ({ page }) => {
+  const missed = slipped('read', 'Reading 4.4', -1);
+  // Today is full from 9 AM to 11 PM with one-hour reviews; tomorrow is open.
+  const old = Array.from({ length: 14 }, (_, i) => {
+    const h = 9 + i, id = `old${h}`;
+    return {
+      todo: { id, user_id: account.id, text: `Review: lecture from Tue 09-${String(h).padStart(2, '0')}`, subject_id: 'math', status: 'nothing', date: dateOf(0) },
+      session: { id: `${id}-slot`, user_id: account.id, todo_id: id, date: dateOf(0), start_time: at(0, `${String(h).padStart(2, '0')}:00`), end_time: at(0, `${String(h + 1).padStart(2, '0')}:00`) },
+    };
+  });
+  const state = await setup(page, { todos: [missed.todo, ...old.map(o => o.todo)], todo_sessions: [missed.session, ...old.map(o => o.session)] });
+  await page.goto('/dashboard');
+  await page.getByRole('button', { name: 'Catch up on 1 thing' }).click();
+  const card = page.getByRole('region', { name: 'A few things slipped.' });
+  await expect(card).toContainText('caught up today');
+  await expect(card.getByText('Moved to make room')).toBeVisible();
+  await expect(card.getByText(/Moves to make room for “Reading 4.4”, which goes first/)).toBeVisible();
+  await card.getByRole('button', { name: 'Add to my plan' }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'You’re on track to be caught up today.' })).toBeVisible();
+  const sessions = state.tables.todo_sessions;
+  expect(sessions.find(s => s.id === 'read-slot')).toMatchObject({ date: dateOf(0), start_time: at(0, '09:00') });
+  expect(sessions.find(s => s.id === 'old9-slot')?.date).toBe(dateOf(1));
+});
