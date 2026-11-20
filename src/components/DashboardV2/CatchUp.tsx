@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { buildCatchUp, buildYesterday, catchUpDayName, type CatchUpAssignment, type CatchUpItem, type YesterdayRow } from '../../lib/catchUp';
 import { storage } from '../../lib/storage';
+import { pinnedKeys } from '../../lib/pinnedBlocks';
 import { subjectForCourse } from '../../lib/canvasDeepSync';
 import { formatClockRange } from '../../lib/timeFormat';
 import { localDate, readPlan, toneOf, type Snapshot } from './liveData';
@@ -22,6 +23,7 @@ type Props = { userId: string; origin: Date; onApply: (blocks: PlanBlock[]) => P
 const read = <T,>(key: string, fallback: T): T => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) as T : fallback; } catch { return fallback; } };
 const write = (key: string, value: unknown) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* remembered for this visit only */ } };
 const daysApart = (a: string, b: string) => Math.round((new Date(`${b}T12:00:00`).getTime() - new Date(`${a}T12:00:00`).getTime()) / 86_400_000);
+const spanOf = (time: string) => { const [a, z] = time.split('–').map(t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; }); return z > a ? z - a : z + 1440 - a; };
 const durOf = (m: number) => m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}` : `${m} min`;
 
 /** Canvas work not handed in, under the student's own course. */
@@ -53,6 +55,8 @@ export default function CatchUp({ userId, origin, onApply, children }: Props) {
   const [caughtUp, setCaughtUp] = useState<string | null>(null);
   const [choices, setChoices] = useState<Record<string, Choice>>({});
   const [changing, setChanging] = useState<string | null>(null);
+  // The student's own blocks they said Catch-Up may move.
+  const [movePinned, setMovePinned] = useState<Set<string>>(new Set());
 
   const load = useCallback(() => readPlan(userId, origin, -7, 14).then(setSnapshot).catch(() => setSnapshot(null)), [userId, origin]);
   useEffect(() => { void load(); }, [load]);
@@ -61,7 +65,8 @@ export default function CatchUp({ userId, origin, onApply, children }: Props) {
   const plan = useMemo(() => snapshot && buildCatchUp({
     snapshot, assignments: assignments(), settings, origin,
     skipped: new Set(skips.skipped), restored: new Set(skips.restored), todayCap: todayCap ?? undefined,
-  }), [snapshot, skips, todayCap]); // eslint-disable-line react-hooks/exhaustive-deps
+    pins: pinnedKeys(userId), movePinned,
+  }), [snapshot, skips, todayCap, movePinned]); // eslint-disable-line react-hooks/exhaustive-deps
   const rows = useMemo(() => snapshot ? buildYesterday(snapshot, origin, settings, handled) : [], [snapshot, handled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const saveSkips = (next: typeof skips) => { setSkips(next); write(keys.skips, next); };
@@ -87,15 +92,20 @@ export default function CatchUp({ userId, origin, onApply, children }: Props) {
       : { ...skips, skipped: skips.skipped.filter(k => k !== item.key) });
     async function add() {
       setSaving(true); setError('');
-      const blocks: PlanBlock[] = plan!.planned.map(p => ({
+      // Blocks moved aside go first, so the work taking their time finds it free.
+      const moved: PlanBlock[] = plan!.moves.flatMap(m => {
+        const b = snapshot!.blocks.find(x => String(x.id) === String(m.blockId));
+        return b ? [{ ...b, id: `catchup:${crypto.randomUUID()}`, time: m.to.time, minutes: m.to.time ? spanOf(m.to.time) : b.minutes, day: m.to.day, state: 'Proposal' as const, replaces: b.id, changeKind: 'move' as const, base: m.from, note: m.why }] : [];
+      });
+      const blocks: PlanBlock[] = [...moved, ...plan!.planned.map((p): PlanBlock => ({
         id: `catchup:${crypto.randomUUID()}`, title: p.title, subject: p.subject, time: p.time!, minutes: p.minutes, color: p.color, state: 'Proposal', day: p.day!, note: 'Catch-up',
         ...(p.replaces !== undefined ? { replaces: p.replaces, changeKind: 'move' as const, ...(p.base ? { base: p.base } : {}) } : {}),
-      }));
+      }))];
       try {
         const failed = await onApply(blocks);
         const left = plan!.skipped.length;
         setCaughtUp(failed.length
-          ? `Added ${blocks.length - failed.length} of ${blocks.length} to your plan. ${failed.length === 1 ? 'One is' : `${failed.length} are`} still waiting below for you to accept.`
+          ? `Saved ${blocks.length - failed.length} of ${blocks.length} changes. ${failed.length === 1 ? 'One is' : `${failed.length} are`} still waiting below for you to accept.`
           : `You’re on track to be caught up ${by}.${left ? ` ${left} ${left === 1 ? 'thing' : 'things'} left out on purpose.` : ''}`);
       } catch (e) { setError(e instanceof Error ? e.message : 'Could not add the plan. Please retry.'); }
       finally { setSaving(false); }
@@ -117,6 +127,20 @@ export default function CatchUp({ userId, origin, onApply, children }: Props) {
               </li>)}</ul>
             </div>;
           })}
+          {plan.moves.length > 0 && <div className={styles.day}>
+            <div className={styles.dayHead}><h3>Moved to make room</h3></div>
+            <ul className={styles.list}>{plan.moves.map(m => <li key={m.key} className={dash[m.color]}>
+              <span className={styles.when}>{catchUpDayName(m.to.day, origin)}{m.to.day === 0 ? ` ${formatClockRange(m.to.time)}` : ''}</span>
+              <span className={styles.what}><strong>{m.title}</strong> <em>{m.subject}</em><small>{m.why} Was {m.from.day === 0 ? '' : `${catchUpDayName(m.from.day, origin)} `}{formatClockRange(m.from.time)}.</small></span>
+            </li>)}</ul>
+          </div>}
+          {plan.offers.length > 0 && <div className={styles.day}>
+            <div className={styles.dayHead}><h3>You placed these yourself</h3></div>
+            <ul className={styles.list}>{plan.offers.map(o => <li key={String(o.blockId)}>
+              <span className={styles.what}><strong>{o.title}</strong><small>You put this at {formatClockRange(o.time)}. Move it so “{o.forTitle}” can go today?</small></span>
+              <button type="button" className={styles.quiet} aria-label={`Move ${o.title}`} onClick={() => setMovePinned(new Set([...movePinned, String(o.blockId)]))}>Move it</button>
+            </li>)}</ul>
+          </div>}
           {todayCap === null && todayCount > 1 && <button type="button" className={styles.quiet} onClick={() => setTodayCap(todayCount - 1)}>Today looks like too much? Move one thing to tomorrow</button>}
           {todayCap !== null && <p className={styles.note}>Moved one thing off today. <button type="button" className={styles.quiet} onClick={() => setTodayCap(null)}>Undo</button></p>}
           {plan.unplaced.length > 0 && <div className={styles.day}>
