@@ -66,10 +66,10 @@ test('an event that moves onto a block moves it, and a review that comes after i
   // Opened again after the change in Google Calendar.
   await page.reload();
   // Since 2026-11-21 lecture reviews keep their order: the 11-02 review goes
-  // where the 11-04 one was, and that one goes right after it.
+  // where the 11-04 one was, and that one takes the slot the move found.
   await expect.poll(() => state.tables.todo_sessions.find(s => s.id === 's-review')!.start_time).toBe(at(0, '18:00'));
   expect(state.tables.todo_sessions.find(s => s.id === 's-review')!.end_time).toBe(at(0, '19:00'));
-  await expect.poll(() => state.tables.todo_sessions.find(s => s.id === 's-next')!.start_time).toBe(at(0, '19:00'));
+  await expect.poll(() => state.tables.todo_sessions.find(s => s.id === 's-next')!.start_time).toBe(at(0, '19:10'));
   expect(state.tables.todo_sessions).toHaveLength(2);
   expect(state.tables.todos).toHaveLength(2);
   await expect(page.getByText('Moved 2 sittings that had to move')).toBeVisible();

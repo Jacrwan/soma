@@ -1,5 +1,5 @@
 import { clockOf, rangeOf, spanMinutes } from './clockRange';
-import { affected } from './workOrder';
+import { reorderSeries } from './series';
 import type { CourseItem } from './courseItems';
 
 /**
@@ -163,29 +163,24 @@ export function reclaimDay(blocks: DayBlock[], nowMin: number, windowEnd: number
 }
 
 /**
- * Work that has to come first stays first (2026-11-21): a missed chapter 5
- * moved to 4 PM moves chapter 6, planned for 3 PM, to right after it. Only
- * what's out of order moves (workOrder's `affected`), and only later today.
+ * Work that has to come first stays first (2026-11-21, reworked 2026-11-22):
+ * when a missed chapter 5 lands after chapter 6, the two trade slots, so no
+ * time changes and nothing is pushed later (series.ts). Only blocks that
+ * haven't started and are still ahead trade.
  */
-function keepOrder(r: { blocks: DayBlock[]; moved: ReclaimMove[] }, nowMin: number, limit: number, items: CourseItem[]): { blocks: DayBlock[]; moved: ReclaimMove[] } {
-  let blocks = r.blocks;
+function keepOrder(r: { blocks: DayBlock[]; moved: ReclaimMove[] }, nowMin: number, _limit: number, items: CourseItem[]): { blocks: DayBlock[]; moved: ReclaimMove[] } {
+  if (!r.moved.some(m => m.to)) return r;
+  const swaps = reorderSeries(r.blocks.filter(b => b.time).map(b => ({ id: b.id, title: b.title, subjectId: b.subjectId, covers: b.covers, start: rangeOf(b.time)[0], end: rangeOf(b.time)[1], movable: movable(b) && rangeOf(b.time)[0] >= nowMin })), items);
+  if (!swaps.length) return r;
   const moved = [...r.moved];
-  const landed = moved.filter(m => m.to).map(m => blocks.find(b => b.id === m.id)!).filter(Boolean);
-  if (!landed.length) return r;
-  const board = blocks.filter(b => b.time).map(b => ({ id: b.id, title: b.title, subjectId: b.subjectId, covers: b.covers, start: rangeOf(b.time)[0], end: rangeOf(b.time)[1], movable: movable(b) && rangeOf(b.time)[0] >= nowMin }));
-  const fixes = affected(board, { moved: landed.map(b => ({ id: b.id, title: b.title, subjectId: b.subjectId, covers: b.covers, start: rangeOf(b.time)[0] })) }, items);
-  for (const f of fixes) {
-    const b = blocks.find(x => x.id === f.id), first = blocks.find(x => x.id === f.after);
-    if (!b?.time || !first?.time) continue;
-    const occupied = blocks.filter(x => x.id !== b.id && x.time).map(x => rangeOf(x.time));
-    const { times } = pack([b], gapsBetween(occupied, rangeOf(first.time)[1], limit));
-    const to = times.get(b.id);
-    if (!to) continue;
+  const blocks = r.blocks.map(b => {
+    const s = swaps.find(x => x.id === b.id);
+    if (!s) return b;
+    const to = `${clockOf(s.to[0])}–${clockOf(s.to[1])}`;
     const at = moved.findIndex(m => m.id === b.id);
     if (at >= 0) moved[at] = { ...moved[at], to }; else moved.push({ id: b.id, from: b.time, to });
-    const [a, z] = to.split('–');
-    blocks = blocks.map(x => x.id === b.id ? { ...x, time: to, minutes: spanMinutes(a, z) } : x);
-  }
+    return { ...b, time: to };
+  });
   return { blocks, moved };
 }
 

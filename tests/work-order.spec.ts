@@ -30,10 +30,34 @@ test('each block is touched once, in the order of the rules', () => {
   expect(affected(board, { covered: [[at(9), at(10)]], missedBy: at(11), moved: [{ id: 'c5', title: 'Reading: Chapter 5', subjectId: 'phys', start: at(12) }] })).toEqual([{ id: 'a', reason: 'covered' }]);
 });
 
-test('within-day reclaim: a missed chapter 5 moved later takes chapter 6 after it', () => {
+test('within-day reclaim: a missed chapter 5 moved later trades slots with chapter 6, so no time changes', () => {
   const d = (id: string, title: string, time: string): DayBlock => ({ id, title, time, minutes: 60, subjectId: 'phys' });
   const r = reclaimDay([d('c5', 'Reading: Chapter 5', '09:00–10:00'), d('c6', 'Reading: Chapter 6', '13:00–14:00'), { id: 'lec', title: 'Lecture', time: '11:00–13:00', minutes: 120, fixed: true }], at(10, 30), at(23));
   const time = (id: string) => r.blocks.find(x => x.id === id)!.time;
-  expect(time('c5')).toBe('14:00–15:00');
-  expect(time('c6')).toBe('15:00–16:00');
+  expect(time('c5')).toBe('13:00–14:00');
+  expect(time('c6')).toBe('14:00–15:00');
+});
+
+import { reorderSeries, seriesOf } from '../src/lib/series';
+import type { CourseItem } from '../src/lib/courseItems';
+
+// 2026-11-22: a series keeps its slots and trades items between them.
+const rv = (id: string, date: string, from: number, len = 60, extra: Partial<BoardBlock> = {}) => b(id, `Review: Physics lecture from ${date}`, from, from + len, extra);
+test('series: lecture reviews go back in date order without any time changing', () => {
+  const board = [rv('a', 'Tue 10-20', at(8)), rv('b', 'Thu 10-29', at(9)), rv('c', 'Thu 09-17', at(11)), rv('d', 'Thu 10-01', at(12))];
+  const moves = reorderSeries(board);
+  const slot = (id: string) => moves.find(m => m.id === id)?.to[0] ?? board.find(x => x.id === id)!.start;
+  expect([slot('c'), slot('d'), slot('a'), slot('b')]).toEqual([at(8), at(9), at(11), at(12)]);
+  expect(new Set(moves.map(m => m.to[0]))).toEqual(new Set(moves.map(m => m.from[0])));
+});
+test('series: newest first when asked; started and different-length blocks keep their slot', () => {
+  const board = [rv('a', 'Thu 09-03', at(8)), rv('b', 'Thu 09-10', at(9)), rv('c', 'Thu 09-17', at(10), 60, { movable: false }), rv('d', 'Thu 09-24', at(11), 30)];
+  expect(reorderSeries(board, [], true).sort((x, y) => String(x.id).localeCompare(String(y.id)))).toEqual([{ id: 'a', from: [at(8), at(9)], to: [at(9), at(10)] }, { id: 'b', from: [at(9), at(10)], to: [at(8), at(9)] }]);
+});
+test('series: readings follow the reading guide, not their titles', () => {
+  const items = ['12.7', '12.11', '13', '14'].map((label, position) => ({ id: label, subjectId: 'phys', label, position })) as CourseItem[];
+  const later = b('r13', 'Physics reading: 13, 14 Special Relativity', at(8), at(9), { covers: ['13', '14'] });
+  const first = b('r12', 'Physics reading: 12.7–12.11 Special Relativity', at(14), at(15), { covers: ['12.7', '12.11'] });
+  expect(seriesOf([later, first], items)[0].members.map(m => m.id)).toEqual(['r12', 'r13']);
+  expect(reorderSeries([later, first], items).map(m => [m.id, m.to[0]])).toEqual([['r12', at(8)], ['r13', at(14)]]);
 });

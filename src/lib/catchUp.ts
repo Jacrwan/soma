@@ -7,6 +7,7 @@ import { estimate, isSittingOf } from './planIt';
 import { deadlineOf } from './taskDetails';
 import { pinKey } from './pinnedBlocks';
 import { comesBefore, priorityOf, UNDATED } from './workOrder';
+import { placeInSeries, reorderSeries } from './series';
 
 /**
  * Catch-Up: a plan for a student who has fallen behind, worked out here with
@@ -283,24 +284,28 @@ export function buildCatchUp(input: CatchUpInput): CatchUpPlan {
     planned.push({ ...strip(c), ...spot, minutes: whole ? c.minutes : 60, why: whole ? c.why : `${c.why} A first hour now; plan the rest later.`, from: c });
   }
 
-  // Work that comes first goes before what it comes before: the earlier
-  // block's slot is its, and that one moves after it.
-  for (const p of planned) {
-    const at = p.day! * 1440 + startOf(p.time!);
-    const first = board.filter(x => {
+  // Work that comes first goes before what it comes before (2026-11-20,
+  // reworked 2026-11-22): a series trades slots, so a missed chapter 5 takes
+  // chapter 6's slot and chapter 6 takes chapter 5's. No new times (series.ts).
+  {
+    const entries = board.flatMap(x => {
+      const p = planned.find(q => `cu:${q.key}` === x.id);
+      if (p) return [{ id: x.id, title: p.title, subjectId: p.subjectId, covers: p.from.covers, start: p.day! * 1440 + startOf(p.time!), end: p.day! * 1440 + startOf(p.time!) + p.minutes, movable: true }];
       const it = info.get(x.id);
-      return it && !it.pinned && !moves.has(x.id) && x.day * 1440 + startOf(x.time) < at
-        && comesBefore(p.from, { subjectId: it.block.subjectId, title: it.block.title, covers: it.block.covers?.map(c => c.id) }, items);
-    }).sort((a, b) => a.day * 1440 + startOf(a.time) - (b.day * 1440 + startOf(b.time)))[0];
-    if (!first) continue;
-    const saved = board, s = startOf(first.time);
-    board = without([first.id, `cu:${p.key}`]);
-    if (!slotsOn(first.day).some(([a, z]) => a <= s && z >= s + p.minutes)) { board = saved; continue; }
-    occupy(`cu:${p.key}`, first.day, s, p.minutes);
-    const to = relocate(first.id, first.day, s + p.minutes + BREAK);
-    if (!to) { board = saved; continue; }
-    p.day = first.day; p.time = span(s, p.minutes);
-    record(info.get(first.id)!.block, to, `Moves after “${p.title}”, which comes first.`);
+      if (!it || it.pinned) return [];
+      const s0 = x.day * 1440 + startOf(x.time);
+      return [{ id: x.id, title: it.block.title, subjectId: it.block.subjectId, covers: it.block.covers?.map(c => c.id), start: s0, end: s0 + lengthOf(it.block.time), movable: true }];
+    });
+    const touched = new Set(planned.map(p => placeInSeries({ title: p.title, subjectId: p.subjectId, covers: p.from.covers }, items)?.key).filter((k): k is string => !!k));
+    for (const sw of reorderSeries(entries, items)) {
+      const e = entries.find(x => x.id === sw.id)!;
+      if (!touched.has(placeInSeries(e, items)?.key ?? '')) continue;
+      const day = Math.floor(sw.to[0] / 1440), time = span(sw.to[0] - day * 1440, sw.to[1] - sw.to[0]);
+      const p = planned.find(q => `cu:${q.key}` === sw.id);
+      if (p) { p.day = day; p.time = time; continue; }
+      record(info.get(sw.id)!.block, { day, time }, 'Trades places so its series stays in order.');
+      const m = moves.get(sw.id)!; m.to = { day, time };
+    }
   }
 
   // The student's own blocks in the way of work that fell behind: ask, never move.

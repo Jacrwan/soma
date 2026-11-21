@@ -9,6 +9,39 @@ still needed.
 
 ---
 
+## 2026-11-22 (Series stay in order by trading slots; a stated "by" is a hard limit)
+
+- **Why:** asked to "reschedule everything by the Tuesday afternoon deadline",
+  Soma left three Physics lectures and reading 13–14 on Wednesday, and the
+  2026-11-21 order check pushed nine more lecture reviews "to come after" one
+  review, one at a time: scrambled (10-20, 10-29, 09-17, 10-01…) and past the
+  deadline. The owner wants work organized chronologically, using the reading
+  guide.
+- **What:**
+  - `src/lib/series.ts` (new): `placeInSeries`/`seriesOf` group work that comes
+    as a list (same course; reading-guide position from `course_items`, else
+    the "from <date>" in the title, else the first number) and `reorderSeries`
+    puts a series back in order by trading slots between its movable,
+    same-length blocks. No time changes; nothing is pushed later. Oldest first;
+    `newest` reverses.
+  - The order check in the chat (`assistant.ts`), within-day reclaim
+    (`dayReclaim.keepOrder`), calendar clashes (`taskSchedule.ts`) and
+    Catch-Up's last pass (`catchUp.ts`) now trade slots instead of moving
+    blocks after one another. Only series the change touches; times the
+    student stated, and pinned, started or past blocks keep theirs. Chat cards
+    say "Back in order with the rest of its series … no new times".
+  - `"by":"YYYY-MM-DD HH:mm"` (reply-wide, or on a block/change): no card of
+    the reply ends after it; what doesn't fit, and cards that need it, come back
+    as one question ("… don't fit before Tue 5:00 PM: …"). Prompt: DEADLINES
+    and SERIES sections; CONTEXT `series` lists each series once, with its days
+    and "out of order".
+- **Tests:** `tests/work-order.spec.ts` (series: date order in place,
+  newest-first, fixed and different-length blocks, reading-guide order; reclaim
+  trades slots); `tests/ai-missed-now.spec.ts` (09-29 and 10-22 trade slots,
+  nothing later; a stated time wins over order; nothing placed after `by`);
+  `tests/calendar-clash.spec.ts` and `tests/catch-up-priority.spec.ts` updated
+  to trading slots.
+
 ## 2026-11-21 (A to-do list under the calendar; only what a change touches moves)
 
 - **Why:** the owner: "there isn't a list of todos; everything lives on the
