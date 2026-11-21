@@ -1,4 +1,6 @@
 import { clockOf, rangeOf, spanMinutes } from './clockRange';
+import { affected } from './workOrder';
+import type { CourseItem } from './courseItems';
 
 /**
  * Within-day reclaim (exam prep v2). No model.
@@ -30,6 +32,9 @@ export type DayBlock = {
   done?: boolean;
   /** Focus is still running. */
   running?: boolean;
+  /** Its course and reading-list sections: what it has to come after. */
+  subjectId?: string;
+  covers?: string[];
 };
 
 export type ReclaimMove = { id: string; from: string; to: string };
@@ -124,7 +129,7 @@ function applyTimes(blocks: DayBlock[], times: Map<string, string>, clear: Set<s
  * Repack today from `nowMin` when something was missed.
  * `windowEnd` is minutes from midnight, or null for no cap.
  */
-export function reclaimDay(blocks: DayBlock[], nowMin: number, windowEnd: number | null): ReclaimResult {
+export function reclaimDay(blocks: DayBlock[], nowMin: number, windowEnd: number | null, items: CourseItem[] = []): ReclaimResult {
   const running = blocks.find(b => b.running && !b.done && b.time);
   if (running) {
     const [, end] = rangeOf(running.time);
@@ -153,8 +158,35 @@ export function reclaimDay(blocks: DayBlock[], nowMin: number, windowEnd: number
   // block, or (when later study had to make room) a later one whose old time
   // another block now has.
   const clear = new Set(unplaced);
-  const applied = applyTimes(blocks, times, clear);
+  const applied = keepOrder(applyTimes(blocks, times, clear), nowMin, limit, items);
   return { ...applied, unplaced, held: false };
+}
+
+/**
+ * Work that has to come first stays first (2026-11-21): a missed chapter 5
+ * moved to 4 PM moves chapter 6, planned for 3 PM, to right after it. Only
+ * what's out of order moves (workOrder's `affected`), and only later today.
+ */
+function keepOrder(r: { blocks: DayBlock[]; moved: ReclaimMove[] }, nowMin: number, limit: number, items: CourseItem[]): { blocks: DayBlock[]; moved: ReclaimMove[] } {
+  let blocks = r.blocks;
+  const moved = [...r.moved];
+  const landed = moved.filter(m => m.to).map(m => blocks.find(b => b.id === m.id)!).filter(Boolean);
+  if (!landed.length) return r;
+  const board = blocks.filter(b => b.time).map(b => ({ id: b.id, title: b.title, subjectId: b.subjectId, covers: b.covers, start: rangeOf(b.time)[0], end: rangeOf(b.time)[1], movable: movable(b) && rangeOf(b.time)[0] >= nowMin }));
+  const fixes = affected(board, { moved: landed.map(b => ({ id: b.id, title: b.title, subjectId: b.subjectId, covers: b.covers, start: rangeOf(b.time)[0] })) }, items);
+  for (const f of fixes) {
+    const b = blocks.find(x => x.id === f.id), first = blocks.find(x => x.id === f.after);
+    if (!b?.time || !first?.time) continue;
+    const occupied = blocks.filter(x => x.id !== b.id && x.time).map(x => rangeOf(x.time));
+    const { times } = pack([b], gapsBetween(occupied, rangeOf(first.time)[1], limit));
+    const to = times.get(b.id);
+    if (!to) continue;
+    const at = moved.findIndex(m => m.id === b.id);
+    if (at >= 0) moved[at] = { ...moved[at], to }; else moved.push({ id: b.id, from: b.time, to });
+    const [a, z] = to.split('–');
+    blocks = blocks.map(x => x.id === b.id ? { ...x, time: to, minutes: spanMinutes(a, z) } : x);
+  }
+  return { blocks, moved };
 }
 
 /**

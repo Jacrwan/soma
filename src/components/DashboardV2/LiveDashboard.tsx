@@ -379,11 +379,11 @@ export default function LiveDashboard({userId}:{userId:string}) {
   const focusing=(b:Snapshot['blocks'][number])=>!!timer.activeSession && b.subjectId===timer.activeSession.subject.id && b.title===timer.activeSession.task;
   const missed=snapshot.blocks.filter(b=>b.sitting && b.day===0 && !!b.time && b.state==='Planned' && !(b.focusedSeconds??0) && !focusing(b) && rangeOf(b.time)[1]<=minute).map(b=>String(b.id));
   if(missed.some(id=>!missedSeen.current.has(id))){for(const id of missed)missedSeen.current.add(id);runSchedule(0);}
-  if(!planToday(held(snapshot.blocks),nowMinutes(),windowEnd,reclaimOpts()).moved.length)return;
+  if(!planToday(held(snapshot.blocks),nowMinutes(),windowEnd,reclaimOpts(),snapshot.items).moved.length)return;
   let fresh:Snapshot;
   try{fresh=await readPlan(userId,origin,rangeRef.current,7);}catch{return;}
   if(fresh.calendarError)return;
-  const result=planToday(held(fresh.blocks),nowMinutes(),windowEnd,reclaimOpts());
+  const result=planToday(held(fresh.blocks),nowMinutes(),windowEnd,reclaimOpts(),fresh.items);
   if(result.held || !result.moved.length || editingPlan.current || writing.current)return;
   reclaimLock.current=true;writing.current=true;setBusy(true);setError('');
   try{await applyMoves(fresh,result,'reclaim');await reload();}
@@ -423,14 +423,14 @@ export default function LiveDashboard({userId}:{userId:string}) {
  /** Read part of a block: its sections through `itemId` are done and the block
   *  is renamed to what was actually read; the rest goes back to open. */
  /** Delete in Edit plan: the block goes, and any suggestion Soma made about it. */
- async function remove(id:string|number){
+ async function remove(id:string|number,opts?:{task?:boolean}){
   if(writing.current)throw new Error('Please wait for the current save to finish.');
   writing.current=true;setBusy(true);setError('');
   try{
    const fresh=await readPlan(userId,origin,rangeRef.current,7);
    const target=fresh.blocks.find(b=>b.id===id);
    if(!target)throw new Error('This block changed elsewhere. Refresh and try again.');
-   await deletePlanBlock(target,fresh.sessions);
+   await deletePlanBlock(target,fresh.sessions,false,!!opts?.task);
    updateProposals(userId,items=>items.filter(p=>p.replaces!==id));
    await reload();
   }catch(e){setError(e instanceof Error ? e.message : 'Could not delete the block.');throw e;}

@@ -59,3 +59,33 @@ export function comesBefore(a: Work, b: Work, items: CourseItem[] = []): boolean
   }
   return false;
 }
+
+/**
+ * Which blocks a change touches (2026-11-21). The schedule is never cleared
+ * and redone: only these move, and everything else stays where it is. Times
+ * are absolute minutes (day * 1440 + minute). `movable` is the caller's
+ * rule for what may move at all: planned study, not started, not pinned, not
+ * a class. Checked in order, and each block is returned once:
+ *  1. covered: something with a stronger claim now sits on its time (a new or
+ *     moved calendar event, a time the student stated, work put back first);
+ *  2. missed: its time ended and nobody started it;
+ *  3. order: work it should come after (comesBefore) now starts after it;
+ *  4. late: it sits past its last day (due date or exam).
+ */
+export type BoardBlock = Work & { id: string | number; start: number; end: number; movable: boolean; lastDay?: number };
+export type Change = { covered?: [number, number][]; missedBy?: number; moved?: (Work & { id: string | number; start: number })[] };
+export type Affected = { id: string | number; reason: 'covered' | 'missed' | 'order' | 'late'; after?: string | number };
+
+export function affected(board: BoardBlock[], change: Change, items: CourseItem[] = []): Affected[] {
+  const out: Affected[] = [], seen = new Set<string>();
+  const movedIds = new Set((change.moved ?? []).map(m => String(m.id)));
+  const add = (b: BoardBlock, reason: Affected['reason'], after?: string | number) => {
+    if (!b.movable || seen.has(String(b.id)) || movedIds.has(String(b.id))) return;
+    seen.add(String(b.id)); out.push({ id: b.id, reason, ...(after !== undefined ? { after } : {}) });
+  };
+  for (const [a, z] of change.covered ?? []) for (const b of board) if (b.start < z && b.end > a) add(b, 'covered');
+  if (change.missedBy !== undefined) for (const b of board) if (b.end <= change.missedBy) add(b, 'missed');
+  for (const m of change.moved ?? []) for (const b of board) if (b.start < m.start && comesBefore(m, b, items)) add(b, 'order', m.id);
+  for (const b of board) if (b.lastDay !== undefined && Math.floor(b.start / 1440) > b.lastDay) add(b, 'late');
+  return out;
+}

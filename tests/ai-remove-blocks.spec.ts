@@ -10,7 +10,7 @@ const off=(n:number)=>{const d=new Date();d.setDate(d.getDate()+n);return d;};
 const at=(n:number,t:string)=>{const d=off(n);const [h,m]=t.split(':').map(Number);d.setHours(h,m,0,0);return d.toISOString();};
 const TOM=key(off(1));
 
-type Opts={scheduled?:boolean;logged?:boolean;twice?:boolean};
+type Opts={scheduled?:boolean;logged?:boolean;twice?:boolean;del?:boolean};
 async function setup(page:Page,opts:Opts){
  const st={
   todos:[{id:'quiz',user_id:account.id,text:'Quiz 2 Study',subject_id:'cs',status:'nothing',date:TOM}] as Record<string,unknown>[],
@@ -41,7 +41,7 @@ async function setup(page:Page,opts:Opts){
  await page.route('**/api/stripe',r=>r.fulfill({json:{status:'active'}}));
  await page.route('**/api/google-calendar-events',r=>r.fulfill({json:{events:[],incomplete:false}}));
  const id=opts.scheduled?'quiz-slot':'quiz';
- await page.route('**/api/chat',r=>triaged(r) ? undefined : r.fulfill({json:{content:[{text:JSON.stringify({reply:'Removed it.',blocks:[],changes:[{action:'remove',id}]})}]}}));
+ await page.route('**/api/chat',r=>triaged(r) ? undefined : r.fulfill({json:{content:[{text:JSON.stringify({reply:'Removed it.',blocks:[],changes:[{action:opts.del?'delete':'remove',id}]})}]}}));
  return st;
 }
 async function propose(page:Page){
@@ -52,14 +52,26 @@ async function propose(page:Page){
 }
 const planText=(page:Page)=>page.locator('[class*=agenda],[class*=single],[class*=concurrent]').first();
 
-test('a scheduled block is deleted, not just unscheduled', async ({ page }) => {
+// Since 2026-11-21 "remove" takes the block off the clock and keeps the task;
+// "delete" (or "task":true) deletes the task.
+test('a scheduled block is taken off the clock, and its task stays on the list', async ({ page }) => {
  const st=await setup(page,{scheduled:true});
+ await propose(page);
+ await expect(page.getByText(/Take off the clock/)).toBeVisible();
+ await page.getByRole('button',{name:'Accept',exact:true}).click();
+ await expect.poll(()=>st.sessions.length).toBe(0);
+ expect(st.todos).toHaveLength(1);
+ expect(st.deletes).toContain('todo_sessions:quiz-slot');
+ expect(st.deletes).not.toContain('todos:quiz');
+});
+
+test('"delete" deletes the task and its block', async ({ page }) => {
+ const st=await setup(page,{scheduled:true,del:true});
  await propose(page);
  await page.getByRole('button',{name:'Accept',exact:true}).click();
  await expect(planText(page)).not.toContainText('Quiz 2 Study');
  expect(st.todos).toHaveLength(0);
  expect(st.sessions).toHaveLength(0);
- expect(st.deletes).toContain('todo_sessions:quiz-slot');
  expect(st.deletes).toContain('todos:quiz');
 });
 
@@ -73,7 +85,7 @@ test('an already-unscheduled block is deleted rather than silently doing nothing
 });
 
 test('recorded study time is kept by default when a task is deleted', async ({ page }) => {
- const st=await setup(page,{scheduled:true,logged:true});
+ const st=await setup(page,{scheduled:true,logged:true,del:true});
  await propose(page);
  await expect(page.getByText('Also delete 40 min of recorded study time')).toBeVisible();
  await page.getByRole('button',{name:'Accept',exact:true}).click();
@@ -84,7 +96,7 @@ test('recorded study time is kept by default when a task is deleted', async ({ p
 });
 
 test('recorded study time is deleted too when that is chosen', async ({ page }) => {
- const st=await setup(page,{scheduled:true,logged:true});
+ const st=await setup(page,{scheduled:true,logged:true,del:true});
  await propose(page);
  await page.getByRole('checkbox',{name:/Also delete the 40 minutes recorded/}).check();
  await page.getByRole('button',{name:'Accept',exact:true}).click();
@@ -95,9 +107,9 @@ test('recorded study time is deleted too when that is chosen', async ({ page }) 
 });
 
 test('a task with no recorded time offers no choice about it', async ({ page }) => {
- await setup(page,{scheduled:true});
+ await setup(page,{scheduled:true,del:true});
  await propose(page);
- await expect(page.getByText('Delete from plan')).toBeVisible();
+ await expect(page.getByText(/Delete this task for good/)).toBeVisible();
  await expect(page.getByRole('checkbox',{name:/Also delete/})).toHaveCount(0);
 });
 

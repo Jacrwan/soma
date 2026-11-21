@@ -183,11 +183,20 @@ export async function setTaskStatus(userId:string,snapshot:Pick<Snapshot,'todos'
  * block; its last block takes the task with it. Recorded study time stays
  * unless `deleteLoggedTime` says otherwise.
  */
-export async function deletePlanBlock(target:LiveBlock,sessions:TodoSession[],deleteLoggedTime=false) {
+/**
+ * Takes a block off the plan. Since 2026-11-21 the work stays: only the
+ * block's time goes, and the task waits on the Tasks list ("No time yet").
+ * Removing the last block used to delete the task, so work taken off the
+ * calendar was gone for good. `deleteTask` deletes the task itself, with all
+ * its blocks; a block with no time has nothing to take off, so it does too.
+ */
+export async function deletePlanBlock(target:LiveBlock,sessions:TodoSession[],deleteLoggedTime=false,deleteTask=false) {
  if(target.legacyId){storage.setTimeBlocks(storage.getTimeBlocks().filter(b=>b.id!==target.legacyId));window.dispatchEvent(new Event('soma_todos_changed'));return;}
  if(!target.todoId || (target.external && !target.manual))throw new Error('This block can’t be deleted here.');
  const siblings=sessions.filter(sn=>sn.todoId===target.todoId);
- if(target.sessionId && siblings.some(sn=>sn.id!==target.sessionId))await storage.deleteTodoSession(target.sessionId);
+ // Personal commitments typed in by hand are blocks, not work: they still go.
+ if(target.sessionId && !deleteTask && !target.external)await storage.deleteTodoSession(target.sessionId);
+ else if(target.sessionId && siblings.some(sn=>sn.id!==target.sessionId) && !deleteTask)await storage.deleteTodoSession(target.sessionId);
  else{
   if(deleteLoggedTime && target.subjectId)await storage.deleteTimerSessionsByTask(target.title,target.subjectId);
   // Sessions first: if one fails the task survives and the delete can be retried.

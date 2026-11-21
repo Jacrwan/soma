@@ -403,3 +403,51 @@
 .addButton:hover {
   background: color-mix(in oklch, var(--accent), #000 10%);
 }
+
+/* The whole to-do list (2026-11-21): filter bar, section headings, type tags. */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm) var(--space-md);
+  margin: var(--space-sm) 0 var(--space-md);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.filters label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filters select {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface, transparent);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+
+.section {
+  margin: var(--space-lg) 0 var(--space-xs);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.tag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--text-muted);
+  vertical-align: 1px;
+}

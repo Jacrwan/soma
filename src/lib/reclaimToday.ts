@@ -2,6 +2,7 @@ import { rangeOf, spanMinutes, windowOf } from './clockRange';
 import { finishOverrun, reclaimDay, type DayBlock, type ReclaimResult } from './dayReclaim';
 import { pinKey } from './pinnedBlocks';
 import type { VersionBlock } from './dayVersions';
+import type { CourseItem } from './courseItems';
 
 /** A plan block, only the fields reclaim needs. */
 export type LiveDayBlock = {
@@ -20,6 +21,7 @@ export type LiveDayBlock = {
   note?: string;
   todoId?: string;
   subjectId?: string;
+  covers?: { id: string }[];
 };
 
 /**
@@ -56,6 +58,8 @@ export function asDayBlocks(blocks: LiveDayBlock[], opts: ReclaimOpts): DayBlock
       started,
       done,
       running,
+      ...(b.subjectId ? { subjectId: b.subjectId } : {}),
+      ...(b.covers?.length ? { covers: b.covers.map(c => c.id) } : {}),
     };
   });
 }
@@ -67,8 +71,8 @@ export function toVersionBlocks(blocks: LiveDayBlock[]): VersionBlock[] {
     .sort((a, b) => (a.time || '99').localeCompare(b.time || '99') || a.title.localeCompare(b.title));
 }
 
-export function planToday(blocks: LiveDayBlock[], nowMin: number, windowEnd: number | null, opts: ReclaimOpts): ReclaimResult {
-  return reclaimDay(asDayBlocks(blocks, opts), nowMin, windowEnd);
+export function planToday(blocks: LiveDayBlock[], nowMin: number, windowEnd: number | null, opts: ReclaimOpts, items: CourseItem[] = []): ReclaimResult {
+  return reclaimDay(asDayBlocks(blocks, opts), nowMin, windowEnd, items);
 }
 
 /**

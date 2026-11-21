@@ -66,3 +66,20 @@ test('a block the student placed in the way says so and waits for its own Accept
   await expect.poll(() => startOf(db, 's-read')).toBe(at('11:34'));
   expect(startOf(db, 's-rev')).not.toBe(at('11:00'));
 });
+
+// 2026-11-21: work that comes first stays first. Moving chapter 5 to the
+// evening also moves chapter 6, planned for the afternoon, to right after it;
+// nothing else moves.
+test('moving chapter 5 after chapter 6 moves chapter 6 after it, and nothing else', async ({ page }) => {
+  const db = await setup(page, ctx => ({ reply: 'Chapter 5 tonight.', changes: [{ action: 'move', id: idOf(ctx, 'Reading: Chapter 5'), date: TODAY, start: '19:30', end: '20:30' }] }), d => {
+    block(d, 'c5', 'Reading: Chapter 5', TODAY, '13:00', '14:00');
+    block(d, 'c6', 'Reading: Chapter 6', TODAY, '15:00', '16:00');
+    block(d, 'x', 'Problem set', TODAY, '20:45', '21:45');
+  });
+  await ask(page, 'move chapter 5 to 7:30 tonight');
+  await expect(page.getByText(/to come after "Reading: Chapter 5", which goes first/)).toBeVisible();
+  await page.getByRole('button', { name: 'Accept all' }).click();
+  await expect.poll(() => startOf(db, 's-c5')).toBe(at('19:30'));
+  await expect.poll(() => startOf(db, 's-c6')).toBe(at('21:45'));
+  expect(startOf(db, 's-x')).toBe(at('20:45'));
+});
