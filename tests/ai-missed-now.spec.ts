@@ -67,19 +67,48 @@ test('a block the student placed in the way says so and waits for its own Accept
   expect(startOf(db, 's-rev')).not.toBe(at('11:00'));
 });
 
-// 2026-11-21: work that comes first stays first. Moving chapter 5 to the
-// evening also moves chapter 6, planned for the afternoon, to right after it;
-// nothing else moves.
-test('moving chapter 5 after chapter 6 moves chapter 6 after it, and nothing else', async ({ page }) => {
+// 2026-11-22: a series keeps its order by trading slots, never by pushing
+// work later. On 2026-11-21 nine lecture reviews were pushed "to come after"
+// one review, scrambled and past the student's Tuesday deadline.
+test('moving the 09-29 review after the 10-22 one makes them trade slots; nothing moves later', async ({ page }) => {
+  const db = await setup(page, ctx => ({ reply: 'Moved it.', changes: [{ action: 'move', id: idOf(ctx, 'Review: Physics lecture from Tue 09-29'), date: TODAY, after: '17:00', minutes: 60 }] }), d => {
+    block(d, 'a', 'Review: Physics lecture from Tue 09-29', TODAY, '13:00', '14:00');
+    block(d, 'b', 'Review: Physics lecture from Thu 10-22', TODAY, '15:00', '16:00');
+    block(d, 'x', 'Problem set', TODAY, '20:45', '21:45');
+  });
+  await ask(page, 'move the 09-29 review later');
+  await expect(page.getByText(/Back in order with the rest of its series/)).toBeVisible();
+  await page.getByRole('button', { name: 'Accept all' }).click();
+  // 09-29 takes 10-22's slot; 10-22 takes the slot the move found for 09-29.
+  await expect.poll(() => startOf(db, 's-a')).toBe(at('15:00'));
+  await expect.poll(() => startOf(db, 's-b')).toBe(at('19:00'));
+  expect(startOf(db, 's-x')).toBe(at('20:45'));
+});
+
+test('a time the student stated wins over series order', async ({ page }) => {
   const db = await setup(page, ctx => ({ reply: 'Chapter 5 tonight.', changes: [{ action: 'move', id: idOf(ctx, 'Reading: Chapter 5'), date: TODAY, start: '19:30', end: '20:30' }] }), d => {
     block(d, 'c5', 'Reading: Chapter 5', TODAY, '13:00', '14:00');
     block(d, 'c6', 'Reading: Chapter 6', TODAY, '15:00', '16:00');
-    block(d, 'x', 'Problem set', TODAY, '20:45', '21:45');
   });
   await ask(page, 'move chapter 5 to 7:30 tonight');
-  await expect(page.getByText(/to come after "Reading: Chapter 5", which goes first/)).toBeVisible();
+  await expect(page.getByRole('log')).toContainText('Chapter 5 tonight.');
+  await expect(page.getByText(/Back in order/)).toHaveCount(0);
   await page.getByRole('button', { name: 'Accept all' }).click();
   await expect.poll(() => startOf(db, 's-c5')).toBe(at('19:30'));
-  await expect.poll(() => startOf(db, 's-c6')).toBe(at('21:45'));
-  expect(startOf(db, 's-x')).toBe(at('20:45'));
+  expect(startOf(db, 's-c6')).toBe(at('15:00'));
+});
+
+// 2026-11-22: "reschedule everything by Tuesday afternoon" came back with work
+// on Wednesday. A stated "by" is a hard limit: nothing lands after it, and
+// what doesn't fit is a question.
+test('nothing is placed after the deadline the student stated; what does not fit is asked about', async ({ page }) => {
+  // Open time: 1–2 PM, then 3–4 PM (classes at 2 and 4). Due by 2:30.
+  await setup(page, () => ({ reply: 'Both before 2:30.', by: `${TODAY} 14:30`, blocks: [
+    { title: 'Essay outline', subject: 'Physics 5A', date: TODAY, minutes: 60, after: '13:00' },
+    { title: 'Problem set 7', subject: 'Physics 5A', date: TODAY, minutes: 60, after: '13:00' },
+  ] }));
+  await ask(page, 'do the essay outline and problem set 7, all done by 2:30 today');
+  await expect(page.getByRole('log')).toContainText(/"Problem set 7" doesn't fit before/);
+  await expect(page.getByText('Essay outline', { exact: true })).toBeVisible();
+  await expect(page.getByText('Problem set 7', { exact: true })).toHaveCount(0);
 });

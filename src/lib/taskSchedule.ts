@@ -4,9 +4,8 @@ import { storage } from './storage';
 import { readPlan, dateAt, localDate, utcIso, type History, type Snapshot } from '../components/DashboardV2/liveData';
 import { getProposals } from './proposalStore';
 import { estimate, kindOf } from './planIt';
-import { clockOf, rangeOf } from './clockRange';
-import { freeTime } from './aiPlanning';
-import { affected } from './workOrder';
+import { rangeOf } from './clockRange';
+import { placeInSeries, reorderSeries } from './series';
 import { pinBlock, pinKey, pinnedKeys } from './pinnedBlocks';
 import { eventKey, skippedKeys } from './skippedEvents';
 import { subjectForCourse } from './canvasDeepSync';
@@ -407,9 +406,10 @@ async function run(userId: string): Promise<RescheduleResult> {
       created++;
     }
   }
-  // A block moved off an event must not land after work that comes after it
-  // (2026-11-21): chapter 5 pushed to 7 PM moves chapter 6, planned for 5 PM,
-  // to right after it. Only what's out of order moves.
+  // A block moved off an event keeps its series in order (2026-11-21,
+  // reworked 2026-11-22): the series' blocks trade slots, so the 11-02 review
+  // goes where the 11-04 one was and that one takes its new slot. No new
+  // times, nothing pushed later (series.ts).
   const offEvents = moved.filter(m => clashes.some(c => c.todoId === m.todoId));
   if (offEvents.length) {
     const fresh = await readPlan(userId, origin, 0, days);
@@ -418,41 +418,15 @@ async function run(userId: string): Promise<RescheduleResult> {
       const plain = fresh.blocks.filter(b => !b.external && b.todoId && b.sessionId && b.time && b.state === 'Planned' && !ids.has(b.todoId));
       const pinnedHere = (b: typeof plain[number]) => !!fresh.sessions.find(sn => sn.id === b.sessionId)?.pinned || pins.has(pinKey(b.todoId!, localDate(dateAt(origin, b.day)), b.time.slice(0, 5)));
       const board = plain.map(b => ({ id: b.sessionId!, title: b.title, subjectId: b.subjectId, covers: b.covers?.map(c => c.id), start: at(b), end: b.day * 1440 + rangeOf(b.time)[1], movable: at(b) >= abs(now) && !(b.actualSeconds ?? 0) && !pinnedHere(b) }));
-      const first = offEvents.flatMap(m => { const b = plain.find(x => x.todoId === m.todoId); return b ? [{ id: b.sessionId!, title: b.title, subjectId: b.subjectId, covers: b.covers?.map(c => c.id), start: at(b) }] : []; });
-      let taken = fresh;
-      const save = async (sessionId: string, startAt: number, len: number) => {
-        const start = moment(startAt), end = moment(startAt + len);
-        const { error } = await supabase.from('todo_sessions').update({ date: localDate(start), start_time: start.toISOString(), end_time: end.toISOString() }).eq('id', sessionId).eq('user_id', userId);
+      const touched = new Set(offEvents.flatMap(m => { const b = plain.find(x => x.todoId === m.todoId); const p = b && placeInSeries({ title: b.title, subjectId: b.subjectId, covers: b.covers?.map(c => c.id) }, fresh.items); return p ? [p.key] : []; }));
+      for (const sw of reorderSeries(board, fresh.items)) {
+        const b = plain.find(x => x.sessionId === sw.id)!;
+        if (!touched.has(placeInSeries({ title: b.title, subjectId: b.subjectId, covers: b.covers?.map(c => c.id) }, fresh.items)?.key ?? '')) continue;
+        const start = moment(sw.to[0]), end = moment(sw.to[1]);
+        const { error } = await supabase.from('todo_sessions').update({ date: localDate(start), start_time: start.toISOString(), end_time: end.toISOString() }).eq('id', b.sessionId!).eq('user_id', userId);
         fail(error);
-        return start;
-      };
-      const settings = storage.getSomaSettings();
-      /** The first open time from `after` for `len` minutes, on the board `plan`. */
-      const slotFrom = (plan: Snapshot, after: number, len: number) => freeTime(plan, origin, settings, now, days, 15)
-        .flatMap((d, day) => d.free.map(rangeOf).map(([x, y]) => [Math.max(day * 1440 + x, after), day * 1440 + y] as const)).find(([x, y]) => y - x >= len)?.[0];
-      const timeAt = (startAt: number, len: number) => { const day = Math.floor(startAt / 1440); return { day, time: `${clockOf(startAt - day * 1440)}–${clockOf(startAt - day * 1440 + len)}` }; };
-      for (const f of affected(board, { moved: first }, fresh.items)) {
-        const b = plain.find(x => x.sessionId === f.id)!, lead = plain.find(x => x.sessionId === f.after)!;
-        const len = rangeOf(b.time)[1] - rangeOf(b.time)[0], leadLen = rangeOf(lead.time)[1] - rangeOf(lead.time)[0];
-        const without = { ...taken, blocks: taken.blocks.filter(x => x.sessionId !== b.sessionId) };
-        // The two trade places when the first fits where the second was: it
-        // goes there, and the second goes right after it.
-        if (leadLen <= len && !clashes.find(c => c.todoId === lead.todoId)?.pinned) {
-          const swapped = { ...without, blocks: without.blocks.map(x => x.sessionId === lead.sessionId ? { ...x, ...timeAt(at(b), leadLen) } : x) };
-          const to = slotFrom(swapped, at(b) + leadLen, len);
-          if (to !== undefined) {
-            const leadTo = await save(lead.sessionId!, at(b), leadLen);
-            const m = moved.find(x => x.todoId === lead.todoId);
-            if (m) m.to = leadTo;
-            moved.push({ todoId: b.todoId!, title: b.title, from: moment(at(b)), to: await save(b.sessionId!, to, len) });
-            taken = { ...swapped, blocks: [...swapped.blocks, { ...b, ...timeAt(to, len) }] };
-            continue;
-          }
-        }
-        const to = slotFrom(without, lead.day * 1440 + rangeOf(lead.time)[1], len);
-        if (to === undefined) continue;
-        moved.push({ todoId: b.todoId!, title: b.title, from: moment(at(b)), to: await save(b.sessionId!, to, len) });
-        taken = { ...without, blocks: [...without.blocks, { ...b, ...timeAt(to, len) }] };
+        const m = moved.find(x => x.todoId === b.todoId);
+        if (m) m.to = start; else moved.push({ todoId: b.todoId!, title: b.title, from: moment(at(b)), to: start });
       }
     }
   }

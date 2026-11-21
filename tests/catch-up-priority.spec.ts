@@ -65,7 +65,7 @@ test('work due later only takes open time, however far out', () => {
   expect(plan.moves).toEqual([]);
 });
 
-test('a missed chapter 5 goes before chapter 6, which moves after it', () => {
+test('a missed chapter 5 goes before chapter 6: they trade slots', () => {
   const classes = [block('c1', '', 'Lecture', 0, '12:00–15:00', 'phys', { external: true, todoId: undefined })];
   const plan = buildCatchUp({
     snapshot: snap(
@@ -75,7 +75,7 @@ test('a missed chapter 5 goes before chapter 6, which moves after it', () => {
     assignments: [], settings, origin, now: new Date(2026, 10, 20, 11, 50),
   });
   expect(plan.planned).toMatchObject([{ title: 'Reading: Chapter 5', day: 0, time: '15:00–16:00' }]);
-  expect(plan.moves).toMatchObject([{ title: 'Reading: Chapter 6', from: { day: 0, time: '15:00–16:00' }, to: { day: 0, time: '16:10–17:10' } }]);
+  expect(plan.moves).toMatchObject([{ title: 'Reading: Chapter 6', from: { day: 0, time: '15:00–16:00' }, to: { day: 0, time: '16:00–17:00' } }]);
 });
 
 test('a block the student placed is asked about, never moved; a yes lets it move', () => {
