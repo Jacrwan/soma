@@ -152,13 +152,14 @@ export function reclaimDay(blocks: DayBlock[], nowMin: number, windowEnd: number
   let { times, unplaced } = placeAround([...missed].sort(byPriority));
   if (unplaced.length) {
     const later = blocks.filter(b => movable(b) && rangeOf(b.time)[0] >= nowMin);
-    ({ times, unplaced } = placeAround([...missed, ...later].sort(byPriority)));
+    const second = placeAround([...missed, ...later].sort(byPriority));
+    // Later study makes room only when every one of them still has a place.
+    if (!second.unplaced.some(id => later.some(l => l.id === id))) ({ times, unplaced } = second);
   }
-  // What fits nowhere comes off the clock and waits for catch-up: a missed
-  // block, or (when later study had to make room) a later one whose old time
-  // another block now has.
-  const clear = new Set(unplaced);
-  const applied = keepOrder(applyTimes(blocks, times, clear), nowMin, limit, items);
+  // What fits nowhere keeps its time (2026-11-21): it used to come off the
+  // clock to "wait for catch-up" and showed as Any time / Unscheduled, which
+  // read as lost. It stays where it was, missed; Catch-Up offers it tomorrow.
+  const applied = keepOrder(applyTimes(blocks, times, new Set()), nowMin, limit, items);
   return { ...applied, unplaced, held: false };
 }
 

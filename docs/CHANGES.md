@@ -9,6 +9,31 @@ still needed.
 
 ---
 
+## 2026-11-21 (Missed blocks keep their time; changing study hours asks first)
+
+- **Why:** "Review: Physics lecture from Tue 09-15" showed as Any time /
+  Unscheduled: the within-day reclaim takes a missed block off the clock when
+  it fits nowhere before Latest end, which read as lost. And changing study
+  hours (Earliest start 8 → 10) moved only the task scheduler's sittings;
+  other blocks stayed outside the hours without a word. The owner wants a
+  question.
+- **What:**
+  - `src/lib/dayReclaim.ts`: a missed block that fits nowhere today keeps its
+    time (missed; Catch-Up offers it tomorrow) instead of being cleared. Later
+    study makes room only when every later block still has a place, so nothing
+    comes off the clock.
+  - Settings → Study hours: Earliest start / Latest end save when the box is
+    left (or Enter), not on every keystroke, so a half-typed time is never the
+    real window. Then `HoursChangePrompt.tsx` lists blocks in the next 7 days
+    now outside the hours (not classes, scheduler sittings, started or checked
+    ones); blocks whose time the student set start unticked. **Move them**
+    places each at the first open time inside the hours that day, else a later
+    day before its due date, and puts touched series back in order
+    (`src/lib/hoursChange.ts`); **Leave them** changes nothing.
+- **Tests:** `tests/day-reclaim.spec.ts` (missed blocks keep their time; the
+  wall test); `tests/study-hours.spec.ts` › "changing study hours asks…",
+  "with nothing outside the new hours there is no question".
+
 ## 2026-11-22 (Series stay in order by trading slots; a stated "by" is a hard limit)
 
 - **Why:** asked to "reschedule everything by the Tuesday afternoon deadline",
