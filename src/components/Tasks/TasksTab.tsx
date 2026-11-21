@@ -10,6 +10,7 @@ import { rankBetween } from '../../lib/taskScheduler';
 import { formatClock, useTimeFormat } from '../../lib/timeFormat';
 import type { Todo } from '../../types';
 import { SkeletonBlock, SkeletonPage } from '../UI/Skeleton';
+import { matches, placeTodo, readFilter, saveFilter, statusOf, tagsOf, undatedRows, type ListFilter, type ListRow, type ListTag } from '../../lib/taskList';
 import styles from './TasksTab.module.css';
 
 /**
@@ -17,7 +18,12 @@ import styles from './TasksTab.module.css';
  * Soma schedules them (lib/taskScheduler.ts) without AI. Priority is silent:
  * there are no labels, only the order, and dragging a task changes it.
  * Adding a task places it right away; missed sittings move on their own.
+ *
+ * Since 2026-11-21 it is the whole to-do list (lib/taskList.ts): tasks with
+ * no due date are listed too, with where each stands (scheduled, missed, no
+ * time yet), Multi-step / Multi-session tags, and a filter.
  */
+const TAG_LABEL: Record<ListTag, string> = { 'multi-step': 'Multi-step', 'multi-session': 'Multi-session' };
 
 const hours = (m: number) => m < 60 ? `${m} min` : `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}`;
 const hm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -49,6 +55,8 @@ export default function TasksTab({ userId }: { userId: string }) {
   const [undo, setUndo] = useState<Todo | null>(null);
   // "+ Add task": the Task details popup, empty (2026-11-17, replacing the add row).
   const [adding, setAdding] = useState(false);
+  const [filter, setFilterState] = useState<ListFilter>(() => readFilter(userId));
+  const setFilter = (f: ListFilter) => { setFilterState(f); saveFilter(userId, f); };
 
   const load = useCallback(async () => {
     const data = await readPlan(userId, dateAt(new Date(), 0), 0, 1);
@@ -81,7 +89,13 @@ export default function TasksTab({ userId }: { userId: string }) {
   // What Soma schedules, and what it could (not overdue yet). Old open to-dos
   // long past their date (from Day View and earlier versions) aren't tasks to plan.
   const today = localDate(new Date());
-  const tasks = tasksFrom(snapshot, userId).filter(t => t.managed || t.todo.dueDate!.slice(0, 10) >= today);
+  const allTasks = tasksFrom(snapshot, userId).filter(t => t.managed || t.todo.dueDate!.slice(0, 10) >= today);
+  const rowOf = (t: TaskInfo): ListRow => ({ todo: t.todo, status: statusOf(t.todo, snapshot.sessions, snapshot.history), tags: tagsOf(t.todo, snapshot.sessions) });
+  const tasks = allTasks.filter(t => matches(rowOf(t), filter));
+  const undated = undatedRows(snapshot).filter(r => matches(r, filter));
+  const filtered = filter.course !== 'all' || filter.status !== 'all' || filter.type !== 'all' || filter.due !== 'all';
+  const statusText = (r: ListRow) => r.status.kind === 'scheduled' ? `Scheduled ${whenLabel(r.status.at, timeFormat)}` : r.status.kind === 'missed' ? `Missed ${r.status.day.toLocaleDateString(undefined, { weekday: 'short' })}` : 'No time yet';
+  const tagPills = (tags: ListTag[]) => tags.map(tag => <span key={tag} className={styles.tag}>{TAG_LABEL[tag]}</span>);
   const subjectOf = (t: TaskInfo) => snapshot.subjects.find(s => s.id === t.todo.subjectId);
   const lengthGuess = (text: string, subjectId?: string) => { const sb = subjects.find(x => x.id === subjectId); return sb && text.trim() ? estimate({ key: 'detail', title: text, subject: sb.name, subjectId: sb.id, color: '', due: '' }, snapshot.history).minutes : 60; };
 
@@ -134,13 +148,32 @@ export default function TasksTab({ userId }: { userId: string }) {
         <button type="button" className={styles.addButton} data-tour="tasks" onClick={() => setAdding(true)}><Plus size={15} /> Add task</button>
       </div>
 
+      <div className={styles.filters} role="group" aria-label="Filter tasks">
+        <label>Course <select value={filter.course} onChange={e => setFilter({ ...filter, course: e.target.value })}>
+          <option value="all">All courses</option>
+          {subjects.filter(sb => sb.name !== 'Personal commitments').map(sb => <option key={sb.id} value={sb.id}>{sb.name}</option>)}
+          <option value="personal">Personal</option>
+        </select></label>
+        <label>Status <select value={filter.status} onChange={e => setFilter({ ...filter, status: e.target.value as ListFilter['status'] })}>
+          <option value="all">All</option><option value="scheduled">Scheduled</option><option value="none">No time yet</option><option value="missed">Missed</option>
+        </select></label>
+        <label>Type <select value={filter.type} onChange={e => setFilter({ ...filter, type: e.target.value as ListFilter['type'] })}>
+          <option value="all">All</option><option value="single">Single</option><option value="multi-step">Multi-step</option><option value="multi-session">Multi-session</option>
+        </select></label>
+        <label>Due date <select value={filter.due} onChange={e => setFilter({ ...filter, due: e.target.value as ListFilter['due'] })}>
+          <option value="all">Any</option><option value="dated">Has a due date</option><option value="undated">No due date</option>
+        </select></label>
+        {filtered && <button type="button" className={styles.link} onClick={() => setFilter({ course: 'all', status: 'all', type: 'all', due: 'all' })}>Clear filters</button>}
+      </div>
+
       <div className={styles.live} aria-live="polite">
         {error && <p role="alert" className={styles.error}>{error}</p>}
         {status && !error && <p className={styles.status}>{status}{undo && status.startsWith('Done:') && <> <button type="button" className={styles.link} disabled={busy} onClick={() => void undoFinish()}>Undo</button></>}</p>}
         {busy && <p className={styles.status}>Scheduling…</p>}
       </div>
 
-      {!tasks.length ? <p className={styles.empty}>No tasks with a due date yet. Add one with + Add task.</p> : (
+      {filter.due !== 'undated' && <h2 className={styles.section}>With a due date</h2>}
+      {filter.due === 'undated' ? null : !tasks.length ? <p className={styles.empty}>{filtered ? 'No tasks with a due date match these filters.' : 'No tasks with a due date yet. Add one with + Add task.'}</p> : (
         <ol className={styles.list} aria-label="Tasks, most important first" onDragOver={e => e.preventDefault()}>
           {tasks.map((t, i) => {
             const subject = subjectOf(t);
@@ -161,8 +194,8 @@ export default function TasksTab({ userId }: { userId: string }) {
                   <button
                     type="button"
                     className={styles.handle}
-                    draggable
-                    disabled={busy}
+                    draggable={!filtered}
+                    disabled={busy || filtered}
                     aria-label={`Reorder ${t.todo.text}. Use the up and down arrow keys.`}
                     title="Drag to change the order"
                     onDragStart={e => { setDragId(t.todo.id); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', t.todo.id); }}
@@ -176,7 +209,7 @@ export default function TasksTab({ userId }: { userId: string }) {
                   <span className={styles.dot} style={{ background: subject?.color ?? 'var(--text-muted)' }} />
                   <div className={styles.info}>
                     <button type="button" className={styles.title} aria-label={`Details: ${t.todo.text}`} onClick={() => setDetails(t.todo)}>{t.todo.text}</button>
-                    <span className={styles.meta}>{subject?.name ?? 'Personal'} · {t.todo.myDue ? 'Due for you' : 'Due'} {dueLabel(deadlineOf(t.todo)!, timeFormat)}{t.todo.steps?.length ? ` · ${t.todo.steps.length} ${t.todo.steps.length === 1 ? 'step' : 'steps'}` : ''}</span>
+                    <span className={styles.meta}>{tagPills(rowOf(t).tags)}{subject?.name ?? 'Personal'} · {t.todo.myDue ? 'Due for you' : 'Due'} {dueLabel(deadlineOf(t.todo)!, timeFormat)}{t.todo.steps?.length ? ` · ${t.todo.steps.length} ${t.todo.steps.length === 1 ? 'step' : 'steps'}` : ''}</span>
                   </div>
                   <div className={styles.left} role="group" aria-label={`Time for ${t.todo.text}`}>
                     <button type="button" disabled={busy || t.total <= 15 || !!t.todo.steps?.length} aria-label={`30 minutes less for ${t.todo.text}`} onClick={() => void setTotal(t, t.total - 30)}>−</button>
@@ -220,6 +253,37 @@ export default function TasksTab({ userId }: { userId: string }) {
             onDrop={e => { e.preventDefault(); if (dragId) moveTo(dragId, tasks.length); setDragId(null); setOverIndex(null); }} />
         </ol>
       )}
+      {filter.due !== 'dated' && <>
+        <h2 className={styles.section}>No due date</h2>
+        {!undated.length ? <p className={styles.empty}>{filtered ? 'Nothing here matches these filters.' : 'Work you take off the calendar, and to-dos with no due date, wait here.'}</p> : (
+          <ul className={styles.list} aria-label="Tasks with no due date">
+            {undated.map(r => {
+              const subject = snapshot.subjects.find(sb => sb.id === r.todo.subjectId);
+              return (
+                <li key={r.todo.id} className={styles.row}>
+                  <div className={styles.rowMain}>
+                    <span className={styles.handle} aria-hidden="true" />
+                    <input type="checkbox" className={styles.check} aria-label={`Done: ${r.todo.text}`} disabled={busy} onChange={() => void act(async () => { await setTaskStatus(userId, snapshot, r.todo, 'done'); }, `Done: “${r.todo.text}”.`)} />
+                    <span className={styles.dot} style={{ background: subject?.color ?? 'var(--text-muted)' }} />
+                    <div className={styles.info}>
+                      <button type="button" className={styles.title} aria-label={`Details: ${r.todo.text}`} onClick={() => setDetails(r.todo)}>{r.todo.text}</button>
+                      <span className={styles.meta}>{tagPills(r.tags)}{subject?.name ?? 'Personal'} · <span className={r.status.kind === 'missed' ? styles.risk : undefined}>{statusText(r)}</span></span>
+                    </div>
+                    <div className={styles.next}>
+                      {r.status.kind === 'scheduled' ? <span>Next: {whenLabel(r.status.at, timeFormat)}</span>
+                        : <button type="button" className={styles.link} disabled={busy} aria-label={`Schedule ${r.todo.text}`} onClick={() => void act(async () => {
+                          const minutes = r.todo.estimatedMinutes || lengthGuess(r.todo.text, r.todo.subjectId);
+                          const at = await placeTodo(userId, r.todo, minutes);
+                          if (!at) throw new Error(`No open ${hours(minutes)} in the next week for “${r.todo.text}”.`);
+                        }, `Scheduled “${r.todo.text}”.`)}>Schedule it</button>}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </>}
       {details && <TaskDetail userId={userId} target={{ todo: details }} subjects={subjects} sessions={snapshot.sessions} guess={lengthGuess}
         onClose={saved => { setDetails(null); if (saved) void after('Saved. Soma placed it again.'); }} />}
       {adding && <TaskDetail userId={userId} target={{ seed: { title: '' } }} subjects={subjects} sessions={snapshot.sessions} guess={lengthGuess}

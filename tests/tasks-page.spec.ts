@@ -527,3 +527,53 @@ test('with two sittings of one task today, the running timer shows on the one it
   await expect(first.getByText(/^Paused/)).toBeVisible();
   await expect(second.getByText(/^Planned/)).toBeVisible();
 });
+
+// 2026-11-21: the Tasks page is the whole to-do list. Work with no due date is
+// listed with where it stands, tasks with steps or several sittings are
+// tagged, and a filter narrows the list (remembered on this device).
+const undatedTask = (id: string, text: string, extra: Row = {}): Row => ({ id, user_id: account.id, text, subject_id: 'hist', status: 'nothing', date: dateOf(0), estimated_minutes: 60, assignment_id: null, ...extra });
+test('Tasks lists work with no due date, where each stands, with tags and a filter', async ({ page }) => {
+  await setup(page, {
+    todos: [
+      task('essay', 'Essay draft', dateOf(4), { steps: [{ id: 'a', title: 'Outline', minutes: 30 }, { id: 'b', title: 'Write', minutes: 60 }] }),
+      undatedTask('read', 'Reading: Chapter 5', { date: dateOf(-1) }),
+      undatedTask('notes', 'Clean up notes'),
+      undatedTask('flash', 'Flashcards', { date: dateOf(1) }),
+      undatedTask('old', 'Very old to-do', { date: dateOf(-60) }),
+    ],
+    todo_sessions: [
+      { id: 'read-slot', user_id: account.id, todo_id: 'read', date: dateOf(-1), start_time: at(-1, '15:00'), end_time: at(-1, '16:00') },
+      { id: 'f1', user_id: account.id, todo_id: 'flash', date: dateOf(1), start_time: at(1, '10:00'), end_time: at(1, '10:30') },
+      { id: 'f2', user_id: account.id, todo_id: 'flash', date: dateOf(2), start_time: at(2, '10:00'), end_time: at(2, '10:30') },
+    ],
+  });
+  await page.goto('/tasks');
+  const undated = page.getByRole('list', { name: 'Tasks with no due date' });
+  await expect(undated.getByRole('listitem').filter({ hasText: 'Reading: Chapter 5' })).toContainText('Missed Sun');
+  await expect(undated.getByRole('listitem').filter({ hasText: 'Clean up notes' })).toContainText('No time yet');
+  await expect(undated.getByRole('listitem').filter({ hasText: 'Flashcards' })).toContainText('Scheduled Tomorrow');
+  await expect(undated.getByRole('listitem').filter({ hasText: 'Flashcards' })).toContainText('Multi-session');
+  await expect(page.getByRole('listitem').filter({ hasText: 'Essay draft' })).toContainText('Multi-step');
+  await expect(page.getByText('Very old to-do')).toHaveCount(0);
+
+  await page.getByRole('combobox', { name: 'Status' }).selectOption('missed');
+  await expect(undated.getByRole('listitem')).toHaveCount(1);
+  await expect(page.getByText('Clean up notes')).toHaveCount(0);
+  await page.getByRole('combobox', { name: 'Status' }).selectOption('all');
+  await page.getByRole('combobox', { name: 'Type' }).selectOption('multi-step');
+  await expect(page.getByRole('listitem').filter({ hasText: 'Essay draft' })).toBeVisible();
+  await expect(page.getByText('Flashcards')).toHaveCount(0);
+  // Remembered when the page opens again.
+  await page.reload();
+  await expect(page.getByRole('combobox', { name: 'Type' })).toHaveValue('multi-step');
+  await page.getByRole('button', { name: 'Clear filters' }).click();
+  await expect(page.getByText('Flashcards')).toBeVisible();
+});
+
+test('Schedule it puts work with no time in the first open slot', async ({ page }) => {
+  const state = await setup(page, { todos: [undatedTask('notes', 'Clean up notes')] });
+  await page.goto('/tasks');
+  await page.getByRole('button', { name: 'Schedule Clean up notes' }).click();
+  await expect.poll(() => state.tables.todo_sessions.find(s => s.todo_id === 'notes')?.start_time).toBe(at(0, '09:00'));
+  await expect(page.getByRole('list', { name: 'Tasks with no due date' })).toContainText('Scheduled Today');
+});

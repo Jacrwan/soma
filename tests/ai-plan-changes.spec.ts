@@ -200,14 +200,23 @@ test('moving onto a block that can move moves that block out of the way', async 
   expect(+new Date(String(cs.end_time)) <= +new Date(at(1, '18:00')) || +new Date(String(cs.start_time)) >= +new Date(at(1, '19:00'))).toBe(true);
 });
 
-test('remove deletes the block and the task behind it', async ({ page }) => {
-  // This used to only clear the block's time, so the task came straight back as
-  // an unscheduled "Any time" entry and nothing was removed.
+// Since 2026-11-21 "remove" takes the block off the clock and keeps the task
+// on the list; "delete" takes the task too.
+test('remove takes the block off the clock and keeps the task; delete takes the task', async ({ page }) => {
   const state = await setup(page, { reply: 'Dropped physics for today.', blocks: [], changes: [{ action: 'remove', id: 's-phys' }] });
   await ask(page, 'skip physics');
-  await expect(page.getByText('Soma suggests deleting this')).toBeVisible();
+  await expect(page.getByText(/Take off the clock/)).toBeVisible();
   await page.getByRole('button', { name: /Accept all \(1\)/ }).click();
   await expect.poll(() => state.deletes).toContain('todo_sessions:s-phys');
+  expect(state.deletes).not.toContain('todos:t-phys');
+  expect(state.db.todos.some(t => t.id === 't-phys')).toBe(true);
+});
+
+test('delete removes the block and the task behind it', async ({ page }) => {
+  const state = await setup(page, { reply: 'Deleted physics.', blocks: [], changes: [{ action: 'delete', id: 's-phys' }] });
+  await ask(page, 'i dont need to do physics');
+  await expect(page.getByText(/Delete this task for good/)).toBeVisible();
+  await page.getByRole('button', { name: /Accept all \(1\)/ }).click();
   await expect.poll(() => state.deletes).toContain('todos:t-phys');
   expect(state.db.todos.some(t => t.id === 't-phys')).toBe(false);
 });

@@ -157,39 +157,44 @@ test('checking off a block checks off its same-named blocks in that course, and 
 });
 
 // "Allow the user to manually delete blocks using the edit plan feature" (2026-10-06).
-test('Edit plan deletes a block after asking, and cancelling keeps it',async({page})=>{
+// Since 2026-11-21 Remove takes the block off the plan and keeps the task on
+// the Tasks list; only Delete task deletes it.
+test('Edit plan removes a block after asking and keeps its task; cancelling keeps the block',async({page})=>{
  const state=await setup(page);await page.goto('/dashboard');
  await page.getByRole('button',{name:'Edit plan',exact:true}).click();
- page.once('dialog',d=>{expect(d.message()).toContain('Delete "Cell review" from your plan?');void d.dismiss();});
- await page.getByRole('button',{name:'Delete: Cell review',exact:true}).click();
+ page.once('dialog',d=>{expect(d.message()).toContain('Take "Cell review" off the clock? It stays on your list');void d.dismiss();});
+ await page.getByRole('button',{name:'Remove: Cell review',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Cell review',exact:true})).toBeVisible();
- expect(state.tables.todos.some(t=>t.id==='review')).toBe(true);
  page.once('dialog',d=>void d.accept());
- await page.getByRole('button',{name:'Delete: Cell review',exact:true}).click();
- await expect(page.getByRole('heading',{name:'Cell review',exact:true})).toHaveCount(0);
- expect(state.tables.todos.map(t=>t.id)).toEqual(['lab']);
- expect(state.tables.todo_sessions.map(s=>s.id)).toEqual(['lab-slot']);
- await page.reload();await expect(page.getByRole('heading',{name:'Lab report',exact:true})).toBeVisible();await expect(page.getByRole('heading',{name:'Cell review',exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'Remove: Cell review',exact:true}).click();
+ await expect.poll(()=>state.tables.todo_sessions.map(s=>s.id)).toEqual(['lab-slot']);
+ // The work is still there, waiting on the Tasks list.
+ expect(state.tables.todos.map(t=>t.id).sort()).toEqual(['lab','review']);
 });
 
-test('the block editor can delete the block it is editing',async({page})=>{
+test('the block editor takes a block off the plan, or deletes the task for good',async({page})=>{
  const state=await setup(page);await page.goto('/dashboard');
  await page.getByRole('button',{name:'Edit plan',exact:true}).click();
  await page.getByRole('button',{name:'Edit: Lab report',exact:true}).click();
  page.once('dialog',d=>void d.accept());
- await page.getByRole('button',{name:'Delete block',exact:true}).click();
+ await page.getByRole('button',{name:'Remove time',exact:true}).click();
  await expect(page.getByRole('button',{name:'Save block',exact:true})).toHaveCount(0);
- await expect(page.getByRole('heading',{name:'Lab report',exact:true})).toHaveCount(0);
- expect(state.tables.todos.map(t=>t.id)).toEqual(['review']);
+ await expect.poll(()=>state.tables.todo_sessions.some(s=>s.id==='lab-slot')).toBe(false);
+ expect(state.tables.todos.some(t=>t.id==='lab')).toBe(true);
+ await page.getByRole('button',{name:'Edit: Cell review',exact:true}).click();
+ page.once('dialog',d=>{expect(d.message()).toContain('for good');void d.accept();});
+ await page.getByRole('button',{name:'Delete task',exact:true}).click();
+ await expect.poll(()=>state.tables.todos.some(t=>t.id==='review')).toBe(false);
+ expect(state.tables.todo_sessions.some(s=>s.todo_id==='review')).toBe(false);
 });
 
-test('deleting one block of a task scheduled twice keeps the task and its other block',async({page})=>{
+test('removing one block of a task scheduled twice keeps the task and its other block',async({page})=>{
  const state=await setup(page);
  state.tables.todo_sessions.push({id:'review-later',user_id:account.id,todo_id:'review',date,start_time:iso('19:00'),end_time:iso('19:45')});
  await page.goto('/dashboard');
  await page.getByRole('button',{name:'Edit plan',exact:true}).click();
  page.once('dialog',d=>void d.accept());
- await page.getByRole('button',{name:'Delete: Cell review',exact:true}).first().click();
+ await page.getByRole('button',{name:'Remove: Cell review',exact:true}).first().click();
  await expect(page.getByRole('heading',{name:'Cell review',exact:true})).toHaveCount(1);
  expect(state.tables.todos.some(t=>t.id==='review')).toBe(true);
  expect(state.tables.todo_sessions.filter(s=>s.todo_id==='review')).toHaveLength(1);

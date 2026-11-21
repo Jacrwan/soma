@@ -9,6 +9,51 @@ still needed.
 
 ---
 
+## 2026-11-21 (A to-do list under the calendar; only what a change touches moves)
+
+- **Why:** the owner: "there isn't a list of todos; everything lives on the
+  calendar, which makes rescheduling hard, especially because removing one
+  thing means it's gone forever". Removing a task's last block deleted the
+  task, the Tasks page listed only tasks with a due date, and each mover
+  decided on its own what to move. Owner's direction: never clear and redo
+  the schedule, move only what's affected; show everything on Tasks with a
+  professional tag for tasks with steps or several sittings, and a filter;
+  keep Catch-Up and the within-day rescheduling.
+- **What:**
+  - **Nothing is lost.** `deletePlanBlock` (`liveData.ts`) takes a block off
+    the clock and keeps the task (it stays under Any time that day and on
+    Tasks). Only an explicit delete takes the task: `deleteTask`, the
+    editor's **Delete task**, **Delete task** in Task details, Remove on a
+    block with no time, or the AI's "delete"/"drop"/"cancel" (`"task":true`).
+    Edit plan's trash button is **Remove**; the editor has **Remove time** and
+    **Delete task**. AI "remove" cards say "Take off the clock … it stays on
+    your list"; delete cards say "Delete this task for good" and keep the
+    recorded-time choice.
+  - **Tasks page is the whole list** (`TasksTab.tsx`, new `lib/taskList.ts`):
+    a "No due date" section lists open undated tasks from the last 30 days
+    (older Day View to-dos stay out), each with where it stands (Scheduled
+    …, Missed …, No time yet) and **Schedule it** (first open slot in the
+    next week, inside study hours). **Multi-step** and **Multi-session** tags
+    on any row. A filter bar (course, status, type, due date), remembered per
+    account in this browser; dragging is off while filtered.
+  - **Only affected blocks move** (`workOrder.affected`): covered (an event,
+    a stated time, or work put back first now sits on it), missed, out of
+    order (work it comes after now starts after it), or past its last day.
+    Each block once, never pinned or started ones. Wired in as the order check
+    after moves: within-day reclaim (`dayReclaim.keepOrder`), calendar clashes
+    (`taskSchedule.ts`: the moved block trades places with the one that should
+    follow it, or that one goes right after it), and the chat (a card that
+    puts chapter 5 after chapter 6 adds a card moving chapter 6 after it).
+- **Tests:** `tests/work-order.spec.ts` (affected rules; reclaim keeps order);
+  `tests/tasks-page.spec.ts` › "Tasks lists work with no due date…",
+  "Schedule it puts work with no time…"; `tests/ai-missed-now.spec.ts` ›
+  "moving chapter 5 after chapter 6…"; `tests/calendar-clash.spec.ts` › first
+  test now expects the reviews to keep their order; `tests/live-dashboard.spec.ts`
+  and `tests/ai-remove-blocks.spec.ts` updated for Remove vs Delete task.
+- **Not done:** a task can't be saved with no day without knowing the
+  `todos.date` column allows it, so a block taken off the clock keeps its day
+  (Any time) rather than leaving the calendar entirely.
+
 ## 2026-11-20 (Missed work goes back by priority and in order; your words win; your blocks need a yes)
 
 - **Why:** two blocks missed on Thursday (Physics reading 12.7–12.11, Review:

@@ -326,3 +326,10 @@
   grid-column: 1 / -1;
   margin-top: -4px;
 }
+
+/* Delete task sits apart on the left (2026-11-21). */
+.actions .danger,
+.danger {
+  margin-right: auto;
+  color: var(--danger);
+}

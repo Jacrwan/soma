@@ -54,7 +54,7 @@ const block = (id: string, text: string, from: string, to: string, extra: Row = 
 });
 const event = (id: string, title: string, from: string, to: string) => ({ id, summary: title, start: { dateTime: at(0, from) }, end: { dateTime: at(0, to) }, source: { connectionId: 'c', calendarId: 'primary' } });
 
-test('an event that moves onto a block moves it to the first open time after it, and says so; the block next to it stays', async ({ page }) => {
+test('an event that moves onto a block moves it, and a review that comes after it keeps its place in line', async ({ page }) => {
   const review = block('review', 'Review: CS 61A lecture from Mon 11-02', '17:00', '18:00');
   const next = block('next', 'Review: CS 61A lecture from Wed 11-04', '18:00', '19:00');
   let gym = event('gym', 'gym', '15:00', '16:00');
@@ -65,12 +65,14 @@ test('an event that moves onto a block moves it to the first open time after it,
   gym = event('gym', 'gym', '17:00', '18:00');
   // Opened again after the change in Google Calendar.
   await page.reload();
-  await expect.poll(() => state.tables.todo_sessions.find(s => s.id === 's-review')!.start_time).toBe(at(0, '19:10'));
-  expect(state.tables.todo_sessions.find(s => s.id === 's-review')!.end_time).toBe(at(0, '20:10'));
-  expect(state.tables.todo_sessions.find(s => s.id === 's-next')!.start_time).toBe(at(0, '18:00'));
+  // Since 2026-11-21 lecture reviews keep their order: the 11-02 review goes
+  // where the 11-04 one was, and that one goes right after it.
+  await expect.poll(() => state.tables.todo_sessions.find(s => s.id === 's-review')!.start_time).toBe(at(0, '18:00'));
+  expect(state.tables.todo_sessions.find(s => s.id === 's-review')!.end_time).toBe(at(0, '19:00'));
+  await expect.poll(() => state.tables.todo_sessions.find(s => s.id === 's-next')!.start_time).toBe(at(0, '19:00'));
   expect(state.tables.todo_sessions).toHaveLength(2);
   expect(state.tables.todos).toHaveLength(2);
-  await expect(page.getByText('Moved a sitting that had to move')).toBeVisible();
+  await expect(page.getByText('Moved 2 sittings that had to move')).toBeVisible();
 });
 
 test('a block already over an event (a class the student may skip) stays, and so does every clash on the first run', async ({ page }) => {

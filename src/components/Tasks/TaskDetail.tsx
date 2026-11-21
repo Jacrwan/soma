@@ -82,6 +82,24 @@ export default function TaskDetail({ userId, target, subjects, sessions, guess, 
 
   useEffect(() => { if (variant === 'dialog' && !dialog.current?.open) dialog.current?.showModal?.(); }, [variant]);
   const close = (saved: boolean) => { dialog.current?.close?.(); onClose(saved); };
+  /**
+   * Delete task (2026-11-21): the one place work is deleted for good. Taking
+   * a block off the calendar keeps the task on the Tasks list; this takes the
+   * task and all its blocks. Recorded study time stays in Insights.
+   */
+  async function deleteTask() {
+    if (!todo || !window.confirm(`Delete "${todo.text}" for good? It comes off your plan and your Tasks list. Recorded study time stays in Insights.`)) return;
+    setBusy(true); setError('');
+    try {
+      for (const sn of sessions.filter(x => x.todoId === todo.id)) await storage.deleteTodoSession(sn.id);
+      await storage.deleteTodo(todo.id);
+      await storage.fetchAllTodos();
+      window.dispatchEvent(new Event('soma_todos_changed'));
+      close(true);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not delete the task.'); }
+    finally { setBusy(false); }
+  }
+  const deleteButton = todo ? <button type="button" className={styles.danger} onClick={() => void deleteTask()} disabled={busy}>Delete task</button> : null;
 
   const today = dateOf(new Date());
   const stepTotal = steps.reduce((n, s) => n + s.minutes, 0);
@@ -216,6 +234,7 @@ export default function TaskDetail({ userId, target, subjects, sessions, guess, 
         {body}
         {error && <p role="alert" className={styles.error}>{error}</p>}
         <div className={panelStyles.editorButtons}>
+          {deleteButton}
           <button type="button" onClick={() => close(false)} disabled={busy}>Cancel</button>
           <button type="submit" disabled={busy}>{busy ? 'Saving…' : todo ? 'Save' : 'Schedule it'}</button>
         </div>
@@ -234,6 +253,7 @@ export default function TaskDetail({ userId, target, subjects, sessions, guess, 
         {body}
         {error && <p role="alert" className={styles.error}>{error}</p>}
         <div className={styles.actions}>
+          {deleteButton}
           <button type="button" onClick={() => close(false)} disabled={busy}>Cancel</button>
           <button type="submit" className={styles.confirm} disabled={busy}>{busy ? 'Saving…' : todo ? 'Save' : 'Schedule it'}</button>
         </div>
