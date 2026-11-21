@@ -35,15 +35,17 @@ test('a missed block takes the next free time; later blocks stay where they were
   expect(r.moved.map(x => x.id)).toEqual(['a']);
 });
 
-test('only when a missed block fits nowhere does later study make room, by priority', () => {
-  // Study hours end at 16:00: the only free hour left is taken by Worksheet 3.
+test('later study makes room only when it still has a place; otherwise the missed block keeps its time', () => {
+  // Study hours end at 16:00: the only free hour left is taken by Worksheet 3,
+  // and Reading would have nowhere to go. Since 2026-11-21 nothing comes off
+  // the clock: the missed block stays where it was, for Catch-Up tomorrow.
   const r = reclaimDay(day(), m('12:30'), m('16:00'));
   const at = (id: string) => r.blocks.find(b => b.id === id)!.time;
-  expect(at('a')).toBe('13:00–14:00');
+  expect(at('a')).toBe('11:00–12:00');
+  expect(at('b')).toBe('13:00–14:00');
   expect(at('c')).toBe('15:00–16:00');
-  // Reading (priority 2) gave up its hour and waits for catch-up, off the clock.
-  expect(at('b')).toBe('');
-  expect(r.unplaced).toEqual(['b']);
+  expect(r.unplaced).toEqual(['a']);
+  expect(r.moved).toEqual([]);
 });
 
 test('moved blocks start on the next 5 minutes, not the minute a class ends', () => {
@@ -76,7 +78,8 @@ test('study hours are a wall unless personal time is allowed', () => {
   ];
   // 21:15: the 15-minute wait after a block ends (GRACE_MIN) has passed.
   const capped = reclaimDay(blocks, m('21:15'), m('21:00'));
-  expect(capped.blocks[0].time).toBe('');
+  // It keeps its time (missed) instead of coming off the clock (2026-11-21).
+  expect(capped.blocks[0].time).toBe('20:00–21:00');
   expect(capped.unplaced).toEqual(['a']);
 
   const open = reclaimDay(blocks, m('21:15'), null);

@@ -24,6 +24,7 @@ import { DEFAULT_SCHEDULE, type SchedulePrefs } from '../../lib/taskScheduler';
 import type { GoogleCalendarConnection, GoogleCalendarInfo, Subject, SubjectColor } from '../../types';
 import styles from './SettingsTab.module.css';
 import InviteFriends from './InviteFriends';
+import HoursChangePrompt from './HoursChangePrompt';
 import { MONTHLY_PRICE, TRIAL_DAYS } from '../../lib/pricing';
 
 type Section = 'profile' | 'subscription' | 'invite' | 'appearance' | 'hours' | 'scheduling' | 'memory' | 'integrations' | 'courses' | 'legal';
@@ -339,6 +340,18 @@ export default function SettingsTab() {
   function save(next: SomaSettings) {
     setSettings(next);
     storage.setSomaSettings(next);
+  }
+  // Study hours are typed into time boxes: saved when the box is left, not on
+  // every keystroke (a half-typed time was briefly the real window), and then
+  // Soma asks about blocks now outside them (2026-11-21).
+  const [hoursDraft, setHoursDraft] = useState<{ start?: string; end?: string }>({});
+  const [hoursPrompt, setHoursPrompt] = useState(false);
+  function commitHours(field: 'start' | 'end') {
+    const value = hoursDraft[field];
+    setHoursDraft(d => ({ ...d, [field]: undefined }));
+    if (!value || value === settings.studyWindow[field]) return;
+    save({ ...settings, studyWindow: { ...settings.studyWindow, [field]: value } });
+    setHoursPrompt(true);
   }
 
   async function handleSaveEducation() {
@@ -908,8 +921,10 @@ export default function SettingsTab() {
                   id="study-window-start"
                   type="time"
                   className={styles.timeInput}
-                  value={settings.studyWindow.start}
-                  onChange={e => e.target.value && save({ ...settings, studyWindow: { ...settings.studyWindow, start: e.target.value } })}
+                  value={hoursDraft.start ?? settings.studyWindow.start}
+                  onChange={e => setHoursDraft(d => ({ ...d, start: e.target.value }))}
+                  onBlur={() => commitHours('start')}
+                  onKeyDown={e => { if (e.key === 'Enter') commitHours('start'); }}
                 />
               </div>
               <div className={styles.prefRow}>
@@ -918,8 +933,10 @@ export default function SettingsTab() {
                   id="study-window-end"
                   type="time"
                   className={styles.timeInput}
-                  value={settings.studyWindow.end}
-                  onChange={e => e.target.value && save({ ...settings, studyWindow: { ...settings.studyWindow, end: e.target.value } })}
+                  value={hoursDraft.end ?? settings.studyWindow.end}
+                  onChange={e => setHoursDraft(d => ({ ...d, end: e.target.value }))}
+                  onBlur={() => commitHours('end')}
+                  onKeyDown={e => { if (e.key === 'Enter') commitHours('end'); }}
                 />
               </div>
               </>}
@@ -980,6 +997,7 @@ export default function SettingsTab() {
                 {savedSection === 'hours' ? 'Saved ✓' : 'Save'}
               </button>
             </div>
+            {hoursPrompt && <HoursChangePrompt onDone={() => setHoursPrompt(false)} />}
           </section>
         )}
 
