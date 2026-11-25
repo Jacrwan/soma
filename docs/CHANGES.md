@@ -9,6 +9,28 @@ still needed.
 
 ---
 
+## 2026-11-24 (Soma's AI sees what was done up to 60 days back)
+
+- **Why:** "did i review 11.2.2026 cs review lecture sometime?" got "I can only
+  check the last seven days". The 2026-11-19 change gave exam dates 60 days
+  back and ahead, not past work; `lastWeek` still stopped at seven days.
+- **What:** new CONTEXT key `earlier` (`src/lib/earlierWork.ts`), 8 to 60 days
+  back, by date, newest first. Only work with a record goes in: checked off
+  (Completed, Partially completed) or with logged Focus time (`did Nm`); Focus
+  time under a name no block that day has is its own line ("· no block").
+  Planned blocks with neither are left out (they didn't happen), and it's
+  capped at 120 lines, so it stays small. Built from rows `readPlan` already
+  loads: no extra reads, no calendar fetch. Prompt: WHAT THE STUDENT HAS
+  ALREADY DONE reads `earlier` under the same rules, matches work under any
+  fitting name and says the day and name it found; nothing older than 60 days
+  is sent. `lastWeek`, the plan and placement (next seven days) are unchanged.
+- **Tests:** `tests/ai-earlier-work.spec.ts`: checked-off/logged work 8–60
+  days back comes through and unlogged plans, last week and >60 days don't;
+  capped at 120, newest kept; nothing means no key.
+- **Note:** `tests/ai-load-limit.spec.ts` › "documents that never load…"
+  fails with or without this change (already broken). Cold-start page loads
+  can pass 15s on the first run; `--timeout=60000` avoids false failures.
+
 ## 2026-11-21 (Missed blocks keep their time; changing study hours asks first)
 
 - **Why:** "Review: Physics lecture from Tue 09-15" showed as Any time /
